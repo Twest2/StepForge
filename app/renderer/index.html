@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src file: data:; font-src 'self';">
+<title>StepForge</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <header id="topbar">
+    <div class="brand" id="btn-home" title="Guide library">StepForge</div>
+    <div id="topbar-context"></div>
+    <div class="spacer"></div>
+    <div id="capture-status" class="hidden"></div>
+    <input id="global-search" type="search" placeholder="Search guides…  (Ctrl+/ for quick actions)">
+  </header>
+  <main id="view"></main>
+</div>
+<div id="modal-root"></div>
+<div id="toast-root"></div>
+<script src="util.js"></script>
+<script src="canvas.js"></script>
+<script src="dialogs.js"></script>
+<script src="editor.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

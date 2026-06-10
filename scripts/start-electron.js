@@ -3,7 +3,9 @@
 
 const { spawn } = require('node:child_process');
 
-const electronPath = require('electron');
+const { resolveElectronBinary } = require('./electron-launcher');
+
+const electronPath = resolveElectronBinary();
 const env = { ...process.env };
 delete env.ELECTRON_RUN_AS_NODE;
 

@@ -6,10 +6,12 @@
   "license": "MPL-2.0",
   "private": true,
   "scripts": {
-    "start": "electron .",
+    "start": "node scripts/start-electron.js",
     "test": "node --test tests/unit/",
+    "sample": "node scripts/make-sample-guide.js",
+    "build": "bash scripts/build-release.sh",
     "verify": "bash scripts/verify.sh",
-    "sample": "node scripts/make-sample-guide.js"
+    "bootstrap": "bash scripts/bootstrap-offline.sh"
   },
   "devDependencies": {
     "electron": "^41.7.1"

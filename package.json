@@ -3,17 +3,20 @@
   "version": "0.1.0",
   "description": "Fully offline desktop tool for capturing, annotating, and exporting step-by-step guides.",
   "main": "app/main.js",
+  "author": "StepForge tyler@twestbrook.com",
   "license": "MPL-2.0",
   "private": true,
   "scripts": {
     "start": "node scripts/start-electron.js",
     "test": "node --test tests/unit/",
     "sample": "node scripts/make-sample-guide.js",
+    "package:windows": "node scripts/package-windows.js",
     "build": "bash scripts/build-release.sh",
     "verify": "bash scripts/verify.sh",
     "bootstrap": "bash scripts/bootstrap-offline.sh"
   },
   "devDependencies": {
-    "electron": "^41.7.1"
+    "electron": "^41.7.1",
+    "electron-builder": "^26.15.2"
   }
 }

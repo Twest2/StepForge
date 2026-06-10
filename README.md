@@ -71,6 +71,8 @@ using only Node built-ins.
 
 ## Getting Started
 
+For a shorter walkthrough, see [GETTING_STARTED.md](GETTING_STARTED.md).
+
 Requirements: Node.js 20+ and npm (Electron is the only dependency).
 
 ```bash
@@ -102,7 +104,8 @@ bash scripts/bootstrap-offline.sh   # verify toolchain availability
 bash scripts/verify.sh              # full test suite + smoke checks
 bash scripts/build-release.sh       # assemble runnable app directory
 bash scripts/package-linux.sh       # portable tar.gz + .deb (+ AppDir spec)
-pwsh scripts/package-windows.ps1    # portable zip + installer specs
+npm run package:windows             # portable Windows .exe in releases/
+pwsh scripts/package-windows.ps1    # same Windows portable build via PowerShell
 ```
 
 See [build/build_report.md](build/build_report.md) for what was produced on

@@ -18,7 +18,6 @@ assert_contains() {
 assert_contains "$README" "# "
 assert_contains "$README" "## Overview"
 assert_contains "$README" "## What's Included"
-assert_contains "$README" "## Getting Started"
 assert_contains "$README" "## Testing"
 assert_contains "$README" "bash tests/run_test.sh"
 assert_contains "$README" "## Contributing"

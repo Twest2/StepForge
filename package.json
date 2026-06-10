@@ -1,0 +1,17 @@
+{
+  "name": "stepforge",
+  "version": "0.1.0",
+  "description": "Fully offline desktop tool for capturing, annotating, and exporting step-by-step guides.",
+  "main": "app/main.js",
+  "license": "MPL-2.0",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test tests/unit/",
+    "verify": "bash scripts/verify.sh",
+    "sample": "node scripts/make-sample-guide.js"
+  },
+  "devDependencies": {
+    "electron": "^41.7.1"
+  }
+}

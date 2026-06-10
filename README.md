@@ -6,9 +6,6 @@
 
 
 
-## What's Included
-
-
 
 ## Getting Started
 

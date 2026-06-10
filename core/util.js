@@ -98,7 +98,8 @@ function slugify(text, fallback = 'untitled') {
   const slug = String(text || '')
     .normalize('NFKD')
     .replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-zA-Z0-9._ -]+/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9._ -]+/g, '')
     .trim()
     .replace(/\s+/g, '-')
     .slice(0, 80);

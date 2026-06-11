@@ -1,5 +1,7 @@
 'use strict';
 
+(() => {
+
 /**
  * Small modal factories used by the renderer. They stay intentionally plain:
  * a modal title, a few form rows, and action buttons. No decorative clutter.
@@ -438,3 +440,4 @@ window.StepForgeDialogs = {
   showLinkedGuideDialog,
   showInfoDialog,
 };
+})();

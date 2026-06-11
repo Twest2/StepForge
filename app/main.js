@@ -76,7 +76,29 @@ function createWindow() {
     },
   });
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
-  mainWindow.once('ready-to-show', () => mainWindow.show());
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show();
+    // Dev-only verification hook: optionally navigate, then write a
+    // screenshot locally and exit. Used by the smoke tooling.
+    if (process.env.STEPFORGE_SCREENSHOT) {
+      const target = process.env.STEPFORGE_SCREENSHOT;
+      const navigate = process.env.STEPFORGE_SCREENSHOT_JS || '';
+      setTimeout(async () => {
+        try {
+          if (navigate) {
+            await mainWindow.webContents.executeJavaScript(navigate, true);
+            await new Promise((r) => setTimeout(r, 900));
+          }
+          const image = await mainWindow.webContents.capturePage();
+          fs.writeFileSync(target, image.toPNG());
+        } catch (err) {
+          console.error('screenshot failed:', err.message);
+        } finally {
+          app.quit();
+        }
+      }, 1500);
+    }
+  });
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 

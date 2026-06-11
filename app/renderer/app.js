@@ -1,5 +1,7 @@
 'use strict';
 
+(() => {
+
 const api = window.stepforge;
 const dialogs = window.StepForgeDialogs || {};
 
@@ -12,7 +14,7 @@ class StepForgeApp {
     this.homeBtn = document.getElementById('btn-home');
 
     this.state = {
-      view: 'library',
+      view: 'welcome',
       query: '',
       folderFilter: 'all',
       library: { guides: [], folders: [], guideFolders: {} },
@@ -24,9 +26,11 @@ class StepForgeApp {
     this.libraryRenderToken = 0;
 
     this.view.innerHTML = `
-      <div id="library-host"></div>
+      <div id="welcome-host"></div>
+      <div id="library-host" class="hidden"></div>
       <div id="editor-host" class="hidden"></div>
     `;
+    this.welcomeHost = document.getElementById('welcome-host');
     this.libraryHost = document.getElementById('library-host');
     this.editorHost = document.getElementById('editor-host');
 
@@ -61,7 +65,7 @@ class StepForgeApp {
     });
 
     this.homeBtn.addEventListener('click', () => {
-      if (this.state.view === 'editor') this.showLibrary();
+      if (this.state.view !== 'welcome') this.showWelcome();
     });
 
     document.addEventListener('keydown', (e) => {
@@ -85,9 +89,13 @@ class StepForgeApp {
   }
 
   async init() {
-    await this.refreshData();
-    this.updateCaptureState(await api.capture.state());
-    this.renderLibrary();
+    this.renderWelcome();
+    try {
+      await this.refreshData();
+      this.updateCaptureState(await api.capture.state());
+    } catch (err) {
+      console.error(err);
+    }
   }
 
   async refreshData() {
@@ -123,10 +131,71 @@ class StepForgeApp {
 
   setView(view) {
     this.state.view = view;
+    this.welcomeHost.classList.toggle('hidden', view !== 'welcome');
     this.libraryHost.classList.toggle('hidden', view !== 'library');
     this.editorHost.classList.toggle('hidden', view !== 'editor');
     this.searchInput.classList.toggle('hidden', view !== 'library');
     this.renderTopbar();
+  }
+
+  showWelcome() {
+    this.editor.setActive(false);
+    this.setView('welcome');
+    this.renderWelcome();
+  }
+
+  renderWelcome() {
+    this.setView('welcome');
+    clearNode(this.welcomeHost);
+    this.welcomeHost.append(
+      el('div.welcome', {},
+        el('div.welcome-title', {},
+          el('h1', {}, 'StepForge'),
+          el('p.muted', {}, 'Capture, annotate, and export step-by-step guides — fully offline.'),
+        ),
+        el('div.welcome-actions', {},
+          el('button.welcome-btn.primary', {
+            type: 'button',
+            onClick: () => this.startNewCapture(),
+          },
+          el('span.welcome-btn-label', {}, 'New Capture'),
+          el('span.welcome-btn-hint', {}, 'Start a guide and capture your screen'),
+          ),
+          el('button.welcome-btn', {
+            type: 'button',
+            onClick: () => this.openExistingWorkspace(),
+          },
+          el('span.welcome-btn-label', {}, 'Existing Workspace'),
+          el('span.welcome-btn-hint', {}, 'Browse your guide library'),
+          ),
+          el('button.welcome-btn', {
+            type: 'button',
+            onClick: () => this.openSettings(),
+          },
+          el('span.welcome-btn-label', {}, 'Settings'),
+          el('span.welcome-btn-hint', {}, 'Theme, capture, and export options'),
+          ),
+        ),
+      ),
+    );
+  }
+
+  async startNewCapture() {
+    const guide = await api.library.create({ title: 'Untitled capture' });
+    await this.refreshData();
+    await this.openGuide(guide.guideId);
+    const state = await api.capture.session({ action: 'start', guideId: guide.guideId });
+    this.updateCaptureState(state);
+    const hotkey = this.state.settings?.capture?.hotkeyCapture;
+    toast(hotkey ? `Capture session started — press ${hotkey} to grab a step.` : 'Capture session started.');
+  }
+
+  async openExistingWorkspace() {
+    await this.refreshData();
+    this.state.query = '';
+    this.searchInput.value = '';
+    this.state.folderFilter = 'all';
+    await this.showLibrary();
   }
 
   async showLibrary(reason = null) {
@@ -182,6 +251,7 @@ class StepForgeApp {
 
   renderTopbar() {
     clearNode(this.topbarContext);
+    if (this.state.view === 'welcome') return;
     if (this.state.view === 'library') {
       this.topbarContext.append(
         el('button', { type: 'button', onClick: () => this.createGuide() }, 'New'),
@@ -594,3 +664,4 @@ function boot() {
 }
 
 boot();
+})();

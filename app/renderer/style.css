@@ -671,3 +671,52 @@ fieldset legend {
   border-top: 1px solid var(--border);
 }
 
+
+/* ---------- welcome screen ---------- */
+#welcome-host { flex: 1; min-height: 0; display: flex; }
+.welcome {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 9vh 32px 7vh;
+}
+.welcome-title { text-align: center; }
+.welcome-title h1 {
+  margin: 0 0 10px;
+  font-size: 44px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+.welcome-title p { font-size: 14px; margin: 0; }
+.welcome-actions {
+  margin-top: auto;
+  display: flex;
+  gap: 18px;
+  width: min(880px, 100%);
+}
+.welcome-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 26px 18px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+}
+.welcome-btn:hover {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  transform: translateY(-2px);
+}
+.welcome-btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.welcome-btn.primary .welcome-btn-label,
+.welcome-btn.primary .welcome-btn-hint { color: var(--accent-fg); }
+.welcome-btn-label { font-size: 16px; font-weight: 650; }
+.welcome-btn-hint { font-size: 12px; color: var(--muted); }

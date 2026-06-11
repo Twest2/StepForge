@@ -23,6 +23,7 @@ const { encodePng } = require('../core/png');
  */
 
 const CLICK_DEBOUNCE_MS = 700;
+const CLICK_CAPTURE_HIDE_DELAY_MS = 25;
 
 function hasBinary(name) {
   try {
@@ -241,6 +242,7 @@ class CaptureService {
         guideId: this.session.guideId,
         mode: mode === 'region' ? 'fullscreen' : mode,
         delayMs: 0,
+        hideWindowDelayMs: trigger === 'click' ? CLICK_CAPTURE_HIDE_DELAY_MS : null,
         refocus: false, // don't steal focus from the app the user is documenting
       });
       if (result.ok) {
@@ -285,7 +287,7 @@ while ($true) {
   $s = [W.U]::GetAsyncKeyState(0x01) -band 0x8000
   if ($s -and -not $down) { Write-Output CLICK }
   $down = [bool]$s
-  Start-Sleep -Milliseconds 40
+  Start-Sleep -Milliseconds 10
 }`;
         this.clickWatcher = spawn('powershell.exe', ['-NoProfile', '-Command', ps], { stdio: ['ignore', 'pipe', 'ignore'] });
         this.clickWatcher.stdout.on('data', (chunk) => {
@@ -365,12 +367,14 @@ while ($true) {
    * Hide the app window while `fn` runs so screenshots show the user's work,
    * not StepForge itself. Restores visibility afterwards.
    */
-  async withWindowHidden(fn, { refocus = true } = {}) {
+  async withWindowHidden(fn, { refocus = true, pauseMs = 350 } = {}) {
     const win = this.getWindow();
     const wasVisible = win && !win.isDestroyed() && win.isVisible() && !win.isMinimized();
     if (wasVisible) {
       win.hide();
-      await new Promise((r) => setTimeout(r, 350)); // let the compositor repaint
+      if (pauseMs > 0) {
+        await new Promise((r) => setTimeout(r, pauseMs)); // let the compositor repaint
+      }
     }
     try {
       return await fn();
@@ -390,13 +394,23 @@ while ($true) {
    * Take a screenshot and append it to the guide as a new image step.
    * Adds a click-marker annotation at the cursor position when enabled.
    */
-  async shoot({ guideId, mode = 'fullscreen', delayMs = null, hideWindow = true, refocus = true }) {
+  async shoot({
+    guideId,
+    mode = 'fullscreen',
+    delayMs = null,
+    hideWindow = true,
+    refocus = true,
+    hideWindowDelayMs = null,
+  }) {
     const delay = delayMs == null ? this.settings.get('capture.delayMs') || 0 : delayMs;
     if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
     let grabbed;
     try {
       grabbed = hideWindow
-        ? await this.withWindowHidden(() => this.grab(mode), { refocus })
+        ? await this.withWindowHidden(() => this.grab(mode), {
+          refocus,
+          pauseMs: hideWindowDelayMs == null ? 350 : hideWindowDelayMs,
+        })
         : await this.grab(mode);
     } catch (err) {
       return { ok: false, reason: err.message };

@@ -1,5 +1,5 @@
 {
-  "stepId": "step-bf6e1f92-47c8-478b-ba42-d2a3fe93bc48",
+  "stepId": "step-sample-02-enable-policy",
   "parentStepId": null,
   "kind": "image",
   "status": "todo",
@@ -25,7 +25,7 @@
   "extraImages": [],
   "annotations": [
     {
-      "id": "ann-80ff688a-e1ca-46e7-9519-0dd38240d9c3",
+      "id": "ann-f6b0cfdd-a867-4811-ad9c-7b31ae7a0476",
       "type": "arrow",
       "x": 0.47,
       "y": 0.24,
@@ -41,7 +41,7 @@
       }
     },
     {
-      "id": "ann-bd413182-4146-448b-95f8-72630f55437d",
+      "id": "ann-3d007177-1e5b-4ed0-8f26-43cd82c7f37d",
       "type": "tooltip",
       "x": 0.53,
       "y": 0.13,
@@ -58,7 +58,7 @@
       }
     },
     {
-      "id": "ann-537b3971-6361-4763-8424-da8980479507",
+      "id": "ann-751baf23-eab9-44fc-a811-5c9558de8b38",
       "type": "number",
       "x": 0.31,
       "y": 0.08,

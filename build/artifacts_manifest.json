@@ -1,98 +1,98 @@
 {
   "format": "stepforge-artifacts-manifest",
   "version": 1,
-  "generatedAt": "2026-06-11T02:33:30.203Z",
+  "generatedAt": "2026-06-11T02:38:15.736Z",
   "packageVersion": "0.1.0",
   "files": [
     {
       "kind": "artifact",
       "path": "artifacts/stepforge_0.1.0_amd64.deb",
-      "size": 103679916,
-      "sha256": "e568d19b18dbd5be3f2bde1c3e6b70ce79243ba697d625e0a5c1af3e2bd9733e"
+      "size": 103669070,
+      "sha256": "445758cd92c80c4fc2c5bec5929e62ab33dd83583da859bcba66bda9390ba077"
     },
     {
       "kind": "artifact",
       "path": "artifacts/stepforge_0.1.0_linux-x64.tar.gz",
-      "size": 139347926,
-      "sha256": "0bd6ea1d2c42b74e0b7411427f047dc8cbcc293507172b53ce43116e5f1affac"
+      "size": 139348957,
+      "sha256": "beb78b999ae40faf7c65d6ccf9bba23f7955b2d7fdc4214e0e9a94e4e3faec74"
     },
     {
       "kind": "sample",
-      "path": "../examples/sample-data/library/guides/guide-319c9f4d-4fa5-4399-81b5-258cc3393e1f/guide.json",
+      "path": "../examples/sample-data/library/guides/guide-132037ac-1dcb-4ec0-8276-58f566a35489/guide.json",
       "size": 928,
-      "sha256": "1fcb87d79d7c8d187256dafdefdd065d3bb3e2fc3b76c52a6003e147213ec1ba"
+      "sha256": "62cfedbb54089f92b8f52493255fab8b37a201cd12746dc8eff2e40be6978dda"
     },
     {
       "kind": "sample",
-      "path": "../examples/sample-data/library/guides/guide-319c9f4d-4fa5-4399-81b5-258cc3393e1f/steps/step-0997fb48-b598-4319-8144-0ceef68a84f4/step.json",
-      "size": 784,
-      "sha256": "e6233ff39c5ee5e869900fe2db3208443fc126b02aca1175412bc5ab28c767ae"
-    },
-    {
-      "kind": "sample",
-      "path": "../examples/sample-data/library/guides/guide-319c9f4d-4fa5-4399-81b5-258cc3393e1f/steps/step-592cde3d-19e2-441a-a19b-53ccd4ac132c/original.png",
-      "size": 13643,
-      "sha256": "09e12f935511bb6fabb5637501aa7743516b96d990adfab62ccfa311a7b60606"
-    },
-    {
-      "kind": "sample",
-      "path": "../examples/sample-data/library/guides/guide-319c9f4d-4fa5-4399-81b5-258cc3393e1f/steps/step-592cde3d-19e2-441a-a19b-53ccd4ac132c/step.json",
-      "size": 1609,
-      "sha256": "36048ccb6e30c00d6b652a0959f794c841ba3b11ff2ba1d6d2afcc94eeed6634"
-    },
-    {
-      "kind": "sample",
-      "path": "../examples/sample-data/library/guides/guide-319c9f4d-4fa5-4399-81b5-258cc3393e1f/steps/step-592cde3d-19e2-441a-a19b-53ccd4ac132c/working.png",
-      "size": 13643,
-      "sha256": "09e12f935511bb6fabb5637501aa7743516b96d990adfab62ccfa311a7b60606"
-    },
-    {
-      "kind": "sample",
-      "path": "../examples/sample-data/library/guides/guide-319c9f4d-4fa5-4399-81b5-258cc3393e1f/steps/step-62da8044-c236-4012-9fce-15785c94bfa7/step.json",
-      "size": 547,
-      "sha256": "243b7b1d9e9697dce03eb5b80254fe898835f2f7a89c287e3a6d6cd305f660b9"
-    },
-    {
-      "kind": "sample",
-      "path": "../examples/sample-data/library/guides/guide-319c9f4d-4fa5-4399-81b5-258cc3393e1f/steps/step-8a33be62-08c7-4a5d-ab9d-9f415269d015/original.png",
+      "path": "../examples/sample-data/library/guides/guide-132037ac-1dcb-4ec0-8276-58f566a35489/steps/step-277488ad-bf0c-488d-a6a2-e54be3e41241/original.png",
       "size": 13602,
       "sha256": "c96eedffdc5fd2eb9b63942cc00f1c8a91d01a0c5c2316c1d12d750b9b49e3d0"
     },
     {
       "kind": "sample",
-      "path": "../examples/sample-data/library/guides/guide-319c9f4d-4fa5-4399-81b5-258cc3393e1f/steps/step-8a33be62-08c7-4a5d-ab9d-9f415269d015/step.json",
+      "path": "../examples/sample-data/library/guides/guide-132037ac-1dcb-4ec0-8276-58f566a35489/steps/step-277488ad-bf0c-488d-a6a2-e54be3e41241/step.json",
       "size": 1975,
-      "sha256": "32ee15cec46e2ce8c9fe289ab9848c461978bf3d3ff0625fbaf8c4958575e573"
+      "sha256": "d5a7f45ef230d080cca8ecf13b20bfefc7294342eed375db2f0f7d576df6ef1b"
     },
     {
       "kind": "sample",
-      "path": "../examples/sample-data/library/guides/guide-319c9f4d-4fa5-4399-81b5-258cc3393e1f/steps/step-8a33be62-08c7-4a5d-ab9d-9f415269d015/working.png",
+      "path": "../examples/sample-data/library/guides/guide-132037ac-1dcb-4ec0-8276-58f566a35489/steps/step-277488ad-bf0c-488d-a6a2-e54be3e41241/working.png",
       "size": 13602,
       "sha256": "c96eedffdc5fd2eb9b63942cc00f1c8a91d01a0c5c2316c1d12d750b9b49e3d0"
     },
     {
       "kind": "sample",
-      "path": "../examples/sample-data/library/guides/guide-319c9f4d-4fa5-4399-81b5-258cc3393e1f/steps/step-bf6e1f92-47c8-478b-ba42-d2a3fe93bc48/original.png",
+      "path": "../examples/sample-data/library/guides/guide-132037ac-1dcb-4ec0-8276-58f566a35489/steps/step-2a243bf5-6b4f-406c-ba43-b66ba11aea16/step.json",
+      "size": 547,
+      "sha256": "e3b3ce474ec4234f083deac7304cb4d665f3f2ccdcf39c60a78ecc71312ee170"
+    },
+    {
+      "kind": "sample",
+      "path": "../examples/sample-data/library/guides/guide-132037ac-1dcb-4ec0-8276-58f566a35489/steps/step-87ca03b4-fccd-46c1-97f8-6c1f7176a569/step.json",
+      "size": 784,
+      "sha256": "f6e96cefa9861a0926ae65af738138d6b0881872c92ca5a352788c6ac8c921f0"
+    },
+    {
+      "kind": "sample",
+      "path": "../examples/sample-data/library/guides/guide-132037ac-1dcb-4ec0-8276-58f566a35489/steps/step-b4f37096-7cf4-4e10-b7a8-05b7c3f517ea/original.png",
       "size": 14031,
       "sha256": "b5e93a0ee74e2bdbbdf0871e901726dfbdc8b45dd648c959743520f92b02e7a2"
     },
     {
       "kind": "sample",
-      "path": "../examples/sample-data/library/guides/guide-319c9f4d-4fa5-4399-81b5-258cc3393e1f/steps/step-bf6e1f92-47c8-478b-ba42-d2a3fe93bc48/step.json",
+      "path": "../examples/sample-data/library/guides/guide-132037ac-1dcb-4ec0-8276-58f566a35489/steps/step-b4f37096-7cf4-4e10-b7a8-05b7c3f517ea/step.json",
       "size": 1886,
-      "sha256": "e707642d9fb4c2079075615836b26834cc1c053b6b2fb7eec0dc0b40029db614"
+      "sha256": "27884ea4829c4269e25e742d2bdce3da417f6ef391f48a4fa932c06131663447"
     },
     {
       "kind": "sample",
-      "path": "../examples/sample-data/library/guides/guide-319c9f4d-4fa5-4399-81b5-258cc3393e1f/steps/step-bf6e1f92-47c8-478b-ba42-d2a3fe93bc48/working.png",
+      "path": "../examples/sample-data/library/guides/guide-132037ac-1dcb-4ec0-8276-58f566a35489/steps/step-b4f37096-7cf4-4e10-b7a8-05b7c3f517ea/working.png",
       "size": 14031,
       "sha256": "b5e93a0ee74e2bdbbdf0871e901726dfbdc8b45dd648c959743520f92b02e7a2"
     },
     {
       "kind": "sample",
-      "path": "../examples/sample-data/library/guides/guide-319c9f4d-4fa5-4399-81b5-258cc3393e1f/steps/step-c0addd40-3e96-495f-b196-d49c08518dba/step.json",
+      "path": "../examples/sample-data/library/guides/guide-132037ac-1dcb-4ec0-8276-58f566a35489/steps/step-da491a7e-52b7-437a-baa6-c9aa520b3b3f/step.json",
       "size": 521,
-      "sha256": "3d89cd70a5294a4166d60e20b0d19408a834c31415e4319839577a8b18ccbce3"
+      "sha256": "343e0e6344b7f0724bd1eea6d38da9e97e0da24b8f86707b2eec14e99e0ef0bf"
+    },
+    {
+      "kind": "sample",
+      "path": "../examples/sample-data/library/guides/guide-132037ac-1dcb-4ec0-8276-58f566a35489/steps/step-e3373723-c536-4bc9-b8b4-55cd9b8ba525/original.png",
+      "size": 13643,
+      "sha256": "09e12f935511bb6fabb5637501aa7743516b96d990adfab62ccfa311a7b60606"
+    },
+    {
+      "kind": "sample",
+      "path": "../examples/sample-data/library/guides/guide-132037ac-1dcb-4ec0-8276-58f566a35489/steps/step-e3373723-c536-4bc9-b8b4-55cd9b8ba525/step.json",
+      "size": 1609,
+      "sha256": "a6932c7b03650a3b8cc1b5b46f3759855baf3495d5ee87ac6a09995a91b6629b"
+    },
+    {
+      "kind": "sample",
+      "path": "../examples/sample-data/library/guides/guide-132037ac-1dcb-4ec0-8276-58f566a35489/steps/step-e3373723-c536-4bc9-b8b4-55cd9b8ba525/working.png",
+      "size": 13643,
+      "sha256": "09e12f935511bb6fabb5637501aa7743516b96d990adfab62ccfa311a7b60606"
     },
     {
       "kind": "sample",
@@ -110,19 +110,19 @@
       "kind": "sample",
       "path": "../examples/sample-exports/html-rich/reset-a-password-in-admin-portal-rich.html",
       "size": 149943,
-      "sha256": "9a449f2507f6f4b43d67589cb2f4f28682d8f6fdec15cc0541b26a81624a528b"
+      "sha256": "e3c636d463c4db277f89a5330559661b6c9db193f94de9c4ad6801a88e3a7ff4"
     },
     {
       "kind": "sample",
       "path": "../examples/sample-exports/html-simple/reset-a-password-in-admin-portal.html",
       "size": 146646,
-      "sha256": "5cababe0b51a3590d3ceee4179760e0c2179e9ed340d85e1b65253e4275bb9d0"
+      "sha256": "2bf28616ed9ce47527e6e6da950b495e914b25a04376fb90e40e787ad0f4819a"
     },
     {
       "kind": "sample",
       "path": "../examples/sample-exports/image-bundle/reset-a-password-in-admin-portal-bundle.json",
       "size": 779,
-      "sha256": "24bae92a7d627ad65d9cea906f840fcfd46e44aa263ab927774daa49fef60f45"
+      "sha256": "38bdbf55d25f1620eb824192472fcf8faa65f38f4ef340bcd98e0668a66bdefe"
     },
     {
       "kind": "sample",
@@ -146,7 +146,7 @@
       "kind": "sample",
       "path": "../examples/sample-exports/json/reset-a-password-in-admin-portal.json",
       "size": 6740,
-      "sha256": "7257af7b3df168df9656159f84e0f7b538437775dc2e716e7f87d00dd9d40efd"
+      "sha256": "434d5d41df7983686da8057a9939a57739fa9089dd2957862ccb810963f66532"
     },
     {
       "kind": "sample",
@@ -205,14 +205,14 @@
     {
       "kind": "sample",
       "path": "../examples/sample-guide.sfgz",
-      "size": 88967,
-      "sha256": "4c36ae2ee22ca8da9fc066efaed72dc19084f8655b10162deb1528e2ebb3a0bf"
+      "size": 88968,
+      "sha256": "d041d4994f8d1a2f41a1c818ea706f64bb789eb4a3b903f67f86d6305339e412"
     },
     {
       "kind": "sample",
       "path": "../examples/sample-manifest.json",
       "size": 1186,
-      "sha256": "2cecfc8eaef1a6b87aeac4692b6a22d2c6d81b533b18b15bc87db1bc3774b007"
+      "sha256": "c88b283799b932cb3b23e096288222eed84beaaf6bf8ce0fecdf05de89cc2c1b"
     }
   ]
 }

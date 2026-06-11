@@ -1,6 +1,6 @@
 {
-  "stepId": "step-0997fb48-b598-4319-8144-0ceef68a84f4",
-  "parentStepId": "step-bf6e1f92-47c8-478b-ba42-d2a3fe93bc48",
+  "stepId": "step-sample-02a-permission-prompt",
+  "parentStepId": "step-sample-02-enable-policy",
   "kind": "empty",
   "status": "todo",
   "title": "Confirm permission prompt",
@@ -19,7 +19,7 @@
   "annotations": [],
   "textBlocks": [
     {
-      "id": "tb-e3aa7982-3eb4-4db1-a1af-fda7c72b46aa",
+      "id": "tb-13a6f26d-fdc1-4aaf-a271-284ed8d9574f",
       "position": "after-description",
       "level": "warn",
       "title": "Access",

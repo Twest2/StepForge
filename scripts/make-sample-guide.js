@@ -108,8 +108,23 @@ function makeShotThree() {
   return img;
 }
 
+// Fixed ids keep the generated sample deterministic across runs so the
+// committed examples/ tree does not churn every time verify.sh runs.
+const SAMPLE_IDS = {
+  guide: 'guide-sample-reset-password',
+  steps: [
+    'step-sample-01-open-users',
+    'step-sample-02-enable-policy',
+    'step-sample-03-review-confirmation',
+  ],
+  substep: 'step-sample-02a-permission-prompt',
+  hidden: 'step-sample-04-legacy-note',
+  skipped: 'step-sample-05-deprecated-flow',
+};
+
 function createGuide(store) {
   const guide = store.createGuide({
+    guideId: SAMPLE_IDS.guide,
     title: 'Reset a password in Admin Portal',
     descriptionHtml: '<p>Offline sample guide showing capture, annotations, rich text, and exports.</p>',
     placeholders: {
@@ -167,6 +182,7 @@ function createGuide(store) {
   steps.forEach((entry, index) => {
     const buf = encodePng(entry.image);
     store.addStep(guide.guideId, {
+      stepId: SAMPLE_IDS.steps[index],
       title: entry.title,
       descriptionHtml: entry.descriptionHtml,
       annotations: entry.annotations,
@@ -178,6 +194,7 @@ function createGuide(store) {
   });
 
   const substep = store.addStep(guide.guideId, {
+    stepId: SAMPLE_IDS.substep,
     kind: 'empty',
     parentStepId: store.getGuide(guide.guideId).stepsOrder[1],
     title: 'Confirm permission prompt',
@@ -186,6 +203,7 @@ function createGuide(store) {
   }, null, null, { position: 2 });
 
   store.addStep(guide.guideId, {
+    stepId: SAMPLE_IDS.hidden,
     kind: 'empty',
     title: 'Legacy note',
     hidden: true,
@@ -193,6 +211,7 @@ function createGuide(store) {
   }, null, null, { position: 4 });
 
   store.addStep(guide.guideId, {
+    stepId: SAMPLE_IDS.skipped,
     kind: 'empty',
     title: 'Deprecated flow',
     skipped: true,

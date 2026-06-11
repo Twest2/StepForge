@@ -1,8 +1,8 @@
 {
   "format": "stepforge-sample-manifest",
   "version": 1,
-  "generatedAt": "2026-06-11T02:32:07.575Z",
-  "guideId": "guide-319c9f4d-4fa5-4399-81b5-258cc3393e1f",
+  "generatedAt": "2026-06-11T02:40:34.632Z",
+  "guideId": "guide-sample-reset-password",
   "title": "Reset a password in Admin Portal",
   "dataDir": "sample-data",
   "note": "The sample guide is generated entirely offline from local assets.",
@@ -18,6 +18,6 @@
     "docx": "sample-exports/docx/reset-a-password-in-admin-portal.docx",
     "pptx": "sample-exports/pptx/reset-a-password-in-admin-portal.pptx"
   },
-  "substepId": "step-0997fb48-b598-4319-8144-0ceef68a84f4",
+  "substepId": "step-sample-02a-permission-prompt",
   "slug": "reset-a-password-in-admin-portal"
 }

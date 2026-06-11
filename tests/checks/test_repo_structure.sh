@@ -9,7 +9,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
-for f in README.md LICENSE package.json \
+for f in README.md docs/LICENSE package.json \
          docs/ARCHITECTURE.md docs/SECURITY.md docs/CONTRIBUTING.md \
          docs/CODE_OF_CONDUCT.md docs/CHANGELOG.md docs/GETTING_STARTED.md \
          ai_prompts/prompt.md ai_prompts/prompt2.md; do

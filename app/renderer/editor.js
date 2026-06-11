@@ -620,7 +620,7 @@ class GuideEditor {
     const allSelected = this.steps.length > 0 && n === this.steps.length;
     this.dom.stepBulkBar.append(
       el('div.bulk-bar', {},
-        el('span', {}, n ? `${n} selected` : 'Select steps to delete'),
+        el('span', {}, `${n} step${n === 1 ? '' : 's'} selected`),
         el('span.spacer', {}),
         el('button', {
           type: 'button',

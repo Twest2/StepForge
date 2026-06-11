@@ -78,6 +78,84 @@ test('rapid click watcher bursts are parsed one click at a time', () => {
   assert.equal(clicks, 2);
 });
 
+test('button presses fire on the detail line; scroll-wheel ticks are ignored', () => {
+  const service = makeService();
+  let clicks = 0;
+  service.onOsClick = () => {
+    clicks += 1;
+  };
+
+  service.processClickWatcherData([
+    'EVENT type 15 (RawButtonPress)',
+    '    device: 11 (11)',
+    '    detail: 1',
+    '    valuators:',
+    'EVENT type 15 (RawButtonPress)', // scroll-wheel tick
+    '    device: 11 (11)',
+    '    detail: 4',
+    'EVENT type 15 (RawButtonPress)', // horizontal scroll
+    '    device: 11 (11)',
+    '    detail: 7',
+    'EVENT type 15 (RawButtonPress)',
+    '    device: 11 (11)',
+    '    detail: 3',
+  ].join('\n'), 'linux');
+
+  assert.equal(clicks, 2, 'buttons 4-7 are scroll ticks, not clicks');
+});
+
+test('motion events with detail lines do not fire clicks', () => {
+  const service = makeService();
+  let clicks = 0;
+  service.onOsClick = () => {
+    clicks += 1;
+  };
+
+  service.processClickWatcherData([
+    'EVENT type 17 (RawMotion)',
+    '    device: 11 (11)',
+    '    detail: 0',
+    '    valuators:',
+  ].join('\n'), 'linux');
+
+  assert.equal(clicks, 0);
+});
+
+test('event lines split across stdout chunks are reassembled before parsing', () => {
+  const service = makeService();
+  let clicks = 0;
+  service.onOsClick = () => {
+    clicks += 1;
+  };
+
+  service.ingestClickWatcherChunk('EVENT type 15 (RawButt', 'linux');
+  assert.equal(clicks, 0, 'a partial line must not be parsed yet');
+  service.ingestClickWatcherChunk('onPress)\n    detail: 1\n', 'linux');
+
+  assert.equal(clicks, 1);
+});
+
+test('clicks queue behind an in-progress capture instead of being dropped', async () => {
+  const service = makeService();
+  const order = [];
+  let releaseFirst;
+  const firstGate = new Promise((r) => { releaseFirst = r; });
+  service.sessionCapture = async (trigger, clickPos) => {
+    order.push(`start-${clickPos.x}`);
+    if (clickPos.x === 1) await firstGate;
+    order.push(`done-${clickPos.x}`);
+    return { ok: true };
+  };
+
+  service.enqueueClickCapture({ x: 1, y: 1 });
+  const second = service.enqueueClickCapture({ x: 2, y: 2 });
+  releaseFirst();
+  await second;
+
+  assert.deepEqual(order, ['start-1', 'done-1', 'start-2', 'done-2'],
+    'the second click must run after the first, not be dropped');
+});
+
 test('windows click watcher output is counted line by line', () => {
   const service = makeService();
   let clicks = 0;

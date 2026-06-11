@@ -53,6 +53,7 @@ body {
 
 #app { display: flex; flex-direction: column; height: 100vh; }
 #view { flex: 1; min-height: 0; display: flex; }
+#view > * { flex: 1; min-height: 0; display: flex; }
 .hidden { display: none !important; }
 .muted { color: var(--muted); font-size: 12px; }
 
@@ -266,14 +267,6 @@ kbd {
 .guide-card .fav.on {
   opacity: 1;
   color: #f5a524;
-}
-.guide-card .select-check {
-  position: absolute;
-  top: 11px;
-  right: 12px;
-  width: 16px;
-  height: 16px;
-  cursor: pointer;
 }
 .guide-card .muted { font-size: 12px; margin-top: auto; padding-top: 8px; }
 .guide-card .snippet,

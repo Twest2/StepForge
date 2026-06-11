@@ -370,7 +370,7 @@ class StepForgeApp {
             type: 'button',
             className: this.state.selectMode ? 'primary' : '',
             onClick: () => this.toggleSelectMode(),
-          }, this.state.selectMode ? 'Selecting' : 'Select') : null,
+          }, 'Select') : null,
         ),
         el('div.row', { style: { justifyContent: 'space-between', marginBottom: '14px' } },
           el('div', {},
@@ -526,7 +526,7 @@ class StepForgeApp {
     const selected = this.state.selectedGuides.has(guide.guideId);
     const description = (guide.descriptionHtml || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
     const card = el('div.guide-card', {
-      className: `guide-card${selectMode ? ' selectable' : ''}${selected ? ' selected' : ''}`,
+      className: `guide-card${selected ? ' selected' : ''}`,
       onClick: () => {
         if (selectMode) this.toggleGuideSelection(guide.guideId);
         else this.openGuide(guide.guideId);
@@ -537,20 +537,15 @@ class StepForgeApp {
         this.guideContextMenu(e, guide);
       },
     },
-    selectMode
-      ? el('input.select-check', {
-        type: 'checkbox',
-        checked: selected,
-        onClick: (e) => { e.stopPropagation(); this.toggleGuideSelection(guide.guideId); },
-      })
-      : el('div.fav', {
-        className: `fav${guide.favorite ? ' on' : ''}`,
-        onClick: async (e) => {
-          e.stopPropagation();
-          await api.library.setFavorite({ guideId: guide.guideId, favorite: !guide.favorite });
-          await this.refreshLibrary();
-        },
-      }, '★'),
+    el('div.fav', {
+      className: `fav${guide.favorite ? ' on' : ''}`,
+      onClick: async (e) => {
+        e.stopPropagation();
+        if (selectMode) return;
+        await api.library.setFavorite({ guideId: guide.guideId, favorite: !guide.favorite });
+        await this.refreshLibrary();
+      },
+    }, '★'),
     el('h4', {}, guide.title || 'Untitled guide'),
     el('div.meta', {},
       el('span.badge', {}, badgeText),

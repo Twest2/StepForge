@@ -35,6 +35,8 @@ const CLICK_FRAME_MAX_AGE_MS = 600;
 // one-off fresh shot.
 const CLICK_FRAME_WAIT_MS = 2000;
 const CLICK_CAPTURE_HIDE_DELAY_MS = 25;
+const RECENT_FRAME_RETENTION_MS = 2000;
+const RECENT_FRAME_LIMIT = 8;
 
 function pointInBounds(point, bounds) {
   if (!point || !bounds) return false;
@@ -66,13 +68,15 @@ class CaptureService {
     this.frameLoopRunning = false;
     this.frameWaiters = [];
     this.latestFrame = null;
-    this.lastClickCapture = 0;
     this.clickWatcherBuf = '';
     this.clickWatcherPendingPress = false;
     this.clickWatcherErrTail = '';
     this.clickQueue = Promise.resolve();
     this.frameLoopInFlight = false;
+    this.frameLoopGrabStartedAt = null;
+    this.recentFrames = [];
     this.shooting = false;
+    this.lastClickCaptureByButton = new Map();
   }
 
   state() {
@@ -264,7 +268,7 @@ class CaptureService {
   }
 
   /** One capture inside the active session (hotkey/click/interval/manual). */
-  async sessionCapture(trigger = 'hotkey', clickPos = null) {
+  async sessionCapture(trigger = 'hotkey', clickPos = null, clickMeta = null) {
     if (!this.session || this.session.paused) return { ok: false, reason: 'no active capture session' };
     // Automatic triggers stand down while the user is in StepForge, so the
     // app stays clickable mid-session and never screenshots itself.
@@ -278,7 +282,8 @@ class CaptureService {
     // flight waits for that frame instead of being dropped, so fast
     // clicking still yields one step per click.
     if (trigger === 'click') {
-      const frame = await this.frameForClick(clickPos);
+      const clickAt = clickMeta && Number.isFinite(clickMeta.at) ? clickMeta.at : Date.now();
+      const frame = await this.frameForClick(clickPos, clickAt);
       if (!this.session || this.session.paused) return { ok: false, reason: 'no active capture session' };
       if (frame) {
         const result = this.storeFrameAsStep(this.session.guideId, frame.mode, frame, clickPos);
@@ -342,15 +347,17 @@ class CaptureService {
       try {
         if (!this.shooting) {
           this.frameLoopInFlight = true;
+          this.frameLoopGrabStartedAt = Date.now();
           const mode = this.settings.get('capture.mode') || 'fullscreen';
           const grabMode = mode === 'region' ? 'fullscreen' : mode;
-          const frame = await this.captureCurrentFrame(grabMode);
+          const frame = await this.captureCurrentFrame(grabMode, null, this.frameLoopGrabStartedAt);
           if (this.frameLoopRunning) this.acceptFrame(frame);
         }
       } catch {
         // Grab failures are fine — clicks fall back to a one-off fresh shot.
       } finally {
         this.frameLoopInFlight = false;
+        this.frameLoopGrabStartedAt = null;
         if (this.frameLoopRunning && this.session && !this.session.paused) {
           this.frameLoopTimer = setTimeout(tick, FRAME_LOOP_IDLE_MS);
         }
@@ -362,6 +369,11 @@ class CaptureService {
   /** Store a grabbed frame and hand it to any clicks waiting on it. */
   acceptFrame(frame) {
     this.latestFrame = frame;
+    this.recentFrames.push(frame);
+    const cutoff = Date.now() - RECENT_FRAME_RETENTION_MS;
+    this.recentFrames = this.recentFrames
+      .filter((f) => f && f.capturedAt >= cutoff)
+      .slice(-RECENT_FRAME_LIMIT);
     const waiters = this.frameWaiters;
     this.frameWaiters = [];
     for (const resolve of waiters) resolve(frame);
@@ -388,7 +400,9 @@ class CaptureService {
       this.frameLoopTimer = null;
     }
     this.frameLoopRunning = false;
+    this.frameLoopGrabStartedAt = null;
     this.latestFrame = null;
+    this.recentFrames = [];
     const waiters = this.frameWaiters;
     this.frameWaiters = [];
     for (const resolve of waiters) resolve(null);
@@ -399,24 +413,34 @@ class CaptureService {
    * recent enough, otherwise the next frame the loop delivers. Null when the
    * loop isn't running or can't deliver in time.
    */
-  async frameForClick(clickPos = null) {
+  async frameForClick(clickPos = null, clickAt = Date.now()) {
     const mode = this.settings.get('capture.mode') || 'fullscreen';
     const grabMode = mode === 'region' ? 'fullscreen' : mode;
+    const clickTime = Number.isFinite(clickAt) ? clickAt : Date.now();
     // Fast clicks can move to another monitor before the buffered frame is
     // consumed; only reuse frames from the clicked display.
-    const usable = (f) => {
+    const usable = (f, { allowInFlight = false } = {}) => {
       const sameDisplay = !clickPos || pointInBounds(clickPos, f && f.display && f.display.bounds);
+      const startedAt = Number.isFinite(f && f.startedAt) ? f.startedAt : (f && f.capturedAt);
+      const completedBeforeClick = Number.isFinite(f && f.capturedAt) && f.capturedAt <= clickTime;
+      const startedBeforeClick = Number.isFinite(startedAt) && startedAt <= clickTime;
+      const timingMatches = completedBeforeClick
+        ? clickTime - f.capturedAt <= CLICK_FRAME_MAX_AGE_MS
+        : allowInFlight && startedBeforeClick && clickTime - startedAt <= CLICK_FRAME_MAX_AGE_MS;
       return Boolean(f)
         && f.mode === grabMode
-        && Date.now() - f.capturedAt <= CLICK_FRAME_MAX_AGE_MS
+        && timingMatches
         && sameDisplay;
     };
-    if (usable(this.latestFrame)) return this.latestFrame;
-    if (!this.frameLoopRunning || !this.frameLoopInFlight) return null;
+    const buffered = [...this.recentFrames, this.latestFrame]
+      .filter((f, i, arr) => f && arr.indexOf(f) === i && usable(f))
+      .sort((a, b) => b.capturedAt - a.capturedAt)[0];
+    if (buffered) return buffered;
+    if (!this.frameLoopRunning || !this.frameLoopInFlight || this.frameLoopGrabStartedAt > clickTime) return null;
     const deadline = Date.now() + CLICK_FRAME_WAIT_MS;
     while (this.frameLoopRunning && Date.now() < deadline) {
       const next = await this.nextFrame(Math.max(1, deadline - Date.now()));
-      if (usable(next)) return next;
+      if (usable(next, { allowInFlight: true })) return next;
     }
     return null;
   }
@@ -441,49 +465,148 @@ class CaptureService {
           this.ingestClickWatcherChunk(chunk.toString(), 'linux');
         });
       } else if (process.platform === 'win32') {
-        // Poll left/right/middle buttons via GetAsyncKeyState. Bit 0x8000 is
-        // "down right now"; bit 0x0001 is "was pressed since the previous
-        // poll", which catches clicks shorter than one poll interval. The
-        // cursor is read in the same poll iteration that sees the press and
-        // shipped with the event, so the marker position is sampled at the
-        // click instant (within one ~15ms poll tick) instead of after the
-        // event has crossed the pipe. Coordinates are physical pixels
-        // (per-monitor DPI aware); onOsClick converts them to DIPs.
+        // Use a low-level Windows mouse hook instead of polling
+        // GetAsyncKeyState. The low bit from GetAsyncKeyState can be consumed
+        // by other processes and a polling loop can miss short clicks under
+        // load; WH_MOUSE_LL gives us one event for each button-down, with the
+        // hook-time cursor position and timestamp.
         const ps = `
 $ErrorActionPreference = 'Stop'
 Add-Type -TypeDefinition @'
 using System;
+using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
-public struct SFPoint { public int X; public int Y; }
-public static class SFMouse {
-  [DllImport("user32.dll")] public static extern short GetAsyncKeyState(int vKey);
-  [DllImport("user32.dll")] public static extern bool GetCursorPos(out SFPoint p);
-  [DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(IntPtr value);
+using System.Threading;
+
+public static class SFMouseHook {
+  private const int WH_MOUSE_LL = 14;
+  private const int WM_LBUTTONDOWN = 0x0201;
+  private const int WM_RBUTTONDOWN = 0x0204;
+  private const int WM_MBUTTONDOWN = 0x0207;
+  private const int WM_XBUTTONDOWN = 0x020B;
+  private const long UnixEpochMilliseconds = 62135596800000L;
+
+  private static IntPtr hook = IntPtr.Zero;
+  private static LowLevelMouseProc proc = HookCallback;
+  private static readonly ConcurrentQueue<string> queue = new ConcurrentQueue<string>();
+  private static readonly AutoResetEvent signal = new AutoResetEvent(false);
+
+  [StructLayout(LayoutKind.Sequential)]
+  private struct POINT {
+    public int x;
+    public int y;
+  }
+
+  [StructLayout(LayoutKind.Sequential)]
+  private struct MSLLHOOKSTRUCT {
+    public POINT pt;
+    public uint mouseData;
+    public uint flags;
+    public uint time;
+    public UIntPtr dwExtraInfo;
+  }
+
+  [StructLayout(LayoutKind.Sequential)]
+  private struct MSG {
+    public IntPtr hwnd;
+    public uint message;
+    public UIntPtr wParam;
+    public IntPtr lParam;
+    public uint time;
+    public POINT pt;
+  }
+
+  private delegate IntPtr LowLevelMouseProc(int nCode, IntPtr wParam, IntPtr lParam);
+
+  [DllImport("user32.dll", SetLastError = true)]
+  private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelMouseProc lpfn, IntPtr hMod, uint dwThreadId);
+
+  [DllImport("user32.dll", SetLastError = true)]
+  private static extern bool UnhookWindowsHookEx(IntPtr hhk);
+
+  [DllImport("user32.dll")]
+  private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
+
+  [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+  private static extern IntPtr GetModuleHandle(string lpModuleName);
+
+  [DllImport("user32.dll")]
+  private static extern int GetMessage(out MSG lpMsg, IntPtr hWnd, uint wMsgFilterMin, uint wMsgFilterMax);
+
+  [DllImport("user32.dll")]
+  private static extern bool TranslateMessage(ref MSG lpMsg);
+
+  [DllImport("user32.dll")]
+  private static extern IntPtr DispatchMessage(ref MSG lpMsg);
+
+  [DllImport("user32.dll")]
+  private static extern bool SetProcessDpiAwarenessContext(IntPtr value);
+
+  public static void Run() {
+    try { SetProcessDpiAwarenessContext(new IntPtr(-4)); } catch { }
+
+    Thread writer = new Thread(WriterLoop);
+    writer.IsBackground = true;
+    writer.Start();
+
+    hook = SetWindowsHookEx(WH_MOUSE_LL, proc, GetModuleHandle(null), 0);
+    if (hook == IntPtr.Zero) {
+      throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+    }
+
+    Console.Out.WriteLine("READY");
+    Console.Out.Flush();
+
+    MSG msg;
+    while (GetMessage(out msg, IntPtr.Zero, 0, 0) > 0) {
+      TranslateMessage(ref msg);
+      DispatchMessage(ref msg);
+    }
+
+    UnhookWindowsHookEx(hook);
+  }
+
+  private static void WriterLoop() {
+    while (true) {
+      signal.WaitOne();
+      string line;
+      while (queue.TryDequeue(out line)) {
+        Console.Out.WriteLine(line);
+      }
+      Console.Out.Flush();
+    }
+  }
+
+  private static IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam) {
+    if (nCode >= 0) {
+      int message = wParam.ToInt32();
+      string button = ButtonName(message, lParam);
+      if (button != null) {
+        MSLLHOOKSTRUCT data = (MSLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(MSLLHOOKSTRUCT));
+        long unixMs = DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond - UnixEpochMilliseconds;
+        queue.Enqueue("CLICK " + data.pt.x + " " + data.pt.y + " " + button + " " + unixMs);
+        signal.Set();
+      }
+    }
+    return CallNextHookEx(hook, nCode, wParam, lParam);
+  }
+
+  private static string ButtonName(int message, IntPtr lParam) {
+    if (message == WM_LBUTTONDOWN) return "left";
+    if (message == WM_RBUTTONDOWN) return "right";
+    if (message == WM_MBUTTONDOWN) return "middle";
+    if (message == WM_XBUTTONDOWN) {
+      MSLLHOOKSTRUCT data = (MSLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(MSLLHOOKSTRUCT));
+      uint xButton = (data.mouseData >> 16) & 0xffff;
+      return xButton == 1 ? "x1" : "x2";
+    }
+    return null;
+  }
 }
 '@
-try { [void][SFMouse]::SetProcessDpiAwarenessContext([IntPtr](-4)) } catch { }
-$out = [Console]::Out
-$out.WriteLine('READY')
-$out.Flush()
-$vks = 0x01, 0x02, 0x04
-$down = @{}
-foreach ($vk in $vks) { $down[$vk] = $false }
-$pt = New-Object SFPoint
-while ($true) {
-  foreach ($vk in $vks) {
-    $s = [SFMouse]::GetAsyncKeyState($vk)
-    $isDown = ($s -band 0x8000) -ne 0
-    $tapped = ($s -band 1) -ne 0
-    if (($isDown -or $tapped) -and -not $down[$vk]) {
-      [void][SFMouse]::GetCursorPos([ref]$pt)
-      $out.WriteLine('CLICK ' + $pt.X + ' ' + $pt.Y)
-      $out.Flush()
-    }
-    $down[$vk] = $isDown
-  }
-  Start-Sleep -Milliseconds 10
-}`;
-        this.clickWatcher = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], {
+[SFMouseHook]::Run()
+`;
+        this.clickWatcher = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', ps], {
           stdio: ['ignore', 'pipe', 'pipe'],
           windowsHide: true,
         });
@@ -536,6 +659,7 @@ while ($true) {
     }
     this.clickWatcherBuf = '';
     this.clickWatcherPendingPress = false;
+    this.lastClickCaptureByButton.clear();
   }
 
   /**
@@ -572,7 +696,7 @@ while ($true) {
         if (detail) {
           this.clickWatcherPendingPress = false;
           const button = Number(detail[1]);
-          if (button < 4 || button > 7) this.onOsClick();
+          if (button < 4 || button > 7) this.onOsClick(Date.now(), null, `button-${button}`);
         } else if (line.includes('EVENT type')) {
           // Next event arrived without a detail line in between — treat the
           // pending press as a plain click rather than dropping it.
@@ -584,21 +708,25 @@ while ($true) {
     }
     if (platform === 'win32') {
       for (const line of lines) {
-        const m = /CLICK(?:\s+(-?\d+)\s+(-?\d+))?/.exec(line);
+        const m = /^CLICK(?:\s+(-?\d+)\s+(-?\d+)(?:\s+([A-Za-z0-9_-]+))?(?:\s+(\d+))?)?\s*$/.exec(line.trim());
         if (m) {
           const osPoint = m[1] === undefined ? null : { x: Number(m[1]), y: Number(m[2]) };
-          this.onOsClick(Date.now(), osPoint);
+          const eventAt = m[4] === undefined ? Date.now() : Number(m[4]);
+          this.onOsClick(Number.isFinite(eventAt) ? eventAt : Date.now(), osPoint, m[3] || 'mouse');
         }
       }
     }
   }
 
-  onOsClick(at = Date.now(), osPoint = null) {
+  onOsClick(at = Date.now(), osPoint = null, button = 'mouse') {
     if (!this.session || this.session.paused) return;
-    if (at - this.lastClickCapture < CLICK_DEBOUNCE_MS) return;
-    this.lastClickCapture = at;
-    // Prefer the position the watcher sampled in the same poll that saw the
-    // press (physical px → DIP); otherwise read the cursor synchronously,
+    const clickAt = Number.isFinite(at) ? at : Date.now();
+    const debounceKey = button || 'mouse';
+    const last = this.lastClickCaptureByButton.get(debounceKey) || 0;
+    if (clickAt >= last && clickAt - last < CLICK_DEBOUNCE_MS) return;
+    this.lastClickCaptureByButton.set(debounceKey, clickAt);
+    // Prefer the position the watcher sampled with the button-down event
+    // (physical px -> DIP); otherwise read the cursor synchronously,
     // right now, so the marker lands where the user clicked even if the
     // shot itself takes a moment to grab. (Clicks on StepForge itself are
     // filtered by the cursor-position check in sessionCapture, not by
@@ -610,7 +738,7 @@ while ($true) {
         : osPoint;
     }
     if (!clickPos) clickPos = screen.getCursorScreenPoint();
-    this.enqueueClickCapture(clickPos);
+    this.enqueueClickCapture(clickPos, clickAt, debounceKey);
   }
 
   /**
@@ -619,14 +747,15 @@ while ($true) {
    * "capture already in progress" guard. The marker position was already
    * read at click time, so a queued step still circles the right spot.
    */
-  enqueueClickCapture(clickPos) {
+  enqueueClickCapture(clickPos, clickAt = Date.now(), button = 'mouse') {
+    const clickMeta = { at: Number.isFinite(clickAt) ? clickAt : Date.now(), button: button || 'mouse' };
     this.clickQueue = this.clickQueue
-      .then(() => this.sessionCapture('click', clickPos))
+      .then(() => this.sessionCapture('click', clickPos, clickMeta))
       .catch(() => {});
     return this.clickQueue;
   }
 
-  async captureCurrentFrame(mode, capturePoint = null) {
+  async captureCurrentFrame(mode, capturePoint = null, startedAt = Date.now()) {
     const grabbed = await this.grab(mode, capturePoint);
     return {
       mode,
@@ -634,6 +763,7 @@ while ($true) {
       size: grabbed.image.getSize(),
       display: grabbed.display,
       cursor: capturePoint || grabbed.cursor,
+      startedAt,
       capturedAt: Date.now(),
     };
   }

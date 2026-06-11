@@ -3,6 +3,17 @@
 All notable user-visible changes are recorded here. The format follows
 Keep-a-Changelog conventions; versions follow semver.
 
+## [Unreleased]
+
+### Fixed
+
+- Windows continuous click capture now uses a low-level mouse hook instead
+  of timer polling, so normal left-clicks are not missed when the app or
+  target system is under load. Click captures also preserve the original
+  click timestamp through the queue and choose a buffered frame from before
+  the click when one is available, keeping the marker aligned with the
+  click-time cursor position.
+
 ## [0.1.0] - 2026-06-10
 
 Initial release.

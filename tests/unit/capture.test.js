@@ -168,7 +168,7 @@ test('windows click watcher output is counted line by line', () => {
   assert.equal(clicks, 2);
 });
 
-test('windows click lines carry the poll-time cursor position', () => {
+test('windows click lines carry the click-time cursor position', () => {
   const service = makeService();
   const seen = [];
   service.onOsClick = (at, osPoint) => {
@@ -179,6 +179,22 @@ test('windows click lines carry the poll-time cursor position', () => {
 
   assert.deepEqual(seen, [{ x: 1280, y: -64 }, null],
     'coordinates ride along with the event; bare CLICK still works');
+});
+
+test('windows hook click lines carry button and event timestamp', () => {
+  const service = makeService();
+  const seen = [];
+  service.onOsClick = (at, osPoint, button) => {
+    seen.push({ at, osPoint, button });
+  };
+
+  service.processClickWatcherData('READY\r\nCLICK 321 -9 left 1770000000123\r\n', 'win32');
+
+  assert.deepEqual(seen, [{
+    at: 1770000000123,
+    osPoint: { x: 321, y: -9 },
+    button: 'left',
+  }]);
 });
 
 test('losing the click watcher mid-session falls back to interval capture', () => {
@@ -219,6 +235,50 @@ test('a click is served instantly from the freshly buffered frame', async () => 
   assert.equal(result.ok, true);
   assert.deepEqual(added, ['buffered-png']);
   assert.equal(service.session.count, 1);
+});
+
+test('click capture uses the newest frame completed before the click time', async () => {
+  const service = makeService();
+  const clickAt = Date.now();
+  service.session = { guideId: 'guide-history', paused: false, count: 0, intervalSec: 0 };
+  const before = makeFrame('before-click');
+  before.startedAt = clickAt - 40;
+  before.capturedAt = clickAt - 30;
+  const after = makeFrame('after-click');
+  after.startedAt = clickAt + 5;
+  after.capturedAt = clickAt + 15;
+  service.recentFrames = [before, after];
+  service.latestFrame = after;
+  service.shoot = async () => {
+    throw new Error('a matching pre-click frame should be used');
+  };
+  const added = [];
+  service.store.addStep = (guideId, fields, png) => {
+    added.push(png.toString());
+    return { stepId: 'step-history' };
+  };
+
+  const result = await service.sessionCapture('click', { x: 10, y: 10 }, { at: clickAt });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(added, ['before-click']);
+});
+
+test('queued click captures preserve the original event time and button', async () => {
+  const service = makeService();
+  const seen = [];
+  service.sessionCapture = async (trigger, clickPos, clickMeta) => {
+    seen.push({ trigger, clickPos, clickMeta });
+    return { ok: true };
+  };
+
+  await service.enqueueClickCapture({ x: 7, y: 8 }, 1770000000456, 'left');
+
+  assert.deepEqual(seen, [{
+    trigger: 'click',
+    clickPos: { x: 7, y: 8 },
+    clickMeta: { at: 1770000000456, button: 'left' },
+  }]);
 });
 
 test('a buffered frame from a different display is ignored for click capture', async () => {
@@ -298,6 +358,8 @@ test('clicks during an in-flight grab wait for the frame instead of being droppe
   service.session = { guideId: 'guide-fast', paused: false, count: 0, intervalSec: 0 };
   service.frameLoopRunning = true; // a grab is in flight, no frame buffered yet
   service.frameLoopInFlight = true;
+  const clickAt = Date.now();
+  service.frameLoopGrabStartedAt = clickAt - 10;
   service.shoot = async () => {
     throw new Error('waiting clicks must use the loop frame, not a competing shot');
   };
@@ -308,9 +370,11 @@ test('clicks during an in-flight grab wait for the frame instead of being droppe
   };
 
   // Two rapid clicks land before the grab completes.
-  const first = service.sessionCapture('click', { x: 1, y: 1 });
-  const second = service.sessionCapture('click', { x: 2, y: 2 });
-  service.acceptFrame(makeFrame('loop-frame'));
+  const first = service.sessionCapture('click', { x: 1, y: 1 }, { at: clickAt });
+  const second = service.sessionCapture('click', { x: 2, y: 2 }, { at: clickAt });
+  const loopFrame = makeFrame('loop-frame');
+  loopFrame.startedAt = clickAt - 10;
+  service.acceptFrame(loopFrame);
   const [r1, r2] = await Promise.all([first, second]);
 
   assert.equal(r1.ok, true);

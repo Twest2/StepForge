@@ -22,6 +22,12 @@ Initial release.
   click detection or global hotkeys are unavailable (e.g. WSLg/Wayland).
   The REC bar shows the live count and trigger, with Shoot / Auto /
   Pause / Finish controls.
+- Recording sessions tuck the window away once and control everything
+  from a red tray icon (capture now / pause / open / finish) instead of
+  hiding the window for every shot — the app stays reachable
+  mid-session, opening it auto-pauses capture, and per-shot latency
+  drops because the hide-repaint wait is gone. Automatic captures also
+  stand down whenever the cursor is over a visible StepForge window.
 - New captures and newly added steps are now selected in the editor.
 - The app hides its own window during capture so screenshots show your
   work, not StepForge; hotkey captures restore the window without

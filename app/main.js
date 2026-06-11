@@ -105,6 +105,10 @@ function createWindow() {
         try {
           const guide = store.createGuide({ title: 'hotkey selftest' });
           capture.startSession(guide.guideId, { intervalSec: 0 });
+          // Sessions hide the window while recording; do it immediately here
+          // instead of waiting out the toast-grace delay.
+          mainWindow.hide();
+          await new Promise((res) => setTimeout(res, 400));
           const results = [];
           for (let i = 0; i < 3; i++) {
             const r = await capture.hotkeyCapture();
@@ -486,6 +490,11 @@ if (!gotLock) {
 
   app.on('will-quit', () => {
     globalShortcut.unregisterAll();
+    if (capture) {
+      // Targeted cleanup (not finishSession — that re-shows the window).
+      capture.stopClickWatcher();
+      capture.destroySessionTray();
+    }
     // clean preview temp files on close
     try {
       for (const entry of fs.readdirSync(store.tempDir)) {

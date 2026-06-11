@@ -114,6 +114,7 @@ test('a buffered frame from a different display is ignored for click capture', a
   const service = makeService();
   service.session = { guideId: 'guide-display', paused: false, count: 0, intervalSec: 0 };
   service.frameLoopRunning = true;
+  service.frameLoopInFlight = true;
   service.latestFrame = makeFrame('wrong-display', 0, {
     display: { bounds: { x: 0, y: 0, width: 100, height: 100 } },
   });
@@ -156,10 +157,36 @@ test('a stale buffered frame is not reused — the click falls back to a fresh s
   assert.equal(shootCalled, true, 'a stale buffered frame must not be reused');
 });
 
+test('an idle click capture does not wait for the next frame loop tick', async () => {
+  const service = makeService();
+  service.session = { guideId: 'guide-idle', paused: false, count: 0, intervalSec: 0 };
+  service.frameLoopRunning = true;
+  service.frameLoopInFlight = false;
+
+  let nextFrameCalled = false;
+  service.nextFrame = async () => {
+    nextFrameCalled = true;
+    throw new Error('idle clicks must not wait for a new frame');
+  };
+
+  let shootCalled = false;
+  service.shoot = async () => {
+    shootCalled = true;
+    return { ok: true, step: { stepId: 'idle-step' } };
+  };
+
+  const result = await service.sessionCapture('click', { x: 1, y: 1 });
+
+  assert.equal(result.ok, true);
+  assert.equal(shootCalled, true);
+  assert.equal(nextFrameCalled, false);
+});
+
 test('clicks during an in-flight grab wait for the frame instead of being dropped', async () => {
   const service = makeService();
   service.session = { guideId: 'guide-fast', paused: false, count: 0, intervalSec: 0 };
   service.frameLoopRunning = true; // a grab is in flight, no frame buffered yet
+  service.frameLoopInFlight = true;
   service.shoot = async () => {
     throw new Error('waiting clicks must use the loop frame, not a competing shot');
   };

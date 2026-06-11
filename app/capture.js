@@ -25,9 +25,9 @@ const { encodePng } = require('../core/png');
 // Dedupe duplicate watcher events for one physical click while still
 // allowing intentionally fast clicking.
 const CLICK_DEBOUNCE_MS = 40;
-// Idle gap between frame-loop grabs; the effective refresh rate is
-// grab-duration + this.
-const FRAME_LOOP_IDLE_MS = 50;
+// Idle gap between frame-loop grabs. Keep this at zero so the buffered
+// frame stays as close to real time as possible while recording.
+const FRAME_LOOP_IDLE_MS = 0;
 // A buffered frame older than this is too stale to pass off as "the screen
 // at the instant of the click".
 const CLICK_FRAME_MAX_AGE_MS = 600;
@@ -68,6 +68,7 @@ class CaptureService {
     this.latestFrame = null;
     this.lastClickCapture = 0;
     this.clickWatcherButtonDown = false;
+    this.frameLoopInFlight = false;
     this.shooting = false;
   }
 
@@ -332,10 +333,12 @@ class CaptureService {
       if (!this.frameLoopRunning) return;
       if (!this.session || this.session.paused) {
         this.frameLoopRunning = false;
+        this.frameLoopInFlight = false;
         return;
       }
       try {
         if (!this.shooting) {
+          this.frameLoopInFlight = true;
           const mode = this.settings.get('capture.mode') || 'fullscreen';
           const grabMode = mode === 'region' ? 'fullscreen' : mode;
           const frame = await this.captureCurrentFrame(grabMode);
@@ -344,6 +347,7 @@ class CaptureService {
       } catch {
         // Grab failures are fine — clicks fall back to a one-off fresh shot.
       } finally {
+        this.frameLoopInFlight = false;
         if (this.frameLoopRunning && this.session && !this.session.paused) {
           this.frameLoopTimer = setTimeout(tick, FRAME_LOOP_IDLE_MS);
         }
@@ -405,7 +409,7 @@ class CaptureService {
         && sameDisplay;
     };
     if (usable(this.latestFrame)) return this.latestFrame;
-    if (!this.frameLoopRunning) return null;
+    if (!this.frameLoopRunning || !this.frameLoopInFlight) return null;
     const deadline = Date.now() + CLICK_FRAME_WAIT_MS;
     while (this.frameLoopRunning && Date.now() < deadline) {
       const next = await this.nextFrame(Math.max(1, deadline - Date.now()));

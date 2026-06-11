@@ -81,39 +81,26 @@ class CaptureService {
     if (interval == null) {
       interval = this.clickCaptureAvailable() ? 0 : (this.settings.get('capture.autoIntervalSec') || 5);
     }
-    this.session = { guideId, paused: false, count: 0, intervalSec: interval };
+    // Sessions start paused: nothing hides and no capturing happens until
+    // the user explicitly presses "Start recording" in the capture bar, so
+    // New Capture never makes the window vanish out from under them.
+    this.session = { guideId, paused: true, count: 0, intervalSec: interval };
     if (this.settings.get('capture.captureOutsideClicks') !== false) this.startClickWatcher();
     this.applyInterval();
     this.notify('capture:state', this.state());
 
-    // Tuck the app away once instead of hiding it for every shot — the
-    // hide/show flicker made the window impossible to click mid-session.
-    // A tray icon controls the session while the window is hidden.
     // (Skipped for the dev screenshot hook, which needs a visible page.)
     if (!process.env.STEPFORGE_SCREENSHOT) {
       this.createSessionTray();
       const win = this.getWindow();
-      const startClickCache = () => {
-        if (this.settings.get('capture.captureOutsideClicks') !== false && this.clickCaptureAvailable()) {
-          this.startClickCaptureCache();
-        }
-      };
-      if (win && !win.isDestroyed() && win.isVisible()) {
-        this.hiddenForSession = true;
-        setTimeout(() => {
-          // Re-check: the session may have been finished within the delay.
-          if (this.session && this.hiddenForSession && !win.isDestroyed()) {
-            win.hide();
-            startClickCache();
-          }
-        }, 1200); // let the user read the "session started" toast first
-      } else {
-        startClickCache();
-      }
+      // Remember whether the window was visible when the session was set
+      // up — that's what `togglePause` uses to decide whether to tuck the
+      // app away once the user actually starts recording.
+      this.hiddenForSession = Boolean(win && !win.isDestroyed() && win.isVisible());
       try {
         new Notification({
-          title: 'StepForge is capturing',
-          body: 'The window tucks away while recording. Use the red tray icon to pause, capture, or finish.',
+          title: 'StepForge is ready to capture',
+          body: 'Click "Start recording" in the red capture bar when you’re ready. The window tucks away and the red tray icon takes over.',
         }).show();
       } catch { /* notifications unavailable on this desktop */ }
     }
@@ -200,12 +187,20 @@ class CaptureService {
     if (!this.session) return;
     const wasPaused = this.session.paused;
     this.session.paused = typeof force === 'boolean' ? force : !this.session.paused;
-    // Resuming from the app tucks the window away again for clean shots.
-    if (wasPaused && !this.session.paused && this.hiddenForSession) {
+    // Starting/resuming tucks the window away again for clean shots (after
+    // a brief delay so the user sees it happen) and arms the click-capture
+    // cache so the very next click is captured instantly.
+    if (wasPaused && !this.session.paused) {
       const win = this.getWindow();
-      if (win && !win.isDestroyed()) setTimeout(() => {
-        if (this.session && !this.session.paused && !win.isDestroyed()) win.hide();
-      }, 400);
+      const arm = () => {
+        if (!this.session || this.session.paused) return;
+        if (this.hiddenForSession && win && !win.isDestroyed() && win.isVisible()) win.hide();
+        if (this.settings.get('capture.captureOutsideClicks') !== false && this.clickCaptureAvailable()) {
+          this.startClickCaptureCache();
+        }
+      };
+      if (this.hiddenForSession && win && !win.isDestroyed()) setTimeout(arm, 400);
+      else arm();
     }
     if (this.rebuildTrayMenu) this.rebuildTrayMenu();
     this.notify('capture:state', this.state());
@@ -242,7 +237,7 @@ class CaptureService {
   }
 
   /** One capture inside the active session (hotkey/click/interval/manual). */
-  async sessionCapture(trigger = 'hotkey') {
+  async sessionCapture(trigger = 'hotkey', clickPos = null) {
     if (!this.session || this.session.paused) return { ok: false, reason: 'no active capture session' };
     if (this.shooting) return { ok: false, reason: 'capture already in progress' };
     // Automatic triggers stand down while the user is in StepForge, so the
@@ -258,13 +253,14 @@ class CaptureService {
         ? this.captureCache
         : null;
       const finalResult = cached
-        ? this.storeFrameAsStep(this.session.guideId, grabMode, cached)
+        ? this.storeFrameAsStep(this.session.guideId, grabMode, cached, clickPos)
         : await this.shoot({
           guideId: this.session.guideId,
           mode: grabMode,
           delayMs: 0,
           hideWindowDelayMs: trigger === 'click' ? CLICK_CAPTURE_HIDE_DELAY_MS : null,
           refocus: false, // don't steal focus from the app the user is documenting
+          clickPos,
         });
       if (finalResult.ok) {
         this.session.count += 1;
@@ -372,7 +368,11 @@ while ($true) {
     const now = Date.now();
     if (now - this.lastClickCapture < CLICK_DEBOUNCE_MS) return;
     this.lastClickCapture = now;
-    this.sessionCapture('click').catch(() => {});
+    // Grab the cursor position synchronously, right when the click is
+    // detected, so the marker lands exactly where the user clicked even if
+    // the cached frame is a beat stale or a fresh shot takes a moment.
+    const clickPos = screen.getCursorScreenPoint();
+    this.sessionCapture('click', clickPos).catch(() => {});
   }
 
   async captureCurrentFrame(mode) {
@@ -387,12 +387,13 @@ while ($true) {
     };
   }
 
-  storeFrameAsStep(guideId, mode, frame) {
+  storeFrameAsStep(guideId, mode, frame, clickPos = null) {
     if (!frame) return { ok: false, reason: 'no capture frame available' };
     const annotations = [];
+    const cursor = clickPos || frame.cursor;
     if (mode !== 'window' && this.settings.get('capture.clickMarker')) {
-      const fx = (frame.cursor.x - frame.display.bounds.x) / frame.display.bounds.width;
-      const fy = (frame.cursor.y - frame.display.bounds.y) / frame.display.bounds.height;
+      const fx = (cursor.x - frame.display.bounds.x) / frame.display.bounds.width;
+      const fy = (cursor.y - frame.display.bounds.y) / frame.display.bounds.height;
       if (fx >= 0 && fx <= 1 && fy >= 0 && fy <= 1) {
         const d = 0.035;
         annotations.push({
@@ -499,6 +500,7 @@ while ($true) {
     hideWindow = true,
     refocus = true,
     hideWindowDelayMs = null,
+    clickPos = null,
   }) {
     const delay = delayMs == null ? this.settings.get('capture.delayMs') || 0 : delayMs;
     if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
@@ -513,7 +515,7 @@ while ($true) {
     } catch (err) {
       return { ok: false, reason: err.message };
     }
-    return this.storeFrameAsStep(guideId, mode, frame);
+    return this.storeFrameAsStep(guideId, mode, frame, clickPos);
   }
 
   /**

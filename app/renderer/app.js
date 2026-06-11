@@ -137,6 +137,9 @@ class StepForgeApp {
     this.editorHost.classList.toggle('hidden', view !== 'editor');
     this.searchInput.classList.toggle('hidden', view !== 'library');
     this.renderTopbar();
+    // The capture bar is editor-only; re-evaluate its visibility now that
+    // the view changed.
+    this.updateCaptureState(this.captureState);
   }
 
   showWelcome() {
@@ -188,13 +191,15 @@ class StepForgeApp {
     const state = await api.capture.session({ action: 'start', guideId: guide.guideId });
     this.updateCaptureState(state);
     const hotkey = this.state.settings?.capture?.hotkeyCapture;
+    let how;
     if (state.clickCapture) {
-      toast('Recording — every click grabs a step. StepForge tucks away; use the red tray icon to pause or finish.');
+      how = 'every click will grab a step';
     } else if (state.intervalSec > 0) {
-      toast(`Recording — a step every ${state.intervalSec}s. StepForge tucks away; use the red tray icon to pause or finish.`);
+      how = `a step will be grabbed every ${state.intervalSec}s`;
     } else {
-      toast(hotkey ? `Recording — press ${hotkey} to grab steps. Use the red tray icon to pause or finish.` : 'Capture session started.');
+      how = hotkey ? `press ${hotkey} to grab steps` : 'use Shoot to grab steps';
     }
+    toast(`Click "Start recording" in the red bar when you're ready — ${how}. StepForge tucks away; use the red tray icon to pause or finish.`);
   }
 
   async openExistingWorkspace() {
@@ -231,7 +236,10 @@ class StepForgeApp {
   updateCaptureState(state) {
     this.captureState = state || { active: false };
     clearNode(this.captureStatus);
-    if (!this.captureState.active) {
+    // The capture bar only makes sense alongside the editor it's recording
+    // into — hide it everywhere else (e.g. the library) even if a session
+    // is still active in the background.
+    if (!this.captureState.active || this.state.view !== 'editor') {
       this.captureStatus.classList.add('hidden');
       return;
     }
@@ -240,10 +248,12 @@ class StepForgeApp {
     const send = (payload) => api.capture.session(payload).then((next) => this.updateCaptureState(next));
 
     // What is currently triggering captures, so the user knows what to do.
-    const trigger = s.paused ? 'paused'
-      : s.clickCapture ? 'on click'
-        : s.intervalSec > 0 ? `every ${s.intervalSec}s`
-          : 'hotkey only';
+    const notStarted = s.paused && !s.count;
+    const trigger = notStarted ? 'ready'
+      : s.paused ? 'paused'
+        : s.clickCapture ? 'on click'
+          : s.intervalSec > 0 ? `every ${s.intervalSec}s`
+            : 'hotkey only';
 
     const shootBtn = el('button', {
       type: 'button',
@@ -261,8 +271,9 @@ class StepForgeApp {
 
     const pauseBtn = el('button', {
       type: 'button',
+      title: notStarted ? 'StepForge tucks away and starts capturing' : '',
       onClick: () => send({ action: s.paused ? 'resume' : 'pause' }),
-    }, s.paused ? 'Resume' : 'Pause');
+    }, notStarted ? 'Start recording' : s.paused ? 'Resume' : 'Pause');
 
     const finishBtn = el('button', {
       type: 'button',

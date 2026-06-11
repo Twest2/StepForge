@@ -105,8 +105,10 @@ function createWindow() {
         try {
           const guide = store.createGuide({ title: 'hotkey selftest' });
           capture.startSession(guide.guideId, { intervalSec: 0 });
-          // Sessions hide the window while recording; do it immediately here
-          // instead of waiting out the toast-grace delay.
+          // Sessions start paused until "Start recording" is pressed; do
+          // that here instead of waiting out the toast-grace delay, and
+          // hide the window immediately rather than after the 400ms pause.
+          capture.togglePause(false);
           mainWindow.hide();
           await new Promise((res) => setTimeout(res, 400));
           const results = [];
@@ -121,6 +123,7 @@ function createWindow() {
           // Interval auto-capture: 1s timer should add ~3 steps in 3.6s.
           const guide2 = store.createGuide({ title: 'interval selftest' });
           capture.startSession(guide2.guideId, { intervalSec: 1 });
+          capture.togglePause(false);
           await new Promise((res) => setTimeout(res, 3600));
           capture.finishSession();
           console.log('INTERVAL-SELFTEST steps:', store.getGuide(guide2.guideId).stepsOrder.length);

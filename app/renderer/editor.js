@@ -1146,7 +1146,7 @@ class GuideEditor {
 
   async startCaptureSession() {
     await api.capture.session({ action: 'start', guideId: this.guideId });
-    this.onToast('Capture session started.');
+    this.onToast('Capture session ready — click "Start recording" in the red bar when you\'re set.');
     this.emitMeta();
   }
 

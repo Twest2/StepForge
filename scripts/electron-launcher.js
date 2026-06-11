@@ -4,6 +4,12 @@ const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 
+const ELECTRON_SKIP_ENV_KEYS = [
+  'ELECTRON_SKIP_BINARY_DOWNLOAD',
+  'npm_config_electron_skip_binary_download',
+  'NPM_CONFIG_ELECTRON_SKIP_BINARY_DOWNLOAD',
+];
+
 function resolveElectronPackageRoot() {
   try {
     return path.dirname(require.resolve('electron/package.json'));
@@ -35,6 +41,17 @@ function platformBinaryCandidates(platform) {
   }
 }
 
+function sanitizeElectronEnv(baseEnv = process.env) {
+  const env = { ...baseEnv };
+
+  delete env.ELECTRON_RUN_AS_NODE;
+  for (const key of ELECTRON_SKIP_ENV_KEYS) {
+    delete env[key];
+  }
+
+  return env;
+}
+
 function electronBinaryCandidates({ packageRoot, distDir, platform }) {
   const candidatePaths = [];
   const pathHint = packageRoot ? readElectronPathHint(packageRoot) : null;
@@ -52,8 +69,6 @@ function electronBinaryCandidates({ packageRoot, distDir, platform }) {
 
 function runNpmRebuild({
   packageRoot,
-  platform = process.platform,
-  arch = process.arch,
   npmExecPath = process.env.npm_execpath || null,
   npmNodeExecPath = process.env.npm_node_execpath || process.execPath,
 }) {
@@ -66,11 +81,7 @@ function runNpmRebuild({
     [npmExecPath, 'rebuild', 'electron', '--force', '--foreground-scripts'],
     {
       cwd: packageRoot,
-      env: {
-        ...process.env,
-        npm_config_platform: platform,
-        npm_config_arch: arch,
-      },
+      env: sanitizeElectronEnv(),
       stdio: 'inherit',
     }
   );
@@ -92,8 +103,6 @@ function runNpmRebuild({
 
 function repairElectronInstall({
   packageRoot,
-  platform = process.platform,
-  arch = process.arch,
 }) {
   const installScript = path.join(packageRoot, 'install.js');
   if (!fs.existsSync(installScript)) {
@@ -102,11 +111,7 @@ function repairElectronInstall({
 
   const result = spawnSync(process.execPath, [installScript], {
     cwd: packageRoot,
-    env: {
-      ...process.env,
-      npm_config_platform: platform,
-      npm_config_arch: arch,
-    },
+    env: sanitizeElectronEnv(),
     stdio: 'inherit',
   });
 
@@ -137,6 +142,7 @@ function buildMissingElectronError({ packageRoot, distDir, candidatePaths }) {
     '',
     '  npm install',
     '  npm rebuild electron --force --foreground-scripts',
+    '  make sure ELECTRON_SKIP_BINARY_DOWNLOAD is not set',
     '',
     'If that does not help, delete node_modules/electron and install again.',
     '',
@@ -149,7 +155,6 @@ function resolveElectronBinary({
   packageRoot = resolveElectronPackageRoot(),
   platform = process.platform,
   overrideDistPath = process.env.ELECTRON_OVERRIDE_DIST_PATH || null,
-  arch = process.arch,
 } = {}) {
   if (!packageRoot && !overrideDistPath) {
     throw new Error(
@@ -164,7 +169,7 @@ function resolveElectronBinary({
   const resolved = candidatePaths.find((candidate) => fs.existsSync(candidate));
   if (!resolved) {
     if (packageRoot) {
-      if (runNpmRebuild({ packageRoot, platform, arch })) {
+      if (runNpmRebuild({ packageRoot })) {
         const rebuilt = electronBinaryCandidates({ packageRoot, distDir, platform }).find((candidate) =>
           fs.existsSync(candidate)
         );
@@ -173,7 +178,7 @@ function resolveElectronBinary({
         }
       }
 
-      if (repairElectronInstall({ packageRoot, platform, arch })) {
+      if (repairElectronInstall({ packageRoot })) {
         const repaired = electronBinaryCandidates({ packageRoot, distDir, platform }).find((candidate) =>
           fs.existsSync(candidate)
         );
@@ -195,6 +200,7 @@ module.exports = {
   readElectronPathHint,
   repairElectronInstall,
   runNpmRebuild,
+  sanitizeElectronEnv,
   resolveElectronBinary,
   resolveElectronPackageRoot,
   platformBinaryCandidates,

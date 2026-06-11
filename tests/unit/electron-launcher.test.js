@@ -49,14 +49,22 @@ test('repairs a broken Electron install before resolving the binary', (t) => {
     [
       "const fs = require('node:fs');",
       "const path = require('node:path');",
+      "if (process.env.ELECTRON_SKIP_BINARY_DOWNLOAD) process.exit(2);",
       "fs.mkdirSync(path.join(__dirname, 'dist'), { recursive: true });",
       "fs.writeFileSync(path.join(__dirname, 'dist', 'electron.exe'), 'binary');",
       "fs.writeFileSync(path.join(__dirname, 'path.txt'), 'electron.exe');",
     ].join('\n')
   );
 
+  const originalSkip = process.env.ELECTRON_SKIP_BINARY_DOWNLOAD;
+  process.env.ELECTRON_SKIP_BINARY_DOWNLOAD = '1';
+  t.after(() => {
+    if (originalSkip === undefined) delete process.env.ELECTRON_SKIP_BINARY_DOWNLOAD;
+    else process.env.ELECTRON_SKIP_BINARY_DOWNLOAD = originalSkip;
+  });
+
   assert.equal(
-    repairElectronInstall({ packageRoot: root, platform: 'win32' }),
+    repairElectronInstall({ packageRoot: root }),
     true
   );
   assert.equal(
@@ -76,6 +84,7 @@ test('rebuilds Electron through npm when the binary is missing', (t) => {
     [
       "const fs = require('node:fs');",
       "const path = require('node:path');",
+      "if (process.env.ELECTRON_SKIP_BINARY_DOWNLOAD) process.exit(2);",
       "fs.mkdirSync(path.join(__dirname, 'dist'), { recursive: true });",
       "fs.writeFileSync(path.join(__dirname, 'dist', 'electron.exe'), 'binary');",
       "fs.writeFileSync(path.join(__dirname, 'path.txt'), 'electron.exe');",
@@ -84,13 +93,17 @@ test('rebuilds Electron through npm when the binary is missing', (t) => {
 
   const originalNpmExecPath = process.env.npm_execpath;
   const originalNpmNodeExecPath = process.env.npm_node_execpath;
+  const originalSkip = process.env.ELECTRON_SKIP_BINARY_DOWNLOAD;
   process.env.npm_execpath = fakeNpmCli;
   process.env.npm_node_execpath = process.execPath;
+  process.env.ELECTRON_SKIP_BINARY_DOWNLOAD = '1';
   t.after(() => {
     if (originalNpmExecPath === undefined) delete process.env.npm_execpath;
     else process.env.npm_execpath = originalNpmExecPath;
     if (originalNpmNodeExecPath === undefined) delete process.env.npm_node_execpath;
     else process.env.npm_node_execpath = originalNpmNodeExecPath;
+    if (originalSkip === undefined) delete process.env.ELECTRON_SKIP_BINARY_DOWNLOAD;
+    else process.env.ELECTRON_SKIP_BINARY_DOWNLOAD = originalSkip;
   });
 
   assert.equal(

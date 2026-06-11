@@ -3,7 +3,7 @@
 
 const { spawn } = require('node:child_process');
 
-const { resolveElectronBinary } = require('./electron-launcher');
+const { resolveElectronBinary, sanitizeElectronEnv } = require('./electron-launcher');
 
 let electronPath;
 try {
@@ -12,8 +12,7 @@ try {
   console.error(error && error.message ? error.message : error);
   process.exit(1);
 }
-const env = { ...process.env };
-delete env.ELECTRON_RUN_AS_NODE;
+const env = sanitizeElectronEnv();
 
 const child = spawn(electronPath, ['.'], {
   stdio: 'inherit',

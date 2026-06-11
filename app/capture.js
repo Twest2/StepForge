@@ -23,6 +23,7 @@ const { encodePng } = require('../core/png');
  */
 
 const CLICK_DEBOUNCE_MS = 700;
+const CLICK_CAPTURE_CACHE_MS = 75;
 const CLICK_CAPTURE_HIDE_DELAY_MS = 25;
 
 function hasBinary(name) {
@@ -43,6 +44,9 @@ class CaptureService {
     this.session = null; // { guideId, paused, count, intervalSec }
     this.intervalTimer = null;
     this.clickWatcher = null;
+    this.captureCacheTimer = null;
+    this.captureCache = null;
+    this.captureCacheRunning = false;
     this.lastClickCapture = 0;
     this.shooting = false;
   }
@@ -89,12 +93,22 @@ class CaptureService {
     if (!process.env.STEPFORGE_SCREENSHOT) {
       this.createSessionTray();
       const win = this.getWindow();
+      const startClickCache = () => {
+        if (this.settings.get('capture.captureOutsideClicks') !== false && this.clickCaptureAvailable()) {
+          this.startClickCaptureCache();
+        }
+      };
       if (win && !win.isDestroyed() && win.isVisible()) {
         this.hiddenForSession = true;
         setTimeout(() => {
           // Re-check: the session may have been finished within the delay.
-          if (this.session && this.hiddenForSession && !win.isDestroyed()) win.hide();
+          if (this.session && this.hiddenForSession && !win.isDestroyed()) {
+            win.hide();
+            startClickCache();
+          }
         }, 1200); // let the user read the "session started" toast first
+      } else {
+        startClickCache();
       }
       try {
         new Notification({
@@ -203,6 +217,7 @@ class CaptureService {
       this.intervalTimer = null;
     }
     this.stopClickWatcher();
+    this.stopClickCaptureCache();
     this.destroySessionTray();
     this.session = null;
     if (this.hiddenForSession) {
@@ -238,20 +253,26 @@ class CaptureService {
     this.shooting = true;
     try {
       const mode = this.settings.get('capture.mode') || 'fullscreen';
-      const result = await this.shoot({
-        guideId: this.session.guideId,
-        mode: mode === 'region' ? 'fullscreen' : mode,
-        delayMs: 0,
-        hideWindowDelayMs: trigger === 'click' ? CLICK_CAPTURE_HIDE_DELAY_MS : null,
-        refocus: false, // don't steal focus from the app the user is documenting
-      });
-      if (result.ok) {
+      const grabMode = mode === 'region' ? 'fullscreen' : mode;
+      const cached = trigger === 'click' && this.captureCache && this.captureCache.mode === grabMode
+        ? this.captureCache
+        : null;
+      const finalResult = cached
+        ? this.storeFrameAsStep(this.session.guideId, grabMode, cached)
+        : await this.shoot({
+          guideId: this.session.guideId,
+          mode: grabMode,
+          delayMs: 0,
+          hideWindowDelayMs: trigger === 'click' ? CLICK_CAPTURE_HIDE_DELAY_MS : null,
+          refocus: false, // don't steal focus from the app the user is documenting
+        });
+      if (finalResult.ok) {
         this.session.count += 1;
-        this.notify('capture:added', { guideId: this.session.guideId, step: result.step, trigger });
+        this.notify('capture:added', { guideId: this.session.guideId, step: finalResult.step, trigger });
         this.notify('capture:state', this.state());
         if (this.rebuildTrayMenu) this.rebuildTrayMenu(); // refresh step counter
       }
-      return result;
+      return finalResult;
     } finally {
       this.shooting = false;
     }
@@ -262,6 +283,40 @@ class CaptureService {
   }
 
   // ---- click-triggered capture --------------------------------------------
+
+  startClickCaptureCache() {
+    if (this.captureCacheRunning) return;
+    this.captureCacheRunning = true;
+    const refresh = async () => {
+      if (!this.session || this.session.paused || !this.captureCacheRunning) return;
+      try {
+        if (!this.shooting) {
+          const mode = this.settings.get('capture.mode') || 'fullscreen';
+          const grabMode = mode === 'region' ? 'fullscreen' : mode;
+          const frame = await this.captureCurrentFrame(grabMode);
+          if (this.captureCacheRunning && this.session && !this.session.paused) {
+            this.captureCache = frame;
+          }
+        }
+      } catch {
+        // Cache misses are fine; click capture falls back to a fresh shot.
+      } finally {
+        if (this.session && !this.session.paused && this.captureCacheRunning) {
+          this.captureCacheTimer = setTimeout(refresh, CLICK_CAPTURE_CACHE_MS);
+        }
+      }
+    };
+    this.captureCacheTimer = setTimeout(refresh, 0);
+  }
+
+  stopClickCaptureCache() {
+    if (this.captureCacheTimer) {
+      clearTimeout(this.captureCacheTimer);
+      this.captureCacheTimer = null;
+    }
+    this.captureCacheRunning = false;
+    this.captureCache = null;
+  }
 
   startClickWatcher() {
     this.stopClickWatcher();
@@ -318,6 +373,49 @@ while ($true) {
     if (now - this.lastClickCapture < CLICK_DEBOUNCE_MS) return;
     this.lastClickCapture = now;
     this.sessionCapture('click').catch(() => {});
+  }
+
+  async captureCurrentFrame(mode) {
+    const grabbed = await this.grab(mode);
+    return {
+      mode,
+      png: grabbed.image.toPNG(),
+      size: grabbed.image.getSize(),
+      display: grabbed.display,
+      cursor: grabbed.cursor,
+      capturedAt: Date.now(),
+    };
+  }
+
+  storeFrameAsStep(guideId, mode, frame) {
+    if (!frame) return { ok: false, reason: 'no capture frame available' };
+    const annotations = [];
+    if (mode !== 'window' && this.settings.get('capture.clickMarker')) {
+      const fx = (frame.cursor.x - frame.display.bounds.x) / frame.display.bounds.width;
+      const fy = (frame.cursor.y - frame.display.bounds.y) / frame.display.bounds.height;
+      if (fx >= 0 && fx <= 1 && fy >= 0 && fy <= 1) {
+        const d = 0.035;
+        annotations.push({
+          type: 'oval',
+          x: fx - d / 2, y: fy - (d * frame.size.width / frame.size.height) / 2,
+          w: d, h: d * frame.size.width / frame.size.height,
+          style: {
+            stroke: this.settings.get('capture.clickMarkerColor') || '#E5484D',
+            strokeWidth: 4, fill: 'transparent',
+          },
+        });
+      }
+    }
+
+    const step = this.store.addStep(guideId, {
+      title: this.autoTitle(mode),
+      annotations,
+      focusedView: {
+        enabled: Boolean(this.settings.get('editor.focusedViewDefaultForNewSteps')),
+        zoom: 1, panX: 0.5, panY: 0.5,
+      },
+    }, frame.png, frame.size);
+    return { ok: true, step };
   }
 
   autoTitle(mode) {
@@ -404,46 +502,18 @@ while ($true) {
   }) {
     const delay = delayMs == null ? this.settings.get('capture.delayMs') || 0 : delayMs;
     if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
-    let grabbed;
+    let frame;
     try {
-      grabbed = hideWindow
-        ? await this.withWindowHidden(() => this.grab(mode), {
+      frame = hideWindow
+        ? await this.withWindowHidden(() => this.captureCurrentFrame(mode), {
           refocus,
           pauseMs: hideWindowDelayMs == null ? 350 : hideWindowDelayMs,
         })
-        : await this.grab(mode);
+        : await this.captureCurrentFrame(mode);
     } catch (err) {
       return { ok: false, reason: err.message };
     }
-    const { image, display, cursor } = grabbed;
-    const size = image.getSize();
-    const annotations = [];
-    if (mode !== 'window' && this.settings.get('capture.clickMarker')) {
-      const fx = (cursor.x - display.bounds.x) / display.bounds.width;
-      const fy = (cursor.y - display.bounds.y) / display.bounds.height;
-      if (fx >= 0 && fx <= 1 && fy >= 0 && fy <= 1) {
-        const d = 0.035;
-        annotations.push({
-          type: 'oval',
-          x: fx - d / 2, y: fy - (d * size.width / size.height) / 2,
-          w: d, h: d * size.width / size.height,
-          style: {
-            stroke: this.settings.get('capture.clickMarkerColor') || '#E5484D',
-            strokeWidth: 4, fill: 'transparent',
-          },
-        });
-      }
-    }
-
-    const step = this.store.addStep(guideId, {
-      title: this.autoTitle(mode),
-      annotations,
-      focusedView: {
-        enabled: Boolean(this.settings.get('editor.focusedViewDefaultForNewSteps')),
-        zoom: 1, panX: 0.5, panY: 0.5,
-      },
-    }, image.toPNG(), size);
-    return { ok: true, step };
+    return this.storeFrameAsStep(guideId, mode, frame);
   }
 
   /**

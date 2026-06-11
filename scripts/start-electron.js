@@ -5,7 +5,13 @@ const { spawn } = require('node:child_process');
 
 const { resolveElectronBinary } = require('./electron-launcher');
 
-const electronPath = resolveElectronBinary();
+let electronPath;
+try {
+  electronPath = resolveElectronBinary();
+} catch (error) {
+  console.error(error && error.message ? error.message : error);
+  process.exit(1);
+}
 const env = { ...process.env };
 delete env.ELECTRON_RUN_AS_NODE;
 

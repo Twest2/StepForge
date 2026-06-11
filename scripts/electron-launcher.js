@@ -1,5 +1,6 @@
 'use strict';
 
+const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -34,6 +35,41 @@ function platformBinaryCandidates(platform) {
   }
 }
 
+function repairElectronInstall({
+  packageRoot,
+  platform = process.platform,
+  arch = process.arch,
+}) {
+  const installScript = path.join(packageRoot, 'install.js');
+  if (!fs.existsSync(installScript)) {
+    return false;
+  }
+
+  const result = spawnSync(process.execPath, [installScript], {
+    cwd: packageRoot,
+    env: {
+      ...process.env,
+      npm_config_platform: platform,
+      npm_config_arch: arch,
+    },
+    stdio: 'inherit',
+  });
+
+  if (result.error) {
+    throw result.error;
+  }
+
+  if (result.signal) {
+    throw new Error(`Electron repair was interrupted by ${result.signal}`);
+  }
+
+  if (result.status !== 0) {
+    throw new Error(`Electron repair failed with exit code ${result.status ?? 1}`);
+  }
+
+  return true;
+}
+
 function buildMissingElectronError({ packageRoot, distDir, candidatePaths }) {
   const tried = candidatePaths.map((candidate) => `  - ${candidate}`).join('\n');
   return [
@@ -57,6 +93,7 @@ function resolveElectronBinary({
   packageRoot = resolveElectronPackageRoot(),
   platform = process.platform,
   overrideDistPath = process.env.ELECTRON_OVERRIDE_DIST_PATH || null,
+  arch = process.arch,
 } = {}) {
   if (!packageRoot && !overrideDistPath) {
     throw new Error(
@@ -79,6 +116,22 @@ function resolveElectronBinary({
 
   const resolved = candidatePaths.find((candidate) => fs.existsSync(candidate));
   if (!resolved) {
+    if (packageRoot && repairElectronInstall({ packageRoot, platform, arch })) {
+      const repairedHint = readElectronPathHint(packageRoot);
+      const repairedCandidates = [];
+      if (repairedHint) {
+        repairedCandidates.push(path.join(distDir, repairedHint));
+      }
+      for (const relativePath of platformBinaryCandidates(platform)) {
+        repairedCandidates.push(path.join(distDir, relativePath));
+      }
+
+      const repaired = repairedCandidates.find((candidate) => fs.existsSync(candidate));
+      if (repaired) {
+        return repaired;
+      }
+    }
+
     throw new Error(buildMissingElectronError({ packageRoot, distDir, candidatePaths }));
   }
 
@@ -88,6 +141,7 @@ function resolveElectronBinary({
 module.exports = {
   buildMissingElectronError,
   readElectronPathHint,
+  repairElectronInstall,
   resolveElectronBinary,
   resolveElectronPackageRoot,
   platformBinaryCandidates,

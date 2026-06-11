@@ -7,6 +7,7 @@ const path = require('node:path');
 
 const {
   buildMissingElectronError,
+  repairElectronInstall,
   resolveElectronBinary,
 } = require('../../scripts/electron-launcher');
 const { makeTmpDir, rmrf } = require('./helpers');
@@ -32,6 +33,32 @@ test('falls back to the platform binary when path.txt is absent', (t) => {
   fs.mkdirSync(path.join(root, 'dist'), { recursive: true });
   fs.writeFileSync(path.join(root, 'dist', 'electron.exe'), 'binary');
 
+  assert.equal(
+    resolveElectronBinary({ packageRoot: root, platform: 'win32' }),
+    path.join(root, 'dist', 'electron.exe')
+  );
+});
+
+test('repairs a broken Electron install before resolving the binary', (t) => {
+  const root = makeTmpDir('electron-repair');
+  t.after(() => rmrf(root));
+
+  fs.mkdirSync(path.join(root, 'dist'), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, 'install.js'),
+    [
+      "const fs = require('node:fs');",
+      "const path = require('node:path');",
+      "fs.mkdirSync(path.join(__dirname, 'dist'), { recursive: true });",
+      "fs.writeFileSync(path.join(__dirname, 'dist', 'electron.exe'), 'binary');",
+      "fs.writeFileSync(path.join(__dirname, 'path.txt'), 'electron.exe');",
+    ].join('\n')
+  );
+
+  assert.equal(
+    repairElectronInstall({ packageRoot: root, platform: 'win32' }),
+    true
+  );
   assert.equal(
     resolveElectronBinary({ packageRoot: root, platform: 'win32' }),
     path.join(root, 'dist', 'electron.exe')

@@ -50,16 +50,45 @@ test('click-triggered session capture uses the low-latency hide pause', async ()
   });
 });
 
-function makeFrame(name, ageMs = 0) {
+function makeFrame(name, ageMs = 0, overrides = {}) {
   return {
-    mode: 'fullscreen',
+    mode: overrides.mode || 'fullscreen',
     png: Buffer.from(name),
-    size: { width: 100, height: 100 },
-    display: { bounds: { x: 0, y: 0, width: 100, height: 100 } },
-    cursor: { x: 50, y: 50 },
+    size: overrides.size || { width: 100, height: 100 },
+    display: overrides.display || { bounds: { x: 0, y: 0, width: 100, height: 100 } },
+    cursor: overrides.cursor || { x: 50, y: 50 },
     capturedAt: Date.now() - ageMs,
   };
 }
+
+test('rapid click watcher bursts are parsed one click at a time', () => {
+  const service = makeService();
+  let clicks = 0;
+  service.onOsClick = () => {
+    clicks += 1;
+  };
+
+  service.processClickWatcherData([
+    'EVENT type 17 (RawButtonPress)',
+    'EVENT type 18 (RawButtonRelease)',
+    'EVENT type 17 (RawButtonPress)',
+    'EVENT type 18 (RawButtonRelease)',
+  ].join('\n'), 'linux');
+
+  assert.equal(clicks, 2);
+});
+
+test('windows click watcher output is counted line by line', () => {
+  const service = makeService();
+  let clicks = 0;
+  service.onOsClick = () => {
+    clicks += 1;
+  };
+
+  service.processClickWatcherData('CLICK\r\nCLICK\r\n', 'win32');
+
+  assert.equal(clicks, 2);
+});
 
 test('a click is served instantly from the freshly buffered frame', async () => {
   const service = makeService();
@@ -78,6 +107,35 @@ test('a click is served instantly from the freshly buffered frame', async () => 
 
   assert.equal(result.ok, true);
   assert.deepEqual(added, ['buffered-png']);
+  assert.equal(service.session.count, 1);
+});
+
+test('a buffered frame from a different display is ignored for click capture', async () => {
+  const service = makeService();
+  service.session = { guideId: 'guide-display', paused: false, count: 0, intervalSec: 0 };
+  service.frameLoopRunning = true;
+  service.latestFrame = makeFrame('wrong-display', 0, {
+    display: { bounds: { x: 0, y: 0, width: 100, height: 100 } },
+  });
+
+  service.nextFrame = async () => makeFrame('right-display', 0, {
+    display: { bounds: { x: 100, y: 0, width: 100, height: 100 } },
+    cursor: { x: 150, y: 10 },
+  });
+  service.shoot = async () => {
+    throw new Error('click capture should not fall back when a matching frame arrives');
+  };
+
+  const added = [];
+  service.store.addStep = (guideId, fields, png) => {
+    added.push(png.toString());
+    return { stepId: 'step-display' };
+  };
+
+  const result = await service.sessionCapture('click', { x: 150, y: 10 });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(added, ['right-display']);
   assert.equal(service.session.count, 1);
 });
 
@@ -148,15 +206,19 @@ test('click capture marks the click-time cursor position', async () => {
   };
   service.session = { guideId: 'guide-4', paused: false, count: 0, intervalSec: 0 };
   // No capture cache, so sessionCapture falls back to a fresh shoot().
-  service.captureCurrentFrame = async () => ({
-    mode: 'fullscreen',
-    png: Buffer.from('live-png'),
-    size: { width: 100, height: 100 },
-    display: { bounds: { x: 0, y: 0, width: 100, height: 100 } },
-    // Grab-time cursor, well outside the display — must not be used.
-    cursor: { x: -1, y: -1 },
-    capturedAt: Date.now(),
-  });
+  let seenCapturePoint = null;
+  service.captureCurrentFrame = async (_mode, capturePoint) => {
+    seenCapturePoint = capturePoint;
+    return {
+      mode: 'fullscreen',
+      png: Buffer.from('live-png'),
+      size: { width: 100, height: 100 },
+      display: { bounds: { x: 0, y: 0, width: 100, height: 100 } },
+      // Grab-time cursor, well outside the display — must not be used.
+      cursor: { x: -1, y: -1 },
+      capturedAt: Date.now(),
+    };
+  };
 
   let added = null;
   service.store.addStep = (guideId, fields, png, size) => {
@@ -168,6 +230,7 @@ test('click capture marks the click-time cursor position', async () => {
   const result = await service.sessionCapture('click', { x: 50, y: 50 });
 
   assert.equal(result.ok, true);
+  assert.deepEqual(seenCapturePoint, { x: 50, y: 50 });
   assert.equal(added.fields.annotations.length, 1);
   assert.equal(added.fields.annotations[0].type, 'oval');
 });

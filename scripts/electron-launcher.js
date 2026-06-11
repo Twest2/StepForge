@@ -35,6 +35,61 @@ function platformBinaryCandidates(platform) {
   }
 }
 
+function electronBinaryCandidates({ packageRoot, distDir, platform }) {
+  const candidatePaths = [];
+  const pathHint = packageRoot ? readElectronPathHint(packageRoot) : null;
+
+  if (pathHint) {
+    candidatePaths.push(path.join(distDir, pathHint));
+  }
+
+  for (const relativePath of platformBinaryCandidates(platform)) {
+    candidatePaths.push(path.join(distDir, relativePath));
+  }
+
+  return candidatePaths;
+}
+
+function runNpmRebuild({
+  packageRoot,
+  platform = process.platform,
+  arch = process.arch,
+  npmExecPath = process.env.npm_execpath || null,
+  npmNodeExecPath = process.env.npm_node_execpath || process.execPath,
+}) {
+  if (!npmExecPath) {
+    return false;
+  }
+
+  const result = spawnSync(
+    npmNodeExecPath,
+    [npmExecPath, 'rebuild', 'electron', '--force', '--foreground-scripts'],
+    {
+      cwd: packageRoot,
+      env: {
+        ...process.env,
+        npm_config_platform: platform,
+        npm_config_arch: arch,
+      },
+      stdio: 'inherit',
+    }
+  );
+
+  if (result.error) {
+    throw result.error;
+  }
+
+  if (result.signal) {
+    throw new Error(`Electron repair was interrupted by ${result.signal}`);
+  }
+
+  if (result.status !== 0) {
+    throw new Error(`Electron rebuild failed with exit code ${result.status ?? 1}`);
+  }
+
+  return true;
+}
+
 function repairElectronInstall({
   packageRoot,
   platform = process.platform,
@@ -81,6 +136,7 @@ function buildMissingElectronError({ packageRoot, distDir, candidatePaths }) {
     'Try reinstalling dependencies from the repo root:',
     '',
     '  npm install',
+    '  npm rebuild electron --force --foreground-scripts',
     '',
     'If that does not help, delete node_modules/electron and install again.',
     '',
@@ -103,32 +159,27 @@ function resolveElectronBinary({
   }
 
   const distDir = overrideDistPath || path.join(packageRoot, 'dist');
-  const candidatePaths = [];
-  const pathHint = packageRoot ? readElectronPathHint(packageRoot) : null;
-
-  if (pathHint) {
-    candidatePaths.push(path.join(distDir, pathHint));
-  }
-
-  for (const relativePath of platformBinaryCandidates(platform)) {
-    candidatePaths.push(path.join(distDir, relativePath));
-  }
+  const candidatePaths = electronBinaryCandidates({ packageRoot, distDir, platform });
 
   const resolved = candidatePaths.find((candidate) => fs.existsSync(candidate));
   if (!resolved) {
-    if (packageRoot && repairElectronInstall({ packageRoot, platform, arch })) {
-      const repairedHint = readElectronPathHint(packageRoot);
-      const repairedCandidates = [];
-      if (repairedHint) {
-        repairedCandidates.push(path.join(distDir, repairedHint));
-      }
-      for (const relativePath of platformBinaryCandidates(platform)) {
-        repairedCandidates.push(path.join(distDir, relativePath));
+    if (packageRoot) {
+      if (runNpmRebuild({ packageRoot, platform, arch })) {
+        const rebuilt = electronBinaryCandidates({ packageRoot, distDir, platform }).find((candidate) =>
+          fs.existsSync(candidate)
+        );
+        if (rebuilt) {
+          return rebuilt;
+        }
       }
 
-      const repaired = repairedCandidates.find((candidate) => fs.existsSync(candidate));
-      if (repaired) {
-        return repaired;
+      if (repairElectronInstall({ packageRoot, platform, arch })) {
+        const repaired = electronBinaryCandidates({ packageRoot, distDir, platform }).find((candidate) =>
+          fs.existsSync(candidate)
+        );
+        if (repaired) {
+          return repaired;
+        }
       }
     }
 
@@ -140,8 +191,10 @@ function resolveElectronBinary({
 
 module.exports = {
   buildMissingElectronError,
+  electronBinaryCandidates,
   readElectronPathHint,
   repairElectronInstall,
+  runNpmRebuild,
   resolveElectronBinary,
   resolveElectronPackageRoot,
   platformBinaryCandidates,

@@ -206,6 +206,15 @@ class GuideEditor {
             this.dom.forceNewPageToggle = el('label', {}, el('input', { type: 'checkbox' }), ' New page'),
             this.dom.focusedViewToggle = el('label', {}, el('input', { type: 'checkbox' }), ' Focused'),
           ),
+          this.dom.focusedControls = el('div.focused-controls.hidden', {},
+            el('div.form-row', {}, el('label', {}, 'Zoom'),
+              this.dom.fvZoom = el('input', { type: 'range', min: 1, max: 3, step: 0.05, value: 1.5 })),
+            el('div.form-row', {}, el('label', {}, 'Pan X'),
+              this.dom.fvPanX = el('input', { type: 'range', min: 0, max: 1, step: 0.01, value: 0.5 })),
+            el('div.form-row', {}, el('label', {}, 'Pan Y'),
+              this.dom.fvPanY = el('input', { type: 'range', min: 0, max: 1, step: 0.01, value: 0.5 })),
+            el('div.muted', {}, 'Exports crop to this view; the original image is never modified.'),
+          ),
         ),
         el('section', {},
           el('h3', {}, 'Description'),
@@ -224,6 +233,15 @@ class GuideEditor {
           el('h3', {}, 'Annotations'),
           this.dom.annotationList = el('div', { className: 'annotation-list' }),
           this.dom.annotationEditor = el('div', { className: 'annotation-editor' }),
+        ),
+        el('section', {},
+          el('h3', {}, 'Blocks'),
+          this.dom.blocksList = el('div', { className: 'blocks-list' }),
+          el('div.row', {},
+            this.dom.addTextBlockBtn = el('button', { type: 'button' }, '+ Text block'),
+            this.dom.addCodeBlockBtn = el('button', { type: 'button' }, '+ Code'),
+            this.dom.addTableBlockBtn = el('button', { type: 'button' }, '+ Table'),
+          ),
         ),
         el('section', {},
           el('h3', {}, 'Guide'),
@@ -331,8 +349,23 @@ class GuideEditor {
       };
       this.pendingSave = true;
       this.saveStepDebounced();
+      this.syncFocusedControls();
       this.emitMeta();
     });
+    const bindFocusedSlider = (node, field) => node.addEventListener('input', () => {
+      const step = this.currentStep;
+      if (!step || !step.focusedView) return;
+      step.focusedView[field] = Number(node.value);
+      this.pendingSave = true;
+      this.saveStepDebounced();
+    });
+    bindFocusedSlider(this.dom.fvZoom, 'zoom');
+    bindFocusedSlider(this.dom.fvPanX, 'panX');
+    bindFocusedSlider(this.dom.fvPanY, 'panY');
+
+    this.dom.addTextBlockBtn.addEventListener('click', () => this.addBlock('text'));
+    this.dom.addCodeBlockBtn.addEventListener('click', () => this.addBlock('code'));
+    this.dom.addTableBlockBtn.addEventListener('click', () => this.addBlock('table'));
 
     this.dom.descEditor.addEventListener('focus', () => {
       if (this.currentStep) this.pushCanvasHistory('description');
@@ -362,10 +395,128 @@ class GuideEditor {
   renderAll() {
     this.renderStepList();
     this.syncStepFields();
+    this.syncFocusedControls();
     this.renderCanvas();
     this.renderAnnotationPanel();
+    this.renderBlocksPanel();
     this.renderGuidePanel();
     this.emitMeta();
+  }
+
+  syncFocusedControls() {
+    const fv = this.currentStep?.focusedView;
+    const enabled = Boolean(fv && fv.enabled);
+    this.dom.focusedControls.classList.toggle('hidden', !enabled);
+    if (enabled) {
+      this.dom.fvZoom.value = fv.zoom || 1.5;
+      this.dom.fvPanX.value = fv.panX ?? 0.5;
+      this.dom.fvPanY.value = fv.panY ?? 0.5;
+    }
+  }
+
+  // ---- text / code / table blocks ----------------------------------------
+
+  addBlock(kind) {
+    const step = this.currentStep;
+    if (!step) {
+      this.onToast('Select a step first.', { error: true });
+      return;
+    }
+    const id = `blk-${Date.now().toString(36)}`;
+    if (kind === 'text') {
+      step.textBlocks = step.textBlocks || [];
+      step.textBlocks.push({ id, position: 'after-description', level: 'info', title: '', descriptionHtml: '' });
+    } else if (kind === 'code') {
+      step.codeBlocks = step.codeBlocks || [];
+      step.codeBlocks.push({ id, language: '', code: '' });
+    } else if (kind === 'table') {
+      step.tableBlocks = step.tableBlocks || [];
+      step.tableBlocks.push({ id, rows: [['Column A', 'Column B'], ['', '']] });
+    }
+    this.pendingSave = true;
+    this.saveStepDebounced();
+    this.renderBlocksPanel();
+  }
+
+  renderBlocksPanel() {
+    clearNode(this.dom.blocksList);
+    const step = this.currentStep;
+    if (!step) {
+      this.dom.blocksList.append(el('div.muted', {}, 'Select a step to add blocks.'));
+      return;
+    }
+    const save = () => {
+      this.pendingSave = true;
+      this.saveStepDebounced();
+    };
+    const removeBtn = (onRemove) => el('button.icon.danger', {
+      type: 'button', title: 'Remove block',
+      onClick: () => { onRemove(); save(); this.renderBlocksPanel(); },
+    }, '✕');
+
+    for (const tb of step.textBlocks || []) {
+      const position = makeSelect(tb.position, [
+        { value: 'before-title', label: 'Before title' },
+        { value: 'after-title', label: 'After title' },
+        { value: 'before-image', label: 'Before image' },
+        { value: 'after-image', label: 'After image' },
+        { value: 'before-description', label: 'Before description' },
+        { value: 'after-description', label: 'After description' },
+      ]);
+      const level = makeSelect(tb.level, [
+        { value: 'info', label: 'Note' },
+        { value: 'warn', label: 'Warning' },
+        { value: 'error', label: 'Important' },
+        { value: 'success', label: 'Tip' },
+      ]);
+      const title = el('input', { type: 'text', value: tb.title || '', placeholder: 'Block title' });
+      const body = el('textarea', { rows: 2, placeholder: 'Block text' });
+      body.value = (tb.descriptionHtml || '').replace(/<[^>]+>/g, '');
+      position.addEventListener('change', () => { tb.position = position.value; save(); });
+      level.addEventListener('change', () => { tb.level = level.value; save(); });
+      title.addEventListener('input', () => { tb.title = title.value; save(); });
+      body.addEventListener('input', () => { tb.descriptionHtml = `<p>${escapeHtml(body.value)}</p>`; save(); });
+      this.dom.blocksList.append(el('div.block-card', {},
+        el('div.row', {}, el('strong', {}, 'Text block'), el('span.spacer'),
+          removeBtn(() => { step.textBlocks = step.textBlocks.filter((b) => b !== tb); })),
+        el('div.row', {}, level, position),
+        title, body,
+      ));
+    }
+
+    for (const cb of step.codeBlocks || []) {
+      const lang = el('input', { type: 'text', value: cb.language || '', placeholder: 'Language (e.g. bash)' });
+      const code = el('textarea', { rows: 3, placeholder: 'Code', spellcheck: false });
+      code.value = cb.code || '';
+      code.style.fontFamily = 'monospace';
+      lang.addEventListener('input', () => { cb.language = lang.value; save(); });
+      code.addEventListener('input', () => { cb.code = code.value; save(); });
+      this.dom.blocksList.append(el('div.block-card', {},
+        el('div.row', {}, el('strong', {}, 'Code block'), el('span.spacer'),
+          removeBtn(() => { step.codeBlocks = step.codeBlocks.filter((b) => b !== cb); })),
+        lang, code,
+      ));
+    }
+
+    for (const tbl of step.tableBlocks || []) {
+      const grid = el('textarea', { rows: 3, placeholder: 'One row per line, cells separated by |', spellcheck: false });
+      grid.value = (tbl.rows || []).map((r) => r.join(' | ')).join('\n');
+      grid.addEventListener('input', () => {
+        tbl.rows = grid.value.split('\n').filter((l) => l.trim() !== '')
+          .map((line) => line.split('|').map((c) => c.trim()));
+        save();
+      });
+      this.dom.blocksList.append(el('div.block-card', {},
+        el('div.row', {}, el('strong', {}, 'Table'), el('span.spacer'),
+          removeBtn(() => { step.tableBlocks = step.tableBlocks.filter((b) => b !== tbl); })),
+        el('div.muted', {}, 'First line is the header row.'),
+        grid,
+      ));
+    }
+
+    if (!(step.textBlocks || []).length && !(step.codeBlocks || []).length && !(step.tableBlocks || []).length) {
+      this.dom.blocksList.append(el('div.muted', {}, 'Informational text, code, and table blocks render in every export.'));
+    }
   }
 
   renderStepList() {
@@ -562,6 +713,10 @@ class GuideEditor {
             this.canvas.deleteSelected();
           },
         }, 'Delete annotation'),
+      ),
+      el('div.row', {},
+        el('button', { type: 'button', title: 'Copy this style to every annotation of the same type in this step', onClick: () => this.applyStyleAcross('step') }, 'Style → step'),
+        el('button', { type: 'button', title: 'Copy this style to every annotation of the same type in the whole guide', onClick: () => this.applyStyleAcross('guide') }, 'Style → guide'),
       ),
     );
     this.dom.annotationEditor.append(annSection);
@@ -866,13 +1021,122 @@ class GuideEditor {
     this.onToast('Images imported.');
   }
 
-  async captureStep(mode) {
-    const result = await api.capture.shoot({ guideId: this.guideId, mode, delayMs: 0 });
+  async captureStep(mode, delayMs = null) {
+    const result = mode === 'region'
+      ? await api.capture.region({ guideId: this.guideId })
+      : await api.capture.shoot({ guideId: this.guideId, mode, delayMs });
     if (result && result.ok) {
       await this.reload(result.step.stepId);
       this.onToast('Captured.');
     } else if (result && result.reason) {
       this.onToast(result.reason, { error: true });
+    }
+  }
+
+  /** Capture menu anchored at a toolbar button. */
+  async openCaptureMenu(event) {
+    const rect = event.target.getBoundingClientRect();
+    const session = (await api.capture.state())?.active;
+    contextMenu(rect.left, rect.bottom + 4, [
+      { label: 'Capture full screen', action: () => this.captureStep('fullscreen') },
+      { label: 'Capture window', action: () => this.captureStep('window') },
+      { label: 'Capture region…', action: () => this.captureStep('region') },
+      { label: 'Capture after 3 s delay', action: () => this.captureStep('fullscreen', 3000) },
+      'sep',
+      { label: 'Paste image as step', action: () => this.pasteClipboardStep() },
+      { label: 'Import images…', action: () => this.importImageSteps() },
+      'sep',
+      session
+        ? { label: 'Finish capture session', action: () => this.finishCaptureSession() }
+        : { label: 'Start capture session (hotkey)', action: () => this.startCaptureSession() },
+    ]);
+  }
+
+  async pasteClipboardStep() {
+    const result = await api.step.fromClipboard({ guideId: this.guideId });
+    if (result && result.ok) {
+      await this.reload(result.step.stepId);
+      this.onToast('Image pasted as a new step.');
+    } else {
+      this.onToast(result?.reason || 'Clipboard has no image.', { error: true });
+    }
+  }
+
+  async shareAsFile() {
+    const result = await api.archive.export({ guideId: this.guideId });
+    if (result && result.ok) this.onToast(`Shared to ${result.path}`);
+  }
+
+  async openBackupsDialog() {
+    if (!this.guideId) return;
+    const snapshots = await api.snapshots.list({ guideId: this.guideId });
+    await dialogs.showBackupsDialog({
+      snapshots,
+      onCreate: async () => {
+        await api.snapshots.create({ guideId: this.guideId, label: 'manual' });
+        this.onToast('Snapshot created.');
+        return api.snapshots.list({ guideId: this.guideId });
+      },
+      onRestore: async (name) => {
+        const ok = await confirmDialog(
+          `Restore "${name}"? Current state is snapshotted first, so this is undoable.`,
+          { okLabel: 'Restore' },
+        );
+        if (!ok) return false;
+        await api.snapshots.restore({ guideId: this.guideId, name });
+        await this.reload();
+        this.onToast('Snapshot restored.');
+        return true;
+      },
+    });
+  }
+
+  async openGuidePlaceholders() {
+    if (!this.guide) return;
+    await dialogs.showPlaceholdersDialog({
+      title: 'Guide placeholders',
+      hint: 'Use [[Name]] in titles, descriptions, and blocks. Guide values override global ones.',
+      values: this.guide.placeholders || {},
+      onSave: async (values) => {
+        this.guide.placeholders = values;
+        await api.guide.save({ guide: this.guide });
+        this.onToast('Placeholders saved.');
+      },
+    });
+  }
+
+  openShortcutsHelp() {
+    dialogs.showShortcutsDialog();
+  }
+
+  /** Copy the selected annotation's style to every annotation of the same type. */
+  async applyStyleAcross(scope) {
+    const source = this.canvas.selected();
+    if (!source) return;
+    const patch = clone(source.style || {});
+    if (scope === 'step') {
+      const step = this.currentStep;
+      for (const ann of step.annotations || []) {
+        if (ann.type === source.type && ann.id !== source.id) ann.style = { ...ann.style, ...patch };
+      }
+      step.annotations = clone(step.annotations);
+      await this.flushStep(step);
+      this.onToast(`Style applied to all ${source.type} annotations in this step.`);
+    } else {
+      for (const step of this.steps) {
+        let touched = false;
+        for (const ann of step.annotations || []) {
+          if (ann.type === source.type && ann.id !== source.id) {
+            ann.style = { ...ann.style, ...patch };
+            touched = true;
+          }
+        }
+        if (touched || step.stepId === this.currentStep?.stepId) {
+          await api.step.save({ guideId: this.guideId, step });
+        }
+      }
+      await this.reload(this.selectedStepId);
+      this.onToast(`Style applied to all ${source.type} annotations in the guide.`);
     }
   }
 
@@ -1182,9 +1446,71 @@ class GuideEditor {
       return;
     }
     if (!isEditableTarget(e.target)) {
+      // Tool palette hotkeys (Folge-style single keys).
+      const TOOL_KEYS = {
+        s: 'select', r: 'rect', o: 'oval', l: 'line', a: 'arrow', t: 'text',
+        g: 'tooltip', n: 'number', b: 'blur', h: 'highlight', m: 'magnify',
+        u: 'cursor', c: 'crop',
+      };
+      if (!e.ctrlKey && !e.metaKey && !e.altKey && TOOL_KEYS[e.key.toLowerCase()]) {
+        e.preventDefault();
+        this.setTool(TOOL_KEYS[e.key.toLowerCase()]);
+        return;
+      }
+      if (e.key === 'PageUp' || e.key === 'PageDown') {
+        e.preventDefault();
+        const idx = this.steps.findIndex((s) => s.stepId === this.selectedStepId);
+        const next = this.steps[idx + (e.key === 'PageDown' ? 1 : -1)];
+        if (next) this.selectStep(next.stepId);
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === '=' || e.key === '+')) {
+        e.preventDefault();
+        this.setZoom(Math.min(3, (Number(this.currentZoom) || 1) + 0.25));
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === '-') {
+        e.preventDefault();
+        this.setZoom(Math.max(0.25, (Number(this.currentZoom) || 1) - 0.25));
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === '0') {
+        e.preventDefault();
+        this.setZoom('fit');
+        return;
+      }
+      // Copy / paste the selected annotation.
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c' && this.selectedAnnotationId) {
+        e.preventDefault();
+        this.annotationClipboard = clone(this.canvas.selected());
+        this.onToast('Annotation copied.');
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
+        e.preventDefault();
+        if (this.annotationClipboard && this.currentStep?.image) {
+          const copy = clone(this.annotationClipboard);
+          copy.id = `ann-${Date.now().toString(36)}`;
+          copy.x = Math.min(0.92, copy.x + 0.03);
+          copy.y = Math.min(0.92, copy.y + 0.03);
+          this.currentStep.annotations.push(copy);
+          this.canvas.setAnnotations(this.currentStep.annotations);
+          this.canvas.select(copy.id);
+          this.pendingSave = true;
+          this.saveStepDebounced();
+        } else {
+          this.pasteClipboardStep(); // OS clipboard image -> new step
+        }
+        return;
+      }
       if (e.key === 'Delete' && this.selectedAnnotationId) {
         e.preventDefault();
         if (this.canvas.deleteSelected()) this.saveStepDebounced();
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Delete') {
+        e.preventDefault();
+        this.deleteSelectedStep();
         return;
       }
       if (e.key === 'ArrowUp' && e.altKey) {
@@ -1198,8 +1524,9 @@ class GuideEditor {
         return;
       }
       if (e.key.startsWith('Arrow')) {
-        const dx = e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowRight' ? 1 : 0;
-        const dy = e.key === 'ArrowUp' ? -1 : e.key === 'ArrowDown' ? 1 : 0;
+        const speed = e.shiftKey ? 10 : 1; // shift nudges faster
+        const dx = (e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowRight' ? 1 : 0) * speed;
+        const dy = (e.key === 'ArrowUp' ? -1 : e.key === 'ArrowDown' ? 1 : 0) * speed;
         if (dx || dy) {
           const moved = this.canvas.nudgeSelected(dx, dy);
           if (moved) {

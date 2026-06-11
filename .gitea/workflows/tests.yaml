@@ -16,5 +16,8 @@ jobs:
       - name: Checkout repository
         uses: https://gitea.com/actions/checkout@v4
 
+      - name: Install dependencies
+        run: npm ci
+
       - name: Run template tests
         run: bash tests/run_test.sh

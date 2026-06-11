@@ -70,22 +70,61 @@ for (const rel of walk(examplesRoot, examplesRoot)) {
 }
 
 const pkg = require(path.join(rootDir, 'package.json'));
+
+const { execSync } = require('node:child_process');
+function toolAvailable(cmd) {
+  try { execSync(`command -v ${cmd}`, { stdio: 'pipe', shell: '/bin/bash' }); return true; } catch { return false; }
+}
+const tools = {
+  'dpkg-deb (Linux .deb)': toolAvailable('dpkg-deb'),
+  'rpmbuild (Linux .rpm)': toolAvailable('rpmbuild'),
+  'appimagetool (Linux AppImage)': toolAvailable('appimagetool'),
+  'makensis (Windows installer .exe)': toolAvailable('makensis'),
+  'wixl / WiX (Windows .msi)': toolAvailable('wixl'),
+};
+const toolRows = Object.entries(tools)
+  .map(([name, ok]) => `| ${name} | ${ok ? 'available' : '**missing**'} |`)
+  .join('\n');
+
 const report = `# StepForge Build Report
 
 Version: ${pkg.version}
 Generated: ${new Date().toISOString()}
+Host: ${process.platform} ${process.arch} (node ${process.version})
 
 ## Outputs
 
 - Portable tarball: ${files.find((f) => f.path.endsWith('.tar.gz'))?.path || 'not generated'}
 - Debian package: ${files.find((f) => f.path.endsWith('.deb'))?.path || 'not generated'}
 - Sample guide archive: ${files.find((f) => f.path.endsWith('sample-guide.sfgz'))?.path || 'not generated'}
+- Sample exports (9 formats): see examples/sample-exports/
+- Full artifact list with sha256 checksums: artifacts_manifest.json
 
-## Notes
+## Packaging tool availability
 
-- The desktop shell is Electron.
-- Core storage, exports, and archive handling are local-only.
-- Sample exports and package artifacts are written by the offline build scripts.
+| Tool | Status |
+|---|---|
+${toolRows}
+
+Fallback policy: when a packaging tool is missing the build still produces
+the runnable app (portable tarball with launcher) plus whatever package
+formats the available tools allow. Windows artifacts are produced by
+\`npm run package:windows\` (electron-builder, portable .exe); .msi/.rpm/
+AppImage require the tools listed above and are skipped on this host.
+
+## Offline guarantee
+
+- The shipped app opens no sockets: no telemetry, update checks, license
+  checks, cloud sync, or remote AI. See SECURITY.md.
+- All exporters (PNG/GIF/PDF/DOCX/PPTX/ZIP) are implemented in-repo with
+  Node built-ins; Electron is the only third-party dependency
+  (dev-time fetch recorded in build/agent_audit.md).
+
+## Verification
+
+- \`bash tests/run_test.sh\` runs the workflow suites (node --test), a
+  startup smoke test of the Electron launcher, the sample-artifact
+  pipeline, and this release build.
 `;
 
 fs.writeFileSync(reportFile, report);

@@ -9,6 +9,22 @@ Initial release.
 
 ### Added
 
+- Welcome screen on launch: app title with three actions — New Capture
+  (creates a guide, opens the editor, and starts a capture session),
+  Existing Workspace (guide library), and Settings. The brand button
+  returns to the welcome screen from any view.
+
+### Fixed
+
+- Renderer scripts no longer collide in the shared global scope (the app
+  previously failed to boot with a blank window).
+- Focused-view toggle persists correctly (`step.focusedView.enabled`).
+- Annotation style edits no longer steal input focus on each keystroke.
+- Step list stays in sync after saves and undo/redo.
+- Escape deselects the active annotation instead of deleting it.
+
+### Added (initial feature set)
+
 - Guide library with folders, favorites, title + full-text search, and a
   quick-actions palette.
 - Capture engine: full-screen / active-window / region capture, delay,

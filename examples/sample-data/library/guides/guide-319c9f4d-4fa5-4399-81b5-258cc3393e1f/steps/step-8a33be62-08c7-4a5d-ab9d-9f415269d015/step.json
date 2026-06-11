@@ -1,0 +1,100 @@
+{
+  "stepId": "step-8a33be62-08c7-4a5d-ab9d-9f415269d015",
+  "parentStepId": null,
+  "kind": "image",
+  "status": "todo",
+  "title": "Review the confirmation",
+  "descriptionHtml": "<p>Confirm the summary and close the modal.</p>",
+  "hidden": false,
+  "skipped": false,
+  "forceNewPage": false,
+  "focusedView": {
+    "enabled": true,
+    "zoom": 1.1,
+    "panX": 0.5,
+    "panY": 0.5
+  },
+  "image": {
+    "originalPath": "original.png",
+    "workingPath": "working.png",
+    "size": {
+      "width": 1280,
+      "height": 760
+    }
+  },
+  "extraImages": [],
+  "annotations": [
+    {
+      "id": "ann-281ebcd6-e0e3-4304-9232-ee25353e2321",
+      "type": "blur",
+      "x": 0.49,
+      "y": 0.32,
+      "w": 0.21,
+      "h": 0.08,
+      "text": "",
+      "style": {
+        "stroke": "#9ca3af",
+        "fill": "transparent",
+        "textColor": "#FFFFFF",
+        "strokeWidth": 2,
+        "fontSize": 0.022
+      },
+      "radius": 12
+    },
+    {
+      "id": "ann-6224b838-a39d-4fae-9b68-6a4f2f8af60d",
+      "type": "highlight",
+      "x": 0.47,
+      "y": 0.24,
+      "w": 0.28,
+      "h": 0.2,
+      "text": "",
+      "style": {
+        "stroke": "#f0a500",
+        "fill": "#ffeeb0",
+        "textColor": "#FFFFFF",
+        "strokeWidth": 2,
+        "fontSize": 0.022
+      }
+    },
+    {
+      "id": "ann-6dd50b00-6f29-431b-bee0-c217032af1a4",
+      "type": "number",
+      "x": 0.31,
+      "y": 0.08,
+      "w": 0.08,
+      "h": 0.12,
+      "text": "",
+      "style": {
+        "stroke": "#36a",
+        "fill": "transparent",
+        "textColor": "#FFFFFF",
+        "strokeWidth": 3,
+        "fontSize": 0.022
+      },
+      "value": 3
+    }
+  ],
+  "textBlocks": [],
+  "codeBlocks": [],
+  "tableBlocks": [
+    {
+      "id": "t1",
+      "rows": [
+        [
+          "Field",
+          "Value"
+        ],
+        [
+          "Title",
+          "Admin Portal"
+        ],
+        [
+          "Owner",
+          "Support"
+        ]
+      ]
+    }
+  ],
+  "links": []
+}

@@ -1,0 +1,24 @@
+{
+  "stepId": "step-62da8044-c236-4012-9fce-15785c94bfa7",
+  "parentStepId": null,
+  "kind": "empty",
+  "status": "todo",
+  "title": "Deprecated flow",
+  "descriptionHtml": "<p>This skipped step remains in the library but is excluded from exports.</p>",
+  "hidden": false,
+  "skipped": true,
+  "forceNewPage": false,
+  "focusedView": {
+    "enabled": false,
+    "zoom": 1,
+    "panX": 0.5,
+    "panY": 0.5
+  },
+  "image": null,
+  "extraImages": [],
+  "annotations": [],
+  "textBlocks": [],
+  "codeBlocks": [],
+  "tableBlocks": [],
+  "links": []
+}

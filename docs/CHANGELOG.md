@@ -52,6 +52,10 @@ Initial release.
 - Right-click "Move to folder" on a guide no longer lists its current
   folder, and "Move to no folder" only appears when the guide is
   currently in a folder.
+- Opening a guide from the library (card click, search result, or
+  "Open guide" from the right-click menu) now arms a paused capture
+  session for it, so the red REC bar appears immediately with a "Start
+  recording" option to resume capturing more steps.
 
 ### Fixed
 

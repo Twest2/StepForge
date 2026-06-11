@@ -370,7 +370,7 @@ class StepForgeApp {
             type: 'button',
             className: this.state.selectMode ? 'primary' : '',
             onClick: () => this.toggleSelectMode(),
-          }, this.state.selectMode ? 'Done selecting' : 'Select') : null,
+          }, this.state.selectMode ? 'Selecting' : 'Select') : null,
         ),
         el('div.row', { style: { justifyContent: 'space-between', marginBottom: '14px' } },
           el('div', {},

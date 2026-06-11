@@ -225,7 +225,6 @@ kbd {
   cursor: pointer;
 }
 .guide-card:hover { border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); }
-.guide-card.selectable { padding-left: 40px; }
 .guide-card.selected {
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 8%, var(--panel));
@@ -270,8 +269,8 @@ kbd {
 }
 .guide-card .select-check {
   position: absolute;
-  top: 14px;
-  left: 14px;
+  top: 11px;
+  right: 12px;
   width: 16px;
   height: 16px;
   cursor: pointer;

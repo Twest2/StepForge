@@ -24,7 +24,7 @@ const { encodePng } = require('../core/png');
 
 // Dedupe duplicate watcher events for one physical click while still
 // allowing intentionally fast clicking.
-const CLICK_DEBOUNCE_MS = 150;
+const CLICK_DEBOUNCE_MS = 40;
 // Idle gap between frame-loop grabs; the effective refresh rate is
 // grab-duration + this.
 const FRAME_LOOP_IDLE_MS = 50;
@@ -35,6 +35,14 @@ const CLICK_FRAME_MAX_AGE_MS = 600;
 // one-off fresh shot.
 const CLICK_FRAME_WAIT_MS = 2000;
 const CLICK_CAPTURE_HIDE_DELAY_MS = 25;
+
+function pointInBounds(point, bounds) {
+  if (!point || !bounds) return false;
+  return point.x >= bounds.x
+    && point.x <= bounds.x + bounds.width
+    && point.y >= bounds.y
+    && point.y <= bounds.y + bounds.height;
+}
 
 function hasBinary(name) {
   try {
@@ -59,6 +67,7 @@ class CaptureService {
     this.frameWaiters = [];
     this.latestFrame = null;
     this.lastClickCapture = 0;
+    this.clickWatcherButtonDown = false;
     this.shooting = false;
   }
 
@@ -265,7 +274,7 @@ class CaptureService {
     // flight waits for that frame instead of being dropped, so fast
     // clicking still yields one step per click.
     if (trigger === 'click') {
-      const frame = await this.frameForClick();
+      const frame = await this.frameForClick(clickPos);
       if (!this.session || this.session.paused) return { ok: false, reason: 'no active capture session' };
       if (frame) {
         const result = this.storeFrameAsStep(this.session.guideId, frame.mode, frame, clickPos);
@@ -383,31 +392,37 @@ class CaptureService {
    * recent enough, otherwise the next frame the loop delivers. Null when the
    * loop isn't running or can't deliver in time.
    */
-  async frameForClick() {
+  async frameForClick(clickPos = null) {
     const mode = this.settings.get('capture.mode') || 'fullscreen';
     const grabMode = mode === 'region' ? 'fullscreen' : mode;
-    const usable = (f) => f && f.mode === grabMode
-      && Date.now() - f.capturedAt <= CLICK_FRAME_MAX_AGE_MS;
+    // Fast clicks can move to another monitor before the buffered frame is
+    // consumed; only reuse frames from the clicked display.
+    const usable = (f) => {
+      const sameDisplay = !clickPos || pointInBounds(clickPos, f && f.display && f.display.bounds);
+      return Boolean(f)
+        && f.mode === grabMode
+        && Date.now() - f.capturedAt <= CLICK_FRAME_MAX_AGE_MS
+        && sameDisplay;
+    };
     if (usable(this.latestFrame)) return this.latestFrame;
     if (!this.frameLoopRunning) return null;
-    const next = await this.nextFrame(CLICK_FRAME_WAIT_MS);
-    return usable(next) ? next : null;
+    const deadline = Date.now() + CLICK_FRAME_WAIT_MS;
+    while (this.frameLoopRunning && Date.now() < deadline) {
+      const next = await this.nextFrame(Math.max(1, deadline - Date.now()));
+      if (usable(next)) return next;
+    }
+    return null;
   }
 
   startClickWatcher() {
     this.stopClickWatcher();
     try {
+      this.clickWatcherButtonDown = false;
       if (process.platform === 'linux' && hasBinary('xinput')) {
         // Stream raw button events from the X server; one capture per press.
         this.clickWatcher = spawn('xinput', ['test-xi2', '--root'], { stdio: ['ignore', 'pipe', 'ignore'] });
-        let sawPress = false;
         this.clickWatcher.stdout.on('data', (chunk) => {
-          const text = chunk.toString();
-          if (/RawButtonPress|ButtonPress/.test(text)) sawPress = true;
-          if (sawPress) {
-            sawPress = false;
-            this.onOsClick();
-          }
+          this.processClickWatcherData(chunk.toString(), 'linux');
         });
       } else if (process.platform === 'win32') {
         // Poll the left mouse button via GetAsyncKeyState; print one line per click.
@@ -422,7 +437,7 @@ while ($true) {
 }`;
         this.clickWatcher = spawn('powershell.exe', ['-NoProfile', '-Command', ps], { stdio: ['ignore', 'pipe', 'ignore'] });
         this.clickWatcher.stdout.on('data', (chunk) => {
-          if (chunk.toString().includes('CLICK')) this.onOsClick();
+          this.processClickWatcherData(chunk.toString(), 'win32');
         });
       }
       if (this.clickWatcher) {
@@ -439,15 +454,40 @@ while ($true) {
       try { this.clickWatcher.kill(); } catch { /* already gone */ }
       this.clickWatcher = null;
     }
+    this.clickWatcherButtonDown = false;
   }
 
-  onOsClick() {
+  processClickWatcherData(text, platform = process.platform) {
+    const lines = String(text).split(/\r?\n/);
+    if (platform === 'linux') {
+      for (const line of lines) {
+        if (!line) continue;
+        // xinput batches multiple events into one chunk, so parse line by
+        // line and track press/release state instead of collapsing the chunk.
+        if (/RawButtonPress|ButtonPress/.test(line)) {
+          if (!this.clickWatcherButtonDown) {
+            this.clickWatcherButtonDown = true;
+            this.onOsClick();
+          }
+        } else if (/RawButtonRelease|ButtonRelease/.test(line)) {
+          this.clickWatcherButtonDown = false;
+        }
+      }
+      return;
+    }
+    if (platform === 'win32') {
+      for (const line of lines) {
+        if (line.includes('CLICK')) this.onOsClick();
+      }
+    }
+  }
+
+  onOsClick(at = Date.now()) {
     if (!this.session || this.session.paused) return;
     // Ignore clicks on StepForge itself (pausing, finishing, editing).
     if (BrowserWindow.getFocusedWindow()) return;
-    const now = Date.now();
-    if (now - this.lastClickCapture < CLICK_DEBOUNCE_MS) return;
-    this.lastClickCapture = now;
+    if (at - this.lastClickCapture < CLICK_DEBOUNCE_MS) return;
+    this.lastClickCapture = at;
     // Grab the cursor position synchronously, right when the click is
     // detected, so the marker lands exactly where the user clicked even if
     // the shot itself takes a moment to grab.
@@ -455,14 +495,14 @@ while ($true) {
     this.sessionCapture('click', clickPos).catch(() => {});
   }
 
-  async captureCurrentFrame(mode) {
-    const grabbed = await this.grab(mode);
+  async captureCurrentFrame(mode, capturePoint = null) {
+    const grabbed = await this.grab(mode, capturePoint);
     return {
       mode,
       png: grabbed.image.toPNG(),
       size: grabbed.image.getSize(),
       display: grabbed.display,
-      cursor: grabbed.cursor,
+      cursor: capturePoint || grabbed.cursor,
       capturedAt: Date.now(),
     };
   }
@@ -511,8 +551,8 @@ while ($true) {
   }
 
   /** Grab the screen/window image as { image, display } or throw. */
-  async grab(mode) {
-    const cursor = screen.getCursorScreenPoint();
+  async grab(mode, cursorPoint = null) {
+    const cursor = cursorPoint || screen.getCursorScreenPoint();
     const display = screen.getDisplayNearestPoint(cursor);
     const { width, height } = display.size;
     const scale = display.scaleFactor || 1;
@@ -587,11 +627,11 @@ while ($true) {
     let frame;
     try {
       frame = hideWindow
-        ? await this.withWindowHidden(() => this.captureCurrentFrame(mode), {
+        ? await this.withWindowHidden(() => this.captureCurrentFrame(mode, clickPos), {
           refocus,
           pauseMs: hideWindowDelayMs == null ? 350 : hideWindowDelayMs,
         })
-        : await this.captureCurrentFrame(mode);
+        : await this.captureCurrentFrame(mode, clickPos);
     } catch (err) {
       return { ok: false, reason: err.message };
     }

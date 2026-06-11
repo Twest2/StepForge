@@ -8,7 +8,7 @@ const { nowIso, readJsonIfExists } = require('./util');
 /**
  * Advisory sidecar lock files for shared .sfgz guides on network folders.
  * For `guide.sfgz` the lock is `guide.lock-sfgz` next to it. This is a
- * coordination mechanism, not a security boundary (see SECURITY.md).
+ * coordination mechanism, not a security boundary (see docs/SECURITY.md).
  */
 
 const STALE_AFTER_MS = 1000 * 60 * 60 * 8; // 8h: treat crashed holders as stale

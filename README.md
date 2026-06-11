@@ -76,7 +76,7 @@ using only Node built-ins.
 
 ## Getting Started
 
-For a shorter walkthrough, see [GETTING_STARTED.md](GETTING_STARTED.md).
+For a shorter walkthrough, see [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md).
 
 Requirements: Node.js 20+ and npm (Electron is the only dependency).
 
@@ -121,17 +121,19 @@ this machine and which packaging tools were unavailable.
 The shipping app makes **zero network calls**. There is no telemetry, no
 update check, no license validation, no cloud sync, no account system, and no
 remote AI. Exports embed no remote fonts or CDN references. See
-[SECURITY.md](SECURITY.md) for the threat model.
+[docs/SECURITY.md](docs/SECURITY.md) for the threat model.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the full contribution flow,
+See [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for the full contribution flow,
 including the issue-number requirement for every pull request and the
 clean-room rules.
 
 ## Repository Layout
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) to see the repo layout.
+Project docs live in `docs/`, and prompt handoffs live in `ai_prompts/`.
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the repo layout.
 
 ## License
 

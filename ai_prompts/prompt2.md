@@ -1,7 +1,7 @@
 # prompt2.md — Finish StepForge (handoff checklist)
 
 You are finishing a nearly-complete offline desktop app called **StepForge**
-(an Electron + vanilla-JS clone of Folge, see `prompt.md` for the full spec).
+(an Electron + vanilla-JS clone of Folge, see `./prompt.md` for the full spec).
 Work through the unchecked boxes below **in order**, committing after each
 section. Keep every change consistent with the existing code style.
 
@@ -131,7 +131,7 @@ half-done): capture-service fixes and editor additions listed in sections
       (`node scripts/make-sample-guide.js`), commit changes.
 
 ### 8. Docs + final commit
-- [x] Update CHANGELOG.md (### Added: capture menu, block editors,
+- [x] Update `../docs/CHANGELOG.md` (### Added: capture menu, block editors,
       focused-view controls, shortcuts, backups dialog, template
       management, apply-style-across; ### Fixed: window-capture fallback,
       app hides itself during capture).
@@ -139,7 +139,7 @@ half-done): capture-service fixes and editor additions listed in sections
 - [x] Update THIS file: tick every box you completed.
 - [x] Final commit.
 
-## Testing philosophy (from prompt.md — do not violate)
+## Testing philosophy (from ./prompt.md — do not violate)
 
 Tests must exercise real workflows and assert on actual output (parse the
 file that was produced, check the pixels/bytes/structure), NOT grep for

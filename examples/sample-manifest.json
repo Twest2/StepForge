@@ -1,7 +1,7 @@
 {
   "format": "stepforge-sample-manifest",
   "version": 1,
-  "generatedAt": "2026-06-11T02:40:34.632Z",
+  "generatedAt": "2026-06-11T14:16:39.204Z",
   "guideId": "guide-sample-reset-password",
   "title": "Reset a password in Admin Portal",
   "dataDir": "sample-data",

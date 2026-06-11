@@ -23,8 +23,6 @@ const { encodePng } = require('../core/png');
  */
 
 const CLICK_DEBOUNCE_MS = 700;
-const CLICK_CAPTURE_CACHE_MS = 75;
-const CLICK_CAPTURE_CACHE_MAX_AGE_MS = 400;
 const CLICK_CAPTURE_HIDE_DELAY_MS = 25;
 
 function hasBinary(name) {
@@ -45,9 +43,6 @@ class CaptureService {
     this.session = null; // { guideId, paused, count, intervalSec }
     this.intervalTimer = null;
     this.clickWatcher = null;
-    this.captureCacheTimer = null;
-    this.captureCache = null;
-    this.captureCacheRunning = false;
     this.lastClickCapture = 0;
     this.shooting = false;
   }
@@ -189,27 +184,15 @@ class CaptureService {
     const wasPaused = this.session.paused;
     this.session.paused = typeof force === 'boolean' ? force : !this.session.paused;
     // Starting/resuming tucks the window away again for clean shots (after
-    // a brief delay so the user sees it happen) and arms the click-capture
-    // cache so the very next click is captured instantly.
+    // a brief delay so the user sees it happen).
     if (wasPaused && !this.session.paused) {
       const win = this.getWindow();
-      const arm = () => {
+      const tuck = () => {
         if (!this.session || this.session.paused) return;
         if (this.hiddenForSession && win && !win.isDestroyed() && win.isVisible()) win.hide();
-        if (this.settings.get('capture.captureOutsideClicks') !== false && this.clickCaptureAvailable()) {
-          this.startClickCaptureCache();
-        }
       };
-      if (this.hiddenForSession && win && !win.isDestroyed()) setTimeout(arm, 400);
-      else arm();
-    } else if (!wasPaused && this.session.paused) {
-      // Pausing stops the background cache refresh loop, but it does so by
-      // returning early (see startClickCaptureCache's refresh) without
-      // resetting captureCacheRunning or clearing captureCache. Without this
-      // call, resuming would find captureCacheRunning still true, so
-      // startClickCaptureCache() would no-op and every click afterwards
-      // would reuse the stale pre-pause frame instead of a fresh one.
-      this.stopClickCaptureCache();
+      if (this.hiddenForSession && win && !win.isDestroyed()) setTimeout(tuck, 400);
+      else tuck();
     }
     if (this.rebuildTrayMenu) this.rebuildTrayMenu();
     this.notify('capture:state', this.state());
@@ -221,7 +204,6 @@ class CaptureService {
       this.intervalTimer = null;
     }
     this.stopClickWatcher();
-    this.stopClickCaptureCache();
     this.destroySessionTray();
     this.session = null;
     if (this.hiddenForSession) {
@@ -258,23 +240,18 @@ class CaptureService {
     try {
       const mode = this.settings.get('capture.mode') || 'fullscreen';
       const grabMode = mode === 'region' ? 'fullscreen' : mode;
-      // The background refresh loop (startClickCaptureCache) keeps this
-      // updated every ~75ms; if it's gone stale (refresh errors silently and
-      // stops updating, or the cache was never refreshed after a resume),
-      // fall back to a fresh shot rather than reusing an old background.
-      const cacheFresh = this.captureCache && this.captureCache.mode === grabMode
-        && Date.now() - this.captureCache.capturedAt <= CLICK_CAPTURE_CACHE_MAX_AGE_MS;
-      const cached = trigger === 'click' && cacheFresh ? this.captureCache : null;
-      const finalResult = cached
-        ? this.storeFrameAsStep(this.session.guideId, grabMode, cached, clickPos)
-        : await this.shoot({
-          guideId: this.session.guideId,
-          mode: grabMode,
-          delayMs: 0,
-          hideWindowDelayMs: trigger === 'click' ? CLICK_CAPTURE_HIDE_DELAY_MS : null,
-          refocus: false, // don't steal focus from the app the user is documenting
-          clickPos,
-        });
+      // Always a fresh shot, started right now. Click captures pass the
+      // cursor position grabbed at the instant of the click (onOsClick), so
+      // the marker always lands on the screen the user actually clicked —
+      // never on a pre-click frame from some moment earlier.
+      const finalResult = await this.shoot({
+        guideId: this.session.guideId,
+        mode: grabMode,
+        delayMs: 0,
+        hideWindowDelayMs: trigger === 'click' ? CLICK_CAPTURE_HIDE_DELAY_MS : null,
+        refocus: false, // don't steal focus from the app the user is documenting
+        clickPos,
+      });
       if (finalResult.ok) {
         this.session.count += 1;
         this.notify('capture:added', { guideId: this.session.guideId, step: finalResult.step, trigger });
@@ -292,40 +269,6 @@ class CaptureService {
   }
 
   // ---- click-triggered capture --------------------------------------------
-
-  startClickCaptureCache() {
-    if (this.captureCacheRunning) return;
-    this.captureCacheRunning = true;
-    const refresh = async () => {
-      if (!this.session || this.session.paused || !this.captureCacheRunning) return;
-      try {
-        if (!this.shooting) {
-          const mode = this.settings.get('capture.mode') || 'fullscreen';
-          const grabMode = mode === 'region' ? 'fullscreen' : mode;
-          const frame = await this.captureCurrentFrame(grabMode);
-          if (this.captureCacheRunning && this.session && !this.session.paused) {
-            this.captureCache = frame;
-          }
-        }
-      } catch {
-        // Cache misses are fine; click capture falls back to a fresh shot.
-      } finally {
-        if (this.session && !this.session.paused && this.captureCacheRunning) {
-          this.captureCacheTimer = setTimeout(refresh, CLICK_CAPTURE_CACHE_MS);
-        }
-      }
-    };
-    this.captureCacheTimer = setTimeout(refresh, 0);
-  }
-
-  stopClickCaptureCache() {
-    if (this.captureCacheTimer) {
-      clearTimeout(this.captureCacheTimer);
-      this.captureCacheTimer = null;
-    }
-    this.captureCacheRunning = false;
-    this.captureCache = null;
-  }
 
   startClickWatcher() {
     this.stopClickWatcher();
@@ -383,7 +326,7 @@ while ($true) {
     this.lastClickCapture = now;
     // Grab the cursor position synchronously, right when the click is
     // detected, so the marker lands exactly where the user clicked even if
-    // the cached frame is a beat stale or a fresh shot takes a moment.
+    // the shot itself takes a moment to grab.
     const clickPos = screen.getCursorScreenPoint();
     this.sessionCapture('click', clickPos).catch(() => {});
   }

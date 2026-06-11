@@ -24,6 +24,7 @@ const { encodePng } = require('../core/png');
 
 const CLICK_DEBOUNCE_MS = 700;
 const CLICK_CAPTURE_CACHE_MS = 75;
+const CLICK_CAPTURE_CACHE_MAX_AGE_MS = 400;
 const CLICK_CAPTURE_HIDE_DELAY_MS = 25;
 
 function hasBinary(name) {
@@ -257,9 +258,13 @@ class CaptureService {
     try {
       const mode = this.settings.get('capture.mode') || 'fullscreen';
       const grabMode = mode === 'region' ? 'fullscreen' : mode;
-      const cached = trigger === 'click' && this.captureCache && this.captureCache.mode === grabMode
-        ? this.captureCache
-        : null;
+      // The background refresh loop (startClickCaptureCache) keeps this
+      // updated every ~75ms; if it's gone stale (refresh errors silently and
+      // stops updating, or the cache was never refreshed after a resume),
+      // fall back to a fresh shot rather than reusing an old background.
+      const cacheFresh = this.captureCache && this.captureCache.mode === grabMode
+        && Date.now() - this.captureCache.capturedAt <= CLICK_CAPTURE_CACHE_MAX_AGE_MS;
+      const cached = trigger === 'click' && cacheFresh ? this.captureCache : null;
       const finalResult = cached
         ? this.storeFrameAsStep(this.session.guideId, grabMode, cached, clickPos)
         : await this.shoot({

@@ -1,18 +1,35 @@
 'use strict';
 
 const path = require('node:path');
+const { spawn, execFileSync } = require('node:child_process');
 const { desktopCapturer, screen, BrowserWindow, nativeImage } = require('electron');
 const { expandPlaceholders } = require('../core/placeholders');
 
 /**
  * Capture service: full-screen, active-window, and region capture via
  * Electron's desktopCapturer, plus a click-marker annotation at the cursor
- * position and a capture session (start/pause/resume/finish) driven by the
- * global hotkey.
+ * position and a capture session (start/pause/resume/finish).
+ *
+ * A session captures continuously, with three triggers layered by what the
+ * platform supports:
+ *  - click-capture via an OS adapter (xinput on X11, PowerShell on Windows),
+ *  - a global hotkey (unreliable on some Wayland compositors),
+ *  - interval auto-capture as the always-works fallback.
  *
  * Note: under Wayland/WSLg, screen capture may require portal support; all
  * failures surface as { ok: false, reason } instead of crashing.
  */
+
+const CLICK_DEBOUNCE_MS = 700;
+
+function hasBinary(name) {
+  try {
+    execFileSync('which', [name], { stdio: 'pipe' });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 class CaptureService {
   constructor({ store, settings, getWindow, notify }) {
@@ -20,42 +37,170 @@ class CaptureService {
     this.settings = settings;
     this.getWindow = getWindow;
     this.notify = notify;
-    this.session = null; // { guideId, paused, count }
+    this.session = null; // { guideId, paused, count, intervalSec }
+    this.intervalTimer = null;
+    this.clickWatcher = null;
+    this.lastClickCapture = 0;
+    this.shooting = false;
   }
 
   state() {
     return this.session
-      ? { active: true, paused: this.session.paused, guideId: this.session.guideId, count: this.session.count }
-      : { active: false };
+      ? {
+        active: true,
+        paused: this.session.paused,
+        guideId: this.session.guideId,
+        count: this.session.count,
+        intervalSec: this.session.intervalSec || 0,
+        clickCapture: Boolean(this.clickWatcher),
+        clickCaptureAvailable: this.clickCaptureAvailable(),
+      }
+      : { active: false, clickCaptureAvailable: this.clickCaptureAvailable() };
   }
 
-  startSession(guideId) {
-    this.session = { guideId, paused: false, count: 0 };
+  clickCaptureAvailable() {
+    if (this._clickAvail === undefined) {
+      this._clickAvail = process.platform === 'win32' || (process.platform === 'linux' && hasBinary('xinput'));
+    }
+    return this._clickAvail;
+  }
+
+  startSession(guideId, { intervalSec = null } = {}) {
+    this.finishSession();
+    // Default trigger: clicks when the platform supports it, otherwise an
+    // interval so a session always produces steps even if the global hotkey
+    // never fires (common under Wayland/WSLg).
+    let interval = intervalSec;
+    if (interval == null) {
+      interval = this.clickCaptureAvailable() ? 0 : (this.settings.get('capture.autoIntervalSec') || 5);
+    }
+    this.session = { guideId, paused: false, count: 0, intervalSec: interval };
+    if (this.settings.get('capture.captureOutsideClicks') !== false) this.startClickWatcher();
+    this.applyInterval();
+    this.notify('capture:state', this.state());
+  }
+
+  setInterval(intervalSec) {
+    if (!this.session) return this.state();
+    this.session.intervalSec = Math.max(0, Number(intervalSec) || 0);
+    this.applyInterval();
+    this.notify('capture:state', this.state());
+    return this.state();
+  }
+
+  applyInterval() {
+    if (this.intervalTimer) {
+      clearInterval(this.intervalTimer);
+      this.intervalTimer = null;
+    }
+    const sec = this.session && this.session.intervalSec;
+    if (sec > 0) {
+      this.intervalTimer = setInterval(() => {
+        this.sessionCapture('interval').catch(() => {});
+      }, sec * 1000);
+    }
   }
 
   togglePause(force) {
     if (!this.session) return;
     this.session.paused = typeof force === 'boolean' ? force : !this.session.paused;
+    this.notify('capture:state', this.state());
   }
 
   finishSession() {
+    if (this.intervalTimer) {
+      clearInterval(this.intervalTimer);
+      this.intervalTimer = null;
+    }
+    this.stopClickWatcher();
     this.session = null;
   }
 
-  async hotkeyCapture() {
+  /** One capture inside the active session (hotkey/click/interval/manual). */
+  async sessionCapture(trigger = 'hotkey') {
     if (!this.session || this.session.paused) return { ok: false, reason: 'no active capture session' };
-    const mode = this.settings.get('capture.mode') || 'fullscreen';
-    const result = await this.shoot({
-      guideId: this.session.guideId,
-      mode: mode === 'region' ? 'fullscreen' : mode,
-      delayMs: 0,
-      refocus: false, // don't steal focus from the app the user is documenting
-    });
-    if (result.ok) {
-      this.session.count += 1;
-      this.notify('capture:added', { guideId: this.session.guideId, step: result.step });
+    if (this.shooting) return { ok: false, reason: 'capture already in progress' };
+    this.shooting = true;
+    try {
+      const mode = this.settings.get('capture.mode') || 'fullscreen';
+      const result = await this.shoot({
+        guideId: this.session.guideId,
+        mode: mode === 'region' ? 'fullscreen' : mode,
+        delayMs: 0,
+        refocus: false, // don't steal focus from the app the user is documenting
+      });
+      if (result.ok) {
+        this.session.count += 1;
+        this.notify('capture:added', { guideId: this.session.guideId, step: result.step, trigger });
+        this.notify('capture:state', this.state());
+      }
+      return result;
+    } finally {
+      this.shooting = false;
     }
-    return result;
+  }
+
+  hotkeyCapture() {
+    return this.sessionCapture('hotkey');
+  }
+
+  // ---- click-triggered capture --------------------------------------------
+
+  startClickWatcher() {
+    this.stopClickWatcher();
+    try {
+      if (process.platform === 'linux' && hasBinary('xinput')) {
+        // Stream raw button events from the X server; one capture per press.
+        this.clickWatcher = spawn('xinput', ['test-xi2', '--root'], { stdio: ['ignore', 'pipe', 'ignore'] });
+        let sawPress = false;
+        this.clickWatcher.stdout.on('data', (chunk) => {
+          const text = chunk.toString();
+          if (/RawButtonPress|ButtonPress/.test(text)) sawPress = true;
+          if (sawPress) {
+            sawPress = false;
+            this.onOsClick();
+          }
+        });
+      } else if (process.platform === 'win32') {
+        // Poll the left mouse button via GetAsyncKeyState; print one line per click.
+        const ps = `
+Add-Type -Namespace W -Name U -MemberDefinition '[DllImport("user32.dll")] public static extern short GetAsyncKeyState(int k);'
+$down = $false
+while ($true) {
+  $s = [W.U]::GetAsyncKeyState(0x01) -band 0x8000
+  if ($s -and -not $down) { Write-Output CLICK }
+  $down = [bool]$s
+  Start-Sleep -Milliseconds 40
+}`;
+        this.clickWatcher = spawn('powershell.exe', ['-NoProfile', '-Command', ps], { stdio: ['ignore', 'pipe', 'ignore'] });
+        this.clickWatcher.stdout.on('data', (chunk) => {
+          if (chunk.toString().includes('CLICK')) this.onOsClick();
+        });
+      }
+      if (this.clickWatcher) {
+        this.clickWatcher.on('error', () => { this.clickWatcher = null; });
+        this.clickWatcher.on('exit', () => { this.clickWatcher = null; });
+      }
+    } catch {
+      this.clickWatcher = null;
+    }
+  }
+
+  stopClickWatcher() {
+    if (this.clickWatcher) {
+      try { this.clickWatcher.kill(); } catch { /* already gone */ }
+      this.clickWatcher = null;
+    }
+  }
+
+  onOsClick() {
+    if (!this.session || this.session.paused) return;
+    // Ignore clicks on StepForge itself (pausing, finishing, editing).
+    if (BrowserWindow.getFocusedWindow()) return;
+    const now = Date.now();
+    if (now - this.lastClickCapture < CLICK_DEBOUNCE_MS) return;
+    this.lastClickCapture = now;
+    this.sessionCapture('click').catch(() => {});
   }
 
   autoTitle(mode) {

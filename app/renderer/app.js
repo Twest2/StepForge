@@ -81,6 +81,7 @@ class StepForgeApp {
 
   async onCaptureAdded(payload) {
     if (!payload || !payload.guideId) return;
+    this.updateCaptureState(await api.capture.state());
     if (this.state.view === 'editor' && this.editor.guideId === payload.guideId) {
       await this.editor.reload(payload.step && payload.step.stepId ? payload.step.stepId : this.editor.selectedStepId);
       return;
@@ -187,7 +188,13 @@ class StepForgeApp {
     const state = await api.capture.session({ action: 'start', guideId: guide.guideId });
     this.updateCaptureState(state);
     const hotkey = this.state.settings?.capture?.hotkeyCapture;
-    toast(hotkey ? `Capture session started — press ${hotkey} to grab a step.` : 'Capture session started.');
+    if (state.clickCapture) {
+      toast('Capture session started — every click outside StepForge grabs a step.');
+    } else if (state.intervalSec > 0) {
+      toast(`Capture session started — auto-capturing every ${state.intervalSec}s (use the REC bar to pause or change).`);
+    } else {
+      toast(hotkey ? `Capture session started — press ${hotkey} or use Shoot in the REC bar.` : 'Capture session started.');
+    }
   }
 
   async openExistingWorkspace() {
@@ -229,21 +236,43 @@ class StepForgeApp {
       return;
     }
     this.captureStatus.classList.remove('hidden');
+    const s = this.captureState;
+    const send = (payload) => api.capture.session(payload).then((next) => this.updateCaptureState(next));
+
+    // What is currently triggering captures, so the user knows what to do.
+    const trigger = s.paused ? 'paused'
+      : s.clickCapture ? 'on click'
+        : s.intervalSec > 0 ? `every ${s.intervalSec}s`
+          : 'hotkey only';
+
+    const shootBtn = el('button', {
+      type: 'button',
+      title: 'Capture a step now (the app hides itself for the shot)',
+      onClick: () => send({ action: 'shoot' }),
+    }, 'Shoot');
+
+    // Cycle interval auto-capture: off -> 3s -> 5s -> 10s -> off.
+    const nextInterval = { 0: 3, 3: 5, 5: 10, 10: 0 }[s.intervalSec ?? 0] ?? 3;
+    const autoBtn = el('button', {
+      type: 'button',
+      title: 'Automatically capture a step on a timer',
+      onClick: () => send({ action: 'interval', intervalSec: nextInterval }),
+    }, s.intervalSec > 0 ? `Auto ${s.intervalSec}s` : 'Auto off');
+
     const pauseBtn = el('button', {
       type: 'button',
-      onClick: () => {
-        const action = this.captureState.paused ? 'resume' : 'pause';
-        api.capture.session({ action, guideId: this.editorMeta?.guide?.id || this.editorMeta?.guide?.guideId || null })
-          .then((next) => this.updateCaptureState(next));
-      },
-    }, this.captureState.paused ? 'Resume' : 'Pause');
+      onClick: () => send({ action: s.paused ? 'resume' : 'pause' }),
+    }, s.paused ? 'Resume' : 'Pause');
+
     const finishBtn = el('button', {
       type: 'button',
-      onClick: () => api.capture.session({ action: 'finish', guideId: this.editorMeta?.guide?.id || this.editorMeta?.guide?.guideId || null })
-        .then((next) => this.updateCaptureState(next)),
+      onClick: () => send({ action: 'finish' }),
     }, 'Finish');
+
     this.captureStatus.append(
-      el('span', {}, `Capture ${this.captureState.count || 0}`),
+      el('span', { title: `Capture session — ${trigger}` }, `REC ${s.count || 0} · ${trigger}`),
+      shootBtn,
+      autoBtn,
       pauseBtn,
       finishBtn,
     );

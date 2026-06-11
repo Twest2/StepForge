@@ -125,8 +125,12 @@ class GuideEditor {
     this.steps = steps;
     this.stepMap = new Map(steps.map((step) => [step.stepId, step]));
     if (!this.shellMounted) this.mountShell();
-    if (!this.selectedStepId || !this.stepMap.has(this.selectedStepId)) {
-      this.selectedStepId = stepId && this.stepMap.has(stepId) ? stepId : (steps[0] && steps[0].stepId) || null;
+    // An explicitly requested step (new capture, added step, restored
+    // neighbour) wins; otherwise keep the current selection if it survived.
+    if (stepId && this.stepMap.has(stepId)) {
+      this.selectedStepId = stepId;
+    } else if (!this.selectedStepId || !this.stepMap.has(this.selectedStepId)) {
+      this.selectedStepId = (steps[0] && steps[0].stepId) || null;
     }
     this.selectedAnnotationId = null;
     this.renderAll();

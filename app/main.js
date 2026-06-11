@@ -98,6 +98,35 @@ function createWindow() {
         }
       }, 1500);
     }
+    // Dev-only self-test: exercise the exact hotkey-session capture path
+    // (hide window -> grab -> showInactive) several times, then exit.
+    if (process.env.STEPFORGE_CAPTURE_SELFTEST) {
+      setTimeout(async () => {
+        try {
+          const guide = store.createGuide({ title: 'hotkey selftest' });
+          capture.startSession(guide.guideId, { intervalSec: 0 });
+          const results = [];
+          for (let i = 0; i < 3; i++) {
+            const r = await capture.hotkeyCapture();
+            results.push(r.ok ? 'OK' : `FAIL:${r.reason}`);
+            await new Promise((res) => setTimeout(res, 500));
+          }
+          console.log('HOTKEY-SELFTEST', JSON.stringify(results),
+            'steps:', store.getGuide(guide.guideId).stepsOrder.length);
+
+          // Interval auto-capture: 1s timer should add ~3 steps in 3.6s.
+          const guide2 = store.createGuide({ title: 'interval selftest' });
+          capture.startSession(guide2.guideId, { intervalSec: 1 });
+          await new Promise((res) => setTimeout(res, 3600));
+          capture.finishSession();
+          console.log('INTERVAL-SELFTEST steps:', store.getGuide(guide2.guideId).stepsOrder.length);
+        } catch (err) {
+          console.log('SELFTEST ERROR', err.message);
+        } finally {
+          app.quit();
+        }
+      }, 1500);
+    }
   });
   mainWindow.on('closed', () => { mainWindow = null; });
 }
@@ -267,11 +296,13 @@ function setupIpc() {
     if (result.ok) reindex(guideId);
     return result;
   });
-  h('capture:session', ({ action, guideId }) => {
-    if (action === 'start') capture.startSession(guideId);
+  h('capture:session', async ({ action, guideId, intervalSec }) => {
+    if (action === 'start') capture.startSession(guideId, { intervalSec: intervalSec ?? null });
     else if (action === 'pause') capture.togglePause(true);
     else if (action === 'resume') capture.togglePause(false);
     else if (action === 'finish') capture.finishSession();
+    else if (action === 'interval') capture.setInterval(intervalSec);
+    else if (action === 'shoot') await capture.sessionCapture('manual');
     const state = capture.state();
     sendToRenderer('capture:state', state);
     return state;

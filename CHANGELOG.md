@@ -16,6 +16,13 @@ Initial release.
 - Capture menu in the editor topbar: full screen / window / region /
   3-second delay, paste image as step, import images, and capture
   session start/finish — capture no longer requires the global hotkey.
+- Continuous capture sessions: steps are grabbed on every OS click where
+  the platform supports it (xinput on X11, PowerShell on Windows), with
+  interval auto-capture (3/5/10 s) as the always-works fallback when
+  click detection or global hotkeys are unavailable (e.g. WSLg/Wayland).
+  The REC bar shows the live count and trigger, with Shoot / Auto /
+  Pause / Finish controls.
+- New captures and newly added steps are now selected in the editor.
 - The app hides its own window during capture so screenshots show your
   work, not StepForge; hotkey captures restore the window without
   stealing focus.

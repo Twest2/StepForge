@@ -201,6 +201,14 @@ class CaptureService {
       };
       if (this.hiddenForSession && win && !win.isDestroyed()) setTimeout(arm, 400);
       else arm();
+    } else if (!wasPaused && this.session.paused) {
+      // Pausing stops the background cache refresh loop, but it does so by
+      // returning early (see startClickCaptureCache's refresh) without
+      // resetting captureCacheRunning or clearing captureCache. Without this
+      // call, resuming would find captureCacheRunning still true, so
+      // startClickCaptureCache() would no-op and every click afterwards
+      // would reuse the stale pre-pause frame instead of a fresh one.
+      this.stopClickCaptureCache();
     }
     if (this.rebuildTrayMenu) this.rebuildTrayMenu();
     this.notify('capture:state', this.state());

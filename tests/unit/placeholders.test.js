@@ -3,12 +3,16 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
+const fs = require('node:fs');
+const path = require('node:path');
+
 const {
   systemPlaceholders, resolveScopes, expandPlaceholders,
   listPlaceholders, collectGuidePlaceholders,
 } = require('../../core/placeholders');
 const { createGuide, createStep } = require('../../core/schema');
 const { Settings, DEFAULT_SETTINGS } = require('../../core/settings');
+const { writeJsonSync } = require('../../core/util');
 const { makeTmpDir, rmrf } = require('./helpers');
 
 test('placeholder expansion respects guide > global > system precedence', () => {
@@ -60,4 +64,30 @@ test('settings persist, deep-merge with defaults, and store global placeholders'
   assert.equal(s2.get('capture.delayMs'), 1500);
   assert.equal(s2.get('capture.clickMarker'), DEFAULT_SETTINGS.capture.clickMarker);
   assert.deepEqual(s2.getGlobalPlaceholders(), { Company: 'Acme', Author: 'Tyler' });
+});
+
+test('a corrupted placeholders/settings file falls back instead of crashing the settings dialog', (t) => {
+  const dir = makeTmpDir('settings-corrupt');
+  t.after(() => rmrf(dir));
+
+  // Simulate a file left over from a past bug: literal "undefined" instead of JSON.
+  fs.writeFileSync(path.join(dir, 'placeholders.json'), 'undefined\n');
+  fs.writeFileSync(path.join(dir, 'app-settings.json'), 'undefined\n');
+
+  const s = new Settings(dir);
+  assert.deepEqual(s.getGlobalPlaceholders(), {});
+  assert.equal(s.get('appearance'), DEFAULT_SETTINGS.appearance);
+
+  // Saving afterwards overwrites the corrupted file with valid JSON.
+  s.setGlobalPlaceholders({ Author: 'Tyler' });
+  assert.deepEqual(s.getGlobalPlaceholders(), { Author: 'Tyler' });
+});
+
+test('writeJsonSync refuses to write a non-JSON value instead of writing the literal string "undefined"', () => {
+  const dir = makeTmpDir('write-json-guard');
+  try {
+    assert.throws(() => writeJsonSync(path.join(dir, 'bad.json'), undefined), TypeError);
+  } finally {
+    rmrf(dir);
+  }
 });

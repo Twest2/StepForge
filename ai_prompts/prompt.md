@@ -614,10 +614,10 @@ Project structure to create:
 
 /README.md
 /LICENSE
-/CONTRIBUTING.md
-/CODE_OF_CONDUCT.md
-/SECURITY.md
-/ARCHITECTURE.md
+/docs/CONTRIBUTING.md
+/docs/CODE_OF_CONDUCT.md
+/docs/SECURITY.md
+/docs/ARCHITECTURE.md
 /.editorconfig
 /.gitattributes
 /.gitignore
@@ -1059,8 +1059,8 @@ Your repository should include these contributor rules from day one:
 - require snapshot fixtures for output changes
 - require changelog entries for user-visible behavior changes
 - use a **Developer Certificate of Origin** sign-off rather than a heavy CLA unless you already expect enterprise legal review
-- include `SECURITY.md` for offline-import and archive-handling issues
-- include `ARCHITECTURE.md` so future contributors do not break exporter consistency
+- include `docs/SECURITY.md` for offline-import and archive-handling issues
+- include `docs/ARCHITECTURE.md` so future contributors do not break exporter consistency
 
 ## Open questions and limitations
 

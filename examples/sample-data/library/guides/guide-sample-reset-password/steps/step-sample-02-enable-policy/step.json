@@ -25,7 +25,7 @@
   "extraImages": [],
   "annotations": [
     {
-      "id": "ann-f6b0cfdd-a867-4811-ad9c-7b31ae7a0476",
+      "id": "ann-d2a29aa5-f083-45b6-8018-bd1e66a878fd",
       "type": "arrow",
       "x": 0.47,
       "y": 0.24,
@@ -41,7 +41,7 @@
       }
     },
     {
-      "id": "ann-3d007177-1e5b-4ed0-8f26-43cd82c7f37d",
+      "id": "ann-d4d4807d-87f4-4b9b-9aac-fe106edafa56",
       "type": "tooltip",
       "x": 0.53,
       "y": 0.13,
@@ -58,7 +58,7 @@
       }
     },
     {
-      "id": "ann-751baf23-eab9-44fc-a811-5c9558de8b38",
+      "id": "ann-a34d3ef1-f227-43ac-a59e-a433dfb7f8d5",
       "type": "number",
       "x": 0.31,
       "y": 0.08,

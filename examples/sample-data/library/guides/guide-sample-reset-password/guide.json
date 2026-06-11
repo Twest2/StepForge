@@ -13,8 +13,8 @@
     "hideSkippedStepsInExports": true
   },
   "themeOverride": "system",
-  "createdAt": "2026-06-11T02:40:34Z",
-  "updatedAt": "2026-06-11T02:40:34Z",
+  "createdAt": "2026-06-11T14:16:39Z",
+  "updatedAt": "2026-06-11T14:16:39Z",
   "stepsOrder": [
     "step-sample-01-open-users",
     "step-sample-02-enable-policy",

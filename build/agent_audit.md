@@ -1,7 +1,7 @@
 # Environment Audit
 
 Audit performed 2026-06-10 before stack selection, as required by the build
-specification in `prompt.md`.
+specification in `ai_prompts/prompt.md`.
 
 ## Host
 

@@ -31,7 +31,7 @@ AppImage require the tools listed above and are skipped on this host.
 ## Offline guarantee
 
 - The shipped app opens no sockets: no telemetry, update checks, license
-  checks, cloud sync, or remote AI. See SECURITY.md.
+  checks, cloud sync, or remote AI. See docs/SECURITY.md.
 - All exporters (PNG/GIF/PDF/DOCX/PPTX/ZIP) are implemented in-repo with
   Node built-ins; Electron is the only third-party dependency
   (dev-time fetch recorded in build/agent_audit.md).

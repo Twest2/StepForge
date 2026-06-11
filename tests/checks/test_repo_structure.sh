@@ -9,8 +9,10 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
-for f in README.md LICENSE ARCHITECTURE.md SECURITY.md CONTRIBUTING.md \
-         CODE_OF_CONDUCT.md CHANGELOG.md package.json; do
+for f in README.md LICENSE package.json \
+         docs/ARCHITECTURE.md docs/SECURITY.md docs/CONTRIBUTING.md \
+         docs/CODE_OF_CONDUCT.md docs/CHANGELOG.md docs/GETTING_STARTED.md \
+         ai_prompts/prompt.md ai_prompts/prompt2.md; do
   if [[ ! -s "$f" ]]; then
     echo "Missing or empty required file: $f" >&2
     exit 1

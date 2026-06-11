@@ -56,23 +56,30 @@ function toast(message, { error = false, ms = 2600 } = {}) {
 function openModal({ title, body, footer, wide = false, onClose }) {
   const root = document.getElementById('modal-root');
   clearNode(root);
+  // `close` just tears down the modal. Buttons that already resolve the
+  // dialog's promise themselves call this. `dismiss` additionally fires
+  // `onClose`, for ways of leaving the dialog that didn't pick an option
+  // (Esc, the ✕, or clicking the backdrop) and need a default resolution.
   const close = () => {
     clearNode(root);
     document.removeEventListener('keydown', escHandler, true);
+  };
+  const dismiss = () => {
+    close();
     if (onClose) onClose();
   };
   const escHandler = (e) => {
-    if (e.key === 'Escape') { e.stopPropagation(); close(); }
+    if (e.key === 'Escape') { e.stopPropagation(); dismiss(); }
   };
   document.addEventListener('keydown', escHandler, true);
   const modal = el('div.modal', { className: `modal${wide ? ' wide' : ''}` },
-    el('header', {}, title, el('span.close', { onClick: close, title: 'Close (Esc)' }, '✕')),
+    el('header', {}, title, el('span.close', { onClick: dismiss, title: 'Close (Esc)' }, '✕')),
     el('div.body', {}, body),
     footer ? el('footer', {}, footer) : null,
   );
   modal.addEventListener('click', (e) => e.stopPropagation());
   root.append(modal);
-  root.onclick = close;
+  root.onclick = dismiss;
   return { close, node: modal };
 }
 

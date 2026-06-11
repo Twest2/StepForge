@@ -55,6 +55,23 @@ Initial release.
 - Annotation style edits no longer steal input focus on each keystroke.
 - Step list stays in sync after saves and undo/redo.
 - Escape deselects the active annotation instead of deleting it.
+- Modal dialogs (confirm/prompt/etc.) no longer resolve as cancelled when
+  an action button is clicked — `openModal`'s teardown was firing the
+  dialog's default-cancel callback before the button's own resolution
+  could win. This was most visible as the step "Delete" button silently
+  doing nothing.
+- New Capture no longer hides the app window ~1.2s after starting; a
+  session now starts paused and the window only tucks away once the user
+  presses "Start recording" in the capture bar, so the app doesn't vanish
+  out from under you.
+- The capture status bar (REC count / Shoot / Auto / Pause / Finish) is
+  now shown only in the editor view; it no longer appears over the
+  library when a session is still running in the background.
+- Click-triggered captures now grab the cursor position at the instant of
+  the click (instead of from the cache's last refresh, up to ~75ms
+  earlier) and use it for the click-marker placement, and the
+  click-capture cache is armed as soon as recording starts so the very
+  first click is captured instantly.
 
 ### Added (initial feature set)
 

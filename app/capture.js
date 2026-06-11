@@ -25,18 +25,25 @@ const { encodePng } = require('../core/png');
 // Dedupe duplicate watcher events for one physical click while still
 // allowing intentionally fast clicking.
 const CLICK_DEBOUNCE_MS = 40;
-// Idle gap between frame-loop grabs. Keep this at zero so the buffered
-// frame stays as close to real time as possible while recording.
-const FRAME_LOOP_IDLE_MS = 0;
+// Idle gap between frame-loop grabs. Must stay well above zero: grabbing
+// back-to-back starves the main-process event loop, which delays delivery
+// of click events from the OS watcher by whole seconds. The frame history
+// plus hook-side click timestamps tolerate the coarser cadence.
+const FRAME_LOOP_IDLE_MS = 200;
 // A buffered frame older than this is too stale to pass off as "the screen
 // at the instant of the click".
 const CLICK_FRAME_MAX_AGE_MS = 600;
 // How long a click waits for the in-flight grab before falling back to a
 // one-off fresh shot.
 const CLICK_FRAME_WAIT_MS = 2000;
+// A loop grab that started at most this long after the click still shows
+// the screen the user clicked on (UI reactions render slower than this).
+const CLICK_FRAME_START_SLACK_MS = 300;
 const CLICK_CAPTURE_HIDE_DELAY_MS = 25;
-const RECENT_FRAME_RETENTION_MS = 2000;
-const RECENT_FRAME_LIMIT = 8;
+// Frames now hold raw images (~20MB each at 2880x1800), so keep the history
+// window wide enough to outlast any processing hiccup but the count low.
+const RECENT_FRAME_RETENTION_MS = 4000;
+const RECENT_FRAME_LIMIT = 4;
 
 function pointInBounds(point, bounds) {
   if (!point || !bounds) return false;
@@ -423,10 +430,15 @@ class CaptureService {
       const sameDisplay = !clickPos || pointInBounds(clickPos, f && f.display && f.display.bounds);
       const startedAt = Number.isFinite(f && f.startedAt) ? f.startedAt : (f && f.capturedAt);
       const completedBeforeClick = Number.isFinite(f && f.capturedAt) && f.capturedAt <= clickTime;
-      const startedBeforeClick = Number.isFinite(startedAt) && startedAt <= clickTime;
+      // A grab that began within the slack window after the click still
+      // shows the click-instant screen (UI reactions take longer than the
+      // slack to render), and it beats the alternative — a fresh shot that
+      // both starts later and stalls the loop for every queued click.
+      const startedNearClick = Number.isFinite(startedAt)
+        && startedAt <= clickTime + CLICK_FRAME_START_SLACK_MS;
       const timingMatches = completedBeforeClick
         ? clickTime - f.capturedAt <= CLICK_FRAME_MAX_AGE_MS
-        : allowInFlight && startedBeforeClick && clickTime - startedAt <= CLICK_FRAME_MAX_AGE_MS;
+        : allowInFlight && startedNearClick;
       return Boolean(f)
         && f.mode === grabMode
         && timingMatches
@@ -436,11 +448,18 @@ class CaptureService {
       .filter((f, i, arr) => f && arr.indexOf(f) === i && usable(f))
       .sort((a, b) => b.capturedAt - a.capturedAt)[0];
     if (buffered) return buffered;
-    if (!this.frameLoopRunning || !this.frameLoopInFlight || this.frameLoopGrabStartedAt > clickTime) return null;
+    // As long as the loop is running, the next grab is at most one idle gap
+    // away — wait for it rather than racing it with a one-off shot.
+    if (!this.frameLoopRunning) return null;
     const deadline = Date.now() + CLICK_FRAME_WAIT_MS;
     while (this.frameLoopRunning && Date.now() < deadline) {
       const next = await this.nextFrame(Math.max(1, deadline - Date.now()));
       if (usable(next, { allowInFlight: true })) return next;
+      if (next && Number.isFinite(next.startedAt)
+        && next.startedAt > clickTime + CLICK_FRAME_START_SLACK_MS) {
+        // Grabs only get later from here; let the fresh-shot path handle it.
+        return null;
+      }
     }
     return null;
   }
@@ -759,7 +778,12 @@ public static class SFMouseHook {
     const grabbed = await this.grab(mode, capturePoint);
     return {
       mode,
-      png: grabbed.image.toPNG(),
+      // Keep the raw image and defer PNG encoding to storeFrameAsStep:
+      // toPNG() on a full-resolution frame blocks the main thread for
+      // hundreds of ms, and doing it every frame-loop tick starved the
+      // event loop so badly that click events arrived seconds late.
+      // Encoding once per *stored* step is cheap; encoding per grab is not.
+      image: grabbed.image,
       size: grabbed.image.getSize(),
       display: grabbed.display,
       cursor: capturePoint || grabbed.cursor,
@@ -796,7 +820,7 @@ public static class SFMouseHook {
         enabled: Boolean(this.settings.get('editor.focusedViewDefaultForNewSteps')),
         zoom: 1, panX: 0.5, panY: 0.5,
       },
-    }, frame.png, frame.size);
+    }, frame.png || frame.image.toPNG(), frame.size);
     return { ok: true, step };
   }
 

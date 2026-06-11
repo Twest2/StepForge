@@ -328,29 +328,60 @@ test('a stale buffered frame is not reused — the click falls back to a fresh s
   assert.equal(shootCalled, true, 'a stale buffered frame must not be reused');
 });
 
-test('an idle click capture does not wait for the next frame loop tick', async () => {
+test('an idle click capture waits for the imminent loop frame instead of racing it', async () => {
+  // Grabs take seconds while the idle gap is ~200ms, so the loop's next
+  // frame both starts sooner and avoids stalling the loop the way a
+  // competing one-off shot would.
   const service = makeService();
   service.session = { guideId: 'guide-idle', paused: false, count: 0, intervalSec: 0 };
   service.frameLoopRunning = true;
   service.frameLoopInFlight = false;
 
-  let nextFrameCalled = false;
+  const clickAt = Date.now();
   service.nextFrame = async () => {
-    nextFrameCalled = true;
-    throw new Error('idle clicks must not wait for a new frame');
+    const f = makeFrame('next-loop-frame');
+    f.startedAt = clickAt + 100; // grab began one idle gap after the click
+    f.capturedAt = clickAt + 350;
+    return f;
+  };
+  service.shoot = async () => {
+    throw new Error('idle clicks must wait for the loop frame, not take a fresh shot');
+  };
+  const added = [];
+  service.store.addStep = (guideId, fields, png) => {
+    added.push(png.toString());
+    return { stepId: 'idle-step' };
   };
 
+  const result = await service.sessionCapture('click', { x: 1, y: 1 }, { at: clickAt });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(added, ['next-loop-frame']);
+});
+
+test('a loop frame started too long after the click falls back to a fresh shot', async () => {
+  const service = makeService();
+  service.session = { guideId: 'guide-late', paused: false, count: 0, intervalSec: 0 };
+  service.frameLoopRunning = true;
+  service.frameLoopInFlight = false;
+
+  const clickAt = Date.now();
+  service.nextFrame = async () => {
+    const f = makeFrame('too-late-frame');
+    f.startedAt = clickAt + 5000; // way past the slack window
+    f.capturedAt = clickAt + 6000;
+    return f;
+  };
   let shootCalled = false;
   service.shoot = async () => {
     shootCalled = true;
-    return { ok: true, step: { stepId: 'idle-step' } };
+    return { ok: true, step: { stepId: 'fresh-step' } };
   };
 
-  const result = await service.sessionCapture('click', { x: 1, y: 1 });
+  const result = await service.sessionCapture('click', { x: 1, y: 1 }, { at: clickAt });
 
   assert.equal(result.ok, true);
-  assert.equal(shootCalled, true);
-  assert.equal(nextFrameCalled, false);
+  assert.equal(shootCalled, true, 'late frames must not be passed off as the click-time screen');
 });
 
 test('clicks during an in-flight grab wait for the frame instead of being dropped', async () => {

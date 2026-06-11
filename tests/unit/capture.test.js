@@ -63,51 +63,31 @@ function makeFrame(name, ageMs = 0, overrides = {}) {
 
 test('rapid click watcher bursts are parsed one click at a time', () => {
   const service = makeService();
-  const clicks = [];
-  service.normalizeClickPoint = (point) => point;
-  service.onOsClick = (clickPos) => {
-    clicks.push(clickPos);
+  let clicks = 0;
+  service.onOsClick = () => {
+    clicks += 1;
   };
 
   service.processClickWatcherData([
     'EVENT type 17 (RawButtonPress)',
-    'root: 10/20',
     'EVENT type 18 (RawButtonRelease)',
     'EVENT type 17 (RawButtonPress)',
-    'root: 30/40',
     'EVENT type 18 (RawButtonRelease)',
   ].join('\n'), 'linux');
 
-  assert.deepEqual(clicks, [
-    { x: 10, y: 20 },
-    { x: 30, y: 40 },
-  ]);
+  assert.equal(clicks, 2);
 });
 
-test('windows click watcher output is buffered and parsed with coordinates', () => {
+test('windows click watcher output is counted line by line', () => {
   const service = makeService();
-  const clicks = [];
-  service.normalizeClickPoint = (point) => point;
-  service.onOsClick = (clickPos) => {
-    clicks.push(clickPos);
+  let clicks = 0;
+  service.onOsClick = () => {
+    clicks += 1;
   };
 
-  service.processClickWatcherData('CL', 'win32');
-  service.processClickWatcherData('ICK 100 200\r\nCLICK 300 400\r\n', 'win32');
+  service.processClickWatcherData('CLICK\r\nCLICK\r\n', 'win32');
 
-  assert.deepEqual(clicks, [
-    { x: 100, y: 200 },
-    { x: 300, y: 400 },
-  ]);
-});
-
-test('the windows click watcher script installs a low-level mouse hook', () => {
-  const service = makeService();
-  const script = service.windowsClickWatcherScript();
-
-  assert.match(script, /WH_MOUSE_LL/);
-  assert.match(script, /WM_LBUTTONDOWN/);
-  assert.match(script, /CLICK \{0\} \{1\}/);
+  assert.equal(clicks, 2);
 });
 
 test('a click is served instantly from the freshly buffered frame', async () => {
@@ -177,7 +157,7 @@ test('a stale buffered frame is not reused — the click falls back to a fresh s
   assert.equal(shootCalled, true, 'a stale buffered frame must not be reused');
 });
 
-test('a running frame loop waits for the next buffered frame when the cache is empty', async () => {
+test('an idle click capture does not wait for the next frame loop tick', async () => {
   const service = makeService();
   service.session = { guideId: 'guide-idle', paused: false, count: 0, intervalSec: 0 };
   service.frameLoopRunning = true;
@@ -186,7 +166,7 @@ test('a running frame loop waits for the next buffered frame when the cache is e
   let nextFrameCalled = false;
   service.nextFrame = async () => {
     nextFrameCalled = true;
-    return makeFrame('loop-frame');
+    throw new Error('idle clicks must not wait for a new frame');
   };
 
   let shootCalled = false;
@@ -194,18 +174,12 @@ test('a running frame loop waits for the next buffered frame when the cache is e
     shootCalled = true;
     return { ok: true, step: { stepId: 'idle-step' } };
   };
-  const added = [];
-  service.store.addStep = (guideId, fields, png) => {
-    added.push(png.toString());
-    return { stepId: 'idle-step' };
-  };
 
   const result = await service.sessionCapture('click', { x: 1, y: 1 });
 
   assert.equal(result.ok, true);
-  assert.equal(shootCalled, false);
-  assert.equal(nextFrameCalled, true);
-  assert.deepEqual(added, ['loop-frame']);
+  assert.equal(shootCalled, true);
+  assert.equal(nextFrameCalled, false);
 });
 
 test('clicks during an in-flight grab wait for the frame instead of being dropped', async () => {

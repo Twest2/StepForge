@@ -53,7 +53,6 @@ body {
 
 #app { display: flex; flex-direction: column; height: 100vh; }
 #view { flex: 1; min-height: 0; display: flex; }
-#view > div { flex: 1; min-width: 0; min-height: 0; }
 .hidden { display: none !important; }
 .muted { color: var(--muted); font-size: 12px; }
 
@@ -152,89 +151,6 @@ kbd {
   border: 0;
   background: rgba(255, 255, 255, 0.14);
   color: #fff;
-}
-
-#welcome-host {
-  position: relative;
-  display: flex;
-  overflow: hidden;
-  background:
-    radial-gradient(circle at top left, rgba(0, 104, 255, 0.14), transparent 32%),
-    radial-gradient(circle at bottom right, rgba(0, 104, 255, 0.09), transparent 28%),
-    linear-gradient(180deg, color-mix(in srgb, var(--panel-solid) 84%, transparent), color-mix(in srgb, var(--bg) 92%, var(--panel-solid) 8%));
-}
-.welcome-screen {
-  position: relative;
-  width: 100%;
-  min-height: 100%;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  padding: 40px clamp(24px, 4vw, 56px) 30px;
-  isolation: isolate;
-}
-.welcome-screen::before {
-  content: '';
-  position: absolute;
-  inset: 18px 18px auto auto;
-  width: min(36vw, 340px);
-  height: min(36vw, 340px);
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(0, 104, 255, 0.16), transparent 68%);
-  filter: blur(8px);
-  pointer-events: none;
-  z-index: 0;
-}
-.welcome-copy {
-  position: relative;
-  z-index: 1;
-  max-width: 760px;
-}
-.welcome-kicker {
-  margin-bottom: 18px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: var(--accent-strong);
-}
-.welcome-copy h1 {
-  margin: 0;
-  max-width: 13ch;
-  font-size: clamp(40px, 6vw, 72px);
-  line-height: 0.94;
-  letter-spacing: -0.05em;
-}
-.welcome-copy p {
-  margin: 16px 0 0;
-  max-width: 46rem;
-  color: var(--muted);
-  font-size: 16px;
-  line-height: 1.6;
-}
-.welcome-spacer {
-  flex: 1;
-  min-height: 24px;
-}
-.welcome-actions {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-  width: min(100%, 980px);
-  align-self: stretch;
-}
-.welcome-actions button {
-  min-height: 64px;
-  border-radius: 16px;
-  padding: 14px 18px;
-  font-size: 15px;
-  font-weight: 650;
-  box-shadow: var(--shadow);
-}
-.welcome-actions button.primary {
-  box-shadow: 0 18px 38px rgba(0, 104, 255, 0.22);
 }
 
 .library, .editor { flex: 1; min-height: 0; display: flex; }
@@ -754,3 +670,4 @@ fieldset legend {
   border: 0;
   border-top: 1px solid var(--border);
 }
+

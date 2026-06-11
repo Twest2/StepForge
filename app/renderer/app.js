@@ -189,11 +189,11 @@ class StepForgeApp {
     this.updateCaptureState(state);
     const hotkey = this.state.settings?.capture?.hotkeyCapture;
     if (state.clickCapture) {
-      toast('Capture session started — every click outside StepForge grabs a step.');
+      toast('Recording — every click grabs a step. StepForge tucks away; use the red tray icon to pause or finish.');
     } else if (state.intervalSec > 0) {
-      toast(`Capture session started — auto-capturing every ${state.intervalSec}s (use the REC bar to pause or change).`);
+      toast(`Recording — a step every ${state.intervalSec}s. StepForge tucks away; use the red tray icon to pause or finish.`);
     } else {
-      toast(hotkey ? `Capture session started — press ${hotkey} or use Shoot in the REC bar.` : 'Capture session started.');
+      toast(hotkey ? `Recording — press ${hotkey} to grab steps. Use the red tray icon to pause or finish.` : 'Capture session started.');
     }
   }
 

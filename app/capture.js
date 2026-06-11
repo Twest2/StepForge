@@ -2,8 +2,10 @@
 
 const path = require('node:path');
 const { spawn, execFileSync } = require('node:child_process');
-const { desktopCapturer, screen, BrowserWindow, nativeImage } = require('electron');
+const { desktopCapturer, screen, BrowserWindow, nativeImage, Tray, Menu, Notification } = require('electron');
 const { expandPlaceholders } = require('../core/placeholders');
+const raster = require('../core/raster');
+const { encodePng } = require('../core/png');
 
 /**
  * Capture service: full-screen, active-window, and region capture via
@@ -78,6 +80,84 @@ class CaptureService {
     if (this.settings.get('capture.captureOutsideClicks') !== false) this.startClickWatcher();
     this.applyInterval();
     this.notify('capture:state', this.state());
+
+    // Tuck the app away once instead of hiding it for every shot — the
+    // hide/show flicker made the window impossible to click mid-session.
+    // A tray icon controls the session while the window is hidden.
+    // (Skipped for the dev screenshot hook, which needs a visible page.)
+    if (!process.env.STEPFORGE_SCREENSHOT) {
+      this.createSessionTray();
+      const win = this.getWindow();
+      if (win && !win.isDestroyed() && win.isVisible()) {
+        this.hiddenForSession = true;
+        setTimeout(() => {
+          // Re-check: the session may have been finished within the delay.
+          if (this.session && this.hiddenForSession && !win.isDestroyed()) win.hide();
+        }, 1200); // let the user read the "session started" toast first
+      }
+      try {
+        new Notification({
+          title: 'StepForge is capturing',
+          body: 'The window tucks away while recording. Use the red tray icon to pause, capture, or finish.',
+        }).show();
+      } catch { /* notifications unavailable on this desktop */ }
+    }
+  }
+
+  /** Red-dot tray icon with session controls, shown while recording. */
+  createSessionTray() {
+    this.destroySessionTray();
+    try {
+      const img = raster.createImage(16, 16, [0, 0, 0, 0]);
+      raster.fillOval(img, 2, 2, 12, 12, [229, 72, 77, 255]);
+      this.tray = new Tray(nativeImage.createFromBuffer(encodePng(img)));
+      this.tray.setToolTip('StepForge — capture session running');
+      const rebuild = () => {
+        if (!this.tray || this.tray.isDestroyed()) return;
+        this.tray.setContextMenu(Menu.buildFromTemplate([
+          { label: `Captured ${this.session ? this.session.count : 0} steps`, enabled: false },
+          { type: 'separator' },
+          { label: 'Capture now', click: () => this.sessionCapture('manual').then(rebuild).catch(() => {}) },
+          {
+            label: this.session && this.session.paused ? 'Resume capturing' : 'Pause capturing',
+            click: () => { this.togglePause(); rebuild(); },
+          },
+          {
+            label: 'Open StepForge (pauses capture)',
+            click: () => {
+              this.togglePause(true);
+              this.showWindow();
+              rebuild();
+            },
+          },
+          { type: 'separator' },
+          { label: 'Finish session', click: () => this.finishSession() },
+        ]));
+      };
+      rebuild();
+      this.rebuildTrayMenu = rebuild;
+      this.tray.on('click', () => {
+        this.togglePause(true);
+        this.showWindow();
+        rebuild();
+      });
+    } catch {
+      this.tray = null; // no tray on this desktop; cursor-over skip still protects clicks
+    }
+  }
+
+  destroySessionTray() {
+    if (this.tray && !this.tray.isDestroyed()) this.tray.destroy();
+    this.tray = null;
+    this.rebuildTrayMenu = null;
+  }
+
+  showWindow() {
+    const win = this.getWindow();
+    if (win && !win.isDestroyed()) {
+      win.show();
+      win.focus();
+    }
   }
 
   setInterval(intervalSec) {
@@ -103,7 +183,16 @@ class CaptureService {
 
   togglePause(force) {
     if (!this.session) return;
+    const wasPaused = this.session.paused;
     this.session.paused = typeof force === 'boolean' ? force : !this.session.paused;
+    // Resuming from the app tucks the window away again for clean shots.
+    if (wasPaused && !this.session.paused && this.hiddenForSession) {
+      const win = this.getWindow();
+      if (win && !win.isDestroyed()) setTimeout(() => {
+        if (this.session && !this.session.paused && !win.isDestroyed()) win.hide();
+      }, 400);
+    }
+    if (this.rebuildTrayMenu) this.rebuildTrayMenu();
     this.notify('capture:state', this.state());
   }
 
@@ -113,13 +202,38 @@ class CaptureService {
       this.intervalTimer = null;
     }
     this.stopClickWatcher();
+    this.destroySessionTray();
     this.session = null;
+    if (this.hiddenForSession) {
+      this.hiddenForSession = false;
+      this.showWindow();
+    }
+    this.notify('capture:state', this.state());
+  }
+
+  /**
+   * True when the user is interacting with StepForge itself. Deliberately
+   * based on cursor position over the visible window, not isFocused():
+   * some compositors (WSLg) report focus as stuck-true, which would block
+   * every automatic capture forever.
+   */
+  userIsInApp() {
+    const win = this.getWindow();
+    if (!win || win.isDestroyed() || !win.isVisible() || win.isMinimized()) return false;
+    const cur = screen.getCursorScreenPoint();
+    const b = win.getBounds();
+    return cur.x >= b.x && cur.x <= b.x + b.width && cur.y >= b.y && cur.y <= b.y + b.height;
   }
 
   /** One capture inside the active session (hotkey/click/interval/manual). */
   async sessionCapture(trigger = 'hotkey') {
     if (!this.session || this.session.paused) return { ok: false, reason: 'no active capture session' };
     if (this.shooting) return { ok: false, reason: 'capture already in progress' };
+    // Automatic triggers stand down while the user is in StepForge, so the
+    // app stays clickable mid-session and never screenshots itself.
+    if (trigger !== 'manual' && this.userIsInApp()) {
+      return { ok: false, reason: 'skipped — StepForge is focused' };
+    }
     this.shooting = true;
     try {
       const mode = this.settings.get('capture.mode') || 'fullscreen';
@@ -133,6 +247,7 @@ class CaptureService {
         this.session.count += 1;
         this.notify('capture:added', { guideId: this.session.guideId, step: result.step, trigger });
         this.notify('capture:state', this.state());
+        if (this.rebuildTrayMenu) this.rebuildTrayMenu(); // refresh step counter
       }
       return result;
     } finally {

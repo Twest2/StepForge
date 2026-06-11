@@ -229,6 +229,16 @@ class StepForgeApp {
     this.renderTopbar();
   }
 
+  // Opens a guide and arms (paused) capture for it, so the red REC bar pops
+  // up right away with a "Start recording" option to resume capturing steps.
+  async openGuideAndArmCapture(guideId, stepId = null) {
+    await this.openGuide(guideId, stepId);
+    // Don't restart (and reset the count of) a session already running for this guide.
+    if (this.captureState?.active && this.captureState.guideId === guideId) return;
+    const state = await api.capture.session({ action: 'start', guideId });
+    this.updateCaptureState(state);
+  }
+
   onEditorMeta(meta) {
     this.editorMeta = meta;
     if (this.state.view === 'editor') this.renderTopbar();
@@ -529,7 +539,7 @@ class StepForgeApp {
       className: `guide-card${selected ? ' selected' : ''}`,
       onClick: () => {
         if (selectMode) this.toggleGuideSelection(guide.guideId);
-        else this.openGuide(guide.guideId);
+        else this.openGuideAndArmCapture(guide.guideId);
       },
       onContextMenu: (e) => {
         e.preventDefault();
@@ -560,7 +570,7 @@ class StepForgeApp {
 
   resultCard(result, guide, isStep) {
     return el('div.guide-card', {
-      onClick: () => this.openGuide(result.guideId, result.stepId || null),
+      onClick: () => this.openGuideAndArmCapture(result.guideId, result.stepId || null),
     },
     el('h4', {}, isStep ? `${guide.title} · ${result.title}` : result.title),
     el('div.meta', {},
@@ -581,7 +591,7 @@ class StepForgeApp {
     if (currentFolderId) folderItems.push({ label: 'Move to no folder', action: () => this.moveGuideToFolder(guide.guideId, null) });
     const moveItems = folderItems.length ? ['sep', ...folderItems] : [];
     contextMenu(event.clientX, event.clientY, [
-      { label: 'Open guide', action: () => this.openGuide(guide.guideId) },
+      { label: 'Open guide', action: () => this.openGuideAndArmCapture(guide.guideId) },
       { label: guide.favorite ? 'Unfavorite' : 'Favorite', action: () => this.toggleFavorite(guide) },
       { label: 'Duplicate guide', action: () => this.duplicateGuide(guide.guideId) },
       { label: 'Export', action: () => this.openGuideExport(guide.guideId) },
@@ -819,7 +829,7 @@ class StepForgeApp {
           kind: result.stepId ? 'step' : 'guide',
           label: result.stepId ? `${result.title}` : result.title,
           description: result.snippet || '',
-          action: () => this.openGuide(result.guideId, result.stepId || null),
+          action: () => this.openGuideAndArmCapture(result.guideId, result.stepId || null),
         }));
       },
     });

@@ -25,7 +25,7 @@
   "extraImages": [],
   "annotations": [
     {
-      "id": "ann-80c0a4c6-8b7a-4ba9-8d38-35be0f890ccb",
+      "id": "ann-def495f6-e1e8-4d71-95cc-a7e5be6cc80a",
       "type": "rect",
       "x": 0.275,
       "y": 0.18,
@@ -41,7 +41,7 @@
       }
     },
     {
-      "id": "ann-403e9d28-8b61-43e8-8a8c-74e35bf8b0ff",
+      "id": "ann-835f60f6-d649-428c-bdf9-4ab27c0b57be",
       "type": "number",
       "x": 0.3,
       "y": 0.08,
@@ -60,7 +60,7 @@
   ],
   "textBlocks": [
     {
-      "id": "tb-9f433853-ccc5-450a-98ed-5dcbde7463ac",
+      "id": "tb-feafdd76-8d10-4d42-8fba-46cb9d2e8dae",
       "position": "after-description",
       "level": "info",
       "title": "Tip",

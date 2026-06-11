@@ -21,6 +21,8 @@ class StepForgeApp {
       trash: [],
       settings: null,
       info: null,
+      selectMode: false,
+      selectedGuides: new Set(),
     };
     this.editorMeta = null;
     this.libraryRenderToken = 0;
@@ -339,6 +341,13 @@ class StepForgeApp {
     clearNode(this.libraryHost);
     const q = this.state.query.trim();
     const folderLabel = this.filterLabel();
+    // Selecting guides only makes sense for the plain guide grid — drop out
+    // of select mode for search results and the trash.
+    const canSelect = !q && this.state.folderFilter !== 'trash';
+    if (!canSelect && this.state.selectMode) {
+      this.state.selectMode = false;
+      this.state.selectedGuides = new Set();
+    }
     const body = el('div.library', {},
       el('aside.lib-side', {},
         el('h3', {}, 'Library'),
@@ -357,7 +366,11 @@ class StepForgeApp {
           el('button', { type: 'button', onClick: () => this.importArchive('copy') }, 'Import archive'),
           el('button', { type: 'button', onClick: () => this.importArchive('linked') }, 'Open linked'),
           el('button', { type: 'button', onClick: () => this.openQuickActions() }, 'Quick actions'),
-          el('button', { type: 'button', onClick: () => this.openSettings() }, 'Settings'),
+          canSelect ? el('button', {
+            type: 'button',
+            className: this.state.selectMode ? 'primary' : '',
+            onClick: () => this.toggleSelectMode(),
+          }, this.state.selectMode ? 'Done selecting' : 'Select') : null,
         ),
         el('div.row', { style: { justifyContent: 'space-between', marginBottom: '14px' } },
           el('div', {},
@@ -366,6 +379,7 @@ class StepForgeApp {
           ),
           el('div.muted', {}, this.state.info ? `StepForge ${this.state.info.version}` : ''),
         ),
+        this.domBulkBar = el('div', {}),
         this.domLibraryResults = el('div', {}),
       ),
     );
@@ -378,6 +392,7 @@ class StepForgeApp {
     } else {
       this.renderGuideGrid();
     }
+    this.renderBulkBar();
     this.renderTopbar();
   }
 
@@ -507,21 +522,35 @@ class StepForgeApp {
     const folderId = (this.state.library.guideFolders || {})[guide.guideId] || null;
     const folder = (this.state.library.folders || []).find((f) => f.id === folderId);
     const badgeText = guide.linkedSource ? 'Linked' : guide.favorite ? 'Favorite' : 'Local';
+    const selectMode = this.state.selectMode;
+    const selected = this.state.selectedGuides.has(guide.guideId);
+    const description = (guide.descriptionHtml || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
     const card = el('div.guide-card', {
-      onClick: () => this.openGuide(guide.guideId),
+      className: `guide-card${selectMode ? ' selectable' : ''}${selected ? ' selected' : ''}`,
+      onClick: () => {
+        if (selectMode) this.toggleGuideSelection(guide.guideId);
+        else this.openGuide(guide.guideId);
+      },
       onContextMenu: (e) => {
         e.preventDefault();
+        if (selectMode) return;
         this.guideContextMenu(e, guide);
       },
     },
-    el('div.fav', {
-      className: `fav${guide.favorite ? ' on' : ''}`,
-      onClick: async (e) => {
-        e.stopPropagation();
-        await api.library.setFavorite({ guideId: guide.guideId, favorite: !guide.favorite });
-        await this.refreshLibrary();
-      },
-    }, '★'),
+    selectMode
+      ? el('input.select-check', {
+        type: 'checkbox',
+        checked: selected,
+        onClick: (e) => { e.stopPropagation(); this.toggleGuideSelection(guide.guideId); },
+      })
+      : el('div.fav', {
+        className: `fav${guide.favorite ? ' on' : ''}`,
+        onClick: async (e) => {
+          e.stopPropagation();
+          await api.library.setFavorite({ guideId: guide.guideId, favorite: !guide.favorite });
+          await this.refreshLibrary();
+        },
+      }, '★'),
     el('h4', {}, guide.title || 'Untitled guide'),
     el('div.meta', {},
       el('span.badge', {}, badgeText),
@@ -529,6 +558,7 @@ class StepForgeApp {
       folder ? el('span', {}, folder.name) : null,
       guide.locked ? el('span.badge', {}, 'Locked') : null,
     ),
+    description ? el('div.snippet', {}, description) : null,
     el('div.muted', {}, fmtDate(guide.updatedAt)));
     return card;
   }
@@ -546,10 +576,14 @@ class StepForgeApp {
   }
 
   guideContextMenu(event, guide) {
-    const folderItems = (this.state.library.folders || []).map((folder) => ({
-      label: `Move to ${folder.name}`,
-      action: () => this.moveGuideToFolder(guide.guideId, folder.id),
-    }));
+    const currentFolderId = (this.state.library.guideFolders || {})[guide.guideId] || null;
+    const folderItems = (this.state.library.folders || [])
+      .filter((folder) => folder.id !== currentFolderId)
+      .map((folder) => ({
+        label: `Move to ${folder.name}`,
+        action: () => this.moveGuideToFolder(guide.guideId, folder.id),
+      }));
+    if (currentFolderId) folderItems.push({ label: 'Move to no folder', action: () => this.moveGuideToFolder(guide.guideId, null) });
     const moveItems = folderItems.length ? ['sep', ...folderItems] : [];
     contextMenu(event.clientX, event.clientY, [
       { label: 'Open guide', action: () => this.openGuide(guide.guideId) },
@@ -557,10 +591,94 @@ class StepForgeApp {
       { label: 'Duplicate guide', action: () => this.duplicateGuide(guide.guideId) },
       { label: 'Export', action: () => this.openGuideExport(guide.guideId) },
       ...moveItems,
-      { label: 'Move to no folder', action: () => this.moveGuideToFolder(guide.guideId, null) },
       'sep',
       { label: 'Delete guide', danger: true, action: () => this.deleteGuide(guide.guideId) },
     ]);
+  }
+
+  toggleSelectMode() {
+    this.state.selectMode = !this.state.selectMode;
+    this.state.selectedGuides = new Set();
+    this.renderLibrary();
+  }
+
+  toggleGuideSelection(guideId) {
+    if (this.state.selectedGuides.has(guideId)) this.state.selectedGuides.delete(guideId);
+    else this.state.selectedGuides.add(guideId);
+    this.renderGuideGrid();
+    this.renderBulkBar();
+  }
+
+  selectAllGuides() {
+    const guides = this.state.library.guides.filter((guide) => this.scopeGuide(guide));
+    this.state.selectedGuides = new Set(guides.map((g) => g.guideId));
+    this.renderGuideGrid();
+    this.renderBulkBar();
+  }
+
+  clearSelection() {
+    this.state.selectedGuides = new Set();
+    this.renderGuideGrid();
+    this.renderBulkBar();
+  }
+
+  renderBulkBar() {
+    if (!this.domBulkBar) return;
+    clearNode(this.domBulkBar);
+    if (!this.state.selectMode) return;
+    const guides = this.state.library.guides.filter((guide) => this.scopeGuide(guide));
+    const n = this.state.selectedGuides.size;
+    const allSelected = guides.length > 0 && n === guides.length;
+    this.domBulkBar.append(
+      el('div.bulk-bar', {},
+        el('span', {}, n ? `${n} selected` : 'Select guides to act on them'),
+        el('span.spacer', {}),
+        el('button', {
+          type: 'button',
+          onClick: () => (allSelected ? this.clearSelection() : this.selectAllGuides()),
+        }, allSelected ? 'Clear selection' : 'Select all'),
+        el('button', { type: 'button', disabled: !n, onClick: () => this.bulkSetFavorite(true) }, 'Favorite'),
+        el('button', { type: 'button', disabled: !n, onClick: () => this.bulkSetFavorite(false) }, 'Unfavorite'),
+        el('button', { type: 'button', disabled: !n, onClick: (e) => this.openBulkMoveMenu(e) }, 'Move to folder ▾'),
+        el('button.danger', { type: 'button', disabled: !n, onClick: () => this.bulkDelete() }, 'Delete'),
+      ),
+    );
+  }
+
+  openBulkMoveMenu(event) {
+    const rect = event.target.getBoundingClientRect();
+    const folderItems = (this.state.library.folders || []).map((folder) => ({
+      label: folder.name,
+      action: () => this.bulkMoveToFolder(folder.id),
+    }));
+    contextMenu(rect.left, rect.bottom + 4, [
+      { label: 'No folder', action: () => this.bulkMoveToFolder(null) },
+      ...(folderItems.length ? ['sep', ...folderItems] : []),
+    ]);
+  }
+
+  async bulkSetFavorite(favorite) {
+    const ids = [...this.state.selectedGuides];
+    if (!ids.length) return;
+    await Promise.all(ids.map((guideId) => api.library.setFavorite({ guideId, favorite })));
+    await this.refreshLibrary();
+  }
+
+  async bulkMoveToFolder(folderId) {
+    const ids = [...this.state.selectedGuides];
+    if (!ids.length) return;
+    await Promise.all(ids.map((guideId) => api.folders.moveGuide({ guideId, folderId })));
+    await this.refreshLibrary();
+  }
+
+  async bulkDelete() {
+    const ids = [...this.state.selectedGuides];
+    if (!ids.length) return;
+    const ok = await confirmDialog(`Delete ${ids.length} guide${ids.length === 1 ? '' : 's'}? They'll move to Trash.`, { danger: true, okLabel: 'Delete' });
+    if (!ok) return;
+    await Promise.all(ids.map((guideId) => api.library.delete({ guideId })));
+    this.state.selectedGuides = new Set();
+    await this.refreshLibrary();
   }
 
   async createGuide() {

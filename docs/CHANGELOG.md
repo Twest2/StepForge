@@ -46,6 +46,12 @@ Initial release.
   PageDown step navigation, Ctrl+= / Ctrl+- / Ctrl+0 zoom, annotation
   copy/paste (Ctrl+C/V), Ctrl+Delete deletes the step, Shift+arrows
   fast-nudge — plus a shortcuts reference dialog.
+- Library guide cards now show a description preview and are larger; a
+  "Select" toggle enables multi-select with a bulk action bar (select
+  all, favorite/unfavorite, move to folder, delete).
+- Right-click "Move to folder" on a guide no longer lists its current
+  folder, and "Move to no folder" only appears when the guide is
+  currently in a folder.
 
 ### Fixed
 

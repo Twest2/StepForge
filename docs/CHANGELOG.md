@@ -59,8 +59,8 @@ Initial release.
 - Editor step list: a "Select" toggle enables multi-select (checkboxes)
   with a "Select all" / "Delete" bar for removing several steps at once.
 - The library's "Select" toggle and bulk action bar now also work in the
-  Trash, with a "Delete forever" action that permanently removes the
-  selected items.
+  Trash, with "Restore" and "Delete forever" actions for the selected
+  items.
 
 ### Fixed
 

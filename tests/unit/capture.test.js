@@ -50,38 +50,90 @@ test('click-triggered session capture uses the low-latency hide pause', async ()
   });
 });
 
-test('every click capture takes a fresh shot — pre-grabbed frames are never reused', async () => {
+function makeFrame(name, ageMs = 0) {
+  return {
+    mode: 'fullscreen',
+    png: Buffer.from(name),
+    size: { width: 100, height: 100 },
+    display: { bounds: { x: 0, y: 0, width: 100, height: 100 } },
+    cursor: { x: 50, y: 50 },
+    capturedAt: Date.now() - ageMs,
+  };
+}
+
+test('a click is served instantly from the freshly buffered frame', async () => {
   const service = makeService();
   service.session = { guideId: 'guide-2', paused: false, count: 0, intervalSec: 0 };
-
-  let shots = 0;
-  service.captureCurrentFrame = async (mode) => {
-    shots += 1;
-    return {
-      mode,
-      png: Buffer.from(`frame-${shots}`),
-      size: { width: 100, height: 100 },
-      display: { bounds: { x: 0, y: 0, width: 100, height: 100 } },
-      cursor: { x: 50, y: 50 },
-      capturedAt: Date.now(),
-    };
+  service.latestFrame = makeFrame('buffered-png');
+  service.shoot = async () => {
+    throw new Error('must not take a fresh shot when a buffered frame is ready');
   };
-
-  const captured = [];
+  const added = [];
   service.store.addStep = (guideId, fields, png) => {
-    captured.push(png.toString());
-    return { stepId: `step-${captured.length}` };
+    added.push(png.toString());
+    return { stepId: 'step-1' };
   };
-  service.notify = () => {};
 
-  await service.sessionCapture('click', { x: 10, y: 10 });
-  await service.sessionCapture('click', { x: 20, y: 20 });
+  const result = await service.sessionCapture('click', { x: 10, y: 10 });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(added, ['buffered-png']);
+  assert.equal(service.session.count, 1);
+});
+
+test('a stale buffered frame is not reused — the click falls back to a fresh shot', async () => {
+  const service = makeService();
+  service.session = { guideId: 'guide-stale', paused: false, count: 0, intervalSec: 0 };
+  service.latestFrame = makeFrame('stale-png', 10_000);
+
+  let shootCalled = false;
+  service.shoot = async () => {
+    shootCalled = true;
+    return { ok: true, step: { stepId: 'fresh-step' } };
+  };
+
+  const result = await service.sessionCapture('click', { x: 1, y: 1 });
+
+  assert.equal(result.ok, true);
+  assert.equal(shootCalled, true, 'a stale buffered frame must not be reused');
+});
+
+test('clicks during an in-flight grab wait for the frame instead of being dropped', async () => {
+  const service = makeService();
+  service.session = { guideId: 'guide-fast', paused: false, count: 0, intervalSec: 0 };
+  service.frameLoopRunning = true; // a grab is in flight, no frame buffered yet
+  service.shoot = async () => {
+    throw new Error('waiting clicks must use the loop frame, not a competing shot');
+  };
+  const added = [];
+  service.store.addStep = (guideId, fields, png) => {
+    added.push(png.toString());
+    return { stepId: `step-${added.length}` };
+  };
+
+  // Two rapid clicks land before the grab completes.
+  const first = service.sessionCapture('click', { x: 1, y: 1 });
+  const second = service.sessionCapture('click', { x: 2, y: 2 });
+  service.acceptFrame(makeFrame('loop-frame'));
+  const [r1, r2] = await Promise.all([first, second]);
+
+  assert.equal(r1.ok, true);
+  assert.equal(r2.ok, true);
+  assert.deepEqual(added, ['loop-frame', 'loop-frame'],
+    'both clicks must become steps from the frame that was in flight');
+  assert.equal(service.session.count, 2);
+});
+
+test('pausing stops the frame loop and discards the buffered frame', () => {
+  const service = makeService();
+  service.session = { guideId: 'guide-pause', paused: false, count: 0, intervalSec: 0 };
+  service.frameLoopRunning = true;
+  service.latestFrame = makeFrame('pre-pause');
+
   service.togglePause(true);
-  service.togglePause(false);
-  await service.sessionCapture('click', { x: 30, y: 30 });
 
-  assert.deepEqual(captured, ['frame-1', 'frame-2', 'frame-3'],
-    'each click must capture a brand-new frame, including after pause/resume');
+  assert.equal(service.frameLoopRunning, false);
+  assert.equal(service.latestFrame, null, 'a resume must never serve a pre-pause frame');
 });
 
 test('click capture marks the click-time cursor position', async () => {

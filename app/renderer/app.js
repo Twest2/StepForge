@@ -666,6 +666,14 @@ class StepForgeApp {
     this.renderBulkBar();
   }
 
+  async bulkRestoreTrash() {
+    const names = [...this.state.selectedTrash];
+    if (!names.length) return;
+    await Promise.all(names.map((name) => api.library.trashRestore({ name })));
+    this.state.selectedTrash = new Set();
+    await this.refreshLibrary();
+  }
+
   async bulkPurgeTrash() {
     const names = [...this.state.selectedTrash];
     if (!names.length) return;
@@ -685,12 +693,13 @@ class StepForgeApp {
       const allSelected = this.state.trash.length > 0 && n === this.state.trash.length;
       this.domBulkBar.append(
         el('div.bulk-bar', {},
-          el('span', {}, n ? `${n} selected` : 'Select items to delete forever'),
+          el('span', {}, n ? `${n} selected` : 'Select items to act on them'),
           el('span.spacer', {}),
           el('button', {
             type: 'button',
             onClick: () => (allSelected ? this.clearTrashSelection() : this.selectAllTrash()),
           }, allSelected ? 'Clear selection' : 'Select all'),
+          el('button', { type: 'button', disabled: !n, onClick: () => this.bulkRestoreTrash() }, 'Restore'),
           el('button.danger', { type: 'button', disabled: !n, onClick: () => this.bulkPurgeTrash() }, 'Delete forever'),
         ),
       );

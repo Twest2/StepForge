@@ -47,6 +47,8 @@ class GuideEditor {
     this.steps = [];
     this.stepMap = new Map();
     this.selectedStepId = null;
+    this.stepSelectMode = false;
+    this.selectedSteps = new Set();
     this.selectedAnnotationId = null;
     this.currentTool = 'select';
     this.currentZoom = 'fit';
@@ -166,10 +168,12 @@ class GuideEditor {
           el('div.row', {},
             this.dom.addStepBtn = el('button.primary', { type: 'button' }, 'Add'),
             this.dom.importBtn = el('button', { type: 'button' }, 'Import'),
+            this.dom.selectStepsBtn = el('button', { type: 'button' }, 'Select'),
           ),
         ),
         this.dom.stepsList = el('div.steps-list'),
-        el('div.pane-foot', {},
+        this.dom.stepBulkBar = el('div'),
+        this.dom.paneFoot = el('div.pane-foot', {},
           this.dom.moveUpBtn = el('button.icon', { type: 'button', title: 'Move step up' }, '↑'),
           this.dom.moveDownBtn = el('button.icon', { type: 'button', title: 'Move step down' }, '↓'),
           this.dom.duplicateBtn = el('button', { type: 'button' }, 'Duplicate'),
@@ -289,6 +293,7 @@ class GuideEditor {
   bindShellEvents() {
     this.dom.addStepBtn.addEventListener('click', () => this.addEmptyStep());
     this.dom.importBtn.addEventListener('click', () => this.importImageSteps());
+    this.dom.selectStepsBtn.addEventListener('click', () => this.toggleStepSelectMode());
     this.dom.moveUpBtn.addEventListener('click', () => this.moveSelectedStep(-1));
     this.dom.moveDownBtn.addEventListener('click', () => this.moveSelectedStep(1));
     this.dom.duplicateBtn.addEventListener('click', () => this.duplicateSelectedStep());
@@ -528,6 +533,7 @@ class GuideEditor {
     const numbers = stepNumberMap(this.steps);
     clearNode(this.dom.stepsList);
     this.dom.stepCount.textContent = `${this.steps.length} step${this.steps.length === 1 ? '' : 's'}`;
+    this.dom.selectStepsBtn.className = this.stepSelectMode ? 'primary' : '';
     for (const step of this.steps) {
       const number = numbers.get(step.stepId) || '';
       let depth = 0;
@@ -537,12 +543,17 @@ class GuideEditor {
         parent = this.stepMap.get(parent).parentStepId;
       }
       const selected = current && current.stepId === step.stepId;
+      const checked = this.selectedSteps.has(step.stepId);
       const item = el('div.step-item', {
         className: `step-item${selected ? ' selected' : ''}${depth ? ' sub' : ''}${step.skipped ? ' skipped' : ''}${step.hidden ? ' hiddenstep' : ''}`,
         dataset: { stepId: step.stepId },
-        onClick: () => this.selectStep(step.stepId),
+        onClick: () => {
+          if (this.stepSelectMode) this.toggleStepSelection(step.stepId);
+          else this.selectStep(step.stepId);
+        },
         onContextMenu: (e) => {
           e.preventDefault();
+          if (this.stepSelectMode) return;
           this.selectStep(step.stepId);
           contextMenu(e.clientX, e.clientY, [
             { label: 'Add substep', action: () => this.addSubstep(step.stepId) },
@@ -555,6 +566,14 @@ class GuideEditor {
           ]);
         },
       },
+      this.stepSelectMode
+        ? el('input', {
+          type: 'checkbox',
+          checked,
+          onClick: (e) => e.stopPropagation(),
+          onChange: () => this.toggleStepSelection(step.stepId),
+        })
+        : null,
       el('span.status-dot', { className: `status-dot status-${step.status}` }),
       el('span.num', {}, number || '•'),
       el('span.t', {}, step.title || 'Untitled step'),
@@ -568,6 +587,62 @@ class GuideEditor {
     if (!this.steps.length) {
       this.dom.stepsList.append(el('div.empty-state', { style: { marginTop: '40px' } }, 'No steps yet.'));
     }
+    this.renderStepBulkBar();
+  }
+
+  toggleStepSelectMode() {
+    this.stepSelectMode = !this.stepSelectMode;
+    this.selectedSteps = new Set();
+    this.renderStepList();
+  }
+
+  toggleStepSelection(stepId) {
+    if (this.selectedSteps.has(stepId)) this.selectedSteps.delete(stepId);
+    else this.selectedSteps.add(stepId);
+    this.renderStepList();
+  }
+
+  selectAllSteps() {
+    this.selectedSteps = new Set(this.steps.map((s) => s.stepId));
+    this.renderStepList();
+  }
+
+  clearStepSelection() {
+    this.selectedSteps = new Set();
+    this.renderStepList();
+  }
+
+  renderStepBulkBar() {
+    clearNode(this.dom.stepBulkBar);
+    this.dom.paneFoot.classList.toggle('hidden', this.stepSelectMode);
+    if (!this.stepSelectMode) return;
+    const n = this.selectedSteps.size;
+    const allSelected = this.steps.length > 0 && n === this.steps.length;
+    this.dom.stepBulkBar.append(
+      el('div.bulk-bar', {},
+        el('span', {}, n ? `${n} selected` : 'Select steps to delete'),
+        el('span.spacer', {}),
+        el('button', {
+          type: 'button',
+          onClick: () => (allSelected ? this.clearStepSelection() : this.selectAllSteps()),
+        }, allSelected ? 'Clear' : 'Select all'),
+        el('button.danger', { type: 'button', disabled: !n, onClick: () => this.deleteSelectedSteps() }, 'Delete'),
+      ),
+    );
+  }
+
+  async deleteSelectedSteps() {
+    const ids = [...this.selectedSteps];
+    if (!ids.length) return;
+    const ok = await confirmDialog(`Delete ${ids.length} step${ids.length === 1 ? '' : 's'}?`, { danger: true, okLabel: 'Delete' });
+    if (!ok) return;
+    for (const stepId of ids) {
+      await api.step.delete({ guideId: this.guideId, stepId });
+    }
+    this.stepSelectMode = false;
+    this.selectedSteps = new Set();
+    await this.reload(null);
+    this.onToast(`${ids.length} step${ids.length === 1 ? '' : 's'} deleted.`);
   }
 
   syncStepFields() {

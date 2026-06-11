@@ -69,6 +69,7 @@ class CaptureService {
     this.lastClickCapture = 0;
     this.clickWatcherBuf = '';
     this.clickWatcherPendingPress = false;
+    this.clickWatcherErrTail = '';
     this.clickQueue = Promise.resolve();
     this.frameLoopInFlight = false;
     this.shooting = false;
@@ -440,28 +441,92 @@ class CaptureService {
           this.ingestClickWatcherChunk(chunk.toString(), 'linux');
         });
       } else if (process.platform === 'win32') {
-        // Poll the left mouse button via GetAsyncKeyState; print one line per click.
+        // Poll left/right/middle buttons via GetAsyncKeyState. Bit 0x8000 is
+        // "down right now"; bit 0x0001 is "was pressed since the previous
+        // poll", which catches clicks shorter than one poll interval. The
+        // cursor is read in the same poll iteration that sees the press and
+        // shipped with the event, so the marker position is sampled at the
+        // click instant (within one ~15ms poll tick) instead of after the
+        // event has crossed the pipe. Coordinates are physical pixels
+        // (per-monitor DPI aware); onOsClick converts them to DIPs.
         const ps = `
-Add-Type -Namespace W -Name U -MemberDefinition '[DllImport("user32.dll")] public static extern short GetAsyncKeyState(int k);'
-$down = $false
+$ErrorActionPreference = 'Stop'
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public struct SFPoint { public int X; public int Y; }
+public static class SFMouse {
+  [DllImport("user32.dll")] public static extern short GetAsyncKeyState(int vKey);
+  [DllImport("user32.dll")] public static extern bool GetCursorPos(out SFPoint p);
+  [DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(IntPtr value);
+}
+'@
+try { [void][SFMouse]::SetProcessDpiAwarenessContext([IntPtr](-4)) } catch { }
+$out = [Console]::Out
+$out.WriteLine('READY')
+$out.Flush()
+$vks = 0x01, 0x02, 0x04
+$down = @{}
+foreach ($vk in $vks) { $down[$vk] = $false }
+$pt = New-Object SFPoint
 while ($true) {
-  $s = [W.U]::GetAsyncKeyState(0x01) -band 0x8000
-  if ($s -and -not $down) { Write-Output CLICK }
-  $down = [bool]$s
+  foreach ($vk in $vks) {
+    $s = [SFMouse]::GetAsyncKeyState($vk)
+    $isDown = ($s -band 0x8000) -ne 0
+    $tapped = ($s -band 1) -ne 0
+    if (($isDown -or $tapped) -and -not $down[$vk]) {
+      [void][SFMouse]::GetCursorPos([ref]$pt)
+      $out.WriteLine('CLICK ' + $pt.X + ' ' + $pt.Y)
+      $out.Flush()
+    }
+    $down[$vk] = $isDown
+  }
   Start-Sleep -Milliseconds 10
 }`;
-        this.clickWatcher = spawn('powershell.exe', ['-NoProfile', '-Command', ps], { stdio: ['ignore', 'pipe', 'ignore'] });
+        this.clickWatcher = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], {
+          stdio: ['ignore', 'pipe', 'pipe'],
+          windowsHide: true,
+        });
         this.clickWatcher.stdout.on('data', (chunk) => {
           this.ingestClickWatcherChunk(chunk.toString(), 'win32');
         });
       }
       if (this.clickWatcher) {
-        this.clickWatcher.on('error', () => { this.clickWatcher = null; });
-        this.clickWatcher.on('exit', () => { this.clickWatcher = null; });
+        const child = this.clickWatcher;
+        this.clickWatcherErrTail = '';
+        if (child.stderr) {
+          child.stderr.on('data', (chunk) => {
+            this.clickWatcherErrTail = String(chunk).slice(-400);
+          });
+        }
+        const lost = (reason) => {
+          if (this.clickWatcher !== child) return; // stopped deliberately
+          this.clickWatcher = null;
+          this.handleClickWatcherLoss(reason);
+        };
+        child.on('error', (err) => lost(err && err.message));
+        child.on('exit', (code) => lost(`exited with code ${code}`));
       }
     } catch {
       this.clickWatcher = null;
     }
+  }
+
+  /**
+   * The watcher process died mid-session (crashed X server, PowerShell
+   * blocked by policy, …). Captures must not silently stop: log why, switch
+   * the session to interval captures, and tell the UI.
+   */
+  handleClickWatcherLoss(reason) {
+    this.clickWatcherPendingPress = false;
+    const detail = [reason, this.clickWatcherErrTail].filter(Boolean).join(' — ');
+    console.error(`[stepforge] click watcher stopped${detail ? `: ${detail}` : ''}`);
+    if (!this.session) return;
+    if (!this.session.intervalSec) {
+      this.session.intervalSec = this.settings.get('capture.autoIntervalSec') || 5;
+      this.applyInterval();
+    }
+    this.notify('capture:state', this.state());
   }
 
   stopClickWatcher() {
@@ -519,21 +584,32 @@ while ($true) {
     }
     if (platform === 'win32') {
       for (const line of lines) {
-        if (line.includes('CLICK')) this.onOsClick();
+        const m = /CLICK(?:\s+(-?\d+)\s+(-?\d+))?/.exec(line);
+        if (m) {
+          const osPoint = m[1] === undefined ? null : { x: Number(m[1]), y: Number(m[2]) };
+          this.onOsClick(Date.now(), osPoint);
+        }
       }
     }
   }
 
-  onOsClick(at = Date.now()) {
+  onOsClick(at = Date.now(), osPoint = null) {
     if (!this.session || this.session.paused) return;
     if (at - this.lastClickCapture < CLICK_DEBOUNCE_MS) return;
     this.lastClickCapture = at;
-    // Grab the cursor position synchronously, right when the click is
-    // detected, so the marker lands exactly where the user clicked even if
-    // the shot itself takes a moment to grab. (Clicks on StepForge itself
-    // are filtered by the cursor-position check in sessionCapture, not by
+    // Prefer the position the watcher sampled in the same poll that saw the
+    // press (physical px → DIP); otherwise read the cursor synchronously,
+    // right now, so the marker lands where the user clicked even if the
+    // shot itself takes a moment to grab. (Clicks on StepForge itself are
+    // filtered by the cursor-position check in sessionCapture, not by
     // window focus — WSLg reports focus unreliably.)
-    const clickPos = screen.getCursorScreenPoint();
+    let clickPos = null;
+    if (osPoint) {
+      clickPos = typeof screen.screenToDipPoint === 'function'
+        ? screen.screenToDipPoint(osPoint)
+        : osPoint;
+    }
+    if (!clickPos) clickPos = screen.getCursorScreenPoint();
     this.enqueueClickCapture(clickPos);
   }
 

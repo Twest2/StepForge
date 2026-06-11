@@ -168,6 +168,39 @@ test('windows click watcher output is counted line by line', () => {
   assert.equal(clicks, 2);
 });
 
+test('windows click lines carry the poll-time cursor position', () => {
+  const service = makeService();
+  const seen = [];
+  service.onOsClick = (at, osPoint) => {
+    seen.push(osPoint);
+  };
+
+  service.processClickWatcherData('READY\r\nCLICK 1280 -64\r\nCLICK\r\n', 'win32');
+
+  assert.deepEqual(seen, [{ x: 1280, y: -64 }, null],
+    'coordinates ride along with the event; bare CLICK still works');
+});
+
+test('losing the click watcher mid-session falls back to interval capture', () => {
+  const service = makeService();
+  service.settings.get = (key) => (key === 'capture.autoIntervalSec' ? 3 : null);
+  service.session = { guideId: 'guide-loss', paused: false, count: 0, intervalSec: 0 };
+  const states = [];
+  service.notify = (channel, payload) => {
+    states.push({ channel, payload });
+  };
+
+  try {
+    service.handleClickWatcherLoss('exited with code 1');
+
+    assert.equal(service.session.intervalSec, 3,
+      'captures must not silently stop when the watcher dies');
+    assert.ok(states.some((s) => s.channel === 'capture:state'));
+  } finally {
+    service.finishSession();
+  }
+});
+
 test('a click is served instantly from the freshly buffered frame', async () => {
   const service = makeService();
   service.session = { guideId: 'guide-2', paused: false, count: 0, intervalSec: 0 };

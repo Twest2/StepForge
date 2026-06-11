@@ -57,6 +57,7 @@ Version: $VERSION
 Section: utils
 Priority: optional
 Architecture: amd64
+Depends: xinput
 Maintainer: StepForge <noreply@example.com>
 Description: Offline desktop guide capture and export tool
  A fully offline desktop app for step-by-step documentation, built for local

@@ -92,13 +92,15 @@ Initial release.
   literal text "undefined" by an old bug); a corrupted file is now
   treated as empty instead of crashing the dialog, and is overwritten
   with valid JSON the next time settings are saved.
-- Click captures now always take a brand-new screenshot at the instant
-  of the click, with the click marker at the click-time cursor position.
-  Previously they reused a pre-click frame from a background cache that
-  could be stale by the time of the click — so the background image and
-  the click marker didn't always line up, and after pause/resume the
-  same frozen frame could be reused for every step with only the marker
-  moving. The pre-click frame cache has been removed entirely.
+- Click captures now line up with the click. While recording, a
+  continuous screen-grab loop keeps the latest frame buffered, and each
+  click becomes a step from a frame grabbed at (or moments before) the
+  click instant, with the marker at the click-time cursor position — a
+  frame older than 600ms is never used. Fast clicks are no longer
+  dropped: a click that lands while a grab is in flight waits for that
+  frame instead of being discarded, and the click debounce was lowered
+  from 700ms to 150ms. Pausing stops the loop and discards the buffered
+  frame, so resuming can never reuse a stale pre-pause screenshot.
 
 ### Added (initial feature set)
 

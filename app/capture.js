@@ -22,7 +22,18 @@ const { encodePng } = require('../core/png');
  * failures surface as { ok: false, reason } instead of crashing.
  */
 
-const CLICK_DEBOUNCE_MS = 700;
+// Dedupe duplicate watcher events for one physical click while still
+// allowing intentionally fast clicking.
+const CLICK_DEBOUNCE_MS = 150;
+// Idle gap between frame-loop grabs; the effective refresh rate is
+// grab-duration + this.
+const FRAME_LOOP_IDLE_MS = 50;
+// A buffered frame older than this is too stale to pass off as "the screen
+// at the instant of the click".
+const CLICK_FRAME_MAX_AGE_MS = 600;
+// How long a click waits for the in-flight grab before falling back to a
+// one-off fresh shot.
+const CLICK_FRAME_WAIT_MS = 2000;
 const CLICK_CAPTURE_HIDE_DELAY_MS = 25;
 
 function hasBinary(name) {
@@ -43,6 +54,10 @@ class CaptureService {
     this.session = null; // { guideId, paused, count, intervalSec }
     this.intervalTimer = null;
     this.clickWatcher = null;
+    this.frameLoopTimer = null;
+    this.frameLoopRunning = false;
+    this.frameWaiters = [];
+    this.latestFrame = null;
     this.lastClickCapture = 0;
     this.shooting = false;
   }
@@ -184,15 +199,22 @@ class CaptureService {
     const wasPaused = this.session.paused;
     this.session.paused = typeof force === 'boolean' ? force : !this.session.paused;
     // Starting/resuming tucks the window away again for clean shots (after
-    // a brief delay so the user sees it happen).
+    // a brief delay so the user sees it happen) and starts the frame loop
+    // that serves click captures. Pausing stops the loop and discards the
+    // buffered frame, so a resume can never serve a pre-pause screen.
     if (wasPaused && !this.session.paused) {
       const win = this.getWindow();
-      const tuck = () => {
+      const arm = () => {
         if (!this.session || this.session.paused) return;
         if (this.hiddenForSession && win && !win.isDestroyed() && win.isVisible()) win.hide();
+        if (this.settings.get('capture.captureOutsideClicks') !== false && this.clickCaptureAvailable()) {
+          this.startFrameLoop();
+        }
       };
-      if (this.hiddenForSession && win && !win.isDestroyed()) setTimeout(tuck, 400);
-      else tuck();
+      if (this.hiddenForSession && win && !win.isDestroyed()) setTimeout(arm, 400);
+      else arm();
+    } else if (!wasPaused && this.session.paused) {
+      this.stopFrameLoop();
     }
     if (this.rebuildTrayMenu) this.rebuildTrayMenu();
     this.notify('capture:state', this.state());
@@ -204,6 +226,7 @@ class CaptureService {
       this.intervalTimer = null;
     }
     this.stopClickWatcher();
+    this.stopFrameLoop();
     this.destroySessionTray();
     this.session = null;
     if (this.hiddenForSession) {
@@ -230,20 +253,34 @@ class CaptureService {
   /** One capture inside the active session (hotkey/click/interval/manual). */
   async sessionCapture(trigger = 'hotkey', clickPos = null) {
     if (!this.session || this.session.paused) return { ok: false, reason: 'no active capture session' };
-    if (this.shooting) return { ok: false, reason: 'capture already in progress' };
     // Automatic triggers stand down while the user is in StepForge, so the
     // app stays clickable mid-session and never screenshots itself.
     if (trigger !== 'manual' && this.userIsInApp()) {
       return { ok: false, reason: 'skipped — StepForge is focused' };
     }
+
+    // Clicks are served from the frame loop: the buffered frame was grabbed
+    // at (or moments before) the click instant, so the background matches
+    // what the user clicked on. A click that lands while a grab is in
+    // flight waits for that frame instead of being dropped, so fast
+    // clicking still yields one step per click.
+    if (trigger === 'click') {
+      const frame = await this.frameForClick();
+      if (!this.session || this.session.paused) return { ok: false, reason: 'no active capture session' };
+      if (frame) {
+        const result = this.storeFrameAsStep(this.session.guideId, frame.mode, frame, clickPos);
+        if (result.ok) this.noteStepAdded(result.step, trigger);
+        return result;
+      }
+      // No usable frame (loop not running or grab failing): fall through
+      // to a one-off fresh shot.
+    }
+
+    if (this.shooting) return { ok: false, reason: 'capture already in progress' };
     this.shooting = true;
     try {
       const mode = this.settings.get('capture.mode') || 'fullscreen';
       const grabMode = mode === 'region' ? 'fullscreen' : mode;
-      // Always a fresh shot, started right now. Click captures pass the
-      // cursor position grabbed at the instant of the click (onOsClick), so
-      // the marker always lands on the screen the user actually clicked —
-      // never on a pre-click frame from some moment earlier.
       const finalResult = await this.shoot({
         guideId: this.session.guideId,
         mode: grabMode,
@@ -252,16 +289,18 @@ class CaptureService {
         refocus: false, // don't steal focus from the app the user is documenting
         clickPos,
       });
-      if (finalResult.ok) {
-        this.session.count += 1;
-        this.notify('capture:added', { guideId: this.session.guideId, step: finalResult.step, trigger });
-        this.notify('capture:state', this.state());
-        if (this.rebuildTrayMenu) this.rebuildTrayMenu(); // refresh step counter
-      }
+      if (finalResult.ok) this.noteStepAdded(finalResult.step, trigger);
       return finalResult;
     } finally {
       this.shooting = false;
     }
+  }
+
+  noteStepAdded(step, trigger) {
+    this.session.count += 1;
+    this.notify('capture:added', { guideId: this.session.guideId, step, trigger });
+    this.notify('capture:state', this.state());
+    if (this.rebuildTrayMenu) this.rebuildTrayMenu(); // refresh step counter
   }
 
   hotkeyCapture() {
@@ -269,6 +308,91 @@ class CaptureService {
   }
 
   // ---- click-triggered capture --------------------------------------------
+
+  /**
+   * Continuous screen-grab loop that runs while recording. It keeps the most
+   * recent frame in `latestFrame` so a click can be served from a frame
+   * grabbed at (or moments before) the instant of the click — a fresh grab
+   * started after the click would land hundreds of ms late and show the
+   * click's effects instead of what the user clicked on.
+   */
+  startFrameLoop() {
+    if (this.frameLoopRunning) return;
+    this.frameLoopRunning = true;
+    const tick = async () => {
+      if (!this.frameLoopRunning) return;
+      if (!this.session || this.session.paused) {
+        this.frameLoopRunning = false;
+        return;
+      }
+      try {
+        if (!this.shooting) {
+          const mode = this.settings.get('capture.mode') || 'fullscreen';
+          const grabMode = mode === 'region' ? 'fullscreen' : mode;
+          const frame = await this.captureCurrentFrame(grabMode);
+          if (this.frameLoopRunning) this.acceptFrame(frame);
+        }
+      } catch {
+        // Grab failures are fine — clicks fall back to a one-off fresh shot.
+      } finally {
+        if (this.frameLoopRunning && this.session && !this.session.paused) {
+          this.frameLoopTimer = setTimeout(tick, FRAME_LOOP_IDLE_MS);
+        }
+      }
+    };
+    this.frameLoopTimer = setTimeout(tick, 0);
+  }
+
+  /** Store a grabbed frame and hand it to any clicks waiting on it. */
+  acceptFrame(frame) {
+    this.latestFrame = frame;
+    const waiters = this.frameWaiters;
+    this.frameWaiters = [];
+    for (const resolve of waiters) resolve(frame);
+  }
+
+  /** Resolves with the next frame the loop grabs (null on timeout/stop). */
+  nextFrame(timeoutMs) {
+    return new Promise((resolve) => {
+      const entry = (frame) => {
+        clearTimeout(timer);
+        resolve(frame);
+      };
+      const timer = setTimeout(() => {
+        this.frameWaiters = this.frameWaiters.filter((w) => w !== entry);
+        resolve(null);
+      }, timeoutMs);
+      this.frameWaiters.push(entry);
+    });
+  }
+
+  stopFrameLoop() {
+    if (this.frameLoopTimer) {
+      clearTimeout(this.frameLoopTimer);
+      this.frameLoopTimer = null;
+    }
+    this.frameLoopRunning = false;
+    this.latestFrame = null;
+    const waiters = this.frameWaiters;
+    this.frameWaiters = [];
+    for (const resolve of waiters) resolve(null);
+  }
+
+  /**
+   * Freshest frame usable for a click capture: the buffered frame when it's
+   * recent enough, otherwise the next frame the loop delivers. Null when the
+   * loop isn't running or can't deliver in time.
+   */
+  async frameForClick() {
+    const mode = this.settings.get('capture.mode') || 'fullscreen';
+    const grabMode = mode === 'region' ? 'fullscreen' : mode;
+    const usable = (f) => f && f.mode === grabMode
+      && Date.now() - f.capturedAt <= CLICK_FRAME_MAX_AGE_MS;
+    if (usable(this.latestFrame)) return this.latestFrame;
+    if (!this.frameLoopRunning) return null;
+    const next = await this.nextFrame(CLICK_FRAME_WAIT_MS);
+    return usable(next) ? next : null;
+  }
 
   startClickWatcher() {
     this.stopClickWatcher();

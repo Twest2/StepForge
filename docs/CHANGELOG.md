@@ -56,6 +56,8 @@ Initial release.
   "Open guide" from the right-click menu) now arms a paused capture
   session for it, so the red REC bar appears immediately with a "Start
   recording" option to resume capturing more steps.
+- Editor step list: a "Select" toggle enables multi-select (checkboxes)
+  with a "Select all" / "Delete" bar for removing several steps at once.
 
 ### Fixed
 

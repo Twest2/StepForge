@@ -424,7 +424,15 @@ class CaptureService {
       this.clickWatcherButtonDown = false;
       if (process.platform === 'linux' && hasBinary('xinput')) {
         // Stream raw button events from the X server; one capture per press.
-        this.clickWatcher = spawn('xinput', ['test-xi2', '--root'], { stdio: ['ignore', 'pipe', 'ignore'] });
+        // xinput block-buffers stdout when piped, so a press event can sit
+        // in its buffer until later motion events flush it — by then the
+        // cursor read in onOsClick lands where the mouse moved *after* the
+        // click. stdbuf -oL forces line-buffering so events (and the cursor
+        // read) line up with the actual click instant.
+        const argv = hasBinary('stdbuf')
+          ? ['stdbuf', '-oL', 'xinput', 'test-xi2', '--root']
+          : ['xinput', 'test-xi2', '--root'];
+        this.clickWatcher = spawn(argv[0], argv.slice(1), { stdio: ['ignore', 'pipe', 'ignore'] });
         this.clickWatcher.stdout.on('data', (chunk) => {
           this.processClickWatcherData(chunk.toString(), 'linux');
         });

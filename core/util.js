@@ -32,7 +32,9 @@ function atomicWriteFileSync(file, data) {
 }
 
 function writeJsonSync(file, obj) {
-  atomicWriteFileSync(file, JSON.stringify(obj, null, 2) + '\n');
+  const json = JSON.stringify(obj, null, 2);
+  if (json === undefined) throw new TypeError(`writeJsonSync: value for ${file} is not JSON-serializable`);
+  atomicWriteFileSync(file, json + '\n');
 }
 
 function readJsonSync(file) {
@@ -43,7 +45,7 @@ function readJsonIfExists(file, fallback) {
   try {
     return readJsonSync(file);
   } catch (err) {
-    if (err.code === 'ENOENT') return fallback;
+    if (err.code === 'ENOENT' || err instanceof SyntaxError) return fallback;
     throw err;
   }
 }

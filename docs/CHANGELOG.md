@@ -78,6 +78,11 @@ Initial release.
   earlier) and use it for the click-marker placement, and the
   click-capture cache is armed as soon as recording starts so the very
   first click is captured instantly.
+- Settings no longer fails to open if `app-settings.json` or
+  `placeholders.json` was previously corrupted (e.g. left containing the
+  literal text "undefined" by an old bug); a corrupted file is now
+  treated as empty instead of crashing the dialog, and is overwritten
+  with valid JSON the next time settings are saved.
 
 ### Added (initial feature set)
 

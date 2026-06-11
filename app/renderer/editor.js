@@ -1,5 +1,7 @@
 'use strict';
 
+(() => {
+
 const api = window.stepforge;
 const dialogs = window.StepForgeDialogs || {};
 
@@ -317,7 +319,20 @@ class GuideEditor {
     bindCheckbox(this.dom.hiddenToggle.querySelector('input'), 'hidden');
     bindCheckbox(this.dom.skippedToggle.querySelector('input'), 'skipped');
     bindCheckbox(this.dom.forceNewPageToggle.querySelector('input'), 'forceNewPage');
-    bindCheckbox(this.dom.focusedViewToggle.querySelector('input'), 'focusedViewDefault');
+
+    // Focused view lives under step.focusedView.enabled, not a flat field.
+    const focusedInput = this.dom.focusedViewToggle.querySelector('input');
+    focusedInput.addEventListener('change', () => {
+      if (!this.currentStep) return;
+      this.currentStep.focusedView = {
+        zoom: 1.5, panX: 0.5, panY: 0.5,
+        ...(this.currentStep.focusedView || {}),
+        enabled: focusedInput.checked,
+      };
+      this.pendingSave = true;
+      this.saveStepDebounced();
+      this.emitMeta();
+    });
 
     this.dom.descEditor.addEventListener('focus', () => {
       if (this.currentStep) this.pushCanvasHistory('description');
@@ -511,17 +526,20 @@ class GuideEditor {
       { value: 'right', label: 'Right' },
     ]);
 
-    const apply = async (patch) => {
+    // Light-weight apply: mutate the selected annotation, redraw, and let the
+    // debounced save flush. Re-rendering the panel here would rebuild the
+    // inputs and steal focus mid-keystroke, so only structural changes
+    // (type/tail) pass rerender: true.
+    const apply = (patch, { rerender = false } = {}) => {
       const ann = this.canvas.selected();
       if (!ann) return;
       Object.assign(ann, patch);
       this.beforeCanvasSnapshot = null;
+      step.annotations = clone(this.canvas.annotations || []);
       this.pendingSave = true;
-      this.canvas.setAnnotations(step.annotations || []);
-      this.canvas.select(ann.id);
-      await this.flushStep();
-      this.renderAnnotationPanel();
-      this.renderStepList();
+      this.canvas.render();
+      this.saveStepDebounced();
+      if (rerender) this.renderAnnotationPanel();
       this.emitMeta();
     };
 
@@ -548,10 +566,10 @@ class GuideEditor {
     );
     this.dom.annotationEditor.append(annSection);
 
-    typeSelect.addEventListener('change', async () => {
+    typeSelect.addEventListener('change', () => {
       const ann = this.canvas.selected();
       if (!ann) return;
-      await apply({ type: typeSelect.value });
+      apply({ type: typeSelect.value }, { rerender: true });
       if (ann.type === 'tooltip') this.editAnnotationText(ann);
     });
     textInput.addEventListener('focus', () => this.pushCanvasHistory('annotation-text'));
@@ -671,6 +689,8 @@ class GuideEditor {
     this.canvasFuture.push(clone(this.currentStep));
     const previous = this.canvasHistory.pop();
     this.stepMap.set(previous.stepId, previous);
+    const prevIdx = this.steps.findIndex((s) => s.stepId === previous.stepId);
+    if (prevIdx >= 0) this.steps[prevIdx] = previous;
     this.selectedStepId = previous.stepId;
     await this.flushStep(previous);
     this.renderAll();
@@ -685,6 +705,8 @@ class GuideEditor {
     this.canvasHistory.push(clone(this.currentStep));
     const next = this.canvasFuture.pop();
     this.stepMap.set(next.stepId, next);
+    const nextIdx = this.steps.findIndex((s) => s.stepId === next.stepId);
+    if (nextIdx >= 0) this.steps[nextIdx] = next;
     this.selectedStepId = next.stepId;
     await this.flushStep(next);
     this.renderAll();
@@ -695,12 +717,18 @@ class GuideEditor {
     this.pendingSave = false;
     const saved = await api.step.save({ guideId: this.guideId, step });
     this.stepMap.set(saved.stepId, saved);
+    // Keep the steps array in sync — it holds the objects the list renders.
+    const idx = this.steps.findIndex((s) => s.stepId === saved.stepId);
+    if (idx >= 0) this.steps[idx] = saved;
     if (this.selectedStepId === saved.stepId) {
-      this.stepMap.set(saved.stepId, saved);
       this.renderStepList();
       this.syncStepFields();
       this.canvas.setAnnotations(saved.annotations || []);
-      this.renderAnnotationPanel();
+      // Rebuilding the annotation editor while the user is typing in one of
+      // its inputs would steal focus, so skip it in that case.
+      if (!this.dom.annotationEditor.contains(document.activeElement)) {
+        this.renderAnnotationPanel();
+      }
       this.emitMeta();
     }
     return saved;
@@ -1140,9 +1168,10 @@ class GuideEditor {
       return;
     }
     if (e.key === 'Escape' && !isEditableTarget(e.target)) {
-      if (this.selectedAnnotationId && this.canvas.deleteSelected()) {
+      // Escape deselects; Delete is the destructive key.
+      if (this.selectedAnnotationId) {
         e.preventDefault();
-        this.saveStepDebounced();
+        this.canvas.select(null);
         return;
       }
     }
@@ -1206,3 +1235,4 @@ function loadImage(src) {
 }
 
 window.GuideEditor = GuideEditor;
+})();

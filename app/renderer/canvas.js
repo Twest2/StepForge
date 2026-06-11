@@ -1,5 +1,7 @@
 'use strict';
 
+(() => {
+
 /**
  * AnnotationCanvas: renders a step's working image plus its normalized
  * annotation scene graph, and provides editing interactions (create, select,
@@ -500,3 +502,4 @@ class AnnotationCanvas {
 }
 
 window.AnnotationCanvas = AnnotationCanvas;
+})();

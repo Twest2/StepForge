@@ -134,6 +134,12 @@ class GuideStore {
     }
   }
 
+  purgeTrashItems(names) {
+    for (const name of names) {
+      fs.rmSync(path.join(this.trashDir, path.basename(name)), { recursive: true, force: true });
+    }
+  }
+
   duplicateGuide(guideId, { title } = {}) {
     const src = this.getGuide(guideId);
     const steps = this.listSteps(guideId);

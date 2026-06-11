@@ -202,7 +202,11 @@ function setupIpc() {
     reindex(id);
     return id;
   });
-  h('library:trash:purge', () => store.purgeTrash());
+  h('library:trash:purge', ({ names } = {}) => {
+    if (names && names.length) store.purgeTrashItems(names);
+    else store.purgeTrash();
+    return true;
+  });
   h('folders:create', ({ name, parentId }) => store.createFolder(name, parentId || null));
   h('folders:rename', ({ folderId, name }) => store.renameFolder(folderId, name));
   h('folders:delete', ({ folderId }) => store.deleteFolder(folderId));

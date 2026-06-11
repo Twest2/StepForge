@@ -23,6 +23,7 @@ class StepForgeApp {
       info: null,
       selectMode: false,
       selectedGuides: new Set(),
+      selectedTrash: new Set(),
     };
     this.editorMeta = null;
     this.libraryRenderToken = 0;
@@ -351,12 +352,13 @@ class StepForgeApp {
     clearNode(this.libraryHost);
     const q = this.state.query.trim();
     const folderLabel = this.filterLabel();
-    // Selecting guides only makes sense for the plain guide grid — drop out
-    // of select mode for search results and the trash.
-    const canSelect = !q && this.state.folderFilter !== 'trash';
+    // Selecting only makes sense for the guide grid and the trash — drop out
+    // of select mode for search results.
+    const canSelect = !q;
     if (!canSelect && this.state.selectMode) {
       this.state.selectMode = false;
       this.state.selectedGuides = new Set();
+      this.state.selectedTrash = new Set();
     }
     const body = el('div.library', {},
       el('aside.lib-side', {},
@@ -406,10 +408,18 @@ class StepForgeApp {
     this.renderTopbar();
   }
 
+  setFolderFilter(folderFilter) {
+    this.state.folderFilter = folderFilter;
+    this.state.selectMode = false;
+    this.state.selectedGuides = new Set();
+    this.state.selectedTrash = new Set();
+    this.renderLibrary();
+  }
+
   libraryNavItem(id, label, count) {
     const props = {
       className: `nav-item${this.state.folderFilter === id ? ' active' : ''}`,
-      onClick: () => { this.state.folderFilter = id; this.renderLibrary(); },
+      onClick: () => this.setFolderFilter(id),
     };
     if (!['all', 'favorites', 'trash'].includes(id)) {
       props.onContextMenu = (e) => this.folderContextMenu(e, id);
@@ -430,7 +440,7 @@ class StepForgeApp {
       out.push(el('div.nav-item', {
         className: `nav-item${this.state.folderFilter === folder.id ? ' active' : ''}`,
         style: { paddingLeft: `${8 + depth * 12}px` },
-        onClick: () => { this.state.folderFilter = folder.id; this.renderLibrary(); },
+        onClick: () => this.setFolderFilter(folder.id),
         onContextMenu: (e) => this.folderContextMenu(e, folder.id),
       },
       el('span', {}, folder.name),
@@ -514,17 +524,26 @@ class StepForgeApp {
       this.domLibraryResults.append(el('div.empty-state', {}, el('div.big', {}, 'Trash'), 'Nothing deleted yet.'));
       return;
     }
-    const items = this.state.trash.map((name) => el('div.guide-card', {
-      onContextMenu: (e) => {
-        e.preventDefault();
-        contextMenu(e.clientX, e.clientY, [
-          { label: 'Restore', action: () => this.restoreTrashItem(name) },
-          { label: 'Empty trash', danger: true, action: () => this.purgeTrashItem() },
-        ]);
+    const selectMode = this.state.selectMode;
+    const items = this.state.trash.map((name) => {
+      const selected = this.state.selectedTrash.has(name);
+      return el('div.guide-card', {
+        className: `guide-card${selected ? ' selected' : ''}`,
+        onClick: () => {
+          if (selectMode) this.toggleTrashSelection(name);
+        },
+        onContextMenu: (e) => {
+          e.preventDefault();
+          if (selectMode) return;
+          contextMenu(e.clientX, e.clientY, [
+            { label: 'Restore', action: () => this.restoreTrashItem(name) },
+            { label: 'Empty trash', danger: true, action: () => this.purgeTrashItem() },
+          ]);
+        },
       },
-    },
-    el('h4', {}, name),
-    el('div.meta', {}, 'Deleted guide archive')));
+      el('h4', {}, name),
+      el('div.meta', {}, 'Deleted guide archive'));
+    });
     this.domLibraryResults.append(el('div.guide-grid', {}, ...items));
   }
 
@@ -604,6 +623,7 @@ class StepForgeApp {
   toggleSelectMode() {
     this.state.selectMode = !this.state.selectMode;
     this.state.selectedGuides = new Set();
+    this.state.selectedTrash = new Set();
     this.renderLibrary();
   }
 
@@ -627,10 +647,55 @@ class StepForgeApp {
     this.renderBulkBar();
   }
 
+  toggleTrashSelection(name) {
+    if (this.state.selectedTrash.has(name)) this.state.selectedTrash.delete(name);
+    else this.state.selectedTrash.add(name);
+    this.renderTrashView();
+    this.renderBulkBar();
+  }
+
+  selectAllTrash() {
+    this.state.selectedTrash = new Set(this.state.trash);
+    this.renderTrashView();
+    this.renderBulkBar();
+  }
+
+  clearTrashSelection() {
+    this.state.selectedTrash = new Set();
+    this.renderTrashView();
+    this.renderBulkBar();
+  }
+
+  async bulkPurgeTrash() {
+    const names = [...this.state.selectedTrash];
+    if (!names.length) return;
+    const ok = await confirmDialog(`Permanently delete ${names.length} item${names.length === 1 ? '' : 's'}? This cannot be undone.`, { danger: true, okLabel: 'Delete forever' });
+    if (!ok) return;
+    await api.library.trashPurge({ names });
+    this.state.selectedTrash = new Set();
+    await this.refreshLibrary();
+  }
+
   renderBulkBar() {
     if (!this.domBulkBar) return;
     clearNode(this.domBulkBar);
     if (!this.state.selectMode) return;
+    if (this.state.folderFilter === 'trash') {
+      const n = this.state.selectedTrash.size;
+      const allSelected = this.state.trash.length > 0 && n === this.state.trash.length;
+      this.domBulkBar.append(
+        el('div.bulk-bar', {},
+          el('span', {}, n ? `${n} selected` : 'Select items to delete forever'),
+          el('span.spacer', {}),
+          el('button', {
+            type: 'button',
+            onClick: () => (allSelected ? this.clearTrashSelection() : this.selectAllTrash()),
+          }, allSelected ? 'Clear selection' : 'Select all'),
+          el('button.danger', { type: 'button', disabled: !n, onClick: () => this.bulkPurgeTrash() }, 'Delete forever'),
+        ),
+      );
+      return;
+    }
     const guides = this.state.library.guides.filter((guide) => this.scopeGuide(guide));
     const n = this.state.selectedGuides.size;
     const allSelected = guides.length > 0 && n === guides.length;

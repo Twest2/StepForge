@@ -58,6 +58,9 @@ Initial release.
   recording" option to resume capturing more steps.
 - Editor step list: a "Select" toggle enables multi-select (checkboxes)
   with a "Select all" / "Delete" bar for removing several steps at once.
+- The library's "Select" toggle and bulk action bar now also work in the
+  Trash, with a "Delete forever" action that permanently removes the
+  selected items.
 
 ### Fixed
 

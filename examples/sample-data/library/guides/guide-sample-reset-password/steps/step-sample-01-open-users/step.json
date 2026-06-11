@@ -1,5 +1,5 @@
 {
-  "stepId": "step-592cde3d-19e2-441a-a19b-53ccd4ac132c",
+  "stepId": "step-sample-01-open-users",
   "parentStepId": null,
   "kind": "image",
   "status": "todo",
@@ -25,7 +25,7 @@
   "extraImages": [],
   "annotations": [
     {
-      "id": "ann-54403181-b784-4d9b-9285-b9504a7c2f8d",
+      "id": "ann-c74bec0b-6cf4-47ba-b228-73c623637138",
       "type": "rect",
       "x": 0.275,
       "y": 0.18,
@@ -41,7 +41,7 @@
       }
     },
     {
-      "id": "ann-303a7cdc-4866-4667-8046-33ba7bfb8687",
+      "id": "ann-2491a459-e852-4c08-bb55-edf78a47a6e9",
       "type": "number",
       "x": 0.3,
       "y": 0.08,
@@ -60,7 +60,7 @@
   ],
   "textBlocks": [
     {
-      "id": "tb-69f3f373-12e6-4ecf-b93c-36f3b770bece",
+      "id": "tb-42639c40-003c-44d7-9cd4-09b4b09ca41f",
       "position": "after-description",
       "level": "info",
       "title": "Tip",

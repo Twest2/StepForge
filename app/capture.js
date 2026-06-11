@@ -30,9 +30,9 @@ const CLICK_DEBOUNCE_MS = 40;
 const FRAME_LOOP_IDLE_MS = 0;
 // A buffered frame older than this is too stale to pass off as "the screen
 // at the instant of the click".
-const CLICK_FRAME_MAX_AGE_MS = 600;
-// How long a click waits for the in-flight grab before falling back to a
-// one-off fresh shot.
+const CLICK_FRAME_MAX_AGE_MS = 300;
+// How long a click waits for the next buffered frame before falling back to
+// a one-off fresh shot.
 const CLICK_FRAME_WAIT_MS = 2000;
 const CLICK_CAPTURE_HIDE_DELAY_MS = 25;
 
@@ -42,6 +42,13 @@ function pointInBounds(point, bounds) {
     && point.x <= bounds.x + bounds.width
     && point.y >= bounds.y
     && point.y <= bounds.y + bounds.height;
+}
+
+function parsePoint(text) {
+  const x = Number(text.x);
+  const y = Number(text.y);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  return { x, y };
 }
 
 function hasBinary(name) {
@@ -67,8 +74,9 @@ class CaptureService {
     this.frameWaiters = [];
     this.latestFrame = null;
     this.lastClickCapture = 0;
-    this.clickWatcherButtonDown = false;
     this.frameLoopInFlight = false;
+    this.clickWatcherTextBuffer = '';
+    this.clickWatcherEventType = null;
     this.shooting = false;
   }
 
@@ -409,7 +417,7 @@ class CaptureService {
         && sameDisplay;
     };
     if (usable(this.latestFrame)) return this.latestFrame;
-    if (!this.frameLoopRunning || !this.frameLoopInFlight) return null;
+    if (!this.frameLoopRunning) return null;
     const deadline = Date.now() + CLICK_FRAME_WAIT_MS;
     while (this.frameLoopRunning && Date.now() < deadline) {
       const next = await this.nextFrame(Math.max(1, deadline - Date.now()));
@@ -421,24 +429,20 @@ class CaptureService {
   startClickWatcher() {
     this.stopClickWatcher();
     try {
-      this.clickWatcherButtonDown = false;
+      this.clickWatcherTextBuffer = '';
+      this.clickWatcherEventType = null;
       if (process.platform === 'linux' && hasBinary('xinput')) {
-        // Stream raw button events from the X server; one capture per press.
+        // Stream XI2 events from X and use the ButtonPress coordinates that
+        // are already stamped into the event instead of sampling the cursor
+        // after the OS has had time to move on.
         this.clickWatcher = spawn('xinput', ['test-xi2', '--root'], { stdio: ['ignore', 'pipe', 'ignore'] });
         this.clickWatcher.stdout.on('data', (chunk) => {
           this.processClickWatcherData(chunk.toString(), 'linux');
         });
       } else if (process.platform === 'win32') {
-        // Poll the left mouse button via GetAsyncKeyState; print one line per click.
-        const ps = `
-Add-Type -Namespace W -Name U -MemberDefinition '[DllImport("user32.dll")] public static extern short GetAsyncKeyState(int k);'
-$down = $false
-while ($true) {
-  $s = [W.U]::GetAsyncKeyState(0x01) -band 0x8000
-  if ($s -and -not $down) { Write-Output CLICK }
-  $down = [bool]$s
-  Start-Sleep -Milliseconds 10
-}`;
+        // Use a low-level mouse hook so the click coordinates arrive with the
+        // event itself instead of being sampled after the fact.
+        const ps = this.windowsClickWatcherScript();
         this.clickWatcher = spawn('powershell.exe', ['-NoProfile', '-Command', ps], { stdio: ['ignore', 'pipe', 'ignore'] });
         this.clickWatcher.stdout.on('data', (chunk) => {
           this.processClickWatcherData(chunk.toString(), 'win32');
@@ -453,53 +457,169 @@ while ($true) {
     }
   }
 
+  windowsClickWatcherScript() {
+    return `
+$source = @"
+using System;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+
+public static class MouseHook {
+  public const int WH_MOUSE_LL = 14;
+  public const int WM_LBUTTONDOWN = 0x0201;
+
+  public delegate IntPtr LowLevelMouseProc(int nCode, IntPtr wParam, IntPtr lParam);
+
+  [StructLayout(LayoutKind.Sequential)]
+  public struct POINT {
+    public int X;
+    public int Y;
+  }
+
+  [StructLayout(LayoutKind.Sequential)]
+  public struct MSLLHOOKSTRUCT {
+    public POINT pt;
+    public uint mouseData;
+    public uint flags;
+    public uint time;
+    public IntPtr dwExtraInfo;
+  }
+
+  [StructLayout(LayoutKind.Sequential)]
+  public struct MSG {
+    public IntPtr hwnd;
+    public uint message;
+    public IntPtr wParam;
+    public IntPtr lParam;
+    public uint time;
+    public POINT pt;
+  }
+
+  [DllImport("user32.dll", SetLastError = true)]
+  public static extern IntPtr SetWindowsHookEx(int idHook, LowLevelMouseProc lpfn, IntPtr hMod, uint dwThreadId);
+
+  [DllImport("user32.dll", SetLastError = true)]
+  public static extern bool UnhookWindowsHookEx(IntPtr hhk);
+
+  [DllImport("user32.dll", SetLastError = true)]
+  public static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
+
+  [DllImport("user32.dll")]
+  public static extern bool GetMessage(out MSG lpMsg, IntPtr hWnd, uint wMsgFilterMin, uint wMsgFilterMax);
+
+  [DllImport("user32.dll")]
+  public static extern bool TranslateMessage([In] ref MSG lpMsg);
+
+  [DllImport("user32.dll")]
+  public static extern IntPtr DispatchMessage([In] ref MSG lpMsg);
+
+  [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+  public static extern IntPtr GetModuleHandle(string lpModuleName);
+}
+"@
+Add-Type -TypeDefinition $source -Language CSharp
+
+$script:mouseHookProc = [MouseHook+LowLevelMouseProc]{
+  param([int]$nCode, [IntPtr]$wParam, [IntPtr]$lParam)
+
+  if ($nCode -ge 0 -and $wParam.ToInt64() -eq [MouseHook]::WM_LBUTTONDOWN) {
+    $hookStruct = [Runtime.InteropServices.Marshal]::PtrToStructure($lParam, [Type][MouseHook+MSLLHOOKSTRUCT])
+    [Console]::Out.WriteLine(("CLICK {0} {1}" -f $hookStruct.pt.X, $hookStruct.pt.Y))
+    [Console]::Out.Flush()
+  }
+
+  return [MouseHook]::CallNextHookEx([IntPtr]::Zero, $nCode, $wParam, $lParam)
+}
+
+$module = [MouseHook]::GetModuleHandle([System.Diagnostics.Process]::GetCurrentProcess().MainModule.ModuleName)
+if ($module -eq [IntPtr]::Zero) {
+  throw "GetModuleHandle failed"
+}
+
+$hook = [MouseHook]::SetWindowsHookEx([MouseHook]::WH_MOUSE_LL, $script:mouseHookProc, $module, 0)
+if ($hook -eq [IntPtr]::Zero) {
+  throw "SetWindowsHookEx(WH_MOUSE_LL) failed"
+}
+
+try {
+  $msg = New-Object 'MouseHook+MSG'
+  while ([MouseHook]::GetMessage([ref]$msg, [IntPtr]::Zero, 0, 0)) {
+    [MouseHook]::TranslateMessage([ref]$msg) | Out-Null
+    [MouseHook]::DispatchMessage([ref]$msg) | Out-Null
+  }
+} finally {
+  [MouseHook]::UnhookWindowsHookEx($hook) | Out-Null
+}
+`;
+  }
+
   stopClickWatcher() {
     if (this.clickWatcher) {
       try { this.clickWatcher.kill(); } catch { /* already gone */ }
       this.clickWatcher = null;
     }
-    this.clickWatcherButtonDown = false;
+    this.clickWatcherTextBuffer = '';
+    this.clickWatcherEventType = null;
   }
 
   processClickWatcherData(text, platform = process.platform) {
-    const lines = String(text).split(/\r?\n/);
+    this.clickWatcherTextBuffer += String(text);
+    const lines = this.clickWatcherTextBuffer.split(/\r?\n/);
+    this.clickWatcherTextBuffer = lines.pop() || '';
     if (platform === 'linux') {
       for (const line of lines) {
         if (!line) continue;
-        // xinput batches multiple events into one chunk, so parse line by
-        // line and track press/release state instead of collapsing the chunk.
-        if (/RawButtonPress|ButtonPress/.test(line)) {
-          if (!this.clickWatcherButtonDown) {
-            this.clickWatcherButtonDown = true;
-            this.onOsClick();
+        const eventMatch = /^\s*EVENT type \d+ \(([^)]+)\)/.exec(line);
+        if (eventMatch) {
+          this.clickWatcherEventType = eventMatch[1];
+          continue;
+        }
+        if (this.clickWatcherEventType && /ButtonPress$/.test(this.clickWatcherEventType)) {
+          const pointMatch = /^\s*root:\s*([-\d.]+)\/([-\d.]+)/.exec(line);
+          if (pointMatch) {
+            this.onOsClick(this.normalizeClickPoint(parsePoint({ x: pointMatch[1], y: pointMatch[2] })));
+            this.clickWatcherEventType = null;
           }
-        } else if (/RawButtonRelease|ButtonRelease/.test(line)) {
-          this.clickWatcherButtonDown = false;
         }
       }
       return;
     }
     if (platform === 'win32') {
       for (const line of lines) {
-        if (line.includes('CLICK')) this.onOsClick();
+        const clickMatch = /^\s*CLICK\s+([-\d.]+)\s+([-\d.]+)/.exec(line);
+        if (clickMatch) {
+          this.onOsClick(this.normalizeClickPoint(parsePoint({ x: clickMatch[1], y: clickMatch[2] })));
+        }
       }
     }
   }
 
-  onOsClick(at = Date.now()) {
+  normalizeClickPoint(point) {
+    if (!point) return null;
+    try {
+      const dip = screen.screenToDipPoint(point);
+      return dip && Number.isFinite(dip.x) && Number.isFinite(dip.y) ? dip : point;
+    } catch {
+      return point;
+    }
+  }
+
+  onOsClick(clickPos = null, at = Date.now()) {
     if (!this.session || this.session.paused) return;
     // Ignore clicks on StepForge itself (pausing, finishing, editing).
     if (BrowserWindow.getFocusedWindow()) return;
     if (at - this.lastClickCapture < CLICK_DEBOUNCE_MS) return;
     this.lastClickCapture = at;
-    // Grab the cursor position synchronously, right when the click is
-    // detected, so the marker lands exactly where the user clicked even if
-    // the shot itself takes a moment to grab.
-    const clickPos = screen.getCursorScreenPoint();
+    if (!clickPos) {
+      // Fallback for platforms or event streams that do not provide
+      // coordinates.
+      clickPos = screen.getCursorScreenPoint();
+    }
     this.sessionCapture('click', clickPos).catch(() => {});
   }
 
   async captureCurrentFrame(mode, capturePoint = null) {
+    const capturedAt = Date.now();
     const grabbed = await this.grab(mode, capturePoint);
     return {
       mode,
@@ -507,7 +627,7 @@ while ($true) {
       size: grabbed.image.getSize(),
       display: grabbed.display,
       cursor: capturePoint || grabbed.cursor,
-      capturedAt: Date.now(),
+      capturedAt,
     };
   }
 

@@ -1,0 +1,73 @@
+{
+  "stepId": "step-592cde3d-19e2-441a-a19b-53ccd4ac132c",
+  "parentStepId": null,
+  "kind": "image",
+  "status": "todo",
+  "title": "Open [[Product]] users",
+  "descriptionHtml": "<p>Open the users list and select the target account.</p>",
+  "hidden": false,
+  "skipped": false,
+  "forceNewPage": false,
+  "focusedView": {
+    "enabled": true,
+    "zoom": 1.1,
+    "panX": 0.5,
+    "panY": 0.5
+  },
+  "image": {
+    "originalPath": "original.png",
+    "workingPath": "working.png",
+    "size": {
+      "width": 1280,
+      "height": 760
+    }
+  },
+  "extraImages": [],
+  "annotations": [
+    {
+      "id": "ann-54403181-b784-4d9b-9285-b9504a7c2f8d",
+      "type": "rect",
+      "x": 0.275,
+      "y": 0.18,
+      "w": 0.19,
+      "h": 0.18,
+      "text": "",
+      "style": {
+        "stroke": "#0068ff",
+        "fill": "transparent",
+        "textColor": "#FFFFFF",
+        "strokeWidth": 6,
+        "fontSize": 0.022
+      }
+    },
+    {
+      "id": "ann-303a7cdc-4866-4667-8046-33ba7bfb8687",
+      "type": "number",
+      "x": 0.3,
+      "y": 0.08,
+      "w": 0.08,
+      "h": 0.12,
+      "text": "",
+      "style": {
+        "stroke": "#0068ff",
+        "fill": "transparent",
+        "textColor": "#FFFFFF",
+        "strokeWidth": 3,
+        "fontSize": 0.022
+      },
+      "value": 1
+    }
+  ],
+  "textBlocks": [
+    {
+      "id": "tb-69f3f373-12e6-4ecf-b93c-36f3b770bece",
+      "position": "after-description",
+      "level": "info",
+      "title": "Tip",
+      "descriptionHtml": "<p>Use the search box to avoid scrolling.</p>"
+    }
+  ],
+  "codeBlocks": [],
+  "tableBlocks": [],
+  "links": []
+}

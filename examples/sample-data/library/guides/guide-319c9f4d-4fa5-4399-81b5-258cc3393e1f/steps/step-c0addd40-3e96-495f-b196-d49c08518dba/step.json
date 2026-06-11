@@ -1,0 +1,24 @@
+{
+  "stepId": "step-c0addd40-3e96-495f-b196-d49c08518dba",
+  "parentStepId": null,
+  "kind": "empty",
+  "status": "todo",
+  "title": "Legacy note",
+  "descriptionHtml": "<p>This hidden step exercises filtering in exports.</p>",
+  "hidden": true,
+  "skipped": false,
+  "forceNewPage": false,
+  "focusedView": {
+    "enabled": false,
+    "zoom": 1,
+    "panX": 0.5,
+    "panY": 0.5
+  },
+  "image": null,
+  "extraImages": [],
+  "annotations": [],
+  "textBlocks": [],
+  "codeBlocks": [],
+  "tableBlocks": [],
+  "links": []
+}

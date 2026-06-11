@@ -1,0 +1,88 @@
+{
+  "stepId": "step-bf6e1f92-47c8-478b-ba42-d2a3fe93bc48",
+  "parentStepId": null,
+  "kind": "image",
+  "status": "todo",
+  "title": "Enable the reset policy",
+  "descriptionHtml": "<p>Make sure the policy is active before continuing.</p>",
+  "hidden": false,
+  "skipped": false,
+  "forceNewPage": false,
+  "focusedView": {
+    "enabled": true,
+    "zoom": 1.1,
+    "panX": 0.5,
+    "panY": 0.5
+  },
+  "image": {
+    "originalPath": "original.png",
+    "workingPath": "working.png",
+    "size": {
+      "width": 1280,
+      "height": 760
+    }
+  },
+  "extraImages": [],
+  "annotations": [
+    {
+      "id": "ann-80ff688a-e1ca-46e7-9519-0dd38240d9c3",
+      "type": "arrow",
+      "x": 0.47,
+      "y": 0.24,
+      "w": 0.23,
+      "h": -0.04,
+      "text": "",
+      "style": {
+        "stroke": "#14a375",
+        "fill": "transparent",
+        "textColor": "#FFFFFF",
+        "strokeWidth": 5,
+        "fontSize": 0.022
+      }
+    },
+    {
+      "id": "ann-bd413182-4146-448b-95f8-72630f55437d",
+      "type": "tooltip",
+      "x": 0.53,
+      "y": 0.13,
+      "w": 0.17,
+      "h": 0.08,
+      "text": "Primary action",
+      "style": {
+        "stroke": "#111827",
+        "fill": "#111827",
+        "textColor": "#ffffff",
+        "strokeWidth": 3,
+        "fontSize": 0.022,
+        "tail": "bottom"
+      }
+    },
+    {
+      "id": "ann-537b3971-6361-4763-8424-da8980479507",
+      "type": "number",
+      "x": 0.31,
+      "y": 0.08,
+      "w": 0.08,
+      "h": 0.12,
+      "text": "",
+      "style": {
+        "stroke": "#14a375",
+        "fill": "transparent",
+        "textColor": "#FFFFFF",
+        "strokeWidth": 3,
+        "fontSize": 0.022
+      },
+      "value": 2
+    }
+  ],
+  "textBlocks": [],
+  "codeBlocks": [
+    {
+      "id": "cmd",
+      "language": "bash",
+      "code": "stepforge --capture --window --delay 300"
+    }
+  ],
+  "tableBlocks": [],
+  "links": []
+}

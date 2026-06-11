@@ -1,0 +1,23 @@
+{
+  "format": "stepforge-sample-manifest",
+  "version": 1,
+  "generatedAt": "2026-06-11T02:32:07.575Z",
+  "guideId": "guide-319c9f4d-4fa5-4399-81b5-258cc3393e1f",
+  "title": "Reset a password in Admin Portal",
+  "dataDir": "sample-data",
+  "note": "The sample guide is generated entirely offline from local assets.",
+  "archive": "sample-guide.sfgz",
+  "exports": {
+    "json": "sample-exports/json/reset-a-password-in-admin-portal.json",
+    "markdown": "sample-exports/markdown/reset-a-password-in-admin-portal.md",
+    "html-simple": "sample-exports/html-simple/reset-a-password-in-admin-portal.html",
+    "html-rich": "sample-exports/html-rich/reset-a-password-in-admin-portal-rich.html",
+    "pdf": "sample-exports/pdf/reset-a-password-in-admin-portal.pdf",
+    "gif": "sample-exports/gif/reset-a-password-in-admin-portal.gif",
+    "image-bundle": "sample-exports/image-bundle/reset-a-password-in-admin-portal-bundle.json",
+    "docx": "sample-exports/docx/reset-a-password-in-admin-portal.docx",
+    "pptx": "sample-exports/pptx/reset-a-password-in-admin-portal.pptx"
+  },
+  "substepId": "step-0997fb48-b598-4319-8144-0ceef68a84f4",
+  "slug": "reset-a-password-in-admin-portal"
+}

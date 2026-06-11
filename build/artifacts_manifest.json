@@ -1,0 +1,218 @@
+{
+  "format": "stepforge-artifacts-manifest",
+  "version": 1,
+  "generatedAt": "2026-06-11T02:33:30.203Z",
+  "packageVersion": "0.1.0",
+  "files": [
+    {
+      "kind": "artifact",
+      "path": "artifacts/stepforge_0.1.0_amd64.deb",
+      "size": 103679916,
+      "sha256": "e568d19b18dbd5be3f2bde1c3e6b70ce79243ba697d625e0a5c1af3e2bd9733e"
+    },
+    {
+      "kind": "artifact",
+      "path": "artifacts/stepforge_0.1.0_linux-x64.tar.gz",
+      "size": 139347926,
+      "sha256": "0bd6ea1d2c42b74e0b7411427f047dc8cbcc293507172b53ce43116e5f1affac"
+    },
+    {
+      "kind": "sample",
+      "path": "../examples/sample-data/library/guides/guide-319c9f4d-4fa5-4399-81b5-258cc3393e1f/guide.json",
+      "size": 928,
+      "sha256": "1fcb87d79d7c8d187256dafdefdd065d3bb3e2fc3b76c52a6003e147213ec1ba"
+    },
+    {
+      "kind": "sample",
+      "path": "../examples/sample-data/library/guides/guide-319c9f4d-4fa5-4399-81b5-258cc3393e1f/steps/step-0997fb48-b598-4319-8144-0ceef68a84f4/step.json",
+      "size": 784,
+      "sha256": "e6233ff39c5ee5e869900fe2db3208443fc126b02aca1175412bc5ab28c767ae"
+    },
+    {
+      "kind": "sample",
+      "path": "../examples/sample-data/library/guides/guide-319c9f4d-4fa5-4399-81b5-258cc3393e1f/steps/step-592cde3d-19e2-441a-a19b-53ccd4ac132c/original.png",
+      "size": 13643,
+      "sha256": "09e12f935511bb6fabb5637501aa7743516b96d990adfab62ccfa311a7b60606"
+    },
+    {
+      "kind": "sample",
+      "path": "../examples/sample-data/library/guides/guide-319c9f4d-4fa5-4399-81b5-258cc3393e1f/steps/step-592cde3d-19e2-441a-a19b-53ccd4ac132c/step.json",
+      "size": 1609,
+      "sha256": "36048ccb6e30c00d6b652a0959f794c841ba3b11ff2ba1d6d2afcc94eeed6634"
+    },
+    {
+      "kind": "sample",
+      "path": "../examples/sample-data/library/guides/guide-319c9f4d-4fa5-4399-81b5-258cc3393e1f/steps/step-592cde3d-19e2-441a-a19b-53ccd4ac132c/working.png",
+      "size": 13643,
+      "sha256": "09e12f935511bb6fabb5637501aa7743516b96d990adfab62ccfa311a7b60606"
+    },
+    {
+      "kind": "sample",
+      "path": "../examples/sample-data/library/guides/guide-319c9f4d-4fa5-4399-81b5-258cc3393e1f/steps/step-62da8044-c236-4012-9fce-15785c94bfa7/step.json",
+      "size": 547,
+      "sha256": "243b7b1d9e9697dce03eb5b80254fe898835f2f7a89c287e3a6d6cd305f660b9"
+    },
+    {
+      "kind": "sample",
+      "path": "../examples/sample-data/library/guides/guide-319c9f4d-4fa5-4399-81b5-258cc3393e1f/steps/step-8a33be62-08c7-4a5d-ab9d-9f415269d015/original.png",
+      "size": 13602,
+      "sha256": "c96eedffdc5fd2eb9b63942cc00f1c8a91d01a0c5c2316c1d12d750b9b49e3d0"
+    },
+    {
+      "kind": "sample",
+      "path": "../examples/sample-data/library/guides/guide-319c9f4d-4fa5-4399-81b5-258cc3393e1f/steps/step-8a33be62-08c7-4a5d-ab9d-9f415269d015/step.json",
+      "size": 1975,
+      "sha256": "32ee15cec46e2ce8c9fe289ab9848c461978bf3d3ff0625fbaf8c4958575e573"
+    },
+    {
+      "kind": "sample",
+      "path": "../examples/sample-data/library/guides/guide-319c9f4d-4fa5-4399-81b5-258cc3393e1f/steps/step-8a33be62-08c7-4a5d-ab9d-9f415269d015/working.png",
+      "size": 13602,
+      "sha256": "c96eedffdc5fd2eb9b63942cc00f1c8a91d01a0c5c2316c1d12d750b9b49e3d0"
+    },
+    {
+      "kind": "sample",
+      "path": "../examples/sample-data/library/guides/guide-319c9f4d-4fa5-4399-81b5-258cc3393e1f/steps/step-bf6e1f92-47c8-478b-ba42-d2a3fe93bc48/original.png",
+      "size": 14031,
+      "sha256": "b5e93a0ee74e2bdbbdf0871e901726dfbdc8b45dd648c959743520f92b02e7a2"
+    },
+    {
+      "kind": "sample",
+      "path": "../examples/sample-data/library/guides/guide-319c9f4d-4fa5-4399-81b5-258cc3393e1f/steps/step-bf6e1f92-47c8-478b-ba42-d2a3fe93bc48/step.json",
+      "size": 1886,
+      "sha256": "e707642d9fb4c2079075615836b26834cc1c053b6b2fb7eec0dc0b40029db614"
+    },
+    {
+      "kind": "sample",
+      "path": "../examples/sample-data/library/guides/guide-319c9f4d-4fa5-4399-81b5-258cc3393e1f/steps/step-bf6e1f92-47c8-478b-ba42-d2a3fe93bc48/working.png",
+      "size": 14031,
+      "sha256": "b5e93a0ee74e2bdbbdf0871e901726dfbdc8b45dd648c959743520f92b02e7a2"
+    },
+    {
+      "kind": "sample",
+      "path": "../examples/sample-data/library/guides/guide-319c9f4d-4fa5-4399-81b5-258cc3393e1f/steps/step-c0addd40-3e96-495f-b196-d49c08518dba/step.json",
+      "size": 521,
+      "sha256": "3d89cd70a5294a4166d60e20b0d19408a834c31415e4319839577a8b18ccbce3"
+    },
+    {
+      "kind": "sample",
+      "path": "../examples/sample-exports/docx/reset-a-password-in-admin-portal.docx",
+      "size": 110463,
+      "sha256": "be9e2b550b732fc6cd4a171b72749b49fe67730ee9969f69c23175688b0bea14"
+    },
+    {
+      "kind": "sample",
+      "path": "../examples/sample-exports/gif/reset-a-password-in-admin-portal.gif",
+      "size": 32090,
+      "sha256": "70a789c6ce1aa6154c65d0ee88a286d888fdfd9fd5c3045a14242e13df5ca263"
+    },
+    {
+      "kind": "sample",
+      "path": "../examples/sample-exports/html-rich/reset-a-password-in-admin-portal-rich.html",
+      "size": 149943,
+      "sha256": "9a449f2507f6f4b43d67589cb2f4f28682d8f6fdec15cc0541b26a81624a528b"
+    },
+    {
+      "kind": "sample",
+      "path": "../examples/sample-exports/html-simple/reset-a-password-in-admin-portal.html",
+      "size": 146646,
+      "sha256": "5cababe0b51a3590d3ceee4179760e0c2179e9ed340d85e1b65253e4275bb9d0"
+    },
+    {
+      "kind": "sample",
+      "path": "../examples/sample-exports/image-bundle/reset-a-password-in-admin-portal-bundle.json",
+      "size": 779,
+      "sha256": "24bae92a7d627ad65d9cea906f840fcfd46e44aa263ab927774daa49fef60f45"
+    },
+    {
+      "kind": "sample",
+      "path": "../examples/sample-exports/image-bundle/steps-reset-a-password-in-admin-portal/001-open-admin-portal-users.png",
+      "size": 31424,
+      "sha256": "892a3174e9876ebfab4c879d6d579cf8ad6eba2f299ad95feff33adaf205e042"
+    },
+    {
+      "kind": "sample",
+      "path": "../examples/sample-exports/image-bundle/steps-reset-a-password-in-admin-portal/002-enable-the-reset-policy.png",
+      "size": 38991,
+      "sha256": "f1c79fb2baa1ef41dd85b04be59cc796f3822858654612044a22e27f20d0696a"
+    },
+    {
+      "kind": "sample",
+      "path": "../examples/sample-exports/image-bundle/steps-reset-a-password-in-admin-portal/004-review-the-confirmation.png",
+      "size": 37274,
+      "sha256": "32c5e15f8a04d6af01b7d139cff732872d5ce7e3e519be6ece99cca4167856ed"
+    },
+    {
+      "kind": "sample",
+      "path": "../examples/sample-exports/json/reset-a-password-in-admin-portal.json",
+      "size": 6740,
+      "sha256": "7257af7b3df168df9656159f84e0f7b538437775dc2e716e7f87d00dd9d40efd"
+    },
+    {
+      "kind": "sample",
+      "path": "../examples/sample-exports/json/steps-reset-a-password-in-admin-portal/001-open-admin-portal-users.png",
+      "size": 31424,
+      "sha256": "892a3174e9876ebfab4c879d6d579cf8ad6eba2f299ad95feff33adaf205e042"
+    },
+    {
+      "kind": "sample",
+      "path": "../examples/sample-exports/json/steps-reset-a-password-in-admin-portal/002-enable-the-reset-policy.png",
+      "size": 38991,
+      "sha256": "f1c79fb2baa1ef41dd85b04be59cc796f3822858654612044a22e27f20d0696a"
+    },
+    {
+      "kind": "sample",
+      "path": "../examples/sample-exports/json/steps-reset-a-password-in-admin-portal/004-review-the-confirmation.png",
+      "size": 37274,
+      "sha256": "32c5e15f8a04d6af01b7d139cff732872d5ce7e3e519be6ece99cca4167856ed"
+    },
+    {
+      "kind": "sample",
+      "path": "../examples/sample-exports/markdown/reset-a-password-in-admin-portal.md",
+      "size": 1186,
+      "sha256": "16bbd2eb8850d8a55914abe9ece4d2aee465820fcd6c5ffde8925f37dd2b115b"
+    },
+    {
+      "kind": "sample",
+      "path": "../examples/sample-exports/markdown/steps-reset-a-password-in-admin-portal/001-open-admin-portal-users.png",
+      "size": 31424,
+      "sha256": "892a3174e9876ebfab4c879d6d579cf8ad6eba2f299ad95feff33adaf205e042"
+    },
+    {
+      "kind": "sample",
+      "path": "../examples/sample-exports/markdown/steps-reset-a-password-in-admin-portal/002-enable-the-reset-policy.png",
+      "size": 38991,
+      "sha256": "f1c79fb2baa1ef41dd85b04be59cc796f3822858654612044a22e27f20d0696a"
+    },
+    {
+      "kind": "sample",
+      "path": "../examples/sample-exports/markdown/steps-reset-a-password-in-admin-portal/004-review-the-confirmation.png",
+      "size": 37274,
+      "sha256": "32c5e15f8a04d6af01b7d139cff732872d5ce7e3e519be6ece99cca4167856ed"
+    },
+    {
+      "kind": "sample",
+      "path": "../examples/sample-exports/pdf/reset-a-password-in-admin-portal.pdf",
+      "size": 103120,
+      "sha256": "58a952a2f95653a91d4e662e4bc2ddcb0177de33e51a8f9e454cdf158ba3a795"
+    },
+    {
+      "kind": "sample",
+      "path": "../examples/sample-exports/pptx/reset-a-password-in-admin-portal.pptx",
+      "size": 117643,
+      "sha256": "4ce1e82903b726c549e53235e3fd4c70cf647123ccd823052030e2e1b9449864"
+    },
+    {
+      "kind": "sample",
+      "path": "../examples/sample-guide.sfgz",
+      "size": 88967,
+      "sha256": "4c36ae2ee22ca8da9fc066efaed72dc19084f8655b10162deb1528e2ebb3a0bf"
+    },
+    {
+      "kind": "sample",
+      "path": "../examples/sample-manifest.json",
+      "size": 1186,
+      "sha256": "2cecfc8eaef1a6b87aeac4692b6a22d2c6d81b533b18b15bc87db1bc3774b007"
+    }
+  ]
+}

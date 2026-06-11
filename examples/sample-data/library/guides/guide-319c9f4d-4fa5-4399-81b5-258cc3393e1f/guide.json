@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "guideId": "guide-319c9f4d-4fa5-4399-81b5-258cc3393e1f",
+  "title": "Reset a password in Admin Portal",
+  "descriptionHtml": "<p>Offline sample guide showing capture, annotations, rich text, and exports.</p>",
+  "placeholders": {
+    "Product": "Admin Portal",
+    "Author": "StepForge",
+    "Department": "Support"
+  },
+  "flags": {
+    "focusedViewDefault": true,
+    "hideSkippedStepsInExports": true
+  },
+  "themeOverride": "system",
+  "createdAt": "2026-06-11T02:32:07Z",
+  "updatedAt": "2026-06-11T02:32:07Z",
+  "stepsOrder": [
+    "step-592cde3d-19e2-441a-a19b-53ccd4ac132c",
+    "step-bf6e1f92-47c8-478b-ba42-d2a3fe93bc48",
+    "step-0997fb48-b598-4319-8144-0ceef68a84f4",
+    "step-8a33be62-08c7-4a5d-ab9d-9f415269d015",
+    "step-c0addd40-3e96-495f-b196-d49c08518dba",
+    "step-62da8044-c236-4012-9fce-15785c94bfa7"
+  ],
+  "favorite": false,
+  "linkedSource": null,
+  "exportProfiles": {}
+}

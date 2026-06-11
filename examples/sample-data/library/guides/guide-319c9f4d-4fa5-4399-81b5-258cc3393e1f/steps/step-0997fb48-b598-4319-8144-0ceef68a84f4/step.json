@@ -1,0 +1,32 @@
+{
+  "stepId": "step-0997fb48-b598-4319-8144-0ceef68a84f4",
+  "parentStepId": "step-bf6e1f92-47c8-478b-ba42-d2a3fe93bc48",
+  "kind": "empty",
+  "status": "todo",
+  "title": "Confirm permission prompt",
+  "descriptionHtml": "<p>Only administrators can complete this step.</p>",
+  "hidden": false,
+  "skipped": false,
+  "forceNewPage": false,
+  "focusedView": {
+    "enabled": false,
+    "zoom": 1,
+    "panX": 0.5,
+    "panY": 0.5
+  },
+  "image": null,
+  "extraImages": [],
+  "annotations": [],
+  "textBlocks": [
+    {
+      "id": "tb-e3aa7982-3eb4-4db1-a1af-fda7c72b46aa",
+      "position": "after-description",
+      "level": "warn",
+      "title": "Access",
+      "descriptionHtml": "<p>Admin rights required.</p>"
+    }
+  ],
+  "codeBlocks": [],
+  "tableBlocks": [],
+  "links": []
+}

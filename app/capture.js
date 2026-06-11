@@ -49,6 +49,7 @@ class CaptureService {
       guideId: this.session.guideId,
       mode: mode === 'region' ? 'fullscreen' : mode,
       delayMs: 0,
+      refocus: false, // don't steal focus from the app the user is documenting
     });
     if (result.ok) {
       this.session.count += 1;
@@ -74,36 +75,69 @@ class CaptureService {
     const display = screen.getDisplayNearestPoint(cursor);
     const { width, height } = display.size;
     const scale = display.scaleFactor || 1;
-    const types = mode === 'window' ? ['window'] : ['screen'];
+    // Ask for both kinds: some compositors (WSLg/Wayland portals) expose no
+    // individual window sources, so window mode falls back to the screen.
     const sources = await desktopCapturer.getSources({
-      types,
+      types: mode === 'window' ? ['window', 'screen'] : ['screen'],
       thumbnailSize: { width: Math.round(width * scale), height: Math.round(height * scale) },
     });
     if (!sources.length) throw new Error('no capture sources available (portal/permissions?)');
 
-    let source = sources[0];
+    let source = null;
     if (mode === 'window') {
       const win = this.getWindow();
       const ownTitle = win ? win.getTitle() : '';
-      source = sources.find((s) => s.name && s.name !== ownTitle && !/stepforge/i.test(s.name)) || sources[0];
-    } else if (sources.length > 1) {
-      source = sources.find((s) => String(s.display_id) === String(display.id)) || sources[0];
+      const windows = sources.filter((s) => s.id.startsWith('window:'));
+      source = windows.find((s) => s.name && s.name !== ownTitle && !/stepforge/i.test(s.name))
+        || windows[0]
+        || sources.find((s) => s.id.startsWith('screen:'));
+    } else {
+      const screens = sources.filter((s) => s.id.startsWith('screen:'));
+      source = screens.find((s) => String(s.display_id) === String(display.id)) || screens[0] || sources[0];
     }
+    if (!source) throw new Error('no capture source matched');
     const image = source.thumbnail;
     if (!image || image.isEmpty()) throw new Error('capture returned an empty image');
     return { image, display, cursor };
   }
 
   /**
+   * Hide the app window while `fn` runs so screenshots show the user's work,
+   * not StepForge itself. Restores visibility afterwards.
+   */
+  async withWindowHidden(fn, { refocus = true } = {}) {
+    const win = this.getWindow();
+    const wasVisible = win && !win.isDestroyed() && win.isVisible() && !win.isMinimized();
+    if (wasVisible) {
+      win.hide();
+      await new Promise((r) => setTimeout(r, 350)); // let the compositor repaint
+    }
+    try {
+      return await fn();
+    } finally {
+      if (wasVisible && win && !win.isDestroyed()) {
+        if (refocus) {
+          win.show();
+          win.focus();
+        } else {
+          win.showInactive();
+        }
+      }
+    }
+  }
+
+  /**
    * Take a screenshot and append it to the guide as a new image step.
    * Adds a click-marker annotation at the cursor position when enabled.
    */
-  async shoot({ guideId, mode = 'fullscreen', delayMs = null }) {
+  async shoot({ guideId, mode = 'fullscreen', delayMs = null, hideWindow = true, refocus = true }) {
     const delay = delayMs == null ? this.settings.get('capture.delayMs') || 0 : delayMs;
     if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
     let grabbed;
     try {
-      grabbed = await this.grab(mode);
+      grabbed = hideWindow
+        ? await this.withWindowHidden(() => this.grab(mode), { refocus })
+        : await this.grab(mode);
     } catch (err) {
       return { ok: false, reason: err.message };
     }
@@ -145,7 +179,7 @@ class CaptureService {
   async regionCapture(guideId) {
     let grabbed;
     try {
-      grabbed = await this.grab('fullscreen');
+      grabbed = await this.withWindowHidden(() => this.grab('fullscreen'));
     } catch (err) {
       return { ok: false, reason: err.message };
     }

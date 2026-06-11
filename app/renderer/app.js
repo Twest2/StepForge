@@ -6,13 +6,14 @@ const dialogs = window.StepForgeDialogs || {};
 class StepForgeApp {
   constructor() {
     this.view = document.getElementById('view');
+    this.topbar = document.getElementById('topbar');
     this.topbarContext = document.getElementById('topbar-context');
     this.searchInput = document.getElementById('global-search');
     this.captureStatus = document.getElementById('capture-status');
     this.homeBtn = document.getElementById('btn-home');
 
     this.state = {
-      view: 'library',
+      view: 'welcome',
       query: '',
       folderFilter: 'all',
       library: { guides: [], folders: [], guideFolders: {} },
@@ -24,9 +25,11 @@ class StepForgeApp {
     this.libraryRenderToken = 0;
 
     this.view.innerHTML = `
+      <div id="welcome-host"></div>
       <div id="library-host"></div>
       <div id="editor-host" class="hidden"></div>
     `;
+    this.welcomeHost = document.getElementById('welcome-host');
     this.libraryHost = document.getElementById('library-host');
     this.editorHost = document.getElementById('editor-host');
 
@@ -87,7 +90,7 @@ class StepForgeApp {
   async init() {
     await this.refreshData();
     this.updateCaptureState(await api.capture.state());
-    this.renderLibrary();
+    this.renderWelcome();
   }
 
   async refreshData() {
@@ -123,10 +126,42 @@ class StepForgeApp {
 
   setView(view) {
     this.state.view = view;
+    this.topbar.classList.toggle('hidden', view === 'welcome');
+    this.welcomeHost.classList.toggle('hidden', view !== 'welcome');
     this.libraryHost.classList.toggle('hidden', view !== 'library');
     this.editorHost.classList.toggle('hidden', view !== 'editor');
     this.searchInput.classList.toggle('hidden', view !== 'library');
     this.renderTopbar();
+  }
+
+  renderWelcome() {
+    this.setView('welcome');
+    clearNode(this.welcomeHost);
+    this.welcomeHost.append(
+      el('section.welcome-screen', {},
+        el('div.welcome-copy', {},
+          el('div.welcome-kicker', {}, 'Offline capture workspace'),
+          el('h1', {}, 'StepForge'),
+          el('p', {},
+            'Start a new capture, open an existing workspace, or adjust settings before you begin.'),
+        ),
+        el('div.welcome-spacer', {}),
+        el('div.welcome-actions', {},
+          el('button.primary', {
+            type: 'button',
+            onClick: () => this.startNewCapture(),
+          }, 'New Capture'),
+          el('button', {
+            type: 'button',
+            onClick: () => this.showLibrary(),
+          }, 'Existing Workspace'),
+          el('button', {
+            type: 'button',
+            onClick: () => this.openSettings(),
+          }, 'settings'),
+        ),
+      ),
+    );
   }
 
   async showLibrary(reason = null) {
@@ -182,6 +217,7 @@ class StepForgeApp {
 
   renderTopbar() {
     clearNode(this.topbarContext);
+    if (this.state.view === 'welcome') return;
     if (this.state.view === 'library') {
       this.topbarContext.append(
         el('button', { type: 'button', onClick: () => this.createGuide() }, 'New'),
@@ -446,6 +482,21 @@ class StepForgeApp {
     const guide = await api.library.create({ title: title.trim() || 'Untitled guide' });
     await this.refreshLibrary();
     await this.openGuide(guide.guideId);
+  }
+
+  async startNewCapture() {
+    const title = await dialogs.promptText({
+      title: 'New Capture',
+      label: 'Title',
+      value: 'Untitled guide',
+      placeholder: 'Untitled guide',
+    });
+    if (title == null) return;
+    const guide = await api.library.create({ title: title.trim() || 'Untitled guide' });
+    await this.refreshLibrary();
+    await this.openGuide(guide.guideId);
+    await api.capture.session({ action: 'start', guideId: guide.guideId });
+    this.updateCaptureState(await api.capture.state());
   }
 
   async createFolder() {

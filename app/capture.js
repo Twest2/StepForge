@@ -67,7 +67,9 @@ class CaptureService {
     this.frameWaiters = [];
     this.latestFrame = null;
     this.lastClickCapture = 0;
-    this.clickWatcherButtonDown = false;
+    this.clickWatcherBuf = '';
+    this.clickWatcherPendingPress = false;
+    this.clickQueue = Promise.resolve();
     this.frameLoopInFlight = false;
     this.shooting = false;
   }
@@ -421,7 +423,8 @@ class CaptureService {
   startClickWatcher() {
     this.stopClickWatcher();
     try {
-      this.clickWatcherButtonDown = false;
+      this.clickWatcherBuf = '';
+      this.clickWatcherPendingPress = false;
       if (process.platform === 'linux' && hasBinary('xinput')) {
         // Stream raw button events from the X server; one capture per press.
         // xinput block-buffers stdout when piped, so a press event can sit
@@ -434,7 +437,7 @@ class CaptureService {
           : ['xinput', 'test-xi2', '--root'];
         this.clickWatcher = spawn(argv[0], argv.slice(1), { stdio: ['ignore', 'pipe', 'ignore'] });
         this.clickWatcher.stdout.on('data', (chunk) => {
-          this.processClickWatcherData(chunk.toString(), 'linux');
+          this.ingestClickWatcherChunk(chunk.toString(), 'linux');
         });
       } else if (process.platform === 'win32') {
         // Poll the left mouse button via GetAsyncKeyState; print one line per click.
@@ -449,7 +452,7 @@ while ($true) {
 }`;
         this.clickWatcher = spawn('powershell.exe', ['-NoProfile', '-Command', ps], { stdio: ['ignore', 'pipe', 'ignore'] });
         this.clickWatcher.stdout.on('data', (chunk) => {
-          this.processClickWatcherData(chunk.toString(), 'win32');
+          this.ingestClickWatcherChunk(chunk.toString(), 'win32');
         });
       }
       if (this.clickWatcher) {
@@ -466,23 +469,50 @@ while ($true) {
       try { this.clickWatcher.kill(); } catch { /* already gone */ }
       this.clickWatcher = null;
     }
-    this.clickWatcherButtonDown = false;
+    this.clickWatcherBuf = '';
+    this.clickWatcherPendingPress = false;
+  }
+
+  /**
+   * Buffer stdout chunks and only parse complete lines: a chunk boundary
+   * can split an event line in half, which used to corrupt press/release
+   * parsing and swallow clicks.
+   */
+  ingestClickWatcherChunk(chunk, platform = process.platform) {
+    this.clickWatcherBuf += String(chunk);
+    const cut = this.clickWatcherBuf.lastIndexOf('\n');
+    if (cut === -1) return;
+    const complete = this.clickWatcherBuf.slice(0, cut);
+    this.clickWatcherBuf = this.clickWatcherBuf.slice(cut + 1);
+    this.processClickWatcherData(complete, platform);
   }
 
   processClickWatcherData(text, platform = process.platform) {
     const lines = String(text).split(/\r?\n/);
     if (platform === 'linux') {
+      // xinput prints each event as a multi-line block: an "EVENT type …
+      // (RawButtonPress)" header followed by a "detail: N" line carrying the
+      // button number. Fire on the detail line so scroll-wheel ticks (X11
+      // reports them as buttons 4-7) neither create steps nor debounce away
+      // the real clicks that follow them.
       for (const line of lines) {
         if (!line) continue;
-        // xinput batches multiple events into one chunk, so parse line by
-        // line and track press/release state instead of collapsing the chunk.
         if (/RawButtonPress|ButtonPress/.test(line)) {
-          if (!this.clickWatcherButtonDown) {
-            this.clickWatcherButtonDown = true;
-            this.onOsClick();
-          }
-        } else if (/RawButtonRelease|ButtonRelease/.test(line)) {
-          this.clickWatcherButtonDown = false;
+          if (this.clickWatcherPendingPress) this.onOsClick();
+          this.clickWatcherPendingPress = true;
+          continue;
+        }
+        if (!this.clickWatcherPendingPress) continue;
+        const detail = line.match(/detail:\s*(\d+)/);
+        if (detail) {
+          this.clickWatcherPendingPress = false;
+          const button = Number(detail[1]);
+          if (button < 4 || button > 7) this.onOsClick();
+        } else if (line.includes('EVENT type')) {
+          // Next event arrived without a detail line in between — treat the
+          // pending press as a plain click rather than dropping it.
+          this.clickWatcherPendingPress = false;
+          this.onOsClick();
         }
       }
       return;
@@ -496,15 +526,28 @@ while ($true) {
 
   onOsClick(at = Date.now()) {
     if (!this.session || this.session.paused) return;
-    // Ignore clicks on StepForge itself (pausing, finishing, editing).
-    if (BrowserWindow.getFocusedWindow()) return;
     if (at - this.lastClickCapture < CLICK_DEBOUNCE_MS) return;
     this.lastClickCapture = at;
     // Grab the cursor position synchronously, right when the click is
     // detected, so the marker lands exactly where the user clicked even if
-    // the shot itself takes a moment to grab.
+    // the shot itself takes a moment to grab. (Clicks on StepForge itself
+    // are filtered by the cursor-position check in sessionCapture, not by
+    // window focus — WSLg reports focus unreliably.)
     const clickPos = screen.getCursorScreenPoint();
-    this.sessionCapture('click', clickPos).catch(() => {});
+    this.enqueueClickCapture(clickPos);
+  }
+
+  /**
+   * Serialize click captures: a click that lands while an earlier capture is
+   * still being stored queues behind it instead of being dropped by the
+   * "capture already in progress" guard. The marker position was already
+   * read at click time, so a queued step still circles the right spot.
+   */
+  enqueueClickCapture(clickPos) {
+    this.clickQueue = this.clickQueue
+      .then(() => this.sessionCapture('click', clickPos))
+      .catch(() => {});
+    return this.clickQueue;
   }
 
   async captureCurrentFrame(mode, capturePoint = null) {

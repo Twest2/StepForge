@@ -296,6 +296,10 @@ function showExportDialog({
   onChooseDir,
   onExport,
   onPreview,
+  onLoadDefaults,      // async (format) => exporter DEFAULT_TEMPLATE
+  onLoadTemplate,      // async (format, name) => saved options
+  onSaveTemplate,      // async (format, name, options)
+  onManageTemplates,   // async (format) => refreshed template name list
 } = {}) {
   return new Promise((resolve) => {
     const formatOptions = (formats || []).map((f) => {
@@ -305,21 +309,91 @@ function showExportDialog({
     const formatSelect = makeSelect(defaultFormat, formatOptions);
     const templateSelect = makeSelect('', [{ value: '', label: 'Default template' }]);
     const outDirInput = makeInput(defaultOutDir, 'text', { placeholder: 'Choose an output folder' });
-    const info = el('div.muted', {}, 'Templates are optional. If no template is selected, exporter defaults are used.');
+    const optionsHost = el('div', { className: 'export-options' });
 
-    function refreshTemplates() {
-      const list = templatesByFormat[formatSelect.value] || [];
+    // The effective option set shown to (and edited by) the user.
+    let defaults = {};
+    let current = {};
+
+    function renderOptions() {
+      clearNode(optionsHost);
+      const entries = Object.entries(defaults)
+        .filter(([, v]) => ['boolean', 'number', 'string'].includes(typeof v));
+      if (!entries.length) {
+        optionsHost.append(el('div.muted', {}, 'This format has no adjustable options.'));
+        return;
+      }
+      for (const [key, defVal] of entries) {
+        const value = current[key] ?? defVal;
+        const label = key.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase());
+        let control;
+        if (typeof defVal === 'boolean') {
+          control = el('input', { type: 'checkbox', checked: Boolean(value) });
+          control.addEventListener('change', () => { current[key] = control.checked; });
+        } else if (typeof defVal === 'number') {
+          control = makeInput(value, 'number', { step: 'any' });
+          control.addEventListener('input', () => { current[key] = Number(control.value); });
+        } else {
+          control = makeInput(value, 'text');
+          control.addEventListener('input', () => { current[key] = control.value; });
+        }
+        optionsHost.append(labeledRow(label, control));
+      }
+    }
+
+    async function refreshOptions() {
+      defaults = (await onLoadDefaults?.(formatSelect.value)) || {};
+      const saved = templateSelect.value
+        ? (await onLoadTemplate?.(formatSelect.value, templateSelect.value)) || {}
+        : {};
+      current = { ...saved };
+      renderOptions();
+    }
+
+    function refreshTemplates(list = templatesByFormat[formatSelect.value] || []) {
       clearNode(templateSelect);
       templateSelect.append(el('option', { value: '' }, 'Default template'));
       for (const name of list) templateSelect.append(el('option', { value: name }, name));
     }
 
-    formatSelect.addEventListener('change', refreshTemplates);
+    formatSelect.addEventListener('change', () => { refreshTemplates(); refreshOptions(); });
+    templateSelect.addEventListener('change', () => refreshOptions());
     refreshTemplates();
+    refreshOptions();
+
+    const effectiveOptions = () => {
+      // only keep values that differ from defaults, so templates stay minimal
+      const out = {};
+      for (const [k, v] of Object.entries(current)) {
+        if (v !== undefined && v !== defaults[k]) out[k] = v;
+      }
+      return out;
+    };
+
+    const saveTplBtn = el('button', {
+      type: 'button',
+      onClick: async () => {
+        const name = await promptText({ title: 'Save template', label: 'Template name', value: templateSelect.value || '' });
+        if (!name || !name.trim()) return;
+        await onSaveTemplate?.(formatSelect.value, name.trim(), effectiveOptions());
+        const list = await onManageTemplates?.(formatSelect.value, null);
+        refreshTemplates(list || []);
+        templateSelect.value = name.trim();
+      },
+    }, 'Save as template…');
+
+    const manageBtn = el('button', {
+      type: 'button',
+      onClick: async () => {
+        const list = await onManageTemplates?.(formatSelect.value, 'manage');
+        refreshTemplates(list || []);
+        refreshOptions();
+      },
+    }, 'Manage…');
 
     const body = el('div.export-dialog', {},
       labeledRow('Format', formatSelect),
-      labeledRow('Template', templateSelect),
+      labeledRow('Template', el('div.row', {}, templateSelect, saveTplBtn, manageBtn)),
       labeledRow('Output folder', el('div.row', {}, outDirInput, el('button', {
         type: 'button',
         disabled: typeof onChooseDir !== 'function',
@@ -329,8 +403,15 @@ function showExportDialog({
           if (chosen) outDirInput.value = chosen;
         },
       }, 'Choose…'))),
-      info,
+      el('fieldset', {}, el('legend', {}, 'Options'), optionsHost),
     );
+
+    const payload = () => ({
+      format: formatSelect.value,
+      templateName: templateSelect.value || null,
+      options: effectiveOptions(),
+      outDir: outDirInput.value.trim() || null,
+    });
 
     const { close } = openModal({
       title: 'Export',
@@ -340,25 +421,13 @@ function showExportDialog({
         el('button', {
           onClick: async () => {
             if (typeof onPreview !== 'function') return;
-            const ok = await onPreview({
-              format: formatSelect.value,
-              templateName: templateSelect.value || null,
-              outDir: outDirInput.value.trim() || null,
-            });
-            if (ok !== false) {
-              close();
-              resolve(true);
-            }
+            await onPreview(payload()); // keep dialog open so settings can be tweaked
           },
         }, 'Preview'),
         el('button.primary', {
           onClick: async () => {
             if (typeof onExport !== 'function') return;
-            const ok = await onExport({
-              format: formatSelect.value,
-              templateName: templateSelect.value || null,
-              outDir: outDirInput.value.trim() || null,
-            });
+            const ok = await onExport(payload());
             if (ok !== false) {
               close();
               resolve(true);
@@ -369,6 +438,57 @@ function showExportDialog({
       wide: true,
       onClose: () => resolve(false),
     });
+  });
+}
+
+/** Template management list: rename / duplicate / delete / import / export. */
+function showTemplateManager({ format, names = [], onRename, onDuplicate, onDelete, onImport, onExport }) {
+  return new Promise((resolve) => {
+    let list = [...names];
+    const rows = el('div', { className: 'card-list' });
+
+    function renderRows() {
+      clearNode(rows);
+      if (!list.length) {
+        rows.append(el('div.muted', {}, 'No templates saved for this format yet.'));
+        return;
+      }
+      for (const name of list) {
+        rows.append(el('div.row', { style: { justifyContent: 'space-between', gap: '8px' } },
+          el('span', {}, name),
+          el('div.row', {},
+            el('button', {
+              type: 'button',
+              onClick: async () => {
+                const next = await promptText({ title: 'Rename template', label: 'Name', value: name });
+                if (next && next.trim() && next.trim() !== name) {
+                  list = await onRename(name, next.trim());
+                  renderRows();
+                }
+              },
+            }, 'Rename'),
+            el('button', { type: 'button', onClick: async () => { list = await onDuplicate(name); renderRows(); } }, 'Duplicate'),
+            el('button', { type: 'button', onClick: async () => { await onExport(name); } }, 'Share…'),
+            el('button.danger', { type: 'button', onClick: async () => { list = await onDelete(name); renderRows(); } }, 'Delete'),
+          ),
+        ));
+      }
+    }
+
+    const { close } = openModal({
+      title: `Templates — ${format}`,
+      body: el('div', {},
+        el('div.row', { style: { marginBottom: '10px' } },
+          el('button', { type: 'button', onClick: async () => { list = await onImport(); renderRows(); } }, 'Import .sfglt…'),
+          el('span.muted', {}, 'Templates are shareable as .sfglt files.'),
+        ),
+        rows,
+      ),
+      footer: [el('button.primary', { onClick: () => { close(); resolve(list); } }, 'Done')],
+      wide: true,
+      onClose: () => resolve(list),
+    });
+    renderRows();
   });
 }
 
@@ -421,6 +541,147 @@ function showLinkedGuideDialog({ guide, lock, onSave, onForceSave, onOpenArchive
   });
 }
 
+function showBackupsDialog({ snapshots = [], onCreate, onRestore } = {}) {
+  return new Promise((resolve) => {
+    let list = [...snapshots];
+    const rows = el('div', { className: 'card-list' });
+
+    function renderRows() {
+      clearNode(rows);
+      if (!list.length) {
+        rows.append(el('div.muted', {}, 'No snapshots yet. Automatic snapshots are created as you work; create one manually any time.'));
+        return;
+      }
+      for (const name of list) {
+        rows.append(el('div.row', { style: { justifyContent: 'space-between', gap: '10px' } },
+          el('span', { style: { overflow: 'hidden', textOverflow: 'ellipsis' } }, name),
+          el('button', {
+            type: 'button',
+            onClick: async () => {
+              const restored = await onRestore?.(name);
+              if (restored) close();
+            },
+          }, 'Restore'),
+        ));
+      }
+    }
+
+    const createBtn = el('button.primary', {
+      type: 'button',
+      onClick: async () => {
+        const refreshed = await onCreate?.();
+        if (Array.isArray(refreshed)) {
+          list = refreshed;
+          renderRows();
+        }
+      },
+    }, 'Create snapshot');
+
+    const { close } = openModal({
+      title: 'Backups & snapshots',
+      body: el('div', {},
+        el('div.row', { style: { marginBottom: '10px' } }, createBtn,
+          el('span.muted', {}, 'Restores are undoable — the current state is snapshotted first.')),
+        rows,
+      ),
+      footer: [el('button', { onClick: () => { close(); resolve(true); } }, 'Close')],
+      wide: true,
+      onClose: () => resolve(true),
+    });
+    renderRows();
+  });
+}
+
+function showPlaceholdersDialog({ title = 'Placeholders', hint = '', values = {}, onSave } = {}) {
+  return new Promise((resolve) => {
+    const rowsHost = el('div', { className: 'placeholder-rows' });
+    const rows = [];
+    const addRow = (key = '', value = '') => {
+      const keyInput = makeInput(key, 'text', { placeholder: 'Name' });
+      const valueInput = makeInput(value, 'text', { placeholder: 'Value' });
+      const row = el('div.placeholder-row', {}, keyInput, valueInput,
+        el('button.icon', {
+          type: 'button', title: 'Remove',
+          onClick: () => { row.remove(); rows.splice(rows.indexOf(row), 1); },
+        }, '−'));
+      rows.push(row);
+      rowsHost.append(row);
+    };
+    Object.entries(values || {}).forEach(([k, v]) => addRow(k, v));
+    if (!Object.keys(values || {}).length) addRow();
+
+    const { close } = openModal({
+      title,
+      body: el('div', {},
+        hint ? el('div.muted', { style: { marginBottom: '10px' } }, hint) : null,
+        rowsHost,
+        el('div.row', { style: { marginTop: '8px' } },
+          el('button', { type: 'button', onClick: () => addRow() }, 'Add placeholder')),
+      ),
+      footer: [
+        el('button', { onClick: () => { close(); resolve(false); } }, 'Cancel'),
+        el('button.primary', {
+          onClick: async () => {
+            const next = rows.reduce((acc, row) => {
+              const inputs = row.querySelectorAll('input');
+              const key = inputs[0].value.trim();
+              if (key) acc[key] = inputs[1].value;
+              return acc;
+            }, {});
+            await onSave?.(next);
+            close();
+            resolve(true);
+          },
+        }, 'Save'),
+      ],
+      onClose: () => resolve(false),
+    });
+  });
+}
+
+const SHORTCUTS = [
+  ['Capture & steps', [
+    ['Ctrl+S', 'Save (writes linked archive when guide is linked)'],
+    ['Ctrl+/', 'Quick actions palette'],
+    ['PageUp / PageDown', 'Previous / next step'],
+    ['Alt+↑ / Alt+↓', 'Move step up / down'],
+    ['Ctrl+Delete', 'Delete current step'],
+    ['Ctrl+V', 'Paste annotation, or clipboard image as new step'],
+  ]],
+  ['Canvas tools', [
+    ['S R O L A T', 'Select · Rect · Oval · Line · Arrow · Text'],
+    ['G N B H M U C', 'Tooltip · Number · Blur · Highlight · Magnify · Cursor · Crop'],
+    ['Ctrl+C', 'Copy selected annotation'],
+    ['Delete', 'Delete selected annotation'],
+    ['Esc', 'Deselect annotation'],
+    ['Arrows / Shift+Arrows', 'Nudge selection by 1 px / 10 px'],
+  ]],
+  ['View', [
+    ['Ctrl+= / Ctrl+-', 'Zoom in / out'],
+    ['Ctrl+0', 'Fit image to window'],
+  ]],
+];
+
+function showShortcutsDialog() {
+  return new Promise((resolve) => {
+    const sections = SHORTCUTS.map(([heading, items]) => el('div', {},
+      el('h3', { style: { margin: '8px 0 6px' } }, heading),
+      el('table', { style: { width: '100%', borderCollapse: 'collapse' } },
+        ...items.map(([keys, what]) => el('tr', {},
+          el('td', { style: { padding: '3px 14px 3px 0', whiteSpace: 'nowrap' } }, el('kbd', {}, keys)),
+          el('td', { style: { padding: '3px 0' } }, what),
+        )),
+      ),
+    ));
+    const { close } = openModal({
+      title: 'Keyboard shortcuts',
+      body: el('div', {}, ...sections),
+      footer: [el('button.primary', { onClick: () => { close(); resolve(true); } }, 'Close')],
+      onClose: () => resolve(true),
+    });
+  });
+}
+
 function showInfoDialog(title, bodyText) {
   return new Promise((resolve) => {
     const { close } = openModal({
@@ -439,5 +700,9 @@ window.StepForgeDialogs = {
   showExportDialog,
   showLinkedGuideDialog,
   showInfoDialog,
+  showBackupsDialog,
+  showPlaceholdersDialog,
+  showShortcutsDialog,
+  showTemplateManager,
 };
 })();

@@ -18,6 +18,7 @@ const DEFAULT_SETTINGS = {
     hotkeyPauseResume: 'CommandOrControl+Shift+2',
     captureOutsideClicks: true,
     confirmSimpleCapture: false,
+    autoIntervalSec: 5, // session fallback when click capture is unavailable
   },
   editor: {
     focusedViewDefaultForNewSteps: false,

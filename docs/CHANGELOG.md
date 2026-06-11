@@ -92,12 +92,13 @@ Initial release.
   literal text "undefined" by an old bug); a corrupted file is now
   treated as empty instead of crashing the dialog, and is overwritten
   with valid JSON the next time settings are saved.
-- Click captures no longer reuse the same stale background screenshot
-  for every step (only the click marker moved). Pausing now fully resets
-  the click-capture cache so resuming starts a fresh background refresh
-  loop, and a cached frame older than 400ms (e.g. if the background
-  refresh silently stops working) is now discarded in favor of a fresh
-  screenshot.
+- Click captures now always take a brand-new screenshot at the instant
+  of the click, with the click marker at the click-time cursor position.
+  Previously they reused a pre-click frame from a background cache that
+  could be stale by the time of the click — so the background image and
+  the click marker didn't always line up, and after pause/resume the
+  same frozen frame could be reused for every step with only the marker
+  moving. The pre-click frame cache has been removed entirely.
 
 ### Added (initial feature set)
 

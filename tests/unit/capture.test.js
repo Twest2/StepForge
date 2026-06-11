@@ -50,127 +50,41 @@ test('click-triggered session capture uses the low-latency hide pause', async ()
   });
 });
 
-test('click-triggered session capture prefers the cached frame when ready', async () => {
+test('every click capture takes a fresh shot — pre-grabbed frames are never reused', async () => {
   const service = makeService();
-  service.settings.get = (key) => {
-    if (key === 'capture.mode') return 'fullscreen';
-    if (key === 'capture.delayMs') return 0;
-    if (key === 'capture.clickMarker') return true;
-    if (key === 'capture.clickMarkerColor') return '#E5484D';
-    if (key === 'editor.focusedViewDefaultForNewSteps') return false;
-    return null;
-  };
   service.session = { guideId: 'guide-2', paused: false, count: 0, intervalSec: 0 };
-  service.captureCache = {
-    mode: 'fullscreen',
-    png: Buffer.from('cached-png'),
-    size: { width: 120, height: 80 },
-    display: { bounds: { x: 10, y: 20, width: 120, height: 80 } },
-    cursor: { x: 70, y: 40 },
-    capturedAt: Date.now(),
+
+  let shots = 0;
+  service.captureCurrentFrame = async (mode) => {
+    shots += 1;
+    return {
+      mode,
+      png: Buffer.from(`frame-${shots}`),
+      size: { width: 100, height: 100 },
+      display: { bounds: { x: 0, y: 0, width: 100, height: 100 } },
+      cursor: { x: 50, y: 50 },
+      capturedAt: Date.now(),
+    };
   };
 
-  let shootCalled = false;
-  service.shoot = async () => {
-    shootCalled = true;
-    throw new Error('fresh shot should not run when cache is ready');
-  };
-
-  const added = [];
-  service.store.addStep = (guideId, fields, png, size) => {
-    added.push({ guideId, fields, png, size });
-    return { stepId: 'step-2', ...fields };
-  };
-  service.notify = (channel, payload) => {
-    added.push({ channel, payload });
-  };
-
-  const result = await service.sessionCapture('click');
-
-  assert.equal(result.ok, true);
-  assert.equal(shootCalled, false);
-  assert.equal(service.session.count, 1);
-  assert.equal(added[0].guideId, 'guide-2');
-  assert.deepEqual(added[0].png, Buffer.from('cached-png'));
-  assert.deepEqual(added[0].size, { width: 120, height: 80 });
-  assert.equal(added[0].fields.annotations.length, 1);
-  assert.equal(added[0].fields.annotations[0].type, 'oval');
-});
-
-test('click-triggered capture marks the click-time cursor position, not the cached frame\'s (possibly stale) cursor', async () => {
-  const service = makeService();
-  service.settings.get = (key) => {
-    if (key === 'capture.mode') return 'fullscreen';
-    if (key === 'capture.delayMs') return 0;
-    if (key === 'capture.clickMarker') return true;
-    if (key === 'capture.clickMarkerColor') return '#E5484D';
-    if (key === 'editor.focusedViewDefaultForNewSteps') return false;
-    return null;
-  };
-  service.session = { guideId: 'guide-3', paused: false, count: 0, intervalSec: 0 };
-  service.captureCache = {
-    mode: 'fullscreen',
-    png: Buffer.from('cached-png'),
-    size: { width: 120, height: 80 },
-    display: { bounds: { x: 0, y: 0, width: 120, height: 80 } },
-    // Stale cursor position from the cache-refresh loop, well outside the
-    // display — if this were used for the marker, no annotation would be
-    // placed at all.
-    cursor: { x: 9999, y: 9999 },
-    capturedAt: Date.now(),
-  };
-
-  service.shoot = async () => {
-    throw new Error('fresh shot should not run when cache is ready');
-  };
-
-  let added = null;
-  service.store.addStep = (guideId, fields, png, size) => {
-    added = { guideId, fields, png, size };
-    return { stepId: 'step-3', ...fields };
+  const captured = [];
+  service.store.addStep = (guideId, fields, png) => {
+    captured.push(png.toString());
+    return { stepId: `step-${captured.length}` };
   };
   service.notify = () => {};
 
-  // The user clicked dead center of the display.
-  const result = await service.sessionCapture('click', { x: 60, y: 40 });
+  await service.sessionCapture('click', { x: 10, y: 10 });
+  await service.sessionCapture('click', { x: 20, y: 20 });
+  service.togglePause(true);
+  service.togglePause(false);
+  await service.sessionCapture('click', { x: 30, y: 30 });
 
-  assert.equal(result.ok, true);
-  assert.equal(added.fields.annotations.length, 1);
-  const marker = added.fields.annotations[0];
-  assert.equal(marker.type, 'oval');
-  const d = 0.035;
-  assert.ok(Math.abs(marker.x - (0.5 - d / 2)) < 1e-9);
-  assert.ok(Math.abs(marker.y - (0.5 - (d * 120 / 80) / 2)) < 1e-9);
+  assert.deepEqual(captured, ['frame-1', 'frame-2', 'frame-3'],
+    'each click must capture a brand-new frame, including after pause/resume');
 });
 
-test('click-triggered session capture falls back to a fresh shot when the cached frame is stale', async () => {
-  const service = makeService();
-  service.session = { guideId: 'guide-stale', paused: false, count: 0, intervalSec: 0 };
-  // A frame that's well past the cache's max age — e.g. the background
-  // refresh loop died (errored silently, or never restarted after a
-  // pause/resume) and left a frozen, increasingly-stale frame behind.
-  service.captureCache = {
-    mode: 'fullscreen',
-    png: Buffer.from('stale-png'),
-    size: { width: 120, height: 80 },
-    display: { bounds: { x: 0, y: 0, width: 120, height: 80 } },
-    cursor: { x: 60, y: 40 },
-    capturedAt: Date.now() - 10_000,
-  };
-
-  let shootCalled = false;
-  service.shoot = async () => {
-    shootCalled = true;
-    return { ok: true, step: { stepId: 'fresh-step' } };
-  };
-
-  const result = await service.sessionCapture('click', { x: 1, y: 1 });
-
-  assert.equal(result.ok, true);
-  assert.equal(shootCalled, true, 'a stale cached frame must not be reused');
-});
-
-test('live-shot click capture also marks the click-time cursor position', async () => {
+test('click capture marks the click-time cursor position', async () => {
   const service = makeService();
   service.settings.get = (key) => {
     if (key === 'capture.mode') return 'fullscreen';
@@ -206,7 +120,7 @@ test('live-shot click capture also marks the click-time cursor position', async 
   assert.equal(added.fields.annotations[0].type, 'oval');
 });
 
-test('a new session starts paused and does not hide the window or arm the click cache until "Start recording" is pressed', async () => {
+test('a new session starts paused and does not hide the window until "Start recording" is pressed', async () => {
   const service = makeService();
   const win = {
     destroyed: false, visible: true, minimized: false, hidden: 0, shown: 0,
@@ -222,8 +136,6 @@ test('a new session starts paused and does not hide the window or arm the click 
   };
   service.getWindow = () => win;
   service.clickCaptureAvailable = () => true;
-  let cacheStarted = 0;
-  service.startClickCaptureCache = () => { cacheStarted += 1; };
 
   try {
     service.startSession('guide-5');
@@ -231,7 +143,6 @@ test('a new session starts paused and does not hide the window or arm the click 
     assert.equal(service.session.paused, true, 'sessions start paused');
     assert.equal(service.state().paused, true);
     assert.equal(win.hidden, 0, 'window must stay visible until recording starts');
-    assert.equal(cacheStarted, 0, 'click-capture cache must not start before recording starts');
 
     // User clicks "Start recording" (the resume action).
     service.togglePause(false);
@@ -240,7 +151,6 @@ test('a new session starts paused and does not hide the window or arm the click 
 
     await new Promise((r) => setTimeout(r, 450));
     assert.equal(win.hidden, 1, 'window hides once recording actually starts');
-    assert.equal(cacheStarted, 1, 'click-capture cache is armed once recording starts');
   } finally {
     service.finishSession();
   }

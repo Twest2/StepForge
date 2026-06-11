@@ -92,10 +92,12 @@ Initial release.
   literal text "undefined" by an old bug); a corrupted file is now
   treated as empty instead of crashing the dialog, and is overwritten
   with valid JSON the next time settings are saved.
-- Resuming a paused capture session no longer reuses the same stale
-  background screenshot for every click capture (only the click marker
-  moved); pausing now fully resets the click-capture cache so resuming
-  starts a fresh background refresh loop.
+- Click captures no longer reuse the same stale background screenshot
+  for every step (only the click marker moved). Pausing now fully resets
+  the click-capture cache so resuming starts a fresh background refresh
+  loop, and a cached frame older than 400ms (e.g. if the background
+  refresh silently stops working) is now discarded in favor of a fresh
+  screenshot.
 
 ### Added (initial feature set)
 

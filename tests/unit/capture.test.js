@@ -143,6 +143,33 @@ test('click-triggered capture marks the click-time cursor position, not the cach
   assert.ok(Math.abs(marker.y - (0.5 - (d * 120 / 80) / 2)) < 1e-9);
 });
 
+test('click-triggered session capture falls back to a fresh shot when the cached frame is stale', async () => {
+  const service = makeService();
+  service.session = { guideId: 'guide-stale', paused: false, count: 0, intervalSec: 0 };
+  // A frame that's well past the cache's max age — e.g. the background
+  // refresh loop died (errored silently, or never restarted after a
+  // pause/resume) and left a frozen, increasingly-stale frame behind.
+  service.captureCache = {
+    mode: 'fullscreen',
+    png: Buffer.from('stale-png'),
+    size: { width: 120, height: 80 },
+    display: { bounds: { x: 0, y: 0, width: 120, height: 80 } },
+    cursor: { x: 60, y: 40 },
+    capturedAt: Date.now() - 10_000,
+  };
+
+  let shootCalled = false;
+  service.shoot = async () => {
+    shootCalled = true;
+    return { ok: true, step: { stepId: 'fresh-step' } };
+  };
+
+  const result = await service.sessionCapture('click', { x: 1, y: 1 });
+
+  assert.equal(result.ok, true);
+  assert.equal(shootCalled, true, 'a stale cached frame must not be reused');
+});
+
 test('live-shot click capture also marks the click-time cursor position', async () => {
   const service = makeService();
   service.settings.get = (key) => {

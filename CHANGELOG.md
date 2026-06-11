@@ -13,6 +13,26 @@ Initial release.
   (creates a guide, opens the editor, and starts a capture session),
   Existing Workspace (guide library), and Settings. The brand button
   returns to the welcome screen from any view.
+- Capture menu in the editor topbar: full screen / window / region /
+  3-second delay, paste image as step, import images, and capture
+  session start/finish — capture no longer requires the global hotkey.
+- The app hides its own window during capture so screenshots show your
+  work, not StepForge; hotkey captures restore the window without
+  stealing focus.
+- Blocks panel: add and edit informational text blocks, code blocks,
+  and tables directly on a step.
+- Focused-view zoom and pan sliders.
+- Guide-level placeholders editor (More ▾ → Guide placeholders).
+- Backups & snapshots dialog with one-click undoable restore.
+- Export dialog: editable per-format options, save-as-template, and a
+  template manager (rename / duplicate / delete / share as .sfglt);
+  Preview now opens the generated file in the default viewer.
+- Apply an annotation's style to all annotations of the same type in
+  the step or the whole guide.
+- Keyboard shortcuts: tool keys (S R O L A T G N B H M U C), PageUp/
+  PageDown step navigation, Ctrl+= / Ctrl+- / Ctrl+0 zoom, annotation
+  copy/paste (Ctrl+C/V), Ctrl+Delete deletes the step, Shift+arrows
+  fast-nudge — plus a shortcuts reference dialog.
 
 ### Fixed
 

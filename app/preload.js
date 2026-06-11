@@ -81,6 +81,7 @@ const api = {
   },
   export: {
     formats: invoke('export:formats'),
+    defaults: invoke('export:defaults'),
     run: invoke('export:run'),
     chooseDir: invoke('export:chooseDir'),
     preview: invoke('export:preview'),

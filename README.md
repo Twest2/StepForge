@@ -47,9 +47,11 @@ The core workflow:
 
 - **Guide library** with folders, favorites, title search, full-text search,
   duplicate/move/delete, and a quick-actions palette (`Ctrl+/`).
-- **Capture engine** — full screen, active window, and region capture with
-  delay, pause/resume, hotkeys, click markers, clipboard paste, and PNG/JPEG/
-  GIF import.
+- **Capture engine** — the editor's **Capture ▾** button offers full screen,
+  active window, and region capture (the app hides itself during the shot)
+  plus delay, pause/resume sessions with global hotkeys, click markers,
+  clipboard paste, and PNG/JPEG/GIF import. The full keyboard shortcut list
+  lives under **More ▾ → Keyboard shortcuts** in the editor.
 - **Three-pane editor** — step tree with substeps, statuses
   (todo/in-progress/done), hidden/skipped steps, focused view (zoom/pan that
   never mutates the original image), autosave, and command-stack undo/redo.

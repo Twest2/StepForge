@@ -265,12 +265,30 @@ class StepForgeApp {
     const guide = this.editorMeta?.guide;
     this.topbarContext.append(
       el('button', { type: 'button', onClick: () => this.showLibrary() }, 'Back'),
-      el('button', { type: 'button', onClick: () => this.renameGuide() }, 'Rename'),
+      el('button.primary', {
+        type: 'button',
+        title: 'Capture a screenshot step',
+        onClick: (e) => this.editor.openCaptureMenu(e),
+      }, 'Capture ▾'),
       el('button', { type: 'button', onClick: () => this.editor.saveAll() }, 'Save'),
       el('button', { type: 'button', onClick: () => this.editor.openExportDialog() }, 'Export'),
-      el('button', { type: 'button', onClick: () => this.editor.openLinkedGuide() }, guide && guide.linkedSource ? 'Linked' : 'Local'),
-      el('button', { type: 'button', onClick: () => this.editor.openQuickActions() }, 'Quick'),
-      el('button', { type: 'button', onClick: () => this.openSettings() }, 'Settings'),
+      el('button', { type: 'button', title: 'Share this guide as a .sfgz file', onClick: () => this.editor.shareAsFile() }, 'Share'),
+      el('button', {
+        type: 'button',
+        onClick: (e) => {
+          const rect = e.target.getBoundingClientRect();
+          contextMenu(rect.left, rect.bottom + 4, [
+            { label: 'Rename guide…', action: () => this.renameGuide() },
+            { label: 'Guide placeholders…', action: () => this.editor.openGuidePlaceholders() },
+            { label: 'Backups & snapshots…', action: () => this.editor.openBackupsDialog() },
+            { label: guide && guide.linkedSource ? 'Linked guide…' : 'Linked guide (not linked)', action: () => this.editor.openLinkedGuide() },
+            'sep',
+            { label: 'Keyboard shortcuts…', action: () => this.editor.openShortcutsHelp() },
+            { label: 'Quick actions  (Ctrl+/)', action: () => this.editor.openQuickActions() },
+            { label: 'Settings…', action: () => this.openSettings() },
+          ]);
+        },
+      }, 'More ▾'),
       el('span.muted', { style: { marginLeft: '8px' } }, guide ? `${guide.title} · ${this.editorMeta?.stepCount || 0} steps` : ''),
     );
   }

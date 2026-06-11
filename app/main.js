@@ -348,6 +348,23 @@ function setupIpc() {
 
   // export + preview
   h('export:formats', () => FORMATS.filter((f) => EXPORTERS[f]));
+  h('export:defaults', ({ format }) => {
+    // Exporter modules expose DEFAULT_TEMPLATE; the dialog renders editable
+    // options from it (booleans -> checkbox, numbers -> number, strings -> text).
+    const mod = {
+      json: '../exporters/json',
+      markdown: '../exporters/markdown',
+      'html-simple': '../exporters/html',
+      'html-rich': '../exporters/html',
+      pdf: '../exporters/pdf',
+      gif: '../exporters/gif',
+      'image-bundle': '../exporters/image-bundle',
+      docx: '../exporters/docx',
+      pptx: '../exporters/pptx',
+    }[format];
+    if (!mod) return {};
+    return { ...require(mod).DEFAULT_TEMPLATE };
+  });
   h('export:run', async ({ guideId, format, options, outDir }) => {
     let dir = outDir || settings.get(`exports.lastOutputDirs.${format}`);
     if (!dir) {

@@ -71,73 +71,73 @@ half-done): capture-service fixes and editor additions listed in sections
       OS-clipboard image -> new step), Ctrl+Delete delete step,
       Shift+arrows = 10px nudge.
 
-### 3. Dialogs (app/renderer/dialogs.js) — add and export via
+### 3. Dialogs (app/renderer/dialogs.js) — [x] DONE — add and export via
 `window.StepForgeDialogs`:
-- [ ] `showBackupsDialog({snapshots, onCreate, onRestore})` — list of
+- [x] `showBackupsDialog({snapshots, onCreate, onRestore})` — list of
       snapshot names with a Restore button each, "Create snapshot" button
       on top (onCreate returns the refreshed list; re-render it).
-- [ ] `showPlaceholdersDialog({title, hint, values, onSave})` — key/value
+- [x] `showPlaceholdersDialog({title, hint, values, onSave})` — key/value
       rows with add/remove, same pattern as the placeholder rows already
       inside `showSettingsDialog` (copy that code).
-- [ ] `showShortcutsDialog()` — static table of the shortcuts from
+- [x] `showShortcutsDialog()` — static table of the shortcuts from
       section 2 plus Ctrl+S save, Ctrl+/ quick actions, Alt+arrows move step.
-- [ ] Extend `showExportDialog`: a "Save as template…" button
+- [x] Extend `showExportDialog`: a "Save as template…" button
       (prompts a name, calls new `onSaveTemplate({format, name})`), and a
       "Manage…" button listing templates with rename/duplicate/delete/
       import (.sfglt)/export (use `api.templates.*`, all already exist in
       preload).
 
-### 4. Topbar rework (app/renderer/app.js, editor branch of `renderTopbar`)
-- [ ] Buttons: Back | **Capture** (primary; onClick
+### 4. Topbar rework — [x] DONE — (app/renderer/app.js, editor branch of `renderTopbar`)
+- [x] Buttons: Back | **Capture** (primary; onClick
       `this.editor.openCaptureMenu(e)`) | Save | Export | Share
       (`this.editor.shareAsFile()`) | More ▾ | guide title text.
-- [ ] "More ▾" opens `contextMenu` with: Rename guide / Guide
+- [x] "More ▾" opens `contextMenu` with: Rename guide / Guide
       placeholders… / Backups & snapshots… / Linked guide… / Keyboard
       shortcuts… / Settings.
-- [ ] Remove the old Rename/Local/Quick/Settings buttons from the topbar
+- [x] Remove the old Rename/Local/Quick/Settings buttons from the topbar
       (they move into More; Quick actions stays reachable via Ctrl+/).
 
-### 5. Main process additions (app/main.js + app/preload.js)
-- [ ] `export:preview` flow: after writing the preview, the renderer
+### 5. Main process additions — [x] DONE — (app/main.js + app/preload.js)
+- [x] `export:preview` flow: after writing the preview, the renderer
       should call a new `shell.openPath` on the produced file so PDF/GIF
       previews actually open (change `onPreview` in
       `editor.openExportDialog` to call `api.shell.openPath({target: preview.file})`).
-- [ ] New IPC `export:defaults {format}` returning the exporter's
+- [x] New IPC `export:defaults {format}` returning the exporter's
       DEFAULT_TEMPLATE (require the exporter module, read its export) so
       the export dialog can show editable options. Wire into preload as
       `api.export.defaults`.
-- [ ] Optional (only if simple): render checkboxes/number/text inputs in
+- [x] Optional (only if simple): render checkboxes/number/text inputs in
       the export dialog from the defaults object (booleans -> checkbox,
       numbers -> number input, strings -> text input), pass the edited
       object as `options` to export/preview/save-as-template.
 
-### 6. CSS (app/renderer/style.css)
-- [ ] Ensure `.spacer { flex: 1; }` exists (block cards use it).
-- [ ] Style `.focused-controls`, `.blocks-list .block-card textarea`
+### 6. CSS (app/renderer/style.css) — [x] DONE
+- [x] Ensure `.spacer { flex: 1; }` exists (block cards use it).
+- [x] Style `.focused-controls`, `.blocks-list .block-card textarea`
       (full width), keep visual language consistent (existing vars:
       `--panel`, `--panel-2`, `--border`, `--accent`, `--radius`).
 
 ### 7. Verification tour + tests
-- [ ] Screenshot tour: welcome, library, editor (with blocks panel
+- [x] Screenshot tour: welcome, library, editor (with blocks panel
       visible), capture menu open, export dialog, backups dialog. Check
       each PNG looks right; fix what doesn't.
-- [ ] Add a unit test `tests/unit/ipc-surface.test.js` that requires
+- [x] Add a unit test `tests/unit/ipc-surface.test.js` that requires
       `app/preload.js` is impossible (electron); instead statically check:
       every `ipcRenderer.invoke('X')` channel string in preload.js has a
       matching `h('X'` handler string in main.js (read both files with fs,
       regex out the channel names, assert set equality or subset).
-- [ ] `bash tests/run_test.sh` green; `bash scripts/verify.sh` green.
-- [ ] Regenerate samples if exporter behavior changed
+- [x] `bash tests/run_test.sh` green; `bash scripts/verify.sh` green.
+- [x] Regenerate samples if exporter behavior changed (not needed — exporter behavior unchanged)
       (`node scripts/make-sample-guide.js`), commit changes.
 
 ### 8. Docs + final commit
-- [ ] Update CHANGELOG.md (### Added: capture menu, block editors,
+- [x] Update CHANGELOG.md (### Added: capture menu, block editors,
       focused-view controls, shortcuts, backups dialog, template
       management, apply-style-across; ### Fixed: window-capture fallback,
       app hides itself during capture).
-- [ ] README: mention the capture button and shortcut list location.
-- [ ] Update THIS file: tick every box you completed.
-- [ ] Final commit.
+- [x] README: mention the capture button and shortcut list location.
+- [x] Update THIS file: tick every box you completed.
+- [x] Final commit.
 
 ## Testing philosophy (from prompt.md — do not violate)
 

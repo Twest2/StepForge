@@ -1195,19 +1195,54 @@ class GuideEditor {
       defaultFormat: 'pdf',
       defaultOutDir: settings.exports?.lastOutputDirs?.pdf || '',
       onChooseDir: async (format) => api.export.chooseDir({ format }),
-      onPreview: async ({ format, templateName, outDir }) => {
-        const options = templateName ? await api.templates.load({ format, name: templateName }) : {};
+      onLoadDefaults: async (format) => api.export.defaults({ format }),
+      onLoadTemplate: async (format, name) => api.templates.load({ format, name }),
+      onSaveTemplate: async (format, name, options) => {
+        await api.templates.save({ format, name, options });
+        this.onToast(`Template “${name}” saved.`);
+      },
+      onManageTemplates: async (format, mode) => {
+        if (mode === 'manage') {
+          await dialogs.showTemplateManager({
+            format,
+            names: await api.templates.list({ format }),
+            onRename: async (name, newName) => {
+              await api.templates.rename({ format, name, newName });
+              return api.templates.list({ format });
+            },
+            onDuplicate: async (name) => {
+              await api.templates.duplicate({ format, name });
+              return api.templates.list({ format });
+            },
+            onDelete: async (name) => {
+              await api.templates.delete({ format, name });
+              return api.templates.list({ format });
+            },
+            onImport: async () => {
+              const res = await api.templates.import();
+              if (res?.ok) this.onToast(`Imported template for ${res.format}.`);
+              return api.templates.list({ format });
+            },
+            onExport: async (name) => {
+              const res = await api.templates.export({ format, name });
+              if (res?.ok) this.onToast('Template shared as .sfglt.');
+            },
+          });
+        }
+        return api.templates.list({ format });
+      },
+      onPreview: async ({ format, options }) => {
         const preview = await api.export.preview({ guideId: this.guideId, format, options });
-        if (preview && preview.file) await api.shell.showItemInFolder({ target: preview.file });
-        this.onToast(`Preview written to ${preview.file}`);
+        if (preview && preview.file) {
+          await api.shell.openPath({ target: preview.file }); // open in default viewer
+          this.onToast('Preview opened (first steps only).');
+        }
         return true;
       },
-      onExport: async ({ format, templateName, outDir }) => {
-        const options = templateName ? await api.templates.load({ format, name: templateName }) : {};
+      onExport: async ({ format, options, outDir }) => {
         const result = await api.export.run({ guideId: this.guideId, format, options, outDir });
-        if (result && result.file) {
-          this.onToast(`Exported ${format}`);
-        }
+        if (result && result.ok === false) return false;
+        if (result && result.file) this.onToast(`Exported ${format}.`);
         return true;
       },
     });

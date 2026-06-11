@@ -302,8 +302,8 @@ kbd {
 .empty-state .big { font-size: 40px; margin-bottom: 10px; color: var(--text); }
 
 .pane-steps {
-  width: 270px;
-  min-width: 270px;
+  width: 320px;
+  min-width: 320px;
   display: flex;
   flex-direction: column;
   min-height: 0;

@@ -134,8 +134,31 @@ click position. Three pieces make that hold:
    click-time screen. Storing is serialized per click; pairing is not, so
    slow encodes never skew later clicks.
 
+Reliability rules that keep "one click → one step" true under load:
+
+- **The worker reply is two-stage.** It acknowledges frame *selection*
+  within milliseconds (proving liveness and pinning the pairing), then
+  ships the PNG whenever the encode finishes — seconds later on
+  software-rendered hosts. A slow payload is never mistaken for a dead
+  worker; only a missing ack degrades the backend.
+- **Stopping drains.** Finishing or pausing a recording keeps the worker
+  alive until frames already selected for queued clicks finish encoding.
+  Without this, ending a session right after a fast click burst cancelled
+  every still-encoding frame and those clicks vanished (the "I clicked ten
+  times but only got two screenshots" bug).
+- **Queued clicks outlive the session.** A click registered while recording
+  carries its guide id and still becomes a step if the session ends while it
+  waits in the store queue. The lone exception is the tray gesture that
+  stopped the session, discarded by matching its recorded screen position.
+- **A click is never served another monitor's frame.** If the clicked
+  display has no ready stream the backend returns null and the caller
+  fresh-shots the correct screen, rather than circling a point on the wrong
+  one.
+
 `STEPFORGE_CLICK_SELFTEST=1 npm start` exercises the whole pipeline in a
-real Electron session and reports steps-per-click and marker offsets.
+real Electron session: it reports steps-per-click and marker offsets, then
+runs a fast-burst-then-finish scenario that must save every click.
+`STEPFORGE_CAPTURE_LOG=1` prints one diagnostic line per click decision.
 
 ## Security Rules
 

@@ -150,6 +150,15 @@
       strict: cmd.strict !== false,
     });
     if (!frame) return reply({ ok: false, reason: 'no frame at or before the click' });
+    // Stage one: confirm the selection immediately. The encode below can
+    // take seconds on software-rendered hosts; without this ack the main
+    // process couldn't tell a slow encode from a dead worker.
+    send({
+      type: 'frame-selected',
+      requestId: cmd.requestId,
+      startedAt: frame.startedAt,
+      capturedAt: frame.capturedAt,
+    });
     try {
       const canvas = new OffscreenCanvas(frame.width, frame.height);
       canvas.getContext('2d').drawImage(frame.bitmap, 0, 0);

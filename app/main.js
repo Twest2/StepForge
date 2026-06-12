@@ -161,6 +161,34 @@ function createWindow() {
             console.log(`CLICK-SELFTEST marker ${i}: off by ${(offBy * 100).toFixed(2)}% of screen`);
           });
           capture.finishSession();
+
+          // Second scenario, reproducing the "I clicked many times but only
+          // got two screenshots" report: a fast burst of clicks immediately
+          // followed by finishing the session, so most clicks are still
+          // queued (frames still encoding) when the stop lands.
+          const burstGuide = store.createGuide({ title: 'burst selftest' });
+          capture.startSession(burstGuide.guideId, { intervalSec: 0 });
+          capture.stopClickWatcher();
+          capture.togglePause(false);
+          mainWindow.hide();
+          await capture.startClickFrameBackend();
+          await new Promise((res) => setTimeout(res, 1500));
+          const burstCount = 8;
+          for (let i = 0; i < burstCount; i++) {
+            const p = {
+              x: Math.round(bounds.x + bounds.width * (0.15 + 0.08 * i)),
+              y: Math.round(bounds.y + bounds.height * 0.5),
+            };
+            capture.onOsClick(Date.now(), toPhysical(p), 'button-1');
+            await new Promise((res) => setTimeout(res, 30)); // very fast clicking
+          }
+          // Finish right away — clicks are still mid-encode in the queue.
+          capture.finishSession();
+          await capture.clickQueue;
+          await new Promise((res) => setTimeout(res, 1000));
+          const burstSteps = store.getGuide(burstGuide.guideId).stepsOrder.length;
+          console.log('CLICK-SELFTEST burst:', burstSteps, 'of', burstCount,
+            burstSteps === burstCount ? 'OK — no clicks dropped on finish' : 'FAIL — clicks lost');
         } catch (err) {
           console.log('CLICK-SELFTEST ERROR', err.message);
         } finally {
@@ -533,13 +561,20 @@ function setupIpc() {
 
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
+  // Exiting silently here looks like a broken install ("npm start does
+  // nothing") — say why, and let the running instance surface itself.
+  console.error('[stepforge] already running — surfacing the existing window (check the tray).');
   app.quit();
 } else {
   app.on('second-instance', () => {
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.focus();
-    }
+    if (!mainWindow) return;
+    // The window may be tucked away by a recording session; opening the
+    // app again is an explicit request to see it, so pause and show, the
+    // same as the tray's "Open StepForge".
+    if (capture) capture.togglePause(true);
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
   });
 
   app.whenReady().then(() => {

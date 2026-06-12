@@ -276,6 +276,92 @@ test('fast clicks are paired with their frames at event time, not behind the sto
   assert.equal(service.session.count, 2);
 });
 
+test('clicks still queued when the session finishes are stored, not dropped', async () => {
+  // Reported as "I clicked N times but only got two screenshots": with slow
+  // encodes the queue lags, and finishing the session used to discard every
+  // click still waiting in it.
+  const service = makeService();
+  service.session = { guideId: 'guide-finish', paused: false, count: 0, intervalSec: 0 };
+  service.userIsInApp = () => false;
+  let releaseFrame;
+  const frameGate = new Promise((r) => { releaseFrame = r; });
+  service.frameForClick = () => frameGate.then(() => makeFrame('late-stored-frame'));
+  const added = [];
+  service.store.addStep = (guideId, fields, png) => {
+    added.push({ guideId, png: png.toString() });
+    return { stepId: 'step-late' };
+  };
+  const events = [];
+  service.notify = (channel, payload) => events.push({ channel, payload });
+
+  // Click happened comfortably before the user reached for the stop button.
+  const queue = service.enqueueClickCapture({ x: 5, y: 5 }, Date.now() - 2000, 'left');
+  service.finishSession();
+  releaseFrame();
+  await queue;
+
+  assert.deepEqual(added, [{ guideId: 'guide-finish', png: 'late-stored-frame' }],
+    'the click was recorded while the session was live — it must become a step');
+  const addedEvent = events.find((e) => e.channel === 'capture:added');
+  assert.equal(addedEvent.payload.guideId, 'guide-finish');
+});
+
+test('the tray click that stops the session does not become a junk step', async () => {
+  // The tray gesture that stops capture is also seen by the OS hook; storing
+  // it would append a step of the tray/menu to every recording. It is
+  // matched by position so only that exact click is dropped.
+  const service = makeService({
+    screenApi: {
+      getCursorScreenPoint: () => ({ x: 1900, y: 12 }), // over the tray
+      getAllDisplays: () => [],
+    },
+  });
+  service.session = { guideId: 'guide-stop', paused: false, count: 0, intervalSec: 0 };
+  service.userIsInApp = () => false;
+  service.frameForClick = async () => makeFrame('stop-click-frame');
+  const added = [];
+  service.store.addStep = (guideId, fields, png) => {
+    added.push(png.toString());
+    return { stepId: 'step-stop' };
+  };
+
+  // The hook reports the tray click at the tray position.
+  const queue = service.enqueueClickCapture({ x: 1900, y: 12 }, Date.now(), 'left');
+  service.noteUiStopGesture(); // tray handler records where it was clicked
+  service.finishSession();
+  await queue;
+
+  assert.deepEqual(added, [], 'the stop click must be discarded');
+});
+
+test('a fast workflow click near the stop time but elsewhere is NOT dropped', async () => {
+  // Position matching is what makes this safe: the user clicks their
+  // workflow, then reaches up to the tray. The last workflow click lands
+  // far from the tray and must survive even though it is close in time.
+  const service = makeService({
+    screenApi: {
+      getCursorScreenPoint: () => ({ x: 1900, y: 12 }), // tray location
+      getAllDisplays: () => [],
+    },
+  });
+  service.session = { guideId: 'guide-near', paused: false, count: 0, intervalSec: 0 };
+  service.userIsInApp = () => false;
+  service.frameForClick = async () => makeFrame('workflow-frame');
+  const added = [];
+  service.store.addStep = (guideId, fields, png) => {
+    added.push(png.toString());
+    return { stepId: 'step-near' };
+  };
+
+  // Workflow click in the middle of the screen, then the tray stop.
+  const queue = service.enqueueClickCapture({ x: 600, y: 500 }, Date.now(), 'left');
+  service.noteUiStopGesture();
+  service.finishSession();
+  await queue;
+
+  assert.deepEqual(added, ['workflow-frame'], 'a click away from the tray must be kept');
+});
+
 test('queued click captures preserve the original event time and button', async () => {
   const service = makeService();
   const seen = [];

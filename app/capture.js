@@ -73,6 +73,20 @@ const CLICK_CAPTURE_HIDE_DELAY_MS = 25;
 // window wide enough to outlast any processing hiccup but the count low.
 const RECENT_FRAME_RETENTION_MS = 4000;
 const RECENT_FRAME_LIMIT = 4;
+// The click that stops/pauses a session via the tray reaches the OS hook at
+// almost the same instant the tray handler fires. We discard at most that
+// one click — and only when it matches the recorded gesture in *both* time
+// and position, so a fast workflow click that merely happens to land near
+// the stop is never mistaken for the stop itself.
+const SESSION_STOP_CLICK_WINDOW_MS = 700;
+const SESSION_STOP_CLICK_RADIUS_PX = 8;
+
+// Per-click diagnostics, enabled with STEPFORGE_CAPTURE_LOG=1. Cheap enough
+// to leave in: one line per click/frame decision, nothing per frame-loop tick.
+const CAPTURE_LOG = Boolean(process.env.STEPFORGE_CAPTURE_LOG);
+function clog(...args) {
+  if (CAPTURE_LOG) console.log('[capture]', ...args);
+}
 
 function hasBinary(name) {
   try {
@@ -198,23 +212,25 @@ class CaptureService {
           { label: 'Capture now', click: () => this.sessionCapture('manual').then(rebuild).catch(() => {}) },
           {
             label: this.session && this.session.paused ? 'Resume capturing' : 'Pause capturing',
-            click: () => { this.togglePause(); rebuild(); },
+            click: () => { this.noteUiStopGesture(); this.togglePause(); rebuild(); },
           },
           {
             label: 'Open StepForge (pauses capture)',
             click: () => {
+              this.noteUiStopGesture();
               this.togglePause(true);
               this.showWindow();
               rebuild();
             },
           },
           { type: 'separator' },
-          { label: 'Finish session', click: () => this.finishSession() },
+          { label: 'Finish session', click: () => { this.noteUiStopGesture(); this.finishSession(); } },
         ]));
       };
       rebuild();
       this.rebuildTrayMenu = rebuild;
       this.tray.on('click', () => {
+        this.noteUiStopGesture();
         this.togglePause(true);
         this.showWindow();
         rebuild();
@@ -228,6 +244,36 @@ class CaptureService {
     if (this.tray && !this.tray.isDestroyed()) this.tray.destroy();
     this.tray = null;
     this.rebuildTrayMenu = null;
+  }
+
+  /**
+   * Record that the user just stopped/paused capture from StepForge's own UI
+   * (tray icon or its menu). The physical click that did so is also seen by
+   * the OS hook and would otherwise queue as a workflow step; isStopGesture
+   * uses this to discard exactly that one click — matched by position, not
+   * just time, so a real fast click elsewhere is never lost.
+   */
+  noteUiStopGesture() {
+    let pos = null;
+    try { pos = this.screen.getCursorScreenPoint(); } catch { pos = null; }
+    this.uiStopGesture = { at: Date.now(), pos };
+  }
+
+  /** True when a queued click is the tray gesture that stopped the session. */
+  isStopGesture(clickPos, clickAt) {
+    const g = this.uiStopGesture;
+    if (!g) return false;
+    if (Math.abs((clickAt || Date.now()) - g.at) > SESSION_STOP_CLICK_WINDOW_MS) return false;
+    // No position to compare (e.g. cursor read failed): fall back to the
+    // time window alone, but only consume the gesture once.
+    if (!g.pos || !clickPos) {
+      this.uiStopGesture = null;
+      return true;
+    }
+    const near = Math.abs(clickPos.x - g.pos.x) <= SESSION_STOP_CLICK_RADIUS_PX
+      && Math.abs(clickPos.y - g.pos.y) <= SESSION_STOP_CLICK_RADIUS_PX;
+    if (near) this.uiStopGesture = null; // one stop click per gesture
+    return near;
   }
 
   showWindow() {
@@ -319,10 +365,19 @@ class CaptureService {
 
   /** One capture inside the active session (hotkey/click/interval/manual). */
   async sessionCapture(trigger = 'hotkey', clickPos = null, clickMeta = null) {
-    if (!this.session || this.session.paused) return { ok: false, reason: 'no active capture session' };
-    // Automatic triggers stand down while the user is in StepForge, so the
-    // app stays clickable mid-session and never screenshots itself.
-    if (trigger !== 'manual' && this.userIsInApp()) {
+    // A click that was registered while recording carries its guide id
+    // (see enqueueClickCapture) and must become a step even if the session
+    // was paused or finished while it sat behind slower clicks in the
+    // queue. Dropping queued clicks at stop time is how "I clicked five
+    // times and only got two steps" happens on hosts with slow encodes.
+    const queuedClickGuide = trigger === 'click' && clickMeta && clickMeta.guideId
+      ? clickMeta.guideId
+      : null;
+    if (!this.session || this.session.paused) {
+      if (!queuedClickGuide) return { ok: false, reason: 'no active capture session' };
+    } else if (trigger !== 'manual' && this.userIsInApp()) {
+      // Automatic triggers stand down while the user is in StepForge, so the
+      // app stays clickable mid-session and never screenshots itself.
       return { ok: false, reason: 'skipped — StepForge is focused' };
     }
 
@@ -338,14 +393,29 @@ class CaptureService {
       const frame = clickMeta && clickMeta.framePromise
         ? await clickMeta.framePromise
         : await this.frameForClick(clickPos, clickAt);
-      if (!this.session || this.session.paused) return { ok: false, reason: 'no active capture session' };
+      const sessionLive = this.session && !this.session.paused;
+      const guideId = sessionLive ? this.session.guideId : queuedClickGuide;
+      if (!guideId) return { ok: false, reason: 'no active capture session' };
+      // The tray gesture that stopped the session is itself a hook click in
+      // the queue — storing it would append a junk step of the menu. Discard
+      // only that one click, matched by position so a fast workflow click is
+      // never collateral damage.
+      if (!sessionLive && this.isStopGesture(clickPos, clickAt)) {
+        clog('click@', clickAt, 'discarded — it triggered the session stop');
+        return { ok: false, reason: 'click stopped the session' };
+      }
       if (frame) {
-        const result = this.storeFrameAsStep(this.session.guideId, frame.mode, frame, clickPos);
-        if (result.ok) this.noteStepAdded(result.step, trigger);
+        clog('click@', clickAt, 'frame', frame.source || 'loop',
+          'started', frame.startedAt - clickAt, 'ms, captured', frame.capturedAt - clickAt, 'ms rel. click');
+        const result = this.storeFrameAsStep(guideId, frame.mode, frame, clickPos);
+        if (result.ok) this.noteStepAdded(result.step, trigger, guideId);
         return result;
       }
-      // No usable frame (loop not running or grab failing): fall through
-      // to a one-off fresh shot.
+      // No usable frame: fall through to a one-off fresh shot — but only
+      // while still recording. After a stop, a fresh shot would show
+      // whatever replaced the user's workflow on screen.
+      clog('click@', clickAt, 'no frame qualified — falling back to a fresh (post-click) shot');
+      if (!sessionLive) return { ok: false, reason: 'session ended before the fallback shot' };
     }
 
     if (this.shooting) return { ok: false, reason: 'capture already in progress' };
@@ -368,9 +438,14 @@ class CaptureService {
     }
   }
 
-  noteStepAdded(step, trigger) {
-    this.session.count += 1;
-    this.notify('capture:added', { guideId: this.session.guideId, step, trigger });
+  noteStepAdded(step, trigger, guideId = null) {
+    // Steps from queued clicks can land after the session object is gone.
+    if (this.session) this.session.count += 1;
+    this.notify('capture:added', {
+      guideId: guideId || (this.session && this.session.guideId),
+      step,
+      trigger,
+    });
     this.notify('capture:state', this.state());
     if (this.rebuildTrayMenu) this.rebuildTrayMenu(); // refresh step counter
   }
@@ -573,13 +648,20 @@ class CaptureService {
       });
       if (!ok || !this.session || this.session.paused) {
         backend.stop();
-        if (this.session && !this.session.paused) this.startFrameLoop();
+        if (this.session && !this.session.paused) {
+          console.error('[stepforge] stream capture backend failed to start — using in-process frame loop');
+          this.startFrameLoop();
+        }
         return;
       }
       this.streamBackend = backend;
+      clog('stream capture backend active');
       this.notify('capture:state', this.state());
-    } catch {
-      if (this.session && !this.session.paused) this.startFrameLoop();
+    } catch (err) {
+      if (this.session && !this.session.paused) {
+        console.error(`[stepforge] stream capture backend error (${err && err.message}) — using in-process frame loop`);
+        this.startFrameLoop();
+      }
     } finally {
       this.streamBackendStarting = false;
     }
@@ -982,7 +1064,10 @@ public static class SFMouseHook {
     // click however fast it follows the previous one. Only an *identical*
     // event a few ms later — duplicate delivery of one physical press — is
     // suppressed.
-    if (this.isDuplicateClickEvent(clickAt, osPoint, button)) return;
+    if (this.isDuplicateClickEvent(clickAt, osPoint, button)) {
+      clog('click@', clickAt, button, 'suppressed as duplicate delivery');
+      return;
+    }
     // Prefer the position the watcher sampled with the button-down event
     // (physical px -> DIP); otherwise read the cursor synchronously, right
     // now, so the marker lands where the user clicked even if the shot
@@ -991,6 +1076,7 @@ public static class SFMouseHook {
     // window focus — WSLg reports focus unreliably.)
     let clickPos = osPoint ? this.osPointToDip(osPoint) : null;
     if (!clickPos) clickPos = this.screen.getCursorScreenPoint();
+    clog('click@', clickAt, button, 'os', osPoint, '-> dip', clickPos);
     this.enqueueClickCapture(clickPos, clickAt, button || 'mouse');
   }
 
@@ -1047,6 +1133,9 @@ public static class SFMouseHook {
   enqueueClickCapture(clickPos, clickAt = Date.now(), button = 'mouse') {
     const clickMeta = { at: Number.isFinite(clickAt) ? clickAt : Date.now(), button: button || 'mouse' };
     if (this.session && !this.session.paused && !this.userIsInApp()) {
+      // The guide id pins the click to its recording so it can still be
+      // stored if the session stops while this click waits in the queue.
+      clickMeta.guideId = this.session.guideId;
       clickMeta.framePromise = this.frameForClick(clickPos, clickMeta.at)
         .catch(() => null);
     }

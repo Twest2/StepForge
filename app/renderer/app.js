@@ -611,6 +611,7 @@ class StepForgeApp {
     const moveItems = folderItems.length ? ['sep', ...folderItems] : [];
     contextMenu(event.clientX, event.clientY, [
       { label: 'Open guide', action: () => this.openGuideAndArmCapture(guide.guideId) },
+      { label: 'Rename guide…', action: () => this.renameGuide(guide) },
       { label: guide.favorite ? 'Unfavorite' : 'Favorite', action: () => this.toggleFavorite(guide) },
       { label: 'Duplicate guide', action: () => this.duplicateGuide(guide.guideId) },
       { label: 'Export', action: () => this.openGuideExport(guide.guideId) },
@@ -843,15 +844,18 @@ class StepForgeApp {
     }
   }
 
-  async renameGuide() {
-    const guide = this.editorMeta?.guide;
+  async renameGuide(guide = this.editorMeta?.guide) {
     if (!guide) return;
     const title = await dialogs.promptText({ title: 'Rename guide', label: 'Title', value: guide.title });
     if (title == null || !title.trim()) return;
-    guide.title = title.trim();
-    await api.guide.save({ guide });
-    await this.editor.reload(this.editor.selectedStepId);
+    const fullGuide = (await api.guide.get({ guideId: guide.guideId })).guide;
+    fullGuide.title = title.trim();
+    await api.guide.save({ guide: fullGuide });
+    if (this.state.view === 'editor' && this.editor.guideId === fullGuide.guideId) {
+      await this.editor.reload(this.editor.selectedStepId);
+    }
     await this.refreshLibrary();
+    if (this.state.view === 'editor') this.renderTopbar();
   }
 
   async importArchive(mode = 'copy') {

@@ -2,7 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { guideSlug, writeStepImages } = require('./common');
+const { guideSlug, writeStepImages, stepBlocks, codeBlockText } = require('./common');
 
 /**
  * JSON exporter: structured guide + steps, annotated screenshots written to
@@ -42,8 +42,15 @@ function exportJson(ast, outDir, template = {}) {
       textBlocks: step.textBlocks.map((tb) => ({
         position: tb.position, level: tb.level, title: tb.title, descriptionHtml: tb.descriptionHtml,
       })),
-      codeBlocks: step.codeBlocks,
+      codeBlocks: step.codeBlocks.map((cb) => ({ ...cb, code: codeBlockText(cb) })),
       tableBlocks: step.tableBlocks,
+      blocks: stepBlocks(step).map((block) => (
+        block.kind === 'text'
+          ? { ...block }
+          : block.kind === 'code'
+            ? { ...block, code: codeBlockText(block) }
+            : { ...block }
+      )),
       links: step.links,
     })),
   };

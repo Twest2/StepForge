@@ -430,7 +430,18 @@ kbd {
   pointer-events: none;
 }
 
+.pane-props section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
+}
 .pane-props section + section { margin-top: 16px; }
+.pane-props section:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
 .pane-props input[type="text"],
 .pane-props input[type="number"],
 .pane-props input[type="color"],
@@ -511,6 +522,8 @@ kbd {
   padding: 10px;
   background: var(--panel-solid);
 }
+.block-card[draggable="true"] { cursor: grab; }
+.block-card[draggable="true"]:active { cursor: grabbing; }
 .annotation-list {
   display: flex;
   flex-direction: column;

@@ -1,7 +1,8 @@
 'use strict';
 
-const { newId, nowIso, deepClone } = require('./util');
+const { newId, nowIso } = require('./util');
 const { sanitizeHtml } = require('./sanitize');
+const { blockText } = require('./blocks');
 
 const SCHEMA_VERSION = 1;
 
@@ -49,6 +50,12 @@ function createGuide(fields = {}) {
 }
 
 function createStep(fields = {}) {
+  let nextOrder = 1;
+  const takeOrder = (block) => {
+    const order = Number.isFinite(block && block.order) ? block.order : nextOrder;
+    nextOrder = Math.max(nextOrder, order + 1);
+    return order;
+  };
   return {
     stepId: fields.stepId || newId('step'),
     parentStepId: fields.parentStepId || null,
@@ -69,9 +76,9 @@ function createStep(fields = {}) {
     image: fields.image || null, // { originalPath, workingPath, size:{width,height} }
     extraImages: fields.extraImages || [], // multi-image steps
     annotations: (fields.annotations || []).map(normalizeAnnotation),
-    textBlocks: (fields.textBlocks || []).map(normalizeTextBlock),
-    codeBlocks: fields.codeBlocks || [], // { id, language, code }
-    tableBlocks: fields.tableBlocks || [], // { id, rows: [[cellText,..],..], headerRow }
+    textBlocks: (fields.textBlocks || []).map((tb) => normalizeTextBlock(tb, takeOrder(tb))),
+    codeBlocks: (fields.codeBlocks || []).map((cb) => normalizeCodeBlock(cb, takeOrder(cb))),
+    tableBlocks: (fields.tableBlocks || []).map((tb) => normalizeTableBlock(tb, takeOrder(tb))),
     links: fields.links || [], // { id, label, targetStepId }
   };
 }
@@ -94,13 +101,33 @@ function normalizeAnnotation(a) {
   return ann;
 }
 
-function normalizeTextBlock(tb) {
+function normalizeTextBlock(tb, order = null) {
   return {
     id: tb.id || newId('tb'),
     position: TEXTBLOCK_POSITIONS.includes(tb.position) ? tb.position : 'after-description',
     level: TEXTBLOCK_LEVELS.includes(tb.level) ? tb.level : 'info',
+    order: Number.isFinite(tb.order) ? tb.order : order,
     title: tb.title || '',
     descriptionHtml: sanitizeHtml(tb.descriptionHtml || ''),
+  };
+}
+
+function normalizeCodeBlock(cb, order = null) {
+  return {
+    id: cb.id || newId('cb'),
+    order: Number.isFinite(cb.order) ? cb.order : order,
+    language: typeof cb.language === 'string' ? cb.language : '',
+    code: blockText(cb),
+  };
+}
+
+function normalizeTableBlock(tb, order = null) {
+  return {
+    id: tb.id || newId('tbl'),
+    order: Number.isFinite(tb.order) ? tb.order : order,
+    rows: Array.isArray(tb.rows)
+      ? tb.rows.map((row) => (Array.isArray(row) ? row.map((cell) => String(cell ?? '')) : []))
+      : [],
   };
 }
 
@@ -173,6 +200,8 @@ module.exports = {
   createStep,
   normalizeAnnotation,
   normalizeTextBlock,
+  normalizeCodeBlock,
+  normalizeTableBlock,
   validateGuide,
   validateStep,
   normalizeGuide,

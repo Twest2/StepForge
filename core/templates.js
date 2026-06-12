@@ -11,7 +11,7 @@ const { writeJsonSync, readJsonSync, atomicWriteFileSync, nowIso } = require('./
  * defaults, shareable as .sfglt zip files.
  */
 
-const FORMATS = ['json', 'markdown', 'html-simple', 'html-rich', 'pdf', 'gif', 'image-bundle', 'docx', 'pptx'];
+const FORMATS = ['json', 'markdown', 'html-simple', 'html-rich', 'confluence', 'pdf', 'gif', 'image-bundle', 'docx', 'pptx'];
 
 class TemplateManager {
   constructor(templatesDir) {

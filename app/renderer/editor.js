@@ -6,6 +6,35 @@ const api = window.stepforge;
 const dialogs = window.StepForgeDialogs || {};
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
+const BLOCK_KIND_ORDER = { text: 0, code: 1, table: 2 };
+
+function blockText(block) {
+  for (const key of ['code', 'text', 'body', 'value', 'content']) {
+    const value = block && block[key];
+    if (value != null && value !== '') return String(value);
+  }
+  return '';
+}
+
+function orderedStepBlocks(step) {
+  const blocks = [];
+  for (const tb of step.textBlocks || []) blocks.push({ kind: 'text', block: tb });
+  for (const cb of step.codeBlocks || []) blocks.push({ kind: 'code', block: cb });
+  for (const tbl of step.tableBlocks || []) blocks.push({ kind: 'table', block: tbl });
+  return blocks.sort((a, b) => (
+    (Number.isFinite(a.block.order) ? a.block.order : 0) - (Number.isFinite(b.block.order) ? b.block.order : 0)
+    || BLOCK_KIND_ORDER[a.kind] - BLOCK_KIND_ORDER[b.kind]
+    || String(a.block.id || '').localeCompare(String(b.block.id || ''))
+  ));
+}
+
+function nextBlockOrder(step) {
+  return orderedStepBlocks(step).reduce((max, entry) => Math.max(max, Number.isFinite(entry.block.order) ? entry.block.order : 0), 0) + 1;
+}
+
+function blockLabel(kind) {
+  return kind === 'text' ? 'Text block' : kind === 'code' ? 'Code block' : 'Table';
+}
 
 function stepNumberMap(steps) {
   const numbers = new Map();
@@ -57,6 +86,7 @@ class GuideEditor {
     this.canvasHistory = [];
     this.canvasFuture = [];
     this.beforeCanvasSnapshot = null;
+    this.draggedBlock = null;
     this.stepLoadToken = 0;
     this.imageLoadToken = 0;
     this.shellMounted = false;
@@ -265,7 +295,7 @@ class GuideEditor {
     // canvas interactions need to snapshot the current step before the drag
     // mutates it, so undo can restore the pre-edit annotations.
     this.dom.canvas.addEventListener('pointerdown', () => {
-      if (this.currentStep) this.beforeCanvasSnapshot = clone(this.currentStep);
+      if (this.currentStep) this.beforeCanvasSnapshot = { step: clone(this.currentStep) };
     }, true);
 
     this.canvas = new AnnotationCanvas(this.dom.canvas, {
@@ -434,13 +464,13 @@ class GuideEditor {
     const id = `blk-${Date.now().toString(36)}`;
     if (kind === 'text') {
       step.textBlocks = step.textBlocks || [];
-      step.textBlocks.push({ id, position: 'after-description', level: 'info', title: '', descriptionHtml: '' });
+      step.textBlocks.push({ id, order: nextBlockOrder(step), position: 'after-description', level: 'info', title: '', descriptionHtml: '' });
     } else if (kind === 'code') {
       step.codeBlocks = step.codeBlocks || [];
-      step.codeBlocks.push({ id, language: '', code: '' });
+      step.codeBlocks.push({ id, order: nextBlockOrder(step), language: '', code: '' });
     } else if (kind === 'table') {
       step.tableBlocks = step.tableBlocks || [];
-      step.tableBlocks.push({ id, rows: [['Column A', 'Column B'], ['', '']] });
+      step.tableBlocks.push({ id, order: nextBlockOrder(step), rows: [['Column A', 'Column B'], ['', '']] });
     }
     this.pendingSave = true;
     this.saveStepDebounced();
@@ -458,73 +488,114 @@ class GuideEditor {
       this.pendingSave = true;
       this.saveStepDebounced();
     };
+    const moveBlock = (source, target) => {
+      if (!source || !target || source.kind === target.kind && source.block.id === target.block.id) return;
+      const swap = source.block.order;
+      source.block.order = target.block.order;
+      target.block.order = swap;
+      save();
+      this.renderBlocksPanel();
+    };
     const removeBtn = (onRemove) => el('button.icon.danger', {
       type: 'button', title: 'Remove block',
       onClick: () => { onRemove(); save(); this.renderBlocksPanel(); },
     }, '✕');
 
-    for (const tb of step.textBlocks || []) {
-      const position = makeSelect(tb.position, [
-        { value: 'before-title', label: 'Before title' },
-        { value: 'after-title', label: 'After title' },
-        { value: 'before-image', label: 'Before image' },
-        { value: 'after-image', label: 'After image' },
-        { value: 'before-description', label: 'Before description' },
-        { value: 'after-description', label: 'After description' },
-      ]);
-      const level = makeSelect(tb.level, [
-        { value: 'info', label: 'Note' },
-        { value: 'warn', label: 'Warning' },
-        { value: 'error', label: 'Important' },
-        { value: 'success', label: 'Tip' },
-      ]);
-      const title = el('input', { type: 'text', value: tb.title || '', placeholder: 'Block title' });
-      const body = el('textarea', { rows: 2, placeholder: 'Block text' });
-      body.value = (tb.descriptionHtml || '').replace(/<[^>]+>/g, '');
-      position.addEventListener('change', () => { tb.position = position.value; save(); });
-      level.addEventListener('change', () => { tb.level = level.value; save(); });
-      title.addEventListener('input', () => { tb.title = title.value; save(); });
-      body.addEventListener('input', () => { tb.descriptionHtml = `<p>${escapeHtml(body.value)}</p>`; save(); });
-      this.dom.blocksList.append(el('div.block-card', {},
-        el('div.row', {}, el('strong', {}, 'Text block'), el('span.spacer'),
-          removeBtn(() => { step.textBlocks = step.textBlocks.filter((b) => b !== tb); })),
-        el('div.row', {}, level, position),
-        title, body,
-      ));
+    const blocks = orderedStepBlocks(step);
+    for (const [index, entry] of blocks.entries()) {
+      const { kind, block } = entry;
+      const canMoveUp = index > 0;
+      const canMoveDown = index < blocks.length - 1;
+      const moveUp = () => moveBlock(entry, blocks[index - 1]);
+      const moveDown = () => moveBlock(entry, blocks[index + 1]);
+
+      const header = el('div.row', {},
+        el('strong', {}, blockLabel(kind)),
+        el('span.muted', {}, `#${Number.isFinite(block.order) ? block.order : index + 1}`),
+        el('span.spacer'),
+        el('button.icon', { type: 'button', title: 'Move block up', disabled: !canMoveUp, onClick: moveUp }, '↑'),
+        el('button.icon', { type: 'button', title: 'Move block down', disabled: !canMoveDown, onClick: moveDown }, '↓'),
+        removeBtn(() => {
+          if (kind === 'text') step.textBlocks = (step.textBlocks || []).filter((b) => b !== block);
+          else if (kind === 'code') step.codeBlocks = (step.codeBlocks || []).filter((b) => b !== block);
+          else step.tableBlocks = (step.tableBlocks || []).filter((b) => b !== block);
+        }),
+      );
+
+      const card = el('div.block-card', {
+        draggable: true,
+        onDragStart: (e) => {
+          this.draggedBlock = entry;
+          if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+        },
+        onDragOver: (e) => {
+          if (this.draggedBlock) e.preventDefault();
+        },
+        onDrop: (e) => {
+          e.preventDefault();
+          if (!this.draggedBlock) return;
+          moveBlock(this.draggedBlock, entry);
+          this.draggedBlock = null;
+        },
+        onDragEnd: () => {
+          this.draggedBlock = null;
+        },
+      }, header);
+
+      if (kind === 'text') {
+        const position = makeSelect(block.position, [
+          { value: 'before-title', label: 'Before title' },
+          { value: 'after-title', label: 'After title' },
+          { value: 'before-image', label: 'Before image' },
+          { value: 'after-image', label: 'After image' },
+          { value: 'before-description', label: 'Before description' },
+          { value: 'after-description', label: 'After description' },
+        ]);
+        const level = makeSelect(block.level, [
+          { value: 'info', label: 'Note' },
+          { value: 'warn', label: 'Warning' },
+          { value: 'error', label: 'Important' },
+          { value: 'success', label: 'Tip' },
+        ]);
+        const title = el('input', { type: 'text', value: block.title || '', placeholder: 'Block title' });
+        const body = el('textarea', { rows: 2, placeholder: 'Block text' });
+        body.value = (block.descriptionHtml || '').replace(/<[^>]+>/g, '');
+        position.addEventListener('change', () => { block.position = position.value; save(); });
+        level.addEventListener('change', () => { block.level = level.value; save(); });
+        title.addEventListener('input', () => { block.title = title.value; save(); });
+        body.addEventListener('input', () => { block.descriptionHtml = `<p>${escapeHtml(body.value)}</p>`; save(); });
+        card.append(
+          el('div.row', {}, level, position),
+          title,
+          body,
+        );
+      } else if (kind === 'code') {
+        const lang = el('input', { type: 'text', value: block.language || '', placeholder: 'Language (e.g. bash)' });
+        const code = el('textarea', { rows: 3, placeholder: 'Code', spellcheck: false });
+        code.value = blockText(block);
+        code.style.fontFamily = 'monospace';
+        lang.addEventListener('input', () => { block.language = lang.value; save(); });
+        code.addEventListener('input', () => { block.code = code.value; save(); });
+        card.append(lang, code);
+      } else if (kind === 'table') {
+        const grid = el('textarea', { rows: 3, placeholder: 'One row per line, cells separated by |', spellcheck: false });
+        grid.value = (block.rows || []).map((r) => r.join(' | ')).join('\n');
+        grid.addEventListener('input', () => {
+          block.rows = grid.value.split('\n').filter((l) => l.trim() !== '')
+            .map((line) => line.split('|').map((c) => c.trim()));
+          save();
+        });
+        card.append(
+          el('div.muted', {}, 'First line is the header row.'),
+          grid,
+        );
+      }
+
+      this.dom.blocksList.append(card);
     }
 
-    for (const cb of step.codeBlocks || []) {
-      const lang = el('input', { type: 'text', value: cb.language || '', placeholder: 'Language (e.g. bash)' });
-      const code = el('textarea', { rows: 3, placeholder: 'Code', spellcheck: false });
-      code.value = cb.code || '';
-      code.style.fontFamily = 'monospace';
-      lang.addEventListener('input', () => { cb.language = lang.value; save(); });
-      code.addEventListener('input', () => { cb.code = code.value; save(); });
-      this.dom.blocksList.append(el('div.block-card', {},
-        el('div.row', {}, el('strong', {}, 'Code block'), el('span.spacer'),
-          removeBtn(() => { step.codeBlocks = step.codeBlocks.filter((b) => b !== cb); })),
-        lang, code,
-      ));
-    }
-
-    for (const tbl of step.tableBlocks || []) {
-      const grid = el('textarea', { rows: 3, placeholder: 'One row per line, cells separated by |', spellcheck: false });
-      grid.value = (tbl.rows || []).map((r) => r.join(' | ')).join('\n');
-      grid.addEventListener('input', () => {
-        tbl.rows = grid.value.split('\n').filter((l) => l.trim() !== '')
-          .map((line) => line.split('|').map((c) => c.trim()));
-        save();
-      });
-      this.dom.blocksList.append(el('div.block-card', {},
-        el('div.row', {}, el('strong', {}, 'Table'), el('span.spacer'),
-          removeBtn(() => { step.tableBlocks = step.tableBlocks.filter((b) => b !== tbl); })),
-        el('div.muted', {}, 'First line is the header row.'),
-        grid,
-      ));
-    }
-
-    if (!(step.textBlocks || []).length && !(step.codeBlocks || []).length && !(step.tableBlocks || []).length) {
-      this.dom.blocksList.append(el('div.muted', {}, 'Informational text, code, and table blocks render in every export.'));
+    if (!blocks.length) {
+      this.dom.blocksList.append(el('div.muted', {}, 'Informational text, code, and table blocks can be reordered with drag handles or arrows.'));
     }
   }
 
@@ -906,12 +977,48 @@ class GuideEditor {
     if (mode === 1.5) this.dom.zoom150Btn.classList.add('active');
   }
 
-  pushCanvasHistory(label = 'change') {
+  pushCanvasHistory(recordOrLabel = 'change') {
     if (!this.currentStep) return;
-    this.canvasHistory.push(clone(this.currentStep));
+    const record = recordOrLabel && typeof recordOrLabel === 'object' && recordOrLabel.step
+      ? recordOrLabel
+      : { step: clone(this.currentStep) };
+    this.canvasHistory.push(record);
     if (this.canvasHistory.length > 40) this.canvasHistory.shift();
     this.canvasFuture.length = 0;
     this.beforeCanvasSnapshot = null;
+  }
+
+  async snapshotCurrentStep(includeImage = false) {
+    if (!this.currentStep) return null;
+    const record = { step: clone(this.currentStep) };
+    if (includeImage && this.currentStep.image) {
+      const image = await this.currentStepImageToBase64(this.currentStep);
+      if (image) record.image = image;
+    }
+    return record;
+  }
+
+  async restoreHistoryRecord(record) {
+    if (!record || !record.step) return;
+    const step = clone(record.step);
+    this.selectedStepId = step.stepId;
+    this.beforeCanvasSnapshot = null;
+    this.saveStepDebounced.cancel();
+    this.pendingSave = false;
+    if (record.image && step.image) {
+      const saved = await api.step.setWorkingImage({
+        guideId: this.guideId,
+        stepId: step.stepId,
+        pngBase64: record.image.base64,
+        size: record.image.size,
+        step,
+      });
+      this.stepMap.set(saved.stepId, saved);
+      const idx = this.steps.findIndex((s) => s.stepId === saved.stepId);
+      if (idx >= 0) this.steps[idx] = saved;
+    } else {
+      await this.flushStep(step);
+    }
   }
 
   async undo() {
@@ -920,13 +1027,10 @@ class GuideEditor {
       this.onToast('Nothing to undo.');
       return;
     }
-    this.canvasFuture.push(clone(this.currentStep));
+    const current = await this.snapshotCurrentStep(true);
+    if (current) this.canvasFuture.push(current);
     const previous = this.canvasHistory.pop();
-    this.stepMap.set(previous.stepId, previous);
-    const prevIdx = this.steps.findIndex((s) => s.stepId === previous.stepId);
-    if (prevIdx >= 0) this.steps[prevIdx] = previous;
-    this.selectedStepId = previous.stepId;
-    await this.flushStep(previous);
+    await this.restoreHistoryRecord(previous);
     this.renderAll();
   }
 
@@ -936,13 +1040,10 @@ class GuideEditor {
       this.onToast('Nothing to redo.');
       return;
     }
-    this.canvasHistory.push(clone(this.currentStep));
+    const current = await this.snapshotCurrentStep(true);
+    if (current) this.canvasHistory.push(current);
     const next = this.canvasFuture.pop();
-    this.stepMap.set(next.stepId, next);
-    const nextIdx = this.steps.findIndex((s) => s.stepId === next.stepId);
-    if (nextIdx >= 0) this.steps[nextIdx] = next;
-    this.selectedStepId = next.stepId;
-    await this.flushStep(next);
+    await this.restoreHistoryRecord(next);
     this.renderAll();
   }
 
@@ -1388,8 +1489,7 @@ class GuideEditor {
     }
   }
 
-  async currentStepImageToBase64() {
-    const step = this.currentStep;
+  async currentStepImageToBase64(step = this.currentStep) {
     if (!step || !step.image) return null;
     const file = await api.step.imagePath({ guideId: this.guideId, stepId: step.stepId, which: 'working' });
     if (!file) return null;
@@ -1437,6 +1537,13 @@ class GuideEditor {
     if (!step || !step.image) return;
     const ok = await confirmDialog('Crop the working image to the selected area?');
     if (!ok) return;
+    this.saveStepDebounced.cancel();
+    const snapshot = this.beforeCanvasSnapshot || await this.snapshotCurrentStep(true);
+    if (snapshot) {
+      if (!snapshot.image) snapshot.image = await this.currentStepImageToBase64(step);
+      this.pushCanvasHistory(snapshot);
+    }
+    this.beforeCanvasSnapshot = null;
     const src = await api.step.imagePath({ guideId: this.guideId, stepId: step.stepId, which: 'working' });
     if (!src) return;
     const img = await loadImage(src);

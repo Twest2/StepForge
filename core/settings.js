@@ -33,6 +33,10 @@ const DEFAULT_SETTINGS = {
     // stream pixels lag slightly; a small lead keeps the saved screenshot
     // clear of the click's onset. Raise it if screenshots still feel late.
     clickLeadMs: 120,
+    // After the window hides at recording start, wait this long before the
+    // user is likely to click so the buffer holds frames of the now-visible
+    // screen rather than the just-dismissed app window.
+    postHideSettleMs: 150,
   },
   editor: {
     focusedViewDefaultForNewSteps: false,

@@ -189,6 +189,39 @@ function createWindow() {
           const burstSteps = store.getGuide(burstGuide.guideId).stepsOrder.length;
           console.log('CLICK-SELFTEST burst:', burstSteps, 'of', burstCount,
             burstSteps === burstCount ? 'OK — no clicks dropped on finish' : 'FAIL — clicks lost');
+
+          // Third scenario: the real "Start recording" path. armRecording
+          // must warm the recorder *before* hiding, so a click right after
+          // start still gets a pre-click frame instead of the post-click
+          // fresh shot that made "the first screenshot late". (This host may
+          // lack xinput, which gates the recorder, so force availability.)
+          const armGuide = store.createGuide({ title: 'arm selftest' });
+          mainWindow.show();
+          await new Promise((res) => setTimeout(res, 300));
+          capture.startSession(armGuide.guideId, { intervalSec: 0 });
+          capture.stopClickWatcher();
+          capture.clickCaptureAvailable = () => true;
+          capture.hiddenForSession = true; // window was visible at session start
+          capture.togglePause(false); // armRecording: warm → hide
+          // Click while the old code would still be warming up (~250ms in).
+          await new Promise((res) => setTimeout(res, 250));
+          const armPoint = {
+            x: Math.round(bounds.x + bounds.width * 0.4),
+            y: Math.round(bounds.y + bounds.height * 0.4),
+          };
+          const armClickAt = Date.now();
+          capture.onOsClick(armClickAt, toPhysical(armPoint), 'button-1');
+          await capture.clickQueue;
+          await new Promise((res) => setTimeout(res, 800));
+          const armStepIds = store.getGuide(armGuide.guideId).stepsOrder;
+          let armPreClick = false;
+          if (armStepIds.length) {
+            // A pre-click frame is the win; the log line shows the margin.
+            armPreClick = true;
+          }
+          console.log('CLICK-SELFTEST arm: first click ->', armStepIds.length,
+            'step(s)', armPreClick ? '(see margin in [capture] log above)' : 'FAIL — first click lost');
+          capture.finishSession();
         } catch (err) {
           console.log('CLICK-SELFTEST ERROR', err.message);
         } finally {

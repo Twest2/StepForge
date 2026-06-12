@@ -314,22 +314,56 @@ class CaptureService {
     // recorder that serves click captures. Pausing stops it and discards
     // buffered frames, so a resume can never serve a pre-pause screen.
     if (wasPaused && !this.session.paused) {
-      const win = this.getWindow();
-      const arm = () => {
-        if (!this.session || this.session.paused) return;
-        if (this.hiddenForSession && win && !win.isDestroyed() && win.isVisible()) win.hide();
-        if (this.settings.get('capture.captureOutsideClicks') !== false && this.clickCaptureAvailable()) {
-          this.startClickFrameBackend().catch(() => {});
-        }
-      };
-      if (this.hiddenForSession && win && !win.isDestroyed()) setTimeout(arm, 400);
-      else arm();
+      this.armRecording();
     } else if (!wasPaused && this.session.paused) {
       this.stopFrameLoop();
       this.stopClickFrameBackend();
     }
     if (this.rebuildTrayMenu) this.rebuildTrayMenu();
     this.notify('capture:state', this.state());
+  }
+
+  /**
+   * Bring a session from paused to recording. The order matters for the
+   * first click: the frame recorder is warmed up *while the window is still
+   * visible*, then the window is hidden. Warming after the hide (the old
+   * order) left a ~1s gap where the worker had no buffered frame yet, so the
+   * first click fell back to a post-click fresh shot — "the first screenshot
+   * is late". By the time the window tucks away here, frames are already
+   * being buffered, so the first click is served a pre-click frame like
+   * every other.
+   */
+  armRecording() {
+    const win = this.getWindow();
+    const wantHide = Boolean(this.hiddenForSession && win && !win.isDestroyed());
+    const recorderWanted = this.settings.get('capture.captureOutsideClicks') !== false
+      && this.clickCaptureAvailable();
+    const run = async () => {
+      if (!this.session || this.session.paused) return;
+      const startedAt = Date.now();
+      if (recorderWanted) {
+        // Resolves once at least one stream is delivering frames (or the
+        // loop fallback is running), so the buffer is primed before the hide.
+        try { await this.startClickFrameBackend(); } catch { /* falls back internally */ }
+        if (!this.session || this.session.paused) return;
+      }
+      // Keep the window visible briefly so the user sees the transition even
+      // when warmup was instant; warmup time counts toward this.
+      const minVisibleMs = wantHide ? 400 : 0;
+      const elapsed = Date.now() - startedAt;
+      if (elapsed < minVisibleMs) {
+        await new Promise((r) => setTimeout(r, minVisibleMs - elapsed));
+        if (!this.session || this.session.paused) return;
+      }
+      if (wantHide && win && !win.isDestroyed() && win.isVisible()) {
+        win.hide();
+        // Let a couple of frames of the now-unobscured screen land before
+        // the user's first click, so that frame shows their work, not the
+        // app window that was just dismissed.
+        await new Promise((r) => setTimeout(r, this.settings.get('capture.postHideSettleMs') || 150));
+      }
+    };
+    run().catch(() => {});
   }
 
   finishSession() {

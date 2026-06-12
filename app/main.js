@@ -106,6 +106,11 @@ function createWindow() {
         try {
           const guide = store.createGuide({ title: 'click selftest' });
           capture.startSession(guide.guideId, { intervalSec: 0 });
+          // Isolate the test from the user's real mouse: the session starts
+          // the live OS click watcher, and a stray real click (dismissing
+          // the toast, focusing the terminal) would add an extra step and
+          // shift every marker comparison below.
+          capture.stopClickWatcher();
           capture.togglePause(false);
           mainWindow.hide();
           // Arm the frame recorder directly: this host may lack the click
@@ -115,13 +120,19 @@ function createWindow() {
           // Let the stream backend (or the fallback loop) come up and buffer.
           await new Promise((res) => setTimeout(res, 3000));
           console.log('CLICK-SELFTEST source:', capture.state().clickFrameSource);
-          const clicks = [
-            { x: 200, y: 150 },
-            { x: 400, y: 300 },
-            { x: 600, y: 450 },
+          // Targets are chosen in DIP; the OS hook reports *physical* pixels,
+          // so convert before injecting (identity on unscaled displays).
+          const { bounds } = screen.getPrimaryDisplay();
+          const dipTargets = [
+            { x: Math.round(bounds.x + bounds.width * 0.2), y: Math.round(bounds.y + bounds.height * 0.2) },
+            { x: Math.round(bounds.x + bounds.width * 0.5), y: Math.round(bounds.y + bounds.height * 0.5) },
+            { x: Math.round(bounds.x + bounds.width * 0.8), y: Math.round(bounds.y + bounds.height * 0.8) },
           ];
-          for (const point of clicks) {
-            capture.onOsClick(Date.now(), point, 'button-1');
+          const toPhysical = (p) => (typeof screen.dipToScreenPoint === 'function'
+            ? screen.dipToScreenPoint(p)
+            : p);
+          for (const point of dipTargets) {
+            capture.onOsClick(Date.now(), toPhysical(point), 'button-1');
             await new Promise((res) => setTimeout(res, 120)); // fast clicking
           }
           // Wait for the queue to drain (encodes can take seconds on WSLg).
@@ -130,18 +141,21 @@ function createWindow() {
           const stepIds = store.getGuide(guide.guideId).stepsOrder;
           const steps = store.listSteps(guide.guideId);
           const markers = stepIds.map((id) => (steps.get(id).annotations || []).length);
-          console.log('CLICK-SELFTEST steps:', stepIds.length, 'of', clicks.length,
+          console.log('CLICK-SELFTEST steps:', stepIds.length, 'of', dipTargets.length,
             'markers:', JSON.stringify(markers));
+          if (stepIds.length !== dipTargets.length) {
+            console.log('CLICK-SELFTEST step count mismatch — marker offsets below are unreliable');
+          }
           // Marker accuracy: each oval's center (fractional) must match the
           // injected click position relative to the display bounds.
-          const { bounds } = screen.getPrimaryDisplay();
           stepIds.forEach((id, i) => {
             const a = (steps.get(id).annotations || [])[0];
-            if (!a) return;
+            const expectedClick = dipTargets[i];
+            if (!a || !expectedClick) return;
             const center = { x: a.x + a.w / 2, y: a.y + a.h / 2 };
             const expected = {
-              x: (clicks[i].x - bounds.x) / bounds.width,
-              y: (clicks[i].y - bounds.y) / bounds.height,
+              x: (expectedClick.x - bounds.x) / bounds.width,
+              y: (expectedClick.y - bounds.y) / bounds.height,
             };
             const offBy = Math.hypot(center.x - expected.x, center.y - expected.y);
             console.log(`CLICK-SELFTEST marker ${i}: off by ${(offBy * 100).toFixed(2)}% of screen`);

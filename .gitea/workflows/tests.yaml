@@ -16,28 +16,8 @@ jobs:
       - name: Checkout repository
         uses: https://gitea.com/actions/checkout@v4
 
-      - name: Install Electron system dependencies
-        run: |
-          apt-get update
-          apt-get install -y \
-            xvfb \
-            libnspr4 \
-            libnss3 \
-            libatk1.0-0 \
-            libatk-bridge2.0-0 \
-            libcups2 \
-            libdrm2 \
-            libgtk-3-0 \
-            libx11-xcb1 \
-            libxcomposite1 \
-            libxdamage1 \
-            libxrandr2 \
-            libgbm1 \
-            libxss1 \
-            libasound2
-
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --cache ~/.npm --prefer-offline
 
       - name: Run template tests
         env:

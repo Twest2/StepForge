@@ -98,6 +98,187 @@ function createWindow() {
         }
       }, 1500);
     }
+    // Dev-only self-test: exercise the full click-capture pipeline — resume
+    // session, wait for the frame recorder, inject OS-level clicks the way
+    // the watcher would, and verify one stored step per click.
+    if (process.env.STEPFORGE_CLICK_SELFTEST) {
+      setTimeout(async () => {
+        try {
+          // The marker/drain scenarios inject clicks faster than the default
+          // debounce to stress the frame pipeline; turn the debounce off for
+          // them so every injected click is captured. A dedicated scenario
+          // at the end re-enables it and verifies the debounce itself.
+          settings.set('capture.clickDebounceMs', 0);
+          const guide = store.createGuide({ title: 'click selftest' });
+          capture.startSession(guide.guideId, { intervalSec: 0 });
+          // Isolate the test from the user's real mouse: the session starts
+          // the live OS click watcher, and a stray real click (dismissing
+          // the toast, focusing the terminal) would add an extra step and
+          // shift every marker comparison below.
+          capture.stopClickWatcher();
+          capture.togglePause(false);
+          mainWindow.hide();
+          // Arm the frame recorder directly: this host may lack the click
+          // watcher binary (xinput), which normally gates the recorder, but
+          // the recorder itself must still be testable end to end.
+          await capture.startClickFrameBackend();
+          // Let the stream backend (or the fallback loop) come up and buffer.
+          await new Promise((res) => setTimeout(res, 3000));
+          console.log('CLICK-SELFTEST source:', capture.state().clickFrameSource);
+          // Targets are chosen in DIP; the OS hook reports *physical* pixels,
+          // so convert before injecting (identity on unscaled displays).
+          const { bounds } = screen.getPrimaryDisplay();
+          const dipTargets = [
+            { x: Math.round(bounds.x + bounds.width * 0.2), y: Math.round(bounds.y + bounds.height * 0.2) },
+            { x: Math.round(bounds.x + bounds.width * 0.5), y: Math.round(bounds.y + bounds.height * 0.5) },
+            { x: Math.round(bounds.x + bounds.width * 0.8), y: Math.round(bounds.y + bounds.height * 0.8) },
+          ];
+          const toPhysical = (p) => (typeof screen.dipToScreenPoint === 'function'
+            ? screen.dipToScreenPoint(p)
+            : p);
+          for (const point of dipTargets) {
+            capture.onOsClick(Date.now(), toPhysical(point), 'button-1');
+            await new Promise((res) => setTimeout(res, 120)); // fast clicking
+          }
+          // Wait for the queue to drain (encodes can take seconds on WSLg).
+          await capture.clickQueue;
+          await new Promise((res) => setTimeout(res, 500));
+          const stepIds = store.getGuide(guide.guideId).stepsOrder;
+          const steps = store.listSteps(guide.guideId);
+          const markers = stepIds.map((id) => (steps.get(id).annotations || []).length);
+          console.log('CLICK-SELFTEST steps:', stepIds.length, 'of', dipTargets.length,
+            'markers:', JSON.stringify(markers));
+          if (stepIds.length !== dipTargets.length) {
+            console.log('CLICK-SELFTEST step count mismatch — marker offsets below are unreliable');
+          }
+          // Marker accuracy: each oval's center (fractional) must match the
+          // injected click position relative to the display bounds.
+          stepIds.forEach((id, i) => {
+            const a = (steps.get(id).annotations || [])[0];
+            const expectedClick = dipTargets[i];
+            if (!a || !expectedClick) return;
+            const center = { x: a.x + a.w / 2, y: a.y + a.h / 2 };
+            const expected = {
+              x: (expectedClick.x - bounds.x) / bounds.width,
+              y: (expectedClick.y - bounds.y) / bounds.height,
+            };
+            const offBy = Math.hypot(center.x - expected.x, center.y - expected.y);
+            console.log(`CLICK-SELFTEST marker ${i}: off by ${(offBy * 100).toFixed(2)}% of screen`);
+          });
+          capture.finishSession();
+
+          // Second scenario, reproducing the "I clicked many times but only
+          // got two screenshots" report: a fast burst of clicks immediately
+          // followed by finishing the session, so most clicks are still
+          // queued (frames still encoding) when the stop lands.
+          const burstGuide = store.createGuide({ title: 'burst selftest' });
+          capture.startSession(burstGuide.guideId, { intervalSec: 0 });
+          capture.stopClickWatcher();
+          capture.togglePause(false);
+          mainWindow.hide();
+          await capture.startClickFrameBackend();
+          await new Promise((res) => setTimeout(res, 1500));
+          const burstCount = 8;
+          for (let i = 0; i < burstCount; i++) {
+            const p = {
+              x: Math.round(bounds.x + bounds.width * (0.15 + 0.08 * i)),
+              y: Math.round(bounds.y + bounds.height * 0.5),
+            };
+            capture.onOsClick(Date.now(), toPhysical(p), 'button-1');
+            await new Promise((res) => setTimeout(res, 30)); // very fast clicking
+          }
+          // Finish right away — clicks are still mid-encode in the queue.
+          capture.finishSession();
+          await capture.clickQueue;
+          await new Promise((res) => setTimeout(res, 1000));
+          const burstSteps = store.getGuide(burstGuide.guideId).stepsOrder.length;
+          console.log('CLICK-SELFTEST burst:', burstSteps, 'of', burstCount,
+            burstSteps === burstCount ? 'OK — no clicks dropped on finish' : 'FAIL — clicks lost');
+
+          // Helper: wait until armRecording has finished warming (window
+          // hidden, buffer primed) so an injected click counts as a real
+          // recording click rather than being ignored as a warmup click.
+          const waitArmed = async () => {
+            for (let i = 0; i < 80 && capture.warmingUp; i++) {
+              await new Promise((res) => setTimeout(res, 50));
+            }
+          };
+
+          // Third scenario: the real "Start recording" path. armRecording
+          // warms the recorder while the window is visible and only arms the
+          // session once it hides; the first click *after* arming must get a
+          // pre-click frame (not the post-click shot that made "the first
+          // screenshot late"), and a click *during* warmup must be ignored,
+          // not mishandled. (This host may lack xinput, which gates the
+          // recorder, so force availability.)
+          const armGuide = store.createGuide({ title: 'arm selftest' });
+          mainWindow.show();
+          await new Promise((res) => setTimeout(res, 300));
+          capture.startSession(armGuide.guideId, { intervalSec: 0 });
+          capture.stopClickWatcher();
+          capture.clickCaptureAvailable = () => true;
+          capture.hiddenForSession = true; // window was visible at session start
+          capture.togglePause(false); // armRecording: warm → hide → arm
+          // A click during warmup must be ignored (window still visible).
+          await new Promise((res) => setTimeout(res, 200));
+          const warmupClicks = store.getGuide(armGuide.guideId).stepsOrder.length;
+          capture.onOsClick(Date.now(), toPhysical({ x: bounds.x + 100, y: bounds.y + 100 }), 'button-1');
+          await waitArmed();
+          const armPoint = {
+            x: Math.round(bounds.x + bounds.width * 0.4),
+            y: Math.round(bounds.y + bounds.height * 0.4),
+          };
+          capture.onOsClick(Date.now(), toPhysical(armPoint), 'button-1');
+          await capture.clickQueue;
+          await new Promise((res) => setTimeout(res, 800));
+          const armSteps = store.getGuide(armGuide.guideId).stepsOrder.length;
+          console.log('CLICK-SELFTEST arm: warmup-click steps', warmupClicks,
+            '-> after-arm steps', armSteps,
+            armSteps === 1 ? 'OK — warmup click ignored, first armed click captured' : 'FAIL');
+          capture.finishSession();
+
+          // Fourth scenario: the debounce itself, exercised end to end through
+          // onOsClick. A fast burst (40ms apart) must collapse to one step,
+          // and deliberate clicks (300ms apart) must each register.
+          settings.set('capture.clickDebounceMs', 200);
+          const dbGuide = store.createGuide({ title: 'debounce selftest' });
+          mainWindow.show();
+          await new Promise((res) => setTimeout(res, 200));
+          capture.startSession(dbGuide.guideId, { intervalSec: 0 });
+          capture.stopClickWatcher();
+          capture.clickCaptureAvailable = () => true;
+          capture.hiddenForSession = true;
+          capture.togglePause(false);
+          await capture.startClickFrameBackend();
+          await waitArmed();
+          await new Promise((res) => setTimeout(res, 300));
+          const dbPoint = {
+            x: Math.round(bounds.x + bounds.width * 0.55),
+            y: Math.round(bounds.y + bounds.height * 0.55),
+          };
+          // 4 clicks 40ms apart — accidental fast clicking → expect 1 step.
+          for (let i = 0; i < 4; i++) {
+            capture.onOsClick(Date.now(), toPhysical(dbPoint), 'button-1');
+            await new Promise((res) => setTimeout(res, 40));
+          }
+          // 3 deliberate clicks 300ms apart → expect 3 more steps.
+          for (let i = 0; i < 3; i++) {
+            await new Promise((res) => setTimeout(res, 300));
+            capture.onOsClick(Date.now(), toPhysical(dbPoint), 'button-1');
+          }
+          await capture.clickQueue;
+          await new Promise((res) => setTimeout(res, 800));
+          const dbSteps = store.getGuide(dbGuide.guideId).stepsOrder.length;
+          console.log('CLICK-SELFTEST debounce:', dbSteps, 'of 4 expected',
+            dbSteps === 4 ? 'OK — burst collapsed to 1, three deliberate clicks kept' : 'FAIL');
+          capture.finishSession();
+        } catch (err) {
+          console.log('CLICK-SELFTEST ERROR', err.message);
+        } finally {
+          app.quit();
+        }
+      }, 1500);
+    }
     // Dev-only self-test: exercise the exact hotkey-session capture path
     // (hide window -> grab -> showInactive) several times, then exit.
     if (process.env.STEPFORGE_CAPTURE_SELFTEST) {
@@ -463,13 +644,20 @@ function setupIpc() {
 
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
+  // Exiting silently here looks like a broken install ("npm start does
+  // nothing") — say why, and let the running instance surface itself.
+  console.error('[stepforge] already running — surfacing the existing window (check the tray).');
   app.quit();
 } else {
   app.on('second-instance', () => {
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.focus();
-    }
+    if (!mainWindow) return;
+    // The window may be tucked away by a recording session; opening the
+    // app again is an explicit request to see it, so pause and show, the
+    // same as the tray's "Open StepForge".
+    if (capture) capture.togglePause(true);
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
   });
 
   app.whenReady().then(() => {

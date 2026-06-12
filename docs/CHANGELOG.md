@@ -5,8 +5,79 @@ Keep-a-Changelog conventions; versions follow semver.
 
 ## [Unreleased]
 
+### Changed
+
+- **Click-capture pipeline rearchitected for Folge-like recording.** This is
+  the milestone where fast, real-world recording works end to end: every
+  mouse click during a session becomes exactly one saved step, the red
+  marker lands on the exact click position (verified at 0.00% offset across
+  scaled and multi-monitor displays), and the screenshot shows the screen at
+  the click rather than after it.
+  - Continuous capture now runs in a hidden worker process that samples a
+    desktop media stream per display into a timestamped ring buffer, so the
+    main process stays responsive and OS click events are never delayed by
+    capture work. Falls back to the legacy in-process loop where streams
+    cannot start (portal-less Wayland/WSLg).
+  - Each click is paired with the newest frame captured at or before its
+    hook timestamp (strict timing, `capture.strictClickFrames`, default on):
+    a frame whose grab started after the click is never used.
+  - Physical→DIP coordinate conversion is multi-monitor and scale-factor
+    aware (`screen.screenToDipPoint` on Windows, display-geometry math
+    elsewhere), fixing marker drift on displays scaled away from 100%.
+  - A configurable click-lead (`capture.clickLeadMs`, default 120ms) prefers
+    a frame captured a little before each click so the saved step shows what
+    the user was about to act on, not the click's onset; the stream sampling
+    cadence was tightened to 50ms so a frame near that target always exists.
+    The lead is a preference, not a gate: selection falls back to the newest
+    frame still before the click, so it never forces a post-click screenshot.
+  - The frame recorder now warms up *before* the window hides at recording
+    start, instead of after. Previously the first click of a session could
+    beat the ~1s warmup and fall back to a post-click shot — "the first
+    screenshot is late" — while every later click was fine. Now frames are
+    buffering by the time the window tucks away, so the first click is
+    served a pre-click frame like the rest.
+  - The whole click→screenshot→step pipeline is guarded end to end by
+    `tests/checks/test_click_capture_selftest.sh`, which runs a real Electron
+    session and asserts marker accuracy, no dropped burst clicks, the first
+    click of a session captured, and the debounce — so this behavior fails
+    the suite if it ever regresses.
+
+### Added
+
+- **Click debounce (`capture.clickDebounceMs`, default 200ms).** Clicks of
+  the same mouse button closer together than the window collapse into one
+  step, so accidental fast or double clicks don't each become a step, while
+  any two deliberate clicks spaced further apart both register. It is a
+  leading-edge debounce measured from the last *accepted* click, so a run of
+  fast clicks can't push the next real click out. Set it to 0 to capture
+  every click. Backed by behavioral unit tests that drive click sequences
+  through real timestamps (not keyword checks) plus an end-to-end self-test
+  scenario.
+
 ### Fixed
 
+- **Restarting a recording no longer drops clicks or "stops after one
+  click."** While the recorder warmed up at the start of a session the
+  window was still visible, so clicks over it were skipped and clicks
+  elsewhere were shot post-click — and on a restart the backend start could
+  take several seconds, stretching that bad window out. Recording is now
+  "armed" only once the window is actually hidden and the buffer is primed:
+  clicks during warmup are cleanly ignored (the window is covering the
+  user's work anyway), the window hides within a bounded time even if the
+  backend is slow to start, and a slow start left over from a finished
+  session can no longer block the next session from starting its own.
+- **Fast click bursts no longer lose screenshots.** Finishing or pausing a
+  recording used to cancel every screenshot still being encoded, so a quick
+  series of clicks saved only the first two or three. The capture worker now
+  drains on stop — frames already captured for queued clicks finish encoding
+  and are saved — so all clicks are recorded even on machines where PNG
+  encoding takes seconds. Verified end to end: an 8-click burst followed by
+  an immediate finish saves all 8.
+- **Screenshots taken after the click instead of at it.** A slow PNG encode
+  was being mistaken for a dead capture worker, which kicked the click over
+  to a fallback that shot the screen after the click. The worker now
+  acknowledges frame selection immediately and ships the encoded image
+  separately, so a slow encode no longer triggers the post-click fallback.
 - Windows continuous click capture now uses a low-level mouse hook instead
   of timer polling, so normal left-clicks are not missed when the app or
   target system is under load. Click captures also preserve the original

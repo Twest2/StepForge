@@ -104,6 +104,11 @@ function createWindow() {
     if (process.env.STEPFORGE_CLICK_SELFTEST) {
       setTimeout(async () => {
         try {
+          // The marker/drain scenarios inject clicks faster than the default
+          // debounce to stress the frame pipeline; turn the debounce off for
+          // them so every injected click is captured. A dedicated scenario
+          // at the end re-enables it and verifies the debounce itself.
+          settings.set('capture.clickDebounceMs', 0);
           const guide = store.createGuide({ title: 'click selftest' });
           capture.startSession(guide.guideId, { intervalSec: 0 });
           // Isolate the test from the user's real mouse: the session starts
@@ -221,6 +226,41 @@ function createWindow() {
           }
           console.log('CLICK-SELFTEST arm: first click ->', armStepIds.length,
             'step(s)', armPreClick ? '(see margin in [capture] log above)' : 'FAIL — first click lost');
+          capture.finishSession();
+
+          // Fourth scenario: the debounce itself, exercised end to end through
+          // onOsClick. A fast burst (40ms apart) must collapse to one step,
+          // and deliberate clicks (300ms apart) must each register.
+          settings.set('capture.clickDebounceMs', 200);
+          const dbGuide = store.createGuide({ title: 'debounce selftest' });
+          mainWindow.show();
+          await new Promise((res) => setTimeout(res, 200));
+          capture.startSession(dbGuide.guideId, { intervalSec: 0 });
+          capture.stopClickWatcher();
+          capture.clickCaptureAvailable = () => true;
+          capture.hiddenForSession = true;
+          capture.togglePause(false);
+          await capture.startClickFrameBackend();
+          await new Promise((res) => setTimeout(res, 1500));
+          const dbPoint = {
+            x: Math.round(bounds.x + bounds.width * 0.55),
+            y: Math.round(bounds.y + bounds.height * 0.55),
+          };
+          // 4 clicks 40ms apart — accidental fast clicking → expect 1 step.
+          for (let i = 0; i < 4; i++) {
+            capture.onOsClick(Date.now(), toPhysical(dbPoint), 'button-1');
+            await new Promise((res) => setTimeout(res, 40));
+          }
+          // 3 deliberate clicks 300ms apart → expect 3 more steps.
+          for (let i = 0; i < 3; i++) {
+            await new Promise((res) => setTimeout(res, 300));
+            capture.onOsClick(Date.now(), toPhysical(dbPoint), 'button-1');
+          }
+          await capture.clickQueue;
+          await new Promise((res) => setTimeout(res, 800));
+          const dbSteps = store.getGuide(dbGuide.guideId).stepsOrder.length;
+          console.log('CLICK-SELFTEST debounce:', dbSteps, 'of 4 expected',
+            dbSteps === 4 ? 'OK — burst collapsed to 1, three deliberate clicks kept' : 'FAIL');
           capture.finishSession();
         } catch (err) {
           console.log('CLICK-SELFTEST ERROR', err.message);

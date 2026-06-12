@@ -37,6 +37,18 @@ Keep-a-Changelog conventions; versions follow semver.
     buffering by the time the window tucks away, so the first click is
     served a pre-click frame like the rest.
 
+### Added
+
+- **Click debounce (`capture.clickDebounceMs`, default 200ms).** Clicks of
+  the same mouse button closer together than the window collapse into one
+  step, so accidental fast or double clicks don't each become a step, while
+  any two deliberate clicks spaced further apart both register. It is a
+  leading-edge debounce measured from the last *accepted* click, so a run of
+  fast clicks can't push the next real click out. Set it to 0 to capture
+  every click. Backed by behavioral unit tests that drive click sequences
+  through real timestamps (not keyword checks) plus an end-to-end self-test
+  scenario.
+
 ### Fixed
 
 - **Fast click bursts no longer lose screenshots.** Finishing or pausing a

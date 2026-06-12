@@ -103,11 +103,19 @@ function hasBinary(name) {
 }
 
 class CaptureService {
-  constructor({ store, settings, getWindow, notify, screenApi = screen }) {
+  constructor({
+    store,
+    settings,
+    getWindow,
+    notify,
+    screenApi = screen,
+    dialogApi = null,
+  }) {
     this.store = store;
     this.settings = settings;
     this.getWindow = getWindow;
     this.notify = notify;
+    this.dialog = dialogApi;
     // Injectable for tests; the click/coordinate paths must never reach for
     // the global `screen` directly so coordinate handling stays testable.
     this.screen = screenApi;
@@ -134,6 +142,7 @@ class CaptureService {
     // True only while a resume is warming up (window still visible, buffer
     // not yet primed). Clicks are ignored until it clears — see armRecording.
     this.warmingUp = false;
+    this.sessionInstructionsShown = false;
   }
 
   state() {
@@ -185,6 +194,7 @@ class CaptureService {
     // New Capture never makes the window vanish out from under them.
     this.session = { guideId, paused: true, count: 0, intervalSec: interval };
     this.sessionNotificationShown = false;
+    this.sessionInstructionsShown = false;
     if (this.settings.get('capture.captureOutsideClicks') !== false) this.startClickWatcher();
     this.applyInterval();
     this.notify('capture:state', this.state());
@@ -375,6 +385,11 @@ class CaptureService {
         if (!this.session || this.session.paused) { this.warmingUp = false; return; }
       }
       if (wantHide && win && !win.isDestroyed() && win.isVisible()) {
+        if (!this.sessionInstructionsShown) {
+          this.sessionInstructionsShown = true;
+          await this.showRecordingInstructions(win);
+          if (!this.session || this.session.paused) { this.warmingUp = false; return; }
+        }
         win.hide();
         // Let a couple of frames of the now-unobscured screen land before
         // the user's first click, so that frame shows their work, not the
@@ -396,6 +411,25 @@ class CaptureService {
     run().catch(() => { this.warmingUp = false; });
   }
 
+  async showRecordingInstructions(win) {
+    if (!this.dialog || typeof this.dialog.showMessageBox !== 'function') return;
+    try {
+      await this.dialog.showMessageBox(win, {
+        type: 'info',
+        title: 'StepForge recording',
+        message: 'Please go into the tray icon and select the red button to stop recording.',
+        detail: 'Click OK to continue and hide this window.',
+        buttons: ['OK'],
+        defaultId: 0,
+        cancelId: 0,
+        noLink: true,
+      });
+    } catch {
+      // If the dialog cannot be shown, keep the session moving instead of
+      // leaving the user stuck on the start flow.
+    }
+  }
+
   finishSession() {
     if (this.intervalTimer) {
       clearInterval(this.intervalTimer);
@@ -408,6 +442,7 @@ class CaptureService {
     this.destroySessionTray();
     this.session = null;
     this.sessionNotificationShown = false;
+    this.sessionInstructionsShown = false;
     if (this.hiddenForSession) {
       this.hiddenForSession = false;
       this.showWindow();

@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 
 const CaptureService = require('../../app/capture');
 
-function makeService({ settings: settingsOverrides, screenApi } = {}) {
+function makeService({ settings: settingsOverrides, screenApi, dialogApi } = {}) {
   const store = {
     addStep() {
       throw new Error('not used in this test');
@@ -26,6 +26,9 @@ function makeService({ settings: settingsOverrides, screenApi } = {}) {
     settings,
     getWindow: () => null,
     notify: () => {},
+    dialogApi: dialogApi || {
+      showMessageBox: async () => ({ response: 0 }),
+    },
     screenApi: screenApi || {
       getCursorScreenPoint: () => ({ x: 0, y: 0 }),
       getAllDisplays: () => [],
@@ -623,6 +626,52 @@ test('armRecording warms while visible, then hides and arms the session', async 
 
   service.onOsClick(2, { x: 10, y: 10 }, 'left');
   assert.deepEqual(captured, [2], 'a click after arming is captured');
+  service.finishSession();
+});
+
+test('armRecording shows a blocking instruction dialog before the window hides', async () => {
+  const service = makeService();
+  const win = {
+    destroyed: false, visible: true,
+    isDestroyed() { return this.destroyed; },
+    isVisible() { return this.visible; },
+    isMinimized() { return false; },
+    hide() { this.visible = false; },
+    show() { this.visible = true; },
+    focus() {}, getTitle() { return 'StepForge'; },
+    getBounds() { return { x: 0, y: 0, width: 800, height: 600 }; },
+  };
+  service.getWindow = () => win;
+  service.clickCaptureAvailable = () => false;
+  service.hiddenForSession = true;
+  service.session = { guideId: 'g-prompt', paused: true, count: 0, intervalSec: 0 };
+
+  let releaseDialog;
+  const dialogGate = new Promise((resolve) => { releaseDialog = resolve; });
+  let seenOptions = null;
+  service.dialog = {
+    showMessageBox: async (_win, options) => {
+      seenOptions = options;
+      await dialogGate;
+      return { response: 0 };
+    },
+  };
+
+  service.togglePause(false);
+
+  for (let i = 0; i < 40 && !seenOptions; i++) {
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  assert.ok(seenOptions, 'the instruction dialog must appear before the window hides');
+  assert.equal(seenOptions?.message, 'Please go into the tray icon and select the red button to stop recording.');
+  assert.equal(win.visible, true, 'the window must stay visible until the dialog is acknowledged');
+
+  releaseDialog();
+  for (let i = 0; i < 20 && win.visible; i++) {
+    await new Promise((r) => setTimeout(r, 25));
+  }
+
+  assert.equal(win.visible, false, 'the window hides only after the acknowledgement dialog is dismissed');
   service.finishSession();
 });
 

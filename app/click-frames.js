@@ -125,20 +125,41 @@ function frameUsableForClick(frame, {
   return startedAt <= clickTime + startSlackMs;
 }
 
-/**
- * Best already-buffered frame for a click: the newest frame that qualifies
- * under frameUsableForClick. Buffered frames are by definition completed, so
- * in-flight acceptance never applies here. Returns null when nothing
- * qualifies and the caller must wait for the in-flight grab or fall back to
- * a fresh shot.
- */
-function selectFrameForClick(frames, opts = {}) {
+function newestUsableFrame(frames, opts) {
   let best = null;
   for (const frame of frames || []) {
     if (!frameUsableForClick(frame, { ...opts, allowInFlight: false })) continue;
     if (!best || frame.capturedAt > best.capturedAt) best = frame;
   }
   return best;
+}
+
+/**
+ * Best already-buffered frame for a click, in two tiers:
+ *  1. with a click lead (opts.leadMs > 0): the newest frame captured at least
+ *     leadMs *before* the click, so the step shows the screen the user was
+ *     about to act on — clear of the click's own onset;
+ *  2. failing that, the newest frame captured before the click at all.
+ *
+ * The two tiers matter for correctness, not just polish: the lead is a
+ * *preference*, never a hard gate. If it were a gate, a click with no frame
+ * old enough to satisfy the lead would fall through to the caller's fresh
+ * shot — which captures the screen *after* the click. The tier-2 fallback
+ * guarantees that as long as any pre-click frame exists, we use it rather
+ * than shooting post-click. Buffered frames are always completed, so
+ * in-flight acceptance never applies here.
+ */
+function selectFrameForClick(frames, opts = {}) {
+  const leadMs = Math.max(0, Number(opts.leadMs) || 0);
+  const clickAt = Number.isFinite(opts.clickAt) ? opts.clickAt : Date.now();
+  if (leadMs > 0) {
+    // Widen the staleness budget by the lead so a frame that was fresh
+    // enough for the real click is still fresh enough for the lead target.
+    const maxAgeMs = (opts.maxAgeMs == null ? DEFAULT_MAX_AGE_MS : opts.maxAgeMs) + leadMs;
+    const led = newestUsableFrame(frames, { ...opts, clickAt: clickAt - leadMs, maxAgeMs });
+    if (led) return led;
+  }
+  return newestUsableFrame(frames, { ...opts, clickAt });
 }
 
 const api = {

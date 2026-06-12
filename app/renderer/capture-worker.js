@@ -147,6 +147,7 @@
     await sampleFrame(state);
     const frame = StepForgeClickFrames.selectFrameForClick(state.ring.frames(), {
       clickAt: cmd.clickAt,
+      leadMs: cmd.leadMs || 0,
       mode: 'fullscreen',
       strict: cmd.strict !== false,
     });

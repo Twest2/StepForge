@@ -51,6 +51,16 @@ Keep-a-Changelog conventions; versions follow semver.
 
 ### Fixed
 
+- **Restarting a recording no longer drops clicks or "stops after one
+  click."** While the recorder warmed up at the start of a session the
+  window was still visible, so clicks over it were skipped and clicks
+  elsewhere were shot post-click — and on a restart the backend start could
+  take several seconds, stretching that bad window out. Recording is now
+  "armed" only once the window is actually hidden and the buffer is primed:
+  clicks during warmup are cleanly ignored (the window is covering the
+  user's work anyway), the window hides within a bounded time even if the
+  backend is slow to start, and a slow start left over from a finished
+  session can no longer block the next session from starting its own.
 - **Fast click bursts no longer lose screenshots.** Finishing or pausing a
   recording used to cancel every screenshot still being encoded, so a quick
   series of clicks saved only the first two or three. The capture worker now

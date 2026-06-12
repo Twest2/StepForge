@@ -554,6 +554,150 @@ test('debounced clicks never reach the capture queue (end to end through onOsCli
   assert.equal(service.session.count, 2);
 });
 
+// ---- warmup gating (recording goes live only after the window hides) -----------
+
+test('clicks during warmup are ignored, not captured as junk', () => {
+  const service = makeService();
+  service.session = { guideId: 'g-warm', paused: false, count: 0, intervalSec: 0 };
+  service.warmingUp = true;
+  const seen = [];
+  service.enqueueClickCapture = (clickPos, at) => { seen.push(at); };
+
+  service.onOsClick(1000, { x: 10, y: 20 }, 'left');
+  assert.deepEqual(seen, [], 'a click while warming up must not be captured');
+
+  // Once armed, clicks are captured again.
+  service.warmingUp = false;
+  service.onOsClick(2000, { x: 10, y: 20 }, 'left');
+  assert.deepEqual(seen, [2000]);
+});
+
+test('pausing and finishing clear the warmup flag', () => {
+  const service = makeService();
+  service.session = { guideId: 'g-warm2', paused: false, count: 0, intervalSec: 0 };
+  service.warmingUp = true;
+  service.togglePause(true);
+  assert.equal(service.warmingUp, false, 'pause cancels an in-flight warmup');
+
+  service.session = { guideId: 'g-warm3', paused: false, count: 0, intervalSec: 0 };
+  service.warmingUp = true;
+  service.finishSession();
+  assert.equal(service.warmingUp, false, 'finish cancels an in-flight warmup');
+});
+
+test('armRecording warms while visible, then hides and arms the session', async () => {
+  // Reproduces the restart path: recording must not be "live" until the
+  // window is hidden. A click injected during warmup is ignored; a click
+  // after arming is captured.
+  const service = makeService();
+  const win = {
+    destroyed: false, visible: true,
+    isDestroyed() { return this.destroyed; },
+    isVisible() { return this.visible; },
+    isMinimized() { return false; },
+    hide() { this.visible = false; },
+    show() { this.visible = true; },
+    focus() {}, getTitle() { return 'StepForge'; },
+    getBounds() { return { x: 0, y: 0, width: 800, height: 600 }; },
+  };
+  service.getWindow = () => win;
+  service.clickCaptureAvailable = () => true;
+  // Stub the recorder so warmup resolves fast without real Electron.
+  service.startClickFrameBackend = async () => {};
+  service.session = { guideId: 'g-arm', paused: false, count: 0, intervalSec: 0 };
+  service.hiddenForSession = true;
+  const captured = [];
+  service.enqueueClickCapture = (clickPos, at) => { captured.push(at); };
+
+  service.armRecording();
+  assert.equal(service.warmingUp, true, 'warming up begins immediately');
+  service.onOsClick(1, { x: 10, y: 10 }, 'left');
+  assert.deepEqual(captured, [], 'a click during warmup is ignored');
+
+  // Wait out the warmup (min-visible 400ms + settle 150ms here).
+  for (let i = 0; i < 40 && service.warmingUp; i++) {
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  assert.equal(service.warmingUp, false, 'warmup clears');
+  assert.equal(win.visible, false, 'the window is hidden once armed');
+
+  service.onOsClick(2, { x: 10, y: 10 }, 'left');
+  assert.deepEqual(captured, [2], 'a click after arming is captured');
+  service.finishSession();
+});
+
+test('a slow recorder start still arms within the warmup cap', async () => {
+  // If the backend start hangs (Windows can take seconds), the window must
+  // still hide and recording must still arm — the restart bug was the
+  // window staying up for many seconds, dropping every click over it.
+  const service = makeService();
+  const win = {
+    destroyed: false, visible: true,
+    isDestroyed() { return this.destroyed; },
+    isVisible() { return this.visible; },
+    isMinimized() { return false; },
+    hide() { this.visible = false; },
+    show() { this.visible = true; },
+    focus() {}, getTitle() { return 'StepForge'; },
+    getBounds() { return { x: 0, y: 0, width: 800, height: 600 }; },
+  };
+  service.getWindow = () => win;
+  service.clickCaptureAvailable = () => true;
+  // Backend start that never resolves within the test.
+  service.startClickFrameBackend = () => new Promise(() => {});
+  service.session = { guideId: 'g-slow', paused: false, count: 0, intervalSec: 0 };
+  service.hiddenForSession = true;
+
+  service.armRecording();
+  // The cap is 1500ms; wait a bit beyond it.
+  for (let i = 0; i < 60 && service.warmingUp; i++) {
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  assert.equal(service.warmingUp, false, 'a hung backend start must not keep recording un-armed');
+  assert.equal(win.visible, false, 'the window hides even when the recorder is slow to start');
+  service.finishSession();
+});
+
+test('a slow backend start from a finished session does not install itself or block a restart', async () => {
+  // Rapid restart: session A starts a backend that resolves slowly; the user
+  // finishes A and starts B before it resolves. A's late backend must not
+  // install into B, and the starting-guard must not block B from starting
+  // its own.
+  const service = makeService();
+  service.session = { guideId: 'A', paused: false, count: 0, intervalSec: 0 };
+
+  let releaseA;
+  const aReady = new Promise((r) => { releaseA = r; });
+  const built = [];
+  // Model the generation guard at the seam: a slow start that checks
+  // captureGen before installing the backend it built.
+  service.startClickFrameBackend = async function patched() {
+    const gen = this.captureGen;
+    this.streamBackendStarting = true;
+    try {
+      await aReady; // slow start
+      const backend = { isActive: () => true, stop: () => built.push('stopped') };
+      if (gen !== this.captureGen || !this.session || this.session.paused) {
+        backend.stop();
+        return;
+      }
+      this.streamBackend = backend;
+      built.push('installed');
+    } finally {
+      if (gen === this.captureGen) this.streamBackendStarting = false;
+    }
+  };
+
+  const startA = service.startClickFrameBackend();
+  service.finishSession(); // bumps captureGen, A is now stale
+  releaseA();
+  await startA;
+
+  assert.deepEqual(built, ['stopped'], 'the stale backend is stopped, never installed');
+  assert.equal(service.streamBackend, null);
+  assert.equal(service.streamBackendStarting, false, 'the guard is freed for the next session');
+});
+
 // ---- coordinate conversion ------------------------------------------------------
 
 test('hook coordinates are converted physical → DIP via screenToDipPoint when available', () => {

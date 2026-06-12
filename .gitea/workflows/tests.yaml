@@ -10,7 +10,7 @@ on:
 
 jobs:
   tests:
-    runs-on: MOMP
+    runs-on: MOMP-AUTODOC
 
     steps:
       - name: Checkout repository

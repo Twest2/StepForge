@@ -5,7 +5,7 @@ const path = require('node:path');
 const { zipSync } = require('../core/zip');
 const { escapeXml } = require('../core/util');
 const { encodePng } = require('../core/png');
-const { guideSlug, renderAllImages, LEVEL_LABEL } = require('./common');
+const { guideSlug, renderAllImages, LEVEL_LABEL, stepBlocks, codeBlockText } = require('./common');
 
 /**
  * DOCX exporter: WordprocessingML built directly (no dependency), one
@@ -102,19 +102,20 @@ function exportDocx(ast, outDir, template = {}) {
       body.push(p(drawing(relCounter, img.width, img.height, tpl.imageWidthTwips)));
     }
 
-    for (const cb of step.codeBlocks) {
-      body.push(p(run(cb.code || '', { size: 18, font: 'Courier New', color: '1F2937' }),
-        '<w:shd w:val="clear" w:fill="F3F4F6"/>'));
-    }
-    for (const tb of step.tableBlocks || []) {
-      if (tb.rows && tb.rows.length) body.push(table(tb.rows), p(''));
+    for (const block of stepBlocks(step).filter((item) => item.kind !== 'text')) {
+      if (block.kind === 'code') {
+        body.push(p(run(codeBlockText(block), { size: 18, font: 'Courier New', color: '1F2937' }),
+          '<w:shd w:val="clear" w:fill="F3F4F6"/>'));
+      } else if (block.kind === 'table') {
+        if (block.rows && block.rows.length) body.push(table(block.rows), p(''));
+      }
     }
     emitTextBlocks(step, 'after-description');
     emitTextBlocks(step, 'after-image');
   }
 
   function emitTextBlocks(step, position) {
-    for (const tb of step.textBlocks.filter((b) => b.position === position)) {
+    for (const tb of stepBlocks(step).filter((b) => b.kind === 'text' && b.position === position)) {
       const label = `${LEVEL_LABEL[tb.level] || 'Note'}${tb.title ? `: ${tb.title}` : ''}`;
       body.push(p(
         run(label, { bold: true, size: 20 }) + (tb.descriptionText ? run('\n' + tb.descriptionText, { size: 20 }) : ''),

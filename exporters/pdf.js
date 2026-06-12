@@ -3,7 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { PdfBuilder } = require('../core/pdf');
-const { guideSlug, renderAllImages, LEVEL_LABEL } = require('./common');
+const { guideSlug, renderAllImages, LEVEL_LABEL, stepBlocks, codeBlockText } = require('./common');
 const { htmlToText } = require('../core/util');
 
 /**
@@ -104,38 +104,38 @@ function exportPdf(ast, outDir, template = {}) {
       y += h + 10;
     }
 
-    for (const cb of step.codeBlocks) {
-      const lines = String(cb.code || '').split('\n');
-      const lineH = 9 * 1.3;
-      ensure(Math.min(lines.length, 4) * lineH + 12);
-      const boxH = lines.length * lineH + 10;
-      pdf.rect(M, y, usableW, Math.min(boxH, size.height - M - y), { fill: [243, 244, 246] });
-      y += 6;
-      for (const line of lines) {
-        ensure(lineH);
-        pdf.text(line.slice(0, 95), M + 8, y, { size: 9, font: 'F3', color: [31, 41, 55] });
-        y += lineH;
-      }
-      y += 10;
-    }
-
-    for (const tb of step.tableBlocks || []) {
-      if (!tb.rows || !tb.rows.length) continue;
-      const cols = Math.max(...tb.rows.map((r) => r.length));
-      const colW = usableW / cols;
-      for (let r = 0; r < tb.rows.length; r++) {
-        const rowH = 16;
-        ensure(rowH + 2);
-        if (r === 0) pdf.rect(M, y, usableW, rowH, { fill: [238, 240, 244] });
-        pdf.rect(M, y, usableW, rowH, { stroke: [200, 204, 210], lineWidth: 0.6 });
-        for (let c = 0; c < cols; c++) {
-          pdf.text(String(tb.rows[r][c] ?? '').slice(0, Math.floor(colW / 5)), M + c * colW + 4, y + 3, {
-            size: 9, font: r === 0 ? 'F2' : 'F1',
-          });
+    for (const block of stepBlocks(step).filter((item) => item.kind !== 'text')) {
+      if (block.kind === 'code') {
+        const lines = String(codeBlockText(block) || '').split('\n');
+        const lineH = 9 * 1.3;
+        ensure(Math.min(lines.length, 4) * lineH + 12);
+        const boxH = lines.length * lineH + 10;
+        pdf.rect(M, y, usableW, Math.min(boxH, size.height - M - y), { fill: [243, 244, 246] });
+        y += 6;
+        for (const line of lines) {
+          ensure(lineH);
+          pdf.text(line.slice(0, 95), M + 8, y, { size: 9, font: 'F3', color: [31, 41, 55] });
+          y += lineH;
         }
-        y += rowH;
+        y += 10;
+      } else if (block.kind === 'table') {
+        if (!block.rows || !block.rows.length) continue;
+        const cols = Math.max(...block.rows.map((r) => r.length));
+        const colW = usableW / cols;
+        for (let r = 0; r < block.rows.length; r++) {
+          const rowH = 16;
+          ensure(rowH + 2);
+          if (r === 0) pdf.rect(M, y, usableW, rowH, { fill: [238, 240, 244] });
+          pdf.rect(M, y, usableW, rowH, { stroke: [200, 204, 210], lineWidth: 0.6 });
+          for (let c = 0; c < cols; c++) {
+            pdf.text(String(block.rows[r][c] ?? '').slice(0, Math.floor(colW / 5)), M + c * colW + 4, y + 3, {
+              size: 9, font: r === 0 ? 'F2' : 'F1',
+            });
+          }
+          y += rowH;
+        }
+        y += 8;
       }
-      y += 8;
     }
 
     emitBlocks(step, 'after-description');
@@ -144,7 +144,7 @@ function exportPdf(ast, outDir, template = {}) {
   }
 
   function emitBlocks(step, position) {
-    for (const tb of step.textBlocks.filter((b) => b.position === position)) {
+    for (const tb of stepBlocks(step).filter((b) => b.kind === 'text' && b.position === position)) {
       const label = `${LEVEL_LABEL[tb.level] || 'Note'}${tb.title ? `: ${tb.title}` : ''}`;
       const bodyLines = tb.descriptionText ? pdf.wrapText(tb.descriptionText, 9.5, usableW - 18) : [];
       const blockH = 16 + bodyLines.length * 13;

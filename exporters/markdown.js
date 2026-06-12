@@ -2,7 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { guideSlug, writeStepImages, LEVEL_LABEL } = require('./common');
+const { guideSlug, writeStepImages, LEVEL_LABEL, stepBlocks, codeBlockText } = require('./common');
 const { htmlToMarkdown } = require('./htmlmd');
 
 /**
@@ -58,17 +58,18 @@ function exportMarkdown(ast, outDir, template = {}) {
       }
     }
 
-    for (const cb of step.codeBlocks) {
-      lines.push(`\`\`\`${cb.language || ''}`, cb.code || '', '```', '');
-    }
-    for (const tb of step.tableBlocks || []) {
-      if (!tb.rows || !tb.rows.length) continue;
-      const width = Math.max(...tb.rows.map((r) => r.length));
-      const pad = (r) => { const c = [...r]; while (c.length < width) c.push(''); return c; };
-      lines.push(`| ${pad(tb.rows[0]).join(' | ')} |`);
-      lines.push(`|${' --- |'.repeat(width)}`);
-      for (const row of tb.rows.slice(1)) lines.push(`| ${pad(row).join(' | ')} |`);
-      lines.push('');
+    for (const block of stepBlocks(step).filter((item) => item.kind !== 'text')) {
+      if (block.kind === 'code') {
+        lines.push(`\`\`\`${block.language || ''}`, codeBlockText(block), '```', '');
+      } else if (block.kind === 'table') {
+        if (!block.rows || !block.rows.length) continue;
+        const width = Math.max(...block.rows.map((r) => r.length));
+        const pad = (r) => { const c = [...r]; while (c.length < width) c.push(''); return c; };
+        lines.push(`| ${pad(block.rows[0]).join(' | ')} |`);
+        lines.push(`|${' --- |'.repeat(width)}`);
+        for (const row of block.rows.slice(1)) lines.push(`| ${pad(row).join(' | ')} |`);
+        lines.push('');
+      }
     }
 
     emitBlocks(lines, step, 'after-description');
@@ -81,7 +82,7 @@ function exportMarkdown(ast, outDir, template = {}) {
 }
 
 function emitBlocks(lines, step, position) {
-  for (const tb of step.textBlocks.filter((b) => b.position === position)) {
+  for (const tb of stepBlocks(step).filter((b) => b.kind === 'text' && b.position === position)) {
     const label = LEVEL_LABEL[tb.level] || 'Note';
     lines.push(`> **${label}${tb.title ? `: ${tb.title}` : ''}**`);
     const body = htmlToMarkdown(tb.descriptionHtml);

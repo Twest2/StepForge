@@ -221,9 +221,8 @@ class GuideStore {
   }
 
   saveStep(guideId, step) {
-    const stored = deepClone(step);
+    const stored = normalizeStep(deepClone(step));
     stored.descriptionHtml = sanitizeHtml(stored.descriptionHtml);
-    for (const tb of stored.textBlocks || []) tb.descriptionHtml = sanitizeHtml(tb.descriptionHtml);
     validateStep(stored);
     writeJsonSync(path.join(this.stepDir(guideId, step.stepId), 'step.json'), stored);
     const guide = this.getGuide(guideId);
@@ -263,8 +262,8 @@ class GuideStore {
   }
 
   /** Replace the working image (crop result). The original is never touched. */
-  setWorkingImage(guideId, stepId, pngBuffer, size) {
-    const step = this.getStep(guideId, stepId);
+  setWorkingImage(guideId, stepId, pngBuffer, size, stepPatch = null) {
+    const step = stepPatch ? deepClone(stepPatch) : this.getStep(guideId, stepId);
     if (!step.image) throw new Error('step has no image');
     atomicWriteFileSync(path.join(this.stepDir(guideId, stepId), step.image.workingPath), pngBuffer);
     step.image.size = size;

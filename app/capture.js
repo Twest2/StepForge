@@ -184,6 +184,7 @@ class CaptureService {
     // the user explicitly presses "Start recording" in the capture bar, so
     // New Capture never makes the window vanish out from under them.
     this.session = { guideId, paused: true, count: 0, intervalSec: interval };
+    this.sessionNotificationShown = false;
     if (this.settings.get('capture.captureOutsideClicks') !== false) this.startClickWatcher();
     this.applyInterval();
     this.notify('capture:state', this.state());
@@ -196,12 +197,6 @@ class CaptureService {
       // up — that's what `togglePause` uses to decide whether to tuck the
       // app away once the user actually starts recording.
       this.hiddenForSession = Boolean(win && !win.isDestroyed() && win.isVisible());
-      try {
-        new Notification({
-          title: 'StepForge is ready to capture',
-          body: 'Click "Start recording" in the red capture bar when you’re ready. The window tucks away and the red tray icon takes over.',
-        }).show();
-      } catch { /* notifications unavailable on this desktop */ }
     }
   }
 
@@ -387,6 +382,15 @@ class CaptureService {
         await new Promise((r) => setTimeout(r, Number.isFinite(settleMs) ? settleMs : 150));
       }
       // Window hidden and buffer primed — clicks now count.
+      if (!process.env.STEPFORGE_SCREENSHOT && !this.sessionNotificationShown) {
+        try {
+          new Notification({
+            title: 'StepForge is recording',
+            body: 'Use the red tray icon to pause or finish capture.',
+          }).show();
+          this.sessionNotificationShown = true;
+        } catch { /* notifications unavailable on this desktop */ }
+      }
       this.warmingUp = false;
     };
     run().catch(() => { this.warmingUp = false; });
@@ -403,6 +407,7 @@ class CaptureService {
     this.stopClickFrameBackend();
     this.destroySessionTray();
     this.session = null;
+    this.sessionNotificationShown = false;
     if (this.hiddenForSession) {
       this.hiddenForSession = false;
       this.showWindow();

@@ -422,42 +422,136 @@ test('windows hook click lines carry button and event timestamp', () => {
   }]);
 });
 
-// ---- click dedupe (source-aware, not a debounce) -------------------------------
+// ---- click debounce (~200ms) ---------------------------------------------------
+//
+// These tests drive real onOsClick calls with controlled timestamps and
+// record which clicks survive to enqueueClickCapture, so they exercise the
+// actual debounce arithmetic rather than asserting on comments or constants.
+// The behavior they lock in: clicks of one button closer together than the
+// debounce window collapse to one; clicks spaced further apart all register.
 
-test('fast same-button hook clicks are all captured — there is no time debounce', () => {
-  const service = makeService();
-  service.session = { guideId: 'guide-burst', paused: false, count: 0, intervalSec: 0 };
-  const seen = [];
-  service.enqueueClickCapture = (clickPos, at) => {
-    seen.push(at);
-  };
+/** Run a timestamp sequence through onOsClick; return the accepted times. */
+function runClickSequence(service, times, { button = 'left', point = { x: 10, y: 20 } } = {}) {
+  service.session = service.session || { guideId: 'g', paused: false, count: 0, intervalSec: 0 };
+  const accepted = [];
+  service.enqueueClickCapture = (clickPos, at) => { accepted.push(at); };
+  for (const t of times) service.onOsClick(t, point, button);
+  return accepted;
+}
 
-  // A 5-click burst 15ms apart — faster than the old 40ms debounce allowed.
-  const base = 1770000000000;
-  for (let i = 0; i < 5; i++) {
-    service.onOsClick(base + i * 15, { x: 100 + i, y: 200 }, 'left');
-  }
-
-  assert.equal(seen.length, 5, 'every distinct hook event is one click');
+test('default debounce is 200ms when the setting is absent', () => {
+  const service = makeService(); // settings stub has no clickDebounceMs
+  assert.equal(service.clickDebounceMs(), 200);
 });
 
-test('duplicate delivery of one physical press is suppressed', () => {
-  const service = makeService();
-  service.session = { guideId: 'guide-dupe', paused: false, count: 0, intervalSec: 0 };
-  const seen = [];
-  service.enqueueClickCapture = (clickPos, at) => {
-    seen.push(at);
+test('two deliberate clicks 400ms apart both register (the reported case)', () => {
+  const service = makeService({ settings: { 'capture.clickDebounceMs': 200 } });
+  const accepted = runClickSequence(service, [0, 400]);
+  assert.deepEqual(accepted, [0, 400], 'clicks well outside the window must not be dropped');
+});
+
+test('clicks 400–500ms apart all register across a longer sequence', () => {
+  const service = makeService({ settings: { 'capture.clickDebounceMs': 200 } });
+  const times = [0, 450, 950, 1400, 1900]; // 450/500/450/500 ms gaps
+  assert.deepEqual(runClickSequence(service, times), times,
+    'every click spaced beyond the window is captured');
+});
+
+test('a click just past the window (250ms) registers; just inside (150ms) does not', () => {
+  const service = makeService({ settings: { 'capture.clickDebounceMs': 200 } });
+  assert.deepEqual(runClickSequence(makeService({ settings: { 'capture.clickDebounceMs': 200 } }), [0, 250]), [0, 250]);
+  assert.deepEqual(runClickSequence(service, [0, 150]), [0], '150ms < 200ms window is debounced away');
+});
+
+test('exactly 200ms apart registers (window is exclusive at the boundary)', () => {
+  const service = makeService({ settings: { 'capture.clickDebounceMs': 200 } });
+  assert.deepEqual(runClickSequence(service, [0, 200]), [0, 200]);
+});
+
+test('a fast burst collapses to a single step', () => {
+  const service = makeService({ settings: { 'capture.clickDebounceMs': 200 } });
+  // 5 clicks 30ms apart — accidental fast clicking.
+  assert.deepEqual(runClickSequence(service, [0, 30, 60, 90, 120]), [0],
+    'rapid repeats within the window are one click');
+});
+
+test('the window is measured from the last ACCEPTED click, not the last dropped one', () => {
+  // A run of fast clicks must not push the next real click out forever: once
+  // a click is accepted, only later clicks reset the reference, and dropped
+  // clicks never do. 0 accepted; 100/150 dropped; 250 is 250ms after 0 so
+  // accepted; 300 dropped; 500 is 250ms after 250 so accepted.
+  const service = makeService({ settings: { 'capture.clickDebounceMs': 200 } });
+  assert.deepEqual(runClickSequence(service, [0, 100, 150, 250, 300, 500]), [0, 250, 500]);
+});
+
+test('different mouse buttons debounce independently', () => {
+  const service = makeService({ settings: { 'capture.clickDebounceMs': 200 } });
+  service.session = { guideId: 'g', paused: false, count: 0, intervalSec: 0 };
+  const accepted = [];
+  service.enqueueClickCapture = (clickPos, at, button) => { accepted.push(`${button}@${at}`); };
+  // Left then right 50ms apart: different buttons, both register. A second
+  // left 50ms after the first left is debounced.
+  service.onOsClick(0, { x: 1, y: 1 }, 'left');
+  service.onOsClick(50, { x: 1, y: 1 }, 'right');
+  service.onOsClick(50, { x: 1, y: 1 }, 'left');
+  assert.deepEqual(accepted, ['left@0', 'right@50']);
+});
+
+test('the debounce window is configurable', () => {
+  const service = makeService({ settings: { 'capture.clickDebounceMs': 500 } });
+  // With a 500ms window, the 400ms-apart clicks now collapse.
+  assert.deepEqual(runClickSequence(service, [0, 400]), [0]);
+  // 600ms apart clears the larger window.
+  const service2 = makeService({ settings: { 'capture.clickDebounceMs': 500 } });
+  assert.deepEqual(runClickSequence(service2, [0, 600]), [0, 600]);
+});
+
+test('a debounce of 0 captures every click', () => {
+  const service = makeService({ settings: { 'capture.clickDebounceMs': 0 } });
+  assert.deepEqual(runClickSequence(service, [0, 1, 2, 3]), [0, 1, 2, 3]);
+});
+
+test('duplicate hook deliveries of one press collapse under the debounce', () => {
+  // The same physical press delivered twice a few ms apart is well inside
+  // any reasonable window, so it still yields exactly one step.
+  const service = makeService({ settings: { 'capture.clickDebounceMs': 200 } });
+  assert.deepEqual(runClickSequence(service, [1770000000000, 1770000000003]), [1770000000000]);
+});
+
+test('debounce state resets between sessions so the first click always registers', () => {
+  const service = makeService({ settings: { 'capture.clickDebounceMs': 200 } });
+  runClickSequence(service, [0]);
+  service.stopClickWatcher(); // clears per-button accepted times
+  const accepted = [];
+  service.session = { guideId: 'g2', paused: false, count: 0, intervalSec: 0 };
+  service.enqueueClickCapture = (clickPos, at) => { accepted.push(at); };
+  // A click 50ms later but in a fresh session must not be debounced away.
+  service.onOsClick(50, { x: 10, y: 20 }, 'left');
+  assert.deepEqual(accepted, [50]);
+});
+
+test('debounced clicks never reach the capture queue (end to end through onOsClick)', async () => {
+  // Integration: drive the real onOsClick → enqueueClickCapture → clickQueue
+  // → sessionCapture → store path with a stubbed frame source, and confirm
+  // the stored step count matches the number of accepted clicks.
+  const service = makeService({ settings: { 'capture.clickDebounceMs': 200, 'capture.clickMarker': false } });
+  service.session = { guideId: 'g-e2e', paused: false, count: 0, intervalSec: 0 };
+  service.userIsInApp = () => false;
+  service.frameForClick = async () => makeFrame('frame');
+  const stored = [];
+  service.store.addStep = (guideId, fields, png) => {
+    stored.push(png.toString());
+    return { stepId: `s${stored.length}` };
   };
+  // Two deliberate clicks 450ms apart, with an accidental fast repeat 40ms
+  // after the first. Expect two stored steps, not three or one.
+  service.onOsClick(0, { x: 10, y: 20 }, 'left');
+  service.onOsClick(40, { x: 10, y: 20 }, 'left'); // debounced
+  service.onOsClick(450, { x: 30, y: 40 }, 'left');
+  await service.clickQueue;
 
-  // Same button, same coordinates, 3ms apart: the same event delivered twice.
-  service.onOsClick(1770000000000, { x: 50, y: 60 }, 'left');
-  service.onOsClick(1770000000003, { x: 50, y: 60 }, 'left');
-  // Different coordinates inside the same window: a real second click.
-  service.onOsClick(1770000000006, { x: 80, y: 60 }, 'left');
-  // Different button inside the same window: also real.
-  service.onOsClick(1770000000007, { x: 80, y: 60 }, 'right');
-
-  assert.deepEqual(seen, [1770000000000, 1770000000006, 1770000000007]);
+  assert.equal(stored.length, 2, 'one step per accepted click — burst repeat dropped, real clicks kept');
+  assert.equal(service.session.count, 2);
 });
 
 // ---- coordinate conversion ------------------------------------------------------

@@ -45,12 +45,13 @@ const { physicalToDip } = require('./coords');
  * failures surface as { ok: false, reason } instead of crashing.
  */
 
-// Suppress only *duplicate deliveries* of one physical press (same button,
-// same coordinates, a few ms apart). This deliberately replaces the old
-// time-only debounce: real humans double-click ~50-100ms apart, and any
-// purely temporal cutoff eventually drops a legitimate fast click, which
-// reads as "my click didn't register". One hook/watcher event = one click.
-const CLICK_EVENT_DUPLICATE_MS = 8;
+// Leading-edge click debounce: the first click of a button is captured, and
+// further clicks of that button within this window of the last *accepted*
+// click are ignored. This collapses accidental fast / double clicks into one
+// step, while any two deliberate clicks spaced more than the window apart
+// each register. Tunable via capture.clickDebounceMs; this is only the
+// default when the setting is absent.
+const DEFAULT_CLICK_DEBOUNCE_MS = 200;
 // How long a Linux raw button event waits for its regular twin (the
 // representation that carries root coordinates) before firing without them.
 const LINUX_CLICK_TWIN_MS = 25;
@@ -122,7 +123,7 @@ class CaptureService {
     this.frameLoopGrabStartedAt = null;
     this.recentFrames = [];
     this.shooting = false;
-    this.lastClickEventByButton = new Map();
+    this.lastAcceptedClickByButton = new Map();
     this.streamBackend = null;
     this.streamBackendStarting = false;
   }
@@ -946,7 +947,7 @@ public static class SFMouseHook {
     this.clickWatcherBuf = '';
     this.linuxEvent = null;
     this.discardPendingRawClick();
-    this.lastClickEventByButton.clear();
+    this.lastAcceptedClickByButton.clear();
   }
 
   /**
@@ -1101,15 +1102,22 @@ public static class SFMouseHook {
     this.pendingRawClick = null;
   }
 
+  /** Debounce window in ms (capture.clickDebounceMs, default 200). */
+  clickDebounceMs() {
+    const raw = this.settings.get('capture.clickDebounceMs');
+    const v = Number(raw);
+    return raw != null && Number.isFinite(v) && v >= 0 ? v : DEFAULT_CLICK_DEBOUNCE_MS;
+  }
+
   onOsClick(at = Date.now(), osPoint = null, button = 'mouse') {
     if (!this.session || this.session.paused) return;
     const clickAt = Number.isFinite(at) ? at : Date.now();
-    // Source-aware dedupe, not a debounce: each hook/watcher event is one
-    // click however fast it follows the previous one. Only an *identical*
-    // event a few ms later — duplicate delivery of one physical press — is
-    // suppressed.
-    if (this.isDuplicateClickEvent(clickAt, osPoint, button)) {
-      clog('click@', clickAt, button, 'suppressed as duplicate delivery');
+    // Leading-edge debounce: ignore a click that lands within the debounce
+    // window of the last accepted click of the same button. This makes fast
+    // / accidental repeat clicks register once, while two deliberate clicks
+    // spaced more than the window apart each register (one step per click).
+    if (this.isDebouncedClick(clickAt, button)) {
+      clog('click@', clickAt, button, 'debounced (within', this.clickDebounceMs(), 'ms of last accepted)');
       return;
     }
     // Prefer the position the watcher sampled with the button-down event
@@ -1124,18 +1132,21 @@ public static class SFMouseHook {
     this.enqueueClickCapture(clickPos, clickAt, button || 'mouse');
   }
 
-  isDuplicateClickEvent(at, osPoint, button) {
+  /**
+   * Whether this click should be dropped by the debounce. A click is dropped
+   * only when it follows the last *accepted* click of the same button by
+   * less than the debounce window — so the window is measured from accepted
+   * clicks, never from dropped ones, and a run of fast clicks can't push the
+   * next deliberate click out indefinitely. Accepting a click records it as
+   * the new reference point. Different buttons debounce independently.
+   */
+  isDebouncedClick(at, button) {
     const key = button || 'mouse';
-    const last = this.lastClickEventByButton.get(key);
-    this.lastClickEventByButton.set(key, { at, osPoint });
-    if (!last) return false;
-    if (at < last.at || at - last.at >= CLICK_EVENT_DUPLICATE_MS) return false;
-    // Same button within a few ms: duplicate only if it is the *same* event
-    // (same coordinates, or neither delivery carried coordinates).
-    if (osPoint && last.osPoint) {
-      return osPoint.x === last.osPoint.x && osPoint.y === last.osPoint.y;
-    }
-    return !osPoint && !last.osPoint;
+    const windowMs = this.clickDebounceMs();
+    const last = this.lastAcceptedClickByButton.get(key);
+    if (last != null && at >= last && at - last < windowMs) return true;
+    this.lastAcceptedClickByButton.set(key, at);
+    return false;
   }
 
   /**

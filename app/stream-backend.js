@@ -1,7 +1,7 @@
 'use strict';
 
 const path = require('node:path');
-const { displayForDipPoint } = require('./coords');
+const { displayForDipPoint, pointInBounds } = require('./coords');
 
 /**
  * Off-main-process click-frame backend.
@@ -31,14 +31,17 @@ const { displayForDipPoint } = require('./coords');
  */
 
 const DEFAULT_SAMPLE_MS = 100;
-// Generous on purpose: the worker selects the frame the moment the request
-// arrives (that pins the click↔frame pairing), but PNG-encoding a 4K-class
-// frame can take seconds on software-rendered hosts (WSLg, VMs). A slow
-// reply is still the *correct* frame; only a worker that never answers
-// should count as unhealthy.
-const DEFAULT_FRAME_TIMEOUT_MS = 10_000;
+// The reply protocol is two-stage so a *slow* worker is never mistaken for a
+// *dead* one: the worker acknowledges frame selection within milliseconds
+// (that pins the click↔frame pairing and proves liveness), then ships the
+// PNG whenever the encode finishes — which can take seconds per frame on
+// software-rendered hosts (WSLg, VMs). Only a missing ack marks the worker
+// unhealthy; a slow payload merely arrives late but is still the exact
+// frame chosen at click time.
+const DEFAULT_ACK_TIMEOUT_MS = 2000;
+const DEFAULT_ENCODE_TIMEOUT_MS = 30_000;
 const DEFAULT_START_TIMEOUT_MS = 8000;
-// Consecutive frame-request timeouts before the backend declares itself
+// Consecutive unanswered requests before the backend declares itself
 // unhealthy and the capture service degrades to the in-process loop.
 const MAX_CONSECUTIVE_FAILURES = 2;
 
@@ -50,10 +53,17 @@ class StreamCaptureBackend {
    *   production, a fake in tests).
    * @param {(reason: string) => void} [opts.onUnhealthy]
    */
-  constructor({ createHost, onUnhealthy = null, frameTimeoutMs = DEFAULT_FRAME_TIMEOUT_MS, startTimeoutMs = DEFAULT_START_TIMEOUT_MS } = {}) {
+  constructor({
+    createHost,
+    onUnhealthy = null,
+    ackTimeoutMs = DEFAULT_ACK_TIMEOUT_MS,
+    encodeTimeoutMs = DEFAULT_ENCODE_TIMEOUT_MS,
+    startTimeoutMs = DEFAULT_START_TIMEOUT_MS,
+  } = {}) {
     this.createHost = createHost;
     this.onUnhealthy = onUnhealthy;
-    this.frameTimeoutMs = frameTimeoutMs;
+    this.ackTimeoutMs = ackTimeoutMs;
+    this.encodeTimeoutMs = encodeTimeoutMs;
     this.startTimeoutMs = startTimeoutMs;
     this.host = null;
     this.active = false;
@@ -62,6 +72,7 @@ class StreamCaptureBackend {
     this.nextRequestId = 1;
     this.consecutiveFailures = 0;
     this.startWaiters = [];
+    this.draining = false;
   }
 
   isActive() {
@@ -146,18 +157,26 @@ class StreamCaptureBackend {
       for (const check of [...this.startWaiters]) check();
       return;
     }
+    if (msg.type === 'frame-selected') {
+      // Stage one: the worker picked a frame for this click. The pairing is
+      // now pinned and the worker is provably alive — swap the short ack
+      // deadline for the long encode deadline and wait for the pixels.
+      const pending = this.requests.get(msg.requestId);
+      if (!pending) return;
+      this.consecutiveFailures = 0;
+      clearTimeout(pending.timer);
+      pending.timer = setTimeout(() => {
+        this.settleRequest(msg.requestId, null);
+        this.noteFailure();
+      }, this.encodeTimeoutMs);
+      return;
+    }
     if (msg.type === 'frame-response') {
       const pending = this.requests.get(msg.requestId);
       if (!pending) return; // late reply after timeout — already handled
-      this.requests.delete(msg.requestId);
-      clearTimeout(pending.timer);
       // Any answer — even "no qualifying frame" — proves the worker is alive.
       this.consecutiveFailures = 0;
-      if (!msg.ok || !msg.png) {
-        pending.resolve(null);
-        return;
-      }
-      pending.resolve({
+      const value = (!msg.ok || !msg.png) ? null : {
         mode: 'fullscreen',
         png: Buffer.from(msg.png),
         size: { width: msg.width, height: msg.height },
@@ -165,8 +184,25 @@ class StreamCaptureBackend {
         startedAt: msg.startedAt,
         capturedAt: msg.capturedAt,
         source: 'stream',
-      });
+      };
+      this.settleRequest(msg.requestId, value);
     }
+  }
+
+  /**
+   * Resolve one pending request and clean it up. When the backend is
+   * draining (stop() was called while requests were still in flight), the
+   * last settled request triggers the deferred worker teardown — this is
+   * what lets clicks queued at finish time still receive their frames
+   * instead of being cancelled to null.
+   */
+  settleRequest(requestId, value) {
+    const pending = this.requests.get(requestId);
+    if (!pending) return;
+    this.requests.delete(requestId);
+    clearTimeout(pending.timer);
+    pending.resolve(value);
+    if (this.draining && this.requests.size === 0) this.finalizeTeardown();
   }
 
   /**
@@ -179,14 +215,19 @@ class StreamCaptureBackend {
     const displays = [...this.streams.values()].filter((s) => s.ready).map((s) => s.display);
     const display = clickPos ? displayForDipPoint(clickPos, displays) : (displays[0] || null);
     if (!display) return Promise.resolve(null);
+    // Never serve a click from another monitor's stream: if the clicked
+    // display has no ready stream, a "nearest display" frame would show the
+    // wrong screen entirely and the marker fractions would be meaningless.
+    // Resolve null instead so the caller's fallback captures the right one.
+    if (clickPos && !pointInBounds(clickPos, display.bounds)) return Promise.resolve(null);
     const requestId = this.nextRequestId++;
     return new Promise((resolve) => {
-      const timer = setTimeout(() => {
-        this.requests.delete(requestId);
-        resolve(null);
+      const pending = { resolve, display, timer: null };
+      pending.timer = setTimeout(() => {
+        this.settleRequest(requestId, null);
         this.noteFailure();
-      }, this.frameTimeoutMs);
-      this.requests.set(requestId, { resolve, timer, display });
+      }, this.ackTimeoutMs);
+      this.requests.set(requestId, pending);
       this.hostSend({
         type: 'frame-request',
         requestId,
@@ -201,20 +242,45 @@ class StreamCaptureBackend {
     this.consecutiveFailures += 1;
     if (this.consecutiveFailures < MAX_CONSECUTIVE_FAILURES) return;
     const notify = this.onUnhealthy;
-    this.stop();
+    this.stop({ immediate: true });
     if (notify) notify('frame requests timing out');
   }
 
-  stop() {
+  /**
+   * Stop the backend. By default this *drains*: it stops accepting new
+   * requests but keeps the worker alive so frames already selected for
+   * queued clicks finish encoding and resolve — without this, finishing a
+   * recording right after a fast click burst cancels every still-encoding
+   * frame to null and those clicks are lost ("only two screenshots saved").
+   * Pass { immediate: true } to abandon in-flight requests (used when the
+   * worker is already unhealthy).
+   */
+  stop({ immediate = false } = {}) {
     this.active = false;
-    for (const [, pending] of this.requests) {
-      clearTimeout(pending.timer);
-      pending.resolve(null);
-    }
-    this.requests.clear();
-    this.streams.clear();
     for (const check of [...this.startWaiters]) check();
     this.startWaiters = [];
+    if (immediate) {
+      for (const [, pending] of this.requests) {
+        clearTimeout(pending.timer);
+        pending.resolve(null);
+      }
+      this.requests.clear();
+      this.finalizeTeardown();
+      return;
+    }
+    if (this.requests.size === 0) {
+      this.finalizeTeardown();
+      return;
+    }
+    // Let pending requests resolve naturally (their own encode timers still
+    // bound the wait); finalizeTeardown fires from settleRequest when the
+    // last one completes.
+    this.draining = true;
+  }
+
+  finalizeTeardown() {
+    this.draining = false;
+    this.streams.clear();
     if (this.host) {
       try { this.host.destroy(); } catch { /* already gone */ }
       this.host = null;
@@ -289,6 +355,7 @@ module.exports = {
   createElectronHost,
   pairDisplaysToSources,
   DEFAULT_SAMPLE_MS,
-  DEFAULT_FRAME_TIMEOUT_MS,
+  DEFAULT_ACK_TIMEOUT_MS,
+  DEFAULT_ENCODE_TIMEOUT_MS,
   MAX_CONSECUTIVE_FAILURES,
 };

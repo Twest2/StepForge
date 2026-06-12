@@ -36,6 +36,11 @@ Keep-a-Changelog conventions; versions follow semver.
     screenshot is late" — while every later click was fine. Now frames are
     buffering by the time the window tucks away, so the first click is
     served a pre-click frame like the rest.
+  - The whole click→screenshot→step pipeline is guarded end to end by
+    `tests/checks/test_click_capture_selftest.sh`, which runs a real Electron
+    session and asserts marker accuracy, no dropped burst clicks, the first
+    click of a session captured, and the debounce — so this behavior fails
+    the suite if it ever regresses.
 
 ### Added
 

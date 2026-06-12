@@ -557,14 +557,26 @@ class CaptureService {
   async frameForClick(clickPos = null, clickAt = Date.now()) {
     const mode = this.settings.get('capture.mode') || 'fullscreen';
     const grabMode = mode === 'region' ? 'fullscreen' : mode;
-    const clickTime = Number.isFinite(clickAt) ? clickAt : Date.now();
+    const rawClickTime = Number.isFinite(clickAt) ? clickAt : Date.now();
+    // Click lead: aim selection at a moment slightly *before* the hook
+    // timestamp. The hook fires on button-down, but the visible UI often
+    // starts reacting within a frame or two of that (hover→press states,
+    // the cursor settling), and capture-stream pixels lag the real screen
+    // by a frame. Targeting clickTime - leadMs keeps the saved screenshot
+    // clear of the click's own onset so the step shows the screen the user
+    // was about to act on. Tunable via capture.clickLeadMs.
+    const leadMs = Math.max(0, Number(this.settings.get('capture.clickLeadMs')) || 0);
+    const clickTime = rawClickTime - leadMs;
     const strict = this.strictClickFrames();
     const opts = {
       clickAt: clickTime,
       clickPos,
       mode: grabMode,
       strict,
-      maxAgeMs: CLICK_FRAME_MAX_AGE_MS,
+      // The lead shifts the target earlier, so widen the staleness budget by
+      // the same amount — a frame that was fresh enough for the real click
+      // is still fresh enough for the lead-adjusted target.
+      maxAgeMs: CLICK_FRAME_MAX_AGE_MS + leadMs,
       startSlackMs: CLICK_FRAME_START_SLACK_MS,
     };
 

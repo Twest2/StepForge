@@ -22,10 +22,11 @@
 /* global StepForgeClickFrames, captureWorkerBridge */
 
 (() => {
-  const FALLBACK_SAMPLE_MS = 100;
-  // Tight cadence means more frames per second; keep enough of them to
-  // bridge any encode/IPC hiccup without hoarding GPU memory.
-  const FALLBACK_FRAME_LIMIT = 8;
+  const FALLBACK_SAMPLE_MS = 50;
+  // Tight cadence means more frames per second; keep enough of them to span
+  // the click-lead window plus any encode/IPC hiccup, without hoarding GPU
+  // memory. 16 frames at the 50ms cadence is ~800ms of history.
+  const FALLBACK_FRAME_LIMIT = 16;
   const FALLBACK_RETENTION_MS = 2000;
 
   const streams = new Map(); // displayId(string) -> stream state

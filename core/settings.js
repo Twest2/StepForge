@@ -27,7 +27,12 @@ const DEFAULT_SETTINGS = {
     // desktop media stream). Falls back to the in-process loop when false
     // or when streams cannot start on this desktop.
     streamCapture: true,
-    frameSampleMs: 100, // stream backend sampling cadence
+    frameSampleMs: 50, // stream backend sampling cadence (finer = fresher frames)
+    // Target the screen this many ms *before* each click. The hook fires on
+    // button-down but the UI/cursor often start reacting within a frame, and
+    // stream pixels lag slightly; a small lead keeps the saved screenshot
+    // clear of the click's onset. Raise it if screenshots still feel late.
+    clickLeadMs: 120,
   },
   editor: {
     focusedViewDefaultForNewSteps: false,

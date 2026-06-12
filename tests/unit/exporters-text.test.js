@@ -9,6 +9,7 @@ const { buildRenderAst, renderStepImage } = require('../../core/renderast');
 const { exportJson } = require('../../exporters/json');
 const { exportMarkdown } = require('../../exporters/markdown');
 const { exportHtmlSimple, exportHtmlRich } = require('../../exporters/html');
+const { exportConfluence } = require('../../exporters/confluence');
 const { htmlToMarkdown } = require('../../exporters/htmlmd');
 const { decodePng } = require('../../core/png');
 const { buildFixtureGuide } = require('./fixture-guide');
@@ -112,6 +113,31 @@ test('Markdown export: TOC anchors resolve, images exist, blocks rendered', (t) 
   const warnIdx = lines.findIndex((l) => l.startsWith('> **Warning: Access**'));
   assert.ok(warnIdx > 0);
   assert.equal(lines[warnIdx + 1], '> Admins only.');
+});
+
+test('Confluence export writes storage-format XML and image attachments', (t) => {
+  const root = makeTmpDir('expconf');
+  t.after(() => rmrf(root));
+  const { store, guide } = buildFixtureGuide(path.join(root, 'data'));
+  const out = path.join(root, 'out');
+
+  const ast = buildRenderAst(store, guide.guideId);
+  const { file, attachmentCount } = exportConfluence(ast, out);
+  const xml = fs.readFileSync(file, 'utf8');
+
+  assert.equal(attachmentCount, 2);
+  assert.ok(xml.includes('<ac:structured-macro ac:name="code">'));
+  assert.ok(xml.includes('ri:attachment ri:filename='));
+  assert.ok(xml.includes('0 2 * * * /usr/local/bin/acmesync --backup'));
+
+  const attachmentsDir = path.join(out, 'configure-acmesync-backups-attachments');
+  const files = fs.readdirSync(attachmentsDir);
+  assert.equal(files.length, 2);
+  for (const name of files) {
+    const img = decodePng(fs.readFileSync(path.join(attachmentsDir, name)));
+    assert.equal(img.width, 320);
+    assert.equal(img.height, 200);
+  }
 });
 
 test('Simple HTML export is self-contained with valid embedded images', (t) => {

@@ -2,6 +2,7 @@
 
 const path = require('node:path');
 const { writeJsonSync, readJsonIfExists, htmlToText } = require('./util');
+const { blockText } = require('./blocks');
 
 /**
  * Local full-text search over guide titles, descriptions, step titles/
@@ -57,7 +58,7 @@ class SearchIndex {
       const parts = [
         htmlToText(step.descriptionHtml),
         ...(step.textBlocks || []).map((tb) => `${tb.title} ${htmlToText(tb.descriptionHtml)}`),
-        ...(step.codeBlocks || []).map((cb) => cb.code || ''),
+        ...(step.codeBlocks || []).map((cb) => blockText(cb)),
         ...(step.annotations || []).map((a) => a.text || ''),
       ];
       this.docs[`s:${guide.guideId}:${step.stepId}`] = {

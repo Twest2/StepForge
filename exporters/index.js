@@ -3,6 +3,7 @@
 const { exportJson } = require('./json');
 const { exportMarkdown } = require('./markdown');
 const { exportHtmlSimple, exportHtmlRich } = require('./html');
+const { exportConfluence } = require('./confluence');
 const { exportPdf } = require('./pdf');
 const { exportGifGuide } = require('./gif');
 const { exportImageBundle } = require('./image-bundle');
@@ -15,6 +16,7 @@ const EXPORTERS = {
   markdown: exportMarkdown,
   'html-simple': exportHtmlSimple,
   'html-rich': exportHtmlRich,
+  confluence: exportConfluence,
   pdf: exportPdf,
   gif: exportGifGuide,
   'image-bundle': exportImageBundle,

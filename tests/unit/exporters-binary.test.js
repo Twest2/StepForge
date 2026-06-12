@@ -237,6 +237,6 @@ test('a saved template changes exporter behavior through runExport', (t) => {
   const withTemplate = runExport('pdf', ast, path.join(root, 'out2'), tm.load('pdf', 'no-cover'));
   assert.ok(withTemplate.pageCount < withDefaults.pageCount, 'dropping cover+toc reduces pages');
 
-  assert.equal(Object.keys(EXPORTERS).length, 9, 'all nine formats wired');
+  assert.equal(Object.keys(EXPORTERS).length, 10, 'all ten formats wired');
   assert.throws(() => runExport('exe', ast, path.join(root, 'out3')));
 });

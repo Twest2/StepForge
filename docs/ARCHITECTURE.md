@@ -102,6 +102,41 @@ IPC API (`stepforge.*`), and `app/main.js` routes calls into `core/`. Screen
 capture uses Electron's `desktopCapturer` (full screen, window) and an
 overlay window for region selection; hotkeys use `globalShortcut`.
 
+## Click-Capture Pipeline
+
+Workflow recording must behave like one click → one step, with the
+screenshot showing the screen *at* the click and the marker on the exact
+click position. Three pieces make that hold:
+
+1. **OS click events** (`app/capture.js`): a low-level mouse hook on Windows
+   (`CLICK x y button unixMs` lines), an `xinput test-xi2 --root` watcher on
+   X11. The Linux parser carries event-time `root:` coordinates and merges
+   raw/regular twin blocks structurally — there is no time-based debounce
+   that could drop fast clicks, only suppression of identical duplicate
+   deliveries. Physical coordinates convert to DIP via
+   `screen.screenToDipPoint` on Windows or display-geometry math in
+   `app/coords.js` elsewhere (multi-monitor and scale-factor aware).
+
+2. **Frame recorders**: while recording, a hidden worker window
+   (`app/stream-backend.js` + `app/renderer/capture-worker.js`) samples a
+   desktop media stream per display into a timestamped ring buffer —
+   entirely off the main process, so click delivery is never delayed by
+   capture work, and PNG encoding happens in the worker. If streams can't
+   start (portal-less Wayland), or the worker stops answering, the service
+   degrades to the legacy in-process `desktopCapturer` loop.
+
+3. **Click ↔ frame pairing** (`app/click-frames.js`, shared by the main
+   process, the worker, and tests): each click is paired *at event time*
+   with the newest frame captured at or before its hook timestamp. In strict
+   mode (`capture.strictClickFrames`, default on) a frame whose grab started
+   after the click is never used — when nothing qualifies, the service takes
+   an explicit fresh shot instead of passing a post-click frame off as the
+   click-time screen. Storing is serialized per click; pairing is not, so
+   slow encodes never skew later clicks.
+
+`STEPFORGE_CLICK_SELFTEST=1 npm start` exercises the whole pipeline in a
+real Electron session and reports steps-per-click and marker offsets.
+
 ## Security Rules
 
 - Zero network code paths: no sockets, no telemetry, no update or license

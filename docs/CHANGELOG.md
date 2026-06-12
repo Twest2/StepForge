@@ -30,6 +30,12 @@ Keep-a-Changelog conventions; versions follow semver.
     cadence was tightened to 50ms so a frame near that target always exists.
     The lead is a preference, not a gate: selection falls back to the newest
     frame still before the click, so it never forces a post-click screenshot.
+  - The frame recorder now warms up *before* the window hides at recording
+    start, instead of after. Previously the first click of a session could
+    beat the ~1s warmup and fall back to a post-click shot — "the first
+    screenshot is late" — while every later click was fine. Now frames are
+    buffering by the time the window tucks away, so the first click is
+    served a pre-click frame like the rest.
 
 ### Fixed
 

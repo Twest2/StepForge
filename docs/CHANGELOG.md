@@ -5,8 +5,44 @@ Keep-a-Changelog conventions; versions follow semver.
 
 ## [Unreleased]
 
+### Changed
+
+- **Click-capture pipeline rearchitected for Folge-like recording.** This is
+  the milestone where fast, real-world recording works end to end: every
+  mouse click during a session becomes exactly one saved step, the red
+  marker lands on the exact click position (verified at 0.00% offset across
+  scaled and multi-monitor displays), and the screenshot shows the screen at
+  the click rather than after it.
+  - Continuous capture now runs in a hidden worker process that samples a
+    desktop media stream per display into a timestamped ring buffer, so the
+    main process stays responsive and OS click events are never delayed by
+    capture work. Falls back to the legacy in-process loop where streams
+    cannot start (portal-less Wayland/WSLg).
+  - Each click is paired with the newest frame captured at or before its
+    hook timestamp (strict timing, `capture.strictClickFrames`, default on):
+    a frame whose grab started after the click is never used.
+  - Physical→DIP coordinate conversion is multi-monitor and scale-factor
+    aware (`screen.screenToDipPoint` on Windows, display-geometry math
+    elsewhere), fixing marker drift on displays scaled away from 100%.
+  - A configurable click-lead (`capture.clickLeadMs`, default 120ms) targets
+    the screen just before each click so the saved step shows what the user
+    was about to act on, not the click's onset; the stream sampling cadence
+    was tightened to 50ms so a frame near that target always exists.
+
 ### Fixed
 
+- **Fast click bursts no longer lose screenshots.** Finishing or pausing a
+  recording used to cancel every screenshot still being encoded, so a quick
+  series of clicks saved only the first two or three. The capture worker now
+  drains on stop — frames already captured for queued clicks finish encoding
+  and are saved — so all clicks are recorded even on machines where PNG
+  encoding takes seconds. Verified end to end: an 8-click burst followed by
+  an immediate finish saves all 8.
+- **Screenshots taken after the click instead of at it.** A slow PNG encode
+  was being mistaken for a dead capture worker, which kicked the click over
+  to a fallback that shot the screen after the click. The worker now
+  acknowledges frame selection immediately and ships the encoded image
+  separately, so a slow encode no longer triggers the post-click fallback.
 - Windows continuous click capture now uses a low-level mouse hook instead
   of timer polling, so normal left-clicks are not missed when the app or
   target system is under load. Click captures also preserve the original

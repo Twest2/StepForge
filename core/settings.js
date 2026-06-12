@@ -19,6 +19,15 @@ const DEFAULT_SETTINGS = {
     captureOutsideClicks: true,
     confirmSimpleCapture: false,
     autoIntervalSec: 5, // session fallback when click capture is unavailable
+    // Strict click timing: a step never uses a frame whose grab started
+    // after the click. Turn off only if captures are too slow to keep a
+    // pre-click frame buffered (re-enables the legacy slack heuristics).
+    strictClickFrames: true,
+    // Off-main-process frame recorder (hidden worker window sampling a
+    // desktop media stream). Falls back to the in-process loop when false
+    // or when streams cannot start on this desktop.
+    streamCapture: true,
+    frameSampleMs: 100, // stream backend sampling cadence
   },
   editor: {
     focusedViewDefaultForNewSteps: false,

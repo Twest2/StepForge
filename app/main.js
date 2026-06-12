@@ -98,6 +98,62 @@ function createWindow() {
         }
       }, 1500);
     }
+    // Dev-only self-test: exercise the full click-capture pipeline — resume
+    // session, wait for the frame recorder, inject OS-level clicks the way
+    // the watcher would, and verify one stored step per click.
+    if (process.env.STEPFORGE_CLICK_SELFTEST) {
+      setTimeout(async () => {
+        try {
+          const guide = store.createGuide({ title: 'click selftest' });
+          capture.startSession(guide.guideId, { intervalSec: 0 });
+          capture.togglePause(false);
+          mainWindow.hide();
+          // Arm the frame recorder directly: this host may lack the click
+          // watcher binary (xinput), which normally gates the recorder, but
+          // the recorder itself must still be testable end to end.
+          await capture.startClickFrameBackend();
+          // Let the stream backend (or the fallback loop) come up and buffer.
+          await new Promise((res) => setTimeout(res, 3000));
+          console.log('CLICK-SELFTEST source:', capture.state().clickFrameSource);
+          const clicks = [
+            { x: 200, y: 150 },
+            { x: 400, y: 300 },
+            { x: 600, y: 450 },
+          ];
+          for (const point of clicks) {
+            capture.onOsClick(Date.now(), point, 'button-1');
+            await new Promise((res) => setTimeout(res, 120)); // fast clicking
+          }
+          // Wait for the queue to drain (encodes can take seconds on WSLg).
+          await capture.clickQueue;
+          await new Promise((res) => setTimeout(res, 500));
+          const stepIds = store.getGuide(guide.guideId).stepsOrder;
+          const steps = store.listSteps(guide.guideId);
+          const markers = stepIds.map((id) => (steps.get(id).annotations || []).length);
+          console.log('CLICK-SELFTEST steps:', stepIds.length, 'of', clicks.length,
+            'markers:', JSON.stringify(markers));
+          // Marker accuracy: each oval's center (fractional) must match the
+          // injected click position relative to the display bounds.
+          const { bounds } = screen.getPrimaryDisplay();
+          stepIds.forEach((id, i) => {
+            const a = (steps.get(id).annotations || [])[0];
+            if (!a) return;
+            const center = { x: a.x + a.w / 2, y: a.y + a.h / 2 };
+            const expected = {
+              x: (clicks[i].x - bounds.x) / bounds.width,
+              y: (clicks[i].y - bounds.y) / bounds.height,
+            };
+            const offBy = Math.hypot(center.x - expected.x, center.y - expected.y);
+            console.log(`CLICK-SELFTEST marker ${i}: off by ${(offBy * 100).toFixed(2)}% of screen`);
+          });
+          capture.finishSession();
+        } catch (err) {
+          console.log('CLICK-SELFTEST ERROR', err.message);
+        } finally {
+          app.quit();
+        }
+      }, 1500);
+    }
     // Dev-only self-test: exercise the exact hotkey-session capture path
     // (hide window -> grab -> showInactive) several times, then exit.
     if (process.env.STEPFORGE_CAPTURE_SELFTEST) {

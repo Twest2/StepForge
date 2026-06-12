@@ -6,52 +6,73 @@ const { desktopCapturer, screen, BrowserWindow, nativeImage, Tray, Menu, Notific
 const { expandPlaceholders } = require('../core/placeholders');
 const raster = require('../core/raster');
 const { encodePng } = require('../core/png');
+const {
+  selectFrameForClick,
+  frameUsableForClick,
+  pointInBounds,
+  DEFAULT_MAX_AGE_MS,
+  DEFAULT_START_SLACK_MS,
+} = require('./click-frames');
+const { physicalToDip } = require('./coords');
 
 /**
- * Capture service: full-screen, active-window, and region capture via
- * Electron's desktopCapturer, plus a click-marker annotation at the cursor
- * position and a capture session (start/pause/resume/finish).
+ * Capture service: full-screen, active-window, and region capture, plus a
+ * click-marker annotation at the click position and a capture session
+ * (start/pause/resume/finish).
  *
  * A session captures continuously, with three triggers layered by what the
  * platform supports:
- *  - click-capture via an OS adapter (xinput on X11, PowerShell on Windows),
+ *  - click-capture via an OS adapter (xinput on X11, a low-level mouse hook
+ *    on Windows),
  *  - a global hotkey (unreliable on some Wayland compositors),
  *  - interval auto-capture as the always-works fallback.
+ *
+ * Click captures are served from one of two frame recorders:
+ *  - the stream backend (app/stream-backend.js): a hidden worker window
+ *    samples a desktop media stream per display into a timestamped ring
+ *    buffer, entirely off the main process. This is the preferred path —
+ *    the main-process event loop stays free, so OS click events arrive on
+ *    time, and the tight sampling cadence keeps a genuinely fresh pre-click
+ *    frame available for every click;
+ *  - the legacy in-process frame loop below, kept as the fallback when
+ *    streams can't start (portal-less Wayland, exotic drivers).
+ *
+ * Either way the pairing rule is the same (click-frames.js): in strict mode
+ * a click only ever gets a frame captured at or before the click — never one
+ * whose grab started after it.
  *
  * Note: under Wayland/WSLg, screen capture may require portal support; all
  * failures surface as { ok: false, reason } instead of crashing.
  */
 
-// Dedupe duplicate watcher events for one physical click while still
-// allowing intentionally fast clicking.
-const CLICK_DEBOUNCE_MS = 40;
-// Idle gap between frame-loop grabs. Must stay well above zero: grabbing
-// back-to-back starves the main-process event loop, which delays delivery
-// of click events from the OS watcher by whole seconds. The frame history
-// plus hook-side click timestamps tolerate the coarser cadence.
+// Suppress only *duplicate deliveries* of one physical press (same button,
+// same coordinates, a few ms apart). This deliberately replaces the old
+// time-only debounce: real humans double-click ~50-100ms apart, and any
+// purely temporal cutoff eventually drops a legitimate fast click, which
+// reads as "my click didn't register". One hook/watcher event = one click.
+const CLICK_EVENT_DUPLICATE_MS = 8;
+// How long a Linux raw button event waits for its regular twin (the
+// representation that carries root coordinates) before firing without them.
+const LINUX_CLICK_TWIN_MS = 25;
+// Idle gap between legacy frame-loop grabs. Must stay well above zero:
+// grabbing back-to-back starves the main-process event loop, which delays
+// delivery of click events from the OS watcher by whole seconds. (The
+// stream backend exists precisely because of this constraint.)
 const FRAME_LOOP_IDLE_MS = 200;
 // A buffered frame older than this is too stale to pass off as "the screen
-// at the instant of the click".
-const CLICK_FRAME_MAX_AGE_MS = 600;
+// at the instant of the click". Shared with click-frames.js.
+const CLICK_FRAME_MAX_AGE_MS = DEFAULT_MAX_AGE_MS;
 // How long a click waits for the in-flight grab before falling back to a
 // one-off fresh shot.
 const CLICK_FRAME_WAIT_MS = 2000;
-// A loop grab that started at most this long after the click still shows
-// the screen the user clicked on (UI reactions render slower than this).
-const CLICK_FRAME_START_SLACK_MS = 300;
+// Balanced (non-strict) mode only: a loop grab that started at most this
+// long after the click is still accepted. Strict mode never does this.
+const CLICK_FRAME_START_SLACK_MS = DEFAULT_START_SLACK_MS;
 const CLICK_CAPTURE_HIDE_DELAY_MS = 25;
-// Frames now hold raw images (~20MB each at 2880x1800), so keep the history
+// Frames hold raw images (~20MB each at 2880x1800), so keep the history
 // window wide enough to outlast any processing hiccup but the count low.
 const RECENT_FRAME_RETENTION_MS = 4000;
 const RECENT_FRAME_LIMIT = 4;
-
-function pointInBounds(point, bounds) {
-  if (!point || !bounds) return false;
-  return point.x >= bounds.x
-    && point.x <= bounds.x + bounds.width
-    && point.y >= bounds.y
-    && point.y <= bounds.y + bounds.height;
-}
 
 function hasBinary(name) {
   try {
@@ -63,11 +84,14 @@ function hasBinary(name) {
 }
 
 class CaptureService {
-  constructor({ store, settings, getWindow, notify }) {
+  constructor({ store, settings, getWindow, notify, screenApi = screen }) {
     this.store = store;
     this.settings = settings;
     this.getWindow = getWindow;
     this.notify = notify;
+    // Injectable for tests; the click/coordinate paths must never reach for
+    // the global `screen` directly so coordinate handling stays testable.
+    this.screen = screenApi;
     this.session = null; // { guideId, paused, count, intervalSec }
     this.intervalTimer = null;
     this.clickWatcher = null;
@@ -76,14 +100,17 @@ class CaptureService {
     this.frameWaiters = [];
     this.latestFrame = null;
     this.clickWatcherBuf = '';
-    this.clickWatcherPendingPress = false;
     this.clickWatcherErrTail = '';
+    this.linuxEvent = null; // event block currently being parsed
+    this.pendingRawClick = null; // raw press waiting for its coordinate twin
     this.clickQueue = Promise.resolve();
     this.frameLoopInFlight = false;
     this.frameLoopGrabStartedAt = null;
     this.recentFrames = [];
     this.shooting = false;
-    this.lastClickCaptureByButton = new Map();
+    this.lastClickEventByButton = new Map();
+    this.streamBackend = null;
+    this.streamBackendStarting = false;
   }
 
   state() {
@@ -96,8 +123,22 @@ class CaptureService {
         intervalSec: this.session.intervalSec || 0,
         clickCapture: Boolean(this.clickWatcher),
         clickCaptureAvailable: this.clickCaptureAvailable(),
+        clickFrameSource: this.streamBackend ? 'stream' : (this.frameLoopRunning ? 'loop' : 'idle'),
+        strictClickFrames: this.strictClickFrames(),
       }
       : { active: false, clickCaptureAvailable: this.clickCaptureAvailable() };
+  }
+
+  /**
+   * Strict is the default: a stored step must never show the screen *after*
+   * its click (a frame whose grab started post-click can already contain the
+   * click's effects). The setting exists as an explicit escape hatch for
+   * machines where capture is too slow to keep pre-click frames buffered —
+   * there, the legacy slack heuristics trade accuracy for fewer fresh-shot
+   * fallbacks.
+   */
+  strictClickFrames() {
+    return this.settings.get('capture.strictClickFrames') !== false;
   }
 
   clickCaptureAvailable() {
@@ -223,22 +264,23 @@ class CaptureService {
     const wasPaused = this.session.paused;
     this.session.paused = typeof force === 'boolean' ? force : !this.session.paused;
     // Starting/resuming tucks the window away again for clean shots (after
-    // a brief delay so the user sees it happen) and starts the frame loop
-    // that serves click captures. Pausing stops the loop and discards the
-    // buffered frame, so a resume can never serve a pre-pause screen.
+    // a brief delay so the user sees it happen) and starts the frame
+    // recorder that serves click captures. Pausing stops it and discards
+    // buffered frames, so a resume can never serve a pre-pause screen.
     if (wasPaused && !this.session.paused) {
       const win = this.getWindow();
       const arm = () => {
         if (!this.session || this.session.paused) return;
         if (this.hiddenForSession && win && !win.isDestroyed() && win.isVisible()) win.hide();
         if (this.settings.get('capture.captureOutsideClicks') !== false && this.clickCaptureAvailable()) {
-          this.startFrameLoop();
+          this.startClickFrameBackend().catch(() => {});
         }
       };
       if (this.hiddenForSession && win && !win.isDestroyed()) setTimeout(arm, 400);
       else arm();
     } else if (!wasPaused && this.session.paused) {
       this.stopFrameLoop();
+      this.stopClickFrameBackend();
     }
     if (this.rebuildTrayMenu) this.rebuildTrayMenu();
     this.notify('capture:state', this.state());
@@ -251,6 +293,7 @@ class CaptureService {
     }
     this.stopClickWatcher();
     this.stopFrameLoop();
+    this.stopClickFrameBackend();
     this.destroySessionTray();
     this.session = null;
     if (this.hiddenForSession) {
@@ -269,7 +312,7 @@ class CaptureService {
   userIsInApp() {
     const win = this.getWindow();
     if (!win || win.isDestroyed() || !win.isVisible() || win.isMinimized()) return false;
-    const cur = screen.getCursorScreenPoint();
+    const cur = this.screen.getCursorScreenPoint();
     const b = win.getBounds();
     return cur.x >= b.x && cur.x <= b.x + b.width && cur.y >= b.y && cur.y <= b.y + b.height;
   }
@@ -283,14 +326,18 @@ class CaptureService {
       return { ok: false, reason: 'skipped — StepForge is focused' };
     }
 
-    // Clicks are served from the frame loop: the buffered frame was grabbed
-    // at (or moments before) the click instant, so the background matches
-    // what the user clicked on. A click that lands while a grab is in
-    // flight waits for that frame instead of being dropped, so fast
+    // Clicks are served from the frame recorder: the chosen frame was
+    // captured at (or moments before) the click instant, so the background
+    // matches what the user clicked on. A click that lands while a grab is
+    // in flight waits for that frame instead of being dropped, so fast
     // clicking still yields one step per click.
     if (trigger === 'click') {
       const clickAt = clickMeta && Number.isFinite(clickMeta.at) ? clickMeta.at : Date.now();
-      const frame = await this.frameForClick(clickPos, clickAt);
+      // Prefer the frame the click was paired with at event time (see
+      // enqueueClickCapture); ask now only when no eager pairing happened.
+      const frame = clickMeta && clickMeta.framePromise
+        ? await clickMeta.framePromise
+        : await this.frameForClick(clickPos, clickAt);
       if (!this.session || this.session.paused) return { ok: false, reason: 'no active capture session' };
       if (frame) {
         const result = this.storeFrameAsStep(this.session.guideId, frame.mode, frame, clickPos);
@@ -335,11 +382,14 @@ class CaptureService {
   // ---- click-triggered capture --------------------------------------------
 
   /**
-   * Continuous screen-grab loop that runs while recording. It keeps the most
-   * recent frame in `latestFrame` so a click can be served from a frame
-   * grabbed at (or moments before) the instant of the click — a fresh grab
-   * started after the click would land hundreds of ms late and show the
-   * click's effects instead of what the user clicked on.
+   * Fallback frame recorder: a continuous screen-grab loop in the main
+   * process, used only when the stream backend can't run. It keeps the most
+   * recent frames buffered so a click can be served from a frame grabbed at
+   * (or moments before) the instant of the click — a fresh grab started
+   * after the click would land hundreds of ms late and show the click's
+   * effects instead of what the user clicked on. Its cadence is capped at
+   * FRAME_LOOP_IDLE_MS because tighter grabbing here starves the event loop
+   * and delays the very click events it serves.
    */
   startFrameLoop() {
     if (this.frameLoopRunning) return;
@@ -416,45 +466,67 @@ class CaptureService {
   }
 
   /**
-   * Freshest frame usable for a click capture: the buffered frame when it's
-   * recent enough, otherwise the next frame the loop delivers. Null when the
-   * loop isn't running or can't deliver in time.
+   * Frame representing the screen at the instant of one click.
+   *
+   * Order of preference:
+   *  1. the stream backend's ring buffer (off-main-process, tight cadence);
+   *  2. the legacy loop's buffered frames;
+   *  3. waiting for the loop grab that was already in flight when the user
+   *     clicked.
+   * Selection semantics live in click-frames.js. In strict mode every path
+   * obeys the same rule — never a frame whose grab started after the click —
+   * and when nothing qualifies this returns null so the caller takes the
+   * *explicit* fresh-shot fallback rather than silently passing a post-click
+   * frame off as the click-time screen.
    */
   async frameForClick(clickPos = null, clickAt = Date.now()) {
     const mode = this.settings.get('capture.mode') || 'fullscreen';
     const grabMode = mode === 'region' ? 'fullscreen' : mode;
     const clickTime = Number.isFinite(clickAt) ? clickAt : Date.now();
-    // Fast clicks can move to another monitor before the buffered frame is
-    // consumed; only reuse frames from the clicked display.
-    const usable = (f, { allowInFlight = false } = {}) => {
-      const sameDisplay = !clickPos || pointInBounds(clickPos, f && f.display && f.display.bounds);
-      const startedAt = Number.isFinite(f && f.startedAt) ? f.startedAt : (f && f.capturedAt);
-      const completedBeforeClick = Number.isFinite(f && f.capturedAt) && f.capturedAt <= clickTime;
-      // A grab that began within the slack window after the click still
-      // shows the click-instant screen (UI reactions take longer than the
-      // slack to render), and it beats the alternative — a fresh shot that
-      // both starts later and stalls the loop for every queued click.
-      const startedNearClick = Number.isFinite(startedAt)
-        && startedAt <= clickTime + CLICK_FRAME_START_SLACK_MS;
-      const timingMatches = completedBeforeClick
-        ? clickTime - f.capturedAt <= CLICK_FRAME_MAX_AGE_MS
-        : allowInFlight && startedNearClick;
-      return Boolean(f)
-        && f.mode === grabMode
-        && timingMatches
-        && sameDisplay;
+    const strict = this.strictClickFrames();
+    const opts = {
+      clickAt: clickTime,
+      clickPos,
+      mode: grabMode,
+      strict,
+      maxAgeMs: CLICK_FRAME_MAX_AGE_MS,
+      startSlackMs: CLICK_FRAME_START_SLACK_MS,
     };
-    const buffered = [...this.recentFrames, this.latestFrame]
-      .filter((f, i, arr) => f && arr.indexOf(f) === i && usable(f))
-      .sort((a, b) => b.capturedAt - a.capturedAt)[0];
+
+    if (this.streamBackend && this.streamBackend.isActive() && grabMode === 'fullscreen') {
+      const frame = await this.streamBackend.frameForClick({ clickPos, clickAt: clickTime, strict });
+      if (frame) return frame;
+      // No qualifying frame (or the backend just went unhealthy): fall
+      // through to the loop buffer / fresh-shot fallbacks below.
+    }
+
+    const buffered = selectFrameForClick(
+      [...this.recentFrames, this.latestFrame].filter((f, i, arr) => f && arr.indexOf(f) === i),
+      opts,
+    );
     if (buffered) return buffered;
-    // As long as the loop is running, the next grab is at most one idle gap
-    // away — wait for it rather than racing it with a one-off shot.
     if (!this.frameLoopRunning) return null;
+
+    if (strict) {
+      // Only a grab already in flight when the user clicked can still
+      // qualify: its pixels predate the click even though it completes
+      // after. Any grab starting later is post-click by definition, so
+      // don't wait around for one — return immediately and let the caller
+      // take the fresh-shot fallback.
+      const inFlightStartedBeforeClick = this.frameLoopInFlight
+        && Number.isFinite(this.frameLoopGrabStartedAt)
+        && this.frameLoopGrabStartedAt <= clickTime;
+      if (!inFlightStartedBeforeClick) return null;
+      const next = await this.nextFrame(CLICK_FRAME_WAIT_MS);
+      return frameUsableForClick(next, { ...opts, allowInFlight: true }) ? next : null;
+    }
+
+    // Balanced (legacy) mode: wait for the next loop frame and accept it if
+    // its grab started within the slack window after the click.
     const deadline = Date.now() + CLICK_FRAME_WAIT_MS;
     while (this.frameLoopRunning && Date.now() < deadline) {
       const next = await this.nextFrame(Math.max(1, deadline - Date.now()));
-      if (usable(next, { allowInFlight: true })) return next;
+      if (frameUsableForClick(next, { ...opts, allowInFlight: true })) return next;
       if (next && Number.isFinite(next.startedAt)
         && next.startedAt > clickTime + CLICK_FRAME_START_SLACK_MS) {
         // Grabs only get later from here; let the fresh-shot path handle it.
@@ -464,11 +536,79 @@ class CaptureService {
     return null;
   }
 
+  // ---- click-frame backends -------------------------------------------------
+
+  /**
+   * Bring up the frame recorder for a recording run. The stream backend is
+   * the architecture path (capture entirely off the main process); the
+   * in-process frame loop is the fallback when streams can't start — and the
+   * automatic degradation target if the worker stops answering mid-session.
+   */
+  async startClickFrameBackend() {
+    const mode = this.settings.get('capture.mode') || 'fullscreen';
+    // The worker streams screens; window-mode grabs need the loop's
+    // source-filtering logic.
+    if (this.settings.get('capture.streamCapture') === false || mode === 'window') {
+      this.startFrameLoop();
+      return;
+    }
+    if (this.streamBackend || this.streamBackendStarting) return;
+    this.streamBackendStarting = true;
+    try {
+      // eslint-disable-next-line global-require
+      const { StreamCaptureBackend, createElectronHost } = require('./stream-backend');
+      const backend = new StreamCaptureBackend({
+        createHost: createElectronHost,
+        onUnhealthy: () => this.degradeToFrameLoop(),
+      });
+      const displays = this.screen.getAllDisplays();
+      const sources = await desktopCapturer.getSources({
+        types: ['screen'],
+        thumbnailSize: { width: 1, height: 1 }, // ids only — skip thumbnail work
+      });
+      const ok = await backend.start({
+        displays,
+        sources: sources.map((s) => ({ id: s.id, display_id: s.display_id })),
+        sampleMs: this.settings.get('capture.frameSampleMs') || 100,
+      });
+      if (!ok || !this.session || this.session.paused) {
+        backend.stop();
+        if (this.session && !this.session.paused) this.startFrameLoop();
+        return;
+      }
+      this.streamBackend = backend;
+      this.notify('capture:state', this.state());
+    } catch {
+      if (this.session && !this.session.paused) this.startFrameLoop();
+    } finally {
+      this.streamBackendStarting = false;
+    }
+  }
+
+  stopClickFrameBackend() {
+    if (!this.streamBackend) return;
+    const backend = this.streamBackend;
+    this.streamBackend = null;
+    backend.stop();
+  }
+
+  /**
+   * The worker stopped answering frame requests. Capture must not silently
+   * stop mid-session: drop the backend and run the in-process loop for the
+   * rest of the recording.
+   */
+  degradeToFrameLoop() {
+    this.streamBackend = null;
+    console.error('[stepforge] stream capture backend unhealthy — falling back to in-process frame loop');
+    if (this.session && !this.session.paused) this.startFrameLoop();
+    this.notify('capture:state', this.state());
+  }
+
   startClickWatcher() {
     this.stopClickWatcher();
     try {
       this.clickWatcherBuf = '';
-      this.clickWatcherPendingPress = false;
+      this.linuxEvent = null;
       if (process.platform === 'linux' && hasBinary('xinput')) {
         // Stream raw button events from the X server; one capture per press.
         // xinput block-buffers stdout when piped, so a press event can sit
@@ -660,7 +800,8 @@ public static class SFMouseHook {
    * the session to interval captures, and tell the UI.
    */
   handleClickWatcherLoss(reason) {
-    this.clickWatcherPendingPress = false;
+    this.linuxEvent = null;
+    this.discardPendingRawClick();
     const detail = [reason, this.clickWatcherErrTail].filter(Boolean).join(' — ');
     console.error(`[stepforge] click watcher stopped${detail ? `: ${detail}` : ''}`);
     if (!this.session) return;
@@ -677,8 +818,9 @@ public static class SFMouseHook {
       this.clickWatcher = null;
     }
     this.clickWatcherBuf = '';
-    this.clickWatcherPendingPress = false;
-    this.lastClickCaptureByButton.clear();
+    this.linuxEvent = null;
+    this.discardPendingRawClick();
+    this.lastClickEventByButton.clear();
   }
 
   /**
@@ -698,29 +840,58 @@ public static class SFMouseHook {
   processClickWatcherData(text, platform = process.platform) {
     const lines = String(text).split(/\r?\n/);
     if (platform === 'linux') {
-      // xinput prints each event as a multi-line block: an "EVENT type …
-      // (RawButtonPress)" header followed by a "detail: N" line carrying the
-      // button number. Fire on the detail line so scroll-wheel ticks (X11
-      // reports them as buttons 4-7) neither create steps nor debounce away
-      // the real clicks that follow them.
+      // xinput test-xi2 --root prints each event as a multi-line block:
+      //
+      //   EVENT type 4 (ButtonPress)        EVENT type 15 (RawButtonPress)
+      //       device: 11 (10)                   device: 11 (11)
+      //       detail: 1                         detail: 1
+      //       root: 644.52/343.55               valuators: …
+      //
+      // Regular (non-raw) blocks carry the event-time root coordinates —
+      // exactly what the click marker needs, because a cursor read at parse
+      // time drifts whenever delivery is delayed or the pointer keeps
+      // moving after the click. Raw blocks have no coordinates, but on many
+      // servers they are the only representation delivered for the root
+      // window, so both kinds must fire. One physical press can produce
+      // *both* representations; that duplication is resolved structurally
+      // in fireLinuxClick (raw press briefly waits for its regular twin and
+      // they merge into one click), never by a time-only debounce that
+      // could swallow legitimate fast clicks.
       for (const line of lines) {
         if (!line) continue;
-        if (/RawButtonPress|ButtonPress/.test(line)) {
-          if (this.clickWatcherPendingPress) this.onOsClick();
-          this.clickWatcherPendingPress = true;
+        const header = /EVENT type \d+ \(([A-Za-z]+)\)/.exec(line);
+        if (header) {
+          this.finishLinuxEvent();
+          const name = header[1];
+          this.linuxEvent = /ButtonPress$/.test(name)
+            ? { name, raw: /^Raw/.test(name), button: null, at: Date.now(), fired: false }
+            : null;
           continue;
         }
-        if (!this.clickWatcherPendingPress) continue;
-        const detail = line.match(/detail:\s*(\d+)/);
+        const ev = this.linuxEvent;
+        if (!ev || ev.fired) continue;
+        const detail = /detail:\s*(\d+)/.exec(line);
         if (detail) {
-          this.clickWatcherPendingPress = false;
-          const button = Number(detail[1]);
-          if (button < 4 || button > 7) this.onOsClick(Date.now(), null, `button-${button}`);
-        } else if (line.includes('EVENT type')) {
-          // Next event arrived without a detail line in between — treat the
-          // pending press as a plain click rather than dropping it.
-          this.clickWatcherPendingPress = false;
-          this.onOsClick();
+          ev.button = Number(detail[1]);
+          if (ev.button >= 4 && ev.button <= 7) {
+            // Scroll-wheel ticks (X11 buttons 4-7) are not clicks.
+            this.linuxEvent = null;
+          } else if (ev.raw) {
+            // Raw blocks never carry coordinates; this one is complete.
+            ev.fired = true;
+            this.linuxEvent = null;
+            this.fireLinuxClick(ev.at, null, ev.button, { raw: true });
+          }
+          continue;
+        }
+        const root = /root:\s*(-?[\d.]+)\/(-?[\d.]+)/.exec(line);
+        if (root && !ev.raw && ev.button != null) {
+          ev.fired = true;
+          this.linuxEvent = null;
+          this.fireLinuxClick(ev.at, {
+            x: Math.round(parseFloat(root[1])),
+            y: Math.round(parseFloat(root[2])),
+          }, ev.button, { raw: false });
         }
       }
       return;
@@ -737,27 +908,127 @@ public static class SFMouseHook {
     }
   }
 
+  /**
+   * A new event header arrived while a press block was still open: the block
+   * ended without the line we fire on. Old xinput builds sometimes omit
+   * detail lines entirely — treat such a press as a plain click rather than
+   * dropping it.
+   */
+  finishLinuxEvent() {
+    const ev = this.linuxEvent;
+    this.linuxEvent = null;
+    if (!ev || ev.fired) return;
+    if (ev.button == null) {
+      this.onOsClick(ev.at, null, 'mouse');
+    } else if (!ev.raw) {
+      // Regular press whose root line never showed up — fire without
+      // coordinates; onOsClick falls back to a cursor read.
+      this.fireLinuxClick(ev.at, null, ev.button, { raw: false });
+    }
+  }
+
+  /**
+   * Funnel for parsed Linux button presses. Raw and regular blocks for the
+   * same physical press are merged here: a raw press (no coordinates) is
+   * held for LINUX_CLICK_TWIN_MS; if the regular twin (with root
+   * coordinates) arrives inside that window the pair fires once, with the
+   * raw block's earlier timestamp and the regular block's coordinates.
+   * Distinct presses always fire — there is no time-based dropping.
+   */
+  fireLinuxClick(at, osPoint, button, { raw = false } = {}) {
+    const pending = this.pendingRawClick;
+    if (raw) {
+      // Two raw presses can't be one click — release the held one first.
+      this.flushPendingRawClick();
+      const entry = { button, at, timer: null };
+      entry.timer = setTimeout(() => {
+        if (this.pendingRawClick !== entry) return;
+        this.pendingRawClick = null;
+        this.onOsClick(entry.at, null, `button-${entry.button}`);
+      }, LINUX_CLICK_TWIN_MS);
+      if (entry.timer.unref) entry.timer.unref();
+      this.pendingRawClick = entry;
+      return;
+    }
+    if (pending && pending.button === button) {
+      // The regular twin of the held raw press: one physical click.
+      this.pendingRawClick = null;
+      clearTimeout(pending.timer);
+      this.onOsClick(Math.min(pending.at, at), osPoint, `button-${button}`);
+      return;
+    }
+    this.onOsClick(at, osPoint, `button-${button}`);
+  }
+
+  /** Fire the held raw press immediately (its twin is not coming). */
+  flushPendingRawClick() {
+    const pending = this.pendingRawClick;
+    if (!pending) return;
+    this.pendingRawClick = null;
+    clearTimeout(pending.timer);
+    this.onOsClick(pending.at, null, `button-${pending.button}`);
+  }
+
+  discardPendingRawClick() {
+    if (!this.pendingRawClick) return;
+    clearTimeout(this.pendingRawClick.timer);
+    this.pendingRawClick = null;
+  }
+
   onOsClick(at = Date.now(), osPoint = null, button = 'mouse') {
     if (!this.session || this.session.paused) return;
     const clickAt = Number.isFinite(at) ? at : Date.now();
-    const debounceKey = button || 'mouse';
-    const last = this.lastClickCaptureByButton.get(debounceKey) || 0;
-    if (clickAt >= last && clickAt - last < CLICK_DEBOUNCE_MS) return;
-    this.lastClickCaptureByButton.set(debounceKey, clickAt);
+    // Source-aware dedupe, not a debounce: each hook/watcher event is one
+    // click however fast it follows the previous one. Only an *identical*
+    // event a few ms later — duplicate delivery of one physical press — is
+    // suppressed.
+    if (this.isDuplicateClickEvent(clickAt, osPoint, button)) return;
     // Prefer the position the watcher sampled with the button-down event
-    // (physical px -> DIP); otherwise read the cursor synchronously,
-    // right now, so the marker lands where the user clicked even if the
-    // shot itself takes a moment to grab. (Clicks on StepForge itself are
+    // (physical px -> DIP); otherwise read the cursor synchronously, right
+    // now, so the marker lands where the user clicked even if the shot
+    // itself takes a moment to grab. (Clicks on StepForge itself are
     // filtered by the cursor-position check in sessionCapture, not by
     // window focus — WSLg reports focus unreliably.)
-    let clickPos = null;
-    if (osPoint) {
-      clickPos = typeof screen.screenToDipPoint === 'function'
-        ? screen.screenToDipPoint(osPoint)
-        : osPoint;
+    let clickPos = osPoint ? this.osPointToDip(osPoint) : null;
+    if (!clickPos) clickPos = this.screen.getCursorScreenPoint();
+    this.enqueueClickCapture(clickPos, clickAt, button || 'mouse');
+  }
+
+  isDuplicateClickEvent(at, osPoint, button) {
+    const key = button || 'mouse';
+    const last = this.lastClickEventByButton.get(key);
+    this.lastClickEventByButton.set(key, { at, osPoint });
+    if (!last) return false;
+    if (at < last.at || at - last.at >= CLICK_EVENT_DUPLICATE_MS) return false;
+    // Same button within a few ms: duplicate only if it is the *same* event
+    // (same coordinates, or neither delivery carried coordinates).
+    if (osPoint && last.osPoint) {
+      return osPoint.x === last.osPoint.x && osPoint.y === last.osPoint.y;
     }
-    if (!clickPos) clickPos = screen.getCursorScreenPoint();
-    this.enqueueClickCapture(clickPos, clickAt, debounceKey);
+    return !osPoint && !last.osPoint;
+  }
+
+  /**
+   * Physical (OS event) pixels -> DIP. Windows exposes the canonical
+   * conversion; on Linux/X11 it is reconstructed from display geometry (see
+   * app/coords.js). Without this, the click marker drifts on any display
+   * scaled away from 100% and on secondary monitors.
+   */
+  osPointToDip(osPoint) {
+    if (this.screen && typeof this.screen.screenToDipPoint === 'function') {
+      try {
+        const dip = this.screen.screenToDipPoint(osPoint);
+        if (dip && Number.isFinite(dip.x) && Number.isFinite(dip.y)) return dip;
+      } catch { /* fall through to manual conversion */ }
+    }
+    try {
+      const displays = this.screen && typeof this.screen.getAllDisplays === 'function'
+        ? this.screen.getAllDisplays()
+        : [];
+      const dip = physicalToDip(osPoint, displays);
+      if (dip) return dip;
+    } catch { /* no display geometry available */ }
+    return osPoint;
   }
 
   /**
@@ -765,9 +1036,20 @@ public static class SFMouseHook {
    * still being stored queues behind it instead of being dropped by the
    * "capture already in progress" guard. The marker position was already
    * read at click time, so a queued step still circles the right spot.
+   *
+   * Crucially, only the *storing* is serialized. The click is paired with
+   * its frame right here, at event time: behind a slow store or PNG encode
+   * the queue can run seconds late, and a frame request issued that late
+   * could find the click-time frame already evicted from the ring buffer.
+   * Eager pairing keeps one-click-one-frame semantics intact no matter how
+   * fast the user clicks or how slow the encoder is.
    */
   enqueueClickCapture(clickPos, clickAt = Date.now(), button = 'mouse') {
     const clickMeta = { at: Number.isFinite(clickAt) ? clickAt : Date.now(), button: button || 'mouse' };
+    if (this.session && !this.session.paused && !this.userIsInApp()) {
+      clickMeta.framePromise = this.frameForClick(clickPos, clickMeta.at)
+        .catch(() => null);
+    }
     this.clickQueue = this.clickQueue
       .then(() => this.sessionCapture('click', clickPos, clickMeta))
       .catch(() => {});
@@ -795,8 +1077,10 @@ public static class SFMouseHook {
   storeFrameAsStep(guideId, mode, frame, clickPos = null) {
     if (!frame) return { ok: false, reason: 'no capture frame available' };
     const annotations = [];
-    const cursor = clickPos || frame.cursor;
-    if (mode !== 'window' && this.settings.get('capture.clickMarker')) {
+    // The click position (DIP, read at event time) wins over the frame's
+    // grab-time cursor; stream-backend frames carry no cursor at all.
+    const cursor = clickPos || frame.cursor || null;
+    if (cursor && mode !== 'window' && this.settings.get('capture.clickMarker')) {
       const fx = (cursor.x - frame.display.bounds.x) / frame.display.bounds.width;
       const fy = (cursor.y - frame.display.bounds.y) / frame.display.bounds.height;
       if (fx >= 0 && fx <= 1 && fy >= 0 && fy <= 1) {
@@ -837,8 +1121,8 @@ public static class SFMouseHook {
 
   /** Grab the screen/window image as { image, display } or throw. */
   async grab(mode, cursorPoint = null) {
-    const cursor = cursorPoint || screen.getCursorScreenPoint();
-    const display = screen.getDisplayNearestPoint(cursor);
+    const cursor = cursorPoint || this.screen.getCursorScreenPoint();
+    const display = this.screen.getDisplayNearestPoint(cursor);
     const { width, height } = display.size;
     const scale = display.scaleFactor || 1;
     // Ask for both kinds: some compositors (WSLg/Wayland portals) expose no

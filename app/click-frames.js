@@ -1,0 +1,162 @@
+'use strict';
+
+/**
+ * Click ↔ frame correlation logic, shared by the main process and the
+ * capture-worker renderer (loaded there via a plain <script> tag, hence the
+ * UMD-style export at the bottom and the total absence of dependencies).
+ *
+ * The model: a recorder keeps a ring buffer of timestamped frames, each with
+ *   { startedAt, capturedAt }  — when the grab began and when it completed.
+ * A click carries its own hook-time timestamp. Pairing the two answers
+ * "what did the screen look like when the user clicked?".
+ *
+ * Strict mode encodes the product requirement (Folge-like recording): a step
+ * must show the screen *at or before* the click, never after it. A frame
+ * whose grab started after the click can already contain the click's effects
+ * (menus opened, pages navigated), so strict mode rejects it outright — the
+ * caller falls back to an explicit fresh shot instead of silently passing a
+ * post-click frame off as the click-time screen. Balanced mode keeps the old
+ * slack-window behavior for platforms where capture is too slow to keep a
+ * pre-click frame buffered.
+ */
+
+const DEFAULT_FRAME_LIMIT = 6;
+const DEFAULT_RETENTION_MS = 4000;
+// A frame older than this is too stale to pass off as "the screen at the
+// instant of the click".
+const DEFAULT_MAX_AGE_MS = 600;
+// Balanced mode only: a grab that began within this window after the click
+// is accepted on the assumption that UI reactions render slower than this.
+const DEFAULT_START_SLACK_MS = 300;
+
+function pointInBounds(point, bounds) {
+  if (!point || !bounds) return false;
+  return point.x >= bounds.x
+    && point.x <= bounds.x + bounds.width
+    && point.y >= bounds.y
+    && point.y <= bounds.y + bounds.height;
+}
+
+/**
+ * Ring buffer of recent frames, bounded by both count and age. Frames are
+ * raw images (potentially tens of MB each), so eviction is eager and an
+ * optional onEvict hook lets callers release native resources (e.g.
+ * ImageBitmap.close() in the capture worker).
+ */
+class FrameRing {
+  constructor({ limit = DEFAULT_FRAME_LIMIT, retentionMs = DEFAULT_RETENTION_MS, now = Date.now, onEvict = null } = {}) {
+    this.limit = limit;
+    this.retentionMs = retentionMs;
+    this.now = now;
+    this.onEvict = onEvict;
+    this.items = [];
+  }
+
+  push(frame) {
+    if (!frame) return null;
+    this.items.push(frame);
+    this.prune();
+    return frame;
+  }
+
+  prune() {
+    const cutoff = this.now() - this.retentionMs;
+    while (this.items.length
+      && (this.items.length > this.limit || !(this.items[0].capturedAt >= cutoff))) {
+      const evicted = this.items.shift();
+      if (this.onEvict) this.onEvict(evicted);
+    }
+  }
+
+  frames() {
+    return [...this.items];
+  }
+
+  latest() {
+    return this.items.length ? this.items[this.items.length - 1] : null;
+  }
+
+  clear() {
+    const dropped = this.items;
+    this.items = [];
+    if (this.onEvict) for (const f of dropped) this.onEvict(f);
+  }
+}
+
+/**
+ * Whether one frame may represent one click.
+ *
+ * Strict mode accepts only:
+ *  - a frame completed at or before the click (and not older than maxAgeMs), or
+ *  - when allowInFlight is set, a frame whose grab *started* at or before the
+ *    click — its pixels predate the click's effects even though encoding
+ *    finished after.
+ * A frame whose grab started after the click is never acceptable in strict
+ * mode, no matter how close: that is exactly the "screenshot shows the menu
+ * already open" failure.
+ *
+ * Balanced mode additionally accepts in-flight frames that started within
+ * startSlackMs after the click (the legacy heuristic).
+ */
+function frameUsableForClick(frame, {
+  clickAt,
+  clickPos = null,
+  mode = null,
+  strict = true,
+  allowInFlight = false,
+  maxAgeMs = DEFAULT_MAX_AGE_MS,
+  startSlackMs = DEFAULT_START_SLACK_MS,
+} = {}) {
+  if (!frame) return false;
+  if (mode && frame.mode !== mode) return false;
+  // Fast clicks can move to another monitor before a buffered frame is
+  // consumed; only reuse frames from the clicked display.
+  if (clickPos && frame.display && !pointInBounds(clickPos, frame.display.bounds)) return false;
+
+  const clickTime = Number.isFinite(clickAt) ? clickAt : Date.now();
+  const capturedAt = frame.capturedAt;
+  const startedAt = Number.isFinite(frame.startedAt) ? frame.startedAt : capturedAt;
+
+  const completedBeforeClick = Number.isFinite(capturedAt) && capturedAt <= clickTime;
+  if (completedBeforeClick) return clickTime - capturedAt <= maxAgeMs;
+
+  if (!allowInFlight || !Number.isFinite(startedAt)) return false;
+  if (strict) return startedAt <= clickTime;
+  return startedAt <= clickTime + startSlackMs;
+}
+
+/**
+ * Best already-buffered frame for a click: the newest frame that qualifies
+ * under frameUsableForClick. Buffered frames are by definition completed, so
+ * in-flight acceptance never applies here. Returns null when nothing
+ * qualifies and the caller must wait for the in-flight grab or fall back to
+ * a fresh shot.
+ */
+function selectFrameForClick(frames, opts = {}) {
+  let best = null;
+  for (const frame of frames || []) {
+    if (!frameUsableForClick(frame, { ...opts, allowInFlight: false })) continue;
+    if (!best || frame.capturedAt > best.capturedAt) best = frame;
+  }
+  return best;
+}
+
+const api = {
+  FrameRing,
+  frameUsableForClick,
+  selectFrameForClick,
+  pointInBounds,
+  DEFAULT_FRAME_LIMIT,
+  DEFAULT_RETENTION_MS,
+  DEFAULT_MAX_AGE_MS,
+  DEFAULT_START_SLACK_MS,
+};
+
+/* eslint-disable no-undef */
+if (typeof module === 'object' && module.exports) {
+  module.exports = api;
+} else if (typeof self !== 'undefined') {
+  self.StepForgeClickFrames = api;
+} else if (typeof window !== 'undefined') {
+  window.StepForgeClickFrames = api;
+}

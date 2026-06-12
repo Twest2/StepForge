@@ -7,6 +7,7 @@ const { htmlToText, deepClone } = require('./util');
 const { systemPlaceholders, resolveScopes, expandPlaceholders } = require('./placeholders');
 const { decodePng } = require('./png');
 const { renderAnnotations, applyFocusedView } = require('./raster');
+const { orderedBlocks, blockText } = require('./blocks');
 
 /**
  * The Render AST is the single normalized document model every exporter
@@ -75,8 +76,24 @@ function buildRenderAst(store, guideId, { globals = {}, now = new Date(), maxSte
         descriptionHtml: sanitizeHtml(expand(tb.descriptionHtml || '')),
         descriptionText: htmlToText(expand(tb.descriptionHtml || '')),
       })),
-      codeBlocks: step.codeBlocks || [],
-      tableBlocks: step.tableBlocks || [],
+      codeBlocks: (step.codeBlocks || []).map((cb) => ({ ...cb, code: blockText(cb) })),
+      tableBlocks: (step.tableBlocks || []).map((tb) => ({
+        ...tb,
+        rows: Array.isArray(tb.rows) ? tb.rows.map((row) => [...row]) : [],
+      })),
+      blocks: orderedBlocks(step).map((block) => {
+        if (block.kind === 'text') {
+          return {
+            ...block,
+            title: expand(block.title || ''),
+            descriptionHtml: sanitizeHtml(expand(block.descriptionHtml || '')),
+            descriptionText: htmlToText(expand(block.descriptionHtml || '')),
+          };
+        }
+        if (block.kind === 'code') return { ...block };
+        if (block.kind === 'table') return { ...block };
+        return { ...block };
+      }),
       links: step.links || [],
       image: null,
     };

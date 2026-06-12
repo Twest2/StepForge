@@ -424,8 +424,8 @@ function setupIpc() {
     const p = store.stepImagePath(guideId, stepId, which || 'working');
     return p && fs.existsSync(p) ? `file://${p}?v=${fs.statSync(p).mtimeMs}` : null;
   });
-  h('step:setWorkingImage', ({ guideId, stepId, pngBase64, size }) =>
-    store.setWorkingImage(guideId, stepId, Buffer.from(pngBase64, 'base64'), size));
+  h('step:setWorkingImage', ({ guideId, stepId, pngBase64, size, step }) =>
+    store.setWorkingImage(guideId, stepId, Buffer.from(pngBase64, 'base64'), size, step || null));
   h('step:resetWorkingImage', ({ guideId, stepId }) => {
     const p = store.stepImagePath(guideId, stepId, 'original');
     const img = nativeImage.createFromPath(p);
@@ -579,6 +579,7 @@ function setupIpc() {
       markdown: '../exporters/markdown',
       'html-simple': '../exporters/html',
       'html-rich': '../exporters/html',
+      confluence: '../exporters/confluence',
       pdf: '../exporters/pdf',
       gif: '../exporters/gif',
       'image-bundle': '../exporters/image-bundle',

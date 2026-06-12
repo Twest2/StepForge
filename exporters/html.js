@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { escapeHtml } = require('../core/util');
 const { encodePng } = require('../core/png');
-const { guideSlug, renderAllImages, LEVEL_LABEL } = require('./common');
+const { guideSlug, renderAllImages, LEVEL_LABEL, stepBlocks, codeBlockText } = require('./common');
 
 /**
  * HTML exporters. Both variants are fully self-contained single files:
@@ -39,7 +39,7 @@ function stepLinkRewrite(html, ast) {
 }
 
 function blocksHtml(step, position) {
-  return step.textBlocks
+  return stepBlocks(step)
     .filter((tb) => tb.position === position)
     .map((tb) => `<div class="block block-${tb.level}"><strong>${escapeHtml(LEVEL_LABEL[tb.level] || 'Note')}${tb.title ? `: ${escapeHtml(tb.title)}` : ''}</strong>${tb.descriptionHtml ? `<div>${tb.descriptionHtml}</div>` : ''}</div>`)
     .join('\n');
@@ -53,15 +53,16 @@ function stepBodyHtml(step, ast, images, tpl) {
   if (img && tpl.includeImages) {
     parts.push(`<img class="shot" alt="Step ${escapeHtml(step.number)}" src="${dataUri(img)}" width="${img.width}">`);
   }
-  for (const cb of step.codeBlocks) {
-    parts.push(`<pre class="code"><code>${escapeHtml(cb.code || '')}</code></pre>`);
-  }
-  for (const tb of step.tableBlocks || []) {
-    if (!tb.rows || !tb.rows.length) continue;
-    const [head, ...rest] = tb.rows;
-    parts.push('<table><thead><tr>' + head.map((c) => `<th>${escapeHtml(c)}</th>`).join('') + '</tr></thead><tbody>'
-      + rest.map((r) => '<tr>' + r.map((c) => `<td>${escapeHtml(c)}</td>`).join('') + '</tr>').join('')
-      + '</tbody></table>');
+  for (const block of stepBlocks(step).filter((item) => item.kind !== 'text')) {
+    if (block.kind === 'code') {
+      parts.push(`<pre class="code"><code>${escapeHtml(codeBlockText(block))}</code></pre>`);
+    } else if (block.kind === 'table') {
+      if (!block.rows || !block.rows.length) continue;
+      const [head, ...rest] = block.rows;
+      parts.push('<table><thead><tr>' + head.map((c) => `<th>${escapeHtml(c)}</th>`).join('') + '</tr></thead><tbody>'
+        + rest.map((r) => '<tr>' + r.map((c) => `<td>${escapeHtml(c)}</td>`).join('') + '</tr>').join('')
+        + '</tbody></table>');
+    }
   }
   parts.push(blocksHtml(step, 'after-description'));
   parts.push(blocksHtml(step, 'after-image'));

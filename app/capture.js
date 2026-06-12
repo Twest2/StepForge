@@ -55,6 +55,10 @@ const DEFAULT_CLICK_DEBOUNCE_MS = 200;
 // How long a Linux raw button event waits for its regular twin (the
 // representation that carries root coordinates) before firing without them.
 const LINUX_CLICK_TWIN_MS = 25;
+// Longest the window stays visible warming up the recorder at recording
+// start. A slow capture-stream start (Windows can take several seconds) must
+// not keep the window up and recording un-armed indefinitely.
+const WARMUP_MAX_MS = 1500;
 // Idle gap between legacy frame-loop grabs. Must stay well above zero:
 // grabbing back-to-back starves the main-process event loop, which delays
 // delivery of click events from the OS watcher by whole seconds. (The
@@ -126,6 +130,10 @@ class CaptureService {
     this.lastAcceptedClickByButton = new Map();
     this.streamBackend = null;
     this.streamBackendStarting = false;
+    this.captureGen = 0; // bumped on stop to invalidate in-flight backend starts
+    // True only while a resume is warming up (window still visible, buffer
+    // not yet primed). Clicks are ignored until it clears — see armRecording.
+    this.warmingUp = false;
   }
 
   state() {
@@ -317,6 +325,7 @@ class CaptureService {
     if (wasPaused && !this.session.paused) {
       this.armRecording();
     } else if (!wasPaused && this.session.paused) {
+      this.warmingUp = false; // cancel any in-flight warmup
       this.stopFrameLoop();
       this.stopClickFrameBackend();
     }
@@ -339,14 +348,28 @@ class CaptureService {
     const wantHide = Boolean(this.hiddenForSession && win && !win.isDestroyed());
     const recorderWanted = this.settings.get('capture.captureOutsideClicks') !== false
       && this.clickCaptureAvailable();
+    // Recording is not "live" until the window is hidden and the buffer is
+    // primed. While warming up, the window is still visible and over the
+    // user's work, so clicks in this period are ignored (onOsClick checks
+    // warmingUp) instead of being skipped erratically or shot post-click —
+    // the bug that made a restarted recording "stop after one click".
+    this.warmingUp = Boolean(wantHide || recorderWanted);
+    const settleMs = Number(this.settings.get('capture.postHideSettleMs'));
     const run = async () => {
-      if (!this.session || this.session.paused) return;
+      if (!this.session || this.session.paused) { this.warmingUp = false; return; }
       const startedAt = Date.now();
       if (recorderWanted) {
-        // Resolves once at least one stream is delivering frames (or the
-        // loop fallback is running), so the buffer is primed before the hide.
-        try { await this.startClickFrameBackend(); } catch { /* falls back internally */ }
-        if (!this.session || this.session.paused) return;
+        // Warm the recorder, but never let a slow backend start (it waits up
+        // to several seconds for the capture stream) keep the window visible
+        // and recording un-armed. Cap the wait; if it isn't ready by then,
+        // hide anyway and let the first click or two take the fresh-shot
+        // fallback while the stream finishes coming up in the background.
+        const warm = this.startClickFrameBackend().catch(() => {});
+        let capTimer = null;
+        const cap = new Promise((r) => { capTimer = setTimeout(r, WARMUP_MAX_MS); });
+        await Promise.race([warm, cap]);
+        if (capTimer) clearTimeout(capTimer);
+        if (!this.session || this.session.paused) { this.warmingUp = false; return; }
       }
       // Keep the window visible briefly so the user sees the transition even
       // when warmup was instant; warmup time counts toward this.
@@ -354,17 +377,19 @@ class CaptureService {
       const elapsed = Date.now() - startedAt;
       if (elapsed < minVisibleMs) {
         await new Promise((r) => setTimeout(r, minVisibleMs - elapsed));
-        if (!this.session || this.session.paused) return;
+        if (!this.session || this.session.paused) { this.warmingUp = false; return; }
       }
       if (wantHide && win && !win.isDestroyed() && win.isVisible()) {
         win.hide();
         // Let a couple of frames of the now-unobscured screen land before
         // the user's first click, so that frame shows their work, not the
         // app window that was just dismissed.
-        await new Promise((r) => setTimeout(r, this.settings.get('capture.postHideSettleMs') || 150));
+        await new Promise((r) => setTimeout(r, Number.isFinite(settleMs) ? settleMs : 150));
       }
+      // Window hidden and buffer primed — clicks now count.
+      this.warmingUp = false;
     };
-    run().catch(() => {});
+    run().catch(() => { this.warmingUp = false; });
   }
 
   finishSession() {
@@ -372,6 +397,7 @@ class CaptureService {
       clearInterval(this.intervalTimer);
       this.intervalTimer = null;
     }
+    this.warmingUp = false;
     this.stopClickWatcher();
     this.stopFrameLoop();
     this.stopClickFrameBackend();
@@ -673,6 +699,12 @@ class CaptureService {
       return;
     }
     if (this.streamBackend || this.streamBackendStarting) return;
+    // Generation token: a stop/finish/pause bumps it. If it changes while
+    // this async start is in flight (e.g. the user finishes and restarts
+    // before a slow start resolves), the backend we built belongs to a dead
+    // session — discard it instead of installing it, and never leave
+    // streamBackendStarting stuck so the new session can start its own.
+    const gen = this.captureGen;
     this.streamBackendStarting = true;
     try {
       // eslint-disable-next-line global-require
@@ -691,9 +723,10 @@ class CaptureService {
         sources: sources.map((s) => ({ id: s.id, display_id: s.display_id })),
         sampleMs: this.settings.get('capture.frameSampleMs') || 100,
       });
-      if (!ok || !this.session || this.session.paused) {
+      const stale = gen !== this.captureGen;
+      if (!ok || stale || !this.session || this.session.paused) {
         backend.stop();
-        if (this.session && !this.session.paused) {
+        if (!stale && this.session && !this.session.paused) {
           console.error('[stepforge] stream capture backend failed to start — using in-process frame loop');
           this.startFrameLoop();
         }
@@ -703,16 +736,20 @@ class CaptureService {
       clog('stream capture backend active');
       this.notify('capture:state', this.state());
     } catch (err) {
-      if (this.session && !this.session.paused) {
+      if (gen === this.captureGen && this.session && !this.session.paused) {
         console.error(`[stepforge] stream capture backend error (${err && err.message}) — using in-process frame loop`);
         this.startFrameLoop();
       }
     } finally {
-      this.streamBackendStarting = false;
+      if (gen === this.captureGen) this.streamBackendStarting = false;
     }
   }
 
   stopClickFrameBackend() {
+    // Invalidate any in-flight start (see captureGen above) and free the
+    // guard so the next session can start a fresh backend immediately.
+    this.captureGen += 1;
+    this.streamBackendStarting = false;
     if (!this.streamBackend) return;
     const backend = this.streamBackend;
     this.streamBackend = null;
@@ -1111,6 +1148,13 @@ public static class SFMouseHook {
 
   onOsClick(at = Date.now(), osPoint = null, button = 'mouse') {
     if (!this.session || this.session.paused) return;
+    // Recording isn't live until the window is hidden and the buffer primed
+    // (see armRecording). Clicks during warmup land on the still-visible app
+    // window, not the user's work, so ignore them rather than capturing junk.
+    if (this.warmingUp) {
+      clog('click@', Number.isFinite(at) ? at : Date.now(), button, 'ignored — still warming up');
+      return;
+    }
     const clickAt = Number.isFinite(at) ? at : Date.now();
     // Leading-edge debounce: ignore a click that lands within the debounce
     // window of the last accepted click of the same button. This makes fast

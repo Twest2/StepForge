@@ -24,10 +24,12 @@ Keep-a-Changelog conventions; versions follow semver.
   - Physical→DIP coordinate conversion is multi-monitor and scale-factor
     aware (`screen.screenToDipPoint` on Windows, display-geometry math
     elsewhere), fixing marker drift on displays scaled away from 100%.
-  - A configurable click-lead (`capture.clickLeadMs`, default 120ms) targets
-    the screen just before each click so the saved step shows what the user
-    was about to act on, not the click's onset; the stream sampling cadence
-    was tightened to 50ms so a frame near that target always exists.
+  - A configurable click-lead (`capture.clickLeadMs`, default 120ms) prefers
+    a frame captured a little before each click so the saved step shows what
+    the user was about to act on, not the click's onset; the stream sampling
+    cadence was tightened to 50ms so a frame near that target always exists.
+    The lead is a preference, not a gate: selection falls back to the newest
+    frame still before the click, so it never forces a post-click screenshot.
 
 ### Fixed
 

@@ -210,7 +210,7 @@ class StreamCaptureBackend {
    * Resolves null when no frame qualifies (caller falls back) — and also on
    * timeout, which additionally counts toward unhealthiness.
    */
-  frameForClick({ clickPos = null, clickAt = Date.now(), strict = true } = {}) {
+  frameForClick({ clickPos = null, clickAt = Date.now(), strict = true, leadMs = 0 } = {}) {
     if (!this.active || !this.host) return Promise.resolve(null);
     const displays = [...this.streams.values()].filter((s) => s.ready).map((s) => s.display);
     const display = clickPos ? displayForDipPoint(clickPos, displays) : (displays[0] || null);
@@ -234,6 +234,7 @@ class StreamCaptureBackend {
         displayId: display.id,
         clickAt,
         strict,
+        leadMs,
       });
     });
   }

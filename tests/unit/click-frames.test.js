@@ -124,6 +124,39 @@ test('frames of the wrong capture mode are rejected', () => {
   assert.equal(frameUsableForClick(f, { clickAt, mode: 'window' }), true);
 });
 
+test('the click lead prefers a frame captured at least leadMs before the click', () => {
+  const clickAt = 10_000;
+  const frames = [
+    frame('with-margin', { startedAt: 9780, capturedAt: 9800 }), // 200ms before
+    frame('right-at-click', { startedAt: 9970, capturedAt: 9985 }), // 15ms before
+  ];
+
+  const chosen = selectFrameForClick(frames, { clickAt, mode: 'fullscreen', strict: true, leadMs: 120 });
+
+  assert.equal(chosen.name, 'with-margin',
+    'with a lead, the frame clear of the click onset wins over the one right at it');
+});
+
+test('the click lead falls back to any pre-click frame rather than forcing a post-click shot', () => {
+  // The whole point of the two-tier rule: when nothing satisfies the lead,
+  // we still return a pre-click frame (caller would otherwise fresh-shot
+  // *after* the click). Only "right-before" exists here.
+  const clickAt = 10_000;
+  const frames = [frame('right-before', { startedAt: 9960, capturedAt: 9980 })];
+
+  const chosen = selectFrameForClick(frames, { clickAt, mode: 'fullscreen', strict: true, leadMs: 120 });
+
+  assert.equal(chosen.name, 'right-before');
+});
+
+test('the click lead still returns null when no frame precedes the click at all', () => {
+  const clickAt = 10_000;
+  const frames = [frame('after', { startedAt: 10_050, capturedAt: 10_080 })];
+
+  assert.equal(selectFrameForClick(frames, { clickAt, strict: true, leadMs: 120 }), null,
+    'a post-click frame is never selected; the caller takes the fresh-shot fallback');
+});
+
 test('a frame without startedAt falls back to capturedAt for the strict check', () => {
   const clickAt = 10_000;
   const before = frame('legacy-before', { capturedAt: 9950 });

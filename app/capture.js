@@ -557,31 +557,29 @@ class CaptureService {
   async frameForClick(clickPos = null, clickAt = Date.now()) {
     const mode = this.settings.get('capture.mode') || 'fullscreen';
     const grabMode = mode === 'region' ? 'fullscreen' : mode;
-    const rawClickTime = Number.isFinite(clickAt) ? clickAt : Date.now();
-    // Click lead: aim selection at a moment slightly *before* the hook
+    const clickTime = Number.isFinite(clickAt) ? clickAt : Date.now();
+    // Click lead: prefer a frame captured a little *before* the hook
     // timestamp. The hook fires on button-down, but the visible UI often
-    // starts reacting within a frame or two of that (hover→press states,
-    // the cursor settling), and capture-stream pixels lag the real screen
-    // by a frame. Targeting clickTime - leadMs keeps the saved screenshot
-    // clear of the click's own onset so the step shows the screen the user
-    // was about to act on. Tunable via capture.clickLeadMs.
+    // starts reacting within a frame or two (hover→press states, the cursor
+    // settling) and capture-stream pixels lag the real screen slightly, so a
+    // frame timestamped right at the click can still show the click's onset.
+    // The lead is a *preference*: selection falls back to any pre-click
+    // frame when none is old enough, so it never forces a post-click fresh
+    // shot. Tunable via capture.clickLeadMs.
     const leadMs = Math.max(0, Number(this.settings.get('capture.clickLeadMs')) || 0);
-    const clickTime = rawClickTime - leadMs;
     const strict = this.strictClickFrames();
     const opts = {
       clickAt: clickTime,
+      leadMs,
       clickPos,
       mode: grabMode,
       strict,
-      // The lead shifts the target earlier, so widen the staleness budget by
-      // the same amount — a frame that was fresh enough for the real click
-      // is still fresh enough for the lead-adjusted target.
-      maxAgeMs: CLICK_FRAME_MAX_AGE_MS + leadMs,
+      maxAgeMs: CLICK_FRAME_MAX_AGE_MS,
       startSlackMs: CLICK_FRAME_START_SLACK_MS,
     };
 
     if (this.streamBackend && this.streamBackend.isActive() && grabMode === 'fullscreen') {
-      const frame = await this.streamBackend.frameForClick({ clickPos, clickAt: clickTime, strict });
+      const frame = await this.streamBackend.frameForClick({ clickPos, clickAt: clickTime, strict, leadMs });
       if (frame) return frame;
       // No qualifying frame (or the backend just went unhealthy): fall
       // through to the loop buffer / fresh-shot fallbacks below.

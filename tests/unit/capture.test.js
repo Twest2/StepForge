@@ -798,8 +798,8 @@ test('click frames come from the stream backend when it is active', async () => 
 
   assert.equal(result.ok, true);
   assert.deepEqual(added, ['stream-frame']);
-  assert.deepEqual(requests, [{ clickPos: { x: 10, y: 10 }, clickAt, strict: true }],
-    'the worker receives the hook-time click timestamp and strictness');
+  assert.deepEqual(requests, [{ clickPos: { x: 10, y: 10 }, clickAt, strict: true, leadMs: 0 }],
+    'the worker receives the hook-time click timestamp, strictness, and lead');
 });
 
 test('a stream backend with no qualifying frame falls through to the fresh-shot path', async () => {

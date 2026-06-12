@@ -461,6 +461,7 @@ class GuideEditor {
       this.onToast('Select a step first.', { error: true });
       return;
     }
+    this.syncBlockEditors(step);
     const id = `blk-${Date.now().toString(36)}`;
     if (kind === 'text') {
       step.textBlocks = step.textBlocks || [];
@@ -477,6 +478,45 @@ class GuideEditor {
     this.renderBlocksPanel();
   }
 
+  syncBlockEditors(step = this.currentStep) {
+    if (!step || !this.dom?.blocksList) return;
+    const findBlock = (kind, id) => {
+      const list = kind === 'text'
+        ? step.textBlocks || []
+        : kind === 'code'
+          ? step.codeBlocks || []
+          : step.tableBlocks || [];
+      return list.find((block) => block.id === id) || null;
+    };
+
+    for (const card of this.dom.blocksList.querySelectorAll('.block-card[data-block-id]')) {
+      const kind = card.dataset.blockKind;
+      const block = findBlock(kind, card.dataset.blockId);
+      if (!block) continue;
+      if (kind === 'text') {
+        const position = card.querySelector('select[data-block-field="position"]');
+        const level = card.querySelector('select[data-block-field="level"]');
+        const title = card.querySelector('input[data-block-field="title"]');
+        const body = card.querySelector('textarea[data-block-field="body"]');
+        if (position) block.position = position.value;
+        if (level) block.level = level.value;
+        if (title) block.title = title.value;
+        if (body) block.descriptionHtml = `<p>${escapeHtml(body.value)}</p>`;
+      } else if (kind === 'code') {
+        const lang = card.querySelector('input[data-block-field="language"]');
+        const code = card.querySelector('textarea[data-block-field="code"]');
+        if (lang) block.language = lang.value;
+        if (code) block.code = code.value;
+      } else if (kind === 'table') {
+        const grid = card.querySelector('textarea[data-block-field="rows"]');
+        if (grid) {
+          block.rows = grid.value.split('\n').filter((line) => line.trim() !== '')
+            .map((line) => line.split('|').map((cell) => cell.trim()));
+        }
+      }
+    }
+  }
+
   renderBlocksPanel() {
     clearNode(this.dom.blocksList);
     const step = this.currentStep;
@@ -485,6 +525,7 @@ class GuideEditor {
       return;
     }
     const save = () => {
+      this.syncBlockEditors(step);
       this.pendingSave = true;
       this.saveStepDebounced();
     };
@@ -524,6 +565,7 @@ class GuideEditor {
 
       const card = el('div.block-card', {
         draggable: true,
+        dataset: { blockId: block.id, blockKind: kind },
         onDragStart: (e) => {
           this.draggedBlock = entry;
           if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
@@ -551,14 +593,18 @@ class GuideEditor {
           { value: 'before-description', label: 'Before description' },
           { value: 'after-description', label: 'After description' },
         ]);
+        position.dataset.blockField = 'position';
         const level = makeSelect(block.level, [
           { value: 'info', label: 'Note' },
           { value: 'warn', label: 'Warning' },
           { value: 'error', label: 'Important' },
           { value: 'success', label: 'Tip' },
         ]);
+        level.dataset.blockField = 'level';
         const title = el('input', { type: 'text', value: block.title || '', placeholder: 'Block title' });
+        title.dataset.blockField = 'title';
         const body = el('textarea', { rows: 2, placeholder: 'Block text' });
+        body.dataset.blockField = 'body';
         body.value = (block.descriptionHtml || '').replace(/<[^>]+>/g, '');
         position.addEventListener('change', () => { block.position = position.value; save(); });
         level.addEventListener('change', () => { block.level = level.value; save(); });
@@ -571,7 +617,9 @@ class GuideEditor {
         );
       } else if (kind === 'code') {
         const lang = el('input', { type: 'text', value: block.language || '', placeholder: 'Language (e.g. bash)' });
+        lang.dataset.blockField = 'language';
         const code = el('textarea', { rows: 3, placeholder: 'Code', spellcheck: false });
+        code.dataset.blockField = 'code';
         code.value = blockText(block);
         code.style.fontFamily = 'monospace';
         lang.addEventListener('input', () => { block.language = lang.value; save(); });
@@ -579,6 +627,7 @@ class GuideEditor {
         card.append(lang, code);
       } else if (kind === 'table') {
         const grid = el('textarea', { rows: 3, placeholder: 'One row per line, cells separated by |', spellcheck: false });
+        grid.dataset.blockField = 'rows';
         grid.value = (block.rows || []).map((r) => r.join(' | ')).join('\n');
         grid.addEventListener('input', () => {
           block.rows = grid.value.split('\n').filter((l) => l.trim() !== '')

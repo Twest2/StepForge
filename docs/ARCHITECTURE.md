@@ -102,6 +102,68 @@ IPC API (`stepforge.*`), and `app/main.js` routes calls into `core/`. Screen
 capture uses Electron's `desktopCapturer` (full screen, window) and an
 overlay window for region selection; hotkeys use `globalShortcut`.
 
+## Click-Capture Pipeline
+
+Workflow recording must behave like one click → one step, with the
+screenshot showing the screen *at* the click and the marker on the exact
+click position. Three pieces make that hold:
+
+1. **OS click events** (`app/capture.js`): a low-level mouse hook on Windows
+   (`CLICK x y button unixMs` lines), an `xinput test-xi2 --root` watcher on
+   X11. The Linux parser carries event-time `root:` coordinates and merges
+   raw/regular twin blocks structurally — there is no time-based debounce
+   that could drop fast clicks, only suppression of identical duplicate
+   deliveries. Physical coordinates convert to DIP via
+   `screen.screenToDipPoint` on Windows or display-geometry math in
+   `app/coords.js` elsewhere (multi-monitor and scale-factor aware).
+
+2. **Frame recorders**: while recording, a hidden worker window
+   (`app/stream-backend.js` + `app/renderer/capture-worker.js`) samples a
+   desktop media stream per display into a timestamped ring buffer —
+   entirely off the main process, so click delivery is never delayed by
+   capture work, and PNG encoding happens in the worker. If streams can't
+   start (portal-less Wayland), or the worker stops answering, the service
+   degrades to the legacy in-process `desktopCapturer` loop.
+
+3. **Click ↔ frame pairing** (`app/click-frames.js`, shared by the main
+   process, the worker, and tests): each click is paired *at event time*
+   with the newest frame captured at or before its hook timestamp. In strict
+   mode (`capture.strictClickFrames`, default on) a frame whose grab started
+   after the click is never used — when nothing qualifies, the service takes
+   an explicit fresh shot instead of passing a post-click frame off as the
+   click-time screen. Storing is serialized per click; pairing is not, so
+   slow encodes never skew later clicks.
+
+Reliability rules that keep "one click → one step" true under load:
+
+- **The worker reply is two-stage.** It acknowledges frame *selection*
+  within milliseconds (proving liveness and pinning the pairing), then
+  ships the PNG whenever the encode finishes — seconds later on
+  software-rendered hosts. A slow payload is never mistaken for a dead
+  worker; only a missing ack degrades the backend.
+- **Stopping drains.** Finishing or pausing a recording keeps the worker
+  alive until frames already selected for queued clicks finish encoding.
+  Without this, ending a session right after a fast click burst cancelled
+  every still-encoding frame and those clicks vanished (the "I clicked ten
+  times but only got two screenshots" bug).
+- **Queued clicks outlive the session.** A click registered while recording
+  carries its guide id and still becomes a step if the session ends while it
+  waits in the store queue. The lone exception is the tray gesture that
+  stopped the session, discarded by matching its recorded screen position.
+- **A click is never served another monitor's frame.** If the clicked
+  display has no ready stream the backend returns null and the caller
+  fresh-shots the correct screen, rather than circling a point on the wrong
+  one.
+
+`STEPFORGE_CLICK_SELFTEST=1 npm start` exercises the whole pipeline in a
+real Electron session across four scenarios — marker accuracy (0.00%
+offset), a fast-burst-then-finish that must save every click, the
+warm-before-arm first click, and the ~200ms debounce. It runs automatically
+as `tests/checks/test_click_capture_selftest.sh` (skipped only when the host
+has no capture environment), so a regression in click→screenshot→step
+behavior fails the suite. `STEPFORGE_CAPTURE_LOG=1` prints one diagnostic
+line per click decision.
+
 ## Security Rules
 
 - Zero network code paths: no sockets, no telemetry, no update or license

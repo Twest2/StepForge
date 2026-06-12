@@ -156,9 +156,13 @@ Reliability rules that keep "one click → one step" true under load:
   one.
 
 `STEPFORGE_CLICK_SELFTEST=1 npm start` exercises the whole pipeline in a
-real Electron session: it reports steps-per-click and marker offsets, then
-runs a fast-burst-then-finish scenario that must save every click.
-`STEPFORGE_CAPTURE_LOG=1` prints one diagnostic line per click decision.
+real Electron session across four scenarios — marker accuracy (0.00%
+offset), a fast-burst-then-finish that must save every click, the
+warm-before-arm first click, and the ~200ms debounce. It runs automatically
+as `tests/checks/test_click_capture_selftest.sh` (skipped only when the host
+has no capture environment), so a regression in click→screenshot→step
+behavior fails the suite. `STEPFORGE_CAPTURE_LOG=1` prints one diagnostic
+line per click decision.
 
 ## Security Rules
 

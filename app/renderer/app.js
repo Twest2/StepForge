@@ -191,17 +191,7 @@ class StepForgeApp {
     const guide = await api.library.create({ title: 'Untitled capture' });
     await this.refreshData();
     await this.openGuide(guide.guideId);
-    const state = await this.armCaptureSession(guide.guideId);
-    const hotkey = this.state.settings?.capture?.hotkeyCapture;
-    let how;
-    if (state.clickCapture) {
-      how = 'every click will grab a step';
-    } else if (state.intervalSec > 0) {
-      how = `a step will be grabbed every ${state.intervalSec}s`;
-    } else {
-      how = hotkey ? `press ${hotkey} to grab steps` : 'use Shoot to grab steps';
-    }
-    toast(`Click "Start recording" in the red bar when you're ready — ${how}. StepForge tucks away; use the red tray icon to pause or finish.`);
+    await this.armCaptureSession(guide.guideId);
   }
 
   async openExistingWorkspace() {

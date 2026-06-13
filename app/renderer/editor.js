@@ -1101,9 +1101,7 @@ class GuideEditor {
         size: record.image.size,
         step,
       });
-      this.stepMap.set(saved.stepId, saved);
-      const idx = this.steps.findIndex((s) => s.stepId === saved.stepId);
-      if (idx >= 0) this.steps[idx] = saved;
+      this.commitSavedStep(saved);
     } else {
       await this.flushStep(step);
     }
@@ -1139,14 +1137,11 @@ class GuideEditor {
     if (!step) return;
     this.pendingSave = false;
     const saved = await api.step.save({ guideId: this.guideId, step });
-    this.stepMap.set(saved.stepId, saved);
-    // Keep the steps array in sync — it holds the objects the list renders.
-    const idx = this.steps.findIndex((s) => s.stepId === saved.stepId);
-    if (idx >= 0) this.steps[idx] = saved;
-    if (this.selectedStepId === saved.stepId) {
+    const committed = this.commitSavedStep(saved);
+    if (this.selectedStepId === committed.stepId) {
       this.renderStepList();
       this.syncStepFields();
-      this.canvas.setAnnotations(saved.annotations || []);
+      this.canvas.setAnnotations(committed.annotations || []);
       // Rebuilding the annotation editor while the user is typing in one of
       // its inputs would steal focus, so skip it in that case.
       if (!this.dom.annotationEditor.contains(document.activeElement)) {
@@ -1154,7 +1149,34 @@ class GuideEditor {
       }
       this.emitMeta();
     }
-    return saved;
+    return committed;
+  }
+
+  commitSavedStep(saved) {
+    if (!saved || !saved.stepId) return saved;
+    const existing = this.stepMap.get(saved.stepId);
+    if (!existing || existing === saved) {
+      this.stepMap.set(saved.stepId, saved);
+      const idx = this.steps.findIndex((s) => s.stepId === saved.stepId);
+      if (idx >= 0) this.steps[idx] = saved;
+      return saved;
+    }
+
+    // Keep the live block arrays so block-card closures keep pointing at the
+    // same objects after the backend returns a fresh saved step.
+    const preservedBlocks = {
+      textBlocks: existing.textBlocks,
+      codeBlocks: existing.codeBlocks,
+      tableBlocks: existing.tableBlocks,
+    };
+    for (const key of Object.keys(existing)) {
+      if (!(key in saved)) delete existing[key];
+    }
+    Object.assign(existing, saved, preservedBlocks);
+    this.stepMap.set(existing.stepId, existing);
+    const idx = this.steps.findIndex((s) => s.stepId === existing.stepId);
+    if (idx >= 0) this.steps[idx] = existing;
+    return existing;
   }
 
   async flushGuide() {

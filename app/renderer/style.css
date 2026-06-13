@@ -619,6 +619,30 @@ fieldset legend {
   background: var(--warn);
   color: var(--text);
 }
+.recording-notice {
+  display: grid;
+  gap: 10px;
+}
+.recording-notice__badge {
+  width: fit-content;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--danger);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.recording-notice__title {
+  font-size: 18px;
+  font-weight: 700;
+}
+.recording-notice__text {
+  color: var(--muted);
+  line-height: 1.5;
+}
 
 #modal-root:not(:empty) {
   position: fixed;

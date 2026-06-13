@@ -285,7 +285,13 @@ class StepForgeApp {
     const pauseBtn = el('button', {
       type: 'button',
       title: notStarted ? 'StepForge tucks away and starts capturing' : '',
-      onClick: () => send({ action: s.paused ? 'resume' : 'pause' }),
+      onClick: async () => {
+        if (notStarted) {
+          const acknowledged = await dialogs.showRecordingReminder();
+          if (!acknowledged) return;
+        }
+        send({ action: s.paused ? 'resume' : 'pause' });
+      },
     }, notStarted ? 'Start recording' : s.paused ? 'Resume' : 'Pause');
 
     const finishBtn = el('button', {

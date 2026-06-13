@@ -269,12 +269,6 @@ class StepForgeApp {
           : s.intervalSec > 0 ? `every ${s.intervalSec}s`
             : 'hotkey only';
 
-    const shootBtn = el('button', {
-      type: 'button',
-      title: 'Capture a step now (the app hides itself for the shot)',
-      onClick: () => send({ action: 'shoot' }),
-    }, 'Shoot');
-
     // Cycle interval auto-capture: off -> 3s -> 5s -> 10s -> off.
     const nextInterval = { 0: 3, 3: 5, 5: 10, 10: 0 }[s.intervalSec ?? 0] ?? 3;
     const autoBtn = el('button', {
@@ -302,7 +296,6 @@ class StepForgeApp {
 
     this.captureStatus.append(
       el('span', { title: `Capture session — ${trigger}` }, `REC ${s.count || 0} · ${trigger}`),
-      shootBtn,
       autoBtn,
       pauseBtn,
       finishBtn,
@@ -768,8 +761,7 @@ class StepForgeApp {
     await this.refreshLibrary();
   }
 
-  async createGuide({ armCapture = undefined } = {}) {
-    const shouldArmCapture = armCapture ?? this.state.view === 'library';
+  async createGuide() {
     const title = await dialogs.promptText({
       title: 'New Guide',
       label: 'Title',
@@ -780,11 +772,6 @@ class StepForgeApp {
     const guide = await api.library.create({ title: title.trim() || 'Untitled guide' });
     await this.refreshLibrary();
     await this.openGuide(guide.guideId);
-    if (!shouldArmCapture) return;
-    await this.armCaptureSession(guide.guideId, {
-      actionLabel: 'Start recording',
-      headline: 'StepForge will hide after you start recording.',
-    });
   }
 
   async createFolder() {

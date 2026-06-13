@@ -529,13 +529,42 @@ class GuideEditor {
       this.pendingSave = true;
       this.saveStepDebounced();
     };
+    const findBlockCard = (kind, id) => {
+      for (const card of this.dom.blocksList.querySelectorAll('.block-card[data-block-id]')) {
+        if (card.dataset.blockKind === kind && card.dataset.blockId === id) return card;
+      }
+      return null;
+    };
+    const refreshBlockCard = (entry, index, total) => {
+      const card = findBlockCard(entry.kind, entry.block.id);
+      if (!card) return false;
+      const orderLabel = card.querySelector('[data-block-order]');
+      const moveUpBtn = card.querySelector('[data-block-move="up"]');
+      const moveDownBtn = card.querySelector('[data-block-move="down"]');
+      if (orderLabel) {
+        orderLabel.textContent = `#${Number.isFinite(entry.block.order) ? entry.block.order : index + 1}`;
+      }
+      if (moveUpBtn) moveUpBtn.disabled = index === 0;
+      if (moveDownBtn) moveDownBtn.disabled = index === total - 1;
+      this.dom.blocksList.append(card);
+      return true;
+    };
+    const reflowBlockCards = () => {
+      const blocksNow = orderedStepBlocks(step);
+      for (const [index, entry] of blocksNow.entries()) {
+        if (!refreshBlockCard(entry, index, blocksNow.length)) {
+          this.renderBlocksPanel();
+          return;
+        }
+      }
+    };
     const moveBlock = (source, target) => {
       if (!source || !target || source.kind === target.kind && source.block.id === target.block.id) return;
       const swap = source.block.order;
       source.block.order = target.block.order;
       target.block.order = swap;
       save();
-      this.renderBlocksPanel();
+      reflowBlockCards();
     };
     const removeBtn = (onRemove) => el('button.icon.danger', {
       type: 'button', title: 'Remove block',
@@ -547,15 +576,25 @@ class GuideEditor {
       const { kind, block } = entry;
       const canMoveUp = index > 0;
       const canMoveDown = index < blocks.length - 1;
-      const moveUp = () => moveBlock(entry, blocks[index - 1]);
-      const moveDown = () => moveBlock(entry, blocks[index + 1]);
+      const moveUp = () => {
+        const currentBlocks = orderedStepBlocks(step);
+        const currentIndex = currentBlocks.findIndex((item) => item.kind === kind && item.block.id === block.id);
+        if (currentIndex > 0) moveBlock(currentBlocks[currentIndex], currentBlocks[currentIndex - 1]);
+      };
+      const moveDown = () => {
+        const currentBlocks = orderedStepBlocks(step);
+        const currentIndex = currentBlocks.findIndex((item) => item.kind === kind && item.block.id === block.id);
+        if (currentIndex >= 0 && currentIndex < currentBlocks.length - 1) {
+          moveBlock(currentBlocks[currentIndex], currentBlocks[currentIndex + 1]);
+        }
+      };
 
       const header = el('div.row', {},
         el('strong', {}, blockLabel(kind)),
-        el('span.muted', {}, `#${Number.isFinite(block.order) ? block.order : index + 1}`),
+        el('span.muted', { dataset: { blockOrder: 'true' } }, `#${Number.isFinite(block.order) ? block.order : index + 1}`),
         el('span.spacer'),
-        el('button.icon', { type: 'button', title: 'Move block up', disabled: !canMoveUp, onClick: moveUp }, '↑'),
-        el('button.icon', { type: 'button', title: 'Move block down', disabled: !canMoveDown, onClick: moveDown }, '↓'),
+        el('button.icon', { type: 'button', title: 'Move block up', disabled: !canMoveUp, onClick: moveUp, dataset: { blockMove: 'up' } }, '↑'),
+        el('button.icon', { type: 'button', title: 'Move block down', disabled: !canMoveDown, onClick: moveDown, dataset: { blockMove: 'down' } }, '↓'),
         removeBtn(() => {
           if (kind === 'text') step.textBlocks = (step.textBlocks || []).filter((b) => b !== block);
           else if (kind === 'code') step.codeBlocks = (step.codeBlocks || []).filter((b) => b !== block);

@@ -50,8 +50,8 @@ The core workflow:
 - **Capture engine** — the editor's **Capture ▾** button offers full screen,
   active window, and region capture (the app hides itself during the shot),
   plus continuous capture sessions that grab a step on every click where the
-  OS allows it, or on a 3/5/10 s auto-interval everywhere else (the REC bar
-  shows the live count with Shoot/Auto/Pause/Finish controls). Delay, global
+  OS allows it, or on a 3/5/10 s auto-interval everywhere else. The REC bar
+  shows the live count and the start/pause control. Delay, global
   hotkeys, click markers, clipboard paste, and PNG/JPEG/GIF import included.
   The full keyboard shortcut list lives under **More ▾ → Keyboard
   shortcuts** in the editor.

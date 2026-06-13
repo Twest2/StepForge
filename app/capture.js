@@ -2,7 +2,7 @@
 
 const path = require('node:path');
 const { spawn, execFileSync } = require('node:child_process');
-const { desktopCapturer, screen, BrowserWindow, nativeImage, Tray, Menu, Notification } = require('electron');
+const { desktopCapturer, screen, BrowserWindow, nativeImage, Tray, Menu } = require('electron');
 const { expandPlaceholders } = require('../core/placeholders');
 const raster = require('../core/raster');
 const { encodePng } = require('../core/png');
@@ -103,7 +103,13 @@ function hasBinary(name) {
 }
 
 class CaptureService {
-  constructor({ store, settings, getWindow, notify, screenApi = screen }) {
+  constructor({
+    store,
+    settings,
+    getWindow,
+    notify,
+    screenApi = screen,
+  }) {
     this.store = store;
     this.settings = settings;
     this.getWindow = getWindow;
@@ -184,7 +190,6 @@ class CaptureService {
     // the user explicitly presses "Start recording" in the capture bar, so
     // New Capture never makes the window vanish out from under them.
     this.session = { guideId, paused: true, count: 0, intervalSec: interval };
-    this.sessionNotificationShown = false;
     if (this.settings.get('capture.captureOutsideClicks') !== false) this.startClickWatcher();
     this.applyInterval();
     this.notify('capture:state', this.state());
@@ -352,7 +357,6 @@ class CaptureService {
     const settleMs = Number(this.settings.get('capture.postHideSettleMs'));
     const run = async () => {
       if (!this.session || this.session.paused) { this.warmingUp = false; return; }
-      const startedAt = Date.now();
       if (recorderWanted) {
         // Warm the recorder, but never let a slow backend start (it waits up
         // to several seconds for the capture stream) keep the window visible
@@ -366,30 +370,12 @@ class CaptureService {
         if (capTimer) clearTimeout(capTimer);
         if (!this.session || this.session.paused) { this.warmingUp = false; return; }
       }
-      // Keep the window visible briefly so the user sees the transition even
-      // when warmup was instant; warmup time counts toward this.
-      const minVisibleMs = wantHide ? 400 : 0;
-      const elapsed = Date.now() - startedAt;
-      if (elapsed < minVisibleMs) {
-        await new Promise((r) => setTimeout(r, minVisibleMs - elapsed));
-        if (!this.session || this.session.paused) { this.warmingUp = false; return; }
-      }
       if (wantHide && win && !win.isDestroyed() && win.isVisible()) {
         win.hide();
         // Let a couple of frames of the now-unobscured screen land before
         // the user's first click, so that frame shows their work, not the
         // app window that was just dismissed.
         await new Promise((r) => setTimeout(r, Number.isFinite(settleMs) ? settleMs : 150));
-      }
-      // Window hidden and buffer primed — clicks now count.
-      if (!process.env.STEPFORGE_SCREENSHOT && !this.sessionNotificationShown) {
-        try {
-          new Notification({
-            title: 'StepForge is recording',
-            body: 'Use the red tray icon to pause or finish capture.',
-          }).show();
-          this.sessionNotificationShown = true;
-        } catch { /* notifications unavailable on this desktop */ }
       }
       this.warmingUp = false;
     };
@@ -407,7 +393,6 @@ class CaptureService {
     this.stopClickFrameBackend();
     this.destroySessionTray();
     this.session = null;
-    this.sessionNotificationShown = false;
     if (this.hiddenForSession) {
       this.hiddenForSession = false;
       this.showWindow();

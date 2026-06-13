@@ -269,14 +269,6 @@ class StepForgeApp {
           : s.intervalSec > 0 ? `every ${s.intervalSec}s`
             : 'hotkey only';
 
-    // Cycle interval auto-capture: off -> 3s -> 5s -> 10s -> off.
-    const nextInterval = { 0: 3, 3: 5, 5: 10, 10: 0 }[s.intervalSec ?? 0] ?? 3;
-    const autoBtn = el('button', {
-      type: 'button',
-      title: 'Automatically capture a step on a timer',
-      onClick: () => send({ action: 'interval', intervalSec: nextInterval }),
-    }, s.intervalSec > 0 ? `Auto ${s.intervalSec}s` : 'Auto off');
-
     const pauseBtn = el('button', {
       type: 'button',
       title: notStarted ? 'StepForge tucks away and starts capturing' : '',
@@ -289,16 +281,9 @@ class StepForgeApp {
       },
     }, notStarted ? 'Start recording' : s.paused ? 'Resume' : 'Pause');
 
-    const finishBtn = el('button', {
-      type: 'button',
-      onClick: () => send({ action: 'finish' }),
-    }, 'Finish');
-
     this.captureStatus.append(
       el('span', { title: `Capture session — ${trigger}` }, `REC ${s.count || 0} · ${trigger}`),
-      autoBtn,
       pauseBtn,
-      finishBtn,
     );
   }
 

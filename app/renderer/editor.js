@@ -461,6 +461,7 @@ class GuideEditor {
       this.onToast('Select a step first.', { error: true });
       return;
     }
+    this.syncBlockEditors(step);
     const id = `blk-${Date.now().toString(36)}`;
     if (kind === 'text') {
       step.textBlocks = step.textBlocks || [];
@@ -477,6 +478,45 @@ class GuideEditor {
     this.renderBlocksPanel();
   }
 
+  syncBlockEditors(step = this.currentStep) {
+    if (!step || !this.dom?.blocksList) return;
+    const findBlock = (kind, id) => {
+      const list = kind === 'text'
+        ? step.textBlocks || []
+        : kind === 'code'
+          ? step.codeBlocks || []
+          : step.tableBlocks || [];
+      return list.find((block) => block.id === id) || null;
+    };
+
+    for (const card of this.dom.blocksList.querySelectorAll('.block-card[data-block-id]')) {
+      const kind = card.dataset.blockKind;
+      const block = findBlock(kind, card.dataset.blockId);
+      if (!block) continue;
+      if (kind === 'text') {
+        const position = card.querySelector('select[data-block-field="position"]');
+        const level = card.querySelector('select[data-block-field="level"]');
+        const title = card.querySelector('input[data-block-field="title"]');
+        const body = card.querySelector('textarea[data-block-field="body"]');
+        if (position) block.position = position.value;
+        if (level) block.level = level.value;
+        if (title) block.title = title.value;
+        if (body) block.descriptionHtml = `<p>${escapeHtml(body.value)}</p>`;
+      } else if (kind === 'code') {
+        const lang = card.querySelector('input[data-block-field="language"]');
+        const code = card.querySelector('textarea[data-block-field="code"]');
+        if (lang) block.language = lang.value;
+        if (code) block.code = code.value;
+      } else if (kind === 'table') {
+        const grid = card.querySelector('textarea[data-block-field="rows"]');
+        if (grid) {
+          block.rows = grid.value.split('\n').filter((line) => line.trim() !== '')
+            .map((line) => line.split('|').map((cell) => cell.trim()));
+        }
+      }
+    }
+  }
+
   renderBlocksPanel() {
     clearNode(this.dom.blocksList);
     const step = this.currentStep;
@@ -485,8 +525,38 @@ class GuideEditor {
       return;
     }
     const save = () => {
+      this.syncBlockEditors(step);
       this.pendingSave = true;
       this.saveStepDebounced();
+    };
+    const findBlockCard = (kind, id) => {
+      for (const card of this.dom.blocksList.querySelectorAll('.block-card[data-block-id]')) {
+        if (card.dataset.blockKind === kind && card.dataset.blockId === id) return card;
+      }
+      return null;
+    };
+    const refreshBlockCard = (entry, index, total) => {
+      const card = findBlockCard(entry.kind, entry.block.id);
+      if (!card) return false;
+      const orderLabel = card.querySelector('[data-block-order]');
+      const moveUpBtn = card.querySelector('[data-block-move="up"]');
+      const moveDownBtn = card.querySelector('[data-block-move="down"]');
+      if (orderLabel) {
+        orderLabel.textContent = `#${Number.isFinite(entry.block.order) ? entry.block.order : index + 1}`;
+      }
+      if (moveUpBtn) moveUpBtn.disabled = index === 0;
+      if (moveDownBtn) moveDownBtn.disabled = index === total - 1;
+      this.dom.blocksList.append(card);
+      return true;
+    };
+    const reflowBlockCards = () => {
+      const blocksNow = orderedStepBlocks(step);
+      for (const [index, entry] of blocksNow.entries()) {
+        if (!refreshBlockCard(entry, index, blocksNow.length)) {
+          this.renderBlocksPanel();
+          return;
+        }
+      }
     };
     const moveBlock = (source, target) => {
       if (!source || !target || source.kind === target.kind && source.block.id === target.block.id) return;
@@ -494,7 +564,7 @@ class GuideEditor {
       source.block.order = target.block.order;
       target.block.order = swap;
       save();
-      this.renderBlocksPanel();
+      reflowBlockCards();
     };
     const removeBtn = (onRemove) => el('button.icon.danger', {
       type: 'button', title: 'Remove block',
@@ -506,15 +576,25 @@ class GuideEditor {
       const { kind, block } = entry;
       const canMoveUp = index > 0;
       const canMoveDown = index < blocks.length - 1;
-      const moveUp = () => moveBlock(entry, blocks[index - 1]);
-      const moveDown = () => moveBlock(entry, blocks[index + 1]);
+      const moveUp = () => {
+        const currentBlocks = orderedStepBlocks(step);
+        const currentIndex = currentBlocks.findIndex((item) => item.kind === kind && item.block.id === block.id);
+        if (currentIndex > 0) moveBlock(currentBlocks[currentIndex], currentBlocks[currentIndex - 1]);
+      };
+      const moveDown = () => {
+        const currentBlocks = orderedStepBlocks(step);
+        const currentIndex = currentBlocks.findIndex((item) => item.kind === kind && item.block.id === block.id);
+        if (currentIndex >= 0 && currentIndex < currentBlocks.length - 1) {
+          moveBlock(currentBlocks[currentIndex], currentBlocks[currentIndex + 1]);
+        }
+      };
 
       const header = el('div.row', {},
         el('strong', {}, blockLabel(kind)),
-        el('span.muted', {}, `#${Number.isFinite(block.order) ? block.order : index + 1}`),
+        el('span.muted', { dataset: { blockOrder: 'true' } }, `#${Number.isFinite(block.order) ? block.order : index + 1}`),
         el('span.spacer'),
-        el('button.icon', { type: 'button', title: 'Move block up', disabled: !canMoveUp, onClick: moveUp }, '↑'),
-        el('button.icon', { type: 'button', title: 'Move block down', disabled: !canMoveDown, onClick: moveDown }, '↓'),
+        el('button.icon', { type: 'button', title: 'Move block up', disabled: !canMoveUp, onClick: moveUp, dataset: { blockMove: 'up' } }, '↑'),
+        el('button.icon', { type: 'button', title: 'Move block down', disabled: !canMoveDown, onClick: moveDown, dataset: { blockMove: 'down' } }, '↓'),
         removeBtn(() => {
           if (kind === 'text') step.textBlocks = (step.textBlocks || []).filter((b) => b !== block);
           else if (kind === 'code') step.codeBlocks = (step.codeBlocks || []).filter((b) => b !== block);
@@ -524,6 +604,7 @@ class GuideEditor {
 
       const card = el('div.block-card', {
         draggable: true,
+        dataset: { blockId: block.id, blockKind: kind },
         onDragStart: (e) => {
           this.draggedBlock = entry;
           if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
@@ -551,14 +632,18 @@ class GuideEditor {
           { value: 'before-description', label: 'Before description' },
           { value: 'after-description', label: 'After description' },
         ]);
+        position.dataset.blockField = 'position';
         const level = makeSelect(block.level, [
           { value: 'info', label: 'Note' },
           { value: 'warn', label: 'Warning' },
           { value: 'error', label: 'Important' },
           { value: 'success', label: 'Tip' },
         ]);
+        level.dataset.blockField = 'level';
         const title = el('input', { type: 'text', value: block.title || '', placeholder: 'Block title' });
+        title.dataset.blockField = 'title';
         const body = el('textarea', { rows: 2, placeholder: 'Block text' });
+        body.dataset.blockField = 'body';
         body.value = (block.descriptionHtml || '').replace(/<[^>]+>/g, '');
         position.addEventListener('change', () => { block.position = position.value; save(); });
         level.addEventListener('change', () => { block.level = level.value; save(); });
@@ -571,7 +656,9 @@ class GuideEditor {
         );
       } else if (kind === 'code') {
         const lang = el('input', { type: 'text', value: block.language || '', placeholder: 'Language (e.g. bash)' });
+        lang.dataset.blockField = 'language';
         const code = el('textarea', { rows: 3, placeholder: 'Code', spellcheck: false });
+        code.dataset.blockField = 'code';
         code.value = blockText(block);
         code.style.fontFamily = 'monospace';
         lang.addEventListener('input', () => { block.language = lang.value; save(); });
@@ -579,6 +666,7 @@ class GuideEditor {
         card.append(lang, code);
       } else if (kind === 'table') {
         const grid = el('textarea', { rows: 3, placeholder: 'One row per line, cells separated by |', spellcheck: false });
+        grid.dataset.blockField = 'rows';
         grid.value = (block.rows || []).map((r) => r.join(' | ')).join('\n');
         grid.addEventListener('input', () => {
           block.rows = grid.value.split('\n').filter((l) => l.trim() !== '')
@@ -1013,9 +1101,7 @@ class GuideEditor {
         size: record.image.size,
         step,
       });
-      this.stepMap.set(saved.stepId, saved);
-      const idx = this.steps.findIndex((s) => s.stepId === saved.stepId);
-      if (idx >= 0) this.steps[idx] = saved;
+      this.commitSavedStep(saved);
     } else {
       await this.flushStep(step);
     }
@@ -1051,14 +1137,11 @@ class GuideEditor {
     if (!step) return;
     this.pendingSave = false;
     const saved = await api.step.save({ guideId: this.guideId, step });
-    this.stepMap.set(saved.stepId, saved);
-    // Keep the steps array in sync — it holds the objects the list renders.
-    const idx = this.steps.findIndex((s) => s.stepId === saved.stepId);
-    if (idx >= 0) this.steps[idx] = saved;
-    if (this.selectedStepId === saved.stepId) {
+    const committed = this.commitSavedStep(saved);
+    if (this.selectedStepId === committed.stepId) {
       this.renderStepList();
       this.syncStepFields();
-      this.canvas.setAnnotations(saved.annotations || []);
+      this.canvas.setAnnotations(committed.annotations || []);
       // Rebuilding the annotation editor while the user is typing in one of
       // its inputs would steal focus, so skip it in that case.
       if (!this.dom.annotationEditor.contains(document.activeElement)) {
@@ -1066,7 +1149,34 @@ class GuideEditor {
       }
       this.emitMeta();
     }
-    return saved;
+    return committed;
+  }
+
+  commitSavedStep(saved) {
+    if (!saved || !saved.stepId) return saved;
+    const existing = this.stepMap.get(saved.stepId);
+    if (!existing || existing === saved) {
+      this.stepMap.set(saved.stepId, saved);
+      const idx = this.steps.findIndex((s) => s.stepId === saved.stepId);
+      if (idx >= 0) this.steps[idx] = saved;
+      return saved;
+    }
+
+    // Keep the live block arrays so block-card closures keep pointing at the
+    // same objects after the backend returns a fresh saved step.
+    const preservedBlocks = {
+      textBlocks: existing.textBlocks,
+      codeBlocks: existing.codeBlocks,
+      tableBlocks: existing.tableBlocks,
+    };
+    for (const key of Object.keys(existing)) {
+      if (!(key in saved)) delete existing[key];
+    }
+    Object.assign(existing, saved, preservedBlocks);
+    this.stepMap.set(existing.stepId, existing);
+    const idx = this.steps.findIndex((s) => s.stepId === existing.stepId);
+    if (idx >= 0) this.steps[idx] = existing;
+    return existing;
   }
 
   async flushGuide() {

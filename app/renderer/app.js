@@ -302,7 +302,7 @@ class StepForgeApp {
 
     const guide = this.editorMeta?.guide;
     this.topbarContext.append(
-      el('button', { type: 'button', onClick: () => this.showLibrary() }, 'Back'),
+      el('button', { type: 'button', onClick: () => this.showLibrary() }, 'Library'),
       el('button.primary', {
         type: 'button',
         title: 'Capture a screenshot step',

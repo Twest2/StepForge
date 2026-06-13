@@ -1835,7 +1835,7 @@ class GuideEditor {
         }
         return;
       }
-      if (e.key === 'Delete' && this.selectedAnnotationId) {
+      if ((e.key === 'Delete' || e.key === 'Backspace') && this.selectedAnnotationId) {
         e.preventDefault();
         if (this.canvas.deleteSelected()) this.saveStepDebounced();
         return;

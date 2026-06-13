@@ -8,6 +8,22 @@ const dialogs = window.StepForgeDialogs || {};
 const clone = (value) => JSON.parse(JSON.stringify(value));
 const BLOCK_KIND_ORDER = { text: 0, code: 1, table: 2 };
 
+// Which style fields are meaningful for each annotation type, so the
+// annotation editor only shows controls that actually affect that type.
+const ANNOTATION_FIELDS = {
+  rect: ['stroke', 'fill', 'strokeWidth'],
+  oval: ['stroke', 'fill', 'strokeWidth'],
+  line: ['stroke', 'strokeWidth'],
+  arrow: ['stroke', 'strokeWidth'],
+  text: ['text', 'stroke', 'fontSize'],
+  tooltip: ['text', 'fill', 'stroke', 'strokeWidth', 'fontSize', 'textColor', 'tail'],
+  number: ['value', 'stroke', 'textColor'],
+  blur: ['radius'],
+  highlight: [],
+  magnify: ['zoom', 'stroke', 'strokeWidth'],
+  cursor: [],
+};
+
 function blockText(block) {
   for (const key of ['code', 'text', 'body', 'value', 'content']) {
     const value = block && block[key];
@@ -935,31 +951,28 @@ class GuideEditor {
       this.emitMeta();
     };
 
-    const annSection = el('div', { className: 'annotation-editor-inner' },
-      labeledRow('Type', typeSelect),
-      labeledRow('Text', textInput),
-      labeledRow('Value', valueInput),
-      labeledRow('Stroke', strokeInput),
-      labeledRow('Fill', fillInput),
-      labeledRow('Stroke width', strokeWidthInput),
-      labeledRow('Font size', fontSizeInput),
-      labeledRow('Text color', textColorInput),
-      labeledRow('Zoom', zoomInput),
-      labeledRow('Radius', radiusInput),
-      labeledRow('Tail', tailInput),
-      el('div.row', {},
-        el('button', {
-          type: 'button',
-          onClick: () => {
-            this.canvas.deleteSelected();
-          },
-        }, 'Delete annotation'),
-      ),
+    const fields = new Set(ANNOTATION_FIELDS[selected.type] || []);
+    const strokeLabel = (selected.type === 'text' || selected.type === 'number') ? 'Color' : 'Stroke';
+
+    const rows = [labeledRow('Type', typeSelect)];
+    if (fields.has('text')) rows.push(labeledRow('Text', textInput));
+    if (fields.has('value')) rows.push(labeledRow('Value', valueInput));
+    if (fields.has('stroke')) rows.push(labeledRow(strokeLabel, strokeInput));
+    if (fields.has('fill')) rows.push(labeledRow('Fill', fillInput));
+    if (fields.has('strokeWidth')) rows.push(labeledRow('Stroke width', strokeWidthInput));
+    if (fields.has('fontSize')) rows.push(labeledRow('Font size', fontSizeInput));
+    if (fields.has('textColor')) rows.push(labeledRow('Text color', textColorInput));
+    if (fields.has('zoom')) rows.push(labeledRow('Zoom', zoomInput));
+    if (fields.has('radius')) rows.push(labeledRow('Radius', radiusInput));
+    if (fields.has('tail')) rows.push(labeledRow('Tail', tailInput));
+    rows.push(
       el('div.row', {},
         el('button', { type: 'button', title: 'Copy this style to every annotation of the same type in this step', onClick: () => this.applyStyleAcross('step') }, 'Style → step'),
         el('button', { type: 'button', title: 'Copy this style to every annotation of the same type in the whole guide', onClick: () => this.applyStyleAcross('guide') }, 'Style → guide'),
       ),
     );
+
+    const annSection = el('div', { className: 'annotation-editor-inner' }, ...rows);
     this.dom.annotationEditor.append(annSection);
 
     typeSelect.addEventListener('change', () => {

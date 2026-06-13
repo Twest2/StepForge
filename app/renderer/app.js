@@ -158,7 +158,7 @@ class StepForgeApp {
       el('div.welcome', {},
         el('div.welcome-title', {},
           el('h1', {}, 'StepForge'),
-          el('p.muted', {}, 'Capture, annotate, and export step-by-step guides — fully offline.'),
+          el('p.muted', {}, 'Capture, annotate, and export step-by-step guides, fully offline.'),
         ),
         el('div.welcome-actions', {},
           el('button.welcome-btn.primary', {

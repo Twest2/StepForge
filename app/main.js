@@ -494,7 +494,6 @@ function setupIpc() {
     else if (action === 'resume') capture.togglePause(false);
     else if (action === 'finish') capture.finishSession();
     else if (action === 'interval') capture.setInterval(intervalSec);
-    else if (action === 'shoot') await capture.sessionCapture('manual');
     const state = capture.state();
     sendToRenderer('capture:state', state);
     return state;

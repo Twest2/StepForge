@@ -102,8 +102,8 @@ Initial release.
   the platform supports it (xinput on X11, PowerShell on Windows), with
   interval auto-capture (3/5/10 s) as the always-works fallback when
   click detection or global hotkeys are unavailable (e.g. WSLg/Wayland).
-  The REC bar shows the live count and trigger, with Shoot / Auto /
-  Pause / Finish controls.
+  The REC bar shows the live count and trigger, with Auto / Pause /
+  Finish controls.
 - Recording sessions tuck the window away once and control everything
   from a red tray icon (capture now / pause / open / finish) instead of
   hiding the window for every shot — the app stays reachable
@@ -161,7 +161,7 @@ Initial release.
   session now starts paused and the window only tucks away once the user
   presses "Start recording" in the capture bar, so the app doesn't vanish
   out from under you.
-- The capture status bar (REC count / Shoot / Auto / Pause / Finish) is
+- The capture status bar (REC count / Auto / Pause / Finish) is
   now shown only in the editor view; it no longer appears over the
   library when a session is still running in the background.
 - Click-triggered captures now grab the cursor position at the instant of

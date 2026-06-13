@@ -191,8 +191,7 @@ class StepForgeApp {
     const guide = await api.library.create({ title: 'Untitled capture' });
     await this.refreshData();
     await this.openGuide(guide.guideId);
-    const state = await api.capture.session({ action: 'start', guideId: guide.guideId });
-    this.updateCaptureState(state);
+    const state = await this.armCaptureSession(guide.guideId);
     const hotkey = this.state.settings?.capture?.hotkeyCapture;
     let how;
     if (state.clickCapture) {
@@ -230,14 +229,26 @@ class StepForgeApp {
     this.renderTopbar();
   }
 
+  // Start a paused session, optionally show a reminder, and continue once
+  // the user acknowledges it.
+  async armCaptureSession(guideId, reminder = null) {
+    const state = await api.capture.session({ action: 'start', guideId });
+    this.updateCaptureState(state);
+    if (!reminder) return state;
+    const acknowledged = await dialogs.showRecordingReminder(reminder);
+    if (!acknowledged) return state;
+    const next = await api.capture.session({ action: 'resume', guideId });
+    this.updateCaptureState(next);
+    return next;
+  }
+
   // Opens a guide and arms (paused) capture for it, so the red REC bar pops
   // up right away with a "Start recording" option to resume capturing steps.
   async openGuideAndArmCapture(guideId, stepId = null) {
     await this.openGuide(guideId, stepId);
     // Don't restart (and reset the count of) a session already running for this guide.
     if (this.captureState?.active && this.captureState.guideId === guideId) return;
-    const state = await api.capture.session({ action: 'start', guideId });
-    this.updateCaptureState(state);
+    await this.armCaptureSession(guideId);
   }
 
   onEditorMeta(meta) {
@@ -767,7 +778,8 @@ class StepForgeApp {
     await this.refreshLibrary();
   }
 
-  async createGuide() {
+  async createGuide({ armCapture = undefined } = {}) {
+    const shouldArmCapture = armCapture ?? this.state.view === 'library';
     const title = await dialogs.promptText({
       title: 'New Guide',
       label: 'Title',
@@ -778,6 +790,11 @@ class StepForgeApp {
     const guide = await api.library.create({ title: title.trim() || 'Untitled guide' });
     await this.refreshLibrary();
     await this.openGuide(guide.guideId);
+    if (!shouldArmCapture) return;
+    await this.armCaptureSession(guide.guideId, {
+      actionLabel: 'Start recording',
+      headline: 'StepForge will hide after you start recording.',
+    });
   }
 
   async createFolder() {

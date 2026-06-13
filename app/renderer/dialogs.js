@@ -693,6 +693,27 @@ function showInfoDialog(title, bodyText) {
   });
 }
 
+function showRecordingReminder() {
+  return new Promise((resolve) => {
+    const { close } = openModal({
+      title: 'Before recording starts',
+      body: el('div.recording-notice', {},
+        el('div.recording-notice__badge', {}, 'Recording tip'),
+        el('div.recording-notice__title', {}, 'StepForge will hide after you continue.'),
+        el('div.recording-notice__text', {},
+          'When you want to pause or stop, use the red tray icon in the system tray.',
+        ),
+      ),
+      footer: [
+        el('button.primary', {
+          onClick: () => { close(); resolve(true); },
+        }, 'Continue'),
+      ],
+      onClose: () => resolve(false),
+    });
+  });
+}
+
 window.StepForgeDialogs = {
   promptText,
   showQuickActions,
@@ -704,5 +725,6 @@ window.StepForgeDialogs = {
   showPlaceholdersDialog,
   showShortcutsDialog,
   showTemplateManager,
+  showRecordingReminder,
 };
 })();

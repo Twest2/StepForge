@@ -672,7 +672,6 @@ if (!gotLock) {
       settings,
       getWindow: () => mainWindow,
       notify: sendToRenderer,
-      dialogApi: dialog,
     });
 
     applyTheme();

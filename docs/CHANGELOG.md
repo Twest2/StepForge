@@ -96,8 +96,8 @@ Initial release.
   Existing Workspace (guide library), and Settings. The brand button
   returns to the welcome screen from any view.
 - Capture menu in the editor topbar: full screen / window / region /
-  3-second delay, paste image as step, import images, and capture
-  session start/finish — capture no longer requires the global hotkey.
+  paste image as step, import images, and capture session start/finish
+  — capture no longer requires the global hotkey.
 - Continuous capture sessions: steps are grabbed on every OS click where
   the platform supports it (xinput on X11, PowerShell on Windows), with
   interval auto-capture (3/5/10 s) as the always-works fallback when

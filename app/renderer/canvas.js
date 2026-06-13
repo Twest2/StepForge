@@ -28,6 +28,7 @@ class AnnotationCanvas {
     this.selectedId = null;
     this.drag = null;
     this.cropRect = null;
+    this.focusedView = null;
 
     canvasEl.addEventListener('pointerdown', (e) => this.onDown(e));
     canvasEl.addEventListener('pointermove', (e) => this.onMove(e));
@@ -52,6 +53,14 @@ class AnnotationCanvas {
   setAnnotations(annotations) {
     this.annotations = annotations || [];
     if (!this.annotations.some((a) => a.id === this.selectedId)) this.selectedId = null;
+    this.render();
+  }
+
+  // The focused view crops and zooms the canvas itself to match what
+  // exports produce. Annotation data stays in full-image-normalized
+  // coordinates; only the on-screen viewport changes.
+  setFocusedView(focusedView) {
+    this.focusedView = focusedView || null;
     this.render();
   }
 
@@ -98,21 +107,50 @@ class AnnotationCanvas {
   }
 
   // ---- coordinate helpers ----
+  // The focused-view crop region, in coordinates normalized to the full
+  // image (0..1). Identity rect when focused view is off, matching
+  // core/raster.js applyFocusedView.
+  viewRect() {
+    const fv = this.focusedView;
+    if (!fv || !fv.enabled || !(fv.zoom > 1)) return { x: 0, y: 0, w: 1, h: 1 };
+    const w = 1 / fv.zoom, h = 1 / fv.zoom;
+    const cx = Math.min(Math.max(fv.panX ?? 0.5, w / 2), 1 - w / 2);
+    const cy = Math.min(Math.max(fv.panY ?? 0.5, h / 2), 1 - h / 2);
+    return { x: cx - w / 2, y: cy - h / 2, w, h };
+  }
+
   toNorm(e) {
     const rect = this.canvas.getBoundingClientRect();
+    const r = this.viewRect();
     return {
-      x: (e.clientX - rect.left) / rect.width,
-      y: (e.clientY - rect.top) / rect.height,
+      x: r.x + ((e.clientX - rect.left) / rect.width) * r.w,
+      y: r.y + ((e.clientY - rect.top) / rect.height) * r.h,
     };
   }
 
   px(ann) {
+    const r = this.viewRect();
     return {
-      x: ann.x * this.canvas.width,
-      y: ann.y * this.canvas.height,
-      w: ann.w * this.canvas.width,
-      h: ann.h * this.canvas.height,
+      x: (ann.x - r.x) / r.w * this.canvas.width,
+      y: (ann.y - r.y) / r.h * this.canvas.height,
+      w: ann.w / r.w * this.canvas.width,
+      h: ann.h / r.h * this.canvas.height,
     };
+  }
+
+  // Converts a canvas-pixel point to image-pixel coordinates in the
+  // full (uncropped) source image, for sampling `this.image` directly.
+  toImagePx(x, y) {
+    const r = this.viewRect();
+    return {
+      x: (x / this.canvas.width * r.w + r.x) * this.imgW,
+      y: (y / this.canvas.height * r.h + r.y) * this.imgH,
+    };
+  }
+
+  toImageLen(len, axis) {
+    const r = this.viewRect();
+    return axis === 'y' ? len / this.canvas.height * r.h * this.imgH : len / this.canvas.width * r.w * this.imgW;
   }
 
   // ---- rendering ----
@@ -121,7 +159,10 @@ class AnnotationCanvas {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     if (!this.image) return;
     ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(this.image, 0, 0, canvas.width, canvas.height);
+    const r = this.viewRect();
+    ctx.drawImage(this.image,
+      r.x * this.imgW, r.y * this.imgH, r.w * this.imgW, r.h * this.imgH,
+      0, 0, canvas.width, canvas.height);
 
     const ordered = [...this.annotations].sort((a, b) => (DRAW_ORDER[a.type] ?? 3) - (DRAW_ORDER[b.type] ?? 3));
     for (const ann of ordered) this.drawAnnotation(ann);
@@ -131,12 +172,17 @@ class AnnotationCanvas {
     if (this.cropRect) this.drawCropOverlay();
   }
 
+  // Annotation strokes/fonts are sized relative to the full image, then
+  // magnified by the focused-view crop on export (core/raster.js) — divide
+  // by the view rect so the canvas preview matches that magnification.
   strokePx(ann) {
-    return Math.max(1, ((ann.style && ann.style.strokeWidth) || 3) * this.canvas.width / 1000);
+    const r = this.viewRect();
+    return Math.max(1, ((ann.style && ann.style.strokeWidth) || 3) * this.canvas.width / 1000 / r.w);
   }
 
   fontPx(ann) {
-    return Math.max(9, ((ann.style && ann.style.fontSize) || 0.022) * this.canvas.height);
+    const r = this.viewRect();
+    return Math.max(9, ((ann.style && ann.style.fontSize) || 0.022) * this.canvas.height / r.h);
   }
 
   drawAnnotation(ann) {
@@ -202,10 +248,13 @@ class AnnotationCanvas {
         ctx.ellipse(x + w / 2, y + h / 2, Math.abs(w / 2), Math.abs(h / 2), 0, 0, Math.PI * 2);
         ctx.clip();
         const sw = w / zoom, sh = h / zoom;
+        const center = this.toImagePx(x + w / 2, y + h / 2);
+        const srcW = this.toImageLen(sw, 'x');
+        const srcH = this.toImageLen(sh, 'y');
         ctx.drawImage(
           this.image,
-          (x + w / 2 - sw / 2) / this.scale, (y + h / 2 - sh / 2) / this.scale,
-          sw / this.scale, sh / this.scale,
+          center.x - srcW / 2, center.y - srcH / 2,
+          srcW, srcH,
           x, y, w, h
         );
         ctx.restore();
@@ -310,10 +359,11 @@ class AnnotationCanvas {
   drawCropOverlay() {
     const { ctx, canvas } = this;
     const r = this.cropRect;
-    const x = Math.min(r.x0, r.x1) * canvas.width;
-    const y = Math.min(r.y0, r.y1) * canvas.height;
-    const w = Math.abs(r.x1 - r.x0) * canvas.width;
-    const h = Math.abs(r.y1 - r.y0) * canvas.height;
+    const view = this.viewRect();
+    const x = (Math.min(r.x0, r.x1) - view.x) / view.w * canvas.width;
+    const y = (Math.min(r.y0, r.y1) - view.y) / view.h * canvas.height;
+    const w = Math.abs(r.x1 - r.x0) / view.w * canvas.width;
+    const h = Math.abs(r.y1 - r.y0) / view.h * canvas.height;
     ctx.save();
     ctx.fillStyle = 'rgba(0,0,0,0.5)';
     ctx.beginPath();
@@ -486,8 +536,9 @@ class AnnotationCanvas {
   nudgeSelected(dx, dy) {
     const sel = this.selected();
     if (!sel) return false;
-    sel.x += dx / this.canvas.width;
-    sel.y += dy / this.canvas.height;
+    const r = this.viewRect();
+    sel.x += dx / this.canvas.width * r.w;
+    sel.y += dy / this.canvas.height * r.h;
     this.changed();
     return true;
   }

@@ -397,6 +397,7 @@ class GuideEditor {
       step.focusedView[field] = Number(node.value);
       this.pendingSave = true;
       this.saveStepDebounced();
+      this.canvas.setFocusedView(step.focusedView);
     });
     bindFocusedSlider(this.dom.fvZoom, 'zoom');
     bindFocusedSlider(this.dom.fvPanX, 'panX');
@@ -451,6 +452,7 @@ class GuideEditor {
       this.dom.fvPanX.value = fv.panX ?? 0.5;
       this.dom.fvPanY.value = fv.panY ?? 0.5;
     }
+    this.canvas.setFocusedView(fv);
   }
 
   // ---- text / code / table blocks ----------------------------------------
@@ -852,6 +854,7 @@ class GuideEditor {
       if (token !== this.imageLoadToken) return;
       this.canvas.setImage(img, img.naturalWidth || img.width, img.naturalHeight || img.height);
       this.canvas.setAnnotations(step.annotations || []);
+      this.canvas.setFocusedView(step.focusedView);
       this.canvas.setTool(this.currentTool);
       this.canvas.setZoom(this.currentZoom);
     };

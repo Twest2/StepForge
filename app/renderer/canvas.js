@@ -109,14 +109,16 @@ class AnnotationCanvas {
   // ---- coordinate helpers ----
   // The focused-view crop region, in coordinates normalized to the full
   // image (0..1). Identity rect when focused view is off, matching
-  // core/raster.js applyFocusedView.
+  // core/raster.js applyFocusedView. panX/panY are 0..1 fractions of the
+  // available pan range (0 = left/bottom edge, 1 = right/top edge), so the
+  // slider's full range always pans the crop across the whole image
+  // regardless of zoom. Y is inverted so panY increases upward.
   viewRect() {
     const fv = this.focusedView;
     if (!fv || !fv.enabled || !(fv.zoom > 1)) return { x: 0, y: 0, w: 1, h: 1 };
     const w = 1 / fv.zoom, h = 1 / fv.zoom;
-    const cx = Math.min(Math.max(fv.panX ?? 0.5, w / 2), 1 - w / 2);
-    const cy = Math.min(Math.max(fv.panY ?? 0.5, h / 2), 1 - h / 2);
-    return { x: cx - w / 2, y: cy - h / 2, w, h };
+    const panX = fv.panX ?? 0.5, panY = fv.panY ?? 0.5;
+    return { x: panX * (1 - w), y: (1 - panY) * (1 - h), w, h };
   }
 
   toNorm(e) {

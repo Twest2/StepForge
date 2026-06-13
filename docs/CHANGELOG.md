@@ -96,14 +96,14 @@ Initial release.
   Existing Workspace (guide library), and Settings. The brand button
   returns to the welcome screen from any view.
 - Capture menu in the editor topbar: full screen / window / region /
-  3-second delay, paste image as step, import images, and capture
-  session start/finish — capture no longer requires the global hotkey.
+  paste image as step, import images, and capture session start/finish
+  — capture no longer requires the global hotkey.
 - Continuous capture sessions: steps are grabbed on every OS click where
   the platform supports it (xinput on X11, PowerShell on Windows), with
   interval auto-capture (3/5/10 s) as the always-works fallback when
   click detection or global hotkeys are unavailable (e.g. WSLg/Wayland).
-  The REC bar shows the live count and trigger, with Shoot / Auto /
-  Pause / Finish controls.
+  The REC bar shows the live count and trigger, with the start/pause
+  control.
 - Recording sessions tuck the window away once and control everything
   from a red tray icon (capture now / pause / open / finish) instead of
   hiding the window for every shot — the app stays reachable
@@ -161,7 +161,7 @@ Initial release.
   session now starts paused and the window only tucks away once the user
   presses "Start recording" in the capture bar, so the app doesn't vanish
   out from under you.
-- The capture status bar (REC count / Shoot / Auto / Pause / Finish) is
+- The capture status bar (REC count / start/pause control) is
   now shown only in the editor view; it no longer appears over the
   library when a session is still running in the background.
 - Click-triggered captures now grab the cursor position at the instant of

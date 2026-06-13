@@ -1221,7 +1221,6 @@ class GuideEditor {
       { label: 'Capture full screen', action: () => this.captureStep('fullscreen') },
       { label: 'Capture window', action: () => this.captureStep('window') },
       { label: 'Capture region…', action: () => this.captureStep('region') },
-      { label: 'Capture after 3 s delay', action: () => this.captureStep('fullscreen', 3000) },
       'sep',
       { label: 'Paste image as step', action: () => this.pasteClipboardStep() },
       { label: 'Import images…', action: () => this.importImageSteps() },
@@ -1322,7 +1321,6 @@ class GuideEditor {
 
   async startCaptureSession() {
     await api.capture.session({ action: 'start', guideId: this.guideId });
-    this.onToast('Capture session ready — click "Start recording" in the red bar when you\'re set.');
     this.emitMeta();
   }
 

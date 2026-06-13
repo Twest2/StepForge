@@ -191,18 +191,7 @@ class StepForgeApp {
     const guide = await api.library.create({ title: 'Untitled capture' });
     await this.refreshData();
     await this.openGuide(guide.guideId);
-    const state = await api.capture.session({ action: 'start', guideId: guide.guideId });
-    this.updateCaptureState(state);
-    const hotkey = this.state.settings?.capture?.hotkeyCapture;
-    let how;
-    if (state.clickCapture) {
-      how = 'every click will grab a step';
-    } else if (state.intervalSec > 0) {
-      how = `a step will be grabbed every ${state.intervalSec}s`;
-    } else {
-      how = hotkey ? `press ${hotkey} to grab steps` : 'use Shoot to grab steps';
-    }
-    toast(`Click "Start recording" in the red bar when you're ready — ${how}. StepForge tucks away; use the red tray icon to pause or finish.`);
+    await this.armCaptureSession(guide.guideId);
   }
 
   async openExistingWorkspace() {
@@ -230,14 +219,26 @@ class StepForgeApp {
     this.renderTopbar();
   }
 
+  // Start a paused session, optionally show a reminder, and continue once
+  // the user acknowledges it.
+  async armCaptureSession(guideId, reminder = null) {
+    const state = await api.capture.session({ action: 'start', guideId });
+    this.updateCaptureState(state);
+    if (!reminder) return state;
+    const acknowledged = await dialogs.showRecordingReminder(reminder);
+    if (!acknowledged) return state;
+    const next = await api.capture.session({ action: 'resume', guideId });
+    this.updateCaptureState(next);
+    return next;
+  }
+
   // Opens a guide and arms (paused) capture for it, so the red REC bar pops
   // up right away with a "Start recording" option to resume capturing steps.
   async openGuideAndArmCapture(guideId, stepId = null) {
     await this.openGuide(guideId, stepId);
     // Don't restart (and reset the count of) a session already running for this guide.
     if (this.captureState?.active && this.captureState.guideId === guideId) return;
-    const state = await api.capture.session({ action: 'start', guideId });
-    this.updateCaptureState(state);
+    await this.armCaptureSession(guideId);
   }
 
   onEditorMeta(meta) {
@@ -268,37 +269,21 @@ class StepForgeApp {
           : s.intervalSec > 0 ? `every ${s.intervalSec}s`
             : 'hotkey only';
 
-    const shootBtn = el('button', {
-      type: 'button',
-      title: 'Capture a step now (the app hides itself for the shot)',
-      onClick: () => send({ action: 'shoot' }),
-    }, 'Shoot');
-
-    // Cycle interval auto-capture: off -> 3s -> 5s -> 10s -> off.
-    const nextInterval = { 0: 3, 3: 5, 5: 10, 10: 0 }[s.intervalSec ?? 0] ?? 3;
-    const autoBtn = el('button', {
-      type: 'button',
-      title: 'Automatically capture a step on a timer',
-      onClick: () => send({ action: 'interval', intervalSec: nextInterval }),
-    }, s.intervalSec > 0 ? `Auto ${s.intervalSec}s` : 'Auto off');
-
     const pauseBtn = el('button', {
       type: 'button',
       title: notStarted ? 'StepForge tucks away and starts capturing' : '',
-      onClick: () => send({ action: s.paused ? 'resume' : 'pause' }),
+      onClick: async () => {
+        if (notStarted) {
+          const acknowledged = await dialogs.showRecordingReminder();
+          if (!acknowledged) return;
+        }
+        send({ action: s.paused ? 'resume' : 'pause' });
+      },
     }, notStarted ? 'Start recording' : s.paused ? 'Resume' : 'Pause');
 
-    const finishBtn = el('button', {
-      type: 'button',
-      onClick: () => send({ action: 'finish' }),
-    }, 'Finish');
-
     this.captureStatus.append(
-      el('span', { title: `Capture session — ${trigger}` }, `REC ${s.count || 0} · ${trigger}`),
-      shootBtn,
-      autoBtn,
+      el('span', { title: `Capture session — ${trigger}` }, `Rec - ${trigger}`),
       pauseBtn,
-      finishBtn,
     );
   }
 
@@ -317,7 +302,7 @@ class StepForgeApp {
 
     const guide = this.editorMeta?.guide;
     this.topbarContext.append(
-      el('button', { type: 'button', onClick: () => this.showLibrary() }, 'Back'),
+      el('button', { type: 'button', onClick: () => this.showLibrary() }, 'Library'),
       el('button.primary', {
         type: 'button',
         title: 'Capture a screenshot step',

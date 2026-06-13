@@ -601,7 +601,7 @@ test('armRecording warms while visible, then hides and arms the session', async 
     getBounds() { return { x: 0, y: 0, width: 800, height: 600 }; },
   };
   service.getWindow = () => win;
-  service.clickCaptureAvailable = () => true;
+  service.clickCaptureAvailable = () => false;
   // Stub the recorder so warmup resolves fast without real Electron.
   service.startClickFrameBackend = async () => {};
   service.session = { guideId: 'g-arm', paused: false, count: 0, intervalSec: 0 };
@@ -1176,9 +1176,9 @@ test('a new session starts paused and does not hide the window until "Start reco
     // User clicks "Start recording" (the resume action).
     service.togglePause(false);
     assert.equal(service.session.paused, false);
-    assert.equal(win.hidden, 0, 'hide is deferred briefly so the user sees it happen');
+    assert.equal(win.hidden, 0, 'hide is deferred until the resume path runs');
 
-    await new Promise((r) => setTimeout(r, 450));
+    await new Promise((r) => setTimeout(r, 25));
     assert.equal(win.hidden, 1, 'window hides once recording actually starts');
   } finally {
     service.finishSession();

@@ -95,6 +95,20 @@ function clamp(v, min, max) {
   return Math.min(max, Math.max(min, v));
 }
 
+// Matches literal markdown-style links typed in the description editor,
+// e.g. "[Settings](https://example.com)". Excludes < > so it never spans
+// across an existing HTML tag boundary.
+const MD_LINK_RE = /\[([^[\]<>]*)\]\(([^()<>]+)\)/g;
+
+/**
+ * Turn literal "[text](url)" markdown link syntax (as inserted by the
+ * description editor's Link button) into real <a href> tags, so exporters
+ * that consume HTML render an actual link instead of the raw brackets.
+ */
+function linkifyMarkdownLinks(html) {
+  return String(html || '').replace(MD_LINK_RE, (m, label, href) => `<a href="${escapeHtml(href)}">${label}</a>`);
+}
+
 /** Filesystem-safe slug for export folder names like steps-<title>. */
 function slugify(text, fallback = 'untitled') {
   const slug = String(text || '')
@@ -116,6 +130,7 @@ module.exports = {
   readJsonSync,
   readJsonIfExists,
   htmlToText,
+  linkifyMarkdownLinks,
   decodeEntities,
   escapeHtml,
   escapeXml,

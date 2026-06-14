@@ -1219,7 +1219,15 @@ class GuideEditor {
 
   async createSnapshot() {
     if (!this.guideId) return;
-    await api.snapshots.create({ guideId: this.guideId, label: 'manual' });
+    const label = await dialogs.promptText({
+      title: 'Create snapshot',
+      label: 'Snapshot name',
+      placeholder: 'manual',
+    });
+    if (label == null) return;
+    if (this.currentStep) await this.flushStep();
+    if (this.guide) await this.flushGuide();
+    await api.snapshots.create({ guideId: this.guideId, label: label.trim() || 'manual' });
     this.onToast('Snapshot created.');
   }
 

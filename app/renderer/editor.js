@@ -300,8 +300,7 @@ class GuideEditor {
         el('section', {},
           el('h3', {}, 'Guide'),
           this.dom.guideSummary = el('div.muted', {}),
-          this.dom.shareBtn = el('button', { type: 'button' }, 'Share as file'),
-          this.dom.saveNowBtn = el('button.primary', { type: 'button' }, 'Save now'),
+          this.dom.saveNowBtn = el('button.primary', { type: 'button', title: 'Save changes. For guides linked to a shared archive, also writes the archive file.' }, 'Save now'),
           this.dom.snapshotBtn = el('button', { type: 'button' }, 'Snapshot'),
         ),
       ),
@@ -346,10 +345,6 @@ class GuideEditor {
     this.dom.deleteBtn.addEventListener('click', () => this.deleteSelectedStep());
     this.dom.saveNowBtn.addEventListener('click', () => this.saveAll());
     this.dom.snapshotBtn.addEventListener('click', () => this.createSnapshot());
-    this.dom.shareBtn.addEventListener('click', () => {
-      if (this.guide && this.guide.linkedSource) this.openLinkedGuide();
-      else this.shareAsFile();
-    });
     this.dom.zoomFitBtn.addEventListener('click', () => this.setZoom('fit'));
     this.dom.zoom100Btn.addEventListener('click', () => this.setZoom(1));
     this.dom.zoom125Btn.addEventListener('click', () => this.setZoom(1.25));
@@ -458,7 +453,6 @@ class GuideEditor {
     this.renderCanvas();
     this.renderAnnotationPanel();
     this.renderBlocksPanel();
-    this.renderGuidePanel();
     this.emitMeta();
   }
 
@@ -1047,16 +1041,6 @@ class GuideEditor {
     });
   }
 
-  renderGuidePanel() {
-    if (!this.guide) return;
-    const linked = Boolean(this.guide.linkedSource);
-    this.dom.shareBtn.textContent = linked ? 'Linked guide' : 'Share as file';
-    this.dom.shareBtn.title = linked
-      ? 'Manage this guide\'s connection to its shared archive file'
-      : 'Export this guide as a shareable .sfgz archive file';
-    this.dom.snapshotBtn.textContent = 'Snapshot';
-  }
-
   defaultStyleForTool(tool) {
     switch (tool) {
       case 'highlight': return { fill: '#ffe066', stroke: '#ffbf00', strokeWidth: 1 };
@@ -1220,6 +1204,16 @@ class GuideEditor {
   async saveAll() {
     if (this.currentStep) await this.flushStep();
     if (this.guide) await this.flushGuide();
+    if (this.guide && this.guide.linkedSource) {
+      const result = await api.archive.saveLinked({ guideId: this.guideId, force: false });
+      if (result.saved) {
+        this.guide.linkedSource.lastSavedAt = new Date().toISOString();
+        this.onToast('Saved and synced to linked archive.');
+      } else {
+        this.onToast('Saved locally, but the linked archive is locked by another session.', { error: true });
+      }
+      return;
+    }
     this.onToast('Saved.');
   }
 

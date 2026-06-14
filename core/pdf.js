@@ -102,6 +102,35 @@ class PdfBuilder {
     );
   }
 
+  /**
+   * Render a line made of mixed-font/color segments (e.g. bold/italic runs)
+   * as one continuous text object: consecutive Tj operators without an
+   * intervening Tm advance the cursor by each font's real glyph widths, so
+   * spacing matches the viewer's metrics exactly (unlike our approximate
+   * textWidth(), which is only used for word-wrap decisions).
+   */
+  textRun(parts, x, yTop, size) {
+    const y = this.pageHeight - yTop - size;
+    const ops = [`BT 1 0 0 1 ${x.toFixed(2)} ${y.toFixed(2)} Tm`];
+    let curFont = null;
+    let curColor = null;
+    for (const part of parts) {
+      if (!part.text) continue;
+      if (part.font !== curFont) {
+        ops.push(`/${part.font} ${size} Tf`);
+        curFont = part.font;
+      }
+      if (!curColor || part.color[0] !== curColor[0] || part.color[1] !== curColor[1] || part.color[2] !== curColor[2]) {
+        ops.push(`${col(part.color)} rg`);
+        curColor = part.color;
+      }
+      const clean = String(part.text).replace(/\t/g, '    ');
+      ops.push(`(${esc(toLatin1(clean))}) Tj`);
+    }
+    ops.push('ET');
+    this.currentPage.ops.push(ops.join(' '));
+  }
+
   rect(x, yTop, w, h, { fill = null, stroke = null, lineWidth = 1 } = {}) {
     const y = this.pageHeight - yTop - h;
     const ops = [];

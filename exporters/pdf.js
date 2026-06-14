@@ -148,12 +148,12 @@ function exportPdf(ast, outDir, template = {}) {
         ensure(item.lineHeight);
         const textX = M + indentBase + item.indent;
         if (idx === 0 && item.prefix) pdf.text(item.prefix, textX - LIST_INDENT, y, { size: item.size, font: 'F1', color });
-        let x = textX;
-        for (const word of line) {
-          const c = word.href ? tpl.accentColor : (item.muted ? [100, 100, 100] : color);
-          pdf.text(word.text, x, y, { size: item.size, font: word.font, color: c });
-          x += pdf.textWidth(word.text, item.size, word.font);
-        }
+        const parts = line.map((word) => ({
+          text: word.text,
+          font: word.font,
+          color: word.href ? tpl.accentColor : (item.muted ? [100, 100, 100] : color),
+        }));
+        pdf.textRun(parts, textX, y, item.size);
         y += item.lineHeight;
       });
       y += 4;
@@ -271,12 +271,12 @@ function exportPdf(ast, outDir, template = {}) {
         item.lines.forEach((line, idx) => {
           const textX = M + 10 + item.indent;
           if (idx === 0 && item.prefix) pdf.text(item.prefix, textX - LIST_INDENT, by, { size: item.size, font: 'F1' });
-          let x = textX;
-          for (const word of line) {
-            const c = word.href ? tpl.accentColor : (item.muted ? [100, 100, 100] : [0, 0, 0]);
-            pdf.text(word.text, x, by, { size: item.size, font: word.font, color: c });
-            x += pdf.textWidth(word.text, item.size, word.font);
-          }
+          const parts = line.map((word) => ({
+            text: word.text,
+            font: word.font,
+            color: word.href ? tpl.accentColor : (item.muted ? [100, 100, 100] : [0, 0, 0]),
+          }));
+          pdf.textRun(parts, textX, by, item.size);
           by += item.lineHeight;
         });
         by += 4;

@@ -329,10 +329,32 @@ class GuideEditor {
   }
 
   toolbarBtn(action, label, block = null) {
-    return el('button', {
+    const btn = el('button', {
       type: 'button',
       onClick: () => this.formatDescription(action, block),
     }, label);
+    btn.dataset.action = action;
+    if (block) btn.dataset.block = block;
+    return btn;
+  }
+
+  /** Reflect the current selection's formatting state on the toolbar buttons. */
+  updateToolbarState() {
+    if (!this.dom.richToolbar) return;
+    for (const btn of this.dom.richToolbar.children) {
+      const { action, block } = btn.dataset;
+      let active = false;
+      try {
+        if (action === 'formatBlock') {
+          active = document.queryCommandValue('formatBlock').toLowerCase() === (block || 'blockquote');
+        } else if (action === 'bold' || action === 'italic' || action === 'insertUnorderedList' || action === 'insertOrderedList') {
+          active = document.queryCommandState(action);
+        }
+      } catch {
+        active = false;
+      }
+      btn.classList.toggle('active', active);
+    }
   }
 
   bindShellEvents() {
@@ -422,7 +444,14 @@ class GuideEditor {
     this.dom.addTableBlockBtn.addEventListener('click', () => this.addBlock('table'));
 
     this.dom.descEditor.addEventListener('focus', () => {
+      // Make Enter start a new paragraph (<p>) rather than a plain <div>,
+      // so line breaks survive sanitization and show up in exports.
+      document.execCommand('defaultParagraphSeparator', false, 'p');
       if (this.currentStep) this.pushCanvasHistory('description');
+      this.updateToolbarState();
+    });
+    this.dom.descEditor.addEventListener('blur', () => {
+      for (const btn of this.dom.richToolbar.children) btn.classList.remove('active');
     });
     this.dom.descEditor.addEventListener('input', () => {
       if (!this.currentStep) return;
@@ -430,6 +459,12 @@ class GuideEditor {
       this.pendingSave = true;
       this.saveStepDebounced();
       this.emitMeta();
+      this.updateToolbarState();
+    });
+    this.dom.descEditor.addEventListener('keyup', () => this.updateToolbarState());
+    this.dom.descEditor.addEventListener('mouseup', () => this.updateToolbarState());
+    document.addEventListener('selectionchange', () => {
+      if (document.activeElement === this.dom.descEditor) this.updateToolbarState();
     });
 
     this.dom.descEditor.addEventListener('paste', (e) => {
@@ -1821,9 +1856,12 @@ class GuideEditor {
       case 'insertOrderedList':
         document.execCommand('insertOrderedList');
         break;
-      case 'formatBlock':
-        document.execCommand('formatBlock', false, block || 'blockquote');
+      case 'formatBlock': {
+        const want = block || 'blockquote';
+        const current = document.queryCommandValue('formatBlock').toLowerCase();
+        document.execCommand('formatBlock', false, current === want ? 'p' : want);
         break;
+      }
       case 'createLink': {
         const selectedText = window.getSelection().toString();
         const text = selectedText || window.prompt('Link text');
@@ -1844,6 +1882,7 @@ class GuideEditor {
       this.pendingSave = true;
       this.saveStepDebounced();
     }
+    this.updateToolbarState();
   }
 
   onDocumentKeyDown(e) {

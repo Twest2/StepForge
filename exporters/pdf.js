@@ -5,6 +5,89 @@ const path = require('node:path');
 const { PdfBuilder } = require('../core/pdf');
 const { guideSlug, renderAllImages, LEVEL_LABEL, stepBlocks, codeBlockText } = require('./common');
 const { htmlToText } = require('../core/util');
+const { htmlToBlocks } = require('../core/htmlblocks');
+
+const LIST_INDENT = 14;
+const QUOTE_INDENT = 10;
+const HEADING_BUMP = { h1: 2.5, h2: 2, h3: 1.5, h4: 1 };
+
+function fontForRun(run) {
+  if (run.code) return 'F3';
+  if (run.bold && run.italic) return 'F5';
+  if (run.bold) return 'F2';
+  if (run.italic) return 'F4';
+  return 'F1';
+}
+
+/** Split formatted runs into words (font/link tagged) and greedily wrap to maxWidth. */
+function wrapRuns(pdf, runs, size, maxWidth) {
+  const words = [];
+  for (const run of runs) {
+    const font = fontForRun(run);
+    for (const part of run.text.split(/(\s+)/)) {
+      if (part === '') continue;
+      words.push({ text: part, font, href: run.href });
+    }
+  }
+  const lines = [];
+  let line = [];
+  let w = 0;
+  for (const word of words) {
+    const isSpace = /^\s+$/.test(word.text);
+    const ww = pdf.textWidth(word.text, size, word.font);
+    if (!isSpace && line.length && w + ww > maxWidth) {
+      lines.push(line);
+      line = [];
+      w = 0;
+    }
+    if (isSpace && !line.length) continue;
+    line.push(word);
+    w += ww;
+  }
+  if (line.length) lines.push(line);
+  return lines;
+}
+
+/**
+ * Lay out description HTML into render-ready items, preserving bold,
+ * italic, links, lists, blockquotes and headings.
+ * Returns { items, height }; items: { kind: 'hr', width } | { kind: 'text',
+ * lines, size, lineHeight, indent, prefix, muted }.
+ */
+function layoutDescription(pdf, html, maxWidth, baseSize) {
+  const items = [];
+  let height = 0;
+  for (const block of htmlToBlocks(html || '')) {
+    if (block.type === 'hr') {
+      items.push({ kind: 'hr', width: maxWidth });
+      height += 12;
+      continue;
+    }
+    let size = baseSize;
+    let runs = block.runs;
+    let indent = (block.indent || 0) * LIST_INDENT;
+    let prefix = null;
+    let muted = false;
+    if (HEADING_BUMP[block.type]) {
+      size = baseSize + HEADING_BUMP[block.type];
+      runs = runs.map((r) => ({ ...r, bold: true }));
+    } else if (block.type === 'li') {
+      prefix = '•';
+      indent += LIST_INDENT;
+    } else if (block.type === 'oli') {
+      prefix = `${block.n}.`;
+      indent += LIST_INDENT;
+    } else if (block.type === 'blockquote') {
+      indent += QUOTE_INDENT;
+      muted = true;
+    }
+    const lines = wrapRuns(pdf, runs, size, maxWidth - indent);
+    const lineHeight = size * 1.35;
+    items.push({ kind: 'text', lines, size, lineHeight, indent, prefix, muted });
+    height += lines.length * lineHeight + 4;
+  }
+  return { items, height };
+}
 
 /**
  * PDF exporter: cover block, optional TOC, one section per step with the
@@ -51,6 +134,31 @@ function exportPdf(ast, outDir, template = {}) {
       y += fs_ * leading;
     }
   };
+  /** Render laid-out description items, preserving bold/italic/links/lists. */
+  const writeDescription = (html, { size: baseSize = 10.5, color = [0, 0, 0], indent: indentBase = 0 } = {}) => {
+    const { items } = layoutDescription(pdf, html, usableW - indentBase, baseSize);
+    for (const item of items) {
+      if (item.kind === 'hr') {
+        ensure(12);
+        pdf.rect(M + indentBase, y + 5, item.width, 0.8, { fill: [225, 228, 232] });
+        y += 12;
+        continue;
+      }
+      item.lines.forEach((line, idx) => {
+        ensure(item.lineHeight);
+        const textX = M + indentBase + item.indent;
+        if (idx === 0 && item.prefix) pdf.text(item.prefix, textX - LIST_INDENT, y, { size: item.size, font: 'F1', color });
+        let x = textX;
+        for (const word of line) {
+          const c = word.href ? tpl.accentColor : (item.muted ? [100, 100, 100] : color);
+          pdf.text(word.text, x, y, { size: item.size, font: word.font, color: c });
+          x += pdf.textWidth(word.text, item.size, word.font);
+        }
+        y += item.lineHeight;
+      });
+      y += 4;
+    }
+  };
 
   pdf.addPage();
 
@@ -60,7 +168,7 @@ function exportPdf(ast, outDir, template = {}) {
     y += 6;
     writeLines(ast.guide.title, { size: 26, font: 'F2' });
     y += 8;
-    if (ast.guide.descriptionText) writeLines(ast.guide.descriptionText, { size: 12, color: [70, 70, 70] });
+    if (ast.guide.descriptionHtml) writeDescription(ast.guide.descriptionHtml, { size: 12, color: [70, 70, 70] });
     y += 14;
     writeLines(`${ast.steps.length} steps — generated ${ast.generatedAt.slice(0, 10)}`, { size: 10, color: [120, 120, 120] });
     pdf.addPage();
@@ -91,7 +199,7 @@ function exportPdf(ast, outDir, template = {}) {
     y += 8;
 
     emitBlocks(step, 'before-description');
-    if (step.descriptionText) { writeLines(step.descriptionText); y += 4; }
+    if (step.descriptionHtml) writeDescription(step.descriptionHtml);
 
     const img = images.get(step.stepId);
     if (img) {
@@ -146,15 +254,32 @@ function exportPdf(ast, outDir, template = {}) {
   function emitBlocks(step, position) {
     for (const tb of stepBlocks(step).filter((b) => b.kind === 'text' && b.position === position)) {
       const label = `${LEVEL_LABEL[tb.level] || 'Note'}${tb.title ? `: ${tb.title}` : ''}`;
-      const bodyLines = tb.descriptionText ? pdf.wrapText(tb.descriptionText, 9.5, usableW - 18) : [];
-      const blockH = 16 + bodyLines.length * 13;
+      const { items, height: bodyH } = tb.descriptionHtml
+        ? layoutDescription(pdf, tb.descriptionHtml, usableW - 18, 9.5)
+        : { items: [], height: 0 };
+      const blockH = 16 + bodyH;
       ensure(blockH + 4);
       pdf.rect(M, y, 3, blockH, { fill: tpl.accentColor });
       pdf.text(label, M + 10, y + 2, { size: 9.5, font: 'F2' });
       let by = y + 16;
-      for (const line of bodyLines) {
-        pdf.text(line, M + 10, by, { size: 9.5 });
-        by += 13;
+      for (const item of items) {
+        if (item.kind === 'hr') {
+          pdf.rect(M + 10, by + 5, item.width, 0.8, { fill: [225, 228, 232] });
+          by += 12;
+          continue;
+        }
+        item.lines.forEach((line, idx) => {
+          const textX = M + 10 + item.indent;
+          if (idx === 0 && item.prefix) pdf.text(item.prefix, textX - LIST_INDENT, by, { size: item.size, font: 'F1' });
+          let x = textX;
+          for (const word of line) {
+            const c = word.href ? tpl.accentColor : (item.muted ? [100, 100, 100] : [0, 0, 0]);
+            pdf.text(word.text, x, by, { size: item.size, font: word.font, color: c });
+            x += pdf.textWidth(word.text, item.size, word.font);
+          }
+          by += item.lineHeight;
+        });
+        by += 4;
       }
       y += blockH + 6;
     }

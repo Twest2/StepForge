@@ -42,6 +42,8 @@ function htmlToMarkdown(html) {
     .replace(/<hr\s*\/?>/gi, '\n---\n')
     .replace(/<p>/gi, '\n')
     .replace(/<\/p>/gi, '\n')
+    .replace(/<div>/gi, '\n')
+    .replace(/<\/div>/gi, '\n')
     .replace(/<[^>]+>/g, '');
 
   return decodeEntities(out).replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();

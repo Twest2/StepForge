@@ -487,6 +487,11 @@ kbd {
   margin-bottom: 8px;
 }
 .rich-toolbar button { padding: 4px 8px; font-size: 12px; }
+.rich-toolbar button.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+}
 .rich-editor {
   min-height: 110px;
   max-height: 220px;

@@ -84,7 +84,11 @@ function exportMarkdown(ast, outDir, template = {}) {
 function emitBlocks(lines, step, position) {
   for (const tb of stepBlocks(step).filter((b) => b.kind === 'text' && b.position === position)) {
     const label = LEVEL_LABEL[tb.level] || 'Note';
-    lines.push(`> **${label}${tb.title ? `: ${tb.title}` : ''}**`);
+    // GitHub-Flavored Markdown alert syntax — renders with a colored,
+    // icon-labeled box on GitHub/Azure DevOps wikis and several other
+    // viewers; degrades to a plain blockquote elsewhere.
+    lines.push(`> [!${label.toUpperCase()}]`);
+    if (tb.title) lines.push(`> **${tb.title}**`);
     const body = htmlToMarkdown(tb.descriptionHtml);
     if (body) lines.push(`> ${body.replace(/\n/g, '\n> ')}`);
     lines.push('');

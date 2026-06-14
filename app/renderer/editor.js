@@ -674,6 +674,7 @@ class GuideEditor {
       }, header);
 
       if (kind === 'text') {
+        card.dataset.level = block.level || 'info';
         const position = makeSelect(block.position, [
           { value: 'before-title', label: 'Before title' },
           { value: 'after-title', label: 'After title' },
@@ -696,7 +697,7 @@ class GuideEditor {
         body.dataset.blockField = 'body';
         body.value = (block.descriptionHtml || '').replace(/<[^>]+>/g, '');
         position.addEventListener('change', () => { block.position = position.value; save(); });
-        level.addEventListener('change', () => { block.level = level.value; save(); });
+        level.addEventListener('change', () => { block.level = level.value; card.dataset.level = level.value; save(); });
         title.addEventListener('input', () => { block.title = title.value; save(); });
         body.addEventListener('input', () => { block.descriptionHtml = `<p>${escapeHtml(body.value)}</p>`; save(); });
         card.append(

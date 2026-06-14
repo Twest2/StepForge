@@ -731,7 +731,18 @@ class GuideEditor {
           this.selectStep(step.stepId);
           contextMenu(e.clientX, e.clientY, [
             { label: 'Add substep', action: () => this.addSubstep(step.stepId) },
-            { label: 'Make substep of…', action: () => this.makeSubstepOf(step.stepId) },
+            {
+              label: 'Make substep of…',
+              submenu: () => {
+                const subtreeIds = new Set([step.stepId, ...this.getStepDescendantIds(step.stepId)]);
+                return this.steps
+                  .filter((s) => !subtreeIds.has(s.stepId))
+                  .map((s) => ({
+                    label: `${numbers.get(s.stepId)}  ${s.title || 'Untitled step'}`,
+                    action: () => this.makeSubstepOf(step.stepId, s.stepId),
+                  }));
+              },
+            },
             { label: 'Duplicate step', action: () => this.duplicateSelectedStep() },
             'sep',
             { label: 'Move up', action: () => this.moveSelectedStep(-1) },
@@ -1306,48 +1317,37 @@ class GuideEditor {
     return result;
   }
 
-  async makeSubstepOf(stepId) {
+  async makeSubstepOf(stepId, targetStepId) {
     const step = this.stepMap.get(stepId);
-    if (!step) return;
+    const target = this.stepMap.get(targetStepId);
+    if (!step || !target) return;
     const numbers = stepNumberMap(this.steps);
-    const input = await dialogs.promptText({
-      title: 'Make substep',
-      label: 'Make substep of step #',
-      placeholder: 'e.g. 2',
-    });
-    if (input == null) return;
-    const target = input.trim().replace(/^#/, '');
-    const targetId = this.steps.find((s) => numbers.get(s.stepId) === target)?.stepId;
-    if (!targetId) {
-      this.onToast(`No step numbered "${target}".`, { error: true });
-      return;
-    }
     const subtreeIds = new Set([stepId, ...this.getStepDescendantIds(stepId)]);
-    if (subtreeIds.has(targetId)) {
+    if (subtreeIds.has(targetStepId)) {
       this.onToast('A step cannot be made a substep of itself or one of its own substeps.', { error: true });
       return;
     }
-    if (step.parentStepId === targetId) {
-      this.onToast(`“${step.title || 'Untitled step'}” is already a substep of step ${target}.`);
+    if (step.parentStepId === targetStepId) {
+      this.onToast(`“${step.title || 'Untitled step'}” is already a substep of step ${numbers.get(targetStepId)}.`);
       return;
     }
 
-    step.parentStepId = targetId;
+    step.parentStepId = targetStepId;
     await api.step.save({ guideId: this.guideId, step });
 
     // Move the step (with its own substeps) to sit right after the target
     // step's existing substeps, so it becomes the target's last substep.
     const order = this.steps.map((s) => s.stepId);
     const remaining = order.filter((id) => !subtreeIds.has(id));
-    const targetSubtree = new Set([targetId, ...this.getStepDescendantIds(targetId)]);
-    let insertAt = remaining.indexOf(targetId) + 1;
+    const targetSubtree = new Set([targetStepId, ...this.getStepDescendantIds(targetStepId)]);
+    let insertAt = remaining.indexOf(targetStepId) + 1;
     while (insertAt < remaining.length && targetSubtree.has(remaining[insertAt])) insertAt++;
     const movedBlock = order.filter((id) => subtreeIds.has(id));
     remaining.splice(insertAt, 0, ...movedBlock);
     await api.step.reorder({ guideId: this.guideId, order: remaining });
 
     await this.reload(stepId);
-    this.onToast(`“${step.title || 'Untitled step'}” is now a substep of step ${target}.`);
+    this.onToast(`“${step.title || 'Untitled step'}” is now a substep of step ${numbers.get(targetStepId)}.`);
   }
 
   async duplicateSelectedStep() {

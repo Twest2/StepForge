@@ -1825,8 +1825,12 @@ class GuideEditor {
         document.execCommand('formatBlock', false, block || 'blockquote');
         break;
       case 'createLink': {
+        const selectedText = window.getSelection().toString();
+        const text = selectedText || window.prompt('Link text');
+        if (!text) break;
         const url = window.prompt('Link URL');
-        if (url) document.execCommand('createLink', false, url);
+        if (!url) break;
+        document.execCommand('insertText', false, `[${text}](${url})`);
         break;
       }
       case 'removeFormat':

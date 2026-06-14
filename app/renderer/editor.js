@@ -1864,11 +1864,8 @@ class GuideEditor {
       }
       case 'createLink': {
         const selectedText = window.getSelection().toString();
-        const text = selectedText || window.prompt('Link text');
-        if (!text) break;
-        const url = window.prompt('Link URL');
-        if (!url) break;
-        document.execCommand('insertText', false, `[${text}](${url})`);
+        const text = selectedText || 'Text';
+        document.execCommand('insertText', false, `[${text}](Link)`);
         break;
       }
       case 'removeFormat':

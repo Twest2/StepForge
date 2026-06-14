@@ -300,7 +300,7 @@ class GuideEditor {
         el('section', {},
           el('h3', {}, 'Guide'),
           this.dom.guideSummary = el('div.muted', {}),
-          this.dom.linkedBtn = el('button', { type: 'button' }, 'Linked guide'),
+          this.dom.shareBtn = el('button', { type: 'button' }, 'Share as file'),
           this.dom.saveNowBtn = el('button.primary', { type: 'button' }, 'Save now'),
           this.dom.snapshotBtn = el('button', { type: 'button' }, 'Snapshot'),
         ),
@@ -346,7 +346,10 @@ class GuideEditor {
     this.dom.deleteBtn.addEventListener('click', () => this.deleteSelectedStep());
     this.dom.saveNowBtn.addEventListener('click', () => this.saveAll());
     this.dom.snapshotBtn.addEventListener('click', () => this.createSnapshot());
-    this.dom.linkedBtn.addEventListener('click', () => this.openLinkedGuide());
+    this.dom.shareBtn.addEventListener('click', () => {
+      if (this.guide && this.guide.linkedSource) this.openLinkedGuide();
+      else this.shareAsFile();
+    });
     this.dom.zoomFitBtn.addEventListener('click', () => this.setZoom('fit'));
     this.dom.zoom100Btn.addEventListener('click', () => this.setZoom(1));
     this.dom.zoom125Btn.addEventListener('click', () => this.setZoom(1.25));
@@ -1046,8 +1049,11 @@ class GuideEditor {
 
   renderGuidePanel() {
     if (!this.guide) return;
-    this.dom.linkedBtn.textContent = this.guide.linkedSource ? 'Linked guide' : 'Local guide';
-    this.dom.linkedBtn.disabled = !this.guide.linkedSource;
+    const linked = Boolean(this.guide.linkedSource);
+    this.dom.shareBtn.textContent = linked ? 'Linked guide' : 'Share as file';
+    this.dom.shareBtn.title = linked
+      ? 'Manage this guide\'s connection to its shared archive file'
+      : 'Export this guide as a shareable .sfgz archive file';
     this.dom.snapshotBtn.textContent = 'Snapshot';
   }
 

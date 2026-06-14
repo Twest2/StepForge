@@ -514,6 +514,12 @@ kbd {
   border-radius: 10px;
   background: var(--panel-2);
 }
+.rich-editor blockquote {
+  margin: 6px 0;
+  padding: 2px 0 2px 12px;
+  border-left: 3px solid var(--accent);
+  color: var(--muted);
+}
 
 .block-card,
 .annotation-editor-inner {
@@ -523,12 +529,17 @@ kbd {
 }
 .block-card {
   border: 1px solid var(--border);
+  border-left: 4px solid var(--border);
   border-radius: 12px;
   padding: 10px;
   background: var(--panel-solid);
 }
 .block-card[draggable="true"] { cursor: grab; }
 .block-card[draggable="true"]:active { cursor: grabbing; }
+.block-card[data-level="info"] { border-left-color: #3b82f6; }
+.block-card[data-level="success"] { border-left-color: #10b981; }
+.block-card[data-level="warn"] { border-left-color: #f59e0b; }
+.block-card[data-level="error"] { border-left-color: #ef4444; }
 .annotation-list {
   display: flex;
   flex-direction: column;

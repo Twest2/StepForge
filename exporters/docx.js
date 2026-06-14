@@ -18,6 +18,15 @@ const DEFAULT_TEMPLATE = {
   imageWidthTwips: 9000, // ~15.9cm inside A4 margins
 };
 
+// Callout styling per text-block level, matching the colors used in the
+// HTML/PDF exports so a "Tip" looks distinct from a "Warning" at a glance.
+const LEVEL_STYLE = {
+  info: { fill: 'EFF6FF', color: '1D4ED8' }, // blue — Note
+  success: { fill: 'ECFDF5', color: '047857' }, // green — Tip
+  warn: { fill: 'FFFBEB', color: 'B45309' }, // amber — Warning
+  error: { fill: 'FEF2F2', color: 'B91C1C' }, // red — Important
+};
+
 const EMU_PER_PX = 9525; // 96 dpi
 
 function p(children, props = '') {
@@ -117,9 +126,10 @@ function exportDocx(ast, outDir, template = {}) {
   function emitTextBlocks(step, position) {
     for (const tb of stepBlocks(step).filter((b) => b.kind === 'text' && b.position === position)) {
       const label = `${LEVEL_LABEL[tb.level] || 'Note'}${tb.title ? `: ${tb.title}` : ''}`;
+      const style = LEVEL_STYLE[tb.level] || LEVEL_STYLE.info;
       body.push(p(
-        run(label, { bold: true, size: 20 }) + (tb.descriptionText ? run('\n' + tb.descriptionText, { size: 20 }) : ''),
-        '<w:shd w:val="clear" w:fill="F9FAFB"/>'
+        run(label, { bold: true, size: 20, color: style.color }) + (tb.descriptionText ? run('\n' + tb.descriptionText, { size: 20 }) : ''),
+        `<w:shd w:val="clear" w:fill="${style.fill}"/><w:pBdr><w:left w:val="single" w:sz="24" w:space="4" w:color="${style.color}"/></w:pBdr>`
       ));
     }
   }

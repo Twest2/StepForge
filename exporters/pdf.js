@@ -11,6 +11,15 @@ const LIST_INDENT = 14;
 const QUOTE_INDENT = 10;
 const HEADING_BUMP = { h1: 2.5, h2: 2, h3: 1.5, h4: 1 };
 
+// Callout styling per text-block level, matching the colors used in the
+// HTML/editor UI so a "Tip" looks distinct from a "Warning" at a glance.
+const LEVEL_STYLE = {
+  info: { accent: [59, 130, 246], tint: [239, 246, 255] }, // blue — Note
+  success: { accent: [16, 185, 129], tint: [236, 253, 245] }, // green — Tip
+  warn: { accent: [245, 158, 11], tint: [255, 251, 235] }, // amber — Warning
+  error: { accent: [239, 68, 68], tint: [254, 242, 242] }, // red — Important
+};
+
 function fontForRun(run) {
   if (run.code) return 'F3';
   if (run.bold && run.italic) return 'F5';
@@ -258,9 +267,11 @@ function exportPdf(ast, outDir, template = {}) {
         ? layoutDescription(pdf, tb.descriptionHtml, usableW - 18, 9.5)
         : { items: [], height: 0 };
       const blockH = 16 + bodyH;
+      const style = LEVEL_STYLE[tb.level] || LEVEL_STYLE.info;
       ensure(blockH + 4);
-      pdf.rect(M, y, 3, blockH, { fill: tpl.accentColor });
-      pdf.text(label, M + 10, y + 2, { size: 9.5, font: 'F2' });
+      pdf.rect(M, y, usableW, blockH, { fill: style.tint });
+      pdf.rect(M, y, 3, blockH, { fill: style.accent });
+      pdf.text(label, M + 10, y + 2, { size: 9.5, font: 'F2', color: style.accent });
       let by = y + 16;
       for (const item of items) {
         if (item.kind === 'hr') {

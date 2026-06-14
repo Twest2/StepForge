@@ -78,10 +78,14 @@ const BASE_CSS = `
   pre.code { background: #f3f4f6; padding: 12px; border-radius: 6px; overflow-x: auto; }
   table { border-collapse: collapse; margin: .6em 0; }
   th, td { border: 1px solid #d1d5db; padding: 4px 10px; text-align: left; }
-  .block { border-left: 4px solid #9ca3af; background: #f9fafb; padding: 8px 12px; margin: .6em 0; border-radius: 0 6px 6px 0; }
+  .block { border-left: 4px solid #3b82f6; background: #eff6ff; padding: 8px 12px; margin: .6em 0; border-radius: 0 6px 6px 0; }
+  .block strong { color: #1d4ed8; }
   .block-warn { border-color: #f59e0b; background: #fffbeb; }
+  .block-warn strong { color: #b45309; }
   .block-error { border-color: #ef4444; background: #fef2f2; }
+  .block-error strong { color: #b91c1c; }
   .block-success { border-color: #10b981; background: #ecfdf5; }
+  .block-success strong { color: #047857; }
   .skipped { opacity: .55; }
   @media (prefers-color-scheme: dark) {
     body { background: #111827; color: #e5e7eb; }

@@ -119,15 +119,55 @@ function promptDialog(title, { value = '', label = 'Name' } = {}) {
   });
 }
 
-/** Context menu at (x, y); items: [{label, danger, action}] or 'sep'. */
+/**
+ * Context menu at (x, y).
+ * items: [{label, danger, action}] | [{label, submenu}] | 'sep'.
+ * `submenu` is an array (or a function returning one) of the same item
+ * shapes, shown in a scrollable panel beside the item on hover.
+ */
 function contextMenu(x, y, items) {
   document.querySelectorAll('.ctx-menu').forEach((n) => n.remove());
   const menu = el('div.ctx-menu', { style: { left: `${x}px`, top: `${y}px` } });
+  let openSubmenu = null;
+  const closeSubmenu = () => {
+    if (openSubmenu) { openSubmenu.remove(); openSubmenu = null; }
+  };
+  const closeAll = () => { closeSubmenu(); menu.remove(); };
   for (const item of items) {
-    if (item === 'sep') { menu.append(el('hr')); continue; }
+    if (item === 'sep') { menu.append(el('hr', { onMouseEnter: closeSubmenu })); continue; }
+    if (item.submenu) {
+      const mi = el('div.mi.has-submenu', {
+        onMouseEnter: () => {
+          closeSubmenu();
+          const subItems = typeof item.submenu === 'function' ? item.submenu() : item.submenu;
+          const sub = el('div.ctx-menu.ctx-submenu');
+          if (!subItems.length) {
+            sub.append(el('div.mi.disabled', {}, 'Nothing else to choose'));
+          }
+          for (const subItem of subItems) {
+            if (subItem === 'sep') { sub.append(el('hr')); continue; }
+            sub.append(el('div.mi', {
+              className: `mi${subItem.danger ? ' danger' : ''}`,
+              onClick: () => { closeAll(); subItem.action(); },
+            }, subItem.label));
+          }
+          document.body.append(sub);
+          const miRect = mi.getBoundingClientRect();
+          sub.style.left = `${miRect.right + 2}px`;
+          sub.style.top = `${miRect.top}px`;
+          const subRect = sub.getBoundingClientRect();
+          if (subRect.right > innerWidth) sub.style.left = `${Math.max(6, miRect.left - subRect.width - 2)}px`;
+          if (subRect.bottom > innerHeight) sub.style.top = `${Math.max(6, innerHeight - subRect.height - 6)}px`;
+          openSubmenu = sub;
+        },
+      }, el('span', {}, item.label), el('span.submenu-arrow', {}, '›'));
+      menu.append(mi);
+      continue;
+    }
     menu.append(el('div.mi', {
       className: `mi${item.danger ? ' danger' : ''}`,
-      onClick: () => { menu.remove(); item.action(); },
+      onMouseEnter: closeSubmenu,
+      onClick: () => { closeAll(); item.action(); },
     }, item.label));
   }
   document.body.append(menu);
@@ -135,7 +175,7 @@ function contextMenu(x, y, items) {
   if (rect.right > innerWidth) menu.style.left = `${innerWidth - rect.width - 6}px`;
   if (rect.bottom > innerHeight) menu.style.top = `${innerHeight - rect.height - 6}px`;
   setTimeout(() => {
-    document.addEventListener('click', () => menu.remove(), { once: true });
+    document.addEventListener('click', () => closeAll(), { once: true });
   }, 0);
 }
 

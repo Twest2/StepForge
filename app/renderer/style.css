@@ -731,6 +731,25 @@ fieldset legend {
 }
 .ctx-menu .mi:hover { background: var(--panel-2); }
 .ctx-menu .mi.danger { color: var(--danger); }
+.ctx-menu .mi.disabled {
+  color: var(--muted);
+  cursor: default;
+}
+.ctx-menu .mi.disabled:hover { background: none; }
+.ctx-menu .mi.has-submenu {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.ctx-menu .mi .submenu-arrow {
+  color: var(--muted);
+  font-size: 12px;
+}
+.ctx-submenu {
+  max-height: min(360px, calc(100vh - 24px));
+  overflow-y: auto;
+}
 .ctx-menu hr {
   margin: 6px 0;
   border: 0;

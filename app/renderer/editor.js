@@ -1281,13 +1281,19 @@ class GuideEditor {
 
   async selectStep(stepId) {
     if (!this.stepMap.has(stepId)) return;
+    // Persist any unsaved edits on the outgoing step before switching, so a
+    // later guide-wide reload (e.g. applyStyleAcross('guide')) doesn't
+    // discard them by re-fetching a stale on-disk copy.
+    if (this.pendingSave) await this.flushStep();
     this.selectedStepId = stepId;
     this.selectedAnnotationId = null;
     this.canvas.select(null);
     this.syncStepFields();
+    this.syncFocusedControls();
     this.renderStepList();
     this.renderCanvas();
     this.renderAnnotationPanel();
+    this.renderBlocksPanel();
     this.emitMeta();
   }
 

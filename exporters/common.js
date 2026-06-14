@@ -55,6 +55,20 @@ function stepBlocks(step) {
   return step.blocks || orderedBlocks(step);
 }
 
+/**
+ * Split a step's blocks into the groups exporters lay out around the
+ * description/image: text blocks pinned to 'before-description', and
+ * everything else (code/table blocks plus 'after-description' and
+ * 'after-image' text blocks) in the same relative order they appear in the
+ * editor's Blocks list.
+ */
+function stepContentGroups(step) {
+  const all = stepBlocks(step);
+  const before = all.filter((b) => b.kind === 'text' && b.position === 'before-description');
+  const rest = all.filter((b) => !(b.kind === 'text' && b.position === 'before-description'));
+  return { before, rest };
+}
+
 function codeBlockText(block) {
   return blockText(block);
 }
@@ -67,6 +81,7 @@ module.exports = {
   writeStepImages,
   renderAllImages,
   stepBlocks,
+  stepContentGroups,
   codeBlockText,
   LEVEL_LABEL,
 };

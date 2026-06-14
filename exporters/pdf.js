@@ -3,7 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { PdfBuilder } = require('../core/pdf');
-const { guideSlug, renderAllImages, LEVEL_LABEL, stepBlocks, codeBlockText } = require('./common');
+const { guideSlug, renderAllImages, LEVEL_LABEL, stepContentGroups, codeBlockText } = require('./common');
 const { htmlToText } = require('../core/util');
 const { htmlToBlocks } = require('../core/htmlblocks');
 
@@ -207,7 +207,8 @@ function exportPdf(ast, outDir, template = {}) {
     pdf.rect(M, y, usableW, 0.8, { fill: [225, 228, 232] });
     y += 8;
 
-    emitBlocks(step, 'before-description');
+    const { before, rest } = stepContentGroups(step);
+    for (const tb of before) emitBlock(tb);
     if (step.descriptionHtml) writeDescription(step.descriptionHtml);
 
     const img = images.get(step.stepId);
@@ -221,8 +222,10 @@ function exportPdf(ast, outDir, template = {}) {
       y += h + 10;
     }
 
-    for (const block of stepBlocks(step).filter((item) => item.kind !== 'text')) {
-      if (block.kind === 'code') {
+    for (const block of rest) {
+      if (block.kind === 'text') {
+        emitBlock(block);
+      } else if (block.kind === 'code') {
         const lines = String(codeBlockText(block) || '').split('\n');
         const lineH = 9 * 1.3;
         ensure(Math.min(lines.length, 4) * lineH + 12);
@@ -255,45 +258,41 @@ function exportPdf(ast, outDir, template = {}) {
       }
     }
 
-    emitBlocks(step, 'after-description');
-    emitBlocks(step, 'after-image');
     y += 10;
   }
 
-  function emitBlocks(step, position) {
-    for (const tb of stepBlocks(step).filter((b) => b.kind === 'text' && b.position === position)) {
-      const label = `${LEVEL_LABEL[tb.level] || 'Note'}${tb.title ? `: ${tb.title}` : ''}`;
-      const { items, height: bodyH } = tb.descriptionHtml
-        ? layoutDescription(pdf, tb.descriptionHtml, usableW - 18, 9.5)
-        : { items: [], height: 0 };
-      const blockH = 16 + bodyH;
-      const style = LEVEL_STYLE[tb.level] || LEVEL_STYLE.info;
-      ensure(blockH + 4);
-      pdf.rect(M, y, usableW, blockH, { fill: style.tint });
-      pdf.rect(M, y, 3, blockH, { fill: style.accent });
-      pdf.text(label, M + 10, y + 2, { size: 9.5, font: 'F2', color: style.accent });
-      let by = y + 16;
-      for (const item of items) {
-        if (item.kind === 'hr') {
-          pdf.rect(M + 10, by + 5, item.width, 0.8, { fill: [225, 228, 232] });
-          by += 12;
-          continue;
-        }
-        item.lines.forEach((line, idx) => {
-          const textX = M + 10 + item.indent;
-          if (idx === 0 && item.prefix) pdf.text(item.prefix, textX - LIST_INDENT, by, { size: item.size, font: 'F1' });
-          const parts = line.map((word) => ({
-            text: word.text,
-            font: word.font,
-            color: word.href ? tpl.accentColor : (item.muted ? [100, 100, 100] : [0, 0, 0]),
-          }));
-          pdf.textRun(parts, textX, by, item.size);
-          by += item.lineHeight;
-        });
-        by += 4;
+  function emitBlock(tb) {
+    const label = `${LEVEL_LABEL[tb.level] || 'Note'}${tb.title ? `: ${tb.title}` : ''}`;
+    const { items, height: bodyH } = tb.descriptionHtml
+      ? layoutDescription(pdf, tb.descriptionHtml, usableW - 18, 9.5)
+      : { items: [], height: 0 };
+    const blockH = 16 + bodyH;
+    const style = LEVEL_STYLE[tb.level] || LEVEL_STYLE.info;
+    ensure(blockH + 4);
+    pdf.rect(M, y, usableW, blockH, { fill: style.tint });
+    pdf.rect(M, y, 3, blockH, { fill: style.accent });
+    pdf.text(label, M + 10, y + 2, { size: 9.5, font: 'F2', color: style.accent });
+    let by = y + 16;
+    for (const item of items) {
+      if (item.kind === 'hr') {
+        pdf.rect(M + 10, by + 5, item.width, 0.8, { fill: [225, 228, 232] });
+        by += 12;
+        continue;
       }
-      y += blockH + 6;
+      item.lines.forEach((line, idx) => {
+        const textX = M + 10 + item.indent;
+        if (idx === 0 && item.prefix) pdf.text(item.prefix, textX - LIST_INDENT, by, { size: item.size, font: 'F1' });
+        const parts = line.map((word) => ({
+          text: word.text,
+          font: word.font,
+          color: word.href ? tpl.accentColor : (item.muted ? [100, 100, 100] : [0, 0, 0]),
+        }));
+        pdf.textRun(parts, textX, by, item.size);
+        by += item.lineHeight;
+      });
+      by += 4;
     }
+    y += blockH + 6;
   }
 
   fs.mkdirSync(outDir, { recursive: true });

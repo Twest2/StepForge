@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { slugify, escapeXml } = require('../core/util');
 const { encodePng } = require('../core/png');
-const { guideSlug, renderAllImages, stepBlocks, codeBlockText } = require('./common');
+const { guideSlug, renderAllImages, stepContentGroups, codeBlockText } = require('./common');
 
 /**
  * Confluence storage-format export. Writes a single XHTML document plus a
@@ -67,7 +67,8 @@ function exportConfluence(ast, outDir, template = {}) {
     const parts = [`<a id="${anchorFor(step)}"></a>`, `<h2>${escapeXml(step.number)}. ${escapeXml(step.title || 'Untitled step')}</h2>`];
     if (step.skipped) parts.push('<p><em>(skipped)</em></p>');
 
-    for (const tb of stepBlocks(step).filter((block) => block.kind === 'text' && block.position === 'before-description')) {
+    const { before, rest } = stepContentGroups(step);
+    for (const tb of before) {
       parts.push(blockMacro(tb, ast));
     }
 
@@ -80,8 +81,10 @@ function exportConfluence(ast, outDir, template = {}) {
       parts.push(`<p><ac:image><ri:attachment ri:filename="${escapeXml(attachment)}" /></ac:image></p>`);
     }
 
-    for (const block of stepBlocks(step).filter((item) => item.kind !== 'text')) {
-      if (block.kind === 'code') {
+    for (const block of rest) {
+      if (block.kind === 'text') {
+        parts.push(blockMacro(block, ast));
+      } else if (block.kind === 'code') {
         const lang = block.language ? `<ac:parameter ac:name="language">${escapeXml(block.language)}</ac:parameter>` : '';
         parts.push(`<ac:structured-macro ac:name="code">${lang}<ac:plain-text-body>${cdata(codeBlockText(block))}</ac:plain-text-body></ac:structured-macro>`);
       } else if (block.kind === 'table') {
@@ -95,13 +98,6 @@ function exportConfluence(ast, outDir, template = {}) {
         ));
         parts.push(`<table><tbody>${rows.join('')}</tbody></table>`);
       }
-    }
-
-    for (const tb of stepBlocks(step).filter((block) => block.kind === 'text' && block.position === 'after-description')) {
-      parts.push(blockMacro(tb, ast));
-    }
-    for (const tb of stepBlocks(step).filter((block) => block.kind === 'text' && block.position === 'after-image')) {
-      parts.push(blockMacro(tb, ast));
     }
 
     return `<div class="step">${parts.join('\n')}</div>`;

@@ -966,9 +966,18 @@ class GuideEditor {
     if (fields.has('radius')) rows.push(labeledRow('Radius', radiusInput));
     if (fields.has('tail')) rows.push(labeledRow('Tail', tailInput));
     rows.push(
+      el('div.muted', {}, `Copy this style to every other "${selected.type}" annotation:`),
       el('div.row', {},
-        el('button', { type: 'button', title: 'Copy this style to every annotation of the same type in this step', onClick: () => this.applyStyleAcross('step') }, 'Style → step'),
-        el('button', { type: 'button', title: 'Copy this style to every annotation of the same type in the whole guide', onClick: () => this.applyStyleAcross('guide') }, 'Style → guide'),
+        el('button', {
+          type: 'button',
+          title: `Overwrite the style of every "${selected.type}" annotation on this step with the style shown above.`,
+          onClick: () => this.applyStyleAcross('step'),
+        }, 'This step'),
+        el('button', {
+          type: 'button',
+          title: `Overwrite the style of every "${selected.type}" annotation across all steps in this guide with the style shown above.`,
+          onClick: () => this.applyStyleAcross('guide'),
+        }, 'Entire guide'),
       ),
     );
 

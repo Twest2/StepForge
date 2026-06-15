@@ -244,6 +244,27 @@ class GuideStore {
     this.saveGuide(guide);
   }
 
+  /**
+   * Recreate a previously-deleted step, preserving its stepId, and splice it
+   * back into the guide's order. Used to undo step deletion.
+   */
+  restoreStep(guideId, step, images, position) {
+    const guide = this.getGuide(guideId);
+    const restored = normalizeStep(deepClone(step));
+    validateStep(restored);
+    const dir = this.stepDir(guideId, restored.stepId);
+    fs.mkdirSync(dir, { recursive: true });
+    if (restored.image && images) {
+      if (images.original) atomicWriteFileSync(path.join(dir, restored.image.originalPath), images.original);
+      if (images.working) atomicWriteFileSync(path.join(dir, restored.image.workingPath), images.working);
+    }
+    writeJsonSync(path.join(dir, 'step.json'), restored);
+    const at = Number.isInteger(position) ? Math.min(position, guide.stepsOrder.length) : guide.stepsOrder.length;
+    guide.stepsOrder.splice(at, 0, restored.stepId);
+    this.saveGuide(guide);
+    return restored;
+  }
+
   reorderSteps(guideId, newOrder) {
     const guide = this.getGuide(guideId);
     const current = new Set(guide.stepsOrder);

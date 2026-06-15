@@ -962,7 +962,7 @@ class GuideEditor {
           dataset: { annId: ann.id },
           style: { cursor: 'pointer', borderColor: selected ? 'var(--accent)' : '' },
         },
-        el('div.row', {}, el('strong', {}, ann.type), el('span.muted', {}, ann.text || ann.value || '')),
+        el('div.row', {}, el('strong', {}, ANNOTATION_TYPE_LABELS[ann.type] || ann.type), el('span.muted', {}, ann.text || ann.value || '')),
         el('div.muted', {}, `${ann.x.toFixed(3)}, ${ann.y.toFixed(3)} · ${ann.w.toFixed(3)} × ${ann.h.toFixed(3)}`)));
       }
     }
@@ -1013,6 +1013,7 @@ class GuideEditor {
 
     const fields = new Set(ANNOTATION_FIELDS[selected.type] || []);
     const strokeLabel = (selected.type === 'text' || selected.type === 'number') ? 'Color' : 'Stroke';
+    const typeLabel = ANNOTATION_TYPE_LABELS[selected.type] || selected.type;
 
     const rows = [labeledRow('Type', typeSelect)];
     if (fields.has('text')) rows.push(labeledRow('Text', textInput));
@@ -1026,16 +1027,16 @@ class GuideEditor {
     if (fields.has('radius')) rows.push(labeledRow('Radius', radiusInput));
     if (fields.has('tail')) rows.push(labeledRow('Tail', tailInput));
     rows.push(
-      el('div.muted', {}, `Copy this style to every other "${selected.type}" annotation:`),
+      el('div.muted', {}, `Copy this style to every other "${typeLabel}" annotation:`),
       el('div.row', {},
         el('button', {
           type: 'button',
-          title: `Overwrite the style of every "${selected.type}" annotation on this step with the style shown above.`,
+          title: `Overwrite the style of every "${typeLabel}" annotation on this step with the style shown above.`,
           onClick: () => this.applyStyleAcross('step'),
         }, 'This step'),
         el('button', {
           type: 'button',
-          title: `Overwrite the style of every "${selected.type}" annotation across all steps in this guide with the style shown above.`,
+          title: `Overwrite the style of every "${typeLabel}" annotation across all steps in this guide with the style shown above.`,
           onClick: () => this.applyStyleAcross('guide'),
         }, 'Entire guide'),
       ),

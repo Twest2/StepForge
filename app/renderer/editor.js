@@ -24,6 +24,21 @@ const ANNOTATION_FIELDS = {
   cursor: [],
 };
 
+// Display names for annotation types in the "Type" dropdown.
+const ANNOTATION_TYPE_LABELS = {
+  rect: 'Rectangle',
+  oval: 'Oval',
+  line: 'Line',
+  arrow: 'Arrow',
+  text: 'Text',
+  tooltip: 'Tooltip',
+  number: 'Number',
+  blur: 'Blur',
+  highlight: 'Highlight',
+  magnify: 'Magnify',
+  cursor: 'Cursor',
+};
+
 function blockText(block) {
   for (const key of ['code', 'text', 'body', 'value', 'content']) {
     const value = block && block[key];
@@ -962,7 +977,7 @@ class GuideEditor {
     const style = selected.style || {};
     const typeSelect = makeSelect(selected.type, [
       'rect', 'oval', 'line', 'arrow', 'text', 'tooltip', 'number', 'blur', 'highlight', 'magnify', 'cursor',
-    ].map((type) => ({ value: type, label: type })));
+    ].map((type) => ({ value: type, label: ANNOTATION_TYPE_LABELS[type] || type })));
     const textInput = el('input', { type: 'text', value: selected.text || '', placeholder: 'Annotation text' });
     const valueInput = el('input', { type: 'number', value: Number.isFinite(selected.value) ? selected.value : '', placeholder: 'Value' });
     const strokeInput = el('input', { type: 'color', value: style.stroke || '#E5484D' });

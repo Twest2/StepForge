@@ -646,10 +646,11 @@ const SHORTCUTS = [
     ['PageUp / PageDown', 'Previous / next step'],
     ['Alt+↑ / Alt+↓', 'Move step up / down'],
     ['Ctrl+Delete', 'Delete current step'],
+    ['Ctrl+Z / Ctrl+Shift+Z', 'Undo / redo (including step deletion)'],
     ['Ctrl+V', 'Paste annotation, or clipboard image as new step'],
   ]],
   ['Canvas tools', [
-    ['S R O L A T', 'Select · Rect · Oval · Line · Arrow · Text'],
+    ['S R O L A T', 'Select · Rectangle · Oval · Line · Arrow · Text'],
     ['G N B H M U C', 'Tooltip · Number · Blur · Highlight · Magnify · Cursor · Crop'],
     ['Ctrl+C', 'Copy selected annotation'],
     ['Delete', 'Delete selected annotation'],

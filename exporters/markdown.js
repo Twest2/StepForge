@@ -2,7 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { guideSlug, writeStepImages, LEVEL_LABEL, stepBlocks, codeBlockText } = require('./common');
+const { guideSlug, writeStepImages, LEVEL_LABEL, stepContentGroups, codeBlockText } = require('./common');
 const { htmlToMarkdown } = require('./htmlmd');
 
 /**
@@ -45,7 +45,8 @@ function exportMarkdown(ast, outDir, template = {}) {
     lines.push(`${heading} ${step.number}. ${step.title || 'Untitled step'}`, '');
     if (step.skipped) lines.push('*(skipped)*', '');
 
-    emitBlocks(lines, step, 'before-description');
+    const { before, rest } = stepContentGroups(step);
+    for (const tb of before) emitBlock(lines, tb);
 
     if (step.descriptionHtml) lines.push(htmlToMarkdown(step.descriptionHtml), '');
 
@@ -58,8 +59,10 @@ function exportMarkdown(ast, outDir, template = {}) {
       }
     }
 
-    for (const block of stepBlocks(step).filter((item) => item.kind !== 'text')) {
-      if (block.kind === 'code') {
+    for (const block of rest) {
+      if (block.kind === 'text') {
+        emitBlock(lines, block);
+      } else if (block.kind === 'code') {
         lines.push(`\`\`\`${block.language || ''}`, codeBlockText(block), '```', '');
       } else if (block.kind === 'table') {
         if (!block.rows || !block.rows.length) continue;
@@ -71,9 +74,6 @@ function exportMarkdown(ast, outDir, template = {}) {
         lines.push('');
       }
     }
-
-    emitBlocks(lines, step, 'after-description');
-    emitBlocks(lines, step, 'after-image');
   }
 
   const file = path.join(outDir, `${guideSlug(ast)}.md`);
@@ -81,14 +81,16 @@ function exportMarkdown(ast, outDir, template = {}) {
   return { file, imageCount: images.size };
 }
 
-function emitBlocks(lines, step, position) {
-  for (const tb of stepBlocks(step).filter((b) => b.kind === 'text' && b.position === position)) {
-    const label = LEVEL_LABEL[tb.level] || 'Note';
-    lines.push(`> **${label}${tb.title ? `: ${tb.title}` : ''}**`);
-    const body = htmlToMarkdown(tb.descriptionHtml);
-    if (body) lines.push(`> ${body.replace(/\n/g, '\n> ')}`);
-    lines.push('');
-  }
+function emitBlock(lines, tb) {
+  const label = LEVEL_LABEL[tb.level] || 'Note';
+  // GitHub-Flavored Markdown alert syntax — renders with a colored,
+  // icon-labeled box on GitHub/Azure DevOps wikis and several other
+  // viewers; degrades to a plain blockquote elsewhere.
+  lines.push(`> [!${label.toUpperCase()}]`);
+  if (tb.title) lines.push(`> **${tb.title}**`);
+  const body = htmlToMarkdown(tb.descriptionHtml);
+  if (body) lines.push(`> ${body.replace(/\n/g, '\n> ')}`);
+  lines.push('');
 }
 
 module.exports = { exportMarkdown, DEFAULT_TEMPLATE, anchorFor };

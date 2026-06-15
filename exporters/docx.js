@@ -5,7 +5,7 @@ const path = require('node:path');
 const { zipSync } = require('../core/zip');
 const { escapeXml } = require('../core/util');
 const { encodePng } = require('../core/png');
-const { guideSlug, renderAllImages, LEVEL_LABEL, stepBlocks, codeBlockText } = require('./common');
+const { guideSlug, renderAllImages, LEVEL_LABEL, stepContentGroups, codeBlockText } = require('./common');
 
 /**
  * DOCX exporter: WordprocessingML built directly (no dependency), one
@@ -16,6 +16,15 @@ const { guideSlug, renderAllImages, LEVEL_LABEL, stepBlocks, codeBlockText } = r
 const DEFAULT_TEMPLATE = {
   includeImages: true,
   imageWidthTwips: 9000, // ~15.9cm inside A4 margins
+};
+
+// Callout styling per text-block level, matching the colors used in the
+// HTML/PDF exports so a "Tip" looks distinct from a "Warning" at a glance.
+const LEVEL_STYLE = {
+  info: { fill: 'EFF6FF', color: '1D4ED8' }, // blue — Note
+  success: { fill: 'ECFDF5', color: '047857' }, // green — Tip
+  warn: { fill: 'FFFBEB', color: 'B45309' }, // amber — Warning
+  error: { fill: 'FEF2F2', color: 'B91C1C' }, // red — Important
 };
 
 const EMU_PER_PX = 9525; // 96 dpi
@@ -90,7 +99,8 @@ function exportDocx(ast, outDir, template = {}) {
     body.push(p(run(`${step.number}. ${step.title || 'Untitled step'}`, { bold: true, size: headSize }),
       step.forceNewPage ? '<w:pageBreakBefore/>' : ''));
 
-    emitTextBlocks(step, 'before-description');
+    const { before, rest } = stepContentGroups(step);
+    for (const tb of before) emitTextBlock(tb);
     if (step.descriptionText) body.push(p(run(step.descriptionText)));
 
     const img = images.get(step.stepId);
@@ -102,26 +112,25 @@ function exportDocx(ast, outDir, template = {}) {
       body.push(p(drawing(relCounter, img.width, img.height, tpl.imageWidthTwips)));
     }
 
-    for (const block of stepBlocks(step).filter((item) => item.kind !== 'text')) {
-      if (block.kind === 'code') {
+    for (const block of rest) {
+      if (block.kind === 'text') {
+        emitTextBlock(block);
+      } else if (block.kind === 'code') {
         body.push(p(run(codeBlockText(block), { size: 18, font: 'Courier New', color: '1F2937' }),
           '<w:shd w:val="clear" w:fill="F3F4F6"/>'));
       } else if (block.kind === 'table') {
         if (block.rows && block.rows.length) body.push(table(block.rows), p(''));
       }
     }
-    emitTextBlocks(step, 'after-description');
-    emitTextBlocks(step, 'after-image');
   }
 
-  function emitTextBlocks(step, position) {
-    for (const tb of stepBlocks(step).filter((b) => b.kind === 'text' && b.position === position)) {
-      const label = `${LEVEL_LABEL[tb.level] || 'Note'}${tb.title ? `: ${tb.title}` : ''}`;
-      body.push(p(
-        run(label, { bold: true, size: 20 }) + (tb.descriptionText ? run('\n' + tb.descriptionText, { size: 20 }) : ''),
-        '<w:shd w:val="clear" w:fill="F9FAFB"/>'
-      ));
-    }
+  function emitTextBlock(tb) {
+    const label = `${LEVEL_LABEL[tb.level] || 'Note'}${tb.title ? `: ${tb.title}` : ''}`;
+    const style = LEVEL_STYLE[tb.level] || LEVEL_STYLE.info;
+    body.push(p(
+      run(label, { bold: true, size: 20, color: style.color }) + (tb.descriptionText ? run('\n' + tb.descriptionText, { size: 20 }) : ''),
+      `<w:shd w:val="clear" w:fill="${style.fill}"/><w:pBdr><w:left w:val="single" w:sz="24" w:space="4" w:color="${style.color}"/></w:pBdr>`
+    ));
   }
 
   const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>

@@ -419,6 +419,15 @@ function setupIpc() {
     reindex(guideId);
     return true;
   });
+  h('step:restore', ({ guideId, step, originalBase64, workingBase64, position }) => {
+    const images = {
+      original: originalBase64 ? Buffer.from(originalBase64, 'base64') : null,
+      working: workingBase64 ? Buffer.from(workingBase64, 'base64') : null,
+    };
+    const restored = store.restoreStep(guideId, step, images, position);
+    reindex(guideId);
+    return restored;
+  });
   h('steps:reorder', ({ guideId, order }) => store.reorderSteps(guideId, order));
   h('step:imagePath', ({ guideId, stepId, which }) => {
     const p = store.stepImagePath(guideId, stepId, which || 'working');

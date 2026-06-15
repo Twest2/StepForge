@@ -392,13 +392,19 @@ function renderAnnotations(baseImg, annotations = []) {
   return img;
 }
 
-/** Apply focused view (zoom/pan crop, then scale back to original size). */
+/**
+ * Apply focused view (zoom/pan crop, then scale back to original size).
+ * panX/panY are 0..1 fractions of the available pan range, not absolute
+ * image positions: 0 puts the crop at the left/bottom edge, 1 at the
+ * right/top edge, 0.5 centers it. Y is inverted so panY increases upward.
+ */
 function applyFocusedView(img, fv) {
   if (!fv || !fv.enabled || !(fv.zoom > 1)) return img;
   const vw = img.width / fv.zoom, vh = img.height / fv.zoom;
-  const cx = Math.min(Math.max(fv.panX * img.width, vw / 2), img.width - vw / 2);
-  const cy = Math.min(Math.max(fv.panY * img.height, vh / 2), img.height - vh / 2);
-  const region = crop(img, cx - vw / 2, cy - vh / 2, vw, vh);
+  const panX = fv.panX ?? 0.5, panY = fv.panY ?? 0.5;
+  const cropX = panX * (img.width - vw);
+  const cropY = (1 - panY) * (img.height - vh);
+  const region = crop(img, cropX, cropY, vw, vh);
   return resize(region, img.width, img.height);
 }
 

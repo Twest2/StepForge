@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { escapeHtml } = require('../core/util');
 const { encodePng } = require('../core/png');
-const { guideSlug, renderAllImages, LEVEL_LABEL, stepBlocks, codeBlockText } = require('./common');
+const { guideSlug, renderAllImages, LEVEL_LABEL, stepContentGroups, codeBlockText } = require('./common');
 
 /**
  * HTML exporters. Both variants are fully self-contained single files:
@@ -38,34 +38,32 @@ function stepLinkRewrite(html, ast) {
   });
 }
 
-function blocksHtml(step, position) {
-  return stepBlocks(step)
-    .filter((tb) => tb.position === position)
-    .map((tb) => `<div class="block block-${tb.level}"><strong>${escapeHtml(LEVEL_LABEL[tb.level] || 'Note')}${tb.title ? `: ${escapeHtml(tb.title)}` : ''}</strong>${tb.descriptionHtml ? `<div>${tb.descriptionHtml}</div>` : ''}</div>`)
-    .join('\n');
+function blockHtml(tb) {
+  return `<div class="block block-${tb.level}"><strong>${escapeHtml(LEVEL_LABEL[tb.level] || 'Note')}${tb.title ? `: ${escapeHtml(tb.title)}` : ''}</strong>${tb.descriptionHtml ? `<div>${tb.descriptionHtml}</div>` : ''}</div>`;
 }
 
 function stepBodyHtml(step, ast, images, tpl) {
   const parts = [];
-  parts.push(blocksHtml(step, 'before-description'));
+  const { before, rest } = stepContentGroups(step);
+  for (const tb of before) parts.push(blockHtml(tb));
   if (step.descriptionHtml) parts.push(`<div class="desc">${stepLinkRewrite(step.descriptionHtml, ast)}</div>`);
   const img = images.get(step.stepId);
   if (img && tpl.includeImages) {
     parts.push(`<img class="shot" alt="Step ${escapeHtml(step.number)}" src="${dataUri(img)}" width="${img.width}">`);
   }
-  for (const block of stepBlocks(step).filter((item) => item.kind !== 'text')) {
-    if (block.kind === 'code') {
+  for (const block of rest) {
+    if (block.kind === 'text') {
+      parts.push(blockHtml(block));
+    } else if (block.kind === 'code') {
       parts.push(`<pre class="code"><code>${escapeHtml(codeBlockText(block))}</code></pre>`);
     } else if (block.kind === 'table') {
       if (!block.rows || !block.rows.length) continue;
-      const [head, ...rest] = block.rows;
+      const [head, ...bodyRows] = block.rows;
       parts.push('<table><thead><tr>' + head.map((c) => `<th>${escapeHtml(c)}</th>`).join('') + '</tr></thead><tbody>'
-        + rest.map((r) => '<tr>' + r.map((c) => `<td>${escapeHtml(c)}</td>`).join('') + '</tr>').join('')
+        + bodyRows.map((r) => '<tr>' + r.map((c) => `<td>${escapeHtml(c)}</td>`).join('') + '</tr>').join('')
         + '</tbody></table>');
     }
   }
-  parts.push(blocksHtml(step, 'after-description'));
-  parts.push(blocksHtml(step, 'after-image'));
   return parts.filter(Boolean).join('\n');
 }
 
@@ -78,10 +76,14 @@ const BASE_CSS = `
   pre.code { background: #f3f4f6; padding: 12px; border-radius: 6px; overflow-x: auto; }
   table { border-collapse: collapse; margin: .6em 0; }
   th, td { border: 1px solid #d1d5db; padding: 4px 10px; text-align: left; }
-  .block { border-left: 4px solid #9ca3af; background: #f9fafb; padding: 8px 12px; margin: .6em 0; border-radius: 0 6px 6px 0; }
+  .block { border-left: 4px solid #3b82f6; background: #eff6ff; padding: 8px 12px; margin: .6em 0; border-radius: 0 6px 6px 0; }
+  .block strong { color: #1d4ed8; }
   .block-warn { border-color: #f59e0b; background: #fffbeb; }
+  .block-warn strong { color: #b45309; }
   .block-error { border-color: #ef4444; background: #fef2f2; }
+  .block-error strong { color: #b91c1c; }
   .block-success { border-color: #10b981; background: #ecfdf5; }
+  .block-success strong { color: #047857; }
   .skipped { opacity: .55; }
   @media (prefers-color-scheme: dark) {
     body { background: #111827; color: #e5e7eb; }

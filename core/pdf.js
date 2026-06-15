@@ -9,19 +9,41 @@ const zlib = require('node:zlib');
  * points; converted to PDF's bottom-left space internally.
  */
 
-const FONTS = { F1: 'Helvetica', F2: 'Helvetica-Bold', F3: 'Courier' };
+const FONTS = { F1: 'Helvetica', F2: 'Helvetica-Bold', F3: 'Courier', F4: 'Helvetica-Oblique', F5: 'Helvetica-BoldOblique' };
 // Approximate average glyph width factors (per 1pt font size) for wrapping.
-const FONT_WIDTH_FACTOR = { F1: 0.51, F2: 0.55, F3: 0.6 };
+const FONT_WIDTH_FACTOR = { F1: 0.51, F2: 0.55, F3: 0.6, F4: 0.51, F5: 0.55 };
 
 function esc(text) {
   return String(text).replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
 }
 
+// "Smart typography" characters commonly produced by rich-text editors and
+// pasted content (e.g. from Word/Google Docs) that have a printable glyph in
+// WinAnsiEncoding (cp1252) outside the Latin-1 range; map to that byte
+// instead of falling back to "?".
+const WINANSI_EXTRA = {
+  0x20ac: 0x80, // €
+  0x2026: 0x85, // … ellipsis
+  0x2030: 0x89, // ‰
+  0x2039: 0x8b, // ‹
+  0x203a: 0x9b, // ›
+  0x2018: 0x91, // ' left single quote
+  0x2019: 0x92, // ' right single quote
+  0x201c: 0x93, // " left double quote
+  0x201d: 0x94, // " right double quote
+  0x2022: 0x95, // • bullet
+  0x2013: 0x96, // – en dash
+  0x2014: 0x97, // — em dash
+  0x2122: 0x99, // ™
+};
+
 function toLatin1(text) {
   let out = '';
   for (const ch of String(text)) {
     const code = ch.codePointAt(0);
-    out += code <= 0xff ? ch : '?';
+    if (code <= 0xff) out += ch;
+    else if (WINANSI_EXTRA[code] !== undefined) out += String.fromCharCode(WINANSI_EXTRA[code]);
+    else out += '?';
   }
   return out;
 }
@@ -73,9 +95,40 @@ class PdfBuilder {
 
   text(str, x, yTop, { size = 11, font = 'F1', color = [0, 0, 0] } = {}) {
     const y = this.pageHeight - yTop - size;
+    // Tabs have no glyph in WinAnsiEncoding and render as "?"; expand to spaces.
+    const clean = String(str).replace(/\t/g, '    ');
     this.currentPage.ops.push(
-      `BT /${font} ${size} Tf ${col(color)} rg 1 0 0 1 ${x.toFixed(2)} ${y.toFixed(2)} Tm (${esc(toLatin1(str))}) Tj ET`
+      `BT /${font} ${size} Tf ${col(color)} rg 1 0 0 1 ${x.toFixed(2)} ${y.toFixed(2)} Tm (${esc(toLatin1(clean))}) Tj ET`
     );
+  }
+
+  /**
+   * Render a line made of mixed-font/color segments (e.g. bold/italic runs)
+   * as one continuous text object: consecutive Tj operators without an
+   * intervening Tm advance the cursor by each font's real glyph widths, so
+   * spacing matches the viewer's metrics exactly (unlike our approximate
+   * textWidth(), which is only used for word-wrap decisions).
+   */
+  textRun(parts, x, yTop, size) {
+    const y = this.pageHeight - yTop - size;
+    const ops = [`BT 1 0 0 1 ${x.toFixed(2)} ${y.toFixed(2)} Tm`];
+    let curFont = null;
+    let curColor = null;
+    for (const part of parts) {
+      if (!part.text) continue;
+      if (part.font !== curFont) {
+        ops.push(`/${part.font} ${size} Tf`);
+        curFont = part.font;
+      }
+      if (!curColor || part.color[0] !== curColor[0] || part.color[1] !== curColor[1] || part.color[2] !== curColor[2]) {
+        ops.push(`${col(part.color)} rg`);
+        curColor = part.color;
+      }
+      const clean = String(part.text).replace(/\t/g, '    ');
+      ops.push(`(${esc(toLatin1(clean))}) Tj`);
+    }
+    ops.push('ET');
+    this.currentPage.ops.push(ops.join(' '));
   }
 
   rect(x, yTop, w, h, { fill = null, stroke = null, lineWidth = 1 } = {}) {

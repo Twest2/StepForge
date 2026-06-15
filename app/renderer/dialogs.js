@@ -413,28 +413,43 @@ function showExportDialog({
       outDir: outDirInput.value.trim() || null,
     });
 
+    const cancelBtn = el('button', { onClick: () => { close(); resolve(false); } }, 'Cancel');
+    const previewBtn = el('button', {
+      onClick: async () => {
+        if (typeof onPreview !== 'function') return;
+        setButtonLoading(previewBtn, true, 'Preview…');
+        try {
+          await onPreview(payload()); // keep dialog open so settings can be tweaked
+        } finally {
+          setButtonLoading(previewBtn, false);
+        }
+      },
+    }, 'Preview');
+    const exportBtn = el('button.primary', {
+      onClick: async () => {
+        if (typeof onExport !== 'function') return;
+        cancelBtn.disabled = true;
+        previewBtn.disabled = true;
+        setButtonLoading(exportBtn, true, 'Exporting…');
+        try {
+          const ok = await onExport(payload());
+          if (ok !== false) {
+            close();
+            resolve(true);
+            return;
+          }
+        } finally {
+          cancelBtn.disabled = false;
+          previewBtn.disabled = false;
+          setButtonLoading(exportBtn, false);
+        }
+      },
+    }, 'Export');
+
     const { close } = openModal({
       title: 'Export',
       body,
-      footer: [
-        el('button', { onClick: () => { close(); resolve(false); } }, 'Cancel'),
-        el('button', {
-          onClick: async () => {
-            if (typeof onPreview !== 'function') return;
-            await onPreview(payload()); // keep dialog open so settings can be tweaked
-          },
-        }, 'Preview'),
-        el('button.primary', {
-          onClick: async () => {
-            if (typeof onExport !== 'function') return;
-            const ok = await onExport(payload());
-            if (ok !== false) {
-              close();
-              resolve(true);
-            }
-          },
-        }, 'Export'),
-      ],
+      footer: [cancelBtn, previewBtn, exportBtn],
       wide: true,
       onClose: () => resolve(false),
     });
@@ -639,6 +654,53 @@ function showPlaceholdersDialog({ title = 'Placeholders', hint = '', values = {}
   });
 }
 
+/**
+ * Optional document metadata (author, co-authors, organization, description)
+ * shown at the top of the guide, below the title, and surfaced on the PDF
+ * cover page and the top of other export formats.
+ */
+function showGuideInfoDialog({ values = {}, onSave } = {}) {
+  return new Promise((resolve) => {
+    const authorInput = makeInput(values.author || '', 'text', { placeholder: 'e.g. Jane Doe' });
+    const coAuthorsInput = makeInput(values.coAuthors || '', 'text', { placeholder: 'e.g. Alex Lee, Sam Patel' });
+    const organizationInput = makeInput(values.organization || '', 'text', { placeholder: 'e.g. Acme Corp' });
+    const descriptionInput = el('textarea', {
+      rows: 4,
+      placeholder: 'A short summary of this guide.',
+    }, values.description || '');
+
+    const { close } = openModal({
+      title: 'Guide information',
+      body: el('div', {},
+        el('div.muted', { style: { marginBottom: '10px' } },
+          'All fields are optional. They appear below the title on the guide and on the PDF cover page.'),
+        labeledRow('Author', authorInput),
+        labeledRow('Co-authors', coAuthorsInput),
+        labeledRow('Organization', organizationInput),
+        labeledRow('Description', descriptionInput, { stacked: true }),
+        el('div.muted', { style: { marginTop: '-4px' } },
+          'Shown on the first page of the PDF and at the top of other export formats.'),
+      ),
+      footer: [
+        el('button', { onClick: () => { close(); resolve(false); } }, 'Cancel'),
+        el('button.primary', {
+          onClick: async () => {
+            await onSave?.({
+              author: authorInput.value.trim(),
+              coAuthors: coAuthorsInput.value.trim(),
+              organization: organizationInput.value.trim(),
+              description: descriptionInput.value.trim(),
+            });
+            close();
+            resolve(true);
+          },
+        }, 'Save'),
+      ],
+      onClose: () => resolve(false),
+    });
+  });
+}
+
 const SHORTCUTS = [
   ['Capture & steps', [
     ['Ctrl+S', 'Save (writes linked archive when guide is linked)'],
@@ -727,6 +789,7 @@ window.StepForgeDialogs = {
   showInfoDialog,
   showBackupsDialog,
   showPlaceholdersDialog,
+  showGuideInfoDialog,
   showShortcutsDialog,
   showTemplateManager,
   showRecordingReminder,

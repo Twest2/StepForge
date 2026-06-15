@@ -87,6 +87,16 @@ function stepNumberMap(steps) {
   return numbers;
 }
 
+function stepDepth(step, stepMap) {
+  let depth = 0;
+  let parent = step.parentStepId;
+  while (parent && stepMap.has(parent)) {
+    depth += 1;
+    parent = stepMap.get(parent).parentStepId;
+  }
+  return depth;
+}
+
 function isEditableTarget(target) {
   return target && (
     target.tagName === 'INPUT' ||
@@ -761,15 +771,10 @@ class GuideEditor {
     this.dom.selectStepsBtn.className = this.stepSelectMode ? 'primary' : '';
     for (const step of this.steps) {
       const number = numbers.get(step.stepId) || '';
-      let depth = 0;
-      let parent = step.parentStepId;
-      while (parent && this.stepMap.has(parent)) {
-        depth += 1;
-        parent = this.stepMap.get(parent).parentStepId;
-      }
+      const depth = stepDepth(step, this.stepMap);
       const selected = current && current.stepId === step.stepId;
       const checked = this.selectedSteps.has(step.stepId);
-      const item = el('div.step-item', {
+      const itemProps = {
         className: `step-item${selected ? ' selected' : ''}${depth ? ' sub' : ''}${step.skipped ? ' skipped' : ''}${step.hidden ? ' hiddenstep' : ''}`,
         dataset: { stepId: step.stepId },
         onClick: () => {
@@ -802,23 +807,26 @@ class GuideEditor {
             { label: 'Delete step', danger: true, action: () => this.deleteSelectedStep() },
           ]);
         },
-      },
-      this.stepSelectMode
-        ? el('input', {
-          type: 'checkbox',
-          checked,
-          onClick: (e) => e.stopPropagation(),
-          onChange: () => this.toggleStepSelection(step.stepId),
-        })
-        : null,
-      el('span.status-dot', { className: `status-dot status-${step.status}` }),
-      el('span.num', {}, number || '•'),
-      el('span.t', {}, step.title || 'Untitled step'),
-      el('span.flags', {}, [
-        step.parentStepId ? 'sub' : '',
-        step.hidden ? 'hidden' : '',
-        step.skipped ? 'skipped' : '',
-      ].filter(Boolean).join(' · ')));
+      };
+      if (depth) itemProps.style = { marginLeft: `${depth * 18}px` };
+      const item = el('div.step-item', itemProps,
+        this.stepSelectMode
+          ? el('input', {
+            type: 'checkbox',
+            checked,
+            onClick: (e) => e.stopPropagation(),
+            onChange: () => this.toggleStepSelection(step.stepId),
+          })
+          : null,
+        el('span.status-dot', { className: `status-dot status-${step.status}` }),
+        el('span.num', {}, number || '•'),
+        el('span.t', {}, step.title || 'Untitled step'),
+        el('span.flags', {}, [
+          step.parentStepId ? 'sub' : '',
+          step.hidden ? 'hidden' : '',
+          step.skipped ? 'skipped' : '',
+        ].filter(Boolean).join(' · ')),
+      );
       this.dom.stepsList.append(item);
     }
     if (!this.steps.length) {
@@ -1571,6 +1579,22 @@ class GuideEditor {
     });
   }
 
+  async openGuideInfo() {
+    if (!this.guide) return;
+    await dialogs.showGuideInfoDialog({
+      values: {
+        ...this.guide.metadata,
+        description: htmlToPlainText(this.guide.descriptionHtml || ''),
+      },
+      onSave: async ({ description, ...metadata }) => {
+        this.guide.metadata = metadata;
+        this.guide.descriptionHtml = textToHtml(description);
+        await api.guide.save({ guide: this.guide });
+        this.onToast('Guide information saved.');
+      },
+    });
+  }
+
   openShortcutsHelp() {
     dialogs.showShortcutsDialog();
   }
@@ -1642,7 +1666,11 @@ class GuideEditor {
   }
 
   async openExportDialog() {
-    const formats = (await api.export.formats()).map((id) => ({ id, label: id.replace(/-/g, ' ') }));
+    const formats = (await api.export.formats()).map((format) => (
+      typeof format === 'string'
+        ? { id: format, label: format.replace(/-/g, ' ') }
+        : format
+    ));
     const templatesByFormat = {};
     for (const format of formats) {
       templatesByFormat[format.id] = await api.templates.list({ format: format.id });

@@ -81,6 +81,7 @@ guide.json + step.json + settings
         ▼                     hidden/skipped, focused-view geometry)
    Render AST  ──► exporters/json.js        .json + steps-<title>/ images
                ──► exporters/markdown.js    .md  + steps-<title>/ images
+               ──► exporters/wikijs.js      .md  + steps-<title>/ images
                ──► exporters/html-simple.js single self-contained .html
                ──► exporters/html-rich.js   checkboxes + floating TOC
                ──► exporters/pdf.js         native PDF writer (core/pdf.js)

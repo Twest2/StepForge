@@ -3,6 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { guideSlug, writeStepImages } = require('./common');
+const { tocEntries, guideSummary } = require('./document-layout');
 const raster = require('../core/raster');
 const { decodePng, encodePng } = require('../core/png');
 
@@ -39,7 +40,8 @@ function exportImageBundle(ast, outDir, template = {}) {
   const meta = {
     format: 'stepforge-image-bundle',
     version: 1,
-    guide: { title: ast.guide.title, generatedAt: ast.generatedAt },
+    guide: { title: ast.guide.title, generatedAt: ast.generatedAt, summary: guideSummary(ast) },
+    toc: tocEntries(ast).map(({ number, title, depth, anchor }) => ({ number, title, depth, anchor })),
     steps: ast.steps.map((step) => ({
       number: step.number,
       title: step.title,

@@ -97,7 +97,7 @@ Host: ${process.platform} ${process.arch} (node ${process.version})
 - Portable tarball: ${files.find((f) => f.path.endsWith('.tar.gz'))?.path || 'not generated'}
 - Debian package: ${files.find((f) => f.path.endsWith('.deb'))?.path || 'not generated'}
 - Sample guide archive: ${files.find((f) => f.path.endsWith('sample-guide.sfgz'))?.path || 'not generated'}
-- Sample exports (9 formats): see examples/sample-exports/
+- Sample exports (10 formats): see examples/sample-exports/
 - Full artifact list with sha256 checksums: artifacts_manifest.json
 
 ## Packaging tool availability

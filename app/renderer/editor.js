@@ -1571,6 +1571,18 @@ class GuideEditor {
     });
   }
 
+  async openGuideInfo() {
+    if (!this.guide) return;
+    await dialogs.showGuideInfoDialog({
+      values: this.guide.metadata || {},
+      onSave: async (metadata) => {
+        this.guide.metadata = metadata;
+        await api.guide.save({ guide: this.guide });
+        this.onToast('Guide information saved.');
+      },
+    });
+  }
+
   openShortcutsHelp() {
     dialogs.showShortcutsDialog();
   }

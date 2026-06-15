@@ -34,6 +34,12 @@ function createGuide(fields = {}) {
     title: fields.title || 'Untitled guide',
     descriptionHtml: sanitizeHtml(fields.descriptionHtml || ''),
     placeholders: { ...(fields.placeholders || {}) },
+    metadata: {
+      author: '',
+      coAuthors: '',
+      organization: '',
+      ...(fields.metadata || {}),
+    },
     flags: {
       focusedViewDefault: false,
       hideSkippedStepsInExports: true,
@@ -149,6 +155,7 @@ function validateGuide(guide) {
   if (!Array.isArray(guide.stepsOrder)) errors.push('stepsOrder must be an array');
   else if (new Set(guide.stepsOrder).size !== guide.stepsOrder.length) errors.push('stepsOrder has duplicates');
   if (guide.placeholders && typeof guide.placeholders !== 'object') errors.push('placeholders must be an object');
+  if (guide.metadata && typeof guide.metadata !== 'object') errors.push('metadata must be an object');
   if (errors.length) throw new Error(`invalid guide: ${errors.join('; ')}`);
   return guide;
 }

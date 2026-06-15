@@ -44,6 +44,33 @@ test('render AST: numbering, placeholder expansion, hidden/skipped filtering', (
   assert.deepEqual([img.data[p], img.data[p + 1], img.data[p + 2]], [255, 0, 0]);
 });
 
+test('render AST: guide metadata defaults to empty strings and expands placeholders', (t) => {
+  const root = makeTmpDir('astmeta');
+  t.after(() => rmrf(root));
+  const { store, guide: bare } = buildFixtureGuide(path.join(root, 'data'));
+
+  // Fixture guide has no metadata set: all fields default to ''.
+  const noMeta = buildRenderAst(store, bare.guideId);
+  assert.deepEqual(noMeta.guide.metadata, { author: '', coAuthors: '', organization: '' });
+
+  // Set metadata with placeholders and re-check expansion against guide + global scope.
+  const guide = store.getGuide(bare.guideId);
+  guide.metadata = {
+    author: '[[Author]]',
+    coAuthors: 'Alex Lee, [[CoAuthor]]',
+    organization: '[[Org]]',
+  };
+  store.saveGuide(guide);
+
+  const ast = buildRenderAst(store, guide.guideId, { globals: { CoAuthor: 'Sam Patel', Org: 'GlobalOrg' } });
+  // Guide-level placeholder (Author -> Casey) wins over global; CoAuthor/Org fall back to globals.
+  assert.deepEqual(ast.guide.metadata, {
+    author: 'Casey',
+    coAuthors: 'Alex Lee, Sam Patel',
+    organization: 'GlobalOrg',
+  });
+});
+
 test('JSON export produces a parseable document with real image files', (t) => {
   const root = makeTmpDir('expjson');
   t.after(() => rmrf(root));

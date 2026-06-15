@@ -4,8 +4,10 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const zlib = require('node:zlib');
 const { execFileSync } = require('node:child_process');
 
+const { GuideStore } = require('../../core/store');
 const { buildRenderAst } = require('../../core/renderast');
 const { exportPdf } = require('../../exporters/pdf');
 const { exportGifGuide } = require('../../exporters/gif');
@@ -23,6 +25,34 @@ const { makeTmpDir, rmrf } = require('./helpers');
 
 function hasTool(cmd) {
   try { execFileSync('which', [cmd], { stdio: 'pipe' }); return true; } catch { return false; }
+}
+
+/** Inflate each page's content stream, in page order, for op-level assertions. */
+function pageContents(buf) {
+  const text = buf.toString('latin1');
+  const out = [];
+  const re = /\d+ 0 obj\n<< \/Filter \/FlateDecode \/Length (\d+) >>\nstream\n/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const len = Number(m[1]);
+    const start = m.index + m[0].length;
+    out.push(zlib.inflateSync(buf.subarray(start, start + len)).toString('latin1'));
+  }
+  return out;
+}
+
+/** Map each step bookmark's title to the 0-based page index it lands on. */
+function bookmarkPages(buf) {
+  const text = buf.toString('latin1');
+  const kids = [...text.match(/\/Type \/Pages \/Kids \[([^\]]+)\]/)[1].matchAll(/(\d+) 0 R/g)]
+    .map((m) => Number(m[1]));
+  const pageIndexOf = new Map(kids.map((id, i) => [id, i]));
+  const out = [];
+  for (const m of text.matchAll(/\/Title \(([^)]*)\)([^>]*)/g)) {
+    const dest = /\/Dest \[(\d+) 0 R/.exec(m[2]);
+    if (dest) out.push({ title: m[1], pageIndex: pageIndexOf.get(Number(dest[1])) });
+  }
+  return out;
 }
 
 /** Tiny XML well-formedness check: balanced tags, single root. */
@@ -78,6 +108,82 @@ test('PDF renders under Ghostscript end-to-end', { skip: !hasTool('gs') }, (t) =
   const { file, pageCount } = exportPdf(ast, path.join(root, 'out'));
   const out = execFileSync('gs', ['-dBATCH', '-dNOPAUSE', '-sDEVICE=nullpage', file], { stdio: 'pipe' }).toString();
   assert.match(out, new RegExp(`Processing pages 1 through ${pageCount}`));
+});
+
+test('PDF cover: title in big text above the accent rule, guide metadata below it', (t) => {
+  const root = makeTmpDir('pdfcover');
+  t.after(() => rmrf(root));
+  const { store, guide: bare } = buildFixtureGuide(path.join(root, 'data'));
+
+  // No metadata set: cover has no Author/Co-authors/Organization lines.
+  const astNoMeta = buildRenderAst(store, bare.guideId);
+  const { file: fileNoMeta } = exportPdf(astNoMeta, path.join(root, 'out1'));
+  const coverNoMeta = pageContents(fs.readFileSync(fileNoMeta))[0];
+  assert.ok(!coverNoMeta.includes('Author:'));
+  assert.ok(!coverNoMeta.includes('Co-authors:'));
+  assert.ok(!coverNoMeta.includes('Organization:'));
+
+  // Set guide metadata, then re-export.
+  const guide = store.getGuide(bare.guideId);
+  guide.metadata = { author: 'Jane Doe', coAuthors: 'Alex Lee', organization: 'Acme Corp' };
+  store.saveGuide(guide);
+  const ast = buildRenderAst(store, guide.guideId);
+  const { file } = exportPdf(ast, path.join(root, 'out2'));
+  const cover = pageContents(fs.readFileSync(file))[0];
+
+  assert.ok(cover.includes('Author: Jane Doe'));
+  assert.ok(cover.includes('Co-authors: Alex Lee'));
+  assert.ok(cover.includes('Organization: Acme Corp'));
+
+  // Title (28pt, F2) sits above the accent rule (a 3pt-tall filled rect),
+  // which sits above the metadata lines (11pt, F1). PDF y increases
+  // upward, so items higher on the page have larger y values.
+  const titleY = Number(/\/F2 28 Tf [\d.]+ [\d.]+ [\d.]+ rg 1 0 0 1 [\d.]+ ([\d.]+) Tm \(Configure AcmeSync backups\) Tj/.exec(cover)[1]);
+  const ruleY = Number(/[\d.]+ [\d.]+ [\d.]+ rg ([\d.]+) ([\d.]+) [\d.]+ 3\.00 re f/.exec(cover)[2]);
+  const authorY = Number(/\/F1 11 Tf [\d.]+ [\d.]+ [\d.]+ rg 1 0 0 1 [\d.]+ ([\d.]+) Tm \(Author: Jane Doe\) Tj/.exec(cover)[1]);
+  assert.ok(titleY > ruleY, 'title sits above the accent rule');
+  assert.ok(ruleY > authorY, 'metadata sits below the accent rule');
+});
+
+test('PDF pagination: short steps pack onto a page; a step that does not fit moves to a fresh page', (t) => {
+  const root = makeTmpDir('pdfpage');
+  t.after(() => rmrf(root));
+  const store = new GuideStore(path.join(root, 'data'));
+  const guide = store.createGuide({ title: 'Pagination test' });
+  const filler = (n) => `<p>${'Lorem ipsum dolor sit amet consectetur. '.repeat(n)}</p>`;
+  store.addStep(guide.guideId, { kind: 'empty', title: 'Step A', descriptionHtml: '<p>Short content A.</p>' });
+  store.addStep(guide.guideId, { kind: 'empty', title: 'Step B', descriptionHtml: '<p>Short content B.</p>' });
+  // Doesn't fit in what's left of page 1, but fits comfortably on its own
+  // page — with enough room left for step D to pack onto that same page.
+  store.addStep(guide.guideId, { kind: 'empty', title: 'Step C', descriptionHtml: filler(95) });
+  store.addStep(guide.guideId, { kind: 'empty', title: 'Step D', descriptionHtml: '<p>Short content D.</p>' });
+  const ast = buildRenderAst(store, guide.guideId);
+  const { file, pageCount } = exportPdf(ast, path.join(root, 'out'), { includeCover: false, includeToc: false });
+  const pages = bookmarkPages(fs.readFileSync(file));
+
+  assert.deepEqual(pages.map((p) => p.pageIndex), [0, 0, 1, 1]);
+  assert.equal(pageCount, 2);
+});
+
+test('PDF pagination: a step longer than one page starts fresh and overflows; the next step starts on a new page', (t) => {
+  const root = makeTmpDir('pdfpage2');
+  t.after(() => rmrf(root));
+  const store = new GuideStore(path.join(root, 'data'));
+  const guide = store.createGuide({ title: 'Pagination overflow test' });
+  const filler = (n) => `<p>${'Lorem ipsum dolor sit amet consectetur. '.repeat(n)}</p>`;
+  store.addStep(guide.guideId, { kind: 'empty', title: 'Step A', descriptionHtml: '<p>Short content A.</p>' });
+  store.addStep(guide.guideId, { kind: 'empty', title: 'Step B', descriptionHtml: '<p>Short content B.</p>' });
+  // Longer than a full page: starts on its own page and overflows onto the next.
+  store.addStep(guide.guideId, { kind: 'empty', title: 'Step C', descriptionHtml: filler(120) });
+  store.addStep(guide.guideId, { kind: 'empty', title: 'Step D', descriptionHtml: '<p>Short content D.</p>' });
+  const ast = buildRenderAst(store, guide.guideId);
+  const { file, pageCount } = exportPdf(ast, path.join(root, 'out'), { includeCover: false, includeToc: false });
+  const pages = bookmarkPages(fs.readFileSync(file));
+
+  // A and B pack onto page 0; C starts fresh on page 1 and overflows onto
+  // page 2; D is forced onto a fresh page 3 rather than sharing C's spillover.
+  assert.deepEqual(pages.map((p) => p.pageIndex), [0, 0, 1, 3]);
+  assert.equal(pageCount, 4);
 });
 
 test('GIF export: title card + one frame per image step, valid animation', (t) => {

@@ -189,7 +189,7 @@ class GuideEditor {
     this.root.innerHTML = '';
     const toolButtons = [
       ['select', 'Select'],
-      ['rect', 'Rect'],
+      ['rect', 'Rectangle'],
       ['oval', 'Oval'],
       ['line', 'Line'],
       ['arrow', 'Arrow'],

@@ -24,6 +24,151 @@ function makeSelect(value, options) {
   );
 }
 
+const HOTKEY_LABELS = {
+  CommandOrControl: 'Ctrl',
+  Control: 'Ctrl',
+  Command: 'Cmd',
+  Alt: 'Alt',
+  Shift: 'Shift',
+  Super: 'Super',
+  Up: '↑',
+  Down: '↓',
+  Left: '←',
+  Right: '→',
+  Space: 'Space',
+  Escape: 'Esc',
+  Return: 'Enter',
+};
+
+function hotkeyLabel(part) {
+  return HOTKEY_LABELS[part] || part;
+}
+
+/** Turn a keydown event into accelerator parts, or null if it's a bare modifier. */
+function hotkeyFromEvent(e) {
+  const modifiers = [];
+  if (e.ctrlKey || e.metaKey) modifiers.push('CommandOrControl');
+  if (e.altKey) modifiers.push('Alt');
+  if (e.shiftKey) modifiers.push('Shift');
+
+  const { key } = e;
+  if (key === 'Control' || key === 'Meta' || key === 'Alt' || key === 'Shift') {
+    return { modifiers, key: null };
+  }
+
+  const SPECIAL_KEYS = {
+    ' ': 'Space',
+    ArrowUp: 'Up',
+    ArrowDown: 'Down',
+    ArrowLeft: 'Left',
+    ArrowRight: 'Right',
+    Escape: 'Escape',
+    Enter: 'Return',
+    Tab: 'Tab',
+    Backspace: 'Backspace',
+    Delete: 'Delete',
+  };
+
+  let keyName = SPECIAL_KEYS[key];
+  if (!keyName) {
+    if (/^[a-zA-Z0-9]$/.test(key)) keyName = key.toUpperCase();
+    else if (/^F([1-9]|1[0-9]|2[0-4])$/.test(key)) keyName = key;
+    else return { modifiers, key: null };
+  }
+  return { modifiers, key: keyName };
+}
+
+/**
+ * A "press to record" shortcut field, styled like a row of keycaps. Exposes
+ * a `.value` getter/setter holding an Electron accelerator string (e.g.
+ * "CommandOrControl+Shift+1"), so it slots in like a text input.
+ */
+function makeHotkeyInput(value = '') {
+  let current = value || '';
+
+  const keys = el('div.hotkey-keys');
+  const clearBtn = el('button.hotkey-clear', {
+    type: 'button',
+    title: 'Clear shortcut',
+    onClick: (e) => {
+      e.stopPropagation();
+      current = '';
+      render();
+    },
+  }, '×');
+
+  const wrap = el('div.hotkey-input', { tabindex: '0', role: 'button', title: 'Click, then press a key combination' },
+    keys, clearBtn);
+
+  function renderKeys(parts) {
+    keys.replaceChildren();
+    parts.forEach((part, i) => {
+      if (i > 0) keys.append(el('span.hotkey-sep', {}, '+'));
+      keys.append(el('kbd', {}, hotkeyLabel(part)));
+    });
+  }
+
+  function render() {
+    if (wrap.classList.contains('recording')) {
+      keys.replaceChildren(el('span.hotkey-placeholder', {}, 'Press a key combination…'));
+      clearBtn.hidden = true;
+      return;
+    }
+    if (!current) {
+      keys.replaceChildren(el('span.hotkey-placeholder', {}, 'Click to set shortcut'));
+      clearBtn.hidden = true;
+      return;
+    }
+    renderKeys(current.split('+').filter(Boolean));
+    clearBtn.hidden = false;
+  }
+
+  // While recording, a window-level capturing listener intercepts keydown
+  // before the modal's own Escape handler can see it (capture order is
+  // window -> document -> ... -> target), so Escape cancels recording
+  // instead of closing the whole dialog.
+  let recordingKeyHandler = null;
+
+  wrap.addEventListener('focus', () => {
+    wrap.classList.add('recording');
+    render();
+    recordingKeyHandler = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.key === 'Escape') {
+        wrap.blur();
+        return;
+      }
+      const { modifiers, key } = hotkeyFromEvent(e);
+      if (key) {
+        current = [...modifiers, key].join('+');
+        wrap.blur();
+      } else if (modifiers.length) {
+        renderKeys([...modifiers, '…']);
+      } else {
+        render();
+      }
+    };
+    window.addEventListener('keydown', recordingKeyHandler, true);
+  });
+  wrap.addEventListener('blur', () => {
+    wrap.classList.remove('recording');
+    if (recordingKeyHandler) {
+      window.removeEventListener('keydown', recordingKeyHandler, true);
+      recordingKeyHandler = null;
+    }
+    render();
+  });
+
+  Object.defineProperty(wrap, 'value', {
+    get() { return current; },
+    set(v) { current = v || ''; render(); },
+  });
+
+  render();
+  return wrap;
+}
+
 async function promptText({ title, label = 'Value', value = '', placeholder = '', multiline = false } = {}) {
   return new Promise((resolve) => {
     const field = multiline
@@ -160,8 +305,8 @@ function showSettingsDialog({
       { value: 'region', label: 'Region' },
     ]);
     const clickMarker = el('input', { type: 'checkbox', checked: Boolean(settings.capture?.clickMarker) });
-    const captureHotkey = makeInput(settings.capture?.hotkeyCapture || '', 'text');
-    const pauseHotkey = makeInput(settings.capture?.hotkeyPauseResume || '', 'text');
+    const captureHotkey = makeHotkeyInput(settings.capture?.hotkeyCapture || '');
+    const pauseHotkey = makeHotkeyInput(settings.capture?.hotkeyPauseResume || '');
     const focusedDefault = el('input', { type: 'checkbox', checked: Boolean(settings.editor?.focusedViewDefaultForNewSteps) });
     const previewCount = makeInput(settings.exports?.previewStepCount ?? 3, 'number', { min: 1, step: 1 });
     const openFolder = el('input', { type: 'checkbox', checked: Boolean(settings.exports?.openFolderAfterExport) });

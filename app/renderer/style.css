@@ -599,6 +599,77 @@ fieldset legend {
 }
 .placeholder-row input { width: 100%; }
 
+.hotkey-input {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 190px;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel-2);
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+.hotkey-input:hover {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+.hotkey-input:focus-visible,
+.hotkey-input.recording {
+  outline: none;
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--panel-2));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+.hotkey-keys {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 22px;
+  flex: 1;
+}
+.hotkey-keys kbd {
+  min-width: 22px;
+  justify-content: center;
+  padding: 3px 7px;
+  font-size: 11px;
+  font-weight: 650;
+  background: var(--panel-solid);
+  box-shadow: 0 1px 0 0 color-mix(in srgb, var(--text) 8%, transparent);
+}
+.hotkey-sep {
+  color: var(--muted);
+  font-size: 11px;
+}
+.hotkey-placeholder {
+  color: var(--muted);
+  font-size: 12px;
+}
+.hotkey-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.hotkey-clear:hover {
+  background: var(--panel-solid);
+  color: var(--text);
+}
+.hotkey-clear[hidden] {
+  display: none;
+}
+
 .quick-actions {
   width: min(760px, 92vw);
   display: flex;

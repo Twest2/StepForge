@@ -187,3 +187,21 @@ function fmtDate(iso) {
 
 const escapeHtml = (s) => String(s ?? '')
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+/** Inverse of textToHtml, for loading sanitized description HTML into a plain textarea. */
+function htmlToPlainText(html) {
+  return String(html || '')
+    .replace(/<(br|\/p|\/div|\/li|\/h[1-6])\s*\/?>/gi, '\n')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, '\'').replace(/&amp;/g, '&')
+    .replace(/[ \t]+/g, ' ').replace(/\s*\n\s*/g, '\n').trim();
+}
+
+/** Plain textarea text -> sanitizer-allowed paragraph HTML (blank line = new paragraph). */
+function textToHtml(text) {
+  const trimmed = String(text || '').trim();
+  if (!trimmed) return '';
+  return trimmed.split(/\n{2,}/)
+    .map((para) => `<p>${escapeHtml(para).replace(/\n/g, '<br>')}</p>`)
+    .join('');
+}

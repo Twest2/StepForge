@@ -1574,9 +1574,13 @@ class GuideEditor {
   async openGuideInfo() {
     if (!this.guide) return;
     await dialogs.showGuideInfoDialog({
-      values: this.guide.metadata || {},
-      onSave: async (metadata) => {
+      values: {
+        ...this.guide.metadata,
+        description: htmlToPlainText(this.guide.descriptionHtml || ''),
+      },
+      onSave: async ({ description, ...metadata }) => {
         this.guide.metadata = metadata;
+        this.guide.descriptionHtml = textToHtml(description);
         await api.guide.save({ guide: this.guide });
         this.onToast('Guide information saved.');
       },

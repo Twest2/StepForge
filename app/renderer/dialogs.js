@@ -640,14 +640,19 @@ function showPlaceholdersDialog({ title = 'Placeholders', hint = '', values = {}
 }
 
 /**
- * Optional document metadata (author, co-authors, organization) shown at the
- * top of the guide, below the title, and surfaced on the PDF cover page.
+ * Optional document metadata (author, co-authors, organization, description)
+ * shown at the top of the guide, below the title, and surfaced on the PDF
+ * cover page and the top of other export formats.
  */
 function showGuideInfoDialog({ values = {}, onSave } = {}) {
   return new Promise((resolve) => {
     const authorInput = makeInput(values.author || '', 'text', { placeholder: 'e.g. Jane Doe' });
     const coAuthorsInput = makeInput(values.coAuthors || '', 'text', { placeholder: 'e.g. Alex Lee, Sam Patel' });
     const organizationInput = makeInput(values.organization || '', 'text', { placeholder: 'e.g. Acme Corp' });
+    const descriptionInput = el('textarea', {
+      rows: 4,
+      placeholder: 'A short summary of this guide.',
+    }, values.description || '');
 
     const { close } = openModal({
       title: 'Guide information',
@@ -657,6 +662,9 @@ function showGuideInfoDialog({ values = {}, onSave } = {}) {
         labeledRow('Author', authorInput),
         labeledRow('Co-authors', coAuthorsInput),
         labeledRow('Organization', organizationInput),
+        labeledRow('Description', descriptionInput, { stacked: true }),
+        el('div.muted', { style: { marginTop: '-4px' } },
+          'Shown on the first page of the PDF and at the top of other export formats.'),
       ),
       footer: [
         el('button', { onClick: () => { close(); resolve(false); } }, 'Cancel'),
@@ -666,6 +674,7 @@ function showGuideInfoDialog({ values = {}, onSave } = {}) {
               author: authorInput.value.trim(),
               coAuthors: coAuthorsInput.value.trim(),
               organization: organizationInput.value.trim(),
+              description: descriptionInput.value.trim(),
             });
             close();
             resolve(true);

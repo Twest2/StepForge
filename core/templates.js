@@ -11,7 +11,21 @@ const { writeJsonSync, readJsonSync, atomicWriteFileSync, nowIso } = require('./
  * defaults, shareable as .sfglt zip files.
  */
 
-const FORMATS = ['json', 'markdown', 'html-simple', 'html-rich', 'confluence', 'pdf', 'gif', 'image-bundle', 'docx', 'pptx'];
+const FORMATS = ['json', 'markdown', 'wikijs', 'html-simple', 'html-rich', 'confluence', 'pdf', 'gif', 'image-bundle', 'docx', 'pptx'];
+
+const FORMAT_LABELS = {
+  json: 'JSON',
+  markdown: 'Markdown',
+  wikijs: 'Wiki.js',
+  'html-simple': 'HTML (simple)',
+  'html-rich': 'HTML (rich)',
+  confluence: 'Confluence',
+  pdf: 'PDF',
+  gif: 'GIF',
+  'image-bundle': 'Image bundle',
+  docx: 'DOCX',
+  pptx: 'PPTX',
+};
 
 class TemplateManager {
   constructor(templatesDir) {
@@ -96,4 +110,4 @@ class TemplateManager {
   }
 }
 
-module.exports = { TemplateManager, FORMATS };
+module.exports = { TemplateManager, FORMATS, FORMAT_LABELS };

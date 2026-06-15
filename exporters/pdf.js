@@ -130,8 +130,11 @@ function exportPdf(ast, outDir, template = {}) {
   const images = tpl.includeImages ? renderAllImages(ast) : new Map();
 
   let y = M;
+  // Never start a page break when already at the top of a page — an item
+  // taller than a full page (e.g. a step's combined head height) must
+  // still render and overflow naturally rather than push out a blank page.
   const ensure = (needed) => {
-    if (y + needed > size.height - M) {
+    if (y > M && y + needed > size.height - M) {
       pdf.addPage();
       y = M;
     }
@@ -169,14 +172,80 @@ function exportPdf(ast, outDir, template = {}) {
     }
   };
 
+  /** Height a callout block (emitBlock) will occupy, including its trailing gap. */
+  const measureBlock = (tb) => {
+    const { height: bodyH } = tb.descriptionHtml
+      ? layoutDescription(pdf, tb.descriptionHtml, usableW - 18, 9.5)
+      : { height: 0 };
+    return 16 + bodyH + 6;
+  };
+
+  /** Height an image will occupy on the page, including its trailing gap. */
+  const measureImage = (stepId) => {
+    const img = images.get(stepId);
+    if (!img) return 0;
+    const maxH = usableH * tpl.imageMaxHeightRatio;
+    let h = (img.height / img.width) * usableW;
+    if (h > maxH) h = maxH;
+    return h + 10;
+  };
+
+  const measureCode = (block) => {
+    const lines = String(codeBlockText(block) || '').split('\n');
+    const lineH = 9 * 1.3;
+    return lines.length * lineH + 16;
+  };
+
+  const measureTable = (block) => {
+    if (!block.rows || !block.rows.length) return 0;
+    return block.rows.length * 16 + 8;
+  };
+
+  /**
+   * Compute the vertical space a step will need: `head` is the title, the
+   * accent rule, any before-description blocks, the description, and the
+   * image — kept together on one page — and `total` adds the remaining
+   * blocks plus the trailing gap, used to decide whether the whole step
+   * fits on a fresh page.
+   */
+  const measureStep = (step) => {
+    const headSize = step.depth > 0 ? 12 : 14;
+    const titleText = `${step.number}. ${step.title || 'Untitled step'}${step.skipped ? '  (skipped)' : ''}`;
+    const titleLines = pdf.wrapText(titleText, headSize, usableW, 'F2');
+    let head = Math.max(40, titleLines.length * headSize * 1.35 + 8);
+
+    const { before, rest } = stepContentGroups(step);
+    for (const tb of before) head += measureBlock(tb);
+    if (step.descriptionHtml) head += layoutDescription(pdf, step.descriptionHtml, usableW, 10.5).height;
+    head += measureImage(step.stepId);
+
+    let restHeight = 0;
+    for (const block of rest) {
+      if (block.kind === 'text') restHeight += measureBlock(block);
+      else if (block.kind === 'code') restHeight += measureCode(block);
+      else if (block.kind === 'table') restHeight += measureTable(block);
+    }
+
+    return { head, total: head + restHeight + 10 };
+  };
+
   pdf.addPage();
 
   if (tpl.includeCover) {
-    y = M + usableH * 0.18;
-    pdf.rect(M, y - 18, usableW, 3, { fill: tpl.accentColor });
-    y += 6;
-    writeLines(ast.guide.title, { size: 26, font: 'F2' });
-    y += 8;
+    // Keep the cover title near the top edge instead of vertically centering it.
+    y = M;
+    writeLines(ast.guide.title, { size: 28, font: 'F2' });
+    y += 10;
+    pdf.rect(M, y, usableW, 3, { fill: tpl.accentColor });
+    y += 16;
+    const meta = ast.guide.metadata || {};
+    const metaLines = [
+      meta.author && `Author: ${meta.author}`,
+      meta.coAuthors && `Co-authors: ${meta.coAuthors}`,
+      meta.organization && `Organization: ${meta.organization}`,
+    ].filter(Boolean);
+    for (const line of metaLines) writeLines(line, { size: 11, color: [90, 90, 90] });
+    if (metaLines.length) y += 8;
     if (ast.guide.descriptionHtml) writeDescription(ast.guide.descriptionHtml, { size: 12, color: [70, 70, 70] });
     y += 14;
     writeLines(`${ast.steps.length} steps — generated ${ast.generatedAt.slice(0, 10)}`, { size: 10, color: [120, 120, 120] });
@@ -184,24 +253,51 @@ function exportPdf(ast, outDir, template = {}) {
     y = M;
   }
 
+  // Filled in below as each step claims its page, so the Contents entries
+  // above (already laid out before pagination starts) can link to it.
+  const tocTargets = new Map(); // stepId -> { pageIndex }
+
   if (tpl.includeToc && ast.steps.length > 1) {
     writeLines('Contents', { size: 16, font: 'F2' });
     y += 4;
+    const tocSize = 10.5;
+    const lineH = tocSize * 1.35;
     for (const step of ast.steps) {
-      writeLines(`${step.number}.  ${step.title || 'Untitled step'}`, {
-        size: 10.5, indent: 14 * step.depth,
-      });
+      const indent = 14 * step.depth;
+      const target = {};
+      tocTargets.set(step.stepId, target);
+      for (const line of pdf.wrapText(`${step.number}.  ${step.title || 'Untitled step'}`, tocSize, usableW - indent, 'F1')) {
+        ensure(lineH);
+        pdf.text(line, M + indent, y, { size: tocSize, color: tpl.accentColor });
+        pdf.linkRect(M + indent, y, usableW - indent, lineH, target);
+        y += lineH;
+      }
     }
     pdf.addPage();
     y = M;
   }
 
   let first = true;
+  let forcedFresh = false;
+  const pageBottom = size.height - M;
   for (const step of ast.steps) {
-    if (step.forceNewPage && !first) { pdf.addPage(); y = M; }
+    const { head: headHeight, total: totalHeight } = measureStep(step);
+    // Start a fresh page when: the step's "New page" toggle is set; the
+    // previous step overflowed past one page (so this step shouldn't share
+    // the spillover page); or this step doesn't fit in what's left of the
+    // current page. The last check is skipped when already at the top of a
+    // page, so an overlong step doesn't push out a blank page first.
+    const needsFreshPage = !first && (
+      step.forceNewPage || forcedFresh || (y > M && y + totalHeight > pageBottom)
+    );
+    if (needsFreshPage) { pdf.addPage(); y = M; }
     first = false;
-    ensure(40);
+    // Keep the title, accent rule, lead-in blocks, description, and image
+    // together — never split across a page boundary.
+    ensure(headHeight);
     pdf.bookmark(`${step.number}. ${step.title || 'Untitled step'}`);
+    const tocTarget = tocTargets.get(step.stepId);
+    if (tocTarget) tocTarget.pageIndex = pdf.pages.length - 1;
     const headSize = step.depth > 0 ? 12 : 14;
     writeLines(`${step.number}. ${step.title || 'Untitled step'}${step.skipped ? '  (skipped)' : ''}`, { size: headSize, font: 'F2' });
     pdf.rect(M, y, usableW, 0.8, { fill: [225, 228, 232] });
@@ -259,6 +355,7 @@ function exportPdf(ast, outDir, template = {}) {
     }
 
     y += 10;
+    forcedFresh = totalHeight > usableH;
   }
 
   function emitBlock(tb) {

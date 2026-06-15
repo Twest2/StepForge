@@ -5,7 +5,8 @@ const path = require('node:path');
 const { zipSync } = require('../core/zip');
 const { escapeXml } = require('../core/util');
 const { encodePng } = require('../core/png');
-const { guideSlug, renderAllImages } = require('./common');
+const { guideSlug, renderAllImages, LEVEL_LABEL, stepContentGroups } = require('./common');
+const { tocEntries, guideMetaLines, guideSummary } = require('./document-layout');
 
 /**
  * PPTX exporter: a title slide plus one 16:9 slide per step (title bar +
@@ -15,11 +16,29 @@ const { guideSlug, renderAllImages } = require('./common');
 const DEFAULT_TEMPLATE = {
   includeImages: true,
   titleSlide: true,
+  includeToc: true,
 };
 
 const SLIDE_W = 12192000; // EMU, 16:9
 const SLIDE_H = 6858000;
 const EMU_PER_PX = 9525;
+const SLIDE_MARGIN = 914400;
+const TITLE_Y = 420000;
+const TITLE_H = 620000;
+const TITLE_RULE_Y = 1120000;
+const CONTENT_Y = 1500000;
+const CONTENT_FOOTER_Y = 720000;
+const CALL_OUT_HEIGHT = 620000;
+const CALL_OUT_GAP = 90000;
+const CALL_OUT_BAR_W = 24000;
+const TOC_ENTRY_START_Y = 2300000;
+const TOC_ENTRY_SPACING = 255000;
+const TOC_ENTRY_HEIGHT = 220000;
+const TOC_BOTTOM_MARGIN = 500000;
+const TOC_MAX_ENTRIES_PER_SLIDE = Math.max(
+  1,
+  Math.floor((SLIDE_H - TOC_BOTTOM_MARGIN - TOC_ENTRY_START_Y - TOC_ENTRY_HEIGHT) / TOC_ENTRY_SPACING) + 1,
+);
 
 let shapeIdCounter = 10; // reset per export for deterministic output
 
@@ -27,6 +46,12 @@ function textBox(x, y, w, h, runsXml) {
   return `<p:sp><p:nvSpPr><p:cNvPr id="${shapeIdCounter++}" name="TextBox"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>` +
     `<p:spPr><a:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="${w}" cy="${h}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr>` +
     `<p:txBody><a:bodyPr wrap="square"><a:normAutofit/></a:bodyPr><a:lstStyle/>${runsXml}</p:txBody></p:sp>`;
+}
+
+function rectShape(x, y, w, h, fill) {
+  return `<p:sp><p:nvSpPr><p:cNvPr id="${shapeIdCounter++}" name="Rect"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>` +
+    `<p:spPr><a:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="${w}" cy="${h}"/></a:xfrm>` +
+    `<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="${fill}"/></a:solidFill><a:ln><a:noFill/></a:ln></p:spPr></p:sp>`;
 }
 
 function para(text, { size = 1800, bold = false, color = '111827' } = {}) {
@@ -39,6 +64,49 @@ function picture(relId, x, y, w, h) {
     `<p:spPr><a:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="${w}" cy="${h}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>`;
 }
 
+const CALLOUT_STYLE = {
+  info: { fill: 'EFF6FF', accent: '2563EB', label: 'Note', color: '1D4ED8' },
+  success: { fill: 'ECFDF5', accent: '10B981', label: 'Tip', color: '047857' },
+  warn: { fill: 'FFFBEB', accent: 'F59E0B', label: 'Warning', color: 'B45309' },
+  error: { fill: 'FEF2F2', accent: 'EF4444', label: 'Important', color: 'B91C1C' },
+};
+
+function estimateWrappedLines(text, charsPerLine) {
+  const raw = String(text || '').trim();
+  if (!raw) return 0;
+  return raw.split(/\n+/).reduce((sum, line) => sum + Math.max(1, Math.ceil(line.length / charsPerLine)), 0);
+}
+
+function calloutHeight(tb) {
+  const label = `${LEVEL_LABEL[tb.level] || 'Note'}${tb.title ? `: ${tb.title}` : ''}`;
+  const lines = estimateWrappedLines(label, 46) + estimateWrappedLines(tb.descriptionText, 72);
+  return Math.max(CALL_OUT_HEIGHT, 360000 + (lines * 150000));
+}
+
+function calloutXml(tb, x, y, w) {
+  const style = CALLOUT_STYLE[tb.level] || CALLOUT_STYLE.info;
+  const height = calloutHeight(tb);
+  const label = `${style.label}${tb.title ? `: ${tb.title}` : ''}`;
+  const titlePara = para(label, { size: 1400, bold: true, color: style.color });
+  const bodyPara = tb.descriptionText ? para(tb.descriptionText.slice(0, 400), { size: 1250, color: '374151' }) : '';
+  const innerX = x + CALL_OUT_BAR_W + 24000;
+  const innerW = Math.max(0, w - CALL_OUT_BAR_W - 72000);
+  return {
+    height,
+    xml: [
+      rectShape(x, y, w, height, style.fill),
+      rectShape(x, y, CALL_OUT_BAR_W, height, style.accent),
+      textBox(innerX, y + 12000, innerW, Math.max(0, height - 24000), `${titlePara}${bodyPara}`),
+    ].join(''),
+  };
+}
+
+function descriptionHeight(text) {
+  const lines = estimateWrappedLines(text, 95);
+  if (!lines) return 0;
+  return Math.max(360000, 260000 + (lines * 130000));
+}
+
 function slideXml(content) {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
@@ -48,6 +116,33 @@ function slideXml(content) {
 <p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>
 ${content}
 </p:spTree></p:cSld><p:clrMapOvr><a:overrideClrMapping bg1="lt1" tx1="dk1" bg2="lt2" tx2="dk2" accent1="accent1" accent2="accent2" accent3="accent3" accent4="accent4" accent5="accent5" accent6="accent6" hlink="hlink" folHlink="folHlink"/></p:clrMapOvr></p:sld>`;
+}
+
+function chunkArray(items, size) {
+  const chunks = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+}
+
+function tocSlideXml(ast, entries, { continued = false } = {}) {
+  let tocContent = rectShape(0, 0, SLIDE_W, 18000, '2563EB');
+  tocContent += textBox(914400, 760000, SLIDE_W - 1828800, 700000,
+    para(continued ? 'Contents (continued)' : 'Contents', { size: 3000, bold: true }));
+  tocContent += rectShape(914400, 1500000, 1600000, 14000, '2563EB');
+  tocContent += textBox(914400, 1680000, SLIDE_W - 1828800, 450000,
+    para(guideSummary(ast), { size: 1500, color: '6B7280' }));
+
+  entries.forEach((entry, index) => {
+    const x = 914400 + (entry.depth * 220000);
+    const y = TOC_ENTRY_START_Y + (index * TOC_ENTRY_SPACING);
+    tocContent += rectShape(x, y + 78000, 24000, 90000, '2563EB');
+    tocContent += textBox(x + 48000, y, SLIDE_W - x - 1200000, TOC_ENTRY_HEIGHT,
+      para(`${entry.number}. ${entry.title}`, { size: entry.depth === 0 ? 1550 : 1450, bold: entry.depth === 0 }));
+  });
+
+  return slideXml(tocContent);
 }
 
 const THEME_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -85,22 +180,52 @@ function exportPptx(ast, outDir, template = {}) {
   const images = tpl.includeImages ? renderAllImages(ast) : new Map();
 
   const slides = []; // { xml, rels: [{id, target}], media: [{name, data}] }
+  const toc = tpl.includeToc && ast.steps.length > 1 ? tocEntries(ast) : [];
 
   if (tpl.titleSlide) {
+    const metaLines = guideMetaLines(ast);
+    let titleContent = rectShape(0, 0, SLIDE_W, 18000, '2563EB');
+    titleContent += textBox(SLIDE_MARGIN, 2050000, SLIDE_W - 1828800, 1200000, para(ast.guide.title, { size: 4000, bold: true }));
+    titleContent += rectShape(SLIDE_MARGIN, 3300000, 2200000, 14000, '2563EB');
+    titleContent += textBox(SLIDE_MARGIN, 3500000, SLIDE_W - 1828800, 1100000,
+      [para(guideSummary(ast), { size: 1800, color: '6B7280' }),
+        ...metaLines.map((line) => para(line, { size: 1500, color: '6B7280' }))].join(''));
     slides.push({
-      xml: slideXml(
-        textBox(914400, 2300000, SLIDE_W - 1828800, 1200000, para(ast.guide.title, { size: 4000, bold: true })) +
-        textBox(914400, 3600000, SLIDE_W - 1828800, 800000,
-          para(`${ast.steps.length} steps — ${ast.generatedAt.slice(0, 10)}`, { size: 1800, color: '6B7280' }))
-      ),
+      xml: slideXml(titleContent),
       rels: [], media: [],
+    });
+  }
+
+  if (toc.length) {
+    const tocPages = chunkArray(toc, TOC_MAX_ENTRIES_PER_SLIDE);
+    tocPages.forEach((page, index) => {
+      slides.push({
+        xml: tocSlideXml(ast, page, { continued: index > 0 }),
+        rels: [], media: [],
+      });
     });
   }
 
   let mediaCounter = 0;
   for (const step of ast.steps) {
-    let content = textBox(457200, 274638, SLIDE_W - 914400, 700000,
-      para(`${step.number}. ${step.title || 'Untitled step'}`, { size: 2400, bold: true }));
+    const { before, rest } = stepContentGroups(step);
+    const beforeBlocks = before.filter((block) => block.kind === 'text');
+    const restBlocks = rest.filter((block) => block.kind === 'text');
+
+    let content = rectShape(0, 0, SLIDE_W, 18000, '2563EB');
+    content += textBox(457200, TITLE_Y, SLIDE_W - 914400, TITLE_H,
+      para(`${step.number}. ${step.title || 'Untitled step'}`, { size: 2600, bold: true }));
+    content += rectShape(457200, TITLE_RULE_Y, 2400000, 12000, '2563EB');
+
+    let y = CONTENT_Y;
+    for (const tb of beforeBlocks) {
+      const block = calloutXml(tb, 457200, y, SLIDE_W - 914400);
+      content += block.xml;
+      y += block.height + CALL_OUT_GAP;
+    }
+
+    const descReserve = step.descriptionText ? descriptionHeight(step.descriptionText) + 120000 : 0;
+    const restReserve = restBlocks.reduce((sum, tb) => sum + calloutHeight(tb) + CALL_OUT_GAP, 0);
     const rels = [];
     const media = [];
 
@@ -112,15 +237,25 @@ function exportPptx(ast, outDir, template = {}) {
       const relId = 2; // rId1 = layout, rId2 = image
       rels.push({ id: relId, name });
       // Fit image into a centered region below the title.
-      const maxW = SLIDE_W - 1219200, maxH = SLIDE_H - 1554638 - (step.descriptionText ? 700000 : 200000);
+      const maxW = SLIDE_W - 1219200;
+      const maxH = Math.max(0, SLIDE_H - y - descReserve - restReserve - 100000);
       let w = img.width * EMU_PER_PX, h = img.height * EMU_PER_PX;
       const scale = Math.min(maxW / w, maxH / h, 1);
       w = Math.round(w * scale); h = Math.round(h * scale);
-      content += picture(relId, Math.round((SLIDE_W - w) / 2), 1054638, w, h);
+      content += picture(relId, Math.round((SLIDE_W - w) / 2), y, w, h);
+      y += h + 100000;
     }
     if (step.descriptionText) {
-      content += textBox(457200, SLIDE_H - 850000, SLIDE_W - 914400, 700000,
+      const descH = Math.max(360000, descReserve || 420000);
+      content += textBox(457200, Math.max(y, SLIDE_H - CONTENT_FOOTER_Y - descH), SLIDE_W - 914400, descH,
         para(step.descriptionText.slice(0, 300), { size: 1400, color: '374151' }));
+      y = Math.max(y, SLIDE_H - CONTENT_FOOTER_Y - descH) + descH + 90000;
+    }
+
+    for (const tb of restBlocks) {
+      const block = calloutXml(tb, 457200, y, SLIDE_W - 914400);
+      content += block.xml;
+      y += block.height + CALL_OUT_GAP;
     }
     slides.push({ xml: slideXml(content), rels, media });
   }

@@ -223,7 +223,7 @@ function createGuide(store) {
 
 function exportOutputs(store, guideId, root, manifest) {
   const ast = buildRenderAst(store, guideId);
-  const formats = ['json', 'markdown', 'html-simple', 'html-rich', 'pdf', 'gif', 'image-bundle', 'docx', 'pptx'];
+  const formats = ['json', 'markdown', 'wikijs', 'html-simple', 'html-rich', 'pdf', 'gif', 'image-bundle', 'docx', 'pptx'];
   const outputs = {};
   for (const format of formats) {
     const outDir = path.join(root, 'sample-exports', format);

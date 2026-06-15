@@ -3,6 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { guideSlug, writeStepImages, stepBlocks, codeBlockText } = require('./common');
+const { tocEntries, guideSummary } = require('./document-layout');
 
 /**
  * JSON exporter: structured guide + steps, annotated screenshots written to
@@ -29,7 +30,9 @@ function exportJson(ast, outDir, template = {}) {
       descriptionHtml: ast.guide.descriptionHtml,
       createdAt: ast.guide.createdAt,
       updatedAt: ast.guide.updatedAt,
+      summary: guideSummary(ast),
     },
+    toc: tocEntries(ast).map(({ number, title, depth, anchor }) => ({ number, title, depth, anchor })),
     steps: ast.steps.map((step) => ({
       number: step.number,
       kind: step.kind,

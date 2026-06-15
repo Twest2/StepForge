@@ -362,6 +362,9 @@ test('PPTX export: slides per step, master/layout/theme present, rels resolve', 
   const pres = entries.get('ppt/presentation.xml').toString('utf8');
   assert.equal((pres.match(/<p:sldId /g) || []).length, slideCount);
   assert.ok(entries.get('ppt/slides/slide2.xml').toString('utf8').includes('Contents'));
+  const slide4 = entries.get('ppt/slides/slide4.xml').toString('utf8');
+  assert.ok(slide4.includes('Warning: Access'));
+  assert.ok(slide4.includes('Admins only.'));
   // image rels on slides resolve to media files.
   for (let i = 1; i <= slideCount; i++) {
     const rels = entries.get(`ppt/slides/_rels/slide${i}.xml.rels`).toString('utf8');
@@ -369,6 +372,9 @@ test('PPTX export: slides per step, master/layout/theme present, rels resolve', 
       assert.ok(entries.has(`ppt/media/${m[1]}`), `media ${m[1]} present`);
     }
   }
+  const mediaTargets = [...entries.keys()].filter((name) => name.startsWith('ppt/media/'));
+  assert.equal(mediaTargets.length, 2);
+  assert.ok(!mediaTargets.some((name) => name.includes('callout-')));
 });
 
 test('PPTX export: TOC paginates onto additional slides before it would overflow', (t) => {

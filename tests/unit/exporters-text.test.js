@@ -141,6 +141,7 @@ test('Markdown export: TOC anchors resolve, images exist, blocks rendered', (t) 
   assert.ok(md.includes('<div class="sf-callout sf-callout-warning"'));
   assert.ok(md.includes('border-left: 4px solid #f59e0b'));
   assert.ok(!md.includes('background: #fffbeb'));
+  assert.ok(md.includes('color: inherit;'));
   assert.ok(md.includes('Warning: Access'));
   assert.ok(md.includes('<p>Admins only.</p>'));
 });

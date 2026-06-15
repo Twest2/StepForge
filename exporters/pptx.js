@@ -5,7 +5,7 @@ const path = require('node:path');
 const { zipSync } = require('../core/zip');
 const { escapeXml } = require('../core/util');
 const { encodePng } = require('../core/png');
-const { guideSlug, renderAllImages } = require('./common');
+const { guideSlug, renderAllImages, LEVEL_LABEL, stepContentGroups } = require('./common');
 const { tocEntries, guideMetaLines, guideSummary } = require('./document-layout');
 
 /**
@@ -22,6 +22,15 @@ const DEFAULT_TEMPLATE = {
 const SLIDE_W = 12192000; // EMU, 16:9
 const SLIDE_H = 6858000;
 const EMU_PER_PX = 9525;
+const SLIDE_MARGIN = 914400;
+const TITLE_Y = 420000;
+const TITLE_H = 620000;
+const TITLE_RULE_Y = 1120000;
+const CONTENT_Y = 1500000;
+const CONTENT_FOOTER_Y = 720000;
+const CALL_OUT_HEIGHT = 620000;
+const CALL_OUT_GAP = 90000;
+const CALL_OUT_BAR_W = 24000;
 const TOC_ENTRY_START_Y = 2300000;
 const TOC_ENTRY_SPACING = 255000;
 const TOC_ENTRY_HEIGHT = 220000;
@@ -53,6 +62,49 @@ function picture(relId, x, y, w, h) {
   return `<p:pic><p:nvPicPr><p:cNvPr id="${relId + 100}" name="Screenshot"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr>` +
     `<p:blipFill><a:blip r:embed="rId${relId}"/><a:stretch><a:fillRect/></a:stretch></p:blipFill>` +
     `<p:spPr><a:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="${w}" cy="${h}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>`;
+}
+
+const CALLOUT_STYLE = {
+  info: { fill: 'EFF6FF', accent: '2563EB', label: 'Note', color: '1D4ED8' },
+  success: { fill: 'ECFDF5', accent: '10B981', label: 'Tip', color: '047857' },
+  warn: { fill: 'FFFBEB', accent: 'F59E0B', label: 'Warning', color: 'B45309' },
+  error: { fill: 'FEF2F2', accent: 'EF4444', label: 'Important', color: 'B91C1C' },
+};
+
+function estimateWrappedLines(text, charsPerLine) {
+  const raw = String(text || '').trim();
+  if (!raw) return 0;
+  return raw.split(/\n+/).reduce((sum, line) => sum + Math.max(1, Math.ceil(line.length / charsPerLine)), 0);
+}
+
+function calloutHeight(tb) {
+  const label = `${LEVEL_LABEL[tb.level] || 'Note'}${tb.title ? `: ${tb.title}` : ''}`;
+  const lines = estimateWrappedLines(label, 46) + estimateWrappedLines(tb.descriptionText, 72);
+  return Math.max(CALL_OUT_HEIGHT, 360000 + (lines * 150000));
+}
+
+function calloutXml(tb, x, y, w) {
+  const style = CALLOUT_STYLE[tb.level] || CALLOUT_STYLE.info;
+  const height = calloutHeight(tb);
+  const label = `${style.label}${tb.title ? `: ${tb.title}` : ''}`;
+  const titlePara = para(label, { size: 1400, bold: true, color: style.color });
+  const bodyPara = tb.descriptionText ? para(tb.descriptionText.slice(0, 400), { size: 1250, color: '374151' }) : '';
+  const innerX = x + CALL_OUT_BAR_W + 24000;
+  const innerW = Math.max(0, w - CALL_OUT_BAR_W - 72000);
+  return {
+    height,
+    xml: [
+      rectShape(x, y, w, height, style.fill),
+      rectShape(x, y, CALL_OUT_BAR_W, height, style.accent),
+      textBox(innerX, y + 12000, innerW, Math.max(0, height - 24000), `${titlePara}${bodyPara}`),
+    ].join(''),
+  };
+}
+
+function descriptionHeight(text) {
+  const lines = estimateWrappedLines(text, 95);
+  if (!lines) return 0;
+  return Math.max(360000, 260000 + (lines * 130000));
 }
 
 function slideXml(content) {
@@ -133,9 +185,9 @@ function exportPptx(ast, outDir, template = {}) {
   if (tpl.titleSlide) {
     const metaLines = guideMetaLines(ast);
     let titleContent = rectShape(0, 0, SLIDE_W, 18000, '2563EB');
-    titleContent += textBox(914400, 2050000, SLIDE_W - 1828800, 1200000, para(ast.guide.title, { size: 4000, bold: true }));
-    titleContent += rectShape(914400, 3300000, 2200000, 14000, '2563EB');
-    titleContent += textBox(914400, 3500000, SLIDE_W - 1828800, 1100000,
+    titleContent += textBox(SLIDE_MARGIN, 2050000, SLIDE_W - 1828800, 1200000, para(ast.guide.title, { size: 4000, bold: true }));
+    titleContent += rectShape(SLIDE_MARGIN, 3300000, 2200000, 14000, '2563EB');
+    titleContent += textBox(SLIDE_MARGIN, 3500000, SLIDE_W - 1828800, 1100000,
       [para(guideSummary(ast), { size: 1800, color: '6B7280' }),
         ...metaLines.map((line) => para(line, { size: 1500, color: '6B7280' }))].join(''));
     slides.push({
@@ -156,10 +208,24 @@ function exportPptx(ast, outDir, template = {}) {
 
   let mediaCounter = 0;
   for (const step of ast.steps) {
+    const { before, rest } = stepContentGroups(step);
+    const beforeBlocks = before.filter((block) => block.kind === 'text');
+    const restBlocks = rest.filter((block) => block.kind === 'text');
+
     let content = rectShape(0, 0, SLIDE_W, 18000, '2563EB');
-    content += textBox(457200, 420000, SLIDE_W - 914400, 620000,
+    content += textBox(457200, TITLE_Y, SLIDE_W - 914400, TITLE_H,
       para(`${step.number}. ${step.title || 'Untitled step'}`, { size: 2600, bold: true }));
-    content += rectShape(457200, 1120000, 2400000, 12000, '2563EB');
+    content += rectShape(457200, TITLE_RULE_Y, 2400000, 12000, '2563EB');
+
+    let y = CONTENT_Y;
+    for (const tb of beforeBlocks) {
+      const block = calloutXml(tb, 457200, y, SLIDE_W - 914400);
+      content += block.xml;
+      y += block.height + CALL_OUT_GAP;
+    }
+
+    const descReserve = step.descriptionText ? descriptionHeight(step.descriptionText) + 120000 : 0;
+    const restReserve = restBlocks.reduce((sum, tb) => sum + calloutHeight(tb) + CALL_OUT_GAP, 0);
     const rels = [];
     const media = [];
 
@@ -171,15 +237,25 @@ function exportPptx(ast, outDir, template = {}) {
       const relId = 2; // rId1 = layout, rId2 = image
       rels.push({ id: relId, name });
       // Fit image into a centered region below the title.
-      const maxW = SLIDE_W - 1219200, maxH = SLIDE_H - 1870000 - (step.descriptionText ? 650000 : 260000);
+      const maxW = SLIDE_W - 1219200;
+      const maxH = Math.max(0, SLIDE_H - y - descReserve - restReserve - 100000);
       let w = img.width * EMU_PER_PX, h = img.height * EMU_PER_PX;
       const scale = Math.min(maxW / w, maxH / h, 1);
       w = Math.round(w * scale); h = Math.round(h * scale);
-      content += picture(relId, Math.round((SLIDE_W - w) / 2), 1500000, w, h);
+      content += picture(relId, Math.round((SLIDE_W - w) / 2), y, w, h);
+      y += h + 100000;
     }
     if (step.descriptionText) {
-      content += textBox(457200, SLIDE_H - 720000, SLIDE_W - 914400, 600000,
+      const descH = Math.max(360000, descReserve || 420000);
+      content += textBox(457200, Math.max(y, SLIDE_H - CONTENT_FOOTER_Y - descH), SLIDE_W - 914400, descH,
         para(step.descriptionText.slice(0, 300), { size: 1400, color: '374151' }));
+      y = Math.max(y, SLIDE_H - CONTENT_FOOTER_Y - descH) + descH + 90000;
+    }
+
+    for (const tb of restBlocks) {
+      const block = calloutXml(tb, 457200, y, SLIDE_W - 914400);
+      content += block.xml;
+      y += block.height + CALL_OUT_GAP;
     }
     slides.push({ xml: slideXml(content), rels, media });
   }

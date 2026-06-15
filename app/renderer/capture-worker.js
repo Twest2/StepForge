@@ -80,7 +80,9 @@
             maxWidth: physWidth,
             minHeight: physHeight,
             maxHeight: physHeight,
-            maxFrameRate: 30,
+            // No maxFrameRate: sampling cadence is controlled by the setInterval
+            // timer below, so the actual capture rate is always sampleMs-driven
+            // regardless of display refresh rate or power mode.
           },
         },
       });

@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const {
   app, BrowserWindow, ipcMain, dialog, shell, nativeTheme, globalShortcut,
-  clipboard, nativeImage, screen,
+  clipboard, nativeImage, screen, powerSaveBlocker,
 } = require('electron');
 
 const { GuideStore } = require('../core/store');
@@ -498,12 +498,34 @@ function setupIpc() {
     if (result.ok) reindex(guideId);
     return result;
   });
+  let capturePowerBlocker = -1;
+  const startCapturePower = () => {
+    if (!powerSaveBlocker.isStarted(capturePowerBlocker)) {
+      capturePowerBlocker = powerSaveBlocker.start('prevent-app-suspension');
+    }
+  };
+  const stopCapturePower = () => {
+    if (powerSaveBlocker.isStarted(capturePowerBlocker)) {
+      powerSaveBlocker.stop(capturePowerBlocker);
+    }
+  };
+
   h('capture:session', async ({ action, guideId, intervalSec }) => {
-    if (action === 'start') capture.startSession(guideId, { intervalSec: intervalSec ?? null });
-    else if (action === 'pause') capture.togglePause(true);
-    else if (action === 'resume') capture.togglePause(false);
-    else if (action === 'finish') capture.finishSession();
-    else if (action === 'interval') capture.setInterval(intervalSec);
+    if (action === 'start') {
+      capture.startSession(guideId, { intervalSec: intervalSec ?? null });
+      startCapturePower();
+    } else if (action === 'pause') {
+      capture.togglePause(true);
+      stopCapturePower();
+    } else if (action === 'resume') {
+      capture.togglePause(false);
+      startCapturePower();
+    } else if (action === 'finish') {
+      capture.finishSession();
+      stopCapturePower();
+    } else if (action === 'interval') {
+      capture.setInterval(intervalSec);
+    }
     const state = capture.state();
     sendToRenderer('capture:state', state);
     return state;

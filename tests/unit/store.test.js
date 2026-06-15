@@ -69,6 +69,31 @@ test('step reorder, delete with substep reparenting, and order integrity', (t) =
   assert.equal(store.getStep(guide.guideId, c.stepId).parentStepId, null);
 });
 
+test('restoreStep recreates a deleted step with its original id, data, and images', (t) => {
+  const root = makeTmpDir('restore');
+  t.after(() => rmrf(root));
+  const store = new GuideStore(root);
+  const guide = store.createGuide({ title: 'Restore test' });
+  const a = store.addStep(guide.guideId, { kind: 'empty', title: 'A' });
+  const b = store.addStep(guide.guideId, { title: 'B', annotations: [{ id: 'ann1', type: 'arrow', x: 1, y: 2 }] }, TINY_PNG, { width: 1, height: 1 });
+  const c = store.addStep(guide.guideId, { kind: 'empty', title: 'C' });
+
+  const deleted = store.getStep(guide.guideId, b.stepId);
+  store.deleteStep(guide.guideId, b.stepId);
+  assert.deepEqual(store.getGuide(guide.guideId).stepsOrder, [a.stepId, c.stepId]);
+
+  const restored = store.restoreStep(guide.guideId, deleted, { original: TINY_PNG, working: TINY_PNG }, 1);
+  assert.equal(restored.stepId, b.stepId);
+  assert.equal(restored.title, 'B');
+  assert.equal(restored.annotations[0].type, 'arrow');
+
+  const after = store.getGuide(guide.guideId);
+  assert.deepEqual(after.stepsOrder, [a.stepId, b.stepId, c.stepId]);
+  assert.deepEqual(store.getStep(guide.guideId, b.stepId).annotations, deleted.annotations);
+  assert.deepEqual(fs.readFileSync(store.stepImagePath(guide.guideId, b.stepId, 'original')), TINY_PNG);
+  assert.deepEqual(fs.readFileSync(store.stepImagePath(guide.guideId, b.stepId, 'working')), TINY_PNG);
+});
+
 test('duplicate guide produces independent deep copy with fresh ids', (t) => {
   const root = makeTmpDir('dup');
   t.after(() => rmrf(root));

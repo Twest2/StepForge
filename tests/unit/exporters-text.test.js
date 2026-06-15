@@ -109,10 +109,11 @@ test('Markdown export: TOC anchors resolve, images exist, blocks rendered', (t) 
   assert.equal(lines[fenceStart + 1], '0 2 * * * /usr/local/bin/acmesync --backup');
   assert.equal(lines[fenceStart + 2], '```');
   assert.ok(lines.some((l) => /^\| Day \| Window \|$/.test(l)), 'table header row');
-  // Warning text block became a blockquote with its content.
-  const warnIdx = lines.findIndex((l) => l.startsWith('> **Warning: Access**'));
+  // Warning text block became a GFM alert blockquote with its content.
+  const warnIdx = lines.findIndex((l) => l.startsWith('> [!WARNING]'));
   assert.ok(warnIdx > 0);
-  assert.equal(lines[warnIdx + 1], '> Admins only.');
+  assert.equal(lines[warnIdx + 1], '> **Access**');
+  assert.equal(lines[warnIdx + 2], '> Admins only.');
 });
 
 test('Confluence export writes storage-format XML and image attachments', (t) => {

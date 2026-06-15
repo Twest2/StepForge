@@ -8,6 +8,37 @@ const dialogs = window.StepForgeDialogs || {};
 const clone = (value) => JSON.parse(JSON.stringify(value));
 const BLOCK_KIND_ORDER = { text: 0, code: 1, table: 2 };
 
+// Which style fields are meaningful for each annotation type, so the
+// annotation editor only shows controls that actually affect that type.
+const ANNOTATION_FIELDS = {
+  rect: ['stroke', 'fill', 'strokeWidth'],
+  oval: ['stroke', 'fill', 'strokeWidth'],
+  line: ['stroke', 'strokeWidth'],
+  arrow: ['stroke', 'strokeWidth'],
+  text: ['text', 'stroke', 'fontSize'],
+  tooltip: ['text', 'fill', 'stroke', 'strokeWidth', 'fontSize', 'textColor', 'tail'],
+  number: ['value', 'stroke', 'textColor'],
+  blur: ['radius'],
+  highlight: [],
+  magnify: ['zoom', 'stroke', 'strokeWidth'],
+  cursor: [],
+};
+
+// Display names for annotation types in the "Type" dropdown.
+const ANNOTATION_TYPE_LABELS = {
+  rect: 'Rectangle',
+  oval: 'Oval',
+  line: 'Line',
+  arrow: 'Arrow',
+  text: 'Text',
+  tooltip: 'Tooltip',
+  number: 'Number',
+  blur: 'Blur',
+  highlight: 'Highlight',
+  magnify: 'Magnify',
+  cursor: 'Cursor',
+};
+
 function blockText(block) {
   for (const key of ['code', 'text', 'body', 'value', 'content']) {
     const value = block && block[key];
@@ -173,7 +204,7 @@ class GuideEditor {
     this.root.innerHTML = '';
     const toolButtons = [
       ['select', 'Select'],
-      ['rect', 'Rect'],
+      ['rect', 'Rectangle'],
       ['oval', 'Oval'],
       ['line', 'Line'],
       ['arrow', 'Arrow'],
@@ -181,7 +212,7 @@ class GuideEditor {
       ['tooltip', 'Tip'],
       ['number', '#'],
       ['blur', 'Blur'],
-      ['highlight', 'Hi'],
+      ['highlight', 'Highlight'],
       ['magnify', 'Mag'],
       ['cursor', 'Cursor'],
       ['crop', 'Crop'],
@@ -284,8 +315,7 @@ class GuideEditor {
         el('section', {},
           el('h3', {}, 'Guide'),
           this.dom.guideSummary = el('div.muted', {}),
-          this.dom.linkedBtn = el('button', { type: 'button' }, 'Linked guide'),
-          this.dom.saveNowBtn = el('button.primary', { type: 'button' }, 'Save now'),
+          this.dom.saveNowBtn = el('button.primary', { type: 'button', title: 'Save changes. For guides linked to a shared archive, also writes the archive file.' }, 'Save now'),
           this.dom.snapshotBtn = el('button', { type: 'button' }, 'Snapshot'),
         ),
       ),
@@ -314,10 +344,32 @@ class GuideEditor {
   }
 
   toolbarBtn(action, label, block = null) {
-    return el('button', {
+    const btn = el('button', {
       type: 'button',
       onClick: () => this.formatDescription(action, block),
     }, label);
+    btn.dataset.action = action;
+    if (block) btn.dataset.block = block;
+    return btn;
+  }
+
+  /** Reflect the current selection's formatting state on the toolbar buttons. */
+  updateToolbarState() {
+    if (!this.dom.richToolbar) return;
+    for (const btn of this.dom.richToolbar.children) {
+      const { action, block } = btn.dataset;
+      let active = false;
+      try {
+        if (action === 'formatBlock') {
+          active = document.queryCommandValue('formatBlock').toLowerCase() === (block || 'blockquote');
+        } else if (action === 'bold' || action === 'italic' || action === 'insertUnorderedList' || action === 'insertOrderedList') {
+          active = document.queryCommandState(action);
+        }
+      } catch {
+        active = false;
+      }
+      btn.classList.toggle('active', active);
+    }
   }
 
   bindShellEvents() {
@@ -330,7 +382,6 @@ class GuideEditor {
     this.dom.deleteBtn.addEventListener('click', () => this.deleteSelectedStep());
     this.dom.saveNowBtn.addEventListener('click', () => this.saveAll());
     this.dom.snapshotBtn.addEventListener('click', () => this.createSnapshot());
-    this.dom.linkedBtn.addEventListener('click', () => this.openLinkedGuide());
     this.dom.zoomFitBtn.addEventListener('click', () => this.setZoom('fit'));
     this.dom.zoom100Btn.addEventListener('click', () => this.setZoom(1));
     this.dom.zoom125Btn.addEventListener('click', () => this.setZoom(1.25));
@@ -397,6 +448,7 @@ class GuideEditor {
       step.focusedView[field] = Number(node.value);
       this.pendingSave = true;
       this.saveStepDebounced();
+      this.canvas.setFocusedView(step.focusedView);
     });
     bindFocusedSlider(this.dom.fvZoom, 'zoom');
     bindFocusedSlider(this.dom.fvPanX, 'panX');
@@ -407,7 +459,14 @@ class GuideEditor {
     this.dom.addTableBlockBtn.addEventListener('click', () => this.addBlock('table'));
 
     this.dom.descEditor.addEventListener('focus', () => {
+      // Make Enter start a new paragraph (<p>) rather than a plain <div>,
+      // so line breaks survive sanitization and show up in exports.
+      document.execCommand('defaultParagraphSeparator', false, 'p');
       if (this.currentStep) this.pushCanvasHistory('description');
+      this.updateToolbarState();
+    });
+    this.dom.descEditor.addEventListener('blur', () => {
+      for (const btn of this.dom.richToolbar.children) btn.classList.remove('active');
     });
     this.dom.descEditor.addEventListener('input', () => {
       if (!this.currentStep) return;
@@ -415,6 +474,12 @@ class GuideEditor {
       this.pendingSave = true;
       this.saveStepDebounced();
       this.emitMeta();
+      this.updateToolbarState();
+    });
+    this.dom.descEditor.addEventListener('keyup', () => this.updateToolbarState());
+    this.dom.descEditor.addEventListener('mouseup', () => this.updateToolbarState());
+    document.addEventListener('selectionchange', () => {
+      if (document.activeElement === this.dom.descEditor) this.updateToolbarState();
     });
 
     this.dom.descEditor.addEventListener('paste', (e) => {
@@ -438,7 +503,6 @@ class GuideEditor {
     this.renderCanvas();
     this.renderAnnotationPanel();
     this.renderBlocksPanel();
-    this.renderGuidePanel();
     this.emitMeta();
   }
 
@@ -451,6 +515,7 @@ class GuideEditor {
       this.dom.fvPanX.value = fv.panX ?? 0.5;
       this.dom.fvPanY.value = fv.panY ?? 0.5;
     }
+    this.canvas.setFocusedView(fv);
   }
 
   // ---- text / code / table blocks ----------------------------------------
@@ -624,6 +689,7 @@ class GuideEditor {
       }, header);
 
       if (kind === 'text') {
+        card.dataset.level = block.level || 'info';
         const position = makeSelect(block.position, [
           { value: 'before-title', label: 'Before title' },
           { value: 'after-title', label: 'After title' },
@@ -646,7 +712,7 @@ class GuideEditor {
         body.dataset.blockField = 'body';
         body.value = (block.descriptionHtml || '').replace(/<[^>]+>/g, '');
         position.addEventListener('change', () => { block.position = position.value; save(); });
-        level.addEventListener('change', () => { block.level = level.value; save(); });
+        level.addEventListener('change', () => { block.level = level.value; card.dataset.level = level.value; save(); });
         title.addEventListener('input', () => { block.title = title.value; save(); });
         body.addEventListener('input', () => { block.descriptionHtml = `<p>${escapeHtml(body.value)}</p>`; save(); });
         card.append(
@@ -716,6 +782,18 @@ class GuideEditor {
           this.selectStep(step.stepId);
           contextMenu(e.clientX, e.clientY, [
             { label: 'Add substep', action: () => this.addSubstep(step.stepId) },
+            {
+              label: 'Make substep of…',
+              submenu: () => {
+                const subtreeIds = new Set([step.stepId, ...this.getStepDescendantIds(step.stepId)]);
+                return this.steps
+                  .filter((s) => !subtreeIds.has(s.stepId))
+                  .map((s) => ({
+                    label: `${numbers.get(s.stepId)}  ${s.title || 'Untitled step'}`,
+                    action: () => this.makeSubstepOf(step.stepId, s.stepId),
+                  }));
+              },
+            },
             { label: 'Duplicate step', action: () => this.duplicateSelectedStep() },
             'sep',
             { label: 'Move up', action: () => this.moveSelectedStep(-1) },
@@ -795,13 +873,21 @@ class GuideEditor {
     if (!ids.length) return;
     const ok = await confirmDialog(`Delete ${ids.length} step${ids.length === 1 ? '' : 's'}?`, { danger: true, okLabel: 'Delete' });
     if (!ok) return;
+    if (this.pendingSave) await this.flushStep();
+    const order = this.steps.map((s) => s.stepId);
+    const entries = [];
+    for (const stepId of ids) {
+      const step = this.stepMap.get(stepId);
+      if (step) entries.push(await this.snapshotStepForDeletion(step));
+    }
     for (const stepId of ids) {
       await api.step.delete({ guideId: this.guideId, stepId });
     }
+    if (entries.length) this.pushCanvasHistory({ type: 'delete-step', steps: entries, order });
     this.stepSelectMode = false;
     this.selectedSteps = new Set();
     await this.reload(null);
-    this.onToast(`${ids.length} step${ids.length === 1 ? '' : 's'} deleted.`);
+    this.onToast(`${ids.length} step${ids.length === 1 ? '' : 's'} deleted. Press Ctrl+Z to undo.`);
   }
 
   syncStepFields() {
@@ -852,6 +938,7 @@ class GuideEditor {
       if (token !== this.imageLoadToken) return;
       this.canvas.setImage(img, img.naturalWidth || img.width, img.naturalHeight || img.height);
       this.canvas.setAnnotations(step.annotations || []);
+      this.canvas.setFocusedView(step.focusedView);
       this.canvas.setTool(this.currentTool);
       this.canvas.setZoom(this.currentZoom);
     };
@@ -883,7 +970,7 @@ class GuideEditor {
           dataset: { annId: ann.id },
           style: { cursor: 'pointer', borderColor: selected ? 'var(--accent)' : '' },
         },
-        el('div.row', {}, el('strong', {}, ann.type), el('span.muted', {}, ann.text || ann.value || '')),
+        el('div.row', {}, el('strong', {}, ANNOTATION_TYPE_LABELS[ann.type] || ann.type), el('span.muted', {}, ann.text || ann.value || '')),
         el('div.muted', {}, `${ann.x.toFixed(3)}, ${ann.y.toFixed(3)} · ${ann.w.toFixed(3)} × ${ann.h.toFixed(3)}`)));
       }
     }
@@ -898,7 +985,7 @@ class GuideEditor {
     const style = selected.style || {};
     const typeSelect = makeSelect(selected.type, [
       'rect', 'oval', 'line', 'arrow', 'text', 'tooltip', 'number', 'blur', 'highlight', 'magnify', 'cursor',
-    ].map((type) => ({ value: type, label: type })));
+    ].map((type) => ({ value: type, label: ANNOTATION_TYPE_LABELS[type] || type })));
     const textInput = el('input', { type: 'text', value: selected.text || '', placeholder: 'Annotation text' });
     const valueInput = el('input', { type: 'number', value: Number.isFinite(selected.value) ? selected.value : '', placeholder: 'Value' });
     const strokeInput = el('input', { type: 'color', value: style.stroke || '#E5484D' });
@@ -932,31 +1019,38 @@ class GuideEditor {
       this.emitMeta();
     };
 
-    const annSection = el('div', { className: 'annotation-editor-inner' },
-      labeledRow('Type', typeSelect),
-      labeledRow('Text', textInput),
-      labeledRow('Value', valueInput),
-      labeledRow('Stroke', strokeInput),
-      labeledRow('Fill', fillInput),
-      labeledRow('Stroke width', strokeWidthInput),
-      labeledRow('Font size', fontSizeInput),
-      labeledRow('Text color', textColorInput),
-      labeledRow('Zoom', zoomInput),
-      labeledRow('Radius', radiusInput),
-      labeledRow('Tail', tailInput),
+    const fields = new Set(ANNOTATION_FIELDS[selected.type] || []);
+    const strokeLabel = (selected.type === 'text' || selected.type === 'number') ? 'Color' : 'Stroke';
+    const typeLabel = ANNOTATION_TYPE_LABELS[selected.type] || selected.type;
+
+    const rows = [labeledRow('Type', typeSelect)];
+    if (fields.has('text')) rows.push(labeledRow('Text', textInput));
+    if (fields.has('value')) rows.push(labeledRow('Value', valueInput));
+    if (fields.has('stroke')) rows.push(labeledRow(strokeLabel, strokeInput));
+    if (fields.has('fill')) rows.push(labeledRow('Fill', fillInput));
+    if (fields.has('strokeWidth')) rows.push(labeledRow('Stroke width', strokeWidthInput));
+    if (fields.has('fontSize')) rows.push(labeledRow('Font size', fontSizeInput));
+    if (fields.has('textColor')) rows.push(labeledRow('Text color', textColorInput));
+    if (fields.has('zoom')) rows.push(labeledRow('Zoom', zoomInput));
+    if (fields.has('radius')) rows.push(labeledRow('Radius', radiusInput));
+    if (fields.has('tail')) rows.push(labeledRow('Tail', tailInput));
+    rows.push(
+      el('div.muted', {}, `Copy this style to every other "${typeLabel}" annotation:`),
       el('div.row', {},
         el('button', {
           type: 'button',
-          onClick: () => {
-            this.canvas.deleteSelected();
-          },
-        }, 'Delete annotation'),
-      ),
-      el('div.row', {},
-        el('button', { type: 'button', title: 'Copy this style to every annotation of the same type in this step', onClick: () => this.applyStyleAcross('step') }, 'Style → step'),
-        el('button', { type: 'button', title: 'Copy this style to every annotation of the same type in the whole guide', onClick: () => this.applyStyleAcross('guide') }, 'Style → guide'),
+          title: `Overwrite the style of every "${typeLabel}" annotation on this step with the style shown above.`,
+          onClick: () => this.applyStyleAcross('step'),
+        }, 'This step'),
+        el('button', {
+          type: 'button',
+          title: `Overwrite the style of every "${typeLabel}" annotation across all steps in this guide with the style shown above.`,
+          onClick: () => this.applyStyleAcross('guide'),
+        }, 'Entire guide'),
       ),
     );
+
+    const annSection = el('div', { className: 'annotation-editor-inner' }, ...rows);
     this.dom.annotationEditor.append(annSection);
 
     typeSelect.addEventListener('change', () => {
@@ -1019,13 +1113,6 @@ class GuideEditor {
     });
   }
 
-  renderGuidePanel() {
-    if (!this.guide) return;
-    this.dom.linkedBtn.textContent = this.guide.linkedSource ? 'Linked guide' : 'Local guide';
-    this.dom.linkedBtn.disabled = !this.guide.linkedSource;
-    this.dom.snapshotBtn.textContent = 'Snapshot';
-  }
-
   defaultStyleForTool(tool) {
     switch (tool) {
       case 'highlight': return { fill: '#ffe066', stroke: '#ffbf00', strokeWidth: 1 };
@@ -1067,7 +1154,8 @@ class GuideEditor {
 
   pushCanvasHistory(recordOrLabel = 'change') {
     if (!this.currentStep) return;
-    const record = recordOrLabel && typeof recordOrLabel === 'object' && recordOrLabel.step
+    const record = recordOrLabel && typeof recordOrLabel === 'object'
+      && (recordOrLabel.step || recordOrLabel.type === 'delete-step')
       ? recordOrLabel
       : { step: clone(this.currentStep) };
     this.canvasHistory.push(record);
@@ -1108,27 +1196,39 @@ class GuideEditor {
   }
 
   async undo() {
-    if (!this.currentStep) return;
     if (!this.canvasHistory.length) {
       this.onToast('Nothing to undo.');
       return;
     }
+    const previous = this.canvasHistory.pop();
+    if (previous.type === 'delete-step') {
+      await this.restoreDeletedSteps(previous);
+      this.canvasFuture.push(previous);
+      this.renderAll();
+      return;
+    }
+    if (!this.currentStep) return;
     const current = await this.snapshotCurrentStep(true);
     if (current) this.canvasFuture.push(current);
-    const previous = this.canvasHistory.pop();
     await this.restoreHistoryRecord(previous);
     this.renderAll();
   }
 
   async redo() {
-    if (!this.currentStep) return;
     if (!this.canvasFuture.length) {
       this.onToast('Nothing to redo.');
       return;
     }
+    const next = this.canvasFuture.pop();
+    if (next.type === 'delete-step') {
+      await this.deleteStepsAgain(next);
+      this.canvasHistory.push(next);
+      this.renderAll();
+      return;
+    }
+    if (!this.currentStep) return;
     const current = await this.snapshotCurrentStep(true);
     if (current) this.canvasHistory.push(current);
-    const next = this.canvasFuture.pop();
     await this.restoreHistoryRecord(next);
     this.renderAll();
   }
@@ -1189,24 +1289,48 @@ class GuideEditor {
   async saveAll() {
     if (this.currentStep) await this.flushStep();
     if (this.guide) await this.flushGuide();
+    if (this.guide && this.guide.linkedSource) {
+      const result = await api.archive.saveLinked({ guideId: this.guideId, force: false });
+      if (result.saved) {
+        this.guide.linkedSource.lastSavedAt = new Date().toISOString();
+        this.onToast('Saved and synced to linked archive.');
+      } else {
+        this.onToast('Saved locally, but the linked archive is locked by another session.', { error: true });
+      }
+      return;
+    }
     this.onToast('Saved.');
   }
 
   async createSnapshot() {
     if (!this.guideId) return;
-    await api.snapshots.create({ guideId: this.guideId, label: 'manual' });
+    const label = await dialogs.promptText({
+      title: 'Create snapshot',
+      label: 'Snapshot name',
+      placeholder: 'manual',
+    });
+    if (label == null) return;
+    if (this.currentStep) await this.flushStep();
+    if (this.guide) await this.flushGuide();
+    await api.snapshots.create({ guideId: this.guideId, label: label.trim() || 'manual' });
     this.onToast('Snapshot created.');
   }
 
   async selectStep(stepId) {
     if (!this.stepMap.has(stepId)) return;
+    // Persist any unsaved edits on the outgoing step before switching, so a
+    // later guide-wide reload (e.g. applyStyleAcross('guide')) doesn't
+    // discard them by re-fetching a stale on-disk copy.
+    if (this.pendingSave) await this.flushStep();
     this.selectedStepId = stepId;
     this.selectedAnnotationId = null;
     this.canvas.select(null);
     this.syncStepFields();
+    this.syncFocusedControls();
     this.renderStepList();
     this.renderCanvas();
     this.renderAnnotationPanel();
+    this.renderBlocksPanel();
     this.emitMeta();
   }
 
@@ -1256,6 +1380,55 @@ class GuideEditor {
     this.onToast(parent ? 'Substep added.' : 'Step added.');
   }
 
+  /** All step ids whose ancestor chain leads back to `stepId`. */
+  getStepDescendantIds(stepId) {
+    const result = [];
+    const queue = [stepId];
+    while (queue.length) {
+      const current = queue.shift();
+      for (const s of this.steps) {
+        if (s.parentStepId === current) {
+          result.push(s.stepId);
+          queue.push(s.stepId);
+        }
+      }
+    }
+    return result;
+  }
+
+  async makeSubstepOf(stepId, targetStepId) {
+    const step = this.stepMap.get(stepId);
+    const target = this.stepMap.get(targetStepId);
+    if (!step || !target) return;
+    const numbers = stepNumberMap(this.steps);
+    const subtreeIds = new Set([stepId, ...this.getStepDescendantIds(stepId)]);
+    if (subtreeIds.has(targetStepId)) {
+      this.onToast('A step cannot be made a substep of itself or one of its own substeps.', { error: true });
+      return;
+    }
+    if (step.parentStepId === targetStepId) {
+      this.onToast(`“${step.title || 'Untitled step'}” is already a substep of step ${numbers.get(targetStepId)}.`);
+      return;
+    }
+
+    step.parentStepId = targetStepId;
+    await api.step.save({ guideId: this.guideId, step });
+
+    // Move the step (with its own substeps) to sit right after the target
+    // step's existing substeps, so it becomes the target's last substep.
+    const order = this.steps.map((s) => s.stepId);
+    const remaining = order.filter((id) => !subtreeIds.has(id));
+    const targetSubtree = new Set([targetStepId, ...this.getStepDescendantIds(targetStepId)]);
+    let insertAt = remaining.indexOf(targetStepId) + 1;
+    while (insertAt < remaining.length && targetSubtree.has(remaining[insertAt])) insertAt++;
+    const movedBlock = order.filter((id) => subtreeIds.has(id));
+    remaining.splice(insertAt, 0, ...movedBlock);
+    await api.step.reorder({ guideId: this.guideId, order: remaining });
+
+    await this.reload(stepId);
+    this.onToast(`“${step.title || 'Untitled step'}” is now a substep of step ${numbers.get(targetStepId)}.`);
+  }
+
   async duplicateSelectedStep() {
     const step = this.currentStep;
     if (!step) return;
@@ -1282,12 +1455,16 @@ class GuideEditor {
     if (!step) return;
     const ok = await confirmDialog(`Delete “${step.title || 'Untitled step'}”?`, { danger: true, okLabel: 'Delete' });
     if (!ok) return;
+    if (this.pendingSave) await this.flushStep();
+    const order = this.steps.map((s) => s.stepId);
+    const entry = await this.snapshotStepForDeletion(step);
     await api.step.delete({ guideId: this.guideId, stepId: step.stepId });
+    this.pushCanvasHistory({ type: 'delete-step', steps: [entry], order });
     const next = this.steps[this.steps.findIndex((s) => s.stepId === step.stepId) + 1]
       || this.steps[this.steps.findIndex((s) => s.stepId === step.stepId) - 1]
       || null;
     await this.reload(next && next.stepId);
-    this.onToast('Step deleted.');
+    this.onToast('Step deleted. Press Ctrl+Z to undo.');
   }
 
   async moveSelectedStep(delta) {
@@ -1327,18 +1504,18 @@ class GuideEditor {
   async openCaptureMenu(event) {
     const rect = event.target.getBoundingClientRect();
     const session = (await api.capture.state())?.active;
-    contextMenu(rect.left, rect.bottom + 4, [
+    const items = [
       { label: 'Capture full screen', action: () => this.captureStep('fullscreen') },
       { label: 'Capture window', action: () => this.captureStep('window') },
       { label: 'Capture region…', action: () => this.captureStep('region') },
       'sep',
       { label: 'Paste image as step', action: () => this.pasteClipboardStep() },
       { label: 'Import images…', action: () => this.importImageSteps() },
-      'sep',
-      session
-        ? { label: 'Finish capture session', action: () => this.finishCaptureSession() }
-        : { label: 'Start capture session (hotkey)', action: () => this.startCaptureSession() },
-    ]);
+    ];
+    if (!session) {
+      items.push('sep', { label: 'Start capture session (hotkey)', action: () => this.startCaptureSession() });
+    }
+    contextMenu(rect.left, rect.bottom + 4, items);
   }
 
   async pasteClipboardStep() {
@@ -1443,12 +1620,6 @@ class GuideEditor {
   async resumeCaptureSession() {
     await api.capture.session({ action: 'resume', guideId: this.guideId });
     this.onToast('Capture resumed.');
-    this.emitMeta();
-  }
-
-  async finishCaptureSession() {
-    await api.capture.session({ action: 'finish', guideId: this.guideId });
-    this.onToast('Capture session finished.');
     this.emitMeta();
   }
 
@@ -1598,8 +1769,12 @@ class GuideEditor {
   }
 
   async currentStepImageToBase64(step = this.currentStep) {
+    return this.stepImageToBase64(step, 'working');
+  }
+
+  async stepImageToBase64(step, which = 'working') {
     if (!step || !step.image) return null;
-    const file = await api.step.imagePath({ guideId: this.guideId, stepId: step.stepId, which: 'working' });
+    const file = await api.step.imagePath({ guideId: this.guideId, stepId: step.stepId, which });
     if (!file) return null;
     return new Promise((resolve) => {
       const img = new Image();
@@ -1615,6 +1790,62 @@ class GuideEditor {
       img.onerror = () => resolve(null);
       img.src = file;
     });
+  }
+
+  /** Snapshot a step (and its images, if any) before deletion so it can be undone. */
+  async snapshotStepForDeletion(step) {
+    const position = this.steps.findIndex((s) => s.stepId === step.stepId);
+    const childIds = this.steps.filter((s) => s.parentStepId === step.stepId).map((s) => s.stepId);
+    let images = null;
+    if (step.image) {
+      const [original, working] = await Promise.all([
+        this.stepImageToBase64(step, 'original'),
+        this.stepImageToBase64(step, 'working'),
+      ]);
+      images = { original, working };
+    }
+    return { step: clone(step), position, childIds, images };
+  }
+
+  /** Undo a 'delete-step' history record: recreate the deleted steps and their order. */
+  async restoreDeletedSteps(record) {
+    for (const entry of record.steps) {
+      await api.step.restore({
+        guideId: this.guideId,
+        step: entry.step,
+        originalBase64: entry.images?.original?.base64 || null,
+        workingBase64: entry.images?.working?.base64 || null,
+        position: entry.position,
+      });
+    }
+    await api.step.reorder({ guideId: this.guideId, order: record.order });
+    this.saveStepDebounced.cancel();
+    this.pendingSave = false;
+    await this.reload(record.steps[0].step.stepId);
+    for (const entry of record.steps) {
+      for (const childId of entry.childIds) {
+        const child = this.stepMap.get(childId);
+        if (child && child.parentStepId !== entry.step.stepId) {
+          child.parentStepId = entry.step.stepId;
+          await api.step.save({ guideId: this.guideId, step: child });
+        }
+      }
+    }
+    if (record.steps.some((entry) => entry.childIds.length)) await this.reload(record.steps[0].step.stepId);
+    this.onToast(`Restored ${record.steps.length} step${record.steps.length === 1 ? '' : 's'}.`);
+  }
+
+  /** Redo of an undone 'delete-step' record: delete those steps again. */
+  async deleteStepsAgain(record) {
+    for (const entry of record.steps) {
+      await api.step.delete({ guideId: this.guideId, stepId: entry.step.stepId });
+    }
+    const deletedIds = new Set(record.steps.map((entry) => entry.step.stepId));
+    const remaining = record.order.filter((id) => !deletedIds.has(id));
+    this.saveStepDebounced.cancel();
+    this.pendingSave = false;
+    await this.reload(remaining[0] || null);
+    this.onToast(`Deleted ${record.steps.length} step${record.steps.length === 1 ? '' : 's'}.`);
   }
 
   async onCanvasChange(annotations) {
@@ -1727,12 +1958,16 @@ class GuideEditor {
       case 'insertOrderedList':
         document.execCommand('insertOrderedList');
         break;
-      case 'formatBlock':
-        document.execCommand('formatBlock', false, block || 'blockquote');
+      case 'formatBlock': {
+        const want = block || 'blockquote';
+        const current = document.queryCommandValue('formatBlock').toLowerCase();
+        document.execCommand('formatBlock', false, current === want ? 'p' : want);
         break;
+      }
       case 'createLink': {
-        const url = window.prompt('Link URL');
-        if (url) document.execCommand('createLink', false, url);
+        const selectedText = window.getSelection().toString();
+        const text = selectedText || 'Text';
+        document.execCommand('insertText', false, `[${text}](Link)`);
         break;
       }
       case 'removeFormat':
@@ -1746,6 +1981,7 @@ class GuideEditor {
       this.pendingSave = true;
       this.saveStepDebounced();
     }
+    this.updateToolbarState();
   }
 
   onDocumentKeyDown(e) {
@@ -1832,7 +2068,7 @@ class GuideEditor {
         }
         return;
       }
-      if (e.key === 'Delete' && this.selectedAnnotationId) {
+      if ((e.key === 'Delete' || e.key === 'Backspace') && this.selectedAnnotationId) {
         e.preventDefault();
         if (this.canvas.deleteSelected()) this.saveStepDebounced();
         return;

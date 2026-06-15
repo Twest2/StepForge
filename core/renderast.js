@@ -3,7 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { sanitizeHtml } = require('./sanitize');
-const { htmlToText, deepClone } = require('./util');
+const { htmlToText, linkifyMarkdownLinks, deepClone } = require('./util');
 const { systemPlaceholders, resolveScopes, expandPlaceholders } = require('./placeholders');
 const { decodePng } = require('./png');
 const { renderAnnotations, applyFocusedView } = require('./raster');
@@ -32,6 +32,10 @@ function buildRenderAst(store, guideId, { globals = {}, now = new Date(), maxSte
     system: systemPlaceholders(guide, { now, stepCount: includedIds.length }),
   });
   const expand = (text) => expandPlaceholders(text, values);
+  // Description fields additionally turn literal "[text](url)" markdown
+  // link syntax (as inserted by the editor's Link button) into real <a>
+  // tags before sanitizing, so exporters render an actual link.
+  const expandDesc = (html) => linkifyMarkdownLinks(expand(html || ''));
 
   const steps = [];
   const topCounter = { n: 0 };
@@ -66,15 +70,15 @@ function buildRenderAst(store, guideId, { globals = {}, now = new Date(), maxSte
       skipped: step.skipped,
       forceNewPage: Boolean(step.forceNewPage),
       title: expand(step.title || ''),
-      descriptionHtml: sanitizeHtml(expand(step.descriptionHtml || '')),
-      descriptionText: htmlToText(expand(step.descriptionHtml || '')),
+      descriptionHtml: sanitizeHtml(expandDesc(step.descriptionHtml)),
+      descriptionText: htmlToText(expandDesc(step.descriptionHtml)),
       focusedView: step.focusedView,
       annotations: (step.annotations || []).map((a) => ({ ...a, text: expand(a.text || '') })),
       textBlocks: (step.textBlocks || []).map((tb) => ({
         ...tb,
         title: expand(tb.title || ''),
-        descriptionHtml: sanitizeHtml(expand(tb.descriptionHtml || '')),
-        descriptionText: htmlToText(expand(tb.descriptionHtml || '')),
+        descriptionHtml: sanitizeHtml(expandDesc(tb.descriptionHtml)),
+        descriptionText: htmlToText(expandDesc(tb.descriptionHtml)),
       })),
       codeBlocks: (step.codeBlocks || []).map((cb) => ({ ...cb, code: blockText(cb) })),
       tableBlocks: (step.tableBlocks || []).map((tb) => ({
@@ -86,8 +90,8 @@ function buildRenderAst(store, guideId, { globals = {}, now = new Date(), maxSte
           return {
             ...block,
             title: expand(block.title || ''),
-            descriptionHtml: sanitizeHtml(expand(block.descriptionHtml || '')),
-            descriptionText: htmlToText(expand(block.descriptionHtml || '')),
+            descriptionHtml: sanitizeHtml(expandDesc(block.descriptionHtml)),
+            descriptionText: htmlToText(expandDesc(block.descriptionHtml)),
           };
         }
         if (block.kind === 'code') return { ...block };
@@ -116,8 +120,8 @@ function buildRenderAst(store, guideId, { globals = {}, now = new Date(), maxSte
     guide: {
       id: guide.guideId,
       title: expand(guide.title),
-      descriptionHtml: sanitizeHtml(expand(guide.descriptionHtml || '')),
-      descriptionText: htmlToText(expand(guide.descriptionHtml || '')),
+      descriptionHtml: sanitizeHtml(expandDesc(guide.descriptionHtml)),
+      descriptionText: htmlToText(expandDesc(guide.descriptionHtml)),
       createdAt: guide.createdAt,
       updatedAt: guide.updatedAt,
       flags: guide.flags,

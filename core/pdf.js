@@ -60,6 +60,7 @@ class PdfBuilder {
     this.images = []; // { name, width, height, data (deflated RGB), smask? }
     this.imageCache = new Map();
     this.bookmarks = []; // { title, pageIndex, y }
+    this.links = []; // { pageIndex, x, yTop, w, h, target }
   }
 
   addPage() {
@@ -173,6 +174,16 @@ class PdfBuilder {
     this.bookmarks.push({ title: toLatin1(title), pageIndex });
   }
 
+  /**
+   * Add a clickable region that jumps to another page (e.g. a Contents
+   * entry linking to a step). `target` is either a page index, or an
+   * object whose `pageIndex` is filled in later — once the destination
+   * page is known — and read when `build()` runs.
+   */
+  linkRect(x, yTop, w, h, target, pageIndex = this.pages.length - 1) {
+    this.links.push({ pageIndex, x, yTop, w, h, target });
+  }
+
   build() {
     if (!this.pages.length) this.addPage();
     const objects = []; // 1-based; objects[i] = body string|Buffer after header
@@ -210,6 +221,27 @@ class PdfBuilder {
         `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${this.pageWidth} ${this.pageHeight}] ` +
         `/Resources ${resources} /Contents ${contentId} 0 R >>`
       ));
+    }
+
+    // Link annotations (e.g. clickable Contents entries that jump to a
+    // step's page). Targets resolved late, after every step has claimed a
+    // page, so `target` may be an object whose `pageIndex` was only just set.
+    const pageAnnots = new Map(); // page index -> [annotation object id, ...]
+    for (const link of this.links) {
+      const targetIndex = typeof link.target === 'number' ? link.target : link.target?.pageIndex;
+      if (targetIndex == null || !pageIds[targetIndex]) continue;
+      const y1 = this.pageHeight - link.yTop - link.h;
+      const y2 = this.pageHeight - link.yTop;
+      const annotId = addObj(
+        `<< /Type /Annot /Subtype /Link /Rect [${link.x.toFixed(2)} ${y1.toFixed(2)} ${(link.x + link.w).toFixed(2)} ${y2.toFixed(2)}] ` +
+        `/Border [0 0 0] /Dest [${pageIds[targetIndex]} 0 R /Fit] >>`
+      );
+      if (!pageAnnots.has(link.pageIndex)) pageAnnots.set(link.pageIndex, []);
+      pageAnnots.get(link.pageIndex).push(annotId);
+    }
+    for (const [pageIndex, annotIds] of pageAnnots) {
+      const id = pageIds[pageIndex];
+      objects[id - 1] = objects[id - 1].replace(/ >>$/, ` /Annots [${annotIds.map((a) => `${a} 0 R`).join(' ')}] >>`);
     }
 
     let outlinesRef = '';

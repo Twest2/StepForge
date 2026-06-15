@@ -252,13 +252,25 @@ function exportPdf(ast, outDir, template = {}) {
     y = M;
   }
 
+  // Filled in below as each step claims its page, so the Contents entries
+  // above (already laid out before pagination starts) can link to it.
+  const tocTargets = new Map(); // stepId -> { pageIndex }
+
   if (tpl.includeToc && ast.steps.length > 1) {
     writeLines('Contents', { size: 16, font: 'F2' });
     y += 4;
+    const tocSize = 10.5;
+    const lineH = tocSize * 1.35;
     for (const step of ast.steps) {
-      writeLines(`${step.number}.  ${step.title || 'Untitled step'}`, {
-        size: 10.5, indent: 14 * step.depth,
-      });
+      const indent = 14 * step.depth;
+      const target = {};
+      tocTargets.set(step.stepId, target);
+      for (const line of pdf.wrapText(`${step.number}.  ${step.title || 'Untitled step'}`, tocSize, usableW - indent, 'F1')) {
+        ensure(lineH);
+        pdf.text(line, M + indent, y, { size: tocSize });
+        pdf.linkRect(M + indent, y, usableW - indent, lineH, target);
+        y += lineH;
+      }
     }
     pdf.addPage();
     y = M;
@@ -283,6 +295,8 @@ function exportPdf(ast, outDir, template = {}) {
     // together — never split across a page boundary.
     ensure(headHeight);
     pdf.bookmark(`${step.number}. ${step.title || 'Untitled step'}`);
+    const tocTarget = tocTargets.get(step.stepId);
+    if (tocTarget) tocTarget.pageIndex = pdf.pages.length - 1;
     const headSize = step.depth > 0 ? 12 : 14;
     writeLines(`${step.number}. ${step.title || 'Untitled step'}${step.skipped ? '  (skipped)' : ''}`, { size: headSize, font: 'F2' });
     pdf.rect(M, y, usableW, 0.8, { fill: [225, 228, 232] });

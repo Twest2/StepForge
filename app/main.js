@@ -14,6 +14,7 @@ const { SearchIndex } = require('../core/search');
 const { TemplateManager, FORMATS } = require('../core/templates');
 const { buildRenderAst } = require('../core/renderast');
 const { runExport, EXPORTERS } = require('../exporters');
+const { runExportInWorker } = require('./export-runner');
 const { exportGuideArchive, importGuideArchive, saveLinkedGuide, readArchive } = require('../core/archive');
 const { createSnapshot, listSnapshots, restoreSnapshot } = require('../core/snapshots');
 const { readLock } = require('../core/locks');
@@ -607,8 +608,14 @@ function setupIpc() {
       dir = res.filePaths[0];
     }
     settings.set(`exports.lastOutputDirs.${format}`, dir);
-    const ast = buildRenderAst(store, guideId, { globals: settings.getGlobalPlaceholders() });
-    const result = runExport(format, ast, dir, options || {});
+    const result = await runExportInWorker({
+      dataDir: store.root,
+      guideId,
+      format,
+      options: options || {},
+      outDir: dir,
+      globals: settings.getGlobalPlaceholders(),
+    });
     if (settings.get('exports.openFolderAfterExport')) shell.showItemInFolder(result.file);
     return { ok: true, ...result };
   });

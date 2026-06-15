@@ -317,6 +317,7 @@ class StepForgeApp {
           const rect = e.target.getBoundingClientRect();
           contextMenu(rect.left, rect.bottom + 4, [
             { label: 'Rename guide…', action: () => this.renameGuide() },
+            { label: 'Guide information…', action: () => this.editor.openGuideInfo() },
             { label: 'Guide placeholders…', action: () => this.editor.openGuidePlaceholders() },
             { label: 'Backups & snapshots…', action: () => this.editor.openBackupsDialog() },
             { label: guide && guide.linkedSource ? 'Linked guide…' : 'Linked guide (not linked)', action: () => this.editor.openLinkedGuide() },

@@ -125,6 +125,11 @@ function buildRenderAst(store, guideId, { globals = {}, now = new Date(), maxSte
       createdAt: guide.createdAt,
       updatedAt: guide.updatedAt,
       flags: guide.flags,
+      metadata: {
+        author: expand(guide.metadata?.author || ''),
+        coAuthors: expand(guide.metadata?.coAuthors || ''),
+        organization: expand(guide.metadata?.organization || ''),
+      },
     },
     steps: limited,
   };

@@ -213,3 +213,27 @@ test('guide ids are validated against path traversal', (t) => {
   assert.throws(() => store.guideDir('a/b'));
   assert.throws(() => store.stepDir('ok', '..'));
 });
+
+test('guide metadata: optional fields default to empty strings and round-trip via save/load', (t) => {
+  const root = makeTmpDir('metadata');
+  t.after(() => rmrf(root));
+  const store = new GuideStore(root);
+  const guide = store.createGuide({ title: 'Metadata test' });
+  assert.deepEqual(guide.metadata, { author: '', coAuthors: '', organization: '' });
+
+  guide.metadata = { author: 'Jane Doe', coAuthors: 'Alex Lee, Sam Patel', organization: 'Acme Corp' };
+  store.saveGuide(guide);
+
+  const fresh = new GuideStore(root);
+  const loaded = fresh.getGuide(guide.guideId);
+  assert.deepEqual(loaded.metadata, { author: 'Jane Doe', coAuthors: 'Alex Lee, Sam Patel', organization: 'Acme Corp' });
+
+  // A guide saved before metadata existed normalizes to the same defaults.
+  const legacy = fresh.getGuide(guide.guideId);
+  delete legacy.metadata;
+  store.saveGuide(legacy);
+  assert.deepEqual(fresh.getGuide(guide.guideId).metadata, { author: '', coAuthors: '', organization: '' });
+
+  loaded.metadata = 'not an object';
+  assert.throws(() => store.saveGuide(loaded), /metadata must be an object/);
+});

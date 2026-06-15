@@ -639,6 +639,44 @@ function showPlaceholdersDialog({ title = 'Placeholders', hint = '', values = {}
   });
 }
 
+/**
+ * Optional document metadata (author, co-authors, organization) shown at the
+ * top of the guide, below the title, and surfaced on the PDF cover page.
+ */
+function showGuideInfoDialog({ values = {}, onSave } = {}) {
+  return new Promise((resolve) => {
+    const authorInput = makeInput(values.author || '', 'text', { placeholder: 'e.g. Jane Doe' });
+    const coAuthorsInput = makeInput(values.coAuthors || '', 'text', { placeholder: 'e.g. Alex Lee, Sam Patel' });
+    const organizationInput = makeInput(values.organization || '', 'text', { placeholder: 'e.g. Acme Corp' });
+
+    const { close } = openModal({
+      title: 'Guide information',
+      body: el('div', {},
+        el('div.muted', { style: { marginBottom: '10px' } },
+          'All fields are optional. They appear below the title on the guide and on the PDF cover page.'),
+        labeledRow('Author', authorInput),
+        labeledRow('Co-authors', coAuthorsInput),
+        labeledRow('Organization', organizationInput),
+      ),
+      footer: [
+        el('button', { onClick: () => { close(); resolve(false); } }, 'Cancel'),
+        el('button.primary', {
+          onClick: async () => {
+            await onSave?.({
+              author: authorInput.value.trim(),
+              coAuthors: coAuthorsInput.value.trim(),
+              organization: organizationInput.value.trim(),
+            });
+            close();
+            resolve(true);
+          },
+        }, 'Save'),
+      ],
+      onClose: () => resolve(false),
+    });
+  });
+}
+
 const SHORTCUTS = [
   ['Capture & steps', [
     ['Ctrl+S', 'Save (writes linked archive when guide is linked)'],
@@ -727,6 +765,7 @@ window.StepForgeDialogs = {
   showInfoDialog,
   showBackupsDialog,
   showPlaceholdersDialog,
+  showGuideInfoDialog,
   showShortcutsDialog,
   showTemplateManager,
   showRecordingReminder,

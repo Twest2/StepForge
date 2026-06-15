@@ -47,7 +47,7 @@ function emitBlock(lines, tb, { alertStyle = 'gfm' } = {}) {
       `<div class="sf-callout sf-callout-${theme.kind}" style="${style}">`,
       `<div style="font-weight: 700; color: ${theme.fg}; margin-bottom: ${body ? '6px' : '0'};">${escapeHtml(title)}</div>`,
     );
-    if (body) lines.push(`<div style="color: #243044;">${tb.descriptionHtml || ''}</div>`);
+    if (body) lines.push(`<div style="color: inherit;">${tb.descriptionHtml || ''}</div>`);
     lines.push('</div>', '');
     return;
   }

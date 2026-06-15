@@ -90,6 +90,25 @@ button.tool.active {
   border-color: var(--accent);
   color: var(--accent-fg);
 }
+button:disabled { opacity: 0.6; cursor: default; }
+button.loading {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+.spinner {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  opacity: 0.85;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 
 input, select, textarea {
   font: inherit;

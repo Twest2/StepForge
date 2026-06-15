@@ -285,18 +285,20 @@ test('DOCX export: valid OPC package, well-formed XML, resolvable image rels', (
 
   assert.equal(imageCount, 2);
   const entries = new Map(unzipSync(fs.readFileSync(file)).map((e) => [e.name, e.data]));
-  for (const required of ['[Content_Types].xml', '_rels/.rels', 'word/document.xml', 'word/_rels/document.xml.rels', 'word/settings.xml']) {
+  for (const required of ['[Content_Types].xml', '_rels/.rels', 'word/document.xml', 'word/_rels/document.xml.rels', 'word/settings.xml', 'word/styles.xml']) {
     assert.ok(entries.has(required), `missing ${required}`);
   }
   assertWellFormedXml(entries.get('word/document.xml').toString('utf8'), 'document.xml');
   assertWellFormedXml(entries.get('[Content_Types].xml').toString('utf8'), 'content types');
   assertWellFormedXml(entries.get('word/settings.xml').toString('utf8'), 'settings.xml');
+  assertWellFormedXml(entries.get('word/styles.xml').toString('utf8'), 'styles.xml');
 
   // Every relationship target exists in the package, every embed has a rel.
   const relsXml = entries.get('word/_rels/document.xml.rels').toString('utf8');
   const relTargets = [...relsXml.matchAll(/Target="([^"]+)"/g)].map((m) => m[1]);
-  assert.equal(relTargets.length, 7);
+  assert.equal(relTargets.length, 8);
   assert.ok(relTargets.includes('settings.xml'));
+  assert.ok(relTargets.includes('styles.xml'));
 
   const mediaTargets = relTargets.filter((target) => target.startsWith('media/'));
   assert.equal(mediaTargets.length, 6);
@@ -324,6 +326,13 @@ test('DOCX export: valid OPC package, well-formed XML, resolvable image rels', (
   assert.ok(docXml.includes('TOC \\o &quot;1-3&quot; \\h \\z \\u'));
   assert.ok(docXml.includes('w:pStyle w:val="Heading1"'));
   assert.ok(docXml.includes('w:pStyle w:val="Heading2"'));
+  assert.ok(docXml.includes('w:outlineLvl w:val="0"'));
+  assert.ok(docXml.includes('w:outlineLvl w:val="1"'));
+
+  const stylesXml = entries.get('word/styles.xml').toString('utf8');
+  assert.ok(stylesXml.includes('w:style w:type="paragraph" w:styleId="Heading1"'));
+  assert.ok(stylesXml.includes('w:style w:type="paragraph" w:styleId="Heading2"'));
+  assert.ok(stylesXml.includes('w:style w:type="paragraph" w:styleId="Heading3"'));
 
   // unzip CLI also accepts the package (it is a plain zip).
   assert.ok(entries.size >= 6);

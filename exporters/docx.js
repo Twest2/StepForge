@@ -89,6 +89,18 @@ function headingStyleForDepth(depth) {
   return `Heading${Math.min(3, depth + 1)}`;
 }
 
+function headingOutlineLevelForDepth(depth) {
+  return Math.min(2, Math.max(0, depth));
+}
+
+function headingParagraphProps(depth, forceNewPage = false) {
+  const parts = [];
+  if (forceNewPage) parts.push('<w:pageBreakBefore/>');
+  parts.push(`<w:pStyle w:val="${headingStyleForDepth(depth)}"/>`);
+  parts.push(`<w:outlineLvl w:val="${headingOutlineLevelForDepth(depth)}"/>`);
+  return parts.join('');
+}
+
 function table(rows) {
   const cols = Math.max(...rows.map((r) => r.length));
   const grid = `<w:tblGrid>${'<w:gridCol w:w="2400"/>'.repeat(cols)}</w:tblGrid>`;
@@ -106,14 +118,71 @@ function table(rows) {
   return `<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/>${borders}</w:tblPr>${grid}${body}</w:tbl>`;
 }
 
+function stylesXml() {
+  const headingStyle = (styleId, name, outlineLvl, size, color) => `
+  <w:style w:type="paragraph" w:styleId="${styleId}">
+    <w:name w:val="${name}"/>
+    <w:basedOn w:val="Normal"/>
+    <w:next w:val="Normal"/>
+    <w:uiPriority w:val="${9 + outlineLvl}"/>
+    <w:qFormat/>
+    <w:unhideWhenUsed/>
+    <w:pPr>
+      <w:keepNext/>
+      <w:keepLines/>
+      <w:spacing w:before="${outlineLvl === 0 ? 360 : outlineLvl === 1 ? 240 : 180}" w:after="120"/>
+      <w:outlineLvl w:val="${outlineLvl}"/>
+    </w:pPr>
+    <w:rPr>
+      <w:b/>
+      <w:sz w:val="${size}"/>
+      <w:szCs w:val="${size}"/>
+      <w:color w:val="${color}"/>
+    </w:rPr>
+  </w:style>`;
+
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:docDefaults>
+    <w:rPrDefault>
+      <w:rPr>
+        <w:sz w:val="22"/>
+        <w:szCs w:val="22"/>
+        <w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/>
+      </w:rPr>
+    </w:rPrDefault>
+    <w:pPrDefault>
+      <w:pPr>
+        <w:spacing w:after="160"/>
+      </w:pPr>
+    </w:pPrDefault>
+  </w:docDefaults>
+  <w:style w:type="paragraph" w:default="1" w:styleId="Normal">
+    <w:name w:val="Normal"/>
+    <w:qFormat/>
+    <w:uiPriority w:val="1"/>
+    <w:rPr>
+      <w:sz w:val="22"/>
+      <w:szCs w:val="22"/>
+      <w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/>
+    </w:rPr>
+  </w:style>
+  ${headingStyle('Heading1', 'Heading 1', 0, 30, '2563EB')}
+  ${headingStyle('Heading2', 'Heading 2', 1, 26, '1D4ED8')}
+  ${headingStyle('Heading3', 'Heading 3', 2, 22, '1E40AF')}
+</w:styles>`;
+}
+
 function exportDocx(ast, outDir, template = {}) {
   const tpl = { ...DEFAULT_TEMPLATE, ...template };
   const images = tpl.includeImages ? renderAllImages(ast) : new Map();
 
   const media = [];   // { name, data }
   const rels = [];    // relationship XML strings
-  let relCounter = 1; // rId1 reserved for settings.xml
+  let relCounter = 1; // rId1 reserved for settings.xml; rId2 for styles.xml
   let stepImageCount = 0;
+
+  rels.push(`<Relationship Id="rId${++relCounter}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>`);
 
   const iconRelIds = {};
   for (const level of ['info', 'success', 'warn', 'error']) {
@@ -162,7 +231,7 @@ function exportDocx(ast, outDir, template = {}) {
     const headSize = headingLevel === 1 ? 30 : headingLevel === 2 ? 26 : 22;
     body.push(p(
       run(`${step.number}. ${step.title || 'Untitled step'}`, { bold: true, size: headSize }),
-      `${step.forceNewPage ? '<w:pageBreakBefore/>' : ''}<w:pStyle w:val="${headingStyleForDepth(step.depth)}"/>`
+      headingParagraphProps(step.depth, step.forceNewPage)
     ));
 
     const { before, rest } = stepContentGroups(step);
@@ -215,6 +284,7 @@ ${body.join('\n')}
 <Default Extension="xml" ContentType="application/xml"/>
 <Default Extension="png" ContentType="image/png"/>
 <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
 <Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>
 </Types>`,
     },
@@ -235,6 +305,7 @@ ${rels.join('\n')}
 </Relationships>`,
     },
     { name: 'word/settings.xml', data: settingsXml },
+    { name: 'word/styles.xml', data: stylesXml() },
     ...media.map((m) => ({ name: `word/media/${m.name}`, data: m.data, store: true })),
   ];
 

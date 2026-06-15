@@ -7,7 +7,6 @@ const { escapeXml } = require('../core/util');
 const { encodePng } = require('../core/png');
 const { guideSlug, renderAllImages, LEVEL_LABEL, stepContentGroups, codeBlockText } = require('./common');
 const { guideMetaLines, guideSummary } = require('./document-layout');
-const raster = require('../core/raster');
 
 /**
  * DOCX exporter: WordprocessingML built directly (no dependency), one
@@ -67,22 +66,18 @@ function drawing(relId, widthPx, heightPx, maxWidthTwips) {
     `</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`;
 }
 
-function calloutIcon(level) {
-  const img = raster.createImage(24, 24, [0, 0, 0, 0]);
-  const fill = {
-    info: [37, 99, 235, 255],
-    success: [16, 185, 129, 255],
-    warn: [245, 158, 11, 255],
-    error: [239, 68, 68, 255],
-  }[level] || [37, 99, 235, 255];
-  raster.fillOval(img, 1, 1, 22, 22, fill);
-  const glyph = level === 'success' ? 'v' : level === 'warn' ? '!' : level === 'error' ? 'x' : 'i';
-  raster.drawTextCentered(img, 12, 13, glyph, 12, [255, 255, 255, 255]);
-  return img;
-}
-
 function pageBreak() {
   return p('<w:r><w:br w:type="page"/></w:r>');
+}
+
+function tocFieldParagraph() {
+  return p([
+    '<w:r><w:fldChar w:fldCharType="begin" w:dirty="true"/></w:r>',
+    '<w:r><w:instrText xml:space="preserve"> TOC \\o "1-3" \\h \\z \\u </w:instrText></w:r>',
+    '<w:r><w:fldChar w:fldCharType="separate"/></w:r>',
+    '<w:r><w:rPr><w:i/></w:rPr><w:t xml:space="preserve">Update contents in Word</w:t></w:r>',
+    '<w:r><w:fldChar w:fldCharType="end"/></w:r>',
+  ].join(''));
 }
 
 function headingStyleForDepth(depth) {
@@ -184,16 +179,6 @@ function exportDocx(ast, outDir, template = {}) {
 
   rels.push(`<Relationship Id="rId${++relCounter}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>`);
 
-  const iconRelIds = {};
-  for (const level of ['info', 'success', 'warn', 'error']) {
-    const icon = calloutIcon(level);
-    const relId = ++relCounter;
-    iconRelIds[level] = relId;
-    const name = `callout-${level}.png`;
-    media.push({ name, data: encodePng(icon) });
-    rels.push(`<Relationship Id="rId${relId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${name}"/>`);
-  }
-
   const body = [];
   body.push(p(
     run(ast.guide.title, { bold: true, size: 48 }),
@@ -210,18 +195,15 @@ function exportDocx(ast, outDir, template = {}) {
       run('Contents', { bold: true, size: 28 }),
       '<w:pBdr><w:bottom w:val="single" w:sz="20" w:space="8" w:color="2563EB"/></w:pBdr>'
     ));
-    body.push(p(
-      `<w:fldSimple w:instr="TOC \\o &quot;1-3&quot; \\h \\z \\u"><w:r><w:rPr><w:i/></w:rPr><w:t xml:space="preserve">Update contents in Word</w:t></w:r></w:fldSimple>`
-    ));
+    body.push(tocFieldParagraph());
     body.push(pageBreak());
   }
 
   const emitTextBlock = (tb) => {
     const style = LEVEL_STYLE[tb.level] || LEVEL_STYLE.info;
-    const iconRelId = iconRelIds[tb.level] || iconRelIds.info;
     const label = `${LEVEL_LABEL[tb.level] || 'Note'}${tb.title ? `: ${tb.title}` : ''}`;
     body.push(p(
-      `${drawing(iconRelId, 16, 16, 240)}${run(label, { bold: true, size: 20, color: style.color })}${tb.descriptionText ? run('\n' + tb.descriptionText, { size: 20, color: '1F2937' }) : ''}`,
+      `${run(label, { bold: true, size: 20, color: style.color })}${tb.descriptionText ? run('\n' + tb.descriptionText, { size: 20, color: '1F2937' }) : ''}`,
       `<w:shd w:val="clear" w:fill="${style.fill}"/><w:pBdr><w:left w:val="single" w:sz="24" w:space="4" w:color="${style.color}"/></w:pBdr>`
     ));
   };

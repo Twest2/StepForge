@@ -8,6 +8,7 @@ const path = require('node:path');
 const { buildRenderAst, renderStepImage } = require('../../core/renderast');
 const { exportJson } = require('../../exporters/json');
 const { exportMarkdown } = require('../../exporters/markdown');
+const { exportWikiJs } = require('../../exporters/wikijs');
 const { exportHtmlSimple, exportHtmlRich } = require('../../exporters/html');
 const { exportConfluence } = require('../../exporters/confluence');
 const { htmlToMarkdown } = require('../../exporters/htmlmd');
@@ -141,6 +142,32 @@ test('Markdown export: TOC anchors resolve, images exist, blocks rendered', (t) 
   assert.ok(warnIdx > 0);
   assert.equal(lines[warnIdx + 1], '> **Access**');
   assert.equal(lines[warnIdx + 2], '> Admins only.');
+});
+
+test('Wiki.js export: TOC is omitted, wiki callouts render, images exist', (t) => {
+  const root = makeTmpDir('expwikijs');
+  t.after(() => rmrf(root));
+  const { store, guide } = buildFixtureGuide(path.join(root, 'data'));
+  const out = path.join(root, 'out');
+
+  const ast = buildRenderAst(store, guide.guideId);
+  const { file } = exportWikiJs(ast, out);
+  const md = fs.readFileSync(file, 'utf8');
+
+  const lines = md.split('\n');
+  assert.equal(lines[0], '# Configure AcmeSync backups');
+  assert.ok(!lines.some((l) => l === '## Contents'));
+  assert.ok(lines.some((l) => l.startsWith('## 1. Open AcmeSync settings')));
+  assert.ok(lines.some((l) => l.startsWith('> **Access**')));
+  assert.ok(lines.includes('> Admins only.'));
+  assert.ok(lines.includes('{.is-warning}'));
+
+  const imgRefs = [...md.matchAll(/!\[[^\]]*\]\(([^)]+)\)/g)].map((m) => m[1]);
+  assert.equal(imgRefs.length, 2);
+  for (const rel of imgRefs) {
+    const img = decodePng(fs.readFileSync(path.join(out, rel)));
+    assert.equal(img.width, 320);
+  }
 });
 
 test('Confluence export writes storage-format XML and image attachments', (t) => {

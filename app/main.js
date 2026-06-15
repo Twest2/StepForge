@@ -11,7 +11,7 @@ const {
 const { GuideStore } = require('../core/store');
 const { Settings } = require('../core/settings');
 const { SearchIndex } = require('../core/search');
-const { TemplateManager, FORMATS } = require('../core/templates');
+const { TemplateManager, FORMATS, FORMAT_LABELS } = require('../core/templates');
 const { buildRenderAst } = require('../core/renderast');
 const { runExport, EXPORTERS } = require('../exporters');
 const { runExportInWorker } = require('./export-runner');
@@ -579,13 +579,17 @@ function setupIpc() {
   });
 
   // export + preview
-  h('export:formats', () => FORMATS.filter((f) => EXPORTERS[f]));
+  h('export:formats', () => FORMATS.filter((f) => EXPORTERS[f]).map((format) => ({
+    id: format,
+    label: FORMAT_LABELS[format] || format,
+  })));
   h('export:defaults', ({ format }) => {
     // Exporter modules expose DEFAULT_TEMPLATE; the dialog renders editable
     // options from it (booleans -> checkbox, numbers -> number, strings -> text).
     const mod = {
       json: '../exporters/json',
       markdown: '../exporters/markdown',
+      wikijs: '../exporters/wikijs',
       'html-simple': '../exporters/html',
       'html-rich': '../exporters/html',
       confluence: '../exporters/confluence',

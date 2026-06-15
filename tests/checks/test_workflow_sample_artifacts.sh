@@ -21,7 +21,7 @@ for f in sample-manifest.json sample-guide.sfgz; do
 done
 
 for dir in sample-data sample-exports/json sample-exports/markdown sample-exports/html-simple \
-           sample-exports/html-rich sample-exports/pdf sample-exports/gif \
+           sample-exports/wikijs sample-exports/html-rich sample-exports/pdf sample-exports/gif \
            sample-exports/image-bundle sample-exports/docx sample-exports/pptx; do
   if ! find "$SAMPLE_ROOT/$dir" -type f -print -quit | grep -q .; then
     echo "Sample export directory is empty: $dir" >&2
@@ -34,7 +34,7 @@ const fs = require('node:fs');
 const manifest = JSON.parse(fs.readFileSync(process.env.MANIFEST_FILE, 'utf8'));
 if (manifest.format !== 'stepforge-sample-manifest') throw new Error('unexpected sample manifest format');
 if (!manifest.guideId) throw new Error('missing guideId');
-if (!manifest.exports || Object.keys(manifest.exports).length < 9) throw new Error('missing sample exports');
+if (!manifest.exports || Object.keys(manifest.exports).length < 10) throw new Error('missing sample exports');
 NODE
 
 echo "sample artifacts OK"

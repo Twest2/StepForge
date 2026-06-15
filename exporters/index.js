@@ -2,6 +2,7 @@
 
 const { exportJson } = require('./json');
 const { exportMarkdown } = require('./markdown');
+const { exportWikiJs } = require('./wikijs');
 const { exportHtmlSimple, exportHtmlRich } = require('./html');
 const { exportConfluence } = require('./confluence');
 const { exportPdf } = require('./pdf');
@@ -14,6 +15,7 @@ const { exportPptx } = require('./pptx');
 const EXPORTERS = {
   json: exportJson,
   markdown: exportMarkdown,
+  wikijs: exportWikiJs,
   'html-simple': exportHtmlSimple,
   'html-rich': exportHtmlRich,
   confluence: exportConfluence,

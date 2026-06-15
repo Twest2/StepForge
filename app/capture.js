@@ -798,6 +798,16 @@ public static class SFMouseHook {
   private const int WM_MBUTTONDOWN = 0x0207;
   private const int WM_XBUTTONDOWN = 0x020B;
   private const long UnixEpochMilliseconds = 62135596800000L;
+  // Opting this process out of Windows Power Throttling (EcoQoS). In a
+  // power-saving plan the OS CPU-starves background processes; a starved
+  // low-level mouse hook whose callback exceeds LowLevelHooksTimeout is
+  // silently skipped by Windows (events stop arriving) while the process
+  // stays alive, so clicks are missed with no error — the "only the first
+  // couple of clicks were captured" symptom.
+  private const int ProcessPowerThrottling = 4;
+  private const uint PROCESS_POWER_THROTTLING_CURRENT_VERSION = 1;
+  private const uint PROCESS_POWER_THROTTLING_EXECUTION_SPEED = 0x1;
+  private const uint HIGH_PRIORITY_CLASS = 0x00000080;
 
   private static IntPtr hook = IntPtr.Zero;
   private static LowLevelMouseProc proc = HookCallback;
@@ -829,6 +839,13 @@ public static class SFMouseHook {
     public POINT pt;
   }
 
+  [StructLayout(LayoutKind.Sequential)]
+  private struct PROCESS_POWER_THROTTLING_STATE {
+    public uint Version;
+    public uint ControlMask;
+    public uint StateMask;
+  }
+
   private delegate IntPtr LowLevelMouseProc(int nCode, IntPtr wParam, IntPtr lParam);
 
   [DllImport("user32.dll", SetLastError = true)]
@@ -855,7 +872,33 @@ public static class SFMouseHook {
   [DllImport("user32.dll")]
   private static extern bool SetProcessDpiAwarenessContext(IntPtr value);
 
+  [DllImport("kernel32.dll", SetLastError = true)]
+  private static extern bool SetProcessInformation(IntPtr hProcess, int ProcessInformationClass, ref PROCESS_POWER_THROTTLING_STATE ProcessInformation, uint ProcessInformationSize);
+
+  [DllImport("kernel32.dll")]
+  private static extern IntPtr GetCurrentProcess();
+
+  [DllImport("kernel32.dll")]
+  private static extern bool SetPriorityClass(IntPtr hProcess, uint dwPriorityClass);
+
+  // Force this process to run at full CPU speed regardless of the power plan,
+  // so the mouse-hook callback never trips LowLevelHooksTimeout and clicks
+  // keep being delivered while the laptop is in eco / power-saving mode.
+  private static void KeepProcessResponsive() {
+    try {
+      PROCESS_POWER_THROTTLING_STATE state = new PROCESS_POWER_THROTTLING_STATE();
+      state.Version = PROCESS_POWER_THROTTLING_CURRENT_VERSION;
+      // Control EXECUTION_SPEED and set its state bit to 0 => throttling off
+      // (the documented way to opt a process out of EcoQoS).
+      state.ControlMask = PROCESS_POWER_THROTTLING_EXECUTION_SPEED;
+      state.StateMask = 0;
+      SetProcessInformation(GetCurrentProcess(), ProcessPowerThrottling, ref state, (uint)Marshal.SizeOf(state));
+    } catch { }
+    try { SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS); } catch { }
+  }
+
   public static void Run() {
+    KeepProcessResponsive();
     try { SetProcessDpiAwarenessContext(new IntPtr(-4)); } catch { }
 
     Thread writer = new Thread(WriterLoop);

@@ -485,7 +485,7 @@ function setupIpc() {
     return settings.data;
   });
   h('placeholders:globals:get', () => settings.getGlobalPlaceholders());
-  h('placeholders:globals:set', ({ values }) => settings.setGlobalPlaceholders(values));
+  h('placeholders:globals:set', (values) => settings.setGlobalPlaceholders(values));
 
   // capture
   h('capture:shoot', async ({ guideId, mode, delayMs }) => {

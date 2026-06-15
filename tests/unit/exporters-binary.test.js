@@ -296,15 +296,15 @@ test('DOCX export: valid OPC package, well-formed XML, resolvable image rels', (
   // Every relationship target exists in the package, every embed has a rel.
   const relsXml = entries.get('word/_rels/document.xml.rels').toString('utf8');
   const relTargets = [...relsXml.matchAll(/Target="([^"]+)"/g)].map((m) => m[1]);
-  assert.equal(relTargets.length, 8);
+  assert.equal(relTargets.length, 4);
   assert.ok(relTargets.includes('settings.xml'));
   assert.ok(relTargets.includes('styles.xml'));
 
   const mediaTargets = relTargets.filter((target) => target.startsWith('media/'));
-  assert.equal(mediaTargets.length, 6);
+  assert.equal(mediaTargets.length, 2);
   const iconTargets = mediaTargets.filter((target) => target.includes('callout-'));
   const imageTargets = mediaTargets.filter((target) => target.includes('image'));
-  assert.equal(iconTargets.length, 4);
+  assert.equal(iconTargets.length, 0);
   assert.equal(imageTargets.length, 2);
 
   for (const target of iconTargets) {
@@ -323,7 +323,8 @@ test('DOCX export: valid OPC package, well-formed XML, resolvable image rels', (
   for (const id of embeds) {
     assert.ok(relIds.includes(id), `missing relationship for ${id}`);
   }
-  assert.ok(docXml.includes('TOC \\o &quot;1-3&quot; \\h \\z \\u'));
+  assert.ok(docXml.includes('w:fldChar w:fldCharType="begin" w:dirty="true"'));
+  assert.ok(docXml.includes('TOC \\o "1-3" \\h \\z \\u'));
   assert.ok(docXml.includes('w:pStyle w:val="Heading1"'));
   assert.ok(docXml.includes('w:pStyle w:val="Heading2"'));
   assert.ok(docXml.includes('w:outlineLvl w:val="0"'));

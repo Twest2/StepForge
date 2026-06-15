@@ -6,7 +6,7 @@ const { zipSync } = require('../core/zip');
 const { escapeXml } = require('../core/util');
 const { encodePng } = require('../core/png');
 const { guideSlug, renderAllImages, LEVEL_LABEL, stepContentGroups, codeBlockText } = require('./common');
-const { guideMetaLines, guideSummary } = require('./document-layout');
+const { guideMetaLines, guideSummary, tocEntries } = require('./document-layout');
 
 /**
  * DOCX exporter: WordprocessingML built directly (no dependency), one
@@ -70,14 +70,52 @@ function pageBreak() {
   return p('<w:r><w:br w:type="page"/></w:r>');
 }
 
-function tocFieldParagraph() {
-  return p([
-    '<w:r><w:fldChar w:fldCharType="begin" w:dirty="true"/></w:r>',
-    '<w:r><w:instrText xml:space="preserve"> TOC \\o "1-3" \\h \\z \\u </w:instrText></w:r>',
-    '<w:r><w:fldChar w:fldCharType="separate"/></w:r>',
-    '<w:r><w:rPr><w:i/></w:rPr><w:t xml:space="preserve">Update contents in Word</w:t></w:r>',
-    '<w:r><w:fldChar w:fldCharType="end"/></w:r>',
-  ].join(''));
+// Width (in twips) of the text column inside the A4 page margins used by
+// <w:sectPr> below (11906 - 1134*2), i.e. where TOC page-number tabs land.
+const TOC_TAB_POS = 9638;
+
+/** Bookmark name anchoring a step's heading, referenced by its TOC entry. */
+function bookmarkName(step) {
+  return `toc_${String(step.number).replace(/\./g, '_')}`;
+}
+
+/** A `PAGEREF <anchor>` field, cached as "1" until Word recalculates it. */
+function pageRefField(anchor) {
+  return '<w:r><w:fldChar w:fldCharType="begin" w:dirty="true"/></w:r>' +
+    `<w:r><w:instrText xml:space="preserve"> PAGEREF ${anchor} \\h </w:instrText></w:r>` +
+    '<w:r><w:fldChar w:fldCharType="separate"/></w:r>' +
+    '<w:r><w:t>1</w:t></w:r>' +
+    '<w:r><w:fldChar w:fldCharType="end"/></w:r>';
+}
+
+/** One TOC line: hyperlink to the step's heading, dot leader, page number. */
+function tocEntryContent(entry) {
+  const anchor = bookmarkName(entry.step);
+  return `<w:hyperlink w:anchor="${anchor}">${run(`${entry.number}. ${entry.title}`, { size: 20 })}</w:hyperlink>` +
+    '<w:r><w:tab/></w:r>' +
+    pageRefField(anchor);
+}
+
+/**
+ * The TOC as real, navigable entries (one per step) rather than a bare
+ * "Update contents in Word" placeholder, so the table is correct on first
+ * open. Still wrapped in a `TOC` field (spanning the first..last paragraph)
+ * so Word can refresh page numbers via Update Field / the updateFields prompt.
+ */
+function tocFieldParagraphs(ast) {
+  const entries = tocEntries(ast);
+  const beginField = '<w:r><w:fldChar w:fldCharType="begin" w:dirty="true"/></w:r>' +
+    '<w:r><w:instrText xml:space="preserve"> TOC \\o "1-3" \\h \\z \\u </w:instrText></w:r>' +
+    '<w:r><w:fldChar w:fldCharType="separate"/></w:r>';
+  const endField = '<w:r><w:fldChar w:fldCharType="end"/></w:r>';
+
+  return entries.map((entry, i) => {
+    const pPr = `<w:pStyle w:val="TOC${Math.min(3, Math.max(1, entry.depth + 1))}"/>` +
+      `<w:tabs><w:tab w:val="right" w:leader="dot" w:pos="${TOC_TAB_POS}"/></w:tabs>`;
+    const lead = i === 0 ? beginField : '';
+    const trail = i === entries.length - 1 ? endField : '';
+    return `<w:p><w:pPr>${pPr}</w:pPr>${lead}${tocEntryContent(entry)}${trail}</w:p>`;
+  });
 }
 
 function headingStyleForDepth(depth) {
@@ -136,6 +174,25 @@ function stylesXml() {
     </w:rPr>
   </w:style>`;
 
+  const tocStyle = (level) => `
+  <w:style w:type="paragraph" w:styleId="TOC${level}">
+    <w:name w:val="toc ${level}"/>
+    <w:basedOn w:val="Normal"/>
+    <w:next w:val="Normal"/>
+    <w:autoRedefine/>
+    <w:uiPriority w:val="39"/>
+    <w:unhideWhenUsed/>
+    <w:pPr>
+      <w:spacing w:after="60"/>
+      <w:ind w:left="${(level - 1) * 360}"/>
+      <w:tabs><w:tab w:val="right" w:leader="dot" w:pos="${TOC_TAB_POS}"/></w:tabs>
+    </w:pPr>
+    <w:rPr>
+      <w:sz w:val="20"/>
+      <w:szCs w:val="20"/>
+    </w:rPr>
+  </w:style>`;
+
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:docDefaults>
@@ -165,6 +222,9 @@ function stylesXml() {
   ${headingStyle('Heading1', 'Heading 1', 0, 30, '2563EB')}
   ${headingStyle('Heading2', 'Heading 2', 1, 26, '1D4ED8')}
   ${headingStyle('Heading3', 'Heading 3', 2, 22, '1E40AF')}
+  ${tocStyle(1)}
+  ${tocStyle(2)}
+  ${tocStyle(3)}
 </w:styles>`;
 }
 
@@ -175,6 +235,7 @@ function exportDocx(ast, outDir, template = {}) {
   const media = [];   // { name, data }
   const rels = [];    // relationship XML strings
   let relCounter = 1; // rId1 reserved for settings.xml; rId2 for styles.xml
+  let bookmarkCounter = 0;
   let stepImageCount = 0;
 
   rels.push(`<Relationship Id="rId${++relCounter}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>`);
@@ -195,7 +256,7 @@ function exportDocx(ast, outDir, template = {}) {
       run('Contents', { bold: true, size: 28 }),
       '<w:pBdr><w:bottom w:val="single" w:sz="20" w:space="8" w:color="2563EB"/></w:pBdr>'
     ));
-    body.push(tocFieldParagraph());
+    body.push(...tocFieldParagraphs(ast));
     body.push(pageBreak());
   }
 
@@ -211,8 +272,12 @@ function exportDocx(ast, outDir, template = {}) {
   for (const step of ast.steps) {
     const headingLevel = Math.min(3, Math.max(1, step.depth + 1));
     const headSize = headingLevel === 1 ? 30 : headingLevel === 2 ? 26 : 22;
+    const bookmarkId = ++bookmarkCounter;
+    const anchor = bookmarkName(step);
     body.push(p(
-      run(`${step.number}. ${step.title || 'Untitled step'}`, { bold: true, size: headSize }),
+      `<w:bookmarkStart w:id="${bookmarkId}" w:name="${anchor}"/>` +
+      run(`${step.number}. ${step.title || 'Untitled step'}`, { bold: true, size: headSize }) +
+      `<w:bookmarkEnd w:id="${bookmarkId}"/>`,
       headingParagraphProps(step.depth, step.forceNewPage)
     ));
 

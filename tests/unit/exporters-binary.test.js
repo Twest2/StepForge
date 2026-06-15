@@ -339,6 +339,46 @@ test('DOCX export: valid OPC package, well-formed XML, resolvable image rels', (
   assert.ok(entries.size >= 6);
 });
 
+test('DOCX export: TOC contains a real, navigable entry per step', (t) => {
+  const { ast, root } = fixtureAst(t, 'docxtoc');
+  const { file } = exportDocx(ast, path.join(root, 'out'));
+  const entries = new Map(unzipSync(fs.readFileSync(file)).map((e) => [e.name, e.data]));
+  const docXml = entries.get('word/document.xml').toString('utf8');
+  const stylesXml = entries.get('word/styles.xml').toString('utf8');
+
+  // One TOC entry per step, in document order, hyperlinked by step number.
+  const tocLinks = [...docXml.matchAll(/<w:hyperlink w:anchor="([^"]+)">(.*?)<\/w:hyperlink>/g)]
+    .map((m) => ({ anchor: m[1], text: /<w:t[^>]*>([^<]*)<\/w:t>/.exec(m[2])[1] }));
+  assert.deepEqual(tocLinks.map((e) => e.text), ast.steps.map((step) => `${step.number}. ${step.title || 'Untitled step'}`));
+
+  // Each TOC entry's anchor matches a bookmark wrapping that step's heading.
+  for (const { anchor } of tocLinks) {
+    assert.match(docXml, new RegExp(`<w:bookmarkStart w:id="\\d+" w:name="${anchor}"/>`), `bookmark for ${anchor}`);
+  }
+  // Bookmark ids are unique.
+  const bookmarkIds = [...docXml.matchAll(/<w:bookmarkStart w:id="(\d+)"/g)].map((m) => m[1]);
+  assert.equal(new Set(bookmarkIds).size, bookmarkIds.length);
+
+  // Page numbers are real PAGEREF fields (one per entry), not static text.
+  const pageRefs = [...docXml.matchAll(/PAGEREF (\S+) \\h/g)].map((m) => m[1]);
+  assert.deepEqual(pageRefs, tocLinks.map((e) => e.anchor));
+
+  // The outer TOC field still wraps the whole table (so Word can refresh it).
+  assert.ok(docXml.includes('w:fldChar w:fldCharType="begin" w:dirty="true"'));
+  assert.ok(docXml.includes('TOC \\o "1-3" \\h \\z \\u'));
+  assert.ok(docXml.includes('w:pStyle w:val="Heading1"'));
+  assert.ok(docXml.includes('w:pStyle w:val="Heading2"'));
+  assert.ok(docXml.includes('w:outlineLvl w:val="0"'));
+  assert.ok(docXml.includes('w:outlineLvl w:val="1"'));
+
+  // TOC entry styles are defined and indent deeper levels further.
+  assert.ok(stylesXml.includes('w:style w:type="paragraph" w:styleId="TOC1"'));
+  assert.ok(stylesXml.includes('w:style w:type="paragraph" w:styleId="TOC2"'));
+  assert.ok(stylesXml.includes('w:style w:type="paragraph" w:styleId="TOC3"'));
+
+  assertWellFormedXml(docXml, 'document.xml');
+});
+
 test('PPTX export: slides per step, master/layout/theme present, rels resolve', (t) => {
   const { ast, root } = fixtureAst(t, 'pptx');
   const { file, slideCount, imageCount } = exportPptx(ast, path.join(root, 'out'));

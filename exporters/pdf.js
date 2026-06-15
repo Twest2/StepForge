@@ -232,7 +232,8 @@ function exportPdf(ast, outDir, template = {}) {
   pdf.addPage();
 
   if (tpl.includeCover) {
-    y = M + usableH * 0.18;
+    // Keep the cover title near the top edge instead of vertically centering it.
+    y = M;
     writeLines(ast.guide.title, { size: 28, font: 'F2' });
     y += 10;
     pdf.rect(M, y, usableW, 3, { fill: tpl.accentColor });
@@ -267,7 +268,7 @@ function exportPdf(ast, outDir, template = {}) {
       tocTargets.set(step.stepId, target);
       for (const line of pdf.wrapText(`${step.number}.  ${step.title || 'Untitled step'}`, tocSize, usableW - indent, 'F1')) {
         ensure(lineH);
-        pdf.text(line, M + indent, y, { size: tocSize });
+        pdf.text(line, M + indent, y, { size: tocSize, color: tpl.accentColor });
         pdf.linkRect(M + indent, y, usableW - indent, lineH, target);
         y += lineH;
       }

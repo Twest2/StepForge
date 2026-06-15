@@ -10,7 +10,7 @@ const { DEFAULT_TEMPLATE, anchorFor, renderMarkdownGuide } = require('./markdown
 function exportMarkdown(ast, outDir, template = {}) {
   return renderMarkdownGuide(ast, outDir, template, {
     defaults: DEFAULT_TEMPLATE,
-    alertStyle: 'gfm',
+    alertStyle: 'html',
     tocTitle: 'Contents',
     fileExt: '.md',
   });

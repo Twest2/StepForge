@@ -2,6 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { escapeHtml } = require('../core/util');
 const { guideSlug, writeStepImages, LEVEL_LABEL, stepContentGroups, codeBlockText } = require('./common');
 const { htmlToMarkdown } = require('./htmlmd');
 const { tocEntries, guideMetaLines, guideSummary } = require('./document-layout');
@@ -20,6 +21,13 @@ const WIKIJS_CALLOUT_CLASS = {
   error: 'is-danger',
 };
 
+const HTML_CALLOUT_THEME = {
+  info: { label: 'Note', border: '#2563eb', bg: '#eff6ff', fg: '#1d4ed8', kind: 'note' },
+  success: { label: 'Tip', border: '#10b981', bg: '#ecfdf5', fg: '#047857', kind: 'tip' },
+  warn: { label: 'Warning', border: '#f59e0b', bg: '#fffbeb', fg: '#b45309', kind: 'warning' },
+  error: { label: 'Important', border: '#ef4444', bg: '#fef2f2', fg: '#b91c1c', kind: 'important' },
+};
+
 function anchorFor(step) {
   return `step-${step.number.replace(/\./g, '-')}`;
 }
@@ -30,6 +38,18 @@ function quoteBody(text) {
 
 function emitBlock(lines, tb, { alertStyle = 'gfm' } = {}) {
   const body = htmlToMarkdown(tb.descriptionHtml);
+  if (alertStyle === 'html') {
+    const theme = HTML_CALLOUT_THEME[tb.level] || HTML_CALLOUT_THEME.info;
+    const label = theme.label;
+    const title = tb.title ? `${label}: ${tb.title}` : label;
+    lines.push(
+      `<div class="sf-callout sf-callout-${theme.kind}" style="border-left: 4px solid ${theme.border}; background: ${theme.bg}; padding: 14px 16px; margin: 14px 0; border-radius: 0 16px 16px 0;">`,
+      `<div style="font-weight: 700; color: ${theme.fg}; margin-bottom: ${body ? '6px' : '0'};">${escapeHtml(title)}</div>`,
+    );
+    if (body) lines.push(`<div style="color: #243044;">${tb.descriptionHtml || ''}</div>`);
+    lines.push('</div>', '');
+    return;
+  }
   if (alertStyle === 'wikijs') {
     const label = tb.title || LEVEL_LABEL[tb.level] || 'Note';
     const className = WIKIJS_CALLOUT_CLASS[tb.level] || 'is-info';

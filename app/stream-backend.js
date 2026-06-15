@@ -340,6 +340,14 @@ async function createElectronHost(onEvent) {
     if (!win.isDestroyed()) win.destroy();
     throw err;
   }
+  // The worker is a hidden renderer, so on battery Windows would EcoQoS-throttle
+  // it and starve frame sampling. Clear that on its own OS process before it
+  // starts streaming. Best-effort; no-op off Windows.
+  try {
+    // eslint-disable-next-line global-require
+    const { keepProcessesResponsive } = require('./win-power');
+    if (!win.isDestroyed()) keepProcessesResponsive([win.webContents.getOSProcessId()]);
+  } catch { /* throttling tweak is optional */ }
   return {
     send(msg) {
       if (!win.isDestroyed()) win.webContents.send('capture-worker:command', msg);

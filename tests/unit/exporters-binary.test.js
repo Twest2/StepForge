@@ -55,6 +55,24 @@ function bookmarkPages(buf) {
   return out;
 }
 
+/** Resolve each Link annotation's `/Dest` on the page at `pageIndex` to a 0-based page index. */
+function tocLinkTargets(buf, pageIndex) {
+  const text = buf.toString('latin1');
+  const kids = [...text.match(/\/Type \/Pages \/Kids \[([^\]]+)\]/)[1].matchAll(/(\d+) 0 R/g)]
+    .map((m) => Number(m[1]));
+  const pageIndexOf = new Map(kids.map((id, i) => [id, i]));
+  const objBody = (id) => new RegExp(`(?:^|\\n)${id} 0 obj\\n([\\s\\S]*?)\\nendobj`).exec(text)[1];
+
+  const annots = /\/Annots \[([^\]]+)\]/.exec(objBody(kids[pageIndex]));
+  if (!annots) return [];
+  return [...annots[1].matchAll(/(\d+) 0 R/g)].map((m) => {
+    const body = objBody(Number(m[1]));
+    assert.match(body, /\/Subtype \/Link/);
+    const dest = /\/Dest \[(\d+) 0 R/.exec(body);
+    return pageIndexOf.get(Number(dest[1]));
+  });
+}
+
 /** Tiny XML well-formedness check: balanced tags, single root. */
 function assertWellFormedXml(xml, label) {
   const body = xml.replace(/<\?xml[^?]*\?>/, '').trim();
@@ -101,6 +119,16 @@ test('PDF export: valid document, bookmarks per step, images embedded', (t) => {
   ]);
   // Two image XObjects.
   assert.equal((text.match(/\/Subtype \/Image/g) || []).length, 2);
+});
+
+test('PDF Contents: each entry is a clickable link to its step\'s page', (t) => {
+  const { ast, root } = fixtureAst(t, 'pdftoc');
+  const buf = fs.readFileSync(exportPdf(ast, path.join(root, 'out')).file);
+
+  const bookmarks = bookmarkPages(buf); // one per step, in document order
+  const tocTargets = tocLinkTargets(buf, 1); // page 0 = cover, page 1 = Contents
+
+  assert.deepEqual(tocTargets, bookmarks.map((b) => b.pageIndex));
 });
 
 test('PDF renders under Ghostscript end-to-end', { skip: !hasTool('gs') }, (t) => {

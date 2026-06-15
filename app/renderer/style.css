@@ -601,6 +601,9 @@ fieldset legend {
 
 .quick-actions {
   width: min(760px, 92vw);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 .quick-actions input {
   width: 100%;
@@ -608,7 +611,6 @@ fieldset legend {
   padding: 11px 12px;
 }
 .qa-results {
-  margin-top: 10px;
   max-height: 360px;
   overflow-y: auto;
   display: flex;

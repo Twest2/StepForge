@@ -370,6 +370,28 @@ test('PPTX export: slides per step, master/layout/theme present, rels resolve', 
   }
 });
 
+test('PPTX export: TOC paginates onto additional slides before it would overflow', (t) => {
+  const root = makeTmpDir('pptxtoc');
+  t.after(() => rmrf(root));
+  const store = new GuideStore(path.join(root, 'data'));
+  const guide = store.createGuide({ title: 'Large TOC test' });
+
+  for (let i = 1; i <= 40; i++) {
+    store.addStep(guide.guideId, { kind: 'empty', title: `Step ${i}` });
+  }
+
+  const ast = buildRenderAst(store, guide.guideId);
+  const { file, slideCount } = exportPptx(ast, path.join(root, 'out'));
+  const entries = new Map(unzipSync(fs.readFileSync(file)).map((e) => [e.name, e.data]));
+  const slideXmls = Array.from({ length: slideCount }, (_, i) => entries.get(`ppt/slides/slide${i + 1}.xml`).toString('utf8'));
+  const tocSlides = slideXmls.filter((xml) => xml.includes('Contents'));
+
+  assert.ok(tocSlides.length >= 2, 'large TOC should span multiple slides');
+  assert.ok(tocSlides[0].includes('1. Step 1'));
+  assert.ok(!tocSlides[0].includes('40. Step 40'));
+  assert.ok(tocSlides.at(-1).includes('40. Step 40'));
+});
+
 test('template manager: save/load/rename/duplicate/delete and .sfglt round-trip', (t) => {
   const root = makeTmpDir('tpl');
   t.after(() => rmrf(root));

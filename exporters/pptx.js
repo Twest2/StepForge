@@ -22,6 +22,14 @@ const DEFAULT_TEMPLATE = {
 const SLIDE_W = 12192000; // EMU, 16:9
 const SLIDE_H = 6858000;
 const EMU_PER_PX = 9525;
+const TOC_ENTRY_START_Y = 2300000;
+const TOC_ENTRY_SPACING = 255000;
+const TOC_ENTRY_HEIGHT = 220000;
+const TOC_BOTTOM_MARGIN = 500000;
+const TOC_MAX_ENTRIES_PER_SLIDE = Math.max(
+  1,
+  Math.floor((SLIDE_H - TOC_BOTTOM_MARGIN - TOC_ENTRY_START_Y - TOC_ENTRY_HEIGHT) / TOC_ENTRY_SPACING) + 1,
+);
 
 let shapeIdCounter = 10; // reset per export for deterministic output
 
@@ -56,6 +64,33 @@ function slideXml(content) {
 <p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>
 ${content}
 </p:spTree></p:cSld><p:clrMapOvr><a:overrideClrMapping bg1="lt1" tx1="dk1" bg2="lt2" tx2="dk2" accent1="accent1" accent2="accent2" accent3="accent3" accent4="accent4" accent5="accent5" accent6="accent6" hlink="hlink" folHlink="folHlink"/></p:clrMapOvr></p:sld>`;
+}
+
+function chunkArray(items, size) {
+  const chunks = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+}
+
+function tocSlideXml(ast, entries, { continued = false } = {}) {
+  let tocContent = rectShape(0, 0, SLIDE_W, 18000, '2563EB');
+  tocContent += textBox(914400, 760000, SLIDE_W - 1828800, 700000,
+    para(continued ? 'Contents (continued)' : 'Contents', { size: 3000, bold: true }));
+  tocContent += rectShape(914400, 1500000, 1600000, 14000, '2563EB');
+  tocContent += textBox(914400, 1680000, SLIDE_W - 1828800, 450000,
+    para(guideSummary(ast), { size: 1500, color: '6B7280' }));
+
+  entries.forEach((entry, index) => {
+    const x = 914400 + (entry.depth * 220000);
+    const y = TOC_ENTRY_START_Y + (index * TOC_ENTRY_SPACING);
+    tocContent += rectShape(x, y + 78000, 24000, 90000, '2563EB');
+    tocContent += textBox(x + 48000, y, SLIDE_W - x - 1200000, TOC_ENTRY_HEIGHT,
+      para(`${entry.number}. ${entry.title}`, { size: entry.depth === 0 ? 1550 : 1450, bold: entry.depth === 0 }));
+  });
+
+  return slideXml(tocContent);
 }
 
 const THEME_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -110,20 +145,12 @@ function exportPptx(ast, outDir, template = {}) {
   }
 
   if (toc.length) {
-    let tocContent = rectShape(0, 0, SLIDE_W, 18000, '2563EB');
-    tocContent += textBox(914400, 760000, SLIDE_W - 1828800, 700000, para('Contents', { size: 3000, bold: true }));
-    tocContent += rectShape(914400, 1500000, 1600000, 14000, '2563EB');
-    tocContent += textBox(914400, 1680000, SLIDE_W - 1828800, 450000, para(guideSummary(ast), { size: 1500, color: '6B7280' }));
-    toc.forEach((entry, index) => {
-      const x = 914400 + (entry.depth * 220000);
-      const y = 2300000 + (index * 255000);
-      tocContent += rectShape(x, y + 78000, 24000, 90000, '2563EB');
-      tocContent += textBox(x + 48000, y, SLIDE_W - x - 1200000, 220000,
-        para(`${entry.number}. ${entry.title}`, { size: entry.depth === 0 ? 1550 : 1450, bold: entry.depth === 0 }));
-    });
-    slides.push({
-      xml: slideXml(tocContent),
-      rels: [], media: [],
+    const tocPages = chunkArray(toc, TOC_MAX_ENTRIES_PER_SLIDE);
+    tocPages.forEach((page, index) => {
+      slides.push({
+        xml: tocSlideXml(ast, page, { continued: index > 0 }),
+        rels: [], media: [],
+      });
     });
   }
 

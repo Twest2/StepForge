@@ -1666,7 +1666,11 @@ class GuideEditor {
   }
 
   async openExportDialog() {
-    const formats = (await api.export.formats()).map((id) => ({ id, label: id.replace(/-/g, ' ') }));
+    const formats = (await api.export.formats()).map((format) => (
+      typeof format === 'string'
+        ? { id: format, label: format.replace(/-/g, ' ') }
+        : format
+    ));
     const templatesByFormat = {};
     for (const format of formats) {
       templatesByFormat[format.id] = await api.templates.list({ format: format.id });

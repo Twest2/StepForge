@@ -19,6 +19,19 @@ const { exportGuideArchive, importGuideArchive, saveLinkedGuide, readArchive } =
 const { createSnapshot, listSnapshots, restoreSnapshot } = require('../core/snapshots');
 const { readLock } = require('../core/locks');
 const CaptureService = require('./capture');
+const { keepProcessesResponsive } = require('./win-power');
+
+// Keep capture working on battery. In a power-saving plan on DC power, Windows
+// applies Power Throttling (EcoQoS) to background work — and StepForge records
+// with its window hidden, so the frame-capture worker renderer is exactly the
+// kind of "background" process the OS slows down. A throttled worker can't
+// sample the screen fast enough, so every click finds no fresh frame and the
+// recording falls apart (the bug only ever reproduced on battery). These
+// switches stop Chromium from de-prioritising and timer-throttling the hidden
+// worker; win-power.js additionally opts the OS processes out of EcoQoS.
+app.commandLine.appendSwitch('disable-background-timer-throttling');
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
+app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
 
 /**
  * StepForge main process. Zero network code: no telemetry, no updates, no
@@ -510,16 +523,28 @@ function setupIpc() {
     }
   };
 
+  // Opt every live Electron process (browser, GPU, the screen-capture utility,
+  // any renderers) out of EcoQoS for the duration of a recording. The hidden
+  // capture-worker renderer is created later, during warmup, so it opts itself
+  // out separately (see stream-backend.js); this covers the rest.
+  const keepCaptureProcessesResponsive = () => {
+    try {
+      keepProcessesResponsive(app.getAppMetrics().map((m) => m.pid));
+    } catch { /* metrics unavailable — best effort */ }
+  };
+
   h('capture:session', async ({ action, guideId, intervalSec }) => {
     if (action === 'start') {
       capture.startSession(guideId, { intervalSec: intervalSec ?? null });
       startCapturePower();
+      keepCaptureProcessesResponsive();
     } else if (action === 'pause') {
       capture.togglePause(true);
       stopCapturePower();
     } else if (action === 'resume') {
       capture.togglePause(false);
       startCapturePower();
+      keepCaptureProcessesResponsive();
     } else if (action === 'finish') {
       capture.finishSession();
       stopCapturePower();

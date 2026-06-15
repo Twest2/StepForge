@@ -137,11 +137,11 @@ test('Markdown export: TOC anchors resolve, images exist, blocks rendered', (t) 
   assert.equal(lines[fenceStart + 1], '0 2 * * * /usr/local/bin/acmesync --backup');
   assert.equal(lines[fenceStart + 2], '```');
   assert.ok(lines.some((l) => /^\| Day \| Window \|$/.test(l)), 'table header row');
-  // Warning text block became a GFM alert blockquote with its content.
-  const warnIdx = lines.findIndex((l) => l.startsWith('> [!WARNING]'));
-  assert.ok(warnIdx > 0);
-  assert.equal(lines[warnIdx + 1], '> **Access**');
-  assert.equal(lines[warnIdx + 2], '> Admins only.');
+  // Warning text block became a styled HTML callout with its content.
+  assert.ok(md.includes('<div class="sf-callout sf-callout-warning"'));
+  assert.ok(md.includes('border-left: 4px solid #f59e0b'));
+  assert.ok(md.includes('Warning: Access'));
+  assert.ok(md.includes('<p>Admins only.</p>'));
 });
 
 test('Wiki.js export: TOC is included, wiki callouts render, images exist', (t) => {

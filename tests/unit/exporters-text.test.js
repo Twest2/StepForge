@@ -144,7 +144,7 @@ test('Markdown export: TOC anchors resolve, images exist, blocks rendered', (t) 
   assert.equal(lines[warnIdx + 2], '> Admins only.');
 });
 
-test('Wiki.js export: TOC is omitted, wiki callouts render, images exist', (t) => {
+test('Wiki.js export: TOC is included, wiki callouts render, images exist', (t) => {
   const root = makeTmpDir('expwikijs');
   t.after(() => rmrf(root));
   const { store, guide } = buildFixtureGuide(path.join(root, 'data'));
@@ -156,7 +156,7 @@ test('Wiki.js export: TOC is omitted, wiki callouts render, images exist', (t) =
 
   const lines = md.split('\n');
   assert.equal(lines[0], '# Configure AcmeSync backups');
-  assert.ok(!lines.some((l) => l === '## Contents'));
+  assert.ok(lines.some((l) => l === '## Contents'));
   assert.ok(lines.some((l) => l.startsWith('## 1. Open AcmeSync settings')));
   assert.ok(lines.some((l) => l.startsWith('> **Access**')));
   assert.ok(lines.includes('> Admins only.'));
@@ -238,7 +238,7 @@ test('Rich HTML export: TOC matches sections, checkboxes per step, local-only pe
   const { file } = exportHtmlRich(ast, out);
   const html = fs.readFileSync(file, 'utf8');
 
-  const tocAnchors = [...html.matchAll(/<li class="d\d"><a href="#([^"]+)"/g)].map((m) => m[1]);
+  const tocAnchors = [...html.matchAll(/<li class="d\d">\s*<a href="#([^"]+)"/g)].map((m) => m[1]);
   const sectionIds = [...html.matchAll(/<section class="step[^"]*" id="([^"]+)"/g)].map((m) => m[1]);
   assert.deepEqual(tocAnchors, sectionIds);
   assert.equal(sectionIds.length, 3);

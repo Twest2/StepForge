@@ -6,6 +6,7 @@ const { zipSync } = require('../core/zip');
 const { escapeXml } = require('../core/util');
 const { encodePng } = require('../core/png');
 const { guideSlug, renderAllImages } = require('./common');
+const { tocEntries, guideMetaLines, guideSummary } = require('./document-layout');
 
 /**
  * PPTX exporter: a title slide plus one 16:9 slide per step (title bar +
@@ -15,6 +16,7 @@ const { guideSlug, renderAllImages } = require('./common');
 const DEFAULT_TEMPLATE = {
   includeImages: true,
   titleSlide: true,
+  includeToc: true,
 };
 
 const SLIDE_W = 12192000; // EMU, 16:9
@@ -27,6 +29,12 @@ function textBox(x, y, w, h, runsXml) {
   return `<p:sp><p:nvSpPr><p:cNvPr id="${shapeIdCounter++}" name="TextBox"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>` +
     `<p:spPr><a:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="${w}" cy="${h}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr>` +
     `<p:txBody><a:bodyPr wrap="square"><a:normAutofit/></a:bodyPr><a:lstStyle/>${runsXml}</p:txBody></p:sp>`;
+}
+
+function rectShape(x, y, w, h, fill) {
+  return `<p:sp><p:nvSpPr><p:cNvPr id="${shapeIdCounter++}" name="Rect"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>` +
+    `<p:spPr><a:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="${w}" cy="${h}"/></a:xfrm>` +
+    `<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="${fill}"/></a:solidFill><a:ln><a:noFill/></a:ln></p:spPr></p:sp>`;
 }
 
 function para(text, { size = 1800, bold = false, color = '111827' } = {}) {
@@ -85,22 +93,46 @@ function exportPptx(ast, outDir, template = {}) {
   const images = tpl.includeImages ? renderAllImages(ast) : new Map();
 
   const slides = []; // { xml, rels: [{id, target}], media: [{name, data}] }
+  const toc = tpl.includeToc && ast.steps.length > 1 ? tocEntries(ast) : [];
 
   if (tpl.titleSlide) {
+    const metaLines = guideMetaLines(ast);
+    let titleContent = rectShape(0, 0, SLIDE_W, 18000, '2563EB');
+    titleContent += textBox(914400, 2050000, SLIDE_W - 1828800, 1200000, para(ast.guide.title, { size: 4000, bold: true }));
+    titleContent += rectShape(914400, 3300000, 2200000, 14000, '2563EB');
+    titleContent += textBox(914400, 3500000, SLIDE_W - 1828800, 1100000,
+      [para(guideSummary(ast), { size: 1800, color: '6B7280' }),
+        ...metaLines.map((line) => para(line, { size: 1500, color: '6B7280' }))].join(''));
     slides.push({
-      xml: slideXml(
-        textBox(914400, 2300000, SLIDE_W - 1828800, 1200000, para(ast.guide.title, { size: 4000, bold: true })) +
-        textBox(914400, 3600000, SLIDE_W - 1828800, 800000,
-          para(`${ast.steps.length} steps — ${ast.generatedAt.slice(0, 10)}`, { size: 1800, color: '6B7280' }))
-      ),
+      xml: slideXml(titleContent),
+      rels: [], media: [],
+    });
+  }
+
+  if (toc.length) {
+    let tocContent = rectShape(0, 0, SLIDE_W, 18000, '2563EB');
+    tocContent += textBox(914400, 760000, SLIDE_W - 1828800, 700000, para('Contents', { size: 3000, bold: true }));
+    tocContent += rectShape(914400, 1500000, 1600000, 14000, '2563EB');
+    tocContent += textBox(914400, 1680000, SLIDE_W - 1828800, 450000, para(guideSummary(ast), { size: 1500, color: '6B7280' }));
+    toc.forEach((entry, index) => {
+      const x = 914400 + (entry.depth * 220000);
+      const y = 2300000 + (index * 255000);
+      tocContent += rectShape(x, y + 78000, 24000, 90000, '2563EB');
+      tocContent += textBox(x + 48000, y, SLIDE_W - x - 1200000, 220000,
+        para(`${entry.number}. ${entry.title}`, { size: entry.depth === 0 ? 1550 : 1450, bold: entry.depth === 0 }));
+    });
+    slides.push({
+      xml: slideXml(tocContent),
       rels: [], media: [],
     });
   }
 
   let mediaCounter = 0;
   for (const step of ast.steps) {
-    let content = textBox(457200, 274638, SLIDE_W - 914400, 700000,
-      para(`${step.number}. ${step.title || 'Untitled step'}`, { size: 2400, bold: true }));
+    let content = rectShape(0, 0, SLIDE_W, 18000, '2563EB');
+    content += textBox(457200, 420000, SLIDE_W - 914400, 620000,
+      para(`${step.number}. ${step.title || 'Untitled step'}`, { size: 2600, bold: true }));
+    content += rectShape(457200, 1120000, 2400000, 12000, '2563EB');
     const rels = [];
     const media = [];
 
@@ -112,14 +144,14 @@ function exportPptx(ast, outDir, template = {}) {
       const relId = 2; // rId1 = layout, rId2 = image
       rels.push({ id: relId, name });
       // Fit image into a centered region below the title.
-      const maxW = SLIDE_W - 1219200, maxH = SLIDE_H - 1554638 - (step.descriptionText ? 700000 : 200000);
+      const maxW = SLIDE_W - 1219200, maxH = SLIDE_H - 1870000 - (step.descriptionText ? 650000 : 260000);
       let w = img.width * EMU_PER_PX, h = img.height * EMU_PER_PX;
       const scale = Math.min(maxW / w, maxH / h, 1);
       w = Math.round(w * scale); h = Math.round(h * scale);
-      content += picture(relId, Math.round((SLIDE_W - w) / 2), 1054638, w, h);
+      content += picture(relId, Math.round((SLIDE_W - w) / 2), 1500000, w, h);
     }
     if (step.descriptionText) {
-      content += textBox(457200, SLIDE_H - 850000, SLIDE_W - 914400, 700000,
+      content += textBox(457200, SLIDE_H - 720000, SLIDE_W - 914400, 600000,
         para(step.descriptionText.slice(0, 300), { size: 1400, color: '374151' }));
     }
     slides.push({ xml: slideXml(content), rels, media });

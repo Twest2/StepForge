@@ -6,6 +6,8 @@ const { zipSync } = require('../core/zip');
 const { escapeXml } = require('../core/util');
 const { encodePng } = require('../core/png');
 const { guideSlug, renderAllImages, LEVEL_LABEL, stepContentGroups, codeBlockText } = require('./common');
+const { guideMetaLines, guideSummary } = require('./document-layout');
+const raster = require('../core/raster');
 
 /**
  * DOCX exporter: WordprocessingML built directly (no dependency), one
@@ -15,6 +17,7 @@ const { guideSlug, renderAllImages, LEVEL_LABEL, stepContentGroups, codeBlockTex
 
 const DEFAULT_TEMPLATE = {
   includeImages: true,
+  includeToc: true,
   imageWidthTwips: 9000, // ~15.9cm inside A4 margins
 };
 
@@ -64,6 +67,28 @@ function drawing(relId, widthPx, heightPx, maxWidthTwips) {
     `</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`;
 }
 
+function calloutIcon(level) {
+  const img = raster.createImage(24, 24, [0, 0, 0, 0]);
+  const fill = {
+    info: [37, 99, 235, 255],
+    success: [16, 185, 129, 255],
+    warn: [245, 158, 11, 255],
+    error: [239, 68, 68, 255],
+  }[level] || [37, 99, 235, 255];
+  raster.fillOval(img, 1, 1, 22, 22, fill);
+  const glyph = level === 'success' ? 'v' : level === 'warn' ? '!' : level === 'error' ? 'x' : 'i';
+  raster.drawTextCentered(img, 12, 13, glyph, 12, [255, 255, 255, 255]);
+  return img;
+}
+
+function pageBreak() {
+  return p('<w:r><w:br w:type="page"/></w:r>');
+}
+
+function headingStyleForDepth(depth) {
+  return `Heading${Math.min(3, depth + 1)}`;
+}
+
 function table(rows) {
   const cols = Math.max(...rows.map((r) => r.length));
   const grid = `<w:tblGrid>${'<w:gridCol w:w="2400"/>'.repeat(cols)}</w:tblGrid>`;
@@ -87,29 +112,71 @@ function exportDocx(ast, outDir, template = {}) {
 
   const media = [];   // { name, data }
   const rels = [];    // relationship XML strings
-  let relCounter = 0;
+  let relCounter = 1; // rId1 reserved for settings.xml
+  let stepImageCount = 0;
+
+  const iconRelIds = {};
+  for (const level of ['info', 'success', 'warn', 'error']) {
+    const icon = calloutIcon(level);
+    const relId = ++relCounter;
+    iconRelIds[level] = relId;
+    const name = `callout-${level}.png`;
+    media.push({ name, data: encodePng(icon) });
+    rels.push(`<Relationship Id="rId${relId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${name}"/>`);
+  }
 
   const body = [];
-  body.push(p(run(ast.guide.title, { bold: true, size: 48 })));
+  body.push(p(
+    run(ast.guide.title, { bold: true, size: 48 }),
+    '<w:pBdr><w:bottom w:val="single" w:sz="24" w:space="12" w:color="2563EB"/></w:pBdr>'
+  ));
   if (ast.guide.descriptionText) body.push(p(run(ast.guide.descriptionText, { size: 22, color: '444444' })));
-  body.push(p(run(`${ast.steps.length} steps — generated ${ast.generatedAt.slice(0, 10)}`, { size: 18, color: '888888' })));
+  for (const line of guideMetaLines(ast)) body.push(p(run(line, { size: 20, color: '6B7280' })));
+  body.push(p(run(guideSummary(ast), { size: 18, color: '888888' })));
+
+  body.push(pageBreak());
+
+  if (tpl.includeToc && ast.steps.length > 1) {
+    body.push(p(
+      run('Contents', { bold: true, size: 28 }),
+      '<w:pBdr><w:bottom w:val="single" w:sz="20" w:space="8" w:color="2563EB"/></w:pBdr>'
+    ));
+    body.push(p(
+      `<w:fldSimple w:instr="TOC \\o &quot;1-3&quot; \\h \\z \\u"><w:r><w:rPr><w:i/></w:rPr><w:t xml:space="preserve">Update contents in Word</w:t></w:r></w:fldSimple>`
+    ));
+    body.push(pageBreak());
+  }
+
+  const emitTextBlock = (tb) => {
+    const style = LEVEL_STYLE[tb.level] || LEVEL_STYLE.info;
+    const iconRelId = iconRelIds[tb.level] || iconRelIds.info;
+    const label = `${LEVEL_LABEL[tb.level] || 'Note'}${tb.title ? `: ${tb.title}` : ''}`;
+    body.push(p(
+      `${drawing(iconRelId, 16, 16, 240)}${run(label, { bold: true, size: 20, color: style.color })}${tb.descriptionText ? run('\n' + tb.descriptionText, { size: 20, color: '1F2937' }) : ''}`,
+      `<w:shd w:val="clear" w:fill="${style.fill}"/><w:pBdr><w:left w:val="single" w:sz="24" w:space="4" w:color="${style.color}"/></w:pBdr>`
+    ));
+  };
 
   for (const step of ast.steps) {
-    const headSize = step.depth > 0 ? 26 : 30;
-    body.push(p(run(`${step.number}. ${step.title || 'Untitled step'}`, { bold: true, size: headSize }),
-      step.forceNewPage ? '<w:pageBreakBefore/>' : ''));
+    const headingLevel = Math.min(3, Math.max(1, step.depth + 1));
+    const headSize = headingLevel === 1 ? 30 : headingLevel === 2 ? 26 : 22;
+    body.push(p(
+      run(`${step.number}. ${step.title || 'Untitled step'}`, { bold: true, size: headSize }),
+      `${step.forceNewPage ? '<w:pageBreakBefore/>' : ''}<w:pStyle w:val="${headingStyleForDepth(step.depth)}"/>`
+    ));
 
     const { before, rest } = stepContentGroups(step);
     for (const tb of before) emitTextBlock(tb);
-    if (step.descriptionText) body.push(p(run(step.descriptionText)));
+    if (step.descriptionText) body.push(p(run(step.descriptionText, { size: 20, color: '1F2937' })));
 
     const img = images.get(step.stepId);
     if (img) {
-      relCounter += 1;
+      const relId = ++relCounter;
       const name = `image${relCounter}.png`;
       media.push({ name, data: encodePng(img) });
-      rels.push(`<Relationship Id="rId${relCounter}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${name}"/>`);
-      body.push(p(drawing(relCounter, img.width, img.height, tpl.imageWidthTwips)));
+      rels.push(`<Relationship Id="rId${relId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${name}"/>`);
+      body.push(p(drawing(relId, img.width, img.height, tpl.imageWidthTwips)));
+      stepImageCount += 1;
     }
 
     for (const block of rest) {
@@ -124,14 +191,10 @@ function exportDocx(ast, outDir, template = {}) {
     }
   }
 
-  function emitTextBlock(tb) {
-    const label = `${LEVEL_LABEL[tb.level] || 'Note'}${tb.title ? `: ${tb.title}` : ''}`;
-    const style = LEVEL_STYLE[tb.level] || LEVEL_STYLE.info;
-    body.push(p(
-      run(label, { bold: true, size: 20, color: style.color }) + (tb.descriptionText ? run('\n' + tb.descriptionText, { size: 20 }) : ''),
-      `<w:shd w:val="clear" w:fill="${style.fill}"/><w:pBdr><w:left w:val="single" w:sz="24" w:space="4" w:color="${style.color}"/></w:pBdr>`
-    ));
-  }
+  const settingsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:updateFields w:val="true"/>
+</w:settings>`;
 
   const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
@@ -152,6 +215,7 @@ ${body.join('\n')}
 <Default Extension="xml" ContentType="application/xml"/>
 <Default Extension="png" ContentType="image/png"/>
 <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+<Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>
 </Types>`,
     },
     {
@@ -166,16 +230,18 @@ ${body.join('\n')}
       name: 'word/_rels/document.xml.rels',
       data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/>
 ${rels.join('\n')}
 </Relationships>`,
     },
+    { name: 'word/settings.xml', data: settingsXml },
     ...media.map((m) => ({ name: `word/media/${m.name}`, data: m.data, store: true })),
   ];
 
   fs.mkdirSync(outDir, { recursive: true });
   const file = path.join(outDir, `${guideSlug(ast)}.docx`);
   fs.writeFileSync(file, zipSync(entries));
-  return { file, imageCount: media.length };
+  return { file, imageCount: stepImageCount };
 }
 
 module.exports = { exportDocx, DEFAULT_TEMPLATE };

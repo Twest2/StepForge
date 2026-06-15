@@ -5,6 +5,7 @@ const path = require('node:path');
 const { slugify, escapeXml } = require('../core/util');
 const { encodePng } = require('../core/png');
 const { guideSlug, renderAllImages, stepContentGroups, codeBlockText } = require('./common');
+const { anchorFor, guideMetaLines, guideSummary } = require('./document-layout');
 
 /**
  * Confluence storage-format export. Writes a single XHTML document plus a
@@ -14,6 +15,7 @@ const { guideSlug, renderAllImages, stepContentGroups, codeBlockText } = require
 
 const DEFAULT_TEMPLATE = {
   includeImages: true,
+  toc: true,
 };
 
 const MACRO_FOR_LEVEL = {
@@ -22,10 +24,6 @@ const MACRO_FOR_LEVEL = {
   error: 'note',
   success: 'tip',
 };
-
-function anchorFor(step) {
-  return `step-${step.number.replace(/\./g, '-')}`;
-}
 
 function stepLinkRewrite(html, ast) {
   return String(html || '').replace(/href="step:([^"]+)"/g, (m, id) => {
@@ -112,7 +110,11 @@ function exportConfluence(ast, outDir, template = {}) {
 </head>
 <body>
   <h1>${escapeXml(ast.guide.title)}</h1>
+  <div style="border-bottom: 4px solid #2563eb; margin: 14px 0 18px;"></div>
+  ${guideMetaLines(ast).map((line) => `<p><strong>${escapeXml(line.split(': ')[0])}:</strong> ${escapeXml(line.slice(line.indexOf(': ') + 2))}</p>`).join('\n')}
+  <p><em>${escapeXml(guideSummary(ast))}</em></p>
   ${ast.guide.descriptionHtml ? `<div>${stepLinkRewrite(ast.guide.descriptionHtml, ast)}</div>` : ''}
+  ${tpl.toc && ast.steps.length > 1 ? '<ac:structured-macro ac:name="toc"></ac:structured-macro>' : ''}
   ${stepXml}
 </body>
 </html>

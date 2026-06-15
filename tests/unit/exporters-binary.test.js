@@ -285,25 +285,45 @@ test('DOCX export: valid OPC package, well-formed XML, resolvable image rels', (
 
   assert.equal(imageCount, 2);
   const entries = new Map(unzipSync(fs.readFileSync(file)).map((e) => [e.name, e.data]));
-  for (const required of ['[Content_Types].xml', '_rels/.rels', 'word/document.xml', 'word/_rels/document.xml.rels']) {
+  for (const required of ['[Content_Types].xml', '_rels/.rels', 'word/document.xml', 'word/_rels/document.xml.rels', 'word/settings.xml']) {
     assert.ok(entries.has(required), `missing ${required}`);
   }
   assertWellFormedXml(entries.get('word/document.xml').toString('utf8'), 'document.xml');
   assertWellFormedXml(entries.get('[Content_Types].xml').toString('utf8'), 'content types');
+  assertWellFormedXml(entries.get('word/settings.xml').toString('utf8'), 'settings.xml');
 
   // Every relationship target exists in the package, every embed has a rel.
   const relsXml = entries.get('word/_rels/document.xml.rels').toString('utf8');
   const relTargets = [...relsXml.matchAll(/Target="([^"]+)"/g)].map((m) => m[1]);
-  assert.equal(relTargets.length, 2);
-  for (const target of relTargets) {
+  assert.equal(relTargets.length, 7);
+  assert.ok(relTargets.includes('settings.xml'));
+
+  const mediaTargets = relTargets.filter((target) => target.startsWith('media/'));
+  assert.equal(mediaTargets.length, 6);
+  const iconTargets = mediaTargets.filter((target) => target.includes('callout-'));
+  const imageTargets = mediaTargets.filter((target) => target.includes('image'));
+  assert.equal(iconTargets.length, 4);
+  assert.equal(imageTargets.length, 2);
+
+  for (const target of iconTargets) {
+    assert.ok(entries.has(`word/${target}`), `relationship target ${target} present`);
+    const img = decodePng(entries.get(`word/${target}`));
+    assert.equal(img.width, 24);
+  }
+  for (const target of imageTargets) {
     assert.ok(entries.has(`word/${target}`), `relationship target ${target} present`);
     const img = decodePng(entries.get(`word/${target}`));
     assert.equal(img.width, 320);
   }
   const docXml = entries.get('word/document.xml').toString('utf8');
   const embeds = [...docXml.matchAll(/r:embed="(rId\d+)"/g)].map((m) => m[1]);
-  const relIds = [...relsXml.matchAll(/Id="(rId\d+)"/g)].map((m) => m[1]);
-  assert.deepEqual(embeds.sort(), relIds.sort());
+  const relIds = [...relsXml.matchAll(/Id="(rId\d+)"/g)].map((m) => m[1]).filter((id) => id !== 'rId1');
+  for (const id of embeds) {
+    assert.ok(relIds.includes(id), `missing relationship for ${id}`);
+  }
+  assert.ok(docXml.includes('TOC \\o &quot;1-3&quot; \\h \\z \\u'));
+  assert.ok(docXml.includes('w:pStyle w:val="Heading1"'));
+  assert.ok(docXml.includes('w:pStyle w:val="Heading2"'));
 
   // unzip CLI also accepts the package (it is a plain zip).
   assert.ok(entries.size >= 6);
@@ -313,7 +333,7 @@ test('PPTX export: slides per step, master/layout/theme present, rels resolve', 
   const { ast, root } = fixtureAst(t, 'pptx');
   const { file, slideCount, imageCount } = exportPptx(ast, path.join(root, 'out'));
 
-  assert.equal(slideCount, 4, 'title slide + 3 steps');
+  assert.equal(slideCount, 5, 'title slide + contents slide + 3 steps');
   assert.equal(imageCount, 2);
   const entries = new Map(unzipSync(fs.readFileSync(file)).map((e) => [e.name, e.data]));
   for (const required of [
@@ -331,6 +351,7 @@ test('PPTX export: slides per step, master/layout/theme present, rels resolve', 
   // presentation.xml references each slide and the count matches.
   const pres = entries.get('ppt/presentation.xml').toString('utf8');
   assert.equal((pres.match(/<p:sldId /g) || []).length, slideCount);
+  assert.ok(entries.get('ppt/slides/slide2.xml').toString('utf8').includes('Contents'));
   // image rels on slides resolve to media files.
   for (let i = 1; i <= slideCount; i++) {
     const rels = entries.get(`ppt/slides/_rels/slide${i}.xml.rels`).toString('utf8');

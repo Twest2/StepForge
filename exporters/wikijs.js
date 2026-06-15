@@ -4,12 +4,11 @@ const { DEFAULT_TEMPLATE, renderMarkdownGuide } = require('./markdown-guide');
 
 /**
  * Wiki.js markdown exporter. Same step/body structure as the generic
- * Markdown exporter, but omits the manual Contents section by default and
- * emits Wiki.js-friendly callout blocks.
+ * Markdown exporter, but uses Wiki.js-friendly callout blocks.
  */
 
 const WIKIJS_TEMPLATE = {
-  toc: false,
+  toc: true,
   includeImages: true,
   imageMaxWidth: 0,
 };

@@ -127,8 +127,12 @@ test('PDF Contents: each entry is a clickable link to its step\'s page', (t) => 
 
   const bookmarks = bookmarkPages(buf); // one per step, in document order
   const tocTargets = tocLinkTargets(buf, 1); // page 0 = cover, page 1 = Contents
+  const tocPage = pageContents(buf)[1];
+  const blueTocLines = [...tocPage.matchAll(/BT \/F1 10\.5 Tf 0\.145 0\.388 0\.922 rg 1 0 0 1 [\d.]+ [\d.]+ Tm \(([^)]*)\) Tj ET/g)]
+    .map((m) => m[1]);
 
   assert.deepEqual(tocTargets, bookmarks.map((b) => b.pageIndex));
+  assert.deepEqual(blueTocLines, ast.steps.map((step) => `${step.number}. ${step.title || 'Untitled step'}`));
 });
 
 test('PDF renders under Ghostscript end-to-end', { skip: !hasTool('gs') }, (t) => {
@@ -169,6 +173,7 @@ test('PDF cover: title in big text above the accent rule, guide metadata below i
   const titleY = Number(/\/F2 28 Tf [\d.]+ [\d.]+ [\d.]+ rg 1 0 0 1 [\d.]+ ([\d.]+) Tm \(Configure AcmeSync backups\) Tj/.exec(cover)[1]);
   const ruleY = Number(/[\d.]+ [\d.]+ [\d.]+ rg ([\d.]+) ([\d.]+) [\d.]+ 3\.00 re f/.exec(cover)[2]);
   const authorY = Number(/\/F1 11 Tf [\d.]+ [\d.]+ [\d.]+ rg 1 0 0 1 [\d.]+ ([\d.]+) Tm \(Author: Jane Doe\) Tj/.exec(cover)[1]);
+  assert.ok(titleY > 740, 'title starts near the top edge');
   assert.ok(titleY > ruleY, 'title sits above the accent rule');
   assert.ok(ruleY > authorY, 'metadata sits below the accent rule');
 });

@@ -282,7 +282,7 @@ class StepForgeApp {
     }, s.paused ? 'Start recording' : 'Stop recording');
 
     this.captureStatus.append(
-      el('span', { title: `Capture session — ${trigger}` }, `Rec - ${trigger}`),
+      el('span', { title: `Capture session — ${trigger}` }, `Recording - ${trigger}`),
       pauseBtn,
     );
   }

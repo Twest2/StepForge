@@ -873,13 +873,21 @@ class GuideEditor {
     if (!ids.length) return;
     const ok = await confirmDialog(`Delete ${ids.length} step${ids.length === 1 ? '' : 's'}?`, { danger: true, okLabel: 'Delete' });
     if (!ok) return;
+    if (this.pendingSave) await this.flushStep();
+    const order = this.steps.map((s) => s.stepId);
+    const entries = [];
+    for (const stepId of ids) {
+      const step = this.stepMap.get(stepId);
+      if (step) entries.push(await this.snapshotStepForDeletion(step));
+    }
     for (const stepId of ids) {
       await api.step.delete({ guideId: this.guideId, stepId });
     }
+    if (entries.length) this.pushCanvasHistory({ type: 'delete-step', steps: entries, order });
     this.stepSelectMode = false;
     this.selectedSteps = new Set();
     await this.reload(null);
-    this.onToast(`${ids.length} step${ids.length === 1 ? '' : 's'} deleted.`);
+    this.onToast(`${ids.length} step${ids.length === 1 ? '' : 's'} deleted. Press Ctrl+Z to undo.`);
   }
 
   syncStepFields() {
@@ -1146,7 +1154,8 @@ class GuideEditor {
 
   pushCanvasHistory(recordOrLabel = 'change') {
     if (!this.currentStep) return;
-    const record = recordOrLabel && typeof recordOrLabel === 'object' && recordOrLabel.step
+    const record = recordOrLabel && typeof recordOrLabel === 'object'
+      && (recordOrLabel.step || recordOrLabel.type === 'delete-step')
       ? recordOrLabel
       : { step: clone(this.currentStep) };
     this.canvasHistory.push(record);
@@ -1187,27 +1196,39 @@ class GuideEditor {
   }
 
   async undo() {
-    if (!this.currentStep) return;
     if (!this.canvasHistory.length) {
       this.onToast('Nothing to undo.');
       return;
     }
+    const previous = this.canvasHistory.pop();
+    if (previous.type === 'delete-step') {
+      await this.restoreDeletedSteps(previous);
+      this.canvasFuture.push(previous);
+      this.renderAll();
+      return;
+    }
+    if (!this.currentStep) return;
     const current = await this.snapshotCurrentStep(true);
     if (current) this.canvasFuture.push(current);
-    const previous = this.canvasHistory.pop();
     await this.restoreHistoryRecord(previous);
     this.renderAll();
   }
 
   async redo() {
-    if (!this.currentStep) return;
     if (!this.canvasFuture.length) {
       this.onToast('Nothing to redo.');
       return;
     }
+    const next = this.canvasFuture.pop();
+    if (next.type === 'delete-step') {
+      await this.deleteStepsAgain(next);
+      this.canvasHistory.push(next);
+      this.renderAll();
+      return;
+    }
+    if (!this.currentStep) return;
     const current = await this.snapshotCurrentStep(true);
     if (current) this.canvasHistory.push(current);
-    const next = this.canvasFuture.pop();
     await this.restoreHistoryRecord(next);
     this.renderAll();
   }
@@ -1434,12 +1455,16 @@ class GuideEditor {
     if (!step) return;
     const ok = await confirmDialog(`Delete “${step.title || 'Untitled step'}”?`, { danger: true, okLabel: 'Delete' });
     if (!ok) return;
+    if (this.pendingSave) await this.flushStep();
+    const order = this.steps.map((s) => s.stepId);
+    const entry = await this.snapshotStepForDeletion(step);
     await api.step.delete({ guideId: this.guideId, stepId: step.stepId });
+    this.pushCanvasHistory({ type: 'delete-step', steps: [entry], order });
     const next = this.steps[this.steps.findIndex((s) => s.stepId === step.stepId) + 1]
       || this.steps[this.steps.findIndex((s) => s.stepId === step.stepId) - 1]
       || null;
     await this.reload(next && next.stepId);
-    this.onToast('Step deleted.');
+    this.onToast('Step deleted. Press Ctrl+Z to undo.');
   }
 
   async moveSelectedStep(delta) {
@@ -1479,18 +1504,18 @@ class GuideEditor {
   async openCaptureMenu(event) {
     const rect = event.target.getBoundingClientRect();
     const session = (await api.capture.state())?.active;
-    contextMenu(rect.left, rect.bottom + 4, [
+    const items = [
       { label: 'Capture full screen', action: () => this.captureStep('fullscreen') },
       { label: 'Capture window', action: () => this.captureStep('window') },
       { label: 'Capture region…', action: () => this.captureStep('region') },
       'sep',
       { label: 'Paste image as step', action: () => this.pasteClipboardStep() },
       { label: 'Import images…', action: () => this.importImageSteps() },
-      'sep',
-      session
-        ? { label: 'Finish capture session', action: () => this.finishCaptureSession() }
-        : { label: 'Start capture session (hotkey)', action: () => this.startCaptureSession() },
-    ]);
+    ];
+    if (!session) {
+      items.push('sep', { label: 'Start capture session (hotkey)', action: () => this.startCaptureSession() });
+    }
+    contextMenu(rect.left, rect.bottom + 4, items);
   }
 
   async pasteClipboardStep() {
@@ -1595,12 +1620,6 @@ class GuideEditor {
   async resumeCaptureSession() {
     await api.capture.session({ action: 'resume', guideId: this.guideId });
     this.onToast('Capture resumed.');
-    this.emitMeta();
-  }
-
-  async finishCaptureSession() {
-    await api.capture.session({ action: 'finish', guideId: this.guideId });
-    this.onToast('Capture session finished.');
     this.emitMeta();
   }
 
@@ -1750,8 +1769,12 @@ class GuideEditor {
   }
 
   async currentStepImageToBase64(step = this.currentStep) {
+    return this.stepImageToBase64(step, 'working');
+  }
+
+  async stepImageToBase64(step, which = 'working') {
     if (!step || !step.image) return null;
-    const file = await api.step.imagePath({ guideId: this.guideId, stepId: step.stepId, which: 'working' });
+    const file = await api.step.imagePath({ guideId: this.guideId, stepId: step.stepId, which });
     if (!file) return null;
     return new Promise((resolve) => {
       const img = new Image();
@@ -1767,6 +1790,62 @@ class GuideEditor {
       img.onerror = () => resolve(null);
       img.src = file;
     });
+  }
+
+  /** Snapshot a step (and its images, if any) before deletion so it can be undone. */
+  async snapshotStepForDeletion(step) {
+    const position = this.steps.findIndex((s) => s.stepId === step.stepId);
+    const childIds = this.steps.filter((s) => s.parentStepId === step.stepId).map((s) => s.stepId);
+    let images = null;
+    if (step.image) {
+      const [original, working] = await Promise.all([
+        this.stepImageToBase64(step, 'original'),
+        this.stepImageToBase64(step, 'working'),
+      ]);
+      images = { original, working };
+    }
+    return { step: clone(step), position, childIds, images };
+  }
+
+  /** Undo a 'delete-step' history record: recreate the deleted steps and their order. */
+  async restoreDeletedSteps(record) {
+    for (const entry of record.steps) {
+      await api.step.restore({
+        guideId: this.guideId,
+        step: entry.step,
+        originalBase64: entry.images?.original?.base64 || null,
+        workingBase64: entry.images?.working?.base64 || null,
+        position: entry.position,
+      });
+    }
+    await api.step.reorder({ guideId: this.guideId, order: record.order });
+    this.saveStepDebounced.cancel();
+    this.pendingSave = false;
+    await this.reload(record.steps[0].step.stepId);
+    for (const entry of record.steps) {
+      for (const childId of entry.childIds) {
+        const child = this.stepMap.get(childId);
+        if (child && child.parentStepId !== entry.step.stepId) {
+          child.parentStepId = entry.step.stepId;
+          await api.step.save({ guideId: this.guideId, step: child });
+        }
+      }
+    }
+    if (record.steps.some((entry) => entry.childIds.length)) await this.reload(record.steps[0].step.stepId);
+    this.onToast(`Restored ${record.steps.length} step${record.steps.length === 1 ? '' : 's'}.`);
+  }
+
+  /** Redo of an undone 'delete-step' record: delete those steps again. */
+  async deleteStepsAgain(record) {
+    for (const entry of record.steps) {
+      await api.step.delete({ guideId: this.guideId, stepId: entry.step.stepId });
+    }
+    const deletedIds = new Set(record.steps.map((entry) => entry.step.stepId));
+    const remaining = record.order.filter((id) => !deletedIds.has(id));
+    this.saveStepDebounced.cancel();
+    this.pendingSave = false;
+    await this.reload(remaining[0] || null);
+    this.onToast(`Deleted ${record.steps.length} step${record.steps.length === 1 ? '' : 's'}.`);
   }
 
   async onCanvasChange(annotations) {

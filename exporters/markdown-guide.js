@@ -22,10 +22,10 @@ const WIKIJS_CALLOUT_CLASS = {
 };
 
 const HTML_CALLOUT_THEME = {
-  info: { label: 'Note', border: '#2563eb', bg: '#eff6ff', fg: '#1d4ed8', kind: 'note' },
-  success: { label: 'Tip', border: '#10b981', bg: '#ecfdf5', fg: '#047857', kind: 'tip' },
-  warn: { label: 'Warning', border: '#f59e0b', bg: '#fffbeb', fg: '#b45309', kind: 'warning' },
-  error: { label: 'Important', border: '#ef4444', bg: '#fef2f2', fg: '#b91c1c', kind: 'important' },
+  info: { label: 'Note', border: '#2563eb', fg: '#1d4ed8', kind: 'note' },
+  success: { label: 'Tip', border: '#10b981', fg: '#047857', kind: 'tip' },
+  warn: { label: 'Warning', border: '#f59e0b', fg: '#b45309', kind: 'warning' },
+  error: { label: 'Important', border: '#ef4444', fg: '#b91c1c', kind: 'important' },
 };
 
 function anchorFor(step) {
@@ -42,8 +42,9 @@ function emitBlock(lines, tb, { alertStyle = 'gfm' } = {}) {
     const theme = HTML_CALLOUT_THEME[tb.level] || HTML_CALLOUT_THEME.info;
     const label = theme.label;
     const title = tb.title ? `${label}: ${tb.title}` : label;
+    const style = `border-left: 4px solid ${theme.border}; padding: 14px 16px; margin: 14px 0; border-radius: 0 16px 16px 0;`;
     lines.push(
-      `<div class="sf-callout sf-callout-${theme.kind}" style="border-left: 4px solid ${theme.border}; background: ${theme.bg}; padding: 14px 16px; margin: 14px 0; border-radius: 0 16px 16px 0;">`,
+      `<div class="sf-callout sf-callout-${theme.kind}" style="${style}">`,
       `<div style="font-weight: 700; color: ${theme.fg}; margin-bottom: ${body ? '6px' : '0'};">${escapeHtml(title)}</div>`,
     );
     if (body) lines.push(`<div style="color: #243044;">${tb.descriptionHtml || ''}</div>`);

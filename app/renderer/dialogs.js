@@ -413,28 +413,43 @@ function showExportDialog({
       outDir: outDirInput.value.trim() || null,
     });
 
+    const cancelBtn = el('button', { onClick: () => { close(); resolve(false); } }, 'Cancel');
+    const previewBtn = el('button', {
+      onClick: async () => {
+        if (typeof onPreview !== 'function') return;
+        setButtonLoading(previewBtn, true, 'Preview…');
+        try {
+          await onPreview(payload()); // keep dialog open so settings can be tweaked
+        } finally {
+          setButtonLoading(previewBtn, false);
+        }
+      },
+    }, 'Preview');
+    const exportBtn = el('button.primary', {
+      onClick: async () => {
+        if (typeof onExport !== 'function') return;
+        cancelBtn.disabled = true;
+        previewBtn.disabled = true;
+        setButtonLoading(exportBtn, true, 'Exporting…');
+        try {
+          const ok = await onExport(payload());
+          if (ok !== false) {
+            close();
+            resolve(true);
+            return;
+          }
+        } finally {
+          cancelBtn.disabled = false;
+          previewBtn.disabled = false;
+          setButtonLoading(exportBtn, false);
+        }
+      },
+    }, 'Export');
+
     const { close } = openModal({
       title: 'Export',
       body,
-      footer: [
-        el('button', { onClick: () => { close(); resolve(false); } }, 'Cancel'),
-        el('button', {
-          onClick: async () => {
-            if (typeof onPreview !== 'function') return;
-            await onPreview(payload()); // keep dialog open so settings can be tweaked
-          },
-        }, 'Preview'),
-        el('button.primary', {
-          onClick: async () => {
-            if (typeof onExport !== 'function') return;
-            const ok = await onExport(payload());
-            if (ok !== false) {
-              close();
-              resolve(true);
-            }
-          },
-        }, 'Export'),
-      ],
+      footer: [cancelBtn, previewBtn, exportBtn],
       wide: true,
       onClose: () => resolve(false),
     });

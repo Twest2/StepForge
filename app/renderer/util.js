@@ -34,6 +34,27 @@ function clearNode(node) {
   while (node.firstChild) node.removeChild(node.firstChild);
 }
 
+/**
+ * Toggle a button into/out of a busy state: disables it and swaps its label
+ * for a spinner + `label` (e.g. "Exporting…"), restoring the original label
+ * afterwards. Used for actions that block on a slow main-process call.
+ */
+function setButtonLoading(btn, loading, label) {
+  if (loading) {
+    if (btn.dataset.origLabel === undefined) btn.dataset.origLabel = btn.textContent;
+    btn.disabled = true;
+    btn.classList.add('loading');
+    clearNode(btn);
+    btn.append(el('span.spinner'), label || btn.dataset.origLabel);
+  } else {
+    btn.disabled = false;
+    btn.classList.remove('loading');
+    clearNode(btn);
+    btn.append(btn.dataset.origLabel ?? '');
+    delete btn.dataset.origLabel;
+  }
+}
+
 function debounce(fn, ms) {
   let t = null;
   const wrapped = (...args) => {

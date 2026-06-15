@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { guideSlug, writeStepImages, LEVEL_LABEL, stepContentGroups, codeBlockText } = require('./common');
 const { htmlToMarkdown } = require('./htmlmd');
+const { tocEntries, guideMetaLines, guideSummary } = require('./document-layout');
 
 const DEFAULT_TEMPLATE = {
   toc: true,
@@ -57,13 +58,17 @@ function renderMarkdownGuide(ast, outDir, template = {}, {
   const lines = [];
 
   lines.push(`# ${ast.guide.title}`, '');
+  lines.push('<div style="height:4px;background:#2563eb;border-radius:999px;margin:12px 0 18px;"></div>', '');
+  const metaLines = guideMetaLines(ast);
+  if (metaLines.length) lines.push(metaLines.join(' · '), '');
+  lines.push(`*${guideSummary(ast)}*`, '');
   if (ast.guide.descriptionHtml) lines.push(htmlToMarkdown(ast.guide.descriptionHtml), '');
 
   if (tpl.toc && ast.steps.length > 1) {
     lines.push(`## ${tocTitle}`, '');
-    for (const step of ast.steps) {
-      const indent = '  '.repeat(step.depth);
-      lines.push(`${indent}- [${step.number}. ${step.title || 'Untitled step'}](#${anchorFor(step)})`);
+    for (const entry of tocEntries(ast)) {
+      const indent = '  '.repeat(entry.depth);
+      lines.push(`${indent}- [${entry.number}. ${entry.title}](#${entry.anchor})`);
     }
     lines.push('');
   }

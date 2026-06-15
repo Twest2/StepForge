@@ -212,7 +212,7 @@ class GuideEditor {
       ['tooltip', 'Tip'],
       ['number', '#'],
       ['blur', 'Blur'],
-      ['highlight', 'Hi'],
+      ['highlight', 'Highlight'],
       ['magnify', 'Mag'],
       ['cursor', 'Cursor'],
       ['crop', 'Crop'],

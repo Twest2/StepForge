@@ -733,11 +733,26 @@ if (!gotLock) {
     settings = new Settings(store.settingsDir);
     searchIndex = new SearchIndex(store.indexDir);
     templates = new TemplateManager(store.templatesDir);
+    // Bringing up the desktop-capture stream spawns/upgrades Chromium's GPU
+    // and screen-capture utility processes — which can be born after a session
+    // already started, so the start-time EcoQoS opt-out misses them. Re-apply
+    // it the moment the backend reports it is streaming.
+    let lastClickFrameSource = null;
+    const captureNotify = (channel, payload) => {
+      sendToRenderer(channel, payload);
+      if (channel === 'capture:state' && payload && payload.clickFrameSource !== lastClickFrameSource) {
+        lastClickFrameSource = payload.clickFrameSource;
+        if (payload.clickFrameSource === 'stream') {
+          try { keepProcessesResponsive(app.getAppMetrics().map((m) => m.pid)); } catch { /* best effort */ }
+        }
+      }
+    };
+
     capture = new CaptureService({
       store,
       settings,
       getWindow: () => mainWindow,
-      notify: sendToRenderer,
+      notify: captureNotify,
     });
 
     applyTheme();

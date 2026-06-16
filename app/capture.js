@@ -56,9 +56,14 @@ const DEFAULT_CLICK_DEBOUNCE_MS = 200;
 // representation that carries root coordinates) before firing without them.
 const LINUX_CLICK_TWIN_MS = 25;
 // Longest the window stays visible warming up the recorder at recording
-// start. A slow capture-stream start (Windows can take several seconds) must
-// not keep the window up and recording un-armed indefinitely.
-const WARMUP_MAX_MS = 1500;
+// start. A slow capture-stream start (Windows can take several seconds,
+// especially on battery) must not keep the window up and recording un-armed
+// indefinitely — but the window is still visible during warmup, so the user
+// hasn't begun their workflow yet, and the common case still proceeds the
+// instant the stream is ready. The cap only bites when startup is slow, where
+// a little more headroom buys a pre-click frame for the very first click
+// instead of a post-click fresh shot.
+const WARMUP_MAX_MS = 3000;
 // Idle gap between legacy frame-loop grabs. Must stay well above zero:
 // grabbing back-to-back starves the main-process event loop, which delays
 // delivery of click events from the OS watcher by whole seconds. (The

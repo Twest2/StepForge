@@ -1,0 +1,119 @@
+name: Release
+
+# Manual release: from the GitHub "Actions" tab pick "Release", click
+# "Run workflow", enter the version tag, and it builds the Windows portable
+# .exe and the Linux tarball + .deb, then publishes a GitHub Release with all
+# artifacts attached and auto-generated notes.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release tag, e.g. v0.1.1 (the tag is created at the current commit on this branch)'
+        required: true
+        type: string
+      prerelease:
+        description: 'Mark this release as a pre-release'
+        required: false
+        default: false
+        type: boolean
+
+# Needed for the release job to create the tag and the GitHub Release.
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: Build Windows portable
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Stamp the requested version onto package.json so the produced artifact
+      # carries it. Not committed back — it only affects this build.
+      - name: Set version from input
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: npm version "${VERSION#v}" --no-git-tag-version --allow-same-version
+
+      - name: Package Windows portable .exe
+        run: npm run package:windows
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-portable
+          path: releases/*.exe
+          if-no-files-found: error
+
+  build-linux:
+    name: Build Linux tarball + .deb
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Set version from input
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: npm version "${VERSION#v}" --no-git-tag-version --allow-same-version
+
+      - name: Package Linux artifacts (tarball + .deb)
+        shell: bash
+        env:
+          STEPFORGE_PACKAGE_DIR: ${{ github.workspace }}/build/artifacts
+        run: bash scripts/package-linux.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-artifacts
+          path: build/artifacts/*
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: [build-windows, build-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: List downloaded artifacts
+        run: find dist -type f -printf '%s\t%p\n'
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.version }}
+          PRERELEASE: ${{ inputs.prerelease }}
+        run: |
+          flags=()
+          if [ "$PRERELEASE" = "true" ]; then
+            flags+=(--prerelease)
+          fi
+          gh release create "$TAG" \
+            dist/windows-portable/* \
+            dist/linux-artifacts/* \
+            --title "StepForge $TAG" \
+            --target "${{ github.sha }}" \
+            --generate-notes \
+            "${flags[@]}"

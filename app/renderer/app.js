@@ -757,7 +757,11 @@ class StepForgeApp {
     if (title == null) return;
     const guide = await api.library.create({ title: title.trim() || 'Untitled guide' });
     await this.refreshLibrary();
-    await this.openGuide(guide.guideId);
+    // Arm a (paused) capture session like every other open path, so the
+    // "Start recording" bar appears and actually controls this new guide.
+    // Without this, a guide created from the library opened with no session,
+    // so Start recording had nothing to resume (or resumed a stale one).
+    await this.openGuideAndArmCapture(guide.guideId);
   }
 
   async createFolder() {

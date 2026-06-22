@@ -29,9 +29,10 @@ Origin sign-off (`git commit -s`).
 ## Offline Rules
 
 - No network code paths in the application. No telemetry, update checks,
-  license checks, remote fonts, or remote APIs — ever.
+  license checks, remote fonts, or remote APIs — **ever**.
 - No new runtime dependencies without prior maintainer agreement; prefer
-  internal implementations using Node built-ins.
+  internal implementations using Node built-ins. This is due to all the 
+  security issues that have arrose lately with NPM dependencies.
 
 ## Branching
 
@@ -46,8 +47,7 @@ Origin sign-off (`git commit -s`).
   `Closes #123`, `Fixes #123`, or `Relates to #123`.
 - Summarize the change clearly and call out anything a reviewer should
   verify manually.
-- Update docs when behavior changes, and add a CHANGELOG entry for every
-  user-visible change.
+- Update docs when behavior changes.
 - Every exporter or storage change **requires tests**; output changes
   require updated snapshot fixtures under `tests/fixtures/`.
 
@@ -64,10 +64,9 @@ automatically. The shell checks invoke the `node --test` workflow suites in
 `tests/unit/`.
 
 Write tests that exercise **real workflows and verify actual output** —
-create a guide, export it, parse the bytes that came out — rather than
-grepping for magic strings.
+create a guide, export it, parse the bytes that came out. DO NOT WRITE A TEST THAT GREPS FOR CODE.
 
-The Gitea workflow in `.gitea/workflows/tests.yaml` runs the same command
+The Gitea workflow in `.gitea/workflows/tests.yaml` and `.github/workflows/ci.yaml` runs the same command
 automatically on pushes and pull requests.
 
 Please add lots of tests to each of your PR's and be descriptive with the

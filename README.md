@@ -3,8 +3,7 @@
 StepForge is a **fully offline**, open-source desktop app for Windows and
 Linux that captures step-by-step workflows as screenshots, lets you annotate
 and describe each step in a focused three-pane editor, and exports the result
-to JSON, Markdown, HTML (simple and rich), PDF, animated GIF, image bundles,
-DOCX, and PPTX.
+to Markdown, DOCX, PPTX, PDF, HTML (WIP), GIF (WIP), confluence (WIP), Wiki.js (WIP), and image bundles (WIP). The current reconmendations for exporting is Markdown and PDF.
 
 It is an independent offline desktop guide-capture tool inspired by publicly
 documented workflow patterns of commercial documentation tools. It contains no
@@ -27,21 +26,6 @@ The core workflow:
 4. **Export** — every exporter renders from the same normalized Render AST,
    so output is deterministic across formats.
 
-```text
-┌────────────────────────────────────────────────────────────────────────────┐
-│ StepForge  >  Reset Password SOP            [Capture] [Export] [Save]      │
-├──────────────────┬──────────────────────────────────┬──────────────────────┤
-│ Steps            │ Canvas                           │ Properties           │
-│ 1 Open Users     │  ┌────────────────────────────┐  │ Title                │
-│ 2 Search account │  │  [tooltip]                 │  │ [Reset password]     │
-│ 3 Click Reset    │  │      ↘  ┌────────────┐     │  │ Description          │
-│   3.1 Warning    │  │         │ Reset btn  │     │  │ [rich text editor]   │
-│ 4 Done           │  │         └────────────┘     │  │ Text blocks          │
-│ [Add Step]       │  └────────────────────────────┘  │ Step settings        │
-├──────────────────┴──────────────────────────────────┴──────────────────────┤
-│ Tools: [Select][Rect][Oval][Line][Arrow][Text][Tooltip][#][Blur][Hi][Crop] │
-└────────────────────────────────────────────────────────────────────────────┘
-```
 
 ## What's Included
 
@@ -99,8 +83,8 @@ bash tests/run_test.sh
 
 The runner executes every `tests/checks/test_*.sh` script; those scripts run
 the workflow test suites under `tests/unit/` with `node --test`. The tests
-exercise real workflows — creating guides, round-tripping archives, exporting
-documents, and validating the bytes of the output — not string matching.
+exercise real workflows like creating guides, round-tripping archives, exporting
+documents, and validating the bytes of the output, not string matching.
 
 ## Building & Packaging
 

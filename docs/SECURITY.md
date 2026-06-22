@@ -64,6 +64,5 @@ URLs) before storage and again before rendering or export.
 
 ## Reporting
 
-Report vulnerabilities by opening an issue marked `security` (this is a
-local-only tool, so coordinated disclosure pressure is low; do not include
-exploit archives directly — describe the structure instead).
+Report vulnerabilities by sending an email to `git@twestbrook.com`
+

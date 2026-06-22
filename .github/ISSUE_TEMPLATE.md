@@ -7,12 +7,6 @@
 - [ ] Git / workflow
 - [ ] Other
 
-## Issue Type
-
-- [ ] Bug
-- [ ] Improvement
-- [ ] Task
-- [ ] Documentation
 
 ## Summary
 

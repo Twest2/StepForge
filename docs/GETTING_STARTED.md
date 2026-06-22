@@ -28,7 +28,7 @@ usually under `~/.local/share/stepforge`. On Windows it is usually under
 In the library view:
 
 1. Click `New guide`.
-2. Give the guide a clear title.
+2. Give the guide a clear title (more -> rename guide).
 3. Open the guide to enter the editor.
 
 You can also import a guide archive with `Import archive` if you already have
@@ -36,10 +36,11 @@ one.
 
 ## 4. Add content
 
-There are two simple ways to start:
+There are three simple ways to start:
 
-1. Import screenshots with the `Import` button in the editor.
-2. Paste an image from the clipboard if you already copied one.
+1. Record your workflow by clicking on the record button (reconmmended).
+2. Import screenshots with the `Import` button in the editor.
+3. Paste an image from the clipboard if you already copied one.
 
 If you want to capture new screenshots, open `Quick` actions and start a
 capture session. Use `Settings` to set the capture hotkey and other capture
@@ -50,7 +51,7 @@ options.
 The editor is split into three panes:
 
 1. Steps on the left
-2. Canvas in the center
+2. Editing canvas in the center
 3. Properties on the right
 
 Use the canvas tools to add shapes, arrows, text, blur, highlight, numbers,

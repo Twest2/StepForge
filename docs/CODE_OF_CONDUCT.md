@@ -16,9 +16,8 @@ filing issues — is expected to:
 
 Maintainers may edit, hide, or remove comments, commits, issues, and PRs that
 violate this standard, and may temporarily or permanently ban contributors
-for repeated or egregious behavior.
+for egregious behavior. We may do this at any time without warning and without chance for appeal.
 
 ## Reporting
 
-Report unacceptable behavior privately to the maintainers via the contact
-listed on the project page. Reports are handled confidentially.
+Report unacceptable behavior privately to the maintainers via `git@twestbrook.com`. Reports are handled confidentially. 

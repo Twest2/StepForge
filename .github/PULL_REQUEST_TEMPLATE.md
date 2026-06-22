@@ -1,15 +1,21 @@
+<!-- please delete the unused check box's on the creation of your pr -->
+
 ## Improvement Area
 
+- [ ] Guide Editor
+- [ ] Library
+- [ ] Settings
+- [ ] Exports
 - [ ] Documentation
 - [ ] Tests
 - [ ] Git / workflow
 - [ ] Other
 
 ## Issue
+<!-- Replace the example with the issue number this PR resolves. -->
 
 - Closes #
 
-<!-- Replace the example with the issue number this PR resolves. -->
 
 ## Summary
 

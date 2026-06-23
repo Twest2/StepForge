@@ -10,8 +10,8 @@ const { guideMetaLines, guideSummary, tocEntries } = require('./document-layout'
 
 /**
  * DOCX exporter: WordprocessingML built directly (no dependency), one
- * heading + description + screenshot per step, text blocks, code blocks
- * (Courier), and tables.
+ * heading per step with positioned text blocks around the description and
+ * screenshot, plus code blocks (Courier) and tables.
  */
 
 const DEFAULT_TEMPLATE = {
@@ -274,16 +274,27 @@ function exportDocx(ast, outDir, template = {}) {
     const headSize = headingLevel === 1 ? 30 : headingLevel === 2 ? 26 : 22;
     const bookmarkId = ++bookmarkCounter;
     const anchor = bookmarkName(step);
+    const {
+      beforeTitle,
+      afterTitle,
+      beforeDescription,
+      afterDescription,
+      beforeImage,
+      afterImage,
+      rest,
+    } = stepContentGroups(step);
+    for (const tb of beforeTitle) emitTextBlock(tb);
     body.push(p(
       `<w:bookmarkStart w:id="${bookmarkId}" w:name="${anchor}"/>` +
       run(`${step.number}. ${step.title || 'Untitled step'}`, { bold: true, size: headSize }) +
       `<w:bookmarkEnd w:id="${bookmarkId}"/>`,
       headingParagraphProps(step.depth, step.forceNewPage)
     ));
-
-    const { before, rest } = stepContentGroups(step);
-    for (const tb of before) emitTextBlock(tb);
+    for (const tb of afterTitle) emitTextBlock(tb);
+    for (const tb of beforeDescription) emitTextBlock(tb);
     if (step.descriptionText) body.push(p(run(step.descriptionText, { size: 20, color: '1F2937' })));
+    for (const tb of afterDescription) emitTextBlock(tb);
+    for (const tb of beforeImage) emitTextBlock(tb);
 
     const img = images.get(step.stepId);
     if (img) {
@@ -294,6 +305,8 @@ function exportDocx(ast, outDir, template = {}) {
       body.push(p(drawing(relId, img.width, img.height, tpl.imageWidthTwips)));
       stepImageCount += 1;
     }
+
+    for (const tb of afterImage) emitTextBlock(tb);
 
     for (const block of rest) {
       if (block.kind === 'text') {

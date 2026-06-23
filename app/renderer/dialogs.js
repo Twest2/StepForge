@@ -285,6 +285,7 @@ function showQuickActions({ query = '', commands = [], searchFn, onOpenItem, onC
 }
 
 function showSettingsDialog({
+  api,
   settings,
   placeholders = {},
   onSave,

@@ -19,6 +19,7 @@ const { exportGuideArchive, importGuideArchive, saveLinkedGuide, readArchive } =
 const { createSnapshot, listSnapshots, restoreSnapshot } = require('../core/snapshots');
 const { readLock } = require('../core/locks');
 const CaptureService = require('./capture');
+const { TextIntelService } = require('./text-intel');
 const { keepProcessesResponsive } = require('./win-power');
 
 const APP_ID = 'com.stepforge.app';
@@ -59,6 +60,7 @@ let settings;
 let searchIndex;
 let templates;
 let capture;
+let textIntel;
 let mainWindow;
 
 function reindex(guideId) {
@@ -503,6 +505,22 @@ function setupIpc() {
     if (keyPath.startsWith('capture.hotkey')) registerHotkeys();
     return settings.data;
   });
+  h('ai:test', async ({ enabled = null, ollama = null } = {}) => {
+    return textIntel.testAiConnection({
+      enabled,
+      ollama,
+    });
+  });
+  h('ai:fillStep', async ({ guideId, stepId, target = 'all', blockId = null } = {}) => {
+    const result = await textIntel.generateStepPatch({
+      guideId,
+      stepId,
+      target,
+      blockId,
+    });
+    if (result.ok) reindex(guideId);
+    return result;
+  });
   h('placeholders:globals:get', () => settings.getGlobalPlaceholders());
   h('placeholders:globals:set', (values) => settings.setGlobalPlaceholders(values));
 
@@ -739,6 +757,13 @@ if (!gotLock) {
     settings = new Settings(store.settingsDir);
     searchIndex = new SearchIndex(store.indexDir);
     templates = new TemplateManager(store.templatesDir);
+    textIntel = new TextIntelService({
+      store,
+      settings,
+      getWindow: () => mainWindow,
+      dataDir,
+      screenApi: screen,
+    });
     // Bringing up the desktop-capture stream spawns/upgrades Chromium's GPU
     // and screen-capture utility processes — which can be born after a session
     // already started, so the start-time EcoQoS opt-out misses them. Re-apply
@@ -759,6 +784,7 @@ if (!gotLock) {
       settings,
       getWindow: () => mainWindow,
       notify: captureNotify,
+      textIntel,
     });
 
     applyTheme();
@@ -777,6 +803,9 @@ if (!gotLock) {
       // Targeted cleanup (not finishSession — that re-shows the window).
       capture.stopClickWatcher();
       capture.destroySessionTray();
+    }
+    if (textIntel) {
+      textIntel.shutdown().catch(() => {});
     }
     // clean preview temp files on close
     try {

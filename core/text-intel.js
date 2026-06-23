@@ -1,0 +1,416 @@
+'use strict';
+const { deepClone, htmlToText, escapeHtml } = require('./util');
+const { sanitizeHtml } = require('./sanitize');
+const {
+  TEXTBLOCK_LEVELS,
+  TEXTBLOCK_POSITIONS,
+  normalizeTextBlock,
+  normalizeCodeBlock,
+  normalizeTableBlock,
+} = require('./schema');
+
+const DEFAULT_CAPTURE_TITLES = {
+  fullscreen: 'Screen capture',
+  window: 'Window capture',
+  region: 'Region capture',
+};
+
+const AI_LEVEL_ALIASES = new Map([
+  ['note', 'info'],
+  ['info', 'info'],
+  ['tip', 'success'],
+  ['success', 'success'],
+  ['warning', 'warn'],
+  ['warn', 'warn'],
+  ['important', 'error'],
+  ['error', 'error'],
+]);
+
+const GENERIC_OCR_PHRASES = new Set([
+  'button',
+  'click',
+  'double click',
+  'menu',
+  'item',
+  'field',
+  'text field',
+  'search',
+  'submit',
+  'cancel',
+  'ok',
+  'open',
+  'select',
+  'enter',
+  'type',
+]);
+
+function normalizeWhitespace(text) {
+  return String(text == null ? '' : text)
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function titleCaseWord(word) {
+  if (!word) return word;
+  if (/^[A-Z0-9]{2,}$/.test(word)) return word;
+  if (/^\d+$/.test(word)) return word;
+  return word[0].toUpperCase() + word.slice(1).toLowerCase();
+}
+
+function displayText(text) {
+  const clean = normalizeWhitespace(text)
+    .replace(/^[\s"'`([{<]+|[\s"'`)}\]>.,;:!?]+$/g, '')
+    .trim();
+  if (!clean) return '';
+  if (clean === clean.toUpperCase()) {
+    return clean.split(/\s+/).map(titleCaseWord).join(' ');
+  }
+  return clean.replace(/\s+/g, ' ');
+}
+
+function candidateWords(text) {
+  const clean = normalizeWhitespace(text);
+  if (!clean) return [];
+  return clean.split(/\s+/).filter(Boolean);
+}
+
+function scoreCandidate(text, { source = 'ocr' } = {}) {
+  const clean = displayText(text);
+  if (!clean) return -Infinity;
+  const words = candidateWords(clean);
+  if (!words.length) return -Infinity;
+  let score = 0;
+  score += source === 'element' ? 110 : source === 'window' ? 95 : source === 'app' ? 80 : 100;
+  score += Math.min(words.length, 6) * 12;
+  score -= Math.max(0, words.length - 6) * 10;
+  score -= Math.max(0, clean.length - 56) * 0.6;
+  if (GENERIC_OCR_PHRASES.has(clean.toLowerCase())) score -= 50;
+  if (clean.length <= 24) score += 10;
+  if (/^(click|open|enter|type|choose|select|save|cancel|confirm)\b/i.test(clean)) score += 8;
+  if (/^[\p{P}\p{S}0-9]+$/u.test(clean)) score -= 100;
+  return score;
+}
+
+function pickBestOcrPhrase(ocrText) {
+  const text = normalizeWhitespace(ocrText);
+  if (!text) return '';
+  const parts = text
+    .split(/\n+/)
+    .map((line) => displayText(line))
+    .filter(Boolean)
+    .filter((line) => !GENERIC_OCR_PHRASES.has(line.toLowerCase()));
+  if (!parts.length) return '';
+  let best = '';
+  let bestScore = -Infinity;
+  for (const part of parts) {
+    const score = scoreCandidate(part, { source: 'ocr' });
+    if (score > bestScore) {
+      best = part;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
+function isShortUiLabel(text) {
+  const words = candidateWords(text);
+  return words.length > 0 && words.length <= 2 && text.length <= 24;
+}
+
+function buildCaptureTitle({ mode = 'fullscreen', metadata = {}, ocrText = '' } = {}) {
+  const candidates = [];
+  if (metadata.elementLabel) candidates.push({ text: metadata.elementLabel, source: 'element' });
+  if (metadata.windowTitle) candidates.push({ text: metadata.windowTitle, source: 'window' });
+  if (metadata.appName && metadata.appName !== metadata.windowTitle) {
+    candidates.push({ text: metadata.appName, source: 'app' });
+  }
+  const ocrPhrase = pickBestOcrPhrase(ocrText);
+  if (ocrPhrase) candidates.push({ text: ocrPhrase, source: 'ocr' });
+
+  let winner = null;
+  let winnerScore = -Infinity;
+  for (const candidate of candidates) {
+    const score = scoreCandidate(candidate.text, { source: candidate.source });
+    if (score > winnerScore) {
+      winner = candidate;
+      winnerScore = score;
+    }
+  }
+
+  const cleanedWinner = winner ? displayText(winner.text) : '';
+  if (!cleanedWinner) return DEFAULT_CAPTURE_TITLES[mode] || 'Capture';
+
+  if (winner.source === 'window' || winner.source === 'app') {
+    return `Open ${cleanedWinner}`;
+  }
+  if (winner.source === 'element') {
+    return isShortUiLabel(cleanedWinner) ? `Click ${cleanedWinner}` : cleanedWinner;
+  }
+  if (winner.source === 'ocr') {
+    return isShortUiLabel(cleanedWinner) ? `Click ${cleanedWinner}` : cleanedWinner;
+  }
+  return cleanedWinner;
+}
+
+function plainTextToHtml(text) {
+  const trimmed = normalizeWhitespace(text);
+  if (!trimmed) return '';
+  return trimmed
+    .split(/\n{2,}/)
+    .map((para) => `<p>${escapeHtml(para).replace(/\n/g, '<br>')}</p>`)
+    .join('');
+}
+
+function normalizeOllamaHost(host) {
+  const raw = normalizeWhitespace(host);
+  if (!raw) return '';
+  if (/^https?:\/\//i.test(raw)) return raw.replace(/\/+$/, '');
+  return `http://${raw.replace(/\/+$/, '')}`;
+}
+
+function normalizeAiLevel(level) {
+  const key = normalizeWhitespace(level).toLowerCase();
+  return AI_LEVEL_ALIASES.get(key) || (TEXTBLOCK_LEVELS.includes(key) ? key : 'info');
+}
+
+function normalizeAiPosition(position) {
+  const key = normalizeWhitespace(position).toLowerCase();
+  return TEXTBLOCK_POSITIONS.includes(key) ? key : 'after-description';
+}
+
+function normalizeAiBlock(block) {
+  if (!block || typeof block !== 'object') return null;
+  const kind = normalizeWhitespace(block.kind).toLowerCase();
+  if (kind === 'text') {
+    const normalized = normalizeTextBlock({
+      id: block.id,
+      order: Number.isFinite(block.order) ? block.order : null,
+      position: normalizeAiPosition(block.position),
+      level: normalizeAiLevel(block.level),
+      title: displayText(block.title),
+      descriptionHtml: plainTextToHtml(block.body ?? block.description ?? block.text ?? ''),
+    }, Number.isFinite(block.order) ? block.order : null);
+    return { ...normalized, kind: 'text' };
+  }
+  if (kind === 'code') {
+    return {
+      ...normalizeCodeBlock({
+        id: block.id,
+        order: Number.isFinite(block.order) ? block.order : null,
+        language: displayText(block.language).toLowerCase(),
+        code: String(block.code ?? ''),
+      }, Number.isFinite(block.order) ? block.order : null),
+      kind: 'code',
+    };
+  }
+  if (kind === 'table') {
+    const rows = Array.isArray(block.rows)
+      ? block.rows.map((row) => (Array.isArray(row) ? row.map((cell) => displayText(cell)) : []))
+      : [];
+    return {
+      ...normalizeTableBlock({
+        id: block.id,
+        order: Number.isFinite(block.order) ? block.order : null,
+        rows,
+      }, Number.isFinite(block.order) ? block.order : null),
+      kind: 'table',
+    };
+  }
+  return null;
+}
+
+function normalizeAiPatch(raw) {
+  let data = raw;
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim().replace(/^```(?:json)?\s*|\s*```$/g, '');
+    const start = trimmed.indexOf('{');
+    const end = trimmed.lastIndexOf('}');
+    const jsonText = start >= 0 && end > start ? trimmed.slice(start, end + 1) : trimmed;
+    data = JSON.parse(jsonText);
+  }
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    throw new Error('AI response must be a JSON object');
+  }
+  const out = {
+    title: displayText(data.title),
+    descriptionHtml: plainTextToHtml(data.description ?? data.descriptionText ?? ''),
+    blocks: Array.isArray(data.blocks)
+      ? data.blocks.map((block) => normalizeAiBlock(block)).filter(Boolean)
+      : [],
+  };
+  return out;
+}
+
+function summarizeBlocks(step = {}) {
+  const parts = [];
+  for (const block of step.textBlocks || []) {
+    const body = htmlToText(block.descriptionHtml || '');
+    parts.push(`- Text (${block.level || 'info'}, ${block.position || 'after-description'}): ${block.title || ''}${body ? ` — ${body}` : ''}`.trim());
+  }
+  for (const block of step.codeBlocks || []) {
+    const code = String(block.code || '').trim();
+    parts.push(`- Code (${block.language || 'plain'}):\n${code || '(empty)'}`);
+  }
+  for (const block of step.tableBlocks || []) {
+    const rows = Array.isArray(block.rows) ? block.rows.length : 0;
+    const cols = rows > 0 && Array.isArray(block.rows[0]) ? block.rows[0].length : 0;
+    parts.push(`- Table (${rows}x${cols})`);
+  }
+  return parts.length ? parts.join('\n') : '(none)';
+}
+
+function summarizeStepForAi(step = {}) {
+  return [
+    `Step title: ${step.title || '(empty)'}`,
+    `Step description: ${htmlToText(step.descriptionHtml || '') || '(empty)'}`,
+    `Step status: ${step.status || 'todo'}`,
+    `Blocks:\n${summarizeBlocks(step)}`,
+  ].join('\n');
+}
+
+function summarizeGuideForAi(guide = {}) {
+  return [
+    `Guide title: ${guide.title || '(untitled)'}`,
+    `Guide description: ${htmlToText(guide.descriptionHtml || '') || '(empty)'}`,
+  ].join('\n');
+}
+
+function buildAiPrompt({
+  target = 'all',
+  guide = null,
+  step = null,
+  captureContext = null,
+  block = null,
+} = {}) {
+  const targetText = {
+    title: 'rewrite only the step title',
+    description: 'rewrite only the step description',
+    block: 'rewrite only one block',
+    all: 'rewrite the step title, description, and any useful blocks',
+  }[target] || 'rewrite the step';
+
+  const allowedBlockNote = [
+    'Use block.kind = "text" with level in [info, warn, error, success] for note / warning / important / tip blocks.',
+    'Use block.kind = "code" for code snippets.',
+    'Use block.kind = "table" for tables, with rows as arrays of strings.',
+    'Use block.position values from [before-title, after-title, before-image, after-image, before-description, after-description].',
+  ].join(' ');
+
+  const prompt = [
+    'You write concise, human-sounding step-by-step documentation for an offline desktop app.',
+    'Return JSON only. No markdown fences, no commentary, no extra keys outside the schema below.',
+    'Schema:',
+    '{',
+    '  "title": string,',
+    '  "description": string,',
+    '  "blocks": [{',
+    '    "kind": "text" | "code" | "table",',
+    '    "position"?: "before-title" | "after-title" | "before-image" | "after-image" | "before-description" | "after-description",',
+    '    "level"?: "info" | "warn" | "error" | "success",',
+    '    "title"?: string,',
+    '    "body"?: string,',
+    '    "language"?: string,',
+    '    "code"?: string,',
+    '    "rows"?: string[][]',
+    '  }]',
+    '}',
+    '',
+    `Target: ${targetText}.`,
+    allowedBlockNote,
+    '',
+    guide ? summarizeGuideForAi(guide) : 'Guide: (not provided)',
+    '',
+    step ? summarizeStepForAi(step) : 'Step: (not provided)',
+    '',
+    captureContext ? [
+      `Active window title: ${captureContext.windowTitle || '(unknown)'}`,
+      `Active app: ${captureContext.appName || '(unknown)'}`,
+      `OCR text near click: ${captureContext.ocrText || '(none)'}`,
+      `Capture mode: ${captureContext.mode || '(unknown)'}`,
+    ].join('\n') : 'Capture context: (not provided)',
+    '',
+    block ? `Target block:\n${JSON.stringify(block, null, 2)}` : 'Target block: (not provided)',
+    '',
+    'Rules:',
+    '- Keep the wording natural and specific.',
+    '- Prefer short titles.',
+    '- Only return blocks that add value.',
+    '- Do not invent details that are not supported by the capture context.',
+    '- If the target is one block, only rewrite that block.',
+  ].join('\n');
+
+  return {
+    systemPrompt: 'You are a documentation assistant that only emits JSON.',
+    prompt,
+  };
+}
+
+function applyAiPatchToStep(step, patch, { target = 'all', blockId = null } = {}) {
+  const next = deepClone(step);
+  if ((target === 'all' || target === 'title') && patch.title) {
+    next.title = displayText(patch.title);
+  }
+  if ((target === 'all' || target === 'description') && patch.descriptionHtml) {
+    next.descriptionHtml = sanitizeHtml(patch.descriptionHtml);
+  }
+
+  if (target === 'all' && Array.isArray(patch.blocks) && patch.blocks.length) {
+    const textBlocks = [];
+    const codeBlocks = [];
+    const tableBlocks = [];
+    let nextOrder = 1;
+    for (const block of patch.blocks) {
+      const clone = deepClone(block);
+      clone.order = nextOrder++;
+      if (clone.kind === 'text') textBlocks.push(clone);
+      else if (clone.kind === 'code') codeBlocks.push(clone);
+      else if (clone.kind === 'table') tableBlocks.push(clone);
+    }
+    next.textBlocks = textBlocks;
+    next.codeBlocks = codeBlocks;
+    next.tableBlocks = tableBlocks;
+  } else if (target === 'block' && blockId && Array.isArray(patch.blocks) && patch.blocks.length) {
+    const replacement = patch.blocks[0];
+    const textBlock = (next.textBlocks || []).find((block) => block.id === blockId);
+    const codeBlock = (next.codeBlocks || []).find((block) => block.id === blockId);
+    const tableBlock = (next.tableBlocks || []).find((block) => block.id === blockId);
+    if (textBlock && replacement.kind === 'text') {
+      if (replacement.position) textBlock.position = replacement.position;
+      if (replacement.level) textBlock.level = replacement.level;
+      if (replacement.title) textBlock.title = replacement.title;
+      if (replacement.descriptionHtml) textBlock.descriptionHtml = sanitizeHtml(replacement.descriptionHtml);
+    } else if (codeBlock && replacement.kind === 'code') {
+      if (replacement.language) codeBlock.language = replacement.language;
+      if (replacement.code) codeBlock.code = replacement.code;
+    } else if (tableBlock && replacement.kind === 'table') {
+      if (replacement.rows) tableBlock.rows = replacement.rows;
+    }
+  }
+  if (!next.image) {
+    const hasBody = Boolean(
+      next.title ||
+      htmlToText(next.descriptionHtml || '') ||
+      (next.textBlocks || []).length ||
+      (next.codeBlocks || []).length ||
+      (next.tableBlocks || []).length,
+    );
+    if (hasBody) next.kind = 'content';
+  }
+  return next;
+}
+
+module.exports = {
+  DEFAULT_CAPTURE_TITLES,
+  buildCaptureTitle,
+  plainTextToHtml,
+  normalizeOllamaHost,
+  normalizeAiPatch,
+  buildAiPrompt,
+  applyAiPatchToStep,
+  summarizeStepForAi,
+  summarizeGuideForAi,
+  displayText,
+  normalizeWhitespace,
+  scoreCandidate,
+  pickBestOcrPhrase,
+};

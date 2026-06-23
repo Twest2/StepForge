@@ -313,6 +313,42 @@ function showSettingsDialog({
     const captureOutside = el('input', { type: 'checkbox', checked: Boolean(settings.capture?.captureOutsideClicks) });
     const confirmSimple = el('input', { type: 'checkbox', checked: Boolean(settings.capture?.confirmSimpleCapture) });
     const keepLast = makeInput(settings.backups?.keepLast ?? 10, 'number', { min: 0, step: 1 });
+    const aiEnabled = el('input', { type: 'checkbox', checked: Boolean(settings.ai?.enabled) });
+    const ollamaHost = makeInput(settings.ai?.ollama?.host || 'http://127.0.0.1:11434');
+    const ollamaModel = makeInput(settings.ai?.ollama?.model || 'llama3.2:1b');
+    const aiStatus = el('div', { className: 'muted ai-status' }, 'AI stays local through Ollama. Nothing is sent to the cloud.');
+    const testAiBtn = el('button', { type: 'button' }, 'Test connection');
+
+    const updateAiStatus = (message, { error = false } = {}) => {
+      aiStatus.textContent = message;
+      aiStatus.classList.toggle('error', Boolean(error));
+    };
+
+    const testAiConnection = async () => {
+      setButtonLoading(testAiBtn, true, 'Testing…');
+      updateAiStatus('Checking Ollama at the configured host…');
+      try {
+        const result = await api.ai.test({
+          ollama: {
+            host: ollamaHost.value.trim(),
+            model: ollamaModel.value.trim(),
+          },
+        });
+        if (!result.ok) {
+          updateAiStatus(result.reason || 'Could not connect to Ollama.', { error: true });
+          return;
+        }
+        if (result.installed) {
+          updateAiStatus(`Connected to ${result.host} with ${result.model}.`);
+        } else {
+          updateAiStatus(`Connected to ${result.host}. Model ${result.model} is not installed yet.`, { error: true });
+        }
+      } catch (err) {
+        updateAiStatus(err.message || 'Could not connect to Ollama.', { error: true });
+      } finally {
+        setButtonLoading(testAiBtn, false);
+      }
+    };
 
     const placeholderRows = el('div', { className: 'placeholder-rows' });
     const rows = [];
@@ -370,6 +406,19 @@ function showSettingsDialog({
         labeledRow('Keep last snapshots', keepLast),
       ),
       el('fieldset', {},
+        el('legend', {}, 'AI'),
+        labeledRow('Enable AI text filling', aiEnabled),
+        labeledRow('Ollama host', ollamaHost),
+        labeledRow('Ollama model', ollamaModel),
+        el('div.row', { style: { justifyContent: 'space-between' } },
+          aiStatus,
+          testAiBtn,
+        ),
+        el('div.muted', {},
+          'AI generation is manual only. Captures stay deterministic until you click a generate button.',
+        ),
+      ),
+      el('fieldset', {},
         el('legend', {}, 'Global placeholders'),
         placeholderRows,
         el('div.row', { style: { justifyContent: 'flex-start' } }, addPlaceholderBtn),
@@ -412,6 +461,15 @@ function showSettingsDialog({
                 ...settings.backups,
                 keepLast: Number(keepLast.value || 0),
               },
+              ai: {
+                ...settings.ai,
+                enabled: aiEnabled.checked,
+                ollama: {
+                  ...(settings.ai?.ollama || {}),
+                  host: ollamaHost.value.trim(),
+                  model: ollamaModel.value.trim(),
+                },
+              },
               placeholders: rows.reduce((acc, row) => {
                 const inputs = row.querySelectorAll('input');
                 const key = inputs[0].value.trim();
@@ -430,6 +488,14 @@ function showSettingsDialog({
     });
 
     form.addEventListener('submit', (e) => e.preventDefault());
+    testAiBtn.addEventListener('click', testAiConnection);
+    aiEnabled.addEventListener('change', () => {
+      updateAiStatus(
+        aiEnabled.checked
+          ? 'AI generation will be available once Ollama is reachable.'
+          : 'AI generation is disabled. The settings are still saved for later.',
+      );
+    });
   });
 }
 

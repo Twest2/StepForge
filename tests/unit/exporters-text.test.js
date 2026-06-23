@@ -12,6 +12,7 @@ const { exportWikiJs } = require('../../exporters/wikijs');
 const { exportHtmlSimple, exportHtmlRich } = require('../../exporters/html');
 const { exportConfluence } = require('../../exporters/confluence');
 const { htmlToMarkdown } = require('../../exporters/htmlmd');
+const { stepContentGroups } = require('../../exporters/common');
 const { decodePng } = require('../../core/png');
 const { buildFixtureGuide } = require('./fixture-guide');
 const { makeTmpDir, rmrf } = require('./helpers');
@@ -144,6 +145,70 @@ test('Markdown export: TOC anchors resolve, images exist, blocks rendered', (t) 
   assert.ok(md.includes('color: inherit;'));
   assert.ok(md.includes('Warning: Access'));
   assert.ok(md.includes('<p>Admins only.</p>'));
+});
+
+test('text block positions render around the title, description, and image', (t) => {
+  const root = makeTmpDir('exppositions');
+  t.after(() => rmrf(root));
+  const { store, guide, s1 } = buildFixtureGuide(path.join(root, 'data'));
+
+  const step = store.getStep(guide.guideId, s1.stepId);
+  step.textBlocks = [
+    { id: 'tb-before-title', order: 1, position: 'before-title', level: 'info', title: 'Before title', descriptionHtml: '<p>Before title.</p>' },
+    { id: 'tb-after-title', order: 2, position: 'after-title', level: 'info', title: 'After title', descriptionHtml: '<p>After title.</p>' },
+    { id: 'tb-before-description', order: 3, position: 'before-description', level: 'info', title: 'Before description', descriptionHtml: '<p>Before description.</p>' },
+    { id: 'tb-after-description', order: 4, position: 'after-description', level: 'info', title: 'After description', descriptionHtml: '<p>After description.</p>' },
+    { id: 'tb-before-image', order: 5, position: 'before-image', level: 'info', title: 'Before image', descriptionHtml: '<p>Before image.</p>' },
+    { id: 'tb-after-image', order: 6, position: 'after-image', level: 'info', title: 'After image', descriptionHtml: '<p>After image.</p>' },
+  ];
+  store.saveStep(guide.guideId, step);
+
+  const ast = buildRenderAst(store, guide.guideId);
+  const groups = stepContentGroups(ast.steps[0]);
+  assert.equal(groups.beforeTitle.length, 1);
+  assert.equal(groups.afterTitle.length, 1);
+  assert.equal(groups.beforeDescription.length, 1);
+  assert.equal(groups.afterDescription.length, 1);
+  assert.equal(groups.beforeImage.length, 1);
+  assert.equal(groups.afterImage.length, 1);
+
+  const assertIncreasingOrder = (text, markers) => {
+    let previous = -1;
+    for (const marker of markers) {
+      const index = text.indexOf(marker);
+      assert.ok(index >= 0, `missing marker: ${marker}`);
+      assert.ok(index > previous, `marker out of order: ${marker}`);
+      previous = index;
+    }
+  };
+
+  const mdOut = path.join(root, 'md');
+  const md = fs.readFileSync(exportMarkdown(ast, mdOut).file, 'utf8');
+  assertIncreasingOrder(md, [
+    'Before title',
+    '## 1. Open AcmeSync settings',
+    'After title',
+    'Before description',
+    'docs.example.com',
+    'After description',
+    'Before image',
+    '![Step 1](',
+    'After image',
+  ]);
+
+  const htmlOut = path.join(root, 'html');
+  const html = fs.readFileSync(exportHtmlSimple(ast, htmlOut).file, 'utf8');
+  assertIncreasingOrder(html, [
+    'Before title',
+    '<h2>1. Open AcmeSync settings</h2>',
+    'After title',
+    'Before description',
+    'docs.example.com',
+    'After description',
+    'Before image',
+    'alt="Step 1"',
+    'After image',
+  ]);
 });
 
 test('Wiki.js export: TOC is included, wiki callouts render, images exist', (t) => {

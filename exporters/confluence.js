@@ -62,11 +62,25 @@ function exportConfluence(ast, outDir, template = {}) {
   }
 
   const stepXml = ast.steps.map((step) => {
-    const parts = [`<a id="${anchorFor(step)}"></a>`, `<h2>${escapeXml(step.number)}. ${escapeXml(step.title || 'Untitled step')}</h2>`];
+    const {
+      beforeTitle,
+      afterTitle,
+      beforeDescription,
+      afterDescription,
+      beforeImage,
+      afterImage,
+      rest,
+    } = stepContentGroups(step);
+    const parts = [`<a id="${anchorFor(step)}"></a>`];
+    for (const tb of beforeTitle) {
+      parts.push(blockMacro(tb, ast));
+    }
+    parts.push(`<h2>${escapeXml(step.number)}. ${escapeXml(step.title || 'Untitled step')}</h2>`);
     if (step.skipped) parts.push('<p><em>(skipped)</em></p>');
-
-    const { before, rest } = stepContentGroups(step);
-    for (const tb of before) {
+    for (const tb of afterTitle) {
+      parts.push(blockMacro(tb, ast));
+    }
+    for (const tb of beforeDescription) {
       parts.push(blockMacro(tb, ast));
     }
 
@@ -74,9 +88,20 @@ function exportConfluence(ast, outDir, template = {}) {
       parts.push(`<div>${stepLinkRewrite(step.descriptionHtml, ast)}</div>`);
     }
 
+    for (const tb of afterDescription) {
+      parts.push(blockMacro(tb, ast));
+    }
+    for (const tb of beforeImage) {
+      parts.push(blockMacro(tb, ast));
+    }
+
     const attachment = attachmentNames.get(step.stepId);
     if (attachment) {
       parts.push(`<p><ac:image><ri:attachment ri:filename="${escapeXml(attachment)}" /></ac:image></p>`);
+    }
+
+    for (const tb of afterImage) {
+      parts.push(blockMacro(tb, ast));
     }
 
     for (const block of rest) {

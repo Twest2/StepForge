@@ -44,6 +44,21 @@ jobs:
           VERSION: ${{ inputs.version }}
         run: npm version "${VERSION#v}" --no-git-tag-version --allow-same-version
 
+      - name: Configure Windows code signing
+        shell: bash
+        env:
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+        run: |
+          if [ -n "$WIN_CSC_LINK" ] && [ -n "$WIN_CSC_KEY_PASSWORD" ]; then
+            {
+              printf 'WIN_CSC_LINK=%s\n' "$WIN_CSC_LINK"
+              printf 'WIN_CSC_KEY_PASSWORD=%s\n' "$WIN_CSC_KEY_PASSWORD"
+            } >> "$GITHUB_ENV"
+          else
+            echo "Windows code signing secrets not configured; building unsigned."
+          fi
+
       - name: Package Windows portable .exe
         run: npm run package:windows
 

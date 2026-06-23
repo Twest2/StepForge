@@ -60,7 +60,7 @@ using only Node built-ins.
 
 ## Getting Started
 
-For a shorter walkthrough, see [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md).
+For a windows installation, see [docs/windows_installatin](docs/windows_installation.md) or for a developer/more in depth walkthrough, see [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md).
 
 Requirements: Node.js 20+ and npm (Electron is the only dependency).
 

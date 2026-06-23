@@ -46,7 +46,6 @@ function createWindowsInstallerConfig(outputDir) {
     win: {
       target: ['nsis'],
     },
-    publish: 'never',
     nsis: {
       oneClick: false,
       allowToChangeInstallationDirectory: true,
@@ -54,6 +53,14 @@ function createWindowsInstallerConfig(outputDir) {
       createStartMenuShortcut: true,
       shortcutName: 'StepForge',
     },
+  };
+}
+
+function createWindowsInstallerBuildOptions(outputDir) {
+  return {
+    targets: Platform.WINDOWS.createTarget('nsis'),
+    config: createWindowsInstallerConfig(outputDir),
+    publish: 'never',
   };
 }
 
@@ -65,13 +72,8 @@ async function buildWindowsInstaller() {
   fs.mkdirSync(releaseDir, { recursive: true });
   fs.rmSync(outputDir, { recursive: true, force: true });
 
-  const config = createWindowsInstallerConfig(outputDir);
-
   try {
-    await build({
-      targets: Platform.WINDOWS.createTarget('nsis'),
-      config,
-    });
+    await build(createWindowsInstallerBuildOptions(outputDir));
   } catch (err) {
     throw new Error(`Windows installer build failed: ${err.message}`);
   }
@@ -97,6 +99,7 @@ if (require.main === module) {
 module.exports = {
   APP_ID,
   createWindowsInstallerConfig,
+  createWindowsInstallerBuildOptions,
   findInstallerExe,
   buildWindowsInstaller,
 };

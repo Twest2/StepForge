@@ -6,7 +6,11 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const { makeTmpDir, rmrf } = require('./helpers');
-const { createWindowsInstallerConfig, findInstallerExe } = require('../../scripts/package-windows');
+const {
+  createWindowsInstallerConfig,
+  createWindowsInstallerBuildOptions,
+  findInstallerExe,
+} = require('../../scripts/package-windows');
 
 test('Windows packaging uses an assisted NSIS installer', (t) => {
   const config = createWindowsInstallerConfig('/tmp/stepforge-output');
@@ -17,12 +21,15 @@ test('Windows packaging uses an assisted NSIS installer', (t) => {
   assert.equal(config.nsis.createDesktopShortcut, true);
   assert.equal(config.nsis.createStartMenuShortcut, true);
   assert.equal(config.nsis.shortcutName, 'StepForge');
-  assert.equal(config.publish, 'never');
   assert.equal(config.asar, true);
   assert.ok(config.files.includes('app/**/*'));
   assert.ok(config.files.includes('core/**/*'));
   assert.ok(config.files.includes('exporters/**/*'));
   assert.ok(!config.files.includes('assets/**/*'));
+
+  const buildOptions = createWindowsInstallerBuildOptions('/tmp/stepforge-output');
+  assert.equal(buildOptions.publish, 'never');
+  assert.equal(buildOptions.config.publish, undefined);
 
   const tmp = makeTmpDir('windows-installer');
   t.after(() => rmrf(tmp));

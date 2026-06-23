@@ -203,10 +203,10 @@ function exportPdf(ast, outDir, template = {}) {
 
   /**
    * Compute the vertical space a step will need: `head` is the title, the
-   * accent rule, any before-description blocks, the description, and the
-   * image — kept together on one page — and `total` adds the remaining
-   * blocks plus the trailing gap, used to decide whether the whole step
-   * fits on a fresh page.
+   * accent rule, positioned text blocks, the description, and the image —
+   * kept together on one page — and `total` adds the remaining blocks plus
+   * the trailing gap, used to decide whether the whole step fits on a
+   * fresh page.
    */
   const measureStep = (step) => {
     const headSize = step.depth > 0 ? 12 : 14;
@@ -214,8 +214,18 @@ function exportPdf(ast, outDir, template = {}) {
     const titleLines = pdf.wrapText(titleText, headSize, usableW, 'F2');
     let head = Math.max(40, titleLines.length * headSize * 1.35 + 8);
 
-    const { before, rest } = stepContentGroups(step);
-    for (const tb of before) head += measureBlock(tb);
+    const {
+      beforeTitle,
+      afterTitle,
+      beforeDescription,
+      afterDescription,
+      beforeImage,
+      afterImage,
+      rest,
+    } = stepContentGroups(step);
+    for (const tb of [...beforeTitle, ...afterTitle, ...beforeDescription, ...afterDescription, ...beforeImage, ...afterImage]) {
+      head += measureBlock(tb);
+    }
     if (step.descriptionHtml) head += layoutDescription(pdf, step.descriptionHtml, usableW, 10.5).height;
     head += measureImage(step.stepId);
 
@@ -298,14 +308,26 @@ function exportPdf(ast, outDir, template = {}) {
     pdf.bookmark(`${step.number}. ${step.title || 'Untitled step'}`);
     const tocTarget = tocTargets.get(step.stepId);
     if (tocTarget) tocTarget.pageIndex = pdf.pages.length - 1;
+    const {
+      beforeTitle,
+      afterTitle,
+      beforeDescription,
+      afterDescription,
+      beforeImage,
+      afterImage,
+      rest,
+    } = stepContentGroups(step);
+    for (const tb of beforeTitle) emitBlock(tb);
     const headSize = step.depth > 0 ? 12 : 14;
     writeLines(`${step.number}. ${step.title || 'Untitled step'}${step.skipped ? '  (skipped)' : ''}`, { size: headSize, font: 'F2' });
     pdf.rect(M, y, usableW, 0.8, { fill: [225, 228, 232] });
     y += 8;
 
-    const { before, rest } = stepContentGroups(step);
-    for (const tb of before) emitBlock(tb);
+    for (const tb of afterTitle) emitBlock(tb);
+    for (const tb of beforeDescription) emitBlock(tb);
     if (step.descriptionHtml) writeDescription(step.descriptionHtml);
+    for (const tb of afterDescription) emitBlock(tb);
+    for (const tb of beforeImage) emitBlock(tb);
 
     const img = images.get(step.stepId);
     if (img) {
@@ -317,6 +339,7 @@ function exportPdf(ast, outDir, template = {}) {
       pdf.image(img, M, y, w, h);
       y += h + 10;
     }
+    for (const tb of afterImage) emitBlock(tb);
 
     for (const block of rest) {
       if (block.kind === 'text') {

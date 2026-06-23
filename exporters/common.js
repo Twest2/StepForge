@@ -56,17 +56,52 @@ function stepBlocks(step) {
 }
 
 /**
- * Split a step's blocks into the groups exporters lay out around the
- * description/image: text blocks pinned to 'before-description', and
- * everything else (code/table blocks plus 'after-description' and
- * 'after-image' text blocks) in the same relative order they appear in the
- * editor's Blocks list.
+ * Split a step's blocks into the layout buckets exporters use around the
+ * step title, description, and image. Text blocks keep their block-list
+ * ordering inside each bucket; code/table blocks stay in `rest`.
  */
 function stepContentGroups(step) {
   const all = stepBlocks(step);
-  const before = all.filter((b) => b.kind === 'text' && b.position === 'before-description');
-  const rest = all.filter((b) => !(b.kind === 'text' && b.position === 'before-description'));
-  return { before, rest };
+  const groups = {
+    beforeTitle: [],
+    afterTitle: [],
+    beforeDescription: [],
+    afterDescription: [],
+    beforeImage: [],
+    afterImage: [],
+    rest: [],
+  };
+
+  for (const block of all) {
+    if (block.kind !== 'text') {
+      groups.rest.push(block);
+      continue;
+    }
+
+    switch (block.position) {
+      case 'before-title':
+        groups.beforeTitle.push(block);
+        break;
+      case 'after-title':
+        groups.afterTitle.push(block);
+        break;
+      case 'before-image':
+        groups.beforeImage.push(block);
+        break;
+      case 'after-image':
+        groups.afterImage.push(block);
+        break;
+      case 'before-description':
+        groups.beforeDescription.push(block);
+        break;
+      case 'after-description':
+      default:
+        groups.afterDescription.push(block);
+        break;
+    }
+  }
+
+  return groups;
 }
 
 function codeBlockText(block) {

@@ -96,15 +96,25 @@ function renderMarkdownGuide(ast, outDir, template = {}, {
 
   for (const step of ast.steps) {
     const heading = step.depth > 0 ? '###' : '##';
+    const {
+      beforeTitle,
+      afterTitle,
+      beforeDescription,
+      afterDescription,
+      beforeImage,
+      afterImage,
+      rest,
+    } = stepContentGroups(step);
     lines.push(`<a id="${anchorFor(step)}"></a>`, '');
+    for (const tb of beforeTitle) emitBlock(lines, tb, { alertStyle });
     lines.push(`${heading} ${step.number}. ${step.title || 'Untitled step'}`, '');
     if (step.skipped) lines.push('*(skipped)*', '');
-
-    const { before, rest } = stepContentGroups(step);
-    for (const tb of before) emitBlock(lines, tb, { alertStyle });
-
+    for (const tb of afterTitle) emitBlock(lines, tb, { alertStyle });
+    for (const tb of beforeDescription) emitBlock(lines, tb, { alertStyle });
     if (step.descriptionHtml) lines.push(htmlToMarkdown(step.descriptionHtml), '');
+    for (const tb of afterDescription) emitBlock(lines, tb, { alertStyle });
 
+    for (const tb of beforeImage) emitBlock(lines, tb, { alertStyle });
     const img = images.get(step.stepId);
     if (img) {
       if (tpl.azureWiki && tpl.imageMaxWidth > 0) {
@@ -113,6 +123,7 @@ function renderMarkdownGuide(ast, outDir, template = {}, {
         lines.push(`![Step ${step.number}](${img.relPath})`, '');
       }
     }
+    for (const tb of afterImage) emitBlock(lines, tb, { alertStyle });
 
     for (const block of rest) {
       if (block.kind === 'text') {

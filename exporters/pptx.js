@@ -9,8 +9,9 @@ const { guideSlug, renderAllImages, LEVEL_LABEL, stepContentGroups } = require('
 const { tocEntries, guideMetaLines, guideSummary } = require('./document-layout');
 
 /**
- * PPTX exporter: a title slide plus one 16:9 slide per step (title bar +
- * screenshot + description). PresentationML written directly.
+ * PPTX exporter: a title slide plus one 16:9 slide per step, with
+ * positioned text blocks laid out around the step title, description, and
+ * screenshot. PresentationML written directly.
  */
 
 const DEFAULT_TEMPLATE = {
@@ -208,24 +209,63 @@ function exportPptx(ast, outDir, template = {}) {
 
   let mediaCounter = 0;
   for (const step of ast.steps) {
-    const { before, rest } = stepContentGroups(step);
-    const beforeBlocks = before.filter((block) => block.kind === 'text');
-    const restBlocks = rest.filter((block) => block.kind === 'text');
-
+    const {
+      beforeTitle,
+      afterTitle,
+      beforeDescription,
+      afterDescription,
+      beforeImage,
+      afterImage,
+    } = stepContentGroups(step);
     let content = rectShape(0, 0, SLIDE_W, 18000, '2563EB');
-    content += textBox(457200, TITLE_Y, SLIDE_W - 914400, TITLE_H,
-      para(`${step.number}. ${step.title || 'Untitled step'}`, { size: 2600, bold: true }));
-    content += rectShape(457200, TITLE_RULE_Y, 2400000, 12000, '2563EB');
+    const beforeTitleReserve = beforeTitle.reduce((sum, tb) => sum + calloutHeight(tb) + CALL_OUT_GAP, 0);
+    const titleY = beforeTitle.length ? 220000 + beforeTitleReserve + 120000 : TITLE_Y;
+    const titleRuleY = beforeTitle.length ? titleY + TITLE_H + 120000 : TITLE_RULE_Y;
+    const contentY = beforeTitle.length ? Math.max(CONTENT_Y, titleRuleY + 180000) : CONTENT_Y;
+    const beforeTitleY = beforeTitle.length ? 220000 : CONTENT_Y;
 
-    let y = CONTENT_Y;
-    for (const tb of beforeBlocks) {
+    let y = beforeTitleY;
+    for (const tb of beforeTitle) {
       const block = calloutXml(tb, 457200, y, SLIDE_W - 914400);
       content += block.xml;
       y += block.height + CALL_OUT_GAP;
     }
 
-    const descReserve = step.descriptionText ? descriptionHeight(step.descriptionText) + 120000 : 0;
-    const restReserve = restBlocks.reduce((sum, tb) => sum + calloutHeight(tb) + CALL_OUT_GAP, 0);
+    content += textBox(457200, titleY, SLIDE_W - 914400, TITLE_H,
+      para(`${step.number}. ${step.title || 'Untitled step'}`, { size: 2600, bold: true }));
+    content += rectShape(457200, titleRuleY, 2400000, 12000, '2563EB');
+
+    y = contentY;
+    for (const tb of afterTitle) {
+      const block = calloutXml(tb, 457200, y, SLIDE_W - 914400);
+      content += block.xml;
+      y += block.height + CALL_OUT_GAP;
+    }
+    for (const tb of beforeDescription) {
+      const block = calloutXml(tb, 457200, y, SLIDE_W - 914400);
+      content += block.xml;
+      y += block.height + CALL_OUT_GAP;
+    }
+
+    if (step.descriptionText) {
+      const descH = descriptionHeight(step.descriptionText);
+      content += textBox(457200, y, SLIDE_W - 914400, Math.max(360000, descH || 420000),
+        para(step.descriptionText.slice(0, 300), { size: 1400, color: '374151' }));
+      y += Math.max(360000, descH || 420000) + 90000;
+    }
+
+    for (const tb of afterDescription) {
+      const block = calloutXml(tb, 457200, y, SLIDE_W - 914400);
+      content += block.xml;
+      y += block.height + CALL_OUT_GAP;
+    }
+    for (const tb of beforeImage) {
+      const block = calloutXml(tb, 457200, y, SLIDE_W - 914400);
+      content += block.xml;
+      y += block.height + CALL_OUT_GAP;
+    }
+
+    const postImageReserve = afterImage.reduce((sum, tb) => sum + calloutHeight(tb) + CALL_OUT_GAP, 0);
     const rels = [];
     const media = [];
 
@@ -236,23 +276,17 @@ function exportPptx(ast, outDir, template = {}) {
       media.push({ name, data: encodePng(img) });
       const relId = 2; // rId1 = layout, rId2 = image
       rels.push({ id: relId, name });
-      // Fit image into a centered region below the title.
+      // Fit image into the remaining centered region before the trailing blocks.
       const maxW = SLIDE_W - 1219200;
-      const maxH = Math.max(0, SLIDE_H - y - descReserve - restReserve - 100000);
+      const maxH = Math.max(0, SLIDE_H - y - postImageReserve - 100000);
       let w = img.width * EMU_PER_PX, h = img.height * EMU_PER_PX;
       const scale = Math.min(maxW / w, maxH / h, 1);
       w = Math.round(w * scale); h = Math.round(h * scale);
       content += picture(relId, Math.round((SLIDE_W - w) / 2), y, w, h);
       y += h + 100000;
     }
-    if (step.descriptionText) {
-      const descH = Math.max(360000, descReserve || 420000);
-      content += textBox(457200, Math.max(y, SLIDE_H - CONTENT_FOOTER_Y - descH), SLIDE_W - 914400, descH,
-        para(step.descriptionText.slice(0, 300), { size: 1400, color: '374151' }));
-      y = Math.max(y, SLIDE_H - CONTENT_FOOTER_Y - descH) + descH + 90000;
-    }
 
-    for (const tb of restBlocks) {
+    for (const tb of afterImage) {
       const block = calloutXml(tb, 457200, y, SLIDE_W - 914400);
       content += block.xml;
       y += block.height + CALL_OUT_GAP;

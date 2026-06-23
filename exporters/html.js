@@ -40,6 +40,10 @@ function blockHtml(tb) {
   return `<div class="block block-${tb.level}"><strong>${escapeHtml(LEVEL_LABEL[tb.level] || 'Note')}${tb.title ? `: ${escapeHtml(tb.title)}` : ''}</strong>${tb.descriptionHtml ? `<div>${tb.descriptionHtml}</div>` : ''}</div>`;
 }
 
+function renderBlockListHtml(blocks) {
+  return blocks.map((block) => blockHtml(block)).join('\n');
+}
+
 function renderMetaChips(ast) {
   return [
     ...guideMetaLines(ast).map((line) => `<span class="chip">${escapeHtml(line)}</span>`),
@@ -85,11 +89,22 @@ function renderStepCard(step, ast, images, tpl, { rich = false, selected = false
       <span class="step-title">${escapeHtml(step.title || 'Untitled step')}</span>
       <span class="status-chip status-${step.status || 'todo'}${step.skipped ? ' skipped' : ''}">${escapeHtml(statusText)}</span>
     </h2>` : `<h2>${title}</h2>`;
+  const {
+    beforeTitle,
+    afterTitle,
+    beforeDescription,
+    afterDescription,
+    beforeImage,
+    afterImage,
+    rest,
+  } = stepContentGroups(step);
   return `
   <section class="step-card${step.skipped ? ' skipped' : ''}${rich && selected ? ' selected' : ''}" id="${anchorFor(step)}">
+    ${renderBlockListHtml(beforeTitle)}
     ${head}
+    ${renderBlockListHtml(afterTitle)}
     <div class="step-body">
-      ${stepBodyHtml(step, ast, images, tpl)}
+      ${renderStepBodyHtml({ beforeDescription, afterDescription, beforeImage, afterImage, rest }, step, ast, images, tpl)}
     </div>
   </section>`;
 }
@@ -117,15 +132,24 @@ function bodyStyle(tpl) {
   return `--accent:${tpl.accentColor};--accent-rgb:${r},${g},${b};`;
 }
 
-function stepBodyHtml(step, ast, images, tpl) {
+function renderStepBodyHtml(groups, step, ast, images, tpl) {
   const parts = [];
-  const { before, rest } = stepContentGroups(step);
-  for (const tb of before) parts.push(blockHtml(tb));
+  const {
+    beforeDescription,
+    afterDescription,
+    beforeImage,
+    afterImage,
+    rest,
+  } = groups;
+  for (const tb of beforeDescription) parts.push(blockHtml(tb));
   if (step.descriptionHtml) parts.push(`<div class="desc">${stepLinkRewrite(step.descriptionHtml, ast)}</div>`);
+  for (const tb of afterDescription) parts.push(blockHtml(tb));
+  for (const tb of beforeImage) parts.push(blockHtml(tb));
   const img = images.get(step.stepId);
   if (img && tpl.includeImages) {
     parts.push(`<img class="shot" alt="Step ${escapeHtml(step.number)}" src="${dataUri(img)}" width="${img.width}">`);
   }
+  for (const tb of afterImage) parts.push(blockHtml(tb));
   for (const block of rest) {
     if (block.kind === 'text') {
       parts.push(blockHtml(block));

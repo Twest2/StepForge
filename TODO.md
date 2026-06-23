@@ -1,0 +1,1 @@
+In the future, planned updates include a re-vamp of the settings panel, text box's (important, tip, warning, and note) are not properly moving to the intended areas and I will look into locking the size (or being able to control the size) of images throughout varias export formats.

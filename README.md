@@ -93,8 +93,8 @@ bash scripts/bootstrap-offline.sh   # verify toolchain availability
 bash scripts/verify.sh              # full test suite + smoke checks
 bash scripts/build-release.sh       # assemble runnable app directory
 bash scripts/package-linux.sh       # portable tar.gz + .deb (+ AppDir spec)
-npm run package:windows             # portable Windows .exe in releases/
-pwsh scripts/package-windows.ps1    # same Windows portable build via PowerShell
+npm run package:windows             # Windows installer .exe in releases/
+pwsh scripts/package-windows.ps1    # same Windows installer build via PowerShell
 ```
 
 See [build/build_report.md](build/build_report.md) for what was produced on

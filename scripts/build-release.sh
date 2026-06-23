@@ -109,7 +109,7 @@ ${toolRows}
 Fallback policy: when a packaging tool is missing the build still produces
 the runnable app (portable tarball with launcher) plus whatever package
 formats the available tools allow. Windows artifacts are produced by
-\`npm run package:windows\` (electron-builder, portable .exe); .msi/.rpm/
+\`npm run package:windows\` (electron-builder, installer .exe); .msi/.rpm/
 AppImage require the tools listed above and are skipped on this host.
 
 ## Offline guarantee

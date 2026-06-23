@@ -21,6 +21,12 @@ const { readLock } = require('../core/locks');
 const CaptureService = require('./capture');
 const { keepProcessesResponsive } = require('./win-power');
 
+const APP_ID = 'com.stepforge.app';
+
+if (process.platform === 'win32') {
+  app.setAppUserModelId(APP_ID);
+}
+
 // Keep capture working on battery. In a power-saving plan on DC power, Windows
 // applies Power Throttling (EcoQoS) to background work — and StepForge records
 // with its window hidden, so the frame-capture worker renderer is exactly the

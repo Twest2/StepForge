@@ -9,12 +9,9 @@ const { build, Platform } = require('electron-builder');
 
 const ROOT_DIR = path.resolve(__dirname, '..');
 const PACKAGE_JSON = require(path.join(ROOT_DIR, 'package.json'));
-const RELEASE_DIR = path.resolve(process.env.STEPFORGE_RELEASE_DIR || path.join(ROOT_DIR, 'releases'));
-const WORK_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'stepforge-win-'));
-const OUTPUT_DIR = path.join(WORK_DIR, 'output');
-const ARTIFACT_NAME = 'stepforge-windows-x64-portable.exe';
+const APP_ID = 'com.stepforge.app';
 
-function findPortableExe(dir) {
+function findInstallerExe(dir) {
   if (!fs.existsSync(dir)) return null;
   const stack = [dir];
   while (stack.length) {
@@ -31,15 +28,12 @@ function findPortableExe(dir) {
   return null;
 }
 
-async function main() {
-  fs.mkdirSync(RELEASE_DIR, { recursive: true });
-  fs.rmSync(OUTPUT_DIR, { recursive: true, force: true });
-
-  const config = {
-    appId: 'com.stepforge.app',
+function createWindowsInstallerConfig(outputDir) {
+  return {
+    appId: APP_ID,
     productName: 'StepForge',
     directories: {
-      output: OUTPUT_DIR,
+      output: outputDir,
     },
     files: [
       'app/**/*',
@@ -49,33 +43,59 @@ async function main() {
     ],
     asar: true,
     compression: 'normal',
-    artifactName: ARTIFACT_NAME,
     win: {
-      target: ['portable'],
+      target: ['nsis'],
+    },
+    nsis: {
+      oneClick: false,
+      allowToChangeInstallationDirectory: true,
+      createDesktopShortcut: true,
+      createStartMenuShortcut: true,
+      shortcutName: 'StepForge',
     },
   };
+}
+
+async function buildWindowsInstaller() {
+  const releaseDir = path.resolve(process.env.STEPFORGE_RELEASE_DIR || path.join(ROOT_DIR, 'releases'));
+  const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'stepforge-win-'));
+  const outputDir = path.join(workDir, 'output');
+
+  fs.mkdirSync(releaseDir, { recursive: true });
+  fs.rmSync(outputDir, { recursive: true, force: true });
+
+  const config = createWindowsInstallerConfig(outputDir);
 
   try {
     await build({
-      targets: Platform.WINDOWS.createTarget('portable'),
+      targets: Platform.WINDOWS.createTarget('nsis'),
       config,
     });
   } catch (err) {
-    throw new Error(`Windows portable build failed: ${err.message}`);
+    throw new Error(`Windows installer build failed: ${err.message}`);
   }
 
-  const builtExe = findPortableExe(OUTPUT_DIR);
-  if (!builtExe) {
-    throw new Error(`No .exe artifact was produced in ${OUTPUT_DIR}`);
+  const builtInstaller = findInstallerExe(outputDir);
+  if (!builtInstaller) {
+    throw new Error(`No installer .exe artifact was produced in ${outputDir}`);
   }
 
-  const releaseExe = path.join(RELEASE_DIR, path.basename(builtExe));
-  fs.copyFileSync(builtExe, releaseExe);
+  const releaseInstaller = path.join(releaseDir, path.basename(builtInstaller));
+  fs.copyFileSync(builtInstaller, releaseInstaller);
 
-  console.log(`StepForge ${PACKAGE_JSON.version} Windows portable build written to ${releaseExe}`);
+  console.log(`StepForge ${PACKAGE_JSON.version} Windows installer written to ${releaseInstaller}`);
 }
 
-main().catch((err) => {
-  console.error(err.message || err);
-  process.exitCode = 1;
-});
+if (require.main === module) {
+  buildWindowsInstaller().catch((err) => {
+    console.error(err.message || err);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = {
+  APP_ID,
+  createWindowsInstallerConfig,
+  findInstallerExe,
+  buildWindowsInstaller,
+};

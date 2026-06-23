@@ -861,6 +861,7 @@ class StepForgeApp {
     const settings = await api.settings.all();
     const placeholders = await api.settings.globalPlaceholders();
     await dialogs.showSettingsDialog({
+      api,
       settings,
       placeholders,
       onSave: async (next) => {

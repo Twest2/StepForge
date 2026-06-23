@@ -3,6 +3,12 @@
 StepForge is a fully offline desktop app. Nothing is uploaded or synced, and
 all guides stay on your machine.
 
+# Windows installation
+
+For the windows installation, please see [windows_installation](windows_installation.md)
+
+# Developer install
+
 ## 1. Install
 
 From the repository root:

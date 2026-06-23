@@ -46,6 +46,7 @@ function createWindowsInstallerConfig(outputDir) {
     win: {
       target: ['nsis'],
     },
+    publish: 'never',
     nsis: {
       oneClick: false,
       allowToChangeInstallationDirectory: true,

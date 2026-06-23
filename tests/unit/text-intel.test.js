@@ -83,6 +83,29 @@ test('ocr crop rectangles clamp to the image bounds', (t) => {
   assert.deepEqual(bottomRight, { x: 580, y: 280, width: 420, height: 220 });
 });
 
+test('ocr failures fall back to empty text instead of crashing', async (t) => {
+  const root = makeTmpDir('text-intel-ocr-fallback');
+  t.after(() => rmrf(root));
+  const service = new TextIntelService({
+    store: { settingsDir: root },
+    settings: makeSettings(),
+    getWindow: () => null,
+    dataDir: root,
+    fetchImpl: global.fetch,
+  });
+  service.getWorker = async () => {
+    throw new Error('tesseract missing');
+  };
+
+  const result = await service.ocrAroundClick({
+    image: {},
+    size: { width: 100, height: 100 },
+    display: { bounds: { x: 0, y: 0, width: 100, height: 100 } },
+  }, { x: 50, y: 50 });
+
+  assert.deepEqual(result, { text: '', confidence: null });
+});
+
 test('ai response normalization and application keeps fields structured', () => {
   const patch = normalizeAiPatch(JSON.stringify({
     title: 'Open settings',

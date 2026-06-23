@@ -4,7 +4,6 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 
-const { createWorker } = require('tesseract.js');
 const {
   buildCaptureTitle,
   normalizeOllamaHost,
@@ -31,6 +30,16 @@ function hasBinary(name) {
 
 function clamp(v, min, max) {
   return Math.min(max, Math.max(min, v));
+}
+
+let createWorkerImpl = null;
+function loadCreateWorker() {
+  if (createWorkerImpl) return createWorkerImpl;
+  // OCR is optional at startup; lazy-load it so the app can still boot when
+  // the dependency has not been installed yet.
+  // eslint-disable-next-line global-require
+  ({ createWorker: createWorkerImpl } = require('tesseract.js'));
+  return createWorkerImpl;
 }
 
 class TextIntelService {
@@ -81,8 +90,9 @@ class TextIntelService {
   async getWorker() {
     if (this.workerPromise) return this.workerPromise;
     this.workerPromise = (async () => {
+      const workerFactory = loadCreateWorker();
       const langPath = this.ensureLangData();
-      const worker = await createWorker('eng', 1, {
+      const worker = await workerFactory('eng', 1, {
         langPath,
       });
       await worker.setParameters({
@@ -91,6 +101,9 @@ class TextIntelService {
       this.worker = worker;
       return worker;
     })();
+    this.workerPromise.catch(() => {
+      this.workerPromise = null;
+    });
     return this.workerPromise;
   }
 

@@ -1,7 +1,7 @@
 name: Release
 
 # Manual release: from the GitHub "Actions" tab pick "Release", click
-# "Run workflow", enter the version tag, and it builds the Windows portable
+# "Run workflow", enter the version tag, and it builds the Windows installer
 # .exe and the Linux tarball + .deb, then publishes a GitHub Release with all
 # artifacts attached and auto-generated notes.
 on:
@@ -23,7 +23,7 @@ permissions:
 
 jobs:
   build-windows:
-    name: Build Windows portable
+    name: Build Windows installer
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -59,12 +59,12 @@ jobs:
             echo "Windows code signing secrets not configured; building unsigned."
           fi
 
-      - name: Package Windows portable .exe
+      - name: Package Windows installer .exe
         run: npm run package:windows
 
       - uses: actions/upload-artifact@v4
         with:
-          name: windows-portable
+          name: windows-installer
           path: releases/*.exe
           if-no-files-found: error
 
@@ -126,7 +126,7 @@ jobs:
             flags+=(--prerelease)
           fi
           gh release create "$TAG" \
-            dist/windows-portable/* \
+            dist/windows-installer/*.exe \
             dist/linux-artifacts/* \
             --title "StepForge $TAG" \
             --target "${{ github.sha }}" \

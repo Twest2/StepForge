@@ -87,6 +87,6 @@ If you want to find commands quickly, press `Ctrl+/` for Quick Actions.
 ## Optional builds
 
 1. `bash scripts/build-release.sh` assembles the offline release layout.
-2. `npm run package:windows` creates the portable Windows `.exe` in
+2. `npm run package:windows` creates the Windows installer `.exe` in
    `releases/`.
 3. `bash scripts/package-linux.sh` creates Linux release artifacts.

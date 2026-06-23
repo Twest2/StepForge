@@ -6,7 +6,7 @@ and describe each step in a focused three-pane editor, and exports the result
 to Markdown, DOCX, PPTX, PDF, HTML (WIP), GIF (WIP), confluence (WIP), Wiki.js (WIP), and image bundles (WIP). The current reconmendations for exporting is Markdown and PDF.
 
 It is an independent offline desktop guide-capture tool inspired by publicly
-documented workflow patterns of commercial documentation tools. It contains no
+documented workflow patterns of commercial documentation tools like Folge. It contains no
 third-party branding, assets, or code from those tools, and it never talks to
 the network: no telemetry, no update checks, no license checks, no cloud, no
 remote AI.
@@ -60,7 +60,7 @@ using only Node built-ins.
 
 ## Getting Started
 
-For a windows installation, see [docs/windows_installatin](docs/windows_installation.md) or for a developer/more in depth walkthrough, see [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md).
+For a windows installation, see [docs/windows_installation](docs/windows_installation.md) or for a developer/more in depth walkthrough, see [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md).
 
 Requirements: Node.js 20+ and npm (Electron is the only dependency).
 
@@ -115,11 +115,12 @@ clean-room rules.
 
 ## Repository Layout
 
-Project docs live in `docs/`, and prompt handoffs live in `ai_prompts/`.
+Project docs live in `docs/` and prompt handoffs live in `ai_prompts/`.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the repo layout.
 
 ## License
 
-Application code is licensed under [MPL-2.0](LICENSE). Bundled example
-guides, templates, and screenshots are CC-BY-4.0 unless noted otherwise.
+Creative Commons Attribution-NonCommercial 
+
+Basically, do whatever you want with it just don't make money off it or sell it.

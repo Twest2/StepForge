@@ -15,6 +15,10 @@
     "verify": "bash scripts/verify.sh",
     "bootstrap": "bash scripts/bootstrap-offline.sh"
   },
+  "dependencies": {
+    "@tesseract.js-data/eng": "^1.0.0",
+    "tesseract.js": "^7.0.0"
+  },
   "devDependencies": {
     "electron": "^41.7.1",
     "electron-builder": "^26.15.2"

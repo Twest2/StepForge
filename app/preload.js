@@ -52,6 +52,10 @@ const api = {
     globalPlaceholders: invoke('placeholders:globals:get'),
     setGlobalPlaceholders: invoke('placeholders:globals:set'),
   },
+  ai: {
+    test: invoke('ai:test'),
+    fillStep: invoke('ai:fillStep'),
+  },
   capture: {
     shoot: invoke('capture:shoot'),
     region: invoke('capture:region'),

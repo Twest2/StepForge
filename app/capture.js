@@ -3,7 +3,6 @@
 const path = require('node:path');
 const { spawn, execFileSync } = require('node:child_process');
 const { desktopCapturer, screen, BrowserWindow, nativeImage, Tray, Menu } = require('electron');
-const { expandPlaceholders } = require('../core/placeholders');
 const raster = require('../core/raster');
 const { encodePng } = require('../core/png');
 const {
@@ -14,6 +13,7 @@ const {
   DEFAULT_START_SLACK_MS,
 } = require('./click-frames');
 const { physicalToDip } = require('./coords');
+const { DEFAULT_CAPTURE_TITLES } = require('../core/text-intel');
 
 /**
  * Capture service: full-screen, active-window, and region capture, plus a
@@ -114,6 +114,7 @@ class CaptureService {
     getWindow,
     notify,
     screenApi = screen,
+    textIntel = null,
   }) {
     this.store = store;
     this.settings = settings;
@@ -122,6 +123,7 @@ class CaptureService {
     // Injectable for tests; the click/coordinate paths must never reach for
     // the global `screen` directly so coordinate handling stays testable.
     this.screen = screenApi;
+    this.textIntel = textIntel;
     this.session = null; // { guideId, paused, count, intervalSec }
     this.intervalTimer = null;
     this.clickWatcher = null;
@@ -133,6 +135,7 @@ class CaptureService {
     this.clickWatcherErrTail = '';
     this.linuxEvent = null; // event block currently being parsed
     this.pendingRawClick = null; // raw press waiting for its coordinate twin
+    this.pendingClickOsPoint = null;
     this.clickQueue = Promise.resolve();
     this.frameLoopInFlight = false;
     this.frameLoopGrabStartedAt = null;
@@ -463,7 +466,7 @@ class CaptureService {
       if (frame) {
         clog('click@', clickAt, 'frame', frame.source || 'loop',
           'started', frame.startedAt - clickAt, 'ms, captured', frame.capturedAt - clickAt, 'ms rel. click');
-        const result = this.storeFrameAsStep(guideId, frame.mode, frame, clickPos);
+        const result = await this.storeFrameAsStep(guideId, frame.mode, frame, clickPos, clickMeta);
         if (result.ok) this.noteStepAdded(result.step, trigger, guideId);
         return result;
       }
@@ -1211,6 +1214,9 @@ public static class SFMouseHook {
     let clickPos = osPoint ? this.osPointToDip(osPoint) : null;
     if (!clickPos) clickPos = this.screen.getCursorScreenPoint();
     clog('click@', clickAt, button, 'os', osPoint, '-> dip', clickPos);
+    this.pendingClickOsPoint = osPoint && Number.isFinite(osPoint.x) && Number.isFinite(osPoint.y)
+      ? { x: osPoint.x, y: osPoint.y }
+      : null;
     this.enqueueClickCapture(clickPos, clickAt, button || 'mouse');
   }
 
@@ -1268,7 +1274,17 @@ public static class SFMouseHook {
    * fast the user clicks or how slow the encoder is.
    */
   enqueueClickCapture(clickPos, clickAt = Date.now(), button = 'mouse') {
-    const clickMeta = { at: Number.isFinite(clickAt) ? clickAt : Date.now(), button: button || 'mouse' };
+    const osPoint = this.pendingClickOsPoint && Number.isFinite(this.pendingClickOsPoint.x) && Number.isFinite(this.pendingClickOsPoint.y)
+      ? this.pendingClickOsPoint
+      : null;
+    this.pendingClickOsPoint = null;
+    const clickMeta = {
+      at: Number.isFinite(clickAt) ? clickAt : Date.now(),
+      button: button || 'mouse',
+    };
+    if (osPoint) {
+      clickMeta.osPoint = { x: osPoint.x, y: osPoint.y };
+    }
     if (this.session && !this.session.paused && !this.userIsInApp()) {
       // The guide id pins the click to its recording so it can still be
       // stored if the session stops while this click waits in the queue.
@@ -1300,7 +1316,18 @@ public static class SFMouseHook {
     };
   }
 
-  storeFrameAsStep(guideId, mode, frame, clickPos = null) {
+  async buildStepTitle(mode, frame, clickPos = null, clickMeta = null) {
+    try {
+      if (this.textIntel && typeof this.textIntel.buildCaptureTitle === 'function') {
+        return await this.textIntel.buildCaptureTitle({ mode, frame, clickPos, clickMeta });
+      }
+    } catch {
+      // fall back to the local semantic title below
+    }
+    return this.autoTitle(mode);
+  }
+
+  async storeFrameAsStep(guideId, mode, frame, clickPos = null, clickMeta = null) {
     if (!frame) return { ok: false, reason: 'no capture frame available' };
     const annotations = [];
     // The click position (DIP, read at event time) wins over the frame's
@@ -1324,7 +1351,7 @@ public static class SFMouseHook {
     }
 
     const step = this.store.addStep(guideId, {
-      title: this.autoTitle(mode),
+      title: await this.buildStepTitle(mode, frame, clickPos, clickMeta),
       annotations,
       focusedView: {
         enabled: Boolean(this.settings.get('editor.focusedViewDefaultForNewSteps')),
@@ -1335,14 +1362,7 @@ public static class SFMouseHook {
   }
 
   autoTitle(mode) {
-    const tplStr = this.settings.get('editor.autoTitleTemplate') || '[[Mode]] capture [[Time]]';
-    const now = new Date();
-    const pad = (n) => String(n).padStart(2, '0');
-    return expandPlaceholders(tplStr, {
-      Mode: { fullscreen: 'Screen', window: 'Window', region: 'Region' }[mode] || 'Screen',
-      Time: `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`,
-      Date: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`,
-    });
+    return DEFAULT_CAPTURE_TITLES[mode] || 'Capture';
   }
 
   /** Grab the screen/window image as { image, display } or throw. */
@@ -1451,8 +1471,12 @@ public static class SFMouseHook {
     const cropped = image.crop(rect);
     const size = cropped.getSize();
     if (!size.width || !size.height) return { ok: false, reason: 'empty selection' };
-    const step = this.store.addStep(guideId, { title: this.autoTitle('region') },
-      cropped.toPNG(), size);
+    const step = await this.storeFrameAsStep(guideId, 'region', {
+      image: cropped,
+      size,
+      display,
+      cursor: null,
+    }, null, null);
     return { ok: true, step };
   }
 

@@ -404,9 +404,15 @@ public static class Win32 {
               this.collectForegroundWindowContext(),
               this.ocrAroundClick({ image, size: image.getSize(), display: { bounds: { x: 0, y: 0, width: image.getSize().width, height: image.getSize().height } } }, clickPoint),
             ]);
+            const titleCandidate = buildCaptureTitle({
+              mode: step.kind === 'image' ? 'fullscreen' : 'window',
+              metadata,
+              ocrText: ocr.text,
+            });
             captureContext = {
               ...metadata,
               ocrText: ocr.text,
+              titleCandidate,
               mode: step.kind === 'image' ? 'fullscreen' : 'content',
             };
           }

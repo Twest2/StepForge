@@ -151,7 +151,14 @@ class TextIntelService {
 
   async ocrAroundClick(frame, clickPos) {
     if (!frame || !frame.image) return { text: '', confidence: null };
-    const rect = this.cropRectForPoint(frame, clickPos);
+    // Use a full-width horizontal strip at the click height. This preserves complete
+    // link text (e.g. "Oracle | Cloud Applications and Cloud Platform") rather than
+    // cropping through it when the element spans more than the 420 px default width.
+    const bounds = frame.display?.bounds || { x: 0, y: 0, width: frame.size.width, height: frame.size.height };
+    const rect = this.cropRectForPoint(frame, clickPos, {
+      width: bounds.width,  // full display width → full image width after DPI scaling
+      height: 100,          // ~2 lines tall, enough context without too much noise
+    });
     try {
       return await this.recognizeCrop(frame.image, rect);
     } catch {

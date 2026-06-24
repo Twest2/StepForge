@@ -102,16 +102,24 @@ test('browser window title strips browser name and falls back to page title', ()
   assert.ok(title.toLowerCase().includes('oracle') || title.toLowerCase().includes('cloud'), `Expected oracle/cloud in title, got: ${title}`);
 });
 
-test('search query is extracted from browser window title pattern', () => {
+test('search query is extracted when user was typing (search step)', () => {
   const title = buildCaptureTitle({
     mode: 'fullscreen',
-    metadata: {
-      windowTitle: 'oracle - Google Search - Google Chrome',
-      appName: 'chrome',
-    },
+    metadata: { windowTitle: 'oracle - Google Search - Google Chrome', appName: 'chrome' },
     ocrText: '',
+    recentTyped: 'oracle',   // user was typing → this IS the search step
   });
   assert.equal(title, 'Search for Oracle in Chrome');
+});
+
+test('search results window title produces select-result title when no typing (click on results page)', () => {
+  const title = buildCaptureTitle({
+    mode: 'fullscreen',
+    metadata: { windowTitle: 'oracle - Google Search - Google Chrome', appName: 'chrome' },
+    ocrText: '',
+    recentTyped: '',         // no recent typing → user is clicking a result, not searching
+  });
+  assert.equal(title, 'Select a Oracle result in Chrome');
 });
 
 test('full link text with pipe separator is preserved in OCR phrases', () => {

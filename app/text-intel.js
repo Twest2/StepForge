@@ -5,6 +5,7 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 
 const {
+  DEFAULT_CAPTURE_TITLES,
   buildCaptureTitle,
   normalizeOllamaHost,
   normalizeAiPatch,
@@ -13,6 +14,8 @@ const {
   displayText,
   normalizeWhitespace,
 } = require('../core/text-intel');
+
+const DEFAULT_TITLE_VALUES = new Set(Object.values(DEFAULT_CAPTURE_TITLES).concat(['Capture']));
 
 const OCR_CROP = {
   width: 420,
@@ -430,18 +433,20 @@ public static class Win32 {
       // Use stored capture metadata when available (best context, from capture time).
       // Fall back to re-running OCR on the stored image only when metadata is absent.
       if (step.captureMetadata) {
+        const rawCandidate = buildCaptureTitle({
+          mode: step.captureMetadata.mode || 'fullscreen',
+          metadata: {
+            windowTitle: step.captureMetadata.windowTitle,
+            appName: step.captureMetadata.appName,
+            elementLabel: step.captureMetadata.elementLabel,
+            elementRole: step.captureMetadata.elementRole,
+          },
+          ocrText: step.captureMetadata.ocrText,
+        });
         captureContext = {
           ...step.captureMetadata,
-          titleCandidate: buildCaptureTitle({
-            mode: step.captureMetadata.mode || 'fullscreen',
-            metadata: {
-              windowTitle: step.captureMetadata.windowTitle,
-              appName: step.captureMetadata.appName,
-              elementLabel: step.captureMetadata.elementLabel,
-              elementRole: step.captureMetadata.elementRole,
-            },
-            ocrText: step.captureMetadata.ocrText,
-          }),
+          // Don't suggest a generic fallback title — leave it blank so AI generates from context.
+          titleCandidate: DEFAULT_TITLE_VALUES.has(rawCandidate) ? '' : rawCandidate,
         };
       } else if (step.image) {
         const imagePath = this.store.stepImagePath(guideId, stepId, 'working') || this.store.stepImagePath(guideId, stepId, 'original');
@@ -454,7 +459,7 @@ public static class Win32 {
               this.collectForegroundWindowContext(),
               this.ocrAroundClick({ image, size: image.getSize(), display: { bounds: { x: 0, y: 0, width: image.getSize().width, height: image.getSize().height } } }, clickPoint),
             ]);
-            const titleCandidate = buildCaptureTitle({
+            const rawCandidate2 = buildCaptureTitle({
               mode: step.kind === 'image' ? 'fullscreen' : 'window',
               metadata,
               ocrText: ocr.text,
@@ -462,7 +467,7 @@ public static class Win32 {
             captureContext = {
               ...metadata,
               ocrText: ocr.text,
-              titleCandidate,
+              titleCandidate: DEFAULT_TITLE_VALUES.has(rawCandidate2) ? '' : rawCandidate2,
               mode: step.kind === 'image' ? 'fullscreen' : 'content',
             };
           }

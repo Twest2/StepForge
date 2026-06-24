@@ -500,7 +500,15 @@ function buildCaptureTitle({ mode = 'fullscreen', metadata = {}, ocrText = '', r
   if (strippedWindowTitle) {
     const searchQuery = extractSearchQuery(strippedWindowTitle);
     if (searchQuery) {
-      const base = `Search for ${sentenceCase(searchQuery)}`;
+      // Only claim this step IS the search action when the user was actually typing
+      // (recentTyped). Without typing context, the search page title is from the
+      // PREVIOUS step — the current step is a click ON the search results page.
+      if (recentTyped) {
+        const base = `Search for ${sentenceCase(searchQuery)}`;
+        return app ? qualifyTitleWithApp(base, metadata.appName) : base;
+      }
+      // User is clicking something on the search results page — don't claim they searched.
+      const base = `Select a ${sentenceCase(searchQuery)} result`;
       return app ? qualifyTitleWithApp(base, metadata.appName) : base;
     }
     const windowPhrase = pickBestTitleFragment(strippedWindowTitle, { source: 'window', metadata });

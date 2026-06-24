@@ -521,18 +521,49 @@ function setupIpc() {
     if (result.ok) reindex(guideId);
     return result;
   });
+  h('ai:rewriteText', async ({ text, guideTitle = '', stepTitle = '' } = {}) => {
+    return textIntel.rewriteText({ text, guideTitle, stepTitle });
+  });
   h('placeholders:globals:get', () => settings.getGlobalPlaceholders());
   h('placeholders:globals:set', (values) => settings.setGlobalPlaceholders(values));
 
   // capture
   h('capture:shoot', async ({ guideId, mode, delayMs }) => {
     const result = await capture.shoot({ guideId, mode, delayMs });
-    if (result.ok) reindex(guideId);
+    if (result.ok) {
+      reindex(guideId);
+      const aiConf = settings.get('ai') || {};
+      if (aiConf.enabled && aiConf.autoDoc && result.step) {
+        const aiResult = await textIntel.generateStepPatch({
+          guideId,
+          stepId: result.step.stepId,
+          target: 'all',
+        }).catch(() => null);
+        if (aiResult?.ok) {
+          reindex(guideId);
+          result.step = aiResult.step;
+        }
+      }
+    }
     return result;
   });
   h('capture:region', async ({ guideId }) => {
     const result = await capture.regionCapture(guideId);
-    if (result.ok) reindex(guideId);
+    if (result.ok) {
+      reindex(guideId);
+      const aiConf = settings.get('ai') || {};
+      if (aiConf.enabled && aiConf.autoDoc && result.step) {
+        const aiResult = await textIntel.generateStepPatch({
+          guideId,
+          stepId: result.step.stepId,
+          target: 'all',
+        }).catch(() => null);
+        if (aiResult?.ok) {
+          reindex(guideId);
+          result.step = aiResult.step;
+        }
+      }
+    }
     return result;
   });
   let capturePowerBlocker = -1;
@@ -775,6 +806,23 @@ if (!gotLock) {
         lastClickFrameSource = payload.clickFrameSource;
         if (payload.clickFrameSource === 'stream') {
           try { keepProcessesResponsive(app.getAppMetrics().map((m) => m.pid)); } catch { /* best effort */ }
+        }
+      }
+      // Auto-document session captures in the background when autoDoc is enabled.
+      // Single-shot captures (capture:shoot) are handled synchronously in the IPC handler.
+      if (channel === 'capture:added' && payload?.step && payload?.guideId) {
+        const aiConf = settings.get('ai') || {};
+        if (aiConf.enabled && aiConf.autoDoc) {
+          textIntel.generateStepPatch({
+            guideId: payload.guideId,
+            stepId: payload.step.stepId,
+            target: 'all',
+          }).then((result) => {
+            if (result.ok) {
+              reindex(payload.guideId);
+              sendToRenderer('step:updated', { guideId: payload.guideId, step: result.step });
+            }
+          }).catch(() => {});
         }
       }
     };

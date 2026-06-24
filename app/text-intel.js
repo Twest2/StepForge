@@ -276,15 +276,27 @@ public static class Win32 {
   }
 
   async buildCaptureTitle({ mode, frame, clickPos, clickMeta = null }) {
+    const ctx = await this.buildCaptureContext({ mode, frame, clickPos, clickMeta });
+    return ctx.title;
+  }
+
+  async buildCaptureContext({ mode, frame, clickPos, clickMeta = null }) {
     const [metadata, ocr] = await Promise.all([
       this.collectForegroundWindowContext(clickMeta?.osPoint || null),
       this.ocrAroundClick(frame, clickPos),
     ]);
-    return buildCaptureTitle({
-      mode,
-      metadata,
-      ocrText: ocr.text,
-    });
+    const title = buildCaptureTitle({ mode, metadata, ocrText: ocr.text });
+    return {
+      title,
+      captureMetadata: {
+        ocrText: ocr.text || '',
+        windowTitle: metadata.windowTitle || '',
+        appName: metadata.appName || '',
+        elementLabel: metadata.elementLabel || '',
+        elementRole: metadata.elementRole || '',
+        mode,
+      },
+    };
   }
 
   aiEnabled() {
@@ -333,6 +345,28 @@ public static class Win32 {
       host: config.ollama.host,
       model: config.ollama.model,
     };
+  }
+
+  async callOllamaText({ host, model, prompt, systemPrompt }) {
+    const url = new URL('/api/chat', `${host.replace(/\/+$/, '')}/`);
+    const response = await this.fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model,
+        stream: false,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: prompt },
+        ],
+        options: { temperature: 0.4 },
+      }),
+    });
+    if (!response.ok) throw new Error(`Ollama request failed (${response.status})`);
+    const payload = await response.json();
+    const content = payload?.message?.content;
+    if (typeof content !== 'string' || !content.trim()) throw new Error('Ollama returned an empty response');
+    return content.trim();
   }
 
   async callOllama({ host, model, prompt, systemPrompt }) {
@@ -393,7 +427,23 @@ public static class Win32 {
       }
 
       let captureContext = null;
-      if (step.image) {
+      // Use stored capture metadata when available (best context, from capture time).
+      // Fall back to re-running OCR on the stored image only when metadata is absent.
+      if (step.captureMetadata) {
+        captureContext = {
+          ...step.captureMetadata,
+          titleCandidate: buildCaptureTitle({
+            mode: step.captureMetadata.mode || 'fullscreen',
+            metadata: {
+              windowTitle: step.captureMetadata.windowTitle,
+              appName: step.captureMetadata.appName,
+              elementLabel: step.captureMetadata.elementLabel,
+              elementRole: step.captureMetadata.elementRole,
+            },
+            ocrText: step.captureMetadata.ocrText,
+          }),
+        };
+      } else if (step.image) {
         const imagePath = this.store.stepImagePath(guideId, stepId, 'working') || this.store.stepImagePath(guideId, stepId, 'original');
         if (imagePath && fs.existsSync(imagePath)) {
           const { nativeImage } = require('electron');
@@ -439,6 +489,42 @@ public static class Win32 {
       return { ok: true, step: saved, patch };
     } catch (err) {
       return { ok: false, reason: err && err.message ? err.message : 'AI generation failed.' };
+    }
+  }
+
+  async rewriteText({ text, guideTitle = '', stepTitle = '' }) {
+    try {
+      const config = this.aiConfig();
+      if (!config.enabled) return { ok: false, reason: 'Enable AI in settings first.' };
+      if (!config.ollama.host || !config.ollama.model) {
+        return { ok: false, reason: 'Configure Ollama host and model in Settings.' };
+      }
+      const trimmed = normalizeWhitespace(text);
+      if (!trimmed) return { ok: false, reason: 'No text to rewrite.' };
+
+      const contextHint = [
+        guideTitle ? `Guide: ${guideTitle}` : '',
+        stepTitle ? `Step: ${stepTitle}` : '',
+      ].filter(Boolean).join('\n');
+
+      const prompt = [
+        contextHint,
+        contextHint ? '' : null,
+        'Rewrite the following text to sound professional and clear as step-by-step documentation.',
+        'Keep it concise. Do not add extra information. Return only the rewritten text.',
+        '',
+        trimmed,
+      ].filter((l) => l !== null).join('\n');
+
+      const result = await this.callOllamaText({
+        host: config.ollama.host,
+        model: config.ollama.model,
+        prompt,
+        systemPrompt: 'You are a documentation editor. Return only the improved text, nothing else.',
+      });
+      return { ok: true, text: result };
+    } catch (err) {
+      return { ok: false, reason: err?.message || 'Rewrite failed.' };
     }
   }
 

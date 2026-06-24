@@ -685,17 +685,17 @@ function buildAiPrompt({
       ? 'improve the user\'s draft description — keep their intent, make it read like professional documentation'
       : 'write a 1–2 sentence description of what the user does in this step, using the capture context',
     block: 'rewrite only the target block',
-    all: 'write the step title, description, and any useful blocks from the capture context',
+    all: 'write the step title and description from the capture context',
   }[target] || 'rewrite the step';
 
   const richContext = hasRichCaptureContext(captureContext);
 
-  const allowedBlockNote = [
+  const allowedBlockNote = target === 'block' ? [
     'Use block.kind = "text" with level in [info, warn, error, success] for note / warning / important / tip blocks.',
     'Use block.kind = "code" for code snippets.',
     'Use block.kind = "table" for tables, with rows as arrays of strings.',
     'Use block.position values from [before-title, after-title, before-image, after-image, before-description, after-description].',
-  ].join(' ');
+  ].join(' ') : null;
 
   // When the user already has a draft, surface it prominently so the model
   // knows exactly what text to polish rather than generating from scratch.
@@ -725,20 +725,22 @@ function buildAiPrompt({
     'You write concise, action-focused step-by-step documentation for a desktop application guide.',
     'Return JSON only. No markdown fences, no commentary, no extra keys outside the schema below.',
     'Schema:',
-    '{',
-    '  "title": string,',
-    '  "description": string,',
-    '  "blocks": [{',
-    '    "kind": "text" | "code" | "table",',
-    '    "position"?: "before-title" | "after-title" | "before-image" | "after-image" | "before-description" | "after-description",',
-    '    "level"?: "info" | "warn" | "error" | "success",',
-    '    "title"?: string,',
-    '    "body"?: string,',
-    '    "language"?: string,',
-    '    "code"?: string,',
-    '    "rows"?: string[][]',
-    '  }]',
-    '}',
+    target === 'block' ? [
+      '{',
+      '  "title": string,',
+      '  "description": string,',
+      '  "blocks": [{',
+      '    "kind": "text" | "code" | "table",',
+      '    "position"?: "before-title" | "after-title" | "before-image" | "after-image" | "before-description" | "after-description",',
+      '    "level"?: "info" | "warn" | "error" | "success",',
+      '    "title"?: string,',
+      '    "body"?: string,',
+      '    "language"?: string,',
+      '    "code"?: string,',
+      '    "rows"?: string[][]',
+      '  }]',
+      '}',
+    ].join('\n') : '{ "title": string, "description": string }',
     '',
     `Target: ${targetText}.`,
     allowedBlockNote,
@@ -762,7 +764,9 @@ function buildAiPrompt({
     hasDraftDesc && (target === 'description' || target === 'all')
       ? '- The user wrote their own description (shown above). Polish the wording to sound professional but preserve every fact and intent they stated.'
       : '- No description yet. Write 1–2 sentences describing exactly what the user does.',
-    '- Only include blocks that provide genuinely useful supplemental information (warnings, tips, code).',
+    target === 'block'
+      ? '- Only include blocks that provide genuinely useful supplemental information (warnings, tips, code).'
+      : '- Do NOT add any blocks array. Only output "title" and "description".',
     richContext
       ? '- Use the OCR text, window title, app name, and element info to make the documentation specific.'
       : '- Context is limited. Use the app name or window title if available; generate a reasonable action title.',

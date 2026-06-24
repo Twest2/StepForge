@@ -409,7 +409,7 @@ function showSettingsDialog({
       ),
       el('fieldset', {},
         el('legend', {}, 'AI'),
-        labeledRow('Enable AI', aiEnabled),
+        labeledRow('Enable AI (experimental)', aiEnabled),
         labeledRow('Auto-document captures', aiAutoDoc),
         labeledRow('Ollama host', ollamaHost),
         labeledRow('Ollama model', ollamaModel),

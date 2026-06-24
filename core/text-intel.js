@@ -44,6 +44,13 @@ const GENERIC_OCR_PHRASES = new Set([
   'type',
 ]);
 
+// Generic OS/browser chrome titles that tell us nothing about what the user did.
+const GENERIC_WINDOW_TITLES = new Set([
+  'new tab', 'new window', 'new incognito window', 'new incognito tab',
+  'new document', 'untitled', 'blank page', 'home page', 'homepage',
+  'start page', 'speed dial', 'loading', 'loading…', 'loading...',
+]);
+
 const BROWSER_NAME_PHRASES = new Set([
   'google chrome',
   'chrome',
@@ -267,6 +274,7 @@ function isUsefulTitleCandidate(text, { source = 'ocr' } = {}) {
   if (BROWSER_NAME_PHRASES.has(lower)) return false;
   if (isPathOrUrlLike(clean)) return false;
   if ((source === 'window' || source === 'app') && isBrowserNoise(clean)) return false;
+  if (source === 'window' && GENERIC_WINDOW_TITLES.has(lower)) return false;
   if (/^[\p{P}\p{S}0-9]+$/u.test(clean)) return false;
   return true;
 }
@@ -287,13 +295,24 @@ function candidateWords(text) {
   return clean.split(/\s+/).filter((w) => /[a-zA-Z0-9]/.test(w));
 }
 
-// Remove trailing "- Google Chrome", "| Firefox", etc. from a browser window title,
-// leaving just the page title portion: "oracle - Google Search - Google Chrome" → "oracle - Google Search".
-function stripBrowserNameSuffix(text) {
+// Remove trailing "- Google Chrome", "| Firefox", etc. from a window title.
+// When appName is supplied, also strips the specific app's display name suffix:
+// "Document1 - Word" → "Document1" when appName is "winword".
+function stripBrowserNameSuffix(text, appName) {
   let clean = normalizeWhitespace(text);
+  // Always strip known browser names first.
   for (const name of BROWSER_NAME_PHRASES) {
     const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     clean = clean.replace(new RegExp(`\\s*[-–—·|•]\\s*${escaped}\\s*$`, 'i'), '').trim();
+  }
+  // Also strip the specific app's display name when provided.
+  if (appName) {
+    const display = cleanAppName(appName);
+    const raw = normalizeWhitespace(appName).replace(/\.exe$/i, '');
+    for (const name of [display, raw].filter(Boolean)) {
+      const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      clean = clean.replace(new RegExp(`\\s*[-–—·|•]\\s*${escaped}\\s*$`, 'i'), '').trim();
+    }
   }
   return clean;
 }
@@ -476,8 +495,8 @@ function buildCaptureTitle({ mode = 'fullscreen', metadata = {}, ocrText = '', r
     return app ? qualifyTitleWithApp(elementPhrase, metadata.appName) : elementPhrase;
   }
 
-  // 6. Browser window title (suffix stripped) → page title or search query.
-  const strippedWindowTitle = stripBrowserNameSuffix(metadata.windowTitle || '');
+  // 6. Window title (browser suffix + app name stripped) → page title or search query.
+  const strippedWindowTitle = stripBrowserNameSuffix(metadata.windowTitle || '', metadata.appName);
   if (strippedWindowTitle) {
     const searchQuery = extractSearchQuery(strippedWindowTitle);
     if (searchQuery) {
@@ -670,16 +689,29 @@ function buildAiPrompt({
     'Use block.position values from [before-title, after-title, before-image, after-image, before-description, after-description].',
   ].join(' ');
 
-  const contextLines = captureContext ? [
-    captureContext.windowTitle ? `Active window: ${captureContext.windowTitle}` : null,
-    captureContext.appName ? `App: ${captureContext.appName}` : null,
-    captureContext.elementLabel ? `UI element: ${captureContext.elementLabel}${captureContext.elementRole ? ` (${captureContext.elementRole})` : ''}` : null,
-    captureContext.elementValue ? `Element content (what was typed): ${captureContext.elementValue}` : null,
-    captureContext.recentTyped ? `Keyboard input before this step: ${captureContext.recentTyped}` : null,
-    captureContext.recentShortcut ? `Keyboard shortcut used: ${captureContext.recentShortcut}` : null,
-    captureContext.ocrText ? `OCR text near click:\n${captureContext.ocrText}` : null,
-    captureContext.titleCandidate ? `Suggested title: ${captureContext.titleCandidate}` : null,
-  ].filter(Boolean) : [];
+  // When the user already has a draft, surface it prominently so the model
+  // knows exactly what text to polish rather than generating from scratch.
+  const descText = htmlToText(step?.descriptionHtml || '');
+  const draftTitleLine = hasDraftTitle && (target === 'title' || target === 'all')
+    ? `User's draft title (rewrite this): "${step.title}"` : null;
+  const draftDescLine = hasDraftDesc && (target === 'description' || target === 'all')
+    ? `User's draft description (rewrite this): "${descText}"` : null;
+
+  const contextLines = [
+    ...(captureContext ? [
+      captureContext.windowTitle ? `Active window: ${captureContext.windowTitle}` : null,
+      captureContext.appName ? `App: ${captureContext.appName}` : null,
+      captureContext.elementLabel ? `UI element: ${captureContext.elementLabel}${captureContext.elementRole ? ` (${captureContext.elementRole})` : ''}` : null,
+      captureContext.elementValue ? `Element content (what was typed): ${captureContext.elementValue}` : null,
+      captureContext.recentTyped ? `Keyboard input before this step: ${captureContext.recentTyped}` : null,
+      captureContext.recentShortcut ? `Keyboard shortcut used: ${captureContext.recentShortcut}` : null,
+      captureContext.ocrText ? `OCR text near click:\n${captureContext.ocrText}` : null,
+      (!hasDraftTitle || target === 'description') && captureContext.titleCandidate
+        ? `Suggested title: ${captureContext.titleCandidate}` : null,
+    ] : []),
+    draftTitleLine,
+    draftDescLine,
+  ].filter(Boolean);
 
   const prompt = [
     'You write concise, action-focused step-by-step documentation for a desktop application guide.',
@@ -716,11 +748,11 @@ function buildAiPrompt({
     'Rules:',
     '- Titles must be short imperative actions: "Click Save", "Select New document", "Open Settings".',
     '- NEVER output "Screen capture", "Window capture", "Region capture", or "Capture" as a title — always produce something specific.',
-    hasDraftTitle
-      ? '- The user has a draft title. Improve its wording without changing their intent.'
+    hasDraftTitle && (target === 'title' || target === 'all')
+      ? '- The user wrote their own title (shown above). Your only job is to polish its grammar and phrasing. Do NOT replace it with something different. Do NOT change what action or subject it describes.'
       : '- No title yet. Use the capture context (OCR text, window, app) to write a specific action title.',
-    hasDraftDesc
-      ? '- The user has a draft description. Polish it to read like professional documentation.'
+    hasDraftDesc && (target === 'description' || target === 'all')
+      ? '- The user wrote their own description (shown above). Polish the wording to sound professional but preserve every fact and intent they stated.'
       : '- No description yet. Write 1–2 sentences describing exactly what the user does.',
     '- Only include blocks that provide genuinely useful supplemental information (warnings, tips, code).',
     richContext

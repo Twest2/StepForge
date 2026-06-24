@@ -386,10 +386,22 @@ function summarizeBlocks(step = {}) {
   return parts.length ? parts.join('\n') : '(none)';
 }
 
+const DEFAULT_PLACEHOLDER_TITLES = new Set(
+  Object.values(DEFAULT_CAPTURE_TITLES).concat(['Capture', 'Untitled step']),
+);
+
+function isPlaceholderTitle(title) {
+  return !title || DEFAULT_PLACEHOLDER_TITLES.has(title);
+}
+
 function summarizeStepForAi(step = {}) {
+  const titleLine = isPlaceholderTitle(step.title)
+    ? 'Step title: (not set — generate a specific action title from the capture context)'
+    : `Step title: ${step.title}`;
+  const descText = htmlToText(step.descriptionHtml || '');
   return [
-    `Step title: ${step.title || '(empty)'}`,
-    `Step description: ${htmlToText(step.descriptionHtml || '') || '(empty)'}`,
+    titleLine,
+    `Step description: ${descText || '(empty)'}`,
     `Step status: ${step.status || 'todo'}`,
     `Blocks:\n${summarizeBlocks(step)}`,
   ].join('\n');
@@ -407,7 +419,9 @@ function hasRichCaptureContext(captureContext) {
   const ocr = normalizeWhitespace(captureContext.ocrText || '');
   const win = normalizeWhitespace(captureContext.windowTitle || '');
   const app = normalizeWhitespace(captureContext.appName || '');
-  return ocr.length > 3 || (win.length > 2 && !isBrowserNoise(win)) || app.length > 1;
+  const element = normalizeWhitespace(captureContext.elementLabel || '');
+  // Any non-trivial context signal is enough — even just an app name.
+  return ocr.length > 3 || win.length > 2 || app.length > 1 || element.length > 1;
 }
 
 function buildAiPrompt({
@@ -417,11 +431,18 @@ function buildAiPrompt({
   captureContext = null,
   block = null,
 } = {}) {
+  const hasDraftTitle = step && !isPlaceholderTitle(step.title);
+  const hasDraftDesc = step && Boolean(htmlToText(step.descriptionHtml || ''));
+
   const targetText = {
-    title: 'rewrite only the step title',
-    description: 'rewrite only the step description',
-    block: 'rewrite only one block',
-    all: 'rewrite the step title, description, and any useful blocks',
+    title: hasDraftTitle
+      ? 'improve the user\'s draft step title — keep their intent, make it read like professional documentation'
+      : 'write a specific action title for this step using the capture context',
+    description: hasDraftDesc
+      ? 'improve the user\'s draft description — keep their intent, make it read like professional documentation'
+      : 'write a 1–2 sentence description of what the user does in this step, using the capture context',
+    block: 'rewrite only the target block',
+    all: 'write the step title, description, and any useful blocks from the capture context',
   }[target] || 'rewrite the step';
 
   const richContext = hasRichCaptureContext(captureContext);
@@ -474,13 +495,18 @@ function buildAiPrompt({
     block ? `Target block:\n${JSON.stringify(block, null, 2)}` : null,
     '',
     'Rules:',
-    '- Write titles as short imperative actions: "Click Save", "Select New document", "Open Settings".',
-    '- If the suggested title is already a good imperative action, use it as-is or refine it slightly.',
-    '- Write descriptions in 1–2 sentences describing exactly what the user does in this step.',
+    '- Titles must be short imperative actions: "Click Save", "Select New document", "Open Settings".',
+    '- NEVER output "Screen capture", "Window capture", "Region capture", or "Capture" as a title — always produce something specific.',
+    hasDraftTitle
+      ? '- The user has a draft title. Improve its wording without changing their intent.'
+      : '- No title yet. Use the capture context (OCR text, window, app) to write a specific action title.',
+    hasDraftDesc
+      ? '- The user has a draft description. Polish it to read like professional documentation.'
+      : '- No description yet. Write 1–2 sentences describing exactly what the user does.',
     '- Only include blocks that provide genuinely useful supplemental information (warnings, tips, code).',
     richContext
-      ? '- You have rich context: use the OCR text, window title, and element info to write specific documentation.'
-      : '- Context is limited: write a minimal title. Leave description empty and return no blocks unless the step already has meaningful content.',
+      ? '- Use the OCR text, window title, app name, and element info to make the documentation specific.'
+      : '- Context is limited. Use the app name or window title if available; generate a reasonable action title.',
     '- Do NOT generate blocks that describe the technical capture process or mention OCR.',
     '- Do NOT invent details not supported by the capture context.',
     '- If the target is one block, only rewrite that block.',

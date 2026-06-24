@@ -167,7 +167,6 @@ class GuideEditor {
     const buttons = [
       this.dom?.titleAiBtn,
       this.dom?.descAiBtn,
-      this.dom?.rewriteAiBtn,
       ...(this.dom?.blocksList ? [...this.dom.blocksList.querySelectorAll('button[data-ai-action]')] : []),
     ].filter(Boolean);
     for (const button of buttons) {
@@ -221,36 +220,6 @@ class GuideEditor {
 
   async generateAllTextFieldsWithAi(button = null) {
     return this.runAiGeneration('all', { button });
-  }
-
-  async runTextRewrite(button = null) {
-    if (!this.isAiEnabled()) {
-      this.onToast('Enable AI in Settings first.', { error: true });
-      return;
-    }
-    const text = this.dom?.rewriteInput?.value?.trim();
-    if (!text) {
-      this.onToast('Type some text to rewrite first.', { error: true });
-      return;
-    }
-    if (button) setButtonLoading(button, true, 'Rewriting…');
-    try {
-      const result = await api.ai.rewriteText({
-        text,
-        guideTitle: this.guide?.title || '',
-        stepTitle: this.currentStep?.title || '',
-      });
-      if (!result || !result.ok) {
-        this.onToast(result?.reason || 'Rewrite failed.', { error: true });
-        return;
-      }
-      if (this.dom?.rewriteInput) this.dom.rewriteInput.value = result.text;
-      this.onToast('Text rewritten.');
-    } catch (err) {
-      this.onToast(err.message || 'Rewrite failed.', { error: true });
-    } finally {
-      if (button) setButtonLoading(button, false);
-    }
   }
 
   async generateBlockWithAi(kind, block, button = null) {
@@ -443,21 +412,6 @@ class GuideEditor {
           ),
         ),
         el('section', {},
-          el('div.row', { style: { justifyContent: 'space-between', alignItems: 'center' } },
-            el('h3', { style: { margin: 0 } }, 'AI Rewrite'),
-            this.dom.rewriteAiBtn = el('button.ai', {
-              type: 'button',
-              title: 'Rewrite the text below with AI',
-              dataset: { aiAction: 'rewrite', aiTitle: 'Rewrite with AI' },
-            }, 'Rewrite'),
-          ),
-          this.dom.rewriteInput = el('textarea', {
-            rows: 3,
-            placeholder: 'Type something to improve…',
-            style: { width: '100%', resize: 'vertical' },
-          }),
-        ),
-        el('section', {},
           el('h3', {}, 'Guide'),
           this.dom.guideSummary = el('div.muted', {}),
           this.dom.saveNowBtn = el('button.primary', { type: 'button', title: 'Save changes. For guides linked to a shared archive, also writes the archive file.' }, 'Save now'),
@@ -628,8 +582,6 @@ class GuideEditor {
       if (document.activeElement === this.dom.descEditor) this.updateToolbarState();
     });
     this.dom.descAiBtn.addEventListener('click', () => this.generateDescriptionWithAi(this.dom.descAiBtn));
-
-    this.dom.rewriteAiBtn.addEventListener('click', () => this.runTextRewrite(this.dom.rewriteAiBtn));
 
     this.dom.descEditor.addEventListener('paste', (e) => {
       // Keep pasted text simple; backend sanitization will handle the rest.

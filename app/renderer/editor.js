@@ -135,6 +135,7 @@ class GuideEditor {
     this.descriptionDirty = false;
     this.titleDirty = false;
     this.active = true;
+    this.settings = {};
 
     this.saveStepDebounced = debounce(() => this.flushStep(), 180);
     this.saveGuideDebounced = debounce(() => this.flushGuide(), 180);
@@ -150,6 +151,149 @@ class GuideEditor {
 
   setActive(active) {
     this.active = Boolean(active);
+  }
+
+  setSettings(settings) {
+    this.settings = settings || {};
+    this.updateAiButtonState();
+  }
+
+  isAiEnabled() {
+    return Boolean(this.settings?.ai?.enabled);
+  }
+
+  updateAiButtonState() {
+    const enabled = this.isAiEnabled();
+    const buttons = [
+      this.dom?.titleAiBtn,
+      this.dom?.descAiBtn,
+      ...(this.dom?.blocksList ? [...this.dom.blocksList.querySelectorAll('button[data-ai-action]')] : []),
+    ].filter(Boolean);
+    for (const button of buttons) {
+      button.disabled = !enabled;
+      button.title = enabled
+        ? button.dataset.aiTitle || 'Generate with AI'
+        : 'Enable AI in Settings first.';
+    }
+  }
+
+  async runAiGeneration(target, { blockId = null, button = null } = {}) {
+    if (!this.currentStep) {
+      this.onToast('Select a step first.', { error: true });
+      return null;
+    }
+    if (!this.isAiEnabled()) {
+      this.onToast('Enable AI in Settings first.', { error: true });
+      return null;
+    }
+    if (this.pendingSave) await this.flushStep();
+    if (button) setButtonLoading(button, true, 'Generating…');
+    try {
+      const result = await api.ai.fillStep({
+        guideId: this.guideId,
+        stepId: this.currentStep.stepId,
+        target,
+        blockId,
+      });
+      if (!result || !result.ok) {
+        this.onToast(result?.reason || 'AI generation failed.', { error: true });
+        return null;
+      }
+      await this.reload(result.step.stepId);
+      this.onToast('AI text filled.');
+      return result.step;
+    } catch (err) {
+      this.onToast(err.message || 'AI generation failed.', { error: true });
+      return null;
+    } finally {
+      if (button) setButtonLoading(button, false);
+    }
+  }
+
+  async generateTitleWithAi(button = null) {
+    return this.runAiGeneration('title', { button });
+  }
+
+  async generateDescriptionWithAi(button = null) {
+    return this.runAiGeneration('description', { button });
+  }
+
+  async generateAllTextFieldsWithAi(button = null) {
+    if (!this.steps.length) {
+      this.onToast('No steps to generate.', { error: true });
+      return;
+    }
+    if (!this.isAiEnabled()) {
+      this.onToast('Enable AI in Settings first.', { error: true });
+      return;
+    }
+    if (this.pendingSave) await this.flushStep();
+
+    // Only fill fields that are actually empty — never overwrite user-written content.
+    const PLACEHOLDER_TITLES = new Set([
+      '', 'screen capture', 'window capture', 'region capture', 'capture', 'untitled step',
+    ]);
+    const isEmptyDesc = (html) => !(html || '').replace(/<[^>]*>/g, '').trim();
+
+    const queue = this.steps
+      .map((step) => {
+        const titleEmpty = !step.title || PLACEHOLDER_TITLES.has(step.title.toLowerCase());
+        const descEmpty  = isEmptyDesc(step.descriptionHtml);
+        if (!titleEmpty && !descEmpty) return null;
+        const target = titleEmpty && descEmpty ? 'all' : titleEmpty ? 'title' : 'description';
+        return { stepId: step.stepId, target };
+      })
+      .filter(Boolean);
+
+    if (!queue.length) {
+      this.onToast('All steps already have titles and descriptions.');
+      return;
+    }
+
+    if (button) setButtonLoading(button, true, 'Generating…');
+    let done = 0;
+    let failed = 0;
+    const total = queue.length;
+    try {
+      for (const { stepId, target } of queue) {
+        this.onToast(`AI: filling step ${done + failed + 1} of ${total}…`);
+        try {
+          const result = await api.ai.fillStep({ guideId: this.guideId, stepId, target });
+          if (result?.ok) done++;
+          else failed++;
+        } catch {
+          failed++;
+        }
+      }
+      // Reload re-fetches all steps from the store so the editor and list both reflect the new text.
+      await this.reload(this.selectedStepId);
+      const msg = failed
+        ? `AI filled ${done} step${done === 1 ? '' : 's'} (${failed} failed).`
+        : `AI filled ${done} step${done === 1 ? '' : 's'}.`;
+      this.onToast(msg, failed ? { error: true } : undefined);
+    } finally {
+      if (button) setButtonLoading(button, false);
+    }
+  }
+
+  async generateBlockWithAi(kind, block, button = null) {
+    if (!block) return null;
+    return this.runAiGeneration('block', { blockId: block.id, button });
+  }
+
+  updateAiButtonHints() {
+    const PLACEHOLDER_TITLES = new Set([
+      '', 'screen capture', 'window capture', 'region capture', 'capture',
+    ]);
+    if (this.dom.titleAiBtn) {
+      const val = (this.dom.titleInput?.value || '').trim();
+      const hasDraft = Boolean(val) && !PLACEHOLDER_TITLES.has(val.toLowerCase());
+      this.dom.titleAiBtn.title = hasDraft ? 'Rewrite step title with AI' : 'Generate step title with AI';
+    }
+    if (this.dom.descAiBtn) {
+      const hasDesc = Boolean((this.dom.descEditor?.innerText || '').trim());
+      this.dom.descAiBtn.title = hasDesc ? 'Rewrite description with AI' : 'Generate description with AI';
+    }
   }
 
   get currentStep() {
@@ -271,7 +415,14 @@ class GuideEditor {
       el('aside.pane-props', {},
         el('section', {},
           el('h3', {}, 'Step'),
-          this.dom.titleInput = el('input', { type: 'text', placeholder: 'Step title' }),
+          el('div.row', {},
+            this.dom.titleInput = el('input', { type: 'text', placeholder: 'Step title', style: { flex: 1 } }),
+            this.dom.titleAiBtn = el('button.ai', {
+              type: 'button',
+              title: 'Generate the step title with AI',
+              dataset: { aiAction: 'title', aiTitle: 'Generate the step title with AI' },
+            }, 'AI'),
+          ),
           this.dom.statusSelect = makeSelect('todo', [
             { value: 'todo', label: 'Todo' },
             { value: 'in-progress', label: 'In progress' },
@@ -296,7 +447,14 @@ class GuideEditor {
           ),
         ),
         el('section', {},
-          el('h3', {}, 'Description'),
+          el('div.row', { style: { justifyContent: 'space-between', alignItems: 'center' } },
+            el('h3', { style: { margin: 0 } }, 'Description'),
+            this.dom.descAiBtn = el('button.ai', {
+              type: 'button',
+              title: 'Generate the description with AI',
+              dataset: { aiAction: 'description', aiTitle: 'Generate the description with AI' },
+            }, 'AI'),
+          ),
           this.dom.richToolbar = el('div.rich-toolbar', {},
             this.toolbarBtn('bold', 'Bold'),
             this.toolbarBtn('italic', 'Italic'),
@@ -415,7 +573,9 @@ class GuideEditor {
       this.saveStepDebounced();
       this.renderStepList();
       this.emitMeta();
+      this.updateAiButtonHints();
     });
+    this.dom.titleAiBtn.addEventListener('click', () => this.generateTitleWithAi(this.dom.titleAiBtn));
 
     this.dom.statusSelect.addEventListener('change', () => {
       if (!this.currentStep) return;
@@ -485,12 +645,14 @@ class GuideEditor {
       this.saveStepDebounced();
       this.emitMeta();
       this.updateToolbarState();
+      this.updateAiButtonHints();
     });
     this.dom.descEditor.addEventListener('keyup', () => this.updateToolbarState());
     this.dom.descEditor.addEventListener('mouseup', () => this.updateToolbarState());
     document.addEventListener('selectionchange', () => {
       if (document.activeElement === this.dom.descEditor) this.updateToolbarState();
     });
+    this.dom.descAiBtn.addEventListener('click', () => this.generateDescriptionWithAi(this.dom.descAiBtn));
 
     this.dom.descEditor.addEventListener('paste', (e) => {
       // Keep pasted text simple; backend sanitization will handle the rest.
@@ -504,6 +666,8 @@ class GuideEditor {
       if (!item) return;
       this.canvas.select(item.dataset.annId);
     });
+
+    this.updateAiButtonState();
   }
 
   renderAll() {
@@ -513,6 +677,7 @@ class GuideEditor {
     this.renderCanvas();
     this.renderAnnotationPanel();
     this.renderBlocksPanel();
+    this.updateAiButtonState();
     this.emitMeta();
   }
 
@@ -670,6 +835,15 @@ class GuideEditor {
         el('span.spacer'),
         el('button.icon', { type: 'button', title: 'Move block up', disabled: !canMoveUp, onClick: moveUp, dataset: { blockMove: 'up' } }, '↑'),
         el('button.icon', { type: 'button', title: 'Move block down', disabled: !canMoveDown, onClick: moveDown, dataset: { blockMove: 'down' } }, '↓'),
+        (() => {
+          const aiBtn = el('button.ai', {
+            type: 'button',
+            title: 'Generate this block with AI',
+            dataset: { aiAction: 'block', aiTitle: 'Generate this block with AI' },
+            onClick: () => this.generateBlockWithAi(kind, block, aiBtn),
+          }, 'AI');
+          return aiBtn;
+        })(),
         removeBtn(() => {
           if (kind === 'text') step.textBlocks = (step.textBlocks || []).filter((b) => b !== block);
           else if (kind === 'code') step.codeBlocks = (step.codeBlocks || []).filter((b) => b !== block);
@@ -761,6 +935,7 @@ class GuideEditor {
     if (!blocks.length) {
       this.dom.blocksList.append(el('div.muted', {}, 'Informational text, code, and table blocks can be reordered with drag handles or arrows.'));
     }
+    this.updateAiButtonState();
   }
 
   renderStepList() {
@@ -915,6 +1090,7 @@ class GuideEditor {
     if (document.activeElement !== this.dom.titleInput) this.dom.titleInput.value = step.title || '';
     if (document.activeElement !== this.dom.descEditor) this.dom.descEditor.innerHTML = step.descriptionHtml || '';
     this.dom.statusSelect.value = step.status || 'todo';
+    this.updateAiButtonHints();
     this.dom.hiddenToggle.querySelector('input').checked = Boolean(step.hidden);
     this.dom.skippedToggle.querySelector('input').checked = Boolean(step.skipped);
     this.dom.forceNewPageToggle.querySelector('input').checked = Boolean(step.forceNewPage);
@@ -1651,6 +1827,7 @@ class GuideEditor {
     const settings = await api.settings.all();
     const placeholders = await api.settings.globalPlaceholders();
     await dialogs.showSettingsDialog({
+      api,
       settings,
       placeholders,
       onSave: async (next) => {
@@ -1658,6 +1835,7 @@ class GuideEditor {
         await api.settings.set({ keyPath: 'spellcheck', value: next.spellcheck });
         await api.settings.set({ keyPath: 'capture', value: next.capture });
         await api.settings.set({ keyPath: 'editor', value: next.editor });
+        await api.settings.set({ keyPath: 'ai', value: next.ai });
         await api.settings.set({ keyPath: 'exports', value: next.exports });
         await api.settings.set({ keyPath: 'backups', value: next.backups });
         await api.settings.setGlobalPlaceholders(next.placeholders || {});

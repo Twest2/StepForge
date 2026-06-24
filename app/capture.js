@@ -3,7 +3,6 @@
 const path = require('node:path');
 const { spawn, execFileSync } = require('node:child_process');
 const { desktopCapturer, screen, BrowserWindow, nativeImage, Tray, Menu } = require('electron');
-const { expandPlaceholders } = require('../core/placeholders');
 const raster = require('../core/raster');
 const { encodePng } = require('../core/png');
 const {
@@ -14,6 +13,7 @@ const {
   DEFAULT_START_SLACK_MS,
 } = require('./click-frames');
 const { physicalToDip } = require('./coords');
+const { DEFAULT_CAPTURE_TITLES } = require('../core/text-intel');
 
 /**
  * Capture service: full-screen, active-window, and region capture, plus a
@@ -114,6 +114,7 @@ class CaptureService {
     getWindow,
     notify,
     screenApi = screen,
+    textIntel = null,
   }) {
     this.store = store;
     this.settings = settings;
@@ -122,6 +123,7 @@ class CaptureService {
     // Injectable for tests; the click/coordinate paths must never reach for
     // the global `screen` directly so coordinate handling stays testable.
     this.screen = screenApi;
+    this.textIntel = textIntel;
     this.session = null; // { guideId, paused, count, intervalSec }
     this.intervalTimer = null;
     this.clickWatcher = null;
@@ -133,6 +135,11 @@ class CaptureService {
     this.clickWatcherErrTail = '';
     this.linuxEvent = null; // event block currently being parsed
     this.pendingRawClick = null; // raw press waiting for its coordinate twin
+    this.pendingClickOsPoint = null;
+    this._keyBuffer = '';     // printable chars typed since last capture
+    this._lastShortcut = '';  // last Ctrl+X / Alt+X combination
+    this._keyLastAt = 0;      // timestamp of last key event
+    this._pendingWindowContext = null; // buffered CTX+ELEM from click watcher, consumed on CLICK
     this.clickQueue = Promise.resolve();
     this.frameLoopInFlight = false;
     this.frameLoopGrabStartedAt = null;
@@ -463,7 +470,7 @@ class CaptureService {
       if (frame) {
         clog('click@', clickAt, 'frame', frame.source || 'loop',
           'started', frame.startedAt - clickAt, 'ms, captured', frame.capturedAt - clickAt, 'ms rel. click');
-        const result = this.storeFrameAsStep(guideId, frame.mode, frame, clickPos);
+        const result = await this.storeFrameAsStep(guideId, frame.mode, frame, clickPos, clickMeta);
         if (result.ok) this.noteStepAdded(result.step, trigger, guideId);
         return result;
       }
@@ -796,12 +803,15 @@ using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Threading;
 
-public static class SFMouseHook {
+public static class SFHook {
   private const int WH_MOUSE_LL = 14;
+  private const int WH_KEYBOARD_LL = 13;
   private const int WM_LBUTTONDOWN = 0x0201;
   private const int WM_RBUTTONDOWN = 0x0204;
   private const int WM_MBUTTONDOWN = 0x0207;
   private const int WM_XBUTTONDOWN = 0x020B;
+  private const int WM_KEYDOWN = 0x0100;
+  private const int WM_SYSKEYDOWN = 0x0104;
   private const long UnixEpochMilliseconds = 62135596800000L;
   // Opting this process out of Windows Power Throttling (EcoQoS). In a
   // power-saving plan the OS CPU-starves background processes; a starved
@@ -815,7 +825,9 @@ public static class SFMouseHook {
   private const uint HIGH_PRIORITY_CLASS = 0x00000080;
 
   private static IntPtr hook = IntPtr.Zero;
-  private static LowLevelMouseProc proc = HookCallback;
+  private static IntPtr keyHook = IntPtr.Zero;
+  private static LowLevelMouseProc proc = MouseHookCallback;
+  private static LowLevelKeyboardProc keyProc = KeyboardHookCallback;
   private static readonly ConcurrentQueue<string> queue = new ConcurrentQueue<string>();
   private static readonly AutoResetEvent signal = new AutoResetEvent(false);
 
@@ -851,10 +863,33 @@ public static class SFMouseHook {
     public uint StateMask;
   }
 
+  [StructLayout(LayoutKind.Sequential)]
+  private struct KBDLLHOOKSTRUCT {
+    public uint vkCode;
+    public uint scanCode;
+    public uint flags;
+    public uint time;
+    public UIntPtr dwExtraInfo;
+  }
+
   private delegate IntPtr LowLevelMouseProc(int nCode, IntPtr wParam, IntPtr lParam);
+  private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
 
   [DllImport("user32.dll", SetLastError = true)]
   private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelMouseProc lpfn, IntPtr hMod, uint dwThreadId);
+
+  [DllImport("user32.dll", SetLastError = true)]
+  private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelKeyboardProc lpfn, IntPtr hMod, uint dwThreadId);
+
+  [DllImport("user32.dll")]
+  private static extern short GetKeyState(int nVirtKey);
+
+  [DllImport("user32.dll")]
+  private static extern bool GetKeyboardState([Out] byte[] lpKeyState);
+
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+  private static extern int ToUnicode(uint wVirtKey, uint wScanCode, byte[] lpKeyState,
+      System.Text.StringBuilder pwszBuff, int cchBuff, uint wFlags);
 
   [DllImport("user32.dll", SetLastError = true)]
   private static extern bool UnhookWindowsHookEx(IntPtr hhk);
@@ -886,6 +921,58 @@ public static class SFMouseHook {
   [DllImport("kernel32.dll")]
   private static extern bool SetPriorityClass(IntPtr hProcess, uint dwPriorityClass);
 
+  [DllImport("user32.dll")]
+  private static extern IntPtr GetForegroundWindow();
+
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+  private static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder text, int count);
+
+  [DllImport("user32.dll")]
+  private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+
+  [DllImport("kernel32.dll", SetLastError = true)]
+  private static extern IntPtr OpenProcess(uint processAccess, bool bInheritHandle, uint processId);
+
+  [DllImport("kernel32.dll", SetLastError = true)]
+  private static extern bool CloseHandle(IntPtr hObject);
+
+  [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+  private static extern bool QueryFullProcessImageName(IntPtr hProcess, uint dwFlags, System.Text.StringBuilder lpExeName, ref uint lpdwSize);
+
+  private static string GetFwTitle() {
+    try {
+      IntPtr hwnd = GetForegroundWindow();
+      if (hwnd == IntPtr.Zero) return "";
+      var sb = new System.Text.StringBuilder(512);
+      GetWindowText(hwnd, sb, sb.Capacity);
+      return sb.ToString();
+    } catch { return ""; }
+  }
+
+  private static string GetFwApp() {
+    try {
+      IntPtr hwnd = GetForegroundWindow();
+      if (hwnd == IntPtr.Zero) return "";
+      uint pid = 0;
+      GetWindowThreadProcessId(hwnd, out pid);
+      if (pid == 0) return "";
+      IntPtr hProc = OpenProcess(0x1000u, false, pid);
+      if (hProc == IntPtr.Zero) return "";
+      var sb = new System.Text.StringBuilder(260);
+      uint sz = (uint)sb.Capacity;
+      QueryFullProcessImageName(hProc, 0u, sb, ref sz);
+      CloseHandle(hProc);
+      string path = sb.ToString();
+      return string.IsNullOrEmpty(path) ? "" : System.IO.Path.GetFileNameWithoutExtension(path);
+    } catch { return ""; }
+  }
+
+  // Base64-encodes a string for safe line-protocol transmission; "-" for empty.
+  private static string B64(string s) {
+    if (string.IsNullOrEmpty(s)) return "-";
+    try { return Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(s)); } catch { return "-"; }
+  }
+
   // Force this process to run at full CPU speed regardless of the power plan,
   // so the mouse-hook callback never trips LowLevelHooksTimeout and clicks
   // keep being delivered while the laptop is in eco / power-saving mode.
@@ -914,6 +1001,8 @@ public static class SFMouseHook {
     if (hook == IntPtr.Zero) {
       throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
     }
+    // Keyboard hook is optional — if it fails we still get click titles.
+    try { keyHook = SetWindowsHookEx(WH_KEYBOARD_LL, keyProc, GetModuleHandle(null), 0); } catch { }
 
     Console.Out.WriteLine("READY");
     Console.Out.Flush();
@@ -925,6 +1014,7 @@ public static class SFMouseHook {
     }
 
     UnhookWindowsHookEx(hook);
+    if (keyHook != IntPtr.Zero) UnhookWindowsHookEx(keyHook);
   }
 
   private static void WriterLoop() {
@@ -938,18 +1028,93 @@ public static class SFMouseHook {
     }
   }
 
-  private static IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam) {
+  private static IntPtr MouseHookCallback(int nCode, IntPtr wParam, IntPtr lParam) {
     if (nCode >= 0) {
       int message = wParam.ToInt32();
       string button = ButtonName(message, lParam);
       if (button != null) {
         MSLLHOOKSTRUCT data = (MSLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(MSLLHOOKSTRUCT));
         long unixMs = DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond - UnixEpochMilliseconds;
+        // Capture window context while the user's app is still in foreground.
+        // GetForegroundWindow is synchronous and fast (no IPC overhead).
+        try {
+          string t = GetFwTitle(), a = GetFwApp();
+          queue.Enqueue("CTX " + B64(t) + " " + B64(a) + " " + unixMs);
+        } catch { }
         queue.Enqueue("CLICK " + data.pt.x + " " + data.pt.y + " " + button + " " + unixMs);
         signal.Set();
       }
     }
     return CallNextHookEx(hook, nCode, wParam, lParam);
+  }
+
+  private static IntPtr KeyboardHookCallback(int nCode, IntPtr wParam, IntPtr lParam) {
+    if (nCode >= 0 && (wParam.ToInt32() == WM_KEYDOWN || wParam.ToInt32() == WM_SYSKEYDOWN)) {
+      try {
+        KBDLLHOOKSTRUCT kb = (KBDLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(KBDLLHOOKSTRUCT));
+        int vk = (int)kb.vkCode;
+        bool ctrl = (GetKeyState(0x11) & 0x8000) != 0;
+        bool alt  = (GetKeyState(0x12) & 0x8000) != 0;
+        bool shift = (GetKeyState(0x10) & 0x8000) != 0;
+        // Skip standalone modifier keys.
+        bool isMod = vk == 0x10 || vk == 0x11 || vk == 0x12 || vk == 0x5B || vk == 0x5C;
+        if (!isMod) {
+          long unixMs = DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond - UnixEpochMilliseconds;
+          if (ctrl || alt) {
+            // Emit shortcut: "KEY Ctrl+T 123456"
+            string name = VkName(vk);
+            if (name != null) {
+              string mods = (ctrl ? "Ctrl" : "") + (ctrl && (alt || shift) ? "+" : "") +
+                            (alt ? "Alt" : "") + ((alt || ctrl) && shift ? "+" : "") +
+                            (shift ? "Shift" : "");
+              queue.Enqueue("KEY " + mods + "+" + name + " " + unixMs);
+              signal.Set();
+            }
+          } else if (vk == 0x08) {
+            queue.Enqueue("KEY Backspace " + unixMs); signal.Set();
+          } else if (vk == 0x1B) {
+            queue.Enqueue("KEY Escape " + unixMs); signal.Set();
+          } else if (vk == 0x0D) {
+            queue.Enqueue("KEY Enter " + unixMs); signal.Set();
+          } else {
+            // Map to Unicode character using current keyboard layout + shift state.
+            byte[] ks = new byte[256];
+            GetKeyboardState(ks);
+            var sb = new System.Text.StringBuilder(4);
+            int res = ToUnicode(kb.vkCode, kb.scanCode, ks, sb, 4, 0);
+            if (res > 0) {
+              char ch = sb[0];
+              if (ch >= 0x20 && ch < 0x7F) {
+                queue.Enqueue("CHAR " + (int)ch + " " + unixMs);
+                signal.Set();
+              }
+            }
+          }
+        }
+      } catch { }
+    }
+    return CallNextHookEx(keyHook, nCode, wParam, lParam);
+  }
+
+  private static string VkName(int vk) {
+    if (vk >= 0x41 && vk <= 0x5A) return ((char)vk).ToString(); // A-Z
+    if (vk >= 0x30 && vk <= 0x39) return ((char)vk).ToString(); // 0-9
+    if (vk >= 0x70 && vk <= 0x87) return "F" + (vk - 0x6F);    // F1-F24
+    switch (vk) {
+      case 0x09: return "Tab";
+      case 0x0D: return "Enter";
+      case 0x1B: return "Escape";
+      case 0x20: return "Space";
+      case 0x21: return "PageUp";    case 0x22: return "PageDown";
+      case 0x23: return "End";       case 0x24: return "Home";
+      case 0x25: return "Left";      case 0x26: return "Up";
+      case 0x27: return "Right";     case 0x28: return "Down";
+      case 0x2E: return "Delete";
+      case 0x6B: case 0xBB: return "Plus";
+      case 0x6D: case 0xBD: return "Minus";
+      case 0xBE: return "Period";    case 0xBF: return "Slash";
+      default: return null;
+    }
   }
 
   private static string ButtonName(int message, IntPtr lParam) {
@@ -965,7 +1130,7 @@ public static class SFMouseHook {
   }
 }
 '@
-[SFMouseHook]::Run()
+[SFHook]::Run()
 `;
         this.clickWatcher = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', ps], {
           stdio: ['ignore', 'pipe', 'pipe'],
@@ -1100,11 +1265,33 @@ public static class SFMouseHook {
     }
     if (platform === 'win32') {
       for (const line of lines) {
-        const m = /^CLICK(?:\s+(-?\d+)\s+(-?\d+)(?:\s+([A-Za-z0-9_-]+))?(?:\s+(\d+))?)?\s*$/.exec(line.trim());
-        if (m) {
-          const osPoint = m[1] === undefined ? null : { x: Number(m[1]), y: Number(m[2]) };
-          const eventAt = m[4] === undefined ? Date.now() : Number(m[4]);
-          this.onOsClick(Number.isFinite(eventAt) ? eventAt : Date.now(), osPoint, m[3] || 'mouse');
+        const trimmed = line.trim();
+        const clickM = /^CLICK(?:\s+(-?\d+)\s+(-?\d+)(?:\s+([A-Za-z0-9_-]+))?(?:\s+(\d+))?)?\s*$/.exec(trimmed);
+        if (clickM) {
+          const osPoint = clickM[1] === undefined ? null : { x: Number(clickM[1]), y: Number(clickM[2]) };
+          const eventAt = clickM[4] === undefined ? Date.now() : Number(clickM[4]);
+          this.onOsClick(Number.isFinite(eventAt) ? eventAt : Date.now(), osPoint, clickM[3] || 'mouse');
+          continue;
+        }
+        const keyM = /^KEY\s+(\S+)\s+(\d+)\s*$/.exec(trimmed);
+        if (keyM) {
+          this.onKeyboardEvent('KEY', keyM[1], Number(keyM[2]));
+          continue;
+        }
+        const charM = /^CHAR\s+(\d+)\s+(\d+)\s*$/.exec(trimmed);
+        if (charM) {
+          this.onKeyboardEvent('CHAR', Number(charM[1]), Number(charM[2]));
+          continue;
+        }
+        // CTX is emitted just before its paired CLICK from MouseHookCallback.
+        const ctxM = /^CTX\s+(\S+)\s+(\S+)\s+\d+$/.exec(trimmed);
+        if (ctxM) {
+          const decode = s => s === '-' ? '' : Buffer.from(s, 'base64').toString('utf8');
+          this._pendingWindowContext = {
+            windowTitle: decode(ctxM[1]),
+            appName: decode(ctxM[2]),
+          };
+          continue;
         }
       }
     }
@@ -1211,6 +1398,9 @@ public static class SFMouseHook {
     let clickPos = osPoint ? this.osPointToDip(osPoint) : null;
     if (!clickPos) clickPos = this.screen.getCursorScreenPoint();
     clog('click@', clickAt, button, 'os', osPoint, '-> dip', clickPos);
+    this.pendingClickOsPoint = osPoint && Number.isFinite(osPoint.x) && Number.isFinite(osPoint.y)
+      ? { x: osPoint.x, y: osPoint.y }
+      : null;
     this.enqueueClickCapture(clickPos, clickAt, button || 'mouse');
   }
 
@@ -1268,7 +1458,24 @@ public static class SFMouseHook {
    * fast the user clicks or how slow the encoder is.
    */
   enqueueClickCapture(clickPos, clickAt = Date.now(), button = 'mouse') {
-    const clickMeta = { at: Number.isFinite(clickAt) ? clickAt : Date.now(), button: button || 'mouse' };
+    const osPoint = this.pendingClickOsPoint && Number.isFinite(this.pendingClickOsPoint.x) && Number.isFinite(this.pendingClickOsPoint.y)
+      ? this.pendingClickOsPoint
+      : null;
+    this.pendingClickOsPoint = null;
+    const clickMeta = {
+      at: Number.isFinite(clickAt) ? clickAt : Date.now(),
+      button: button || 'mouse',
+    };
+    if (osPoint) {
+      clickMeta.osPoint = { x: osPoint.x, y: osPoint.y };
+    }
+    // Snapshot keyboard context accumulated since the last capture.
+    clickMeta.keyContext = this.snapshotKeyContext();
+    // Attach the window + element context emitted by the click watcher.
+    if (this._pendingWindowContext) {
+      clickMeta.windowContext = this._pendingWindowContext;
+      this._pendingWindowContext = null;
+    }
     if (this.session && !this.session.paused && !this.userIsInApp()) {
       // The guide id pins the click to its recording so it can still be
       // stored if the session stops while this click waits in the queue.
@@ -1280,6 +1487,46 @@ public static class SFMouseHook {
       .then(() => this.sessionCapture('click', clickPos, clickMeta))
       .catch(() => {});
     return this.clickQueue;
+  }
+
+  // --- Keyboard context tracking -------------------------------------------
+
+  onKeyboardEvent(type, data, eventAt) {
+    const now = Number.isFinite(eventAt) ? eventAt : Date.now();
+    // Discard stale typing that happened more than 8 seconds ago (user moved on).
+    if (now - this._keyLastAt > 8000) {
+      this._keyBuffer = '';
+    }
+    this._keyLastAt = now;
+
+    if (type === 'CHAR') {
+      const ch = typeof data === 'number' ? String.fromCharCode(data) : String(data);
+      this._keyBuffer = (this._keyBuffer + ch).slice(-200);
+    } else if (type === 'KEY') {
+      const key = String(data);
+      if (key === 'Backspace') {
+        this._keyBuffer = this._keyBuffer.slice(0, -1);
+      } else if (key === 'Escape') {
+        this._keyBuffer = '';
+      } else if (key === 'Enter') {
+        // Keep typed text — Enter often submits what was typed.
+      } else {
+        // It's a modifier+key shortcut (Ctrl+T etc.).
+        this._lastShortcut = key;
+        this._keyBuffer = ''; // a shortcut resets the typed-text buffer
+      }
+    }
+  }
+
+  snapshotKeyContext() {
+    const ctx = {
+      recentTyped: this._keyBuffer.trim(),
+      recentShortcut: this._lastShortcut,
+    };
+    // Reset after snapshot so each step gets its own context.
+    this._keyBuffer = '';
+    this._lastShortcut = '';
+    return ctx;
   }
 
   async captureCurrentFrame(mode, capturePoint = null, startedAt = Date.now()) {
@@ -1300,7 +1547,18 @@ public static class SFMouseHook {
     };
   }
 
-  storeFrameAsStep(guideId, mode, frame, clickPos = null) {
+  async buildStepMeta(mode, frame, clickPos = null, clickMeta = null) {
+    try {
+      if (this.textIntel && typeof this.textIntel.buildCaptureContext === 'function') {
+        return await this.textIntel.buildCaptureContext({ mode, frame, clickPos, clickMeta });
+      }
+    } catch {
+      // fall back
+    }
+    return { title: this.autoTitle(mode), captureMetadata: null };
+  }
+
+  async storeFrameAsStep(guideId, mode, frame, clickPos = null, clickMeta = null) {
     if (!frame) return { ok: false, reason: 'no capture frame available' };
     const annotations = [];
     // The click position (DIP, read at event time) wins over the frame's
@@ -1323,8 +1581,10 @@ public static class SFMouseHook {
       }
     }
 
+    const { title, captureMetadata } = await this.buildStepMeta(mode, frame, clickPos, clickMeta);
     const step = this.store.addStep(guideId, {
-      title: this.autoTitle(mode),
+      title,
+      captureMetadata,
       annotations,
       focusedView: {
         enabled: Boolean(this.settings.get('editor.focusedViewDefaultForNewSteps')),
@@ -1335,14 +1595,7 @@ public static class SFMouseHook {
   }
 
   autoTitle(mode) {
-    const tplStr = this.settings.get('editor.autoTitleTemplate') || '[[Mode]] capture [[Time]]';
-    const now = new Date();
-    const pad = (n) => String(n).padStart(2, '0');
-    return expandPlaceholders(tplStr, {
-      Mode: { fullscreen: 'Screen', window: 'Window', region: 'Region' }[mode] || 'Screen',
-      Time: `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`,
-      Date: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`,
-    });
+    return DEFAULT_CAPTURE_TITLES[mode] || 'Capture';
   }
 
   /** Grab the screen/window image as { image, display } or throw. */
@@ -1451,8 +1704,12 @@ public static class SFMouseHook {
     const cropped = image.crop(rect);
     const size = cropped.getSize();
     if (!size.width || !size.height) return { ok: false, reason: 'empty selection' };
-    const step = this.store.addStep(guideId, { title: this.autoTitle('region') },
-      cropped.toPNG(), size);
+    const step = await this.storeFrameAsStep(guideId, 'region', {
+      image: cropped,
+      size,
+      display,
+      cursor: null,
+    }, null, null);
     return { ok: true, step };
   }
 

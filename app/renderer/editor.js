@@ -228,36 +228,48 @@ class GuideEditor {
       return;
     }
     if (this.pendingSave) await this.flushStep();
+
+    // Only fill fields that are actually empty — never overwrite user-written content.
+    const PLACEHOLDER_TITLES = new Set([
+      '', 'screen capture', 'window capture', 'region capture', 'capture', 'untitled step',
+    ]);
+    const isEmptyDesc = (html) => !(html || '').replace(/<[^>]*>/g, '').trim();
+
+    const queue = this.steps
+      .map((step) => {
+        const titleEmpty = !step.title || PLACEHOLDER_TITLES.has(step.title.toLowerCase());
+        const descEmpty  = isEmptyDesc(step.descriptionHtml);
+        if (!titleEmpty && !descEmpty) return null;
+        const target = titleEmpty && descEmpty ? 'all' : titleEmpty ? 'title' : 'description';
+        return { stepId: step.stepId, target };
+      })
+      .filter(Boolean);
+
+    if (!queue.length) {
+      this.onToast('All steps already have titles and descriptions.');
+      return;
+    }
+
     if (button) setButtonLoading(button, true, 'Generating…');
     let done = 0;
     let failed = 0;
-    const total = this.steps.length;
+    const total = queue.length;
     try {
-      for (const step of this.steps) {
-        this.onToast(`AI: filling step ${done + 1} of ${total}…`);
+      for (const { stepId, target } of queue) {
+        this.onToast(`AI: filling step ${done + failed + 1} of ${total}…`);
         try {
-          const result = await api.ai.fillStep({
-            guideId: this.guideId,
-            stepId: step.stepId,
-            target: 'all',
-          });
-          if (result?.ok) {
-            done++;
-            // Keep the in-memory steps list fresh so subsequent steps see updated guide context.
-            const idx = this.steps.findIndex((s) => s.stepId === step.stepId);
-            if (idx >= 0) this.steps[idx] = result.step;
-          } else {
-            failed++;
-          }
+          const result = await api.ai.fillStep({ guideId: this.guideId, stepId, target });
+          if (result?.ok) done++;
+          else failed++;
         } catch {
           failed++;
         }
       }
-      // Reload the currently-visible step so the editor reflects its new text.
-      if (this.selectedStepId) await this.reload(this.selectedStepId);
+      // Reload re-fetches all steps from the store so the editor and list both reflect the new text.
+      await this.reload(this.selectedStepId);
       const msg = failed
         ? `AI filled ${done} step${done === 1 ? '' : 's'} (${failed} failed).`
-        : `AI filled all ${done} step${done === 1 ? '' : 's'}.`;
+        : `AI filled ${done} step${done === 1 ? '' : 's'}.`;
       this.onToast(msg, failed ? { error: true } : undefined);
     } finally {
       if (button) setButtonLoading(button, false);

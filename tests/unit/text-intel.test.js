@@ -7,6 +7,7 @@ const { makeTmpDir, rmrf } = require('./helpers');
 const { createStep } = require('../../core/schema');
 const {
   buildCaptureTitle,
+  buildAiPrompt,
   normalizeAiPatch,
   applyAiPatchToStep,
 } = require('../../core/text-intel');
@@ -36,7 +37,7 @@ test('capture titles prefer semantic metadata before OCR fallback', () => {
     metadata: { windowTitle: 'Reset user password in admin portal' },
     ocrText: 'Save',
   });
-  assert.equal(title, 'Open Reset user password in admin portal');
+  assert.equal(title, 'Click Save');
 });
 
 test('capture titles prefer element metadata before window chrome and OCR', () => {
@@ -51,6 +52,31 @@ test('capture titles prefer element metadata before window chrome and OCR', () =
   assert.equal(title, 'Open advanced settings');
 });
 
+test('capture titles ignore browser chrome noise in favor of OCR', () => {
+  const title = buildCaptureTitle({
+    mode: 'window',
+    metadata: {
+      windowTitle: 'Google Chrome ** PR reviews ** /chrome/tyler/autodoc',
+      appName: 'Google Chrome',
+    },
+    ocrText: 'New tab',
+  });
+  assert.equal(title, 'Click New tab');
+});
+
+test('tab-like roles use select when OCR identifies a tab label', () => {
+  const title = buildCaptureTitle({
+    mode: 'window',
+    metadata: {
+      elementLabel: 'New tab',
+      elementRole: 'tab item',
+      windowTitle: 'Google Chrome - PR reviews',
+    },
+    ocrText: 'New tab',
+  });
+  assert.equal(title, 'Select New tab');
+});
+
 test('capture titles fall back to OCR when metadata is absent', () => {
   const title = buildCaptureTitle({
     mode: 'window',
@@ -58,6 +84,20 @@ test('capture titles fall back to OCR when metadata is absent', () => {
     ocrText: 'Save changes',
   });
   assert.equal(title, 'Click Save changes');
+});
+
+test('ai prompts include the deterministic OCR-backed title candidate', () => {
+  const { prompt } = buildAiPrompt({
+    captureContext: {
+      windowTitle: 'Google Chrome ** PR reviews ** /chrome/tyler/autodoc',
+      appName: 'Google Chrome',
+      ocrText: 'New tab',
+      titleCandidate: 'Click New tab',
+      mode: 'content',
+    },
+  });
+
+  assert.match(prompt, /Deterministic title candidate: Click New tab/);
 });
 
 test('ocr crop rectangles clamp to the image bounds', (t) => {

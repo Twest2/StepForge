@@ -44,6 +44,41 @@ const GENERIC_OCR_PHRASES = new Set([
   'type',
 ]);
 
+const BROWSER_NAME_PHRASES = new Set([
+  'google chrome',
+  'chrome',
+  'chromium',
+  'microsoft edge',
+  'edge',
+  'brave',
+  'firefox',
+  'safari',
+  'opera',
+  'vivaldi',
+]);
+
+const ACTION_PREFIXES = [
+  'click',
+  'select',
+  'open',
+  'choose',
+  'enter',
+  'type',
+  'search',
+  'switch to',
+  'go to',
+  'navigate to',
+  'toggle',
+  'turn on',
+  'turn off',
+  'enable',
+  'disable',
+  'pick',
+  'focus',
+  'launch',
+  'activate',
+];
+
 function normalizeWhitespace(text) {
   return String(text == null ? '' : text)
     .replace(/\s+/g, ' ')
@@ -68,6 +103,55 @@ function displayText(text) {
   return clean.replace(/\s+/g, ' ');
 }
 
+function sentenceCase(text) {
+  const clean = displayText(text);
+  if (!clean) return '';
+  return clean.charAt(0).toUpperCase() + clean.slice(1);
+}
+
+function isPathOrUrlLike(text) {
+  return /^(?:https?:\/\/|file:\/\/|about:blank|chrome:\/\/|edge:\/\/|moz-extension:\/\/|view-source:|localhost(?:[:/]|$)|www\.)/i.test(text) ||
+    /[A-Za-z]:\\/.test(text) ||
+    /\/(?:[^/\s]+\/){2,}/.test(text) ||
+    /\\/.test(text);
+}
+
+function isBrowserNoise(text) {
+  const clean = normalizeWhitespace(text).toLowerCase();
+  if (!clean) return true;
+  if (BROWSER_NAME_PHRASES.has(clean)) return true;
+  if (isPathOrUrlLike(clean)) return true;
+  let foundBrowserName = false;
+  for (const name of BROWSER_NAME_PHRASES) {
+    if (clean.includes(name)) {
+      foundBrowserName = true;
+      break;
+    }
+  }
+  return foundBrowserName && /[\s|•·*]{2,}|[-–—]|\/|\\/.test(clean);
+}
+
+function isUsefulTitleCandidate(text, { source = 'ocr' } = {}) {
+  const clean = displayText(text);
+  if (!clean) return false;
+  const lower = clean.toLowerCase();
+  if (GENERIC_OCR_PHRASES.has(lower)) return false;
+  if (BROWSER_NAME_PHRASES.has(lower)) return false;
+  if (isPathOrUrlLike(clean)) return false;
+  if ((source === 'window' || source === 'app') && isBrowserNoise(clean)) return false;
+  if (/^[\p{P}\p{S}0-9]+$/u.test(clean)) return false;
+  return true;
+}
+
+function splitTitleFragments(text) {
+  const clean = normalizeWhitespace(text);
+  if (!clean) return [];
+  return clean
+    .split(/\s*(?:\*\*+|[|•·]+|::|\/+|\\+|\s[-–—]\s|\s{2,})\s*/g)
+    .map((part) => displayText(part))
+    .filter(Boolean);
+}
+
 function candidateWords(text) {
   const clean = normalizeWhitespace(text);
   if (!clean) return [];
@@ -80,13 +164,15 @@ function scoreCandidate(text, { source = 'ocr' } = {}) {
   const words = candidateWords(clean);
   if (!words.length) return -Infinity;
   let score = 0;
-  score += source === 'element' ? 110 : source === 'window' ? 95 : source === 'app' ? 80 : 100;
-  score += Math.min(words.length, 6) * 12;
-  score -= Math.max(0, words.length - 6) * 10;
-  score -= Math.max(0, clean.length - 56) * 0.6;
+  score += source === 'ocr' ? 140 : source === 'element' ? 95 : source === 'window' ? 35 : source === 'app' ? 25 : 90;
+  score += Math.min(words.length, 5) * 10;
+  score -= Math.max(0, words.length - 5) * 11;
+  score -= Math.max(0, clean.length - 42) * 0.8;
   if (GENERIC_OCR_PHRASES.has(clean.toLowerCase())) score -= 50;
+  if (BROWSER_NAME_PHRASES.has(clean.toLowerCase())) score -= 80;
+  if (isBrowserNoise(clean)) score -= 60;
   if (clean.length <= 24) score += 10;
-  if (/^(click|open|enter|type|choose|select|save|cancel|confirm)\b/i.test(clean)) score += 8;
+  if (/^(click|select|open|choose|enter|type|search|switch to|go to|navigate to|toggle|turn on|turn off|enable|disable|pick|focus|launch|activate)\b/i.test(clean)) score += 12;
   if (/^[\p{P}\p{S}0-9]+$/u.test(clean)) score -= 100;
   return score;
 }
@@ -96,9 +182,8 @@ function pickBestOcrPhrase(ocrText) {
   if (!text) return '';
   const parts = text
     .split(/\n+/)
-    .map((line) => displayText(line))
-    .filter(Boolean)
-    .filter((line) => !GENERIC_OCR_PHRASES.has(line.toLowerCase()));
+    .flatMap((line) => splitTitleFragments(line))
+    .filter((line) => isUsefulTitleCandidate(line, { source: 'ocr' }));
   if (!parts.length) return '';
   let best = '';
   let bestScore = -Infinity;
@@ -117,39 +202,81 @@ function isShortUiLabel(text) {
   return words.length > 0 && words.length <= 2 && text.length <= 24;
 }
 
-function buildCaptureTitle({ mode = 'fullscreen', metadata = {}, ocrText = '' } = {}) {
-  const candidates = [];
-  if (metadata.elementLabel) candidates.push({ text: metadata.elementLabel, source: 'element' });
-  if (metadata.windowTitle) candidates.push({ text: metadata.windowTitle, source: 'window' });
-  if (metadata.appName && metadata.appName !== metadata.windowTitle) {
-    candidates.push({ text: metadata.appName, source: 'app' });
-  }
-  const ocrPhrase = pickBestOcrPhrase(ocrText);
-  if (ocrPhrase) candidates.push({ text: ocrPhrase, source: 'ocr' });
+function isDirectiveTitle(text) {
+  const clean = displayText(text);
+  if (!clean) return false;
+  const lower = clean.toLowerCase();
+  return ACTION_PREFIXES.some((prefix) => lower.startsWith(prefix));
+}
 
-  let winner = null;
-  let winnerScore = -Infinity;
-  for (const candidate of candidates) {
-    const score = scoreCandidate(candidate.text, { source: candidate.source });
-    if (score > winnerScore) {
-      winner = candidate;
-      winnerScore = score;
+function verbForElementRole(role) {
+  const clean = normalizeWhitespace(role).toLowerCase();
+  if (!clean) return null;
+  if (/(tab|menu item|menuitem|option|list item|tree item|radio button|dropdown list|combo box option)/.test(clean)) {
+    return 'Select';
+  }
+  if (/(button|check box|checkbox|toggle button|switch|link|item|command)/.test(clean)) {
+    return 'Click';
+  }
+  if (/(text field|edit|search box|combo box|textbox|text box|input|field)/.test(clean)) {
+    return 'Click';
+  }
+  return null;
+}
+
+function formatCaptureTitle(text, { source = 'ocr', metadata = {} } = {}) {
+  const clean = displayText(text);
+  if (!clean) return '';
+
+  if (isDirectiveTitle(clean)) {
+    return sentenceCase(clean);
+  }
+
+  const roleVerb = (source === 'ocr' || source === 'element') ? verbForElementRole(metadata.elementRole) : null;
+  if (roleVerb) {
+    return `${roleVerb} ${sentenceCase(clean)}`;
+  }
+
+  if (source === 'window' || source === 'app') {
+    return `Open ${sentenceCase(clean)}`;
+  }
+
+  if (source === 'ocr' || source === 'element') {
+    return isShortUiLabel(clean) ? `Click ${sentenceCase(clean)}` : sentenceCase(clean);
+  }
+
+  return sentenceCase(clean);
+}
+
+function pickBestTitleFragment(text, { source = 'window', metadata = {} } = {}) {
+  const fragments = splitTitleFragments(text).filter((line) => isUsefulTitleCandidate(line, { source }));
+  if (!fragments.length) return '';
+  let best = '';
+  let bestScore = -Infinity;
+  for (const part of fragments) {
+    const score = scoreCandidate(part, { source });
+    if (score > bestScore) {
+      best = part;
+      bestScore = score;
     }
   }
+  return best ? formatCaptureTitle(best, { source, metadata }) : '';
+}
 
-  const cleanedWinner = winner ? displayText(winner.text) : '';
-  if (!cleanedWinner) return DEFAULT_CAPTURE_TITLES[mode] || 'Capture';
+function buildCaptureTitle({ mode = 'fullscreen', metadata = {}, ocrText = '' } = {}) {
+  const ocrPhrase = pickBestOcrPhrase(ocrText);
+  if (ocrPhrase) return formatCaptureTitle(ocrPhrase, { source: 'ocr', metadata });
 
-  if (winner.source === 'window' || winner.source === 'app') {
-    return `Open ${cleanedWinner}`;
-  }
-  if (winner.source === 'element') {
-    return isShortUiLabel(cleanedWinner) ? `Click ${cleanedWinner}` : cleanedWinner;
-  }
-  if (winner.source === 'ocr') {
-    return isShortUiLabel(cleanedWinner) ? `Click ${cleanedWinner}` : cleanedWinner;
-  }
-  return cleanedWinner;
+  const elementPhrase = pickBestTitleFragment(metadata.elementLabel, { source: 'element', metadata });
+  if (elementPhrase) return elementPhrase;
+
+  const windowPhrase = pickBestTitleFragment(metadata.windowTitle, { source: 'window', metadata });
+  if (windowPhrase) return windowPhrase;
+
+  const appPhrase = pickBestTitleFragment(metadata.appName, { source: 'app', metadata });
+  if (appPhrase && appPhrase !== windowPhrase) return appPhrase;
+
+  return DEFAULT_CAPTURE_TITLES[mode] || 'Capture';
 }
 
 function plainTextToHtml(text) {
@@ -326,6 +453,7 @@ function buildAiPrompt({
       `Active window title: ${captureContext.windowTitle || '(unknown)'}`,
       `Active app: ${captureContext.appName || '(unknown)'}`,
       `OCR text near click: ${captureContext.ocrText || '(none)'}`,
+      `Deterministic title candidate: ${captureContext.titleCandidate || '(none)'}`,
       `Capture mode: ${captureContext.mode || '(unknown)'}`,
     ].join('\n') : 'Capture context: (not provided)',
     '',

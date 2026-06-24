@@ -181,6 +181,7 @@ class TextIntelService {
       $elementRole = '';
       $elementClass = '';
       $elementProcessId = 0;
+      $elementValue = '';
       if (${hasPoint ? '$true' : '$false'}) {
         try {
           Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes,WindowsBase | Out-Null
@@ -192,6 +193,12 @@ class TextIntelService {
             $elementRole = $current.LocalizedControlType;
             $elementClass = $current.ClassName;
             $elementProcessId = $current.ProcessId;
+            try {
+              $valPattern = [System.Windows.Automation.ValuePattern]::Pattern;
+              if ($element.GetSupportedPatterns() -contains $valPattern) {
+                $elementValue = $element.GetCurrentPattern($valPattern).Current.Value;
+              }
+            } catch { }
           }
         } catch { }
       }
@@ -218,6 +225,7 @@ public static class Win32 {
         elementLabel = $elementLabel;
         elementRole = $elementRole;
         elementClass = $elementClass;
+        elementValue = $elementValue;
         elementProcessId = $elementProcessId;
         pid = $pid;
       };
@@ -284,11 +292,14 @@ public static class Win32 {
   }
 
   async buildCaptureContext({ mode, frame, clickPos, clickMeta = null }) {
+    const keyContext = clickMeta?.keyContext || {};
+    const recentTyped = keyContext.recentTyped || '';
+    const recentShortcut = keyContext.recentShortcut || '';
     const [metadata, ocr] = await Promise.all([
       this.collectForegroundWindowContext(clickMeta?.osPoint || null),
       this.ocrAroundClick(frame, clickPos),
     ]);
-    const title = buildCaptureTitle({ mode, metadata, ocrText: ocr.text });
+    const title = buildCaptureTitle({ mode, metadata, ocrText: ocr.text, recentTyped, recentShortcut });
     return {
       title,
       captureMetadata: {
@@ -297,6 +308,9 @@ public static class Win32 {
         appName: metadata.appName || '',
         elementLabel: metadata.elementLabel || '',
         elementRole: metadata.elementRole || '',
+        elementValue: metadata.elementValue || '',
+        recentTyped,
+        recentShortcut,
         mode,
       },
     };
@@ -440,8 +454,11 @@ public static class Win32 {
             appName: step.captureMetadata.appName,
             elementLabel: step.captureMetadata.elementLabel,
             elementRole: step.captureMetadata.elementRole,
+            elementValue: step.captureMetadata.elementValue,
           },
           ocrText: step.captureMetadata.ocrText,
+          recentTyped: step.captureMetadata.recentTyped,
+          recentShortcut: step.captureMetadata.recentShortcut,
         });
         captureContext = {
           ...step.captureMetadata,

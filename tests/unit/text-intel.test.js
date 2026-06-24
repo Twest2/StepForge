@@ -61,7 +61,8 @@ test('capture titles ignore browser chrome noise in favor of OCR', () => {
     },
     ocrText: 'New tab',
   });
-  assert.equal(title, 'Click New tab');
+  // OCR wins over the noisy window title; app name is appended for context.
+  assert.equal(title, 'Click New tab in Google Chrome');
 });
 
 test('tab-like roles use select when OCR identifies a tab label', () => {
@@ -110,7 +111,7 @@ test('search query is extracted from browser window title pattern', () => {
     },
     ocrText: '',
   });
-  assert.equal(title, 'Search for Oracle');
+  assert.equal(title, 'Search for Oracle in Chrome');
 });
 
 test('full link text with pipe separator is preserved in OCR phrases', () => {
@@ -138,6 +139,56 @@ test('search box element role uses Search for verb', () => {
     ocrText: '',
   });
   assert.equal(title, 'Search for Oracle');
+});
+
+test('keyboard shortcut produces action title qualified with app', () => {
+  const title = buildCaptureTitle({
+    mode: 'fullscreen',
+    metadata: { appName: 'chrome' },
+    ocrText: '',
+    recentShortcut: 'Ctrl+T',
+  });
+  assert.equal(title, 'Open new tab in Chrome');
+});
+
+test('keyboard shortcut title without app name', () => {
+  const title = buildCaptureTitle({
+    mode: 'fullscreen',
+    metadata: {},
+    ocrText: '',
+    recentShortcut: 'Ctrl+S',
+  });
+  assert.equal(title, 'Save');
+});
+
+test('typed text with search input role produces Search for title', () => {
+  const title = buildCaptureTitle({
+    mode: 'fullscreen',
+    metadata: { elementRole: 'search box', appName: 'chrome' },
+    ocrText: '',
+    recentTyped: 'oracle',
+  });
+  assert.equal(title, 'Search for "oracle" in Chrome');
+});
+
+test('UIAutomation element value takes priority over keyboard buffer', () => {
+  const title = buildCaptureTitle({
+    mode: 'fullscreen',
+    metadata: { elementRole: 'edit', elementValue: 'oracle', appName: 'chrome' },
+    ocrText: '',
+    recentTyped: 'ignored',
+  });
+  // elementValue (from UIAutomation) wins over the keyboard buffer
+  assert.ok(title.includes('oracle'), `expected oracle in title, got: ${title}`);
+});
+
+test('app-qualified OCR title includes app name', () => {
+  const title = buildCaptureTitle({
+    mode: 'fullscreen',
+    metadata: { appName: 'code' },
+    ocrText: 'Save',
+  });
+  assert.equal(title, 'Click Save in VS Code');
 });
 
 test('ai prompts include the deterministic OCR-backed title candidate', () => {

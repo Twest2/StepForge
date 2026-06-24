@@ -70,6 +70,121 @@ const SEARCH_ENGINE_PAGE_NAMES = new Set([
   'brave search',
 ]);
 
+// Common keyboard shortcuts → short action descriptions used as step titles.
+const SHORTCUT_TITLES = {
+  'Ctrl+T':          'Open new tab',
+  'Ctrl+N':          'Open new window',
+  'Ctrl+W':          'Close tab',
+  'Ctrl+Shift+T':    'Reopen closed tab',
+  'Ctrl+Shift+N':    'Open incognito window',
+  'Ctrl+S':          'Save',
+  'Ctrl+Shift+S':    'Save as',
+  'Ctrl+Z':          'Undo',
+  'Ctrl+Y':          'Redo',
+  'Ctrl+Shift+Z':    'Redo',
+  'Ctrl+C':          'Copy selection',
+  'Ctrl+V':          'Paste',
+  'Ctrl+X':          'Cut selection',
+  'Ctrl+A':          'Select all',
+  'Ctrl+F':          'Open Find',
+  'Ctrl+H':          'Open Find and Replace',
+  'Ctrl+R':          'Reload page',
+  'Ctrl+Shift+R':    'Hard reload page',
+  'Ctrl+L':          'Focus address bar',
+  'Ctrl+D':          'Bookmark page',
+  'Ctrl+Tab':        'Switch to next tab',
+  'Ctrl+Shift+Tab':  'Switch to previous tab',
+  'Ctrl+Plus':       'Zoom in',
+  'Ctrl+Minus':      'Zoom out',
+  'Ctrl+0':          'Reset zoom',
+  'Ctrl+P':          'Print',
+  'Ctrl+O':          'Open file',
+  'Ctrl+E':          'Focus search bar',
+  'Ctrl+K':          'Focus search bar',
+  'Ctrl+G':          'Go to line',
+  'Ctrl+B':          'Toggle sidebar',
+  'Ctrl+Shift+P':    'Open command palette',
+  'Ctrl+Shift+E':    'Show file explorer',
+  'Ctrl+Shift+G':    'Show source control',
+  'Ctrl+Shift+D':    'Show debug panel',
+  'Ctrl+Shift+X':    'Show extensions',
+  'Alt+F4':          'Close window',
+  'Alt+Left':        'Go back',
+  'Alt+Right':       'Go forward',
+  'Alt+Tab':         'Switch application',
+  'F2':              'Rename',
+  'F3':              'Find next',
+  'F4':              'Open address bar',
+  'F5':              'Reload page',
+  'F11':             'Toggle fullscreen',
+  'F12':             'Open developer tools',
+};
+
+// Process name → human-readable display name (used to append "in Chrome" etc. to titles).
+const APP_DISPLAY_NAMES = {
+  chrome:           'Chrome',
+  msedge:           'Edge',
+  firefox:          'Firefox',
+  safari:           'Safari',
+  opera:            'Opera',
+  brave:            'Brave',
+  vivaldi:          'Vivaldi',
+  code:             'VS Code',
+  cursor:           'Cursor',
+  'sublime_text':   'Sublime Text',
+  atom:             'Atom',
+  notepad:          'Notepad',
+  'notepad++':      'Notepad++',
+  winword:          'Word',
+  excel:            'Excel',
+  powerpnt:         'PowerPoint',
+  outlook:          'Outlook',
+  teams:            'Teams',
+  slack:            'Slack',
+  discord:          'Discord',
+  zoom:             'Zoom',
+  figma:            'Figma',
+  postman:          'Postman',
+  insomnia:         'Insomnia',
+  notion:           'Notion',
+  obsidian:         'Obsidian',
+  spotify:          'Spotify',
+  terminal:         'Terminal',
+  cmd:              'Command Prompt',
+  powershell:       'PowerShell',
+  windowsterminal:  'Windows Terminal',
+  wt:               'Windows Terminal',
+  iterm2:           'iTerm',
+  wezterm:          'WezTerm',
+  alacritty:        'Alacritty',
+  kitty:            'Kitty',
+  'gnome-terminal': 'Terminal',
+  konsole:          'Konsole',
+  xterm:            'Terminal',
+  xfce4terminal:    'Terminal',
+  bash:             'Terminal',
+  zsh:              'Terminal',
+  fish:             'Terminal',
+  finder:           'Finder',
+  explorer:         'File Explorer',
+  'files-uwp':      'File Explorer',
+  steam:            'Steam',
+  'steamwebhelper': 'Steam',
+};
+
+function cleanAppName(rawName) {
+  if (!rawName) return '';
+  const key = normalizeWhitespace(rawName).toLowerCase().replace(/\.exe$/i, '');
+  return APP_DISPLAY_NAMES[key] || sentenceCase(rawName.replace(/\.exe$/i, ''));
+}
+
+function qualifyTitleWithApp(title, appName) {
+  const app = cleanAppName(appName);
+  if (!app) return title;
+  if (new RegExp(`\\b${app.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(title)) return title;
+  return `${title} in ${app}`;
+}
+
 const ACTION_PREFIXES = [
   'click',
   'select',
@@ -310,27 +425,70 @@ function pickBestTitleFragment(text, { source = 'window', metadata = {} } = {}) 
   return best ? formatCaptureTitle(best, { source, metadata }) : '';
 }
 
-function buildCaptureTitle({ mode = 'fullscreen', metadata = {}, ocrText = '' } = {}) {
+function buildCaptureTitle({ mode = 'fullscreen', metadata = {}, ocrText = '', recentTyped = '', recentShortcut = '' } = {}) {
+  const app = cleanAppName(metadata.appName);
+
+  // 1. Keyboard shortcut → most reliable signal for "what action did the user take".
+  if (recentShortcut && SHORTCUT_TITLES[recentShortcut]) {
+    const base = SHORTCUT_TITLES[recentShortcut];
+    return app ? qualifyTitleWithApp(base, metadata.appName) : base;
+  }
+
+  // 2. UIAutomation element value — what's actually typed inside the clicked field.
+  const elementValue = normalizeWhitespace(metadata.elementValue || '');
+  if (elementValue) {
+    const roleLower = normalizeWhitespace(metadata.elementRole || '').toLowerCase();
+    const labelLower = normalizeWhitespace(metadata.elementLabel || '').toLowerCase();
+    const looksLikeSearch = /(search|find|query|omnibox|address bar)/.test(roleLower + ' ' + labelLower);
+    const action = looksLikeSearch ? 'Search for' : 'Type';
+    const base = `${action} "${elementValue}"`;
+    return app ? qualifyTitleWithApp(base, metadata.appName) : base;
+  }
+
+  // 3. Keyboard-buffer text (typed between captures) + input role context.
+  const typed = normalizeWhitespace(recentTyped || '');
+  if (typed) {
+    const roleLower = normalizeWhitespace(metadata.elementRole || '').toLowerCase();
+    const labelLower = normalizeWhitespace(metadata.elementLabel || '').toLowerCase();
+    const isSearchRole = /(search box|searchbox|search field|search bar|search input)/.test(roleLower);
+    const looksLikeSearch = isSearchRole || /(search|find|query|omnibox|address bar)/.test(roleLower + ' ' + labelLower);
+    const isAnyInput = /(text field|edit|input|field|combo box|textbox|text box)/.test(roleLower);
+    if (looksLikeSearch) {
+      const base = `Search for "${typed}"`;
+      return app ? qualifyTitleWithApp(base, metadata.appName) : base;
+    }
+    if (isAnyInput) {
+      const base = `Type "${typed}"`;
+      return app ? qualifyTitleWithApp(base, metadata.appName) : base;
+    }
+  }
+
+  // 4. OCR text around the click — link text, button labels, menu items.
   const ocrPhrase = pickBestOcrPhrase(ocrText);
-  if (ocrPhrase) return formatCaptureTitle(ocrPhrase, { source: 'ocr', metadata });
+  if (ocrPhrase) {
+    const title = formatCaptureTitle(ocrPhrase, { source: 'ocr', metadata });
+    return app ? qualifyTitleWithApp(title, metadata.appName) : title;
+  }
 
+  // 5. UIAutomation element label.
   const elementPhrase = pickBestTitleFragment(metadata.elementLabel, { source: 'element', metadata });
-  if (elementPhrase) return elementPhrase;
+  if (elementPhrase) {
+    return app ? qualifyTitleWithApp(elementPhrase, metadata.appName) : elementPhrase;
+  }
 
-  // Strip the browser name suffix before processing window titles so that
-  // "oracle - Google Search - Google Chrome" becomes "oracle - Google Search"
-  // and "Oracle | Cloud Applications - Google Chrome" becomes just the page title.
-  const rawWindowTitle = metadata.windowTitle || '';
-  const strippedWindowTitle = stripBrowserNameSuffix(rawWindowTitle);
+  // 6. Browser window title (suffix stripped) → page title or search query.
+  const strippedWindowTitle = stripBrowserNameSuffix(metadata.windowTitle || '');
   if (strippedWindowTitle) {
-    // Detect "[query] - Google Search" → "Search for oracle"
     const searchQuery = extractSearchQuery(strippedWindowTitle);
-    if (searchQuery) return `Search for ${sentenceCase(searchQuery)}`;
-    // Use the page title (now free of browser name noise).
+    if (searchQuery) {
+      const base = `Search for ${sentenceCase(searchQuery)}`;
+      return app ? qualifyTitleWithApp(base, metadata.appName) : base;
+    }
     const windowPhrase = pickBestTitleFragment(strippedWindowTitle, { source: 'window', metadata });
     if (windowPhrase) return windowPhrase;
   }
 
+  // 7. App name alone as last resort.
   const appPhrase = pickBestTitleFragment(metadata.appName, { source: 'app', metadata });
   if (appPhrase) return appPhrase;
 
@@ -516,6 +674,9 @@ function buildAiPrompt({
     captureContext.windowTitle ? `Active window: ${captureContext.windowTitle}` : null,
     captureContext.appName ? `App: ${captureContext.appName}` : null,
     captureContext.elementLabel ? `UI element: ${captureContext.elementLabel}${captureContext.elementRole ? ` (${captureContext.elementRole})` : ''}` : null,
+    captureContext.elementValue ? `Element content (what was typed): ${captureContext.elementValue}` : null,
+    captureContext.recentTyped ? `Keyboard input before this step: ${captureContext.recentTyped}` : null,
+    captureContext.recentShortcut ? `Keyboard shortcut used: ${captureContext.recentShortcut}` : null,
     captureContext.ocrText ? `OCR text near click:\n${captureContext.ocrText}` : null,
     captureContext.titleCandidate ? `Suggested title: ${captureContext.titleCandidate}` : null,
   ].filter(Boolean) : [];

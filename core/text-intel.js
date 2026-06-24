@@ -402,6 +402,14 @@ function summarizeGuideForAi(guide = {}) {
   ].join('\n');
 }
 
+function hasRichCaptureContext(captureContext) {
+  if (!captureContext) return false;
+  const ocr = normalizeWhitespace(captureContext.ocrText || '');
+  const win = normalizeWhitespace(captureContext.windowTitle || '');
+  const app = normalizeWhitespace(captureContext.appName || '');
+  return ocr.length > 3 || (win.length > 2 && !isBrowserNoise(win)) || app.length > 1;
+}
+
 function buildAiPrompt({
   target = 'all',
   guide = null,
@@ -416,6 +424,8 @@ function buildAiPrompt({
     all: 'rewrite the step title, description, and any useful blocks',
   }[target] || 'rewrite the step';
 
+  const richContext = hasRichCaptureContext(captureContext);
+
   const allowedBlockNote = [
     'Use block.kind = "text" with level in [info, warn, error, success] for note / warning / important / tip blocks.',
     'Use block.kind = "code" for code snippets.',
@@ -423,8 +433,16 @@ function buildAiPrompt({
     'Use block.position values from [before-title, after-title, before-image, after-image, before-description, after-description].',
   ].join(' ');
 
+  const contextLines = captureContext ? [
+    captureContext.windowTitle ? `Active window: ${captureContext.windowTitle}` : null,
+    captureContext.appName ? `App: ${captureContext.appName}` : null,
+    captureContext.elementLabel ? `UI element: ${captureContext.elementLabel}${captureContext.elementRole ? ` (${captureContext.elementRole})` : ''}` : null,
+    captureContext.ocrText ? `OCR text near click:\n${captureContext.ocrText}` : null,
+    captureContext.titleCandidate ? `Suggested title: ${captureContext.titleCandidate}` : null,
+  ].filter(Boolean) : [];
+
   const prompt = [
-    'You write concise, human-sounding step-by-step documentation for an offline desktop app.',
+    'You write concise, action-focused step-by-step documentation for a desktop application guide.',
     'Return JSON only. No markdown fences, no commentary, no extra keys outside the schema below.',
     'Schema:',
     '{',
@@ -449,26 +467,27 @@ function buildAiPrompt({
     '',
     step ? summarizeStepForAi(step) : 'Step: (not provided)',
     '',
-    captureContext ? [
-      `Active window title: ${captureContext.windowTitle || '(unknown)'}`,
-      `Active app: ${captureContext.appName || '(unknown)'}`,
-      `OCR text near click: ${captureContext.ocrText || '(none)'}`,
-      `Deterministic title candidate: ${captureContext.titleCandidate || '(none)'}`,
-      `Capture mode: ${captureContext.mode || '(unknown)'}`,
-    ].join('\n') : 'Capture context: (not provided)',
+    contextLines.length
+      ? `Capture context:\n${contextLines.join('\n')}`
+      : 'Capture context: (not available)',
     '',
-    block ? `Target block:\n${JSON.stringify(block, null, 2)}` : 'Target block: (not provided)',
+    block ? `Target block:\n${JSON.stringify(block, null, 2)}` : null,
     '',
     'Rules:',
-    '- Keep the wording natural and specific.',
-    '- Prefer short titles.',
-    '- Only return blocks that add value.',
-    '- Do not invent details that are not supported by the capture context.',
+    '- Write titles as short imperative actions: "Click Save", "Select New document", "Open Settings".',
+    '- If the suggested title is already a good imperative action, use it as-is or refine it slightly.',
+    '- Write descriptions in 1–2 sentences describing exactly what the user does in this step.',
+    '- Only include blocks that provide genuinely useful supplemental information (warnings, tips, code).',
+    richContext
+      ? '- You have rich context: use the OCR text, window title, and element info to write specific documentation.'
+      : '- Context is limited: write a minimal title. Leave description empty and return no blocks unless the step already has meaningful content.',
+    '- Do NOT generate blocks that describe the technical capture process or mention OCR.',
+    '- Do NOT invent details not supported by the capture context.',
     '- If the target is one block, only rewrite that block.',
-  ].join('\n');
+  ].filter((l) => l !== null).join('\n');
 
   return {
-    systemPrompt: 'You are a documentation assistant that only emits JSON.',
+    systemPrompt: 'You are a technical documentation writer. Emit only valid JSON matching the schema. Never add commentary or markdown.',
     prompt,
   };
 }

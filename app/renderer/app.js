@@ -80,6 +80,18 @@ class StepForgeApp {
 
     api.capture.onAdded((payload) => this.onCaptureAdded(payload));
     api.capture.onState((payload) => this.updateCaptureState(payload));
+    api.capture.onStepUpdated((payload) => this.onStepUpdated(payload));
+  }
+
+  async onStepUpdated(payload) {
+    if (!payload || !payload.guideId || !payload.step) return;
+    if (this.state.view === 'editor' && this.editor.guideId === payload.guideId) {
+      const currentStep = this.editor.currentStep;
+      if (currentStep && currentStep.stepId === payload.step.stepId) {
+        await this.editor.reload(payload.step.stepId);
+        toast('Documentation generated.');
+      }
+    }
   }
 
   async onCaptureAdded(payload) {

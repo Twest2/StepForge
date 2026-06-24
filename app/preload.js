@@ -55,6 +55,7 @@ const api = {
   ai: {
     test: invoke('ai:test'),
     fillStep: invoke('ai:fillStep'),
+    rewriteText: invoke('ai:rewriteText'),
   },
   capture: {
     shoot: invoke('capture:shoot'),
@@ -63,6 +64,7 @@ const api = {
     state: invoke('capture:state'),
     onAdded: (fn) => ipcRenderer.on('capture:added', (e, payload) => fn(payload)),
     onState: (fn) => ipcRenderer.on('capture:state', (e, payload) => fn(payload)),
+    onStepUpdated: (fn) => ipcRenderer.on('step:updated', (e, payload) => fn(payload)),
   },
   archive: {
     export: invoke('archive:export'),

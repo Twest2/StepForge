@@ -1316,15 +1316,15 @@ public static class SFMouseHook {
     };
   }
 
-  async buildStepTitle(mode, frame, clickPos = null, clickMeta = null) {
+  async buildStepMeta(mode, frame, clickPos = null, clickMeta = null) {
     try {
-      if (this.textIntel && typeof this.textIntel.buildCaptureTitle === 'function') {
-        return await this.textIntel.buildCaptureTitle({ mode, frame, clickPos, clickMeta });
+      if (this.textIntel && typeof this.textIntel.buildCaptureContext === 'function') {
+        return await this.textIntel.buildCaptureContext({ mode, frame, clickPos, clickMeta });
       }
     } catch {
-      // fall back to the local semantic title below
+      // fall back
     }
-    return this.autoTitle(mode);
+    return { title: this.autoTitle(mode), captureMetadata: null };
   }
 
   async storeFrameAsStep(guideId, mode, frame, clickPos = null, clickMeta = null) {
@@ -1350,8 +1350,10 @@ public static class SFMouseHook {
       }
     }
 
+    const { title, captureMetadata } = await this.buildStepMeta(mode, frame, clickPos, clickMeta);
     const step = this.store.addStep(guideId, {
-      title: await this.buildStepTitle(mode, frame, clickPos, clickMeta),
+      title,
+      captureMetadata,
       annotations,
       focusedView: {
         enabled: Boolean(this.settings.get('editor.focusedViewDefaultForNewSteps')),

@@ -97,7 +97,7 @@ test('ai prompts include the deterministic OCR-backed title candidate', () => {
     },
   });
 
-  assert.match(prompt, /Deterministic title candidate: Click New tab/);
+  assert.match(prompt, /Suggested title: Click New tab/);
 });
 
 test('ocr crop rectangles clamp to the image bounds', (t) => {

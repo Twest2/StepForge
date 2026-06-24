@@ -315,6 +315,7 @@ function showSettingsDialog({
     const confirmSimple = el('input', { type: 'checkbox', checked: Boolean(settings.capture?.confirmSimpleCapture) });
     const keepLast = makeInput(settings.backups?.keepLast ?? 10, 'number', { min: 0, step: 1 });
     const aiEnabled = el('input', { type: 'checkbox', checked: Boolean(settings.ai?.enabled) });
+    const aiAutoDoc = el('input', { type: 'checkbox', checked: Boolean(settings.ai?.autoDoc) });
     const ollamaHost = makeInput(settings.ai?.ollama?.host || 'http://127.0.0.1:11434');
     const ollamaModel = makeInput(settings.ai?.ollama?.model || 'llama3.2:1b');
     const aiStatus = el('div', { className: 'muted ai-status' }, 'AI stays local through Ollama. Nothing is sent to the cloud.');
@@ -408,7 +409,8 @@ function showSettingsDialog({
       ),
       el('fieldset', {},
         el('legend', {}, 'AI'),
-        labeledRow('Enable AI text filling', aiEnabled),
+        labeledRow('Enable AI', aiEnabled),
+        labeledRow('Auto-document captures', aiAutoDoc),
         labeledRow('Ollama host', ollamaHost),
         labeledRow('Ollama model', ollamaModel),
         el('div.row', { style: { justifyContent: 'space-between' } },
@@ -416,7 +418,7 @@ function showSettingsDialog({
           testAiBtn,
         ),
         el('div.muted', {},
-          'AI generation is manual only. Captures stay deterministic until you click a generate button.',
+          'When auto-document is on, each capture is automatically documented by AI. Turn it off to use AI manually only.',
         ),
       ),
       el('fieldset', {},
@@ -465,6 +467,7 @@ function showSettingsDialog({
               ai: {
                 ...settings.ai,
                 enabled: aiEnabled.checked,
+                autoDoc: aiAutoDoc.checked,
                 ollama: {
                   ...(settings.ai?.ollama || {}),
                   host: ollamaHost.value.trim(),

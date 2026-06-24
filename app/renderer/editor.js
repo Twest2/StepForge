@@ -227,6 +227,21 @@ class GuideEditor {
     return this.runAiGeneration('block', { blockId: block.id, button });
   }
 
+  updateAiButtonHints() {
+    const PLACEHOLDER_TITLES = new Set([
+      '', 'screen capture', 'window capture', 'region capture', 'capture',
+    ]);
+    if (this.dom.titleAiBtn) {
+      const val = (this.dom.titleInput?.value || '').trim();
+      const hasDraft = Boolean(val) && !PLACEHOLDER_TITLES.has(val.toLowerCase());
+      this.dom.titleAiBtn.title = hasDraft ? 'Rewrite step title with AI' : 'Generate step title with AI';
+    }
+    if (this.dom.descAiBtn) {
+      const hasDesc = Boolean((this.dom.descEditor?.innerText || '').trim());
+      this.dom.descAiBtn.title = hasDesc ? 'Rewrite description with AI' : 'Generate description with AI';
+    }
+  }
+
   get currentStep() {
     return this.stepMap.get(this.selectedStepId) || null;
   }
@@ -504,6 +519,7 @@ class GuideEditor {
       this.saveStepDebounced();
       this.renderStepList();
       this.emitMeta();
+      this.updateAiButtonHints();
     });
     this.dom.titleAiBtn.addEventListener('click', () => this.generateTitleWithAi(this.dom.titleAiBtn));
 
@@ -575,6 +591,7 @@ class GuideEditor {
       this.saveStepDebounced();
       this.emitMeta();
       this.updateToolbarState();
+      this.updateAiButtonHints();
     });
     this.dom.descEditor.addEventListener('keyup', () => this.updateToolbarState());
     this.dom.descEditor.addEventListener('mouseup', () => this.updateToolbarState());
@@ -1019,6 +1036,7 @@ class GuideEditor {
     if (document.activeElement !== this.dom.titleInput) this.dom.titleInput.value = step.title || '';
     if (document.activeElement !== this.dom.descEditor) this.dom.descEditor.innerHTML = step.descriptionHtml || '';
     this.dom.statusSelect.value = step.status || 'todo';
+    this.updateAiButtonHints();
     this.dom.hiddenToggle.querySelector('input').checked = Boolean(step.hidden);
     this.dom.skippedToggle.querySelector('input').checked = Boolean(step.skipped);
     this.dom.forceNewPageToggle.querySelector('input').checked = Boolean(step.forceNewPage);

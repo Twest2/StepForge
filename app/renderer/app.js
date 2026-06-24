@@ -80,6 +80,18 @@ class StepForgeApp {
 
     api.capture.onAdded((payload) => this.onCaptureAdded(payload));
     api.capture.onState((payload) => this.updateCaptureState(payload));
+    api.capture.onStepUpdated((payload) => this.onStepUpdated(payload));
+  }
+
+  async onStepUpdated(payload) {
+    if (!payload || !payload.guideId || !payload.step) return;
+    if (this.state.view === 'editor' && this.editor.guideId === payload.guideId) {
+      const currentStep = this.editor.currentStep;
+      if (currentStep && currentStep.stepId === payload.step.stepId) {
+        await this.editor.reload(payload.step.stepId);
+        toast('Documentation generated.');
+      }
+    }
   }
 
   async onCaptureAdded(payload) {
@@ -117,6 +129,7 @@ class StepForgeApp {
       guideFolders: library.folders?.guideFolders || {},
     };
     this.state.trash = trash;
+    this.editor.setSettings(settings);
   }
 
   async refreshLibrary({ keepFilter = true } = {}) {
@@ -320,6 +333,7 @@ class StepForgeApp {
             { label: 'Guide information…', action: () => this.editor.openGuideInfo() },
             { label: 'Guide placeholders…', action: () => this.editor.openGuidePlaceholders() },
             { label: 'Backups & snapshots…', action: () => this.editor.openBackupsDialog() },
+            { label: 'Generate all text fields with AI (experimental)', action: () => this.editor.generateAllTextFieldsWithAi() },
             { label: guide && guide.linkedSource ? 'Linked guide…' : 'Linked guide (not linked)', action: () => this.editor.openLinkedGuide() },
             'sep',
             { label: 'Keyboard shortcuts…', action: () => this.editor.openShortcutsHelp() },
@@ -859,6 +873,7 @@ class StepForgeApp {
     const settings = await api.settings.all();
     const placeholders = await api.settings.globalPlaceholders();
     await dialogs.showSettingsDialog({
+      api,
       settings,
       placeholders,
       onSave: async (next) => {
@@ -866,6 +881,7 @@ class StepForgeApp {
         await api.settings.set({ keyPath: 'spellcheck', value: next.spellcheck });
         await api.settings.set({ keyPath: 'capture', value: next.capture });
         await api.settings.set({ keyPath: 'editor', value: next.editor });
+        await api.settings.set({ keyPath: 'ai', value: next.ai });
         await api.settings.set({ keyPath: 'exports', value: next.exports });
         await api.settings.set({ keyPath: 'backups', value: next.backups });
         await api.settings.setGlobalPlaceholders(next.placeholders || {});

@@ -10,6 +10,11 @@ const ELECTRON_SKIP_ENV_KEYS = [
   'NPM_CONFIG_ELECTRON_SKIP_BINARY_DOWNLOAD',
 ];
 
+const NPM_IGNORE_SCRIPTS_ENV_KEYS = [
+  'npm_config_ignore_scripts',
+  'NPM_CONFIG_IGNORE_SCRIPTS',
+];
+
 function resolveElectronPackageRoot() {
   try {
     return path.dirname(require.resolve('electron/package.json'));
@@ -48,6 +53,9 @@ function sanitizeElectronEnv(baseEnv = process.env) {
   for (const key of ELECTRON_SKIP_ENV_KEYS) {
     delete env[key];
   }
+  for (const key of NPM_IGNORE_SCRIPTS_ENV_KEYS) {
+    delete env[key];
+  }
 
   return env;
 }
@@ -67,8 +75,10 @@ function electronBinaryCandidates({ packageRoot, distDir, platform }) {
   return candidatePaths;
 }
 
-function runNpmRebuild({
+function runNpmCommand({
   packageRoot,
+  npmArgs,
+  errorLabel,
   npmExecPath = process.env.npm_execpath || null,
   npmNodeExecPath = process.env.npm_node_execpath || process.execPath,
 }) {
@@ -76,29 +86,61 @@ function runNpmRebuild({
     return false;
   }
 
-  const result = spawnSync(
-    npmNodeExecPath,
-    [npmExecPath, 'rebuild', 'electron', '--force', '--foreground-scripts'],
-    {
-      cwd: packageRoot,
-      env: sanitizeElectronEnv(),
-      stdio: 'inherit',
-    }
-  );
+  const result = spawnSync(npmNodeExecPath, [npmExecPath, ...npmArgs], {
+    cwd: packageRoot,
+    env: sanitizeElectronEnv(),
+    stdio: 'inherit',
+  });
 
   if (result.error) {
     throw result.error;
   }
 
   if (result.signal) {
-    throw new Error(`Electron repair was interrupted by ${result.signal}`);
+    throw new Error(`${errorLabel} was interrupted by ${result.signal}`);
   }
 
   if (result.status !== 0) {
-    throw new Error(`Electron rebuild failed with exit code ${result.status ?? 1}`);
+    throw new Error(`${errorLabel} failed with exit code ${result.status ?? 1}`);
   }
 
   return true;
+}
+
+function runNpmRebuild({
+  packageRoot,
+  npmExecPath = process.env.npm_execpath || null,
+  npmNodeExecPath = process.env.npm_node_execpath || process.execPath,
+}) {
+  return runNpmCommand({
+    packageRoot,
+    npmArgs: ['rebuild', 'electron', '--force', '--foreground-scripts'],
+    errorLabel: 'Electron rebuild',
+    npmExecPath,
+    npmNodeExecPath,
+  });
+}
+
+function runNpmInstall({
+  packageRoot,
+  npmExecPath = process.env.npm_execpath || null,
+  npmNodeExecPath = process.env.npm_node_execpath || process.execPath,
+}) {
+  return runNpmCommand({
+    packageRoot,
+    npmArgs: [
+      'install',
+      '--include=dev',
+      '--ignore-scripts=false',
+      '--foreground-scripts',
+      '--no-audit',
+      '--no-fund',
+      '--package-lock=false',
+    ],
+    errorLabel: 'Electron dependency install',
+    npmExecPath,
+    npmNodeExecPath,
+  });
 }
 
 function repairElectronInstall({
@@ -153,45 +195,93 @@ function buildMissingElectronError({ packageRoot, distDir, candidatePaths }) {
 
 function resolveElectronBinary({
   packageRoot = resolveElectronPackageRoot(),
+  projectRoot = process.cwd(),
   platform = process.platform,
   overrideDistPath = process.env.ELECTRON_OVERRIDE_DIST_PATH || null,
 } = {}) {
-  if (!packageRoot && !overrideDistPath) {
+  const repairErrors = [];
+
+  function resolveCurrentPackageRoot() {
+    if (packageRoot) return packageRoot;
+    const conventionalRoot = path.join(projectRoot, 'node_modules', 'electron');
+    if (fs.existsSync(path.join(conventionalRoot, 'package.json'))) {
+      packageRoot = conventionalRoot;
+      return packageRoot;
+    }
+    packageRoot = resolveElectronPackageRoot();
+    return packageRoot;
+  }
+
+  function tryRepair(label, repairFn) {
+    try {
+      if (!repairFn()) {
+        return null;
+      }
+    } catch (error) {
+      repairErrors.push(`${label}: ${error && error.message ? error.message : String(error)}`);
+      return null;
+    }
+
+    const currentPackageRoot = resolveCurrentPackageRoot();
+    if (!currentPackageRoot && !overrideDistPath) {
+      return null;
+    }
+
+    const distDir = overrideDistPath || path.join(currentPackageRoot, 'dist');
+    return electronBinaryCandidates({ packageRoot: currentPackageRoot, distDir, platform }).find((candidate) =>
+      fs.existsSync(candidate)
+    );
+  }
+
+  let currentPackageRoot = resolveCurrentPackageRoot();
+  if (!currentPackageRoot && !overrideDistPath) {
+    const installed = tryRepair('Electron dependency install', () =>
+      runNpmInstall({ packageRoot: projectRoot })
+    );
+    if (installed) {
+      return installed;
+    }
+
+    currentPackageRoot = resolveCurrentPackageRoot();
+  }
+
+  if (!currentPackageRoot && !overrideDistPath) {
     throw new Error(
       'Electron could not be started because node_modules/electron is not installed.\n\n' +
         'Run `npm install` from the repo root, then try `npm start` again.'
     );
   }
 
-  const distDir = overrideDistPath || path.join(packageRoot, 'dist');
-  const candidatePaths = electronBinaryCandidates({ packageRoot, distDir, platform });
-
-  const resolved = candidatePaths.find((candidate) => fs.existsSync(candidate));
-  if (!resolved) {
-    if (packageRoot) {
-      if (runNpmRebuild({ packageRoot })) {
-        const rebuilt = electronBinaryCandidates({ packageRoot, distDir, platform }).find((candidate) =>
-          fs.existsSync(candidate)
-        );
-        if (rebuilt) {
-          return rebuilt;
-        }
-      }
-
-      if (repairElectronInstall({ packageRoot })) {
-        const repaired = electronBinaryCandidates({ packageRoot, distDir, platform }).find((candidate) =>
-          fs.existsSync(candidate)
-        );
-        if (repaired) {
-          return repaired;
-        }
-      }
-    }
-
-    throw new Error(buildMissingElectronError({ packageRoot, distDir, candidatePaths }));
+  const distDir = overrideDistPath || path.join(currentPackageRoot, 'dist');
+  let candidatePaths = electronBinaryCandidates({ packageRoot: currentPackageRoot, distDir, platform });
+  let resolved = candidatePaths.find((candidate) => fs.existsSync(candidate));
+  if (resolved) {
+    return resolved;
   }
 
-  return resolved;
+  const repairAttempts = [
+    ['Electron rebuild', () => runNpmRebuild({ packageRoot: currentPackageRoot })],
+    ['Electron install repair', () => repairElectronInstall({ packageRoot: currentPackageRoot })],
+    ['Electron dependency install', () => runNpmInstall({ packageRoot: projectRoot })],
+  ];
+
+  for (const [label, repairFn] of repairAttempts) {
+    const repaired = tryRepair(label, repairFn);
+    if (repaired) {
+      return repaired;
+    }
+  }
+
+  throw new Error(
+    buildMissingElectronError({
+      packageRoot: currentPackageRoot,
+      distDir,
+      candidatePaths,
+    }) +
+      (repairErrors.length
+        ? `\n\nAutomatic repair attempts failed:\n${repairErrors.map((error) => `  - ${error}`).join('\n')}`
+        : '')
+  );
 }
 
 module.exports = {
@@ -200,6 +290,7 @@ module.exports = {
   readElectronPathHint,
   repairElectronInstall,
   runNpmRebuild,
+  runNpmInstall,
   sanitizeElectronEnv,
   resolveElectronBinary,
   resolveElectronPackageRoot,

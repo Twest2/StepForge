@@ -47,6 +47,13 @@ const DEFAULT_SETTINGS = {
     focusedViewDefaultForNewSteps: false,
     autoTitleTemplate: '[[Mode]] capture [[Time]]',
   },
+  ai: {
+    enabled: false,
+    ollama: {
+      host: 'http://127.0.0.1:11434',
+      model: 'llama3.2:1b',
+    },
+  },
   exports: {
     previewStepCount: 3,
     openFolderAfterExport: true,

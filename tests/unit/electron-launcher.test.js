@@ -112,6 +112,46 @@ test('rebuilds Electron through npm when the binary is missing', (t) => {
   );
 });
 
+test('falls back to npm install when rebuild does not repair the runtime', (t) => {
+  const root = makeTmpDir('electron-install-fallback');
+  t.after(() => rmrf(root));
+
+  fs.mkdirSync(path.join(root, 'dist'), { recursive: true });
+  const fakeNpmCli = path.join(root, 'fake-npm-cli.js');
+  fs.writeFileSync(
+    fakeNpmCli,
+    [
+      "const fs = require('node:fs');",
+      "const path = require('node:path');",
+      "const command = process.argv[2];",
+      "if (command === 'rebuild') process.exit(1);",
+      "if (command === 'install') {",
+      "  fs.mkdirSync(path.join(__dirname, 'dist'), { recursive: true });",
+      "  fs.writeFileSync(path.join(__dirname, 'dist', 'electron.exe'), 'binary');",
+      "  fs.writeFileSync(path.join(__dirname, 'path.txt'), 'electron.exe');",
+      "  process.exit(0);",
+      "}",
+      "process.exit(1);",
+    ].join('\n')
+  );
+
+  const originalNpmExecPath = process.env.npm_execpath;
+  const originalNpmNodeExecPath = process.env.npm_node_execpath;
+  process.env.npm_execpath = fakeNpmCli;
+  process.env.npm_node_execpath = process.execPath;
+  t.after(() => {
+    if (originalNpmExecPath === undefined) delete process.env.npm_execpath;
+    else process.env.npm_execpath = originalNpmExecPath;
+    if (originalNpmNodeExecPath === undefined) delete process.env.npm_node_execpath;
+    else process.env.npm_node_execpath = originalNpmNodeExecPath;
+  });
+
+  assert.equal(
+    resolveElectronBinary({ packageRoot: root, projectRoot: root, platform: 'win32' }),
+    path.join(root, 'dist', 'electron.exe')
+  );
+});
+
 test('reports a helpful error when the runtime is missing', (t) => {
   const root = makeTmpDir('electron-missing');
   t.after(() => rmrf(root));

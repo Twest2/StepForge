@@ -375,7 +375,7 @@ test('queued click captures preserve the original event time and button', async 
   assert.deepEqual(seen, [{
     trigger: 'click',
     clickPos: { x: 7, y: 8 },
-    clickMeta: { at: 1770000000456, button: 'left' },
+    clickMeta: { at: 1770000000456, button: 'left', keyContext: { recentTyped: '', recentShortcut: '' } },
   }]);
 });
 

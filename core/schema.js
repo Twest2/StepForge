@@ -86,6 +86,9 @@ function createStep(fields = {}) {
     codeBlocks: (fields.codeBlocks || []).map((cb) => normalizeCodeBlock(cb, takeOrder(cb))),
     tableBlocks: (fields.tableBlocks || []).map((tb) => normalizeTableBlock(tb, takeOrder(tb))),
     links: fields.links || [], // { id, label, targetStepId }
+    captureMetadata: (fields.captureMetadata && typeof fields.captureMetadata === 'object' && !Array.isArray(fields.captureMetadata))
+      ? { ...fields.captureMetadata }
+      : null,
   };
 }
 

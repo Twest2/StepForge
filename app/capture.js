@@ -831,99 +831,6 @@ public static class SFHook {
   private static readonly ConcurrentQueue<string> queue = new ConcurrentQueue<string>();
   private static readonly AutoResetEvent signal = new AutoResetEvent(false);
 
-  // Pending click queue for background UIAutomation enrichment.
-  private struct PendingClick {
-    public int x, y;
-    public string button;
-    public long ts;
-    public string wTitle;
-    public string wApp;
-  }
-  private static readonly ConcurrentQueue<PendingClick> pendingClicks = new ConcurrentQueue<PendingClick>();
-  private static readonly AutoResetEvent clickSignal = new AutoResetEvent(false);
-
-  // UIAutomation state — loaded once via reflection so the C# code has no
-  // compile-time assembly reference (avoids breaking the whole hook if UIA is absent).
-  private static bool uiaLoadAttempted = false;
-  private static System.Reflection.MethodInfo uiaFromPoint = null;
-  private static System.Reflection.PropertyInfo uiaCurrent = null;
-  private static System.Type uiaPointType = null;
-  private static System.Reflection.Assembly uiaClientAssembly = null;
-
-  private static void TryLoadUia() {
-    if (uiaLoadAttempted) return;
-    uiaLoadAttempted = true;
-    try {
-      uiaClientAssembly = System.Reflection.Assembly.Load("UIAutomationClient");
-      var wbase = System.Reflection.Assembly.Load("WindowsBase");
-      var aeType = uiaClientAssembly.GetType("System.Windows.Automation.AutomationElement");
-      uiaFromPoint = aeType.GetMethod("FromPoint");
-      uiaCurrent   = aeType.GetProperty("Current");
-      uiaPointType = wbase.GetType("System.Windows.Point");
-    } catch { }
-  }
-
-  private static void GetUiaElement(int x, int y, out string label, out string role, out string value) {
-    label = ""; role = ""; value = "";
-    if (uiaFromPoint == null || uiaPointType == null) return;
-    try {
-      var pt      = Activator.CreateInstance(uiaPointType, (double)x, (double)y);
-      var element = uiaFromPoint.Invoke(null, new object[] { pt });
-      if (element == null) return;
-      var current = uiaCurrent.GetValue(element);
-      var ct      = current.GetType();
-      label = ct.GetProperty("Name")?.GetValue(current) as string ?? "";
-      role  = ct.GetProperty("LocalizedControlType")?.GetValue(current) as string ?? "";
-      // Try to read the element's current value (text box contents etc.).
-      try {
-        var vpType    = uiaClientAssembly.GetType("System.Windows.Automation.ValuePattern");
-        var vpPatternId = vpType?.GetField("Pattern")?.GetValue(null);
-        if (vpPatternId != null) {
-          var aeType   = uiaClientAssembly.GetType("System.Windows.Automation.AutomationElement");
-          var tryGet   = aeType.GetMethod("TryGetCurrentPattern",
-                           new System.Type[] { vpPatternId.GetType(), typeof(object).MakeByRefType() });
-          if (tryGet != null) {
-            object[] args = new object[] { vpPatternId, null };
-            if ((bool)tryGet.Invoke(element, args) && args[1] != null) {
-              var curr = args[1].GetType().GetProperty("Current")?.GetValue(args[1]);
-              value = curr?.GetType().GetProperty("Value")?.GetValue(curr) as string ?? "";
-            }
-          }
-        }
-      } catch { }
-    } catch { }
-  }
-
-  // Background thread: enriches each click with UIAutomation element info, then
-  // emits CTX + ELEM (optional) + CLICK as an atomic batch.
-  private static void ClickProcessorLoop() {
-    TryLoadUia();
-    while (true) {
-      clickSignal.WaitOne();
-      PendingClick click;
-      while (pendingClicks.TryDequeue(out click)) {
-        string label = "", role = "", val = "";
-        // Run UIAutomation on a separate thread so we can impose a timeout.
-        // 300 ms is enough for most apps; if UIA is slow we skip element enrichment
-        // but still emit the click (no steps are lost).
-        string[] r = new string[] { "", "", "" };
-        var t = new Thread(() => {
-          GetUiaElement(click.x, click.y, out r[0], out r[1], out r[2]);
-        });
-        t.IsBackground = true;
-        t.Start();
-        if (t.Join(300)) { label = r[0]; role = r[1]; val = r[2]; }
-        // Emit window context (always), element info (when available), then click.
-        queue.Enqueue("CTX " + B64(click.wTitle) + " " + B64(click.wApp) + " " + click.ts);
-        if (label.Length > 0 || role.Length > 0) {
-          queue.Enqueue("ELEM " + B64(label) + " " + B64(role) + " " + B64(val) + " " + click.ts);
-        }
-        queue.Enqueue("CLICK " + click.x + " " + click.y + " " + click.button + " " + click.ts);
-        signal.Set();
-      }
-    }
-  }
-
   [StructLayout(LayoutKind.Sequential)]
   private struct POINT {
     public int x;
@@ -1090,10 +997,6 @@ public static class SFHook {
     writer.IsBackground = true;
     writer.Start();
 
-    Thread clickProcessor = new Thread(ClickProcessorLoop);
-    clickProcessor.IsBackground = true;
-    clickProcessor.Start();
-
     hook = SetWindowsHookEx(WH_MOUSE_LL, proc, GetModuleHandle(null), 0);
     if (hook == IntPtr.Zero) {
       throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
@@ -1132,12 +1035,14 @@ public static class SFHook {
       if (button != null) {
         MSLLHOOKSTRUCT data = (MSLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(MSLLHOOKSTRUCT));
         long unixMs = DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond - UnixEpochMilliseconds;
-        // Capture window title synchronously (fast Win32, safe in hook callback).
-        // UIAutomation element lookup runs on the background ClickProcessorLoop thread.
-        string wTitle = "", wApp = "";
-        try { wTitle = GetFwTitle(); wApp = GetFwApp(); } catch { }
-        pendingClicks.Enqueue(new PendingClick { x = data.pt.x, y = data.pt.y, button = button, ts = unixMs, wTitle = wTitle, wApp = wApp });
-        clickSignal.Set();
+        // Capture window context while the user's app is still in foreground.
+        // GetForegroundWindow is synchronous and fast (no IPC overhead).
+        try {
+          string t = GetFwTitle(), a = GetFwApp();
+          queue.Enqueue("CTX " + B64(t) + " " + B64(a) + " " + unixMs);
+        } catch { }
+        queue.Enqueue("CLICK " + data.pt.x + " " + data.pt.y + " " + button + " " + unixMs);
+        signal.Set();
       }
     }
     return CallNextHookEx(hook, nCode, wParam, lParam);
@@ -1378,26 +1283,14 @@ public static class SFHook {
           this.onKeyboardEvent('CHAR', Number(charM[1]), Number(charM[2]));
           continue;
         }
-        // CTX always arrives just before its paired ELEM+CLICK from the same background thread batch.
-        const ctxM = /^CTX\s+(\S+)\s+(\S+)\s+(\d+)$/.exec(trimmed);
+        // CTX is emitted just before its paired CLICK from MouseHookCallback.
+        const ctxM = /^CTX\s+(\S+)\s+(\S+)\s+\d+$/.exec(trimmed);
         if (ctxM) {
           const decode = s => s === '-' ? '' : Buffer.from(s, 'base64').toString('utf8');
           this._pendingWindowContext = {
             windowTitle: decode(ctxM[1]),
             appName: decode(ctxM[2]),
-            ts: Number(ctxM[3]),
           };
-          continue;
-        }
-        // ELEM carries UIAutomation element info for the same click as the preceding CTX.
-        const elemM = /^ELEM\s+(\S+)\s+(\S+)\s+(\S+)\s+(\d+)$/.exec(trimmed);
-        if (elemM) {
-          const decode = s => s === '-' ? '' : Buffer.from(s, 'base64').toString('utf8');
-          if (this._pendingWindowContext && this._pendingWindowContext.ts === Number(elemM[4])) {
-            this._pendingWindowContext.elementLabel = decode(elemM[1]);
-            this._pendingWindowContext.elementRole  = decode(elemM[2]);
-            this._pendingWindowContext.elementValue = decode(elemM[3]);
-          }
           continue;
         }
       }

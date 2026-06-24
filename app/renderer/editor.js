@@ -219,7 +219,49 @@ class GuideEditor {
   }
 
   async generateAllTextFieldsWithAi(button = null) {
-    return this.runAiGeneration('all', { button });
+    if (!this.steps.length) {
+      this.onToast('No steps to generate.', { error: true });
+      return;
+    }
+    if (!this.isAiEnabled()) {
+      this.onToast('Enable AI in Settings first.', { error: true });
+      return;
+    }
+    if (this.pendingSave) await this.flushStep();
+    if (button) setButtonLoading(button, true, 'Generating…');
+    let done = 0;
+    let failed = 0;
+    const total = this.steps.length;
+    try {
+      for (const step of this.steps) {
+        this.onToast(`AI: filling step ${done + 1} of ${total}…`);
+        try {
+          const result = await api.ai.fillStep({
+            guideId: this.guideId,
+            stepId: step.stepId,
+            target: 'all',
+          });
+          if (result?.ok) {
+            done++;
+            // Keep the in-memory steps list fresh so subsequent steps see updated guide context.
+            const idx = this.steps.findIndex((s) => s.stepId === step.stepId);
+            if (idx >= 0) this.steps[idx] = result.step;
+          } else {
+            failed++;
+          }
+        } catch {
+          failed++;
+        }
+      }
+      // Reload the currently-visible step so the editor reflects its new text.
+      if (this.selectedStepId) await this.reload(this.selectedStepId);
+      const msg = failed
+        ? `AI filled ${done} step${done === 1 ? '' : 's'} (${failed} failed).`
+        : `AI filled all ${done} step${done === 1 ? '' : 's'}.`;
+      this.onToast(msg, failed ? { error: true } : undefined);
+    } finally {
+      if (button) setButtonLoading(button, false);
+    }
   }
 
   async generateBlockWithAi(kind, block, button = null) {

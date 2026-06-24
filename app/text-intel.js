@@ -2,7 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { execFileSync } = require('node:child_process');
+const { execFileSync, execFile } = require('node:child_process');
 
 const {
   DEFAULT_CAPTURE_TITLES,
@@ -170,7 +170,7 @@ class TextIntelService {
     return { appName: '', windowTitle: '' };
   }
 
-  collectWindowsWindowContext(osPoint = null) {
+  async collectWindowsWindowContext(osPoint = null) {
     const hasPoint = osPoint && Number.isFinite(osPoint.x) && Number.isFinite(osPoint.y);
     const clickX = hasPoint ? Number(osPoint.x) : 0;
     const clickY = hasPoint ? Number(osPoint.y) : 0;
@@ -231,12 +231,17 @@ public static class Win32 {
       };
       $out | ConvertTo-Json -Compress;
     `;
-    const result = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-      timeout: 1200,
-    }).trim();
-    return JSON.parse(result || '{}');
+    return new Promise(resolve => {
+      execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script], {
+        encoding: 'utf8',
+        timeout: 4000,
+        windowsHide: true,
+      }, (err, stdout) => {
+        if (err) { resolve({}); return; }
+        try { resolve(JSON.parse(stdout.trim() || '{}')); }
+        catch { resolve({}); }
+      });
+    });
   }
 
   collectMacWindowContext() {
@@ -295,8 +300,13 @@ public static class Win32 {
     const keyContext = clickMeta?.keyContext || {};
     const recentTyped = keyContext.recentTyped || '';
     const recentShortcut = keyContext.recentShortcut || '';
+    // Use window context pre-captured by the click watcher when available.
+    // This avoids a costly PowerShell cold-start (1–3 s) on every capture.
+    const fastContext = clickMeta?.windowContext || null;
     const [metadata, ocr] = await Promise.all([
-      this.collectForegroundWindowContext(clickMeta?.osPoint || null),
+      fastContext
+        ? Promise.resolve(fastContext)
+        : this.collectForegroundWindowContext(clickMeta?.osPoint || null),
       this.ocrAroundClick(frame, clickPos),
     ]);
     const title = buildCaptureTitle({ mode, metadata, ocrText: ocr.text, recentTyped, recentShortcut });

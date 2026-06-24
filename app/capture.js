@@ -139,6 +139,7 @@ class CaptureService {
     this._keyBuffer = '';     // printable chars typed since last capture
     this._lastShortcut = '';  // last Ctrl+X / Alt+X combination
     this._keyLastAt = 0;      // timestamp of last key event
+    this._lastWindowContext = null; // last CTX event from the click watcher
     this.clickQueue = Promise.resolve();
     this.frameLoopInFlight = false;
     this.frameLoopGrabStartedAt = null;
@@ -920,6 +921,58 @@ public static class SFHook {
   [DllImport("kernel32.dll")]
   private static extern bool SetPriorityClass(IntPtr hProcess, uint dwPriorityClass);
 
+  [DllImport("user32.dll")]
+  private static extern IntPtr GetForegroundWindow();
+
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+  private static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder text, int count);
+
+  [DllImport("user32.dll")]
+  private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+
+  [DllImport("kernel32.dll", SetLastError = true)]
+  private static extern IntPtr OpenProcess(uint processAccess, bool bInheritHandle, uint processId);
+
+  [DllImport("kernel32.dll", SetLastError = true)]
+  private static extern bool CloseHandle(IntPtr hObject);
+
+  [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+  private static extern bool QueryFullProcessImageName(IntPtr hProcess, uint dwFlags, System.Text.StringBuilder lpExeName, ref uint lpdwSize);
+
+  private static string GetFwTitle() {
+    try {
+      IntPtr hwnd = GetForegroundWindow();
+      if (hwnd == IntPtr.Zero) return "";
+      var sb = new System.Text.StringBuilder(512);
+      GetWindowText(hwnd, sb, sb.Capacity);
+      return sb.ToString();
+    } catch { return ""; }
+  }
+
+  private static string GetFwApp() {
+    try {
+      IntPtr hwnd = GetForegroundWindow();
+      if (hwnd == IntPtr.Zero) return "";
+      uint pid = 0;
+      GetWindowThreadProcessId(hwnd, out pid);
+      if (pid == 0) return "";
+      IntPtr hProc = OpenProcess(0x1000u, false, pid);
+      if (hProc == IntPtr.Zero) return "";
+      var sb = new System.Text.StringBuilder(260);
+      uint sz = (uint)sb.Capacity;
+      QueryFullProcessImageName(hProc, 0u, sb, ref sz);
+      CloseHandle(hProc);
+      string path = sb.ToString();
+      return string.IsNullOrEmpty(path) ? "" : System.IO.Path.GetFileNameWithoutExtension(path);
+    } catch { return ""; }
+  }
+
+  // Base64-encodes a string for safe line-protocol transmission; "-" for empty.
+  private static string B64(string s) {
+    if (string.IsNullOrEmpty(s)) return "-";
+    try { return Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(s)); } catch { return "-"; }
+  }
+
   // Force this process to run at full CPU speed regardless of the power plan,
   // so the mouse-hook callback never trips LowLevelHooksTimeout and clicks
   // keep being delivered while the laptop is in eco / power-saving mode.
@@ -982,6 +1035,12 @@ public static class SFHook {
       if (button != null) {
         MSLLHOOKSTRUCT data = (MSLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(MSLLHOOKSTRUCT));
         long unixMs = DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond - UnixEpochMilliseconds;
+        // Capture window context while the user's app is still in foreground.
+        // GetForegroundWindow is synchronous and fast (no IPC overhead).
+        try {
+          string t = GetFwTitle(), a = GetFwApp();
+          queue.Enqueue("CTX " + B64(t) + " " + B64(a) + " " + unixMs);
+        } catch { }
         queue.Enqueue("CLICK " + data.pt.x + " " + data.pt.y + " " + button + " " + unixMs);
         signal.Set();
       }
@@ -1222,6 +1281,15 @@ public static class SFHook {
         const charM = /^CHAR\s+(\d+)\s+(\d+)\s*$/.exec(trimmed);
         if (charM) {
           this.onKeyboardEvent('CHAR', Number(charM[1]), Number(charM[2]));
+          continue;
+        }
+        const ctxM = /^CTX\s+(\S+)\s+(\S+)\s+\d+$/.exec(trimmed);
+        if (ctxM) {
+          const decode = s => s === '-' ? '' : Buffer.from(s, 'base64').toString('utf8');
+          this._lastWindowContext = {
+            windowTitle: decode(ctxM[1]),
+            appName: decode(ctxM[2]),
+          };
         }
       }
     }
@@ -1401,6 +1469,10 @@ public static class SFHook {
     }
     // Snapshot keyboard context accumulated since the last capture.
     clickMeta.keyContext = this.snapshotKeyContext();
+    // Attach the window context emitted by the click watcher alongside the click.
+    if (this._lastWindowContext) {
+      clickMeta.windowContext = this._lastWindowContext;
+    }
     if (this.session && !this.session.paused && !this.userIsInApp()) {
       // The guide id pins the click to its recording so it can still be
       // stored if the session stops while this click waits in the queue.

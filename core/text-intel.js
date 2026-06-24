@@ -57,6 +57,19 @@ const BROWSER_NAME_PHRASES = new Set([
   'vivaldi',
 ]);
 
+// Known search engine page title suffixes (what appears after the query in the window title).
+const SEARCH_ENGINE_PAGE_NAMES = new Set([
+  'google search',
+  'google',
+  'bing',
+  'duckduckgo',
+  'yahoo search',
+  'yahoo',
+  'startpage',
+  'ecosia',
+  'brave search',
+]);
+
 const ACTION_PREFIXES = [
   'click',
   'select',
@@ -155,7 +168,32 @@ function splitTitleFragments(text) {
 function candidateWords(text) {
   const clean = normalizeWhitespace(text);
   if (!clean) return [];
-  return clean.split(/\s+/).filter(Boolean);
+  // Exclude standalone punctuation tokens (e.g. "|" in "Oracle | Cloud...") from word count.
+  return clean.split(/\s+/).filter((w) => /[a-zA-Z0-9]/.test(w));
+}
+
+// Remove trailing "- Google Chrome", "| Firefox", etc. from a browser window title,
+// leaving just the page title portion: "oracle - Google Search - Google Chrome" → "oracle - Google Search".
+function stripBrowserNameSuffix(text) {
+  let clean = normalizeWhitespace(text);
+  for (const name of BROWSER_NAME_PHRASES) {
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    clean = clean.replace(new RegExp(`\\s*[-–—·|•]\\s*${escaped}\\s*$`, 'i'), '').trim();
+  }
+  return clean;
+}
+
+// Detect "[query] - Google Search" or "[query] - Bing" patterns in a (already-stripped) page title.
+// Returns the query word(s) if found, otherwise ''.
+function extractSearchQuery(pageTitle) {
+  const frags = splitTitleFragments(pageTitle);
+  if (frags.length < 2) return '';
+  const last = frags[frags.length - 1].toLowerCase();
+  if (SEARCH_ENGINE_PAGE_NAMES.has(last)) {
+    const query = frags[0];
+    if (query && isUsefulTitleCandidate(query, { source: 'ocr' })) return query;
+  }
+  return '';
 }
 
 function scoreCandidate(text, { source = 'ocr' } = {}) {
@@ -180,18 +218,24 @@ function scoreCandidate(text, { source = 'ocr' } = {}) {
 function pickBestOcrPhrase(ocrText) {
   const text = normalizeWhitespace(ocrText);
   if (!text) return '';
-  const parts = text
-    .split(/\n+/)
-    .flatMap((line) => splitTitleFragments(line))
-    .filter((line) => isUsefulTitleCandidate(line, { source: 'ocr' }));
-  if (!parts.length) return '';
   let best = '';
   let bestScore = -Infinity;
-  for (const part of parts) {
-    const score = scoreCandidate(part, { source: 'ocr' });
-    if (score > bestScore) {
-      best = part;
-      bestScore = score;
+  for (const rawLine of text.split(/\n+/)) {
+    const line = normalizeWhitespace(rawLine);
+    if (!line) continue;
+    // For short lines (link text, button labels) try the FULL line first before splitting.
+    // This preserves "Oracle | Cloud Applications and Cloud Platform" instead of splitting on |.
+    // Full-line bonus (+35) nudges it ahead of its own fragments.
+    const candidates = line.length <= 80
+      ? [[line, 35], ...splitTitleFragments(line).map((f) => [f, 0])]
+      : splitTitleFragments(line).map((f) => [f, 0]);
+    for (const [part, bonus] of candidates) {
+      if (!isUsefulTitleCandidate(part, { source: 'ocr' })) continue;
+      const score = scoreCandidate(part, { source: 'ocr' }) + bonus;
+      if (score > bestScore) {
+        best = part;
+        bestScore = score;
+      }
     }
   }
   return best;
@@ -212,13 +256,16 @@ function isDirectiveTitle(text) {
 function verbForElementRole(role) {
   const clean = normalizeWhitespace(role).toLowerCase();
   if (!clean) return null;
-  if (/(tab|menu item|menuitem|option|list item|tree item|radio button|dropdown list|combo box option)/.test(clean)) {
+  if (/(tab|menu item|menuitem|option|list item|tree item|radio button|dropdown list|combo box option|hyperlink|link)/.test(clean)) {
     return 'Select';
   }
-  if (/(button|check box|checkbox|toggle button|switch|link|item|command)/.test(clean)) {
+  if (/(search box|searchbox|search field|search bar|search input)/.test(clean)) {
+    return 'Search for';
+  }
+  if (/(button|check box|checkbox|toggle button|switch|item|command)/.test(clean)) {
     return 'Click';
   }
-  if (/(text field|edit|search box|combo box|textbox|text box|input|field)/.test(clean)) {
+  if (/(text field|edit|combo box|textbox|text box|input|field)/.test(clean)) {
     return 'Click';
   }
   return null;
@@ -270,11 +317,22 @@ function buildCaptureTitle({ mode = 'fullscreen', metadata = {}, ocrText = '' } 
   const elementPhrase = pickBestTitleFragment(metadata.elementLabel, { source: 'element', metadata });
   if (elementPhrase) return elementPhrase;
 
-  const windowPhrase = pickBestTitleFragment(metadata.windowTitle, { source: 'window', metadata });
-  if (windowPhrase) return windowPhrase;
+  // Strip the browser name suffix before processing window titles so that
+  // "oracle - Google Search - Google Chrome" becomes "oracle - Google Search"
+  // and "Oracle | Cloud Applications - Google Chrome" becomes just the page title.
+  const rawWindowTitle = metadata.windowTitle || '';
+  const strippedWindowTitle = stripBrowserNameSuffix(rawWindowTitle);
+  if (strippedWindowTitle) {
+    // Detect "[query] - Google Search" → "Search for oracle"
+    const searchQuery = extractSearchQuery(strippedWindowTitle);
+    if (searchQuery) return `Search for ${sentenceCase(searchQuery)}`;
+    // Use the page title (now free of browser name noise).
+    const windowPhrase = pickBestTitleFragment(strippedWindowTitle, { source: 'window', metadata });
+    if (windowPhrase) return windowPhrase;
+  }
 
   const appPhrase = pickBestTitleFragment(metadata.appName, { source: 'app', metadata });
-  if (appPhrase && appPhrase !== windowPhrase) return appPhrase;
+  if (appPhrase) return appPhrase;
 
   return DEFAULT_CAPTURE_TITLES[mode] || 'Capture';
 }

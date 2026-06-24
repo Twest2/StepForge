@@ -86,6 +86,60 @@ test('capture titles fall back to OCR when metadata is absent', () => {
   assert.equal(title, 'Click Save changes');
 });
 
+test('browser window title strips browser name and falls back to page title', () => {
+  // OCR fails; browser window title should give something useful, not "Screen capture".
+  const title = buildCaptureTitle({
+    mode: 'fullscreen',
+    metadata: {
+      windowTitle: 'Oracle | Cloud Applications and Cloud Platform - Google Chrome',
+      appName: 'chrome',
+    },
+    ocrText: '',
+  });
+  // Stripped title "Oracle | Cloud Applications and Cloud Platform" → best fragment
+  assert.ok(title !== 'Screen capture', `Expected smart title, got: ${title}`);
+  assert.ok(title.toLowerCase().includes('oracle') || title.toLowerCase().includes('cloud'), `Expected oracle/cloud in title, got: ${title}`);
+});
+
+test('search query is extracted from browser window title pattern', () => {
+  const title = buildCaptureTitle({
+    mode: 'fullscreen',
+    metadata: {
+      windowTitle: 'oracle - Google Search - Google Chrome',
+      appName: 'chrome',
+    },
+    ocrText: '',
+  });
+  assert.equal(title, 'Search for Oracle');
+});
+
+test('full link text with pipe separator is preserved in OCR phrases', () => {
+  const title = buildCaptureTitle({
+    mode: 'fullscreen',
+    metadata: { elementRole: 'hyperlink' },
+    ocrText: 'Oracle | Cloud Applications and Cloud Platform',
+  });
+  assert.equal(title, 'Select Oracle | Cloud Applications and Cloud Platform');
+});
+
+test('link element role uses Select verb', () => {
+  const title = buildCaptureTitle({
+    mode: 'fullscreen',
+    metadata: { elementLabel: 'Sign in', elementRole: 'hyperlink' },
+    ocrText: '',
+  });
+  assert.equal(title, 'Select Sign in');
+});
+
+test('search box element role uses Search for verb', () => {
+  const title = buildCaptureTitle({
+    mode: 'fullscreen',
+    metadata: { elementLabel: 'oracle', elementRole: 'search box' },
+    ocrText: '',
+  });
+  assert.equal(title, 'Search for Oracle');
+});
+
 test('ai prompts include the deterministic OCR-backed title candidate', () => {
   const { prompt } = buildAiPrompt({
     captureContext: {

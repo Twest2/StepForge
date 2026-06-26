@@ -8,7 +8,7 @@
   "private": true,
   "scripts": {
     "start": "node scripts/start-electron.js",
-    "test": "node --test \"tests/unit/*.test.js\"",
+    "test": "node scripts/run-unit-tests.js",
     "sample": "node scripts/make-sample-guide.js",
     "package:windows": "node scripts/package-windows.js",
     "build": "bash scripts/build-release.sh",

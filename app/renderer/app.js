@@ -263,15 +263,26 @@ class StepForgeApp {
   updateCaptureState(state) {
     this.captureState = state || { active: false };
     clearNode(this.captureStatus);
-    // The capture bar only makes sense alongside the editor it's recording
-    // into — hide it everywhere else (e.g. the library) even if a session
-    // is still active in the background.
-    if (!this.captureState.active || this.state.view !== 'editor') {
+    // The capture bar is editor-only — hide it everywhere else (library, welcome).
+    if (this.state.view !== 'editor') {
       this.captureStatus.classList.add('hidden');
       return;
     }
     this.captureStatus.classList.remove('hidden');
     const s = this.captureState;
+
+    // No active session: show a button to start a new one for the open guide.
+    if (!s.active) {
+      this.captureStatus.append(
+        el('span', {}, 'Recording - stopped'),
+        el('button', {
+          type: 'button',
+          onClick: () => this.armCaptureSession(this.editor.guideId),
+        }, 'New recording'),
+      );
+      return;
+    }
+
     const send = (payload) => api.capture.session(payload).then((next) => this.updateCaptureState(next));
 
     // What is currently triggering captures, so the user knows what to do.

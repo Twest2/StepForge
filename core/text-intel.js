@@ -673,6 +673,7 @@ function buildAiPrompt({
   step = null,
   captureContext = null,
   block = null,
+  screenshotAttached = false,
 } = {}) {
   const hasDraftTitle = step && !isPlaceholderTitle(step.title);
   const hasDraftDesc = step && Boolean(htmlToText(step.descriptionHtml || ''));
@@ -717,6 +718,7 @@ function buildAiPrompt({
       (!hasDraftTitle || target === 'description') && captureContext.titleCandidate
         ? `Suggested title: ${captureContext.titleCandidate}` : null,
     ] : []),
+    screenshotAttached ? 'Screenshot: attached to this request.' : null,
     draftTitleLine,
     draftDescLine,
   ].filter(Boolean);
@@ -770,6 +772,9 @@ function buildAiPrompt({
     richContext
       ? '- Use the OCR text, window title, app name, and element info to make the documentation specific.'
       : '- Context is limited. Use the app name or window title if available; generate a reasonable action title.',
+    screenshotAttached
+      ? '- A screenshot is attached. Use it together with the OCR and metadata to resolve visual details, but do not mention the screenshot in the output.'
+      : '- No screenshot is attached. Rely on OCR, the window title, app name, and element info.',
     '- Do NOT generate blocks that describe the technical capture process or mention OCR.',
     '- Do NOT invent details not supported by the capture context.',
     '- If the target is one block, only rewrite that block.',

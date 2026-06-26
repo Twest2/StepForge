@@ -35,6 +35,15 @@ function clamp(v, min, max) {
   return Math.min(max, Math.max(min, v));
 }
 
+function modelLooksVisionCapable(model) {
+  const clean = normalizeWhitespace(model).toLowerCase();
+  if (!clean) return false;
+  return clean.includes('vision')
+    || clean.includes('llava')
+    || clean.includes('gemma4')
+    || /(^|[^a-z0-9])qwen[23](?:\.[0-9]+)?vl([^a-z0-9]|$)/.test(clean);
+}
+
 let createWorkerImpl = null;
 function loadCreateWorker() {
   if (createWorkerImpl) return createWorkerImpl;
@@ -64,6 +73,7 @@ class TextIntelService {
     this.workerPromise = null;
     this.workerQueue = Promise.resolve();
     this.ocrDataDir = path.join(dataDir, 'ocr', 'eng');
+    this.modelCapabilityCache = new Map();
   }
 
   async shutdown() {
@@ -372,13 +382,61 @@ public static class Win32 {
     const data = await res.json();
     const models = Array.isArray(data?.models) ? data.models.map((model) => model.name).filter(Boolean) : [];
     const installed = config.ollama.model ? models.includes(config.ollama.model) : false;
+    const vision = installed ? await this.modelSupportsVision({
+      host: config.ollama.host,
+      model: config.ollama.model,
+    }) : false;
     return {
       ok: true,
       installed,
+      vision,
       models,
       host: config.ollama.host,
       model: config.ollama.model,
     };
+  }
+
+  async modelCapabilities({ host, model }) {
+    const normalizedHost = normalizeOllamaHost(host);
+    const normalizedModel = normalizeWhitespace(model);
+    if (!normalizedHost || !normalizedModel) return [];
+    const cacheKey = `${normalizedHost}::${normalizedModel}`;
+    if (this.modelCapabilityCache.has(cacheKey)) {
+      return this.modelCapabilityCache.get(cacheKey);
+    }
+    const url = new URL('/api/show', `${normalizedHost.replace(/\/+$/, '')}/`);
+    let capabilities = [];
+    try {
+      const response = await this.fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: normalizedModel }),
+      });
+      if (response.ok) {
+        const payload = await response.json();
+        capabilities = Array.isArray(payload?.capabilities)
+          ? payload.capabilities.map((cap) => normalizeWhitespace(cap).toLowerCase()).filter(Boolean)
+          : [];
+      }
+    } catch {
+      capabilities = [];
+    }
+    if (!capabilities.includes('vision') && modelLooksVisionCapable(normalizedModel)) {
+      capabilities = [...capabilities, 'vision'];
+    }
+    this.modelCapabilityCache.set(cacheKey, capabilities);
+    return capabilities;
+  }
+
+  async modelSupportsVision({ host, model }) {
+    const capabilities = await this.modelCapabilities({ host, model });
+    return capabilities.includes('vision');
+  }
+
+  readStepImageBase64(guideId, stepId) {
+    const imagePath = this.store.stepImagePath(guideId, stepId, 'working') || this.store.stepImagePath(guideId, stepId, 'original');
+    if (!imagePath || !fs.existsSync(imagePath)) return '';
+    return fs.readFileSync(imagePath).toString('base64');
   }
 
   async callOllamaText({ host, model, prompt, systemPrompt }) {
@@ -403,8 +461,12 @@ public static class Win32 {
     return content.trim();
   }
 
-  async callOllama({ host, model, prompt, systemPrompt }) {
+  async callOllama({ host, model, prompt, systemPrompt, images = [] }) {
     const url = new URL('/api/chat', `${host.replace(/\/+$/, '')}/`);
+    const userMessage = { role: 'user', content: prompt };
+    if (Array.isArray(images) && images.length) {
+      userMessage.images = images;
+    }
     const response = await this.fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -414,7 +476,7 @@ public static class Win32 {
         format: 'json',
         messages: [
           { role: 'system', content: systemPrompt },
-          { role: 'user', content: prompt },
+          userMessage,
         ],
         options: {
           temperature: 0.2,
@@ -459,6 +521,14 @@ public static class Win32 {
       if (blockId && target === 'block' && !currentBlock) {
         return { ok: false, reason: 'Block not found.' };
       }
+
+      const screenshotBase64 = step.image ? this.readStepImageBase64(guideId, stepId) : '';
+      const screenshotAttached = Boolean(screenshotBase64)
+        ? await this.modelSupportsVision({
+          host: config.ollama.host,
+          model: config.ollama.model,
+        })
+        : false;
 
       let captureContext = null;
       // Use stored capture metadata when available (best context, from capture time).
@@ -514,6 +584,7 @@ public static class Win32 {
         step,
         captureContext,
         block: currentBlock,
+        screenshotAttached,
       });
 
       const raw = await this.callOllama({
@@ -521,6 +592,7 @@ public static class Win32 {
         model: config.ollama.model,
         prompt,
         systemPrompt,
+        images: screenshotAttached ? [screenshotBase64] : [],
       });
       const patch = normalizeAiPatch(raw);
       const updated = applyAiPatchToStep(step, patch, { target, blockId });

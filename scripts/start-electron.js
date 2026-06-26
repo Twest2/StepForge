@@ -14,7 +14,13 @@ try {
 }
 const env = sanitizeElectronEnv();
 
-const child = spawn(electronPath, ['.'], {
+// On Linux/Wayland, enable PipeWire-based screen capture so desktopCapturer
+// can go through the XDG Desktop Portal when XWayland isn't the only option.
+const extraArgs = process.platform === 'linux'
+  ? ['--enable-features=WebRTCPipeWireCapturer']
+  : [];
+
+const child = spawn(electronPath, [...extraArgs, '.'], {
   stdio: 'inherit',
   env,
   windowsHide: false,

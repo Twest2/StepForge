@@ -107,6 +107,15 @@ function hasBinary(name) {
   }
 }
 
+// On Wayland, xinput only sees XWayland (X11-bridge) events — native Wayland
+// app clicks are delivered via the Wayland protocol and never reach xinput.
+// Treating it as "available" would leave the session with no click capture AND
+// no interval fallback, so zero steps get captured.
+function isWayland() {
+  return process.platform === 'linux'
+    && (process.env.XDG_SESSION_TYPE === 'wayland' || Boolean(process.env.WAYLAND_DISPLAY));
+}
+
 class CaptureService {
   constructor({
     store,
@@ -184,7 +193,11 @@ class CaptureService {
 
   clickCaptureAvailable() {
     if (this._clickAvail === undefined) {
-      this._clickAvail = process.platform === 'win32' || (process.platform === 'linux' && hasBinary('xinput'));
+      // Wayland: xinput connects via XWayland and only sees X11-bridge clicks.
+      // Native Wayland app events are invisible to it, so we can't reliably
+      // detect clicks — disable this path and fall back to interval capture.
+      this._clickAvail = process.platform === 'win32'
+        || (process.platform === 'linux' && !isWayland() && hasBinary('xinput'));
     }
     return this._clickAvail;
   }
@@ -300,6 +313,7 @@ class CaptureService {
   showWindow() {
     const win = this.getWindow();
     if (win && !win.isDestroyed()) {
+      if (win.isMinimized()) win.restore();
       win.show();
       win.focus();
     }
@@ -383,7 +397,16 @@ class CaptureService {
         if (!this.session || this.session.paused) { this.warmingUp = false; return; }
       }
       if (wantHide && win && !win.isDestroyed() && win.isVisible()) {
-        win.hide();
+        // On Linux without a working system tray (common on Wayland GNOME
+        // without AppIndicator) the user has no way to bring back a hidden
+        // window mid-session. Minimize instead: the window disappears from
+        // screen (so it won't appear in fullscreen screenshots) but remains
+        // accessible via the taskbar.
+        if (process.platform === 'linux' && (!this.tray || this.tray.isDestroyed())) {
+          win.minimize();
+        } else {
+          win.hide();
+        }
         // Let a couple of frames of the now-unobscured screen land before
         // the user's first click, so that frame shows their work, not the
         // app window that was just dismissed.
@@ -775,13 +798,14 @@ class CaptureService {
     try {
       this.clickWatcherBuf = '';
       this.linuxEvent = null;
-      if (process.platform === 'linux' && hasBinary('xinput')) {
+      if (process.platform === 'linux' && !isWayland() && hasBinary('xinput')) {
         // Stream raw button events from the X server; one capture per press.
         // xinput block-buffers stdout when piped, so a press event can sit
         // in its buffer until later motion events flush it — by then the
         // cursor read in onOsClick lands where the mouse moved *after* the
         // click. stdbuf -oL forces line-buffering so events (and the cursor
         // read) line up with the actual click instant.
+        // (Skipped on Wayland: xinput only sees XWayland events — see isWayland.)
         const argv = hasBinary('stdbuf')
           ? ['stdbuf', '-oL', 'xinput', 'test-xi2', '--root']
           : ['xinput', 'test-xi2', '--root'];

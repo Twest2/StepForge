@@ -312,6 +312,11 @@ function showSettingsDialog({
     const previewCount = makeInput(settings.exports?.previewStepCount ?? 3, 'number', { min: 1, step: 1 });
     const openFolder = el('input', { type: 'checkbox', checked: Boolean(settings.exports?.openFolderAfterExport) });
     const captureOutside = el('input', { type: 'checkbox', checked: Boolean(settings.capture?.captureOutsideClicks) });
+    const fallbackTrigger = makeSelect(settings.capture?.fallbackTrigger || 'interval', [
+      { value: 'interval', label: 'Timed interval' },
+      { value: 'hotkey', label: 'Hotkey only' },
+    ]);
+    const autoIntervalSec = makeInput(settings.capture?.autoIntervalSec ?? 5, 'number', { min: 1, step: 1 });
     const confirmSimple = el('input', { type: 'checkbox', checked: Boolean(settings.capture?.confirmSimpleCapture) });
     const keepLast = makeInput(settings.backups?.keepLast ?? 10, 'number', { min: 0, step: 1 });
     const aiEnabled = el('input', { type: 'checkbox', checked: Boolean(settings.ai?.enabled) });
@@ -325,6 +330,12 @@ function showSettingsDialog({
       // Keep the last model choice even if the dialog is dismissed without a full save.
       void api.settings.set({ keyPath: 'ai.ollama.model', value: model }).catch(() => {});
     }, 250);
+
+    const syncFallbackUi = () => {
+      autoIntervalSec.disabled = fallbackTrigger.value === 'hotkey';
+    };
+    fallbackTrigger.addEventListener('change', syncFallbackUi);
+    syncFallbackUi();
 
     const updateAiStatus = (message, { error = false } = {}) => {
       aiStatus.textContent = message;
@@ -403,9 +414,14 @@ function showSettingsDialog({
         labeledRow('Delay (ms)', delayMs),
         labeledRow('Click marker', clickMarker),
         labeledRow('Capture outside clicks', captureOutside),
+        labeledRow('When clicks are unavailable', fallbackTrigger),
+        labeledRow('Timer interval (seconds)', autoIntervalSec),
         labeledRow('Confirm simple capture', confirmSimple),
         labeledRow('Capture hotkey', captureHotkey),
         labeledRow('Pause / resume hotkey', pauseHotkey),
+        el('div.muted', {},
+          'Hotkey fallback uses the Capture hotkey. Timer fallback uses the interval above.',
+        ),
       ),
       el('fieldset', {},
         el('legend', {}, 'Editor'),
@@ -455,6 +471,8 @@ function showSettingsDialog({
                 delayMs: Number(delayMs.value || 0),
                 mode: captureMode.value,
                 clickMarker: clickMarker.checked,
+                fallbackTrigger: fallbackTrigger.value === 'hotkey' ? 'hotkey' : 'interval',
+                autoIntervalSec: Math.max(1, Number(autoIntervalSec.value || 5)),
                 hotkeyCapture: captureHotkey.value.trim(),
                 hotkeyPauseResume: pauseHotkey.value.trim(),
                 captureOutsideClicks: captureOutside.checked,

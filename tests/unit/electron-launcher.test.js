@@ -7,6 +7,7 @@ const path = require('node:path');
 
 const {
   buildMissingElectronError,
+  linuxSandboxLaunchArgs,
   repairElectronInstall,
   resolveElectronBinary,
 } = require('../../scripts/electron-launcher');
@@ -170,4 +171,22 @@ test('reports a helpful error when the runtime is missing', (t) => {
   });
   assert.match(message, /Electron could not be started/);
   assert.match(message, /Expected the binary in:/);
+});
+
+test('uses --no-sandbox when the Linux sandbox helper is not root-owned and setuid', () => {
+  const args = linuxSandboxLaunchArgs({
+    electronPath: '/tmp/stepforge/node_modules/electron/dist/electron',
+    platform: 'linux',
+    statSync: () => ({ uid: 1000, mode: 0o100755 }),
+  });
+  assert.deepEqual(args, ['--no-sandbox']);
+});
+
+test('keeps the sandbox enabled when the Linux helper is root-owned and setuid', () => {
+  const args = linuxSandboxLaunchArgs({
+    electronPath: '/tmp/stepforge/node_modules/electron/dist/electron',
+    platform: 'linux',
+    statSync: () => ({ uid: 0, mode: 0o104755 }),
+  });
+  assert.deepEqual(args, []);
 });

@@ -60,6 +60,26 @@ function sanitizeElectronEnv(baseEnv = process.env) {
   return env;
 }
 
+function linuxSandboxLaunchArgs({
+  electronPath,
+  platform = process.platform,
+  statSync = fs.statSync,
+} = {}) {
+  if (platform !== 'linux') return [];
+  if (!electronPath) return ['--no-sandbox'];
+
+  const helperPath = path.join(path.dirname(electronPath), 'chrome-sandbox');
+  try {
+    const stat = statSync(helperPath);
+    const ownedByRoot = stat.uid === 0;
+    const hasSetuid = Boolean(stat.mode & 0o4000);
+    if (ownedByRoot && hasSetuid) return [];
+  } catch {
+    // Missing or unreadable helper: fall back to the unsandboxed launcher.
+  }
+  return ['--no-sandbox'];
+}
+
 function electronBinaryCandidates({ packageRoot, distDir, platform }) {
   const candidatePaths = [];
   const pathHint = packageRoot ? readElectronPathHint(packageRoot) : null;
@@ -292,6 +312,7 @@ module.exports = {
   runNpmRebuild,
   runNpmInstall,
   sanitizeElectronEnv,
+  linuxSandboxLaunchArgs,
   resolveElectronBinary,
   resolveElectronPackageRoot,
   platformBinaryCandidates,

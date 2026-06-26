@@ -46,8 +46,21 @@ fi
 cat > "$WORK_DIR/usr/bin/stepforge" <<'EOF'
 #!/usr/bin/env sh
 APP_DIR=/opt/stepforge
+ELECTRON="$APP_DIR/node_modules/.bin/electron"
+SANDBOX_HELPER="$APP_DIR/node_modules/electron/dist/chrome-sandbox"
 cd "$APP_DIR" || exit 1
-exec "$APP_DIR/node_modules/.bin/electron" "$APP_DIR" "$@"
+if command -v stat >/dev/null 2>&1 && [ -e "$SANDBOX_HELPER" ]; then
+  helper_uid="$(stat -c '%u' "$SANDBOX_HELPER" 2>/dev/null || echo '')"
+  helper_mode="$(stat -c '%a' "$SANDBOX_HELPER" 2>/dev/null || echo '')"
+  if [ "$helper_uid" = "0" ] && [ -n "$helper_mode" ]; then
+    helper_mode_num=$((8#$helper_mode))
+    if [ $((helper_mode_num & 04000)) -ne 0 ]; then
+      exec "$ELECTRON" "$APP_DIR" "$@"
+    fi
+  fi
+fi
+printf '%s\n' '[stepforge] Electron sandbox helper is not configured for this install; starting with --no-sandbox' >&2
+exec "$ELECTRON" --no-sandbox "$APP_DIR" "$@"
 EOF
 chmod 0755 "$WORK_DIR/usr/bin/stepforge"
 

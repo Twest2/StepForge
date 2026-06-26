@@ -122,6 +122,7 @@ class StepForgeApp {
       api.library.trashList(),
     ]);
     this.state.info = info;
+    document.body.classList.toggle('platform-linux', info.platform === 'linux');
     this.state.settings = settings;
     this.state.library = {
       guides: library.guides || [],

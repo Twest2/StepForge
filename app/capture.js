@@ -113,8 +113,13 @@ function hasBinary(name) {
 // Treating it as "available" would leave the session with no click capture AND
 // no interval fallback, so zero steps get captured.
 function isWayland() {
-  return process.platform === 'linux'
-    && (process.env.XDG_SESSION_TYPE === 'wayland' || Boolean(process.env.WAYLAND_DISPLAY));
+  if (process.platform !== 'linux') return false;
+  // XDG_SESSION_TYPE is the authoritative session hint when present. Some
+  // desktops still export WAYLAND_DISPLAY even when the active session is X11,
+  // so only fall back to it when XDG_SESSION_TYPE is unavailable.
+  const sessionType = String(process.env.XDG_SESSION_TYPE || '').toLowerCase();
+  if (sessionType) return sessionType === 'wayland';
+  return Boolean(process.env.WAYLAND_DISPLAY);
 }
 
 // ---- evdev (Linux kernel input) click reader --------------------------------
@@ -263,6 +268,16 @@ class CaptureService {
     return this.settings.get('capture.strictClickFrames') !== false;
   }
 
+  fallbackCaptureTrigger() {
+    const raw = String(this.settings.get('capture.fallbackTrigger') || 'interval').toLowerCase();
+    return raw === 'hotkey' ? 'hotkey' : 'interval';
+  }
+
+  fallbackIntervalSec() {
+    const raw = Number(this.settings.get('capture.autoIntervalSec'));
+    return Number.isFinite(raw) && raw > 0 ? raw : 5;
+  }
+
   clickCaptureAvailable() {
     if (this._clickAvail === undefined) {
       // Three click sources, in order of fidelity:
@@ -296,12 +311,19 @@ class CaptureService {
 
   startSession(guideId, { intervalSec = null } = {}) {
     this.finishSession();
-    // Default trigger: clicks when the platform supports it, otherwise an
-    // interval so a session always produces steps even if the global hotkey
-    // never fires (common under Wayland/WSLg).
+    // Default trigger: clicks when the platform supports it, otherwise the
+    // user-selected fallback (timer or hotkey-only). That keeps Linux from
+    // silently dropping into an unwanted 5-second timer when click capture
+    // is unavailable.
     let interval = intervalSec;
     if (interval == null) {
-      interval = this.clickCaptureAvailable() ? 0 : (this.settings.get('capture.autoIntervalSec') || 5);
+      if (this.clickCaptureAvailable()) {
+        interval = 0;
+      } else if (this.fallbackCaptureTrigger() === 'hotkey') {
+        interval = 0;
+      } else {
+        interval = this.fallbackIntervalSec();
+      }
     }
     // Sessions start paused: nothing hides and no capturing happens until
     // the user explicitly presses "Start recording" in the capture bar, so
@@ -1381,7 +1403,9 @@ public static class SFHook {
     console.error(`[stepforge] click watcher stopped${detail ? `: ${detail}` : ''}`);
     if (!this.session) return;
     if (!this.session.intervalSec) {
-      this.session.intervalSec = this.settings.get('capture.autoIntervalSec') || 5;
+      this.session.intervalSec = this.fallbackCaptureTrigger() === 'hotkey'
+        ? 0
+        : this.fallbackIntervalSec();
       this.applyInterval();
     }
     this.notify('capture:state', this.state());

@@ -65,6 +65,7 @@ test('settings persist, deep-merge with defaults, and store global placeholders'
   assert.equal(s2.get('capture.delayMs'), 1500);
   assert.equal(s2.get('ai.ollama.model'), 'qwen3:0.6b');
   assert.equal(s2.get('capture.clickMarker'), DEFAULT_SETTINGS.capture.clickMarker);
+  assert.equal(s2.get('capture.fallbackTrigger'), DEFAULT_SETTINGS.capture.fallbackTrigger);
   assert.deepEqual(s2.getGlobalPlaceholders(), { Company: 'Acme', Author: 'Tyler' });
 });
 

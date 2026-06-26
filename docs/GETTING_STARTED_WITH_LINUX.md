@@ -97,8 +97,13 @@ captures a screenshot on each click.
 ### Adjusting the timed-capture interval
 
 If you don't enable the `input` group, StepForge captures on a timer. Change the
-interval in **Settings → Capture** (`capture.autoIntervalSec`, default 5
-seconds).
+fallback in **Settings → Capture**:
+
+- `When clicks are unavailable` -> `Hotkey only` to use the Capture hotkey
+  instead of a timer.
+- `When clicks are unavailable` -> `Timed interval`, then set
+  `Timer interval (seconds)` (`capture.autoIntervalSec`, default 5 seconds)
+  if you want timed captures.
 
 ---
 

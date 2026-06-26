@@ -33,6 +33,22 @@ function makeService({ settings: settingsOverrides, screenApi } = {}) {
   });
 }
 
+test('XDG_SESSION_TYPE=x11 wins over a stray WAYLAND_DISPLAY value', () => {
+  const prevSessionType = process.env.XDG_SESSION_TYPE;
+  const prevWaylandDisplay = process.env.WAYLAND_DISPLAY;
+  try {
+    process.env.XDG_SESSION_TYPE = 'x11';
+    process.env.WAYLAND_DISPLAY = 'wayland-0';
+    const service = makeService();
+    assert.equal(service.onWayland(), false);
+  } finally {
+    if (prevSessionType === undefined) delete process.env.XDG_SESSION_TYPE;
+    else process.env.XDG_SESSION_TYPE = prevSessionType;
+    if (prevWaylandDisplay === undefined) delete process.env.WAYLAND_DISPLAY;
+    else process.env.WAYLAND_DISPLAY = prevWaylandDisplay;
+  }
+});
+
 // The raw/regular twin window plus margin: how long a test must wait for a
 // held Linux raw press to fire when no coordinate twin arrives.
 const TWIN_FLUSH_MS = 60;
@@ -838,6 +854,49 @@ test('losing the click watcher mid-session falls back to interval capture', () =
   } finally {
     service.finishSession();
   }
+});
+
+test('losing the click watcher mid-session can fall back to hotkey-only', () => {
+  const service = makeService();
+  service.settings.get = (key) => {
+    if (key === 'capture.fallbackTrigger') return 'hotkey';
+    if (key === 'capture.autoIntervalSec') return 3;
+    return null;
+  };
+  service.session = { guideId: 'guide-loss-hotkey', paused: false, count: 0, intervalSec: 0 };
+  const states = [];
+  service.notify = (channel, payload) => {
+    states.push({ channel, payload });
+  };
+
+  try {
+    service.handleClickWatcherLoss('exited with code 1');
+
+    assert.equal(service.session.intervalSec, 0,
+      'hotkey fallback must not silently start the 5-second timer');
+    assert.equal(service.intervalTimer, null);
+    assert.ok(states.some((s) => s.channel === 'capture:state'));
+  } finally {
+    service.finishSession();
+  }
+});
+
+test('starting a session with hotkey fallback keeps the timer off when clicks are unavailable', () => {
+  const service = makeService();
+  service.clickCaptureAvailable = () => false;
+  service.settings.get = (key) => {
+    if (key === 'capture.fallbackTrigger') return 'hotkey';
+    if (key === 'capture.autoIntervalSec') return 7;
+    if (key === 'capture.captureOutsideClicks') return false;
+    return null;
+  };
+
+  service.startSession('guide-hotkey-fallback');
+
+  assert.equal(service.session.intervalSec, 0);
+  assert.equal(service.state().clickCaptureAvailable, false);
+  assert.equal(service.state().clickCapture, false);
+  service.finishSession();
 });
 
 // ---- strict frame selection -----------------------------------------------------

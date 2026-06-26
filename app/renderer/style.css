@@ -49,6 +49,16 @@ body {
   overflow: hidden;
 }
 
+body.platform-linux button {
+  padding: 5px 11px;
+}
+
+body.platform-linux input,
+body.platform-linux select,
+body.platform-linux textarea {
+  padding: 6px 9px;
+}
+
 *::selection { background: rgba(0, 104, 255, 0.2); }
 
 #app { display: flex; flex-direction: column; height: 100vh; }
@@ -181,6 +191,21 @@ kbd {
   border: 0;
   background: rgba(255, 255, 255, 0.14);
   color: #fff;
+}
+
+body.platform-linux #topbar {
+  height: 52px;
+  gap: 10px;
+  padding: 0 14px;
+}
+
+body.platform-linux #capture-status {
+  padding: 5px 9px;
+  gap: 7px;
+}
+
+body.platform-linux #capture-status button {
+  padding: 2px 7px;
 }
 
 .library, .editor { flex: 1; min-height: 0; display: flex; }

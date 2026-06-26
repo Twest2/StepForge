@@ -47,6 +47,11 @@
   async function startStream(cmd) {
     const key = String(cmd.displayId);
     stopStream(key);
+    const display = cmd.display || {};
+    const scale = display.scaleFactor || 1;
+    const bounds = display.bounds || { width: 1280, height: 720 };
+    const physWidth = Math.round(bounds.width * scale);
+    const physHeight = Math.round(bounds.height * scale);
     const state = {
       displayId: cmd.displayId,
       media: null,
@@ -74,19 +79,25 @@
           video: true,
         });
       } else {
-        // The chromeMediaSource constraint is Electron's bridge from a
-        // desktopCapturer source id to a live media stream. The legacy
-        // `mandatory` wrapper was removed in Electron 29 (Chromium 116+);
-        // constraints must now be flat (no mandatory/optional nesting). This
-        // path works on Windows and X11.
+        // Keep the legacy desktop-capture constraint wrapper here: it binds
+        // the stream to the exact desktop source chosen in the main process.
+        // Without it Chromium can treat the request like a normal media
+        // request and pick the default camera device instead.
         state.media = await navigator.mediaDevices.getUserMedia({
           audio: false,
           video: {
-            chromeMediaSource: 'desktop',
-            chromeMediaSourceId: cmd.sourceId,
-            // Sampling cadence is controlled by the setInterval timer, so the
-            // actual capture rate is sampleMs-driven regardless of display
-            // refresh rate. Resolution is driven by the source itself.
+            mandatory: {
+              chromeMediaSource: 'desktop',
+              chromeMediaSourceId: cmd.sourceId,
+              minWidth: physWidth,
+              maxWidth: physWidth,
+              minHeight: physHeight,
+              maxHeight: physHeight,
+              // No maxFrameRate: sampling cadence is controlled by the
+              // setInterval timer below, so the actual capture rate is always
+              // sampleMs-driven regardless of display refresh rate or power
+              // mode.
+            },
           },
         });
       }

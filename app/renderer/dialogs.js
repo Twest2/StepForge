@@ -318,7 +318,7 @@ function showSettingsDialog({
     const aiAutoDoc = el('input', { type: 'checkbox', checked: Boolean(settings.ai?.autoDoc) });
     const ollamaHost = makeInput(settings.ai?.ollama?.host || 'http://127.0.0.1:11434');
     const ollamaModel = makeInput(settings.ai?.ollama?.model || 'llama3.2:1b');
-    const aiStatus = el('div', { className: 'muted ai-status' }, 'AI stays local through Ollama. Nothing is sent to the cloud.');
+    const aiStatus = el('div', { className: 'muted ai-status' }, 'AI stays local through Ollama. Vision-capable models can also inspect the screenshot attached to each step.');
     const testAiBtn = el('button', { type: 'button' }, 'Test connection');
 
     const updateAiStatus = (message, { error = false } = {}) => {
@@ -341,7 +341,9 @@ function showSettingsDialog({
           return;
         }
         if (result.installed) {
-          updateAiStatus(`Connected to ${result.host} with ${result.model}.`);
+          updateAiStatus(result.vision
+            ? `Connected to ${result.host} with ${result.model}. It can inspect screenshots.`
+            : `Connected to ${result.host} with ${result.model}. This model is text-only, so StepForge will use OCR and metadata only.`);
         } else {
           updateAiStatus(`Connected to ${result.host}. Model ${result.model} is not installed yet.`, { error: true });
         }

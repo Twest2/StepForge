@@ -47,11 +47,6 @@
   async function startStream(cmd) {
     const key = String(cmd.displayId);
     stopStream(key);
-    const display = cmd.display || {};
-    const scale = display.scaleFactor || 1;
-    const bounds = display.bounds || { width: 1280, height: 720 };
-    const physWidth = Math.round(bounds.width * scale);
-    const physHeight = Math.round(bounds.height * scale);
     const state = {
       displayId: cmd.displayId,
       media: null,
@@ -68,20 +63,33 @@
     };
     streams.set(key, state);
     try {
-      // The chromeMediaSource constraint is Electron's bridge from a
-      // desktopCapturer source id to a live media stream. The legacy
-      // `mandatory` wrapper was removed in Electron 29 (Chromium 116+);
-      // constraints must now be flat (no mandatory/optional nesting).
-      state.media = await navigator.mediaDevices.getUserMedia({
-        audio: false,
-        video: {
-          chromeMediaSource: 'desktop',
-          chromeMediaSourceId: cmd.sourceId,
-          // Sampling cadence is controlled by the setInterval timer, so the
-          // actual capture rate is sampleMs-driven regardless of display
-          // refresh rate. Resolution is driven by the source itself.
-        },
-      });
+      if (cmd.useDisplayMedia) {
+        // GNOME Wayland path: desktopCapturer source ids fail with
+        // getUserMedia, so go through the portal-backed getDisplayMedia. The
+        // main process installs a setDisplayMediaRequestHandler that answers
+        // this request; the OS portal picker chooses the screen. The stream
+        // then stays open for the whole session — one prompt, not one per shot.
+        state.media = await navigator.mediaDevices.getDisplayMedia({
+          audio: false,
+          video: true,
+        });
+      } else {
+        // The chromeMediaSource constraint is Electron's bridge from a
+        // desktopCapturer source id to a live media stream. The legacy
+        // `mandatory` wrapper was removed in Electron 29 (Chromium 116+);
+        // constraints must now be flat (no mandatory/optional nesting). This
+        // path works on Windows and X11.
+        state.media = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: {
+            chromeMediaSource: 'desktop',
+            chromeMediaSourceId: cmd.sourceId,
+            // Sampling cadence is controlled by the setInterval timer, so the
+            // actual capture rate is sampleMs-driven regardless of display
+            // refresh rate. Resolution is driven by the source itself.
+          },
+        });
+      }
       const video = document.createElement('video');
       video.muted = true;
       video.srcObject = state.media;

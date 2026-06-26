@@ -596,6 +596,7 @@ test('armRecording warms while visible, then hides and arms the session', async 
     isVisible() { return this.visible; },
     isMinimized() { return false; },
     hide() { this.visible = false; },
+    minimize() { this.visible = false; },
     show() { this.visible = true; },
     focus() {}, getTitle() { return 'StepForge'; },
     getBounds() { return { x: 0, y: 0, width: 800, height: 600 }; },
@@ -637,6 +638,7 @@ test('a slow recorder start still arms within the warmup cap', async () => {
     isVisible() { return this.visible; },
     isMinimized() { return false; },
     hide() { this.visible = false; },
+    minimize() { this.visible = false; },
     show() { this.visible = true; },
     focus() {}, getTitle() { return 'StepForge'; },
     getBounds() { return { x: 0, y: 0, width: 800, height: 600 }; },
@@ -746,6 +748,7 @@ test('clicks without event coordinates fall back to a live cursor read', () => {
       getAllDisplays: () => [],
     },
   });
+  service._wayland = false; // X11/Windows: the live-cursor fallback applies
   service.session = { guideId: 'guide-cursor', paused: false, count: 0, intervalSec: 0 };
   const seen = [];
   service.enqueueClickCapture = (clickPos) => {
@@ -755,6 +758,64 @@ test('clicks without event coordinates fall back to a live cursor read', () => {
   service.onOsClick(1770000000000, null, 'mouse');
 
   assert.deepEqual(seen, [{ x: 11, y: 22 }]);
+});
+
+test('on Wayland an evdev click does not stamp a bogus top-left cursor position', () => {
+  // Wayland's getCursorScreenPoint returns {0,0}; a fallback read would mark
+  // every click in the corner. The click must capture with a null position
+  // (no marker) instead.
+  const service = makeService({
+    screenApi: {
+      getCursorScreenPoint: () => ({ x: 0, y: 0 }),
+      getAllDisplays: () => [],
+    },
+  });
+  service._wayland = true;
+  service.session = { guideId: 'guide-wl-click', paused: false, count: 0, intervalSec: 0 };
+  const seen = [];
+  service.enqueueClickCapture = (clickPos) => { seen.push(clickPos); };
+
+  service.onOsClick(1770000000000, null, 'button-1');
+
+  assert.deepEqual(seen, [null], 'no position is passed, so no marker is drawn');
+});
+
+// ---- evdev decoding ---------------------------------------------------------------
+
+const { decodeEvdevButtonPresses } = CaptureService;
+
+// Pack a 64-bit struct input_event (24 bytes): 16-byte timeval, u16 type,
+// u16 code, s32 value.
+function evdevRecord(type, code, value) {
+  const b = Buffer.alloc(24);
+  b.writeUInt16LE(type, 16);
+  b.writeUInt16LE(code, 18);
+  b.writeInt32LE(value, 20);
+  return b;
+}
+
+test('evdev decoder extracts left/right/middle button presses, ignores the rest', () => {
+  const EV_KEY = 0x01;
+  const EV_REL = 0x02;
+  const buf = Buffer.concat([
+    evdevRecord(EV_KEY, 272, 1), // BTN_LEFT down  -> button-1
+    evdevRecord(EV_KEY, 272, 0), // BTN_LEFT up    -> ignored (release)
+    evdevRecord(EV_REL, 0, 5), // motion          -> ignored (not a key)
+    evdevRecord(EV_KEY, 273, 1), // BTN_RIGHT down -> button-3
+    evdevRecord(EV_KEY, 274, 1), // BTN_MIDDLE down-> button-2
+    evdevRecord(EV_KEY, 0x110 + 8, 1), // a non-mouse key -> ignored
+  ]);
+  const { presses, rest } = decodeEvdevButtonPresses(buf, 24);
+  assert.deepEqual(presses, ['button-1', 'button-3', 'button-2']);
+  assert.equal(rest.length, 0);
+});
+
+test('evdev decoder keeps a trailing partial record for the next chunk', () => {
+  const full = evdevRecord(0x01, 272, 1);
+  const buf = Buffer.concat([full, full.subarray(0, 10)]); // 1.4 records
+  const { presses, rest } = decodeEvdevButtonPresses(buf, 24);
+  assert.deepEqual(presses, ['button-1']);
+  assert.equal(rest.length, 10, 'the half record is returned to be completed later');
 });
 
 // ---- watcher loss -----------------------------------------------------------------
@@ -1004,6 +1065,7 @@ test('clicks during an in-flight pre-click grab wait for the frame instead of be
 
 test('click frames come from the stream backend when it is active', async () => {
   const service = makeService();
+  service._wayland = false; // X11/Windows: click frame-requests are failable
   const clickAt = Date.now();
   service.session = { guideId: 'guide-stream', paused: false, count: 0, intervalSec: 0 };
   const requests = [];
@@ -1036,8 +1098,8 @@ test('click frames come from the stream backend when it is active', async () => 
 
   assert.equal(result.ok, true);
   assert.deepEqual(added, ['stream-frame']);
-  assert.deepEqual(requests, [{ clickPos: { x: 10, y: 10 }, clickAt, strict: true, leadMs: 0 }],
-    'the worker receives the hook-time click timestamp, strictness, and lead');
+  assert.deepEqual(requests, [{ clickPos: { x: 10, y: 10 }, clickAt, strict: true, leadMs: 0, failable: true }],
+    'the worker receives the hook-time click timestamp, strictness, lead, and failability');
 });
 
 test('a stream backend with no qualifying frame falls through to the fresh-shot path', async () => {
@@ -1080,6 +1142,9 @@ test('an unhealthy stream backend degrades to the in-process frame loop', () => 
   const service = makeService();
   service.session = { guideId: 'guide-degrade', paused: false, count: 0, intervalSec: 0 };
   service.streamBackend = { isActive: () => true, stop: () => {} };
+  // Off Wayland the in-process loop is viable (getSources works), so an
+  // unhealthy worker must degrade to the loop rather than silently stopping.
+  service._wayland = false;
   let loopStarted = false;
   service.startFrameLoop = () => { loopStarted = true; };
   const states = [];
@@ -1090,6 +1155,24 @@ test('an unhealthy stream backend degrades to the in-process frame loop', () => 
   assert.equal(service.streamBackend, null);
   assert.equal(loopStarted, true, 'capture must not silently stop when the worker dies');
   assert.ok(states.includes('capture:state'));
+});
+
+test('an unhealthy stream backend does NOT start the frame loop on Wayland', () => {
+  // On Wayland the 200ms getSources() frame loop is broken (throws) and pops
+  // the portal, so it's not a usable fallback — the portal stream is the only
+  // capture path and the user must re-share if it stops.
+  const service = makeService();
+  service.session = { guideId: 'guide-degrade-wl', paused: false, count: 0, intervalSec: 0 };
+  service.streamBackend = { isActive: () => true, stop: () => {} };
+  service._wayland = true;
+  let loopStarted = false;
+  service.startFrameLoop = () => { loopStarted = true; };
+  service.notify = () => {};
+
+  service.degradeToFrameLoop();
+
+  assert.equal(service.streamBackend, null);
+  assert.equal(loopStarted, false, 'no frame loop on Wayland — getSources is unusable there');
 });
 
 test('session state reports which frame recorder is serving clicks', () => {
@@ -1156,7 +1239,12 @@ test('a new session starts paused and does not hide the window until "Start reco
     isDestroyed() { return this.destroyed; },
     isVisible() { return this.visible; },
     isMinimized() { return this.minimized; },
+    // The window is "tucked away" for recording either by hide() (with a tray)
+    // or minimize() (Linux without a tray). Both make it not visible; assert on
+    // visibility so the test is independent of which mechanism the platform picks.
     hide() { this.visible = false; this.hidden += 1; },
+    minimize() { this.visible = false; this.minimized = true; },
+    restore() { this.minimized = false; this.visible = true; },
     show() { this.visible = true; this.shown += 1; },
     showInactive() { this.visible = true; this.shown += 1; },
     focus() {},
@@ -1171,15 +1259,15 @@ test('a new session starts paused and does not hide the window until "Start reco
 
     assert.equal(service.session.paused, true, 'sessions start paused');
     assert.equal(service.state().paused, true);
-    assert.equal(win.hidden, 0, 'window must stay visible until recording starts');
+    assert.equal(win.visible, true, 'window must stay visible until recording starts');
 
     // User clicks "Start recording" (the resume action).
     service.togglePause(false);
     assert.equal(service.session.paused, false);
-    assert.equal(win.hidden, 0, 'hide is deferred until the resume path runs');
+    assert.equal(win.visible, true, 'tuck-away is deferred until the resume path runs');
 
     await new Promise((r) => setTimeout(r, 25));
-    assert.equal(win.hidden, 1, 'window hides once recording actually starts');
+    assert.equal(win.visible, false, 'window is tucked away once recording actually starts');
   } finally {
     service.finishSession();
   }

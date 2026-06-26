@@ -25,7 +25,7 @@ That model is small enough to feel responsive on modest hardware, but still good
 If you want StepForge to send the screenshot itself to the model, pull a vision-capable model instead:
 
 ```bash
-ollama pull llama3.2-vision
+ollama pull gemma3
 ```
 
 That model can inspect pictures as well as text, so it is better when you want the AI to read the UI directly from the screenshot.

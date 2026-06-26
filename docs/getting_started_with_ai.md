@@ -22,6 +22,14 @@ ollama pull llama3.2:1b
 
 That model is small enough to feel responsive on modest hardware, but still good enough for human-sounding titles and short text blocks.
 
+If you want StepForge to send the screenshot itself to the model, pull a vision-capable model instead:
+
+```bash
+ollama pull gemma3
+```
+
+That model can inspect pictures as well as text, so it is better when you want the AI to read the UI directly from the screenshot.
+
 If you need something even smaller, try:
 
 ```bash
@@ -44,7 +52,7 @@ Set:
 
 * `Enable AI text filling` to on
 * `Ollama host` to your local Ollama server
-* `Ollama model` to `llama3.2:1b` or the smaller model you pulled
+* `Ollama model` to `llama3.2:1b` for text-only mode, or `llama3.2-vision` if you want screenshot-aware AI
 
 The default host is:
 
@@ -73,3 +81,4 @@ You can also use `More -> Generate all text fields with AI` to fill the whole st
 * Capture titles are still generated automatically without AI.
 * AI generation only works when `Enable AI text filling` is turned on.
 * The app always uses local OCR around the click area first, then local AI only when you ask for it.
+* When the selected Ollama model supports vision, StepForge also sends the screenshot to the model so it can cross-check OCR and visual context.

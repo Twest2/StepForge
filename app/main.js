@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const {
   app, BrowserWindow, ipcMain, dialog, shell, nativeTheme, globalShortcut,
-  clipboard, nativeImage, screen, powerSaveBlocker,
+  clipboard, nativeImage, screen, powerSaveBlocker, session,
 } = require('electron');
 
 const { GuideStore } = require('../core/store');
@@ -834,6 +834,15 @@ if (!gotLock) {
       notify: captureNotify,
       textIntel,
     });
+
+    // Allow the hidden capture-worker renderer to open a desktop media stream
+    // via getUserMedia. Electron 29+ requires an explicit permission grant for
+    // display-capture in renderer windows; without it the getUserMedia call
+    // fails, the stream backend never starts, and every capture falls back to
+    // desktopCapturer.getSources() — which triggers the portal dialog on Linux
+    // on every single capture. StepForge is fully local/offline so allowing
+    // all permissions for our own content is safe.
+    session.defaultSession.setPermissionCheckHandler(() => true);
 
     applyTheme();
     setupIpc();

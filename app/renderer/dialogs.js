@@ -320,6 +320,11 @@ function showSettingsDialog({
     const ollamaModel = makeInput(settings.ai?.ollama?.model || 'llama3.2:1b');
     const aiStatus = el('div', { className: 'muted ai-status' }, 'AI stays local through Ollama. Vision-capable models can also inspect the screenshot attached to each step.');
     const testAiBtn = el('button', { type: 'button' }, 'Test connection');
+    const persistOllamaModel = debounce(() => {
+      const model = ollamaModel.value.trim();
+      // Keep the last model choice even if the dialog is dismissed without a full save.
+      void api.settings.set({ keyPath: 'ai.ollama.model', value: model }).catch(() => {});
+    }, 250);
 
     const updateAiStatus = (message, { error = false } = {}) => {
       aiStatus.textContent = message;
@@ -353,6 +358,8 @@ function showSettingsDialog({
         setButtonLoading(testAiBtn, false);
       }
     };
+    ollamaModel.addEventListener('input', () => persistOllamaModel());
+    ollamaModel.addEventListener('blur', () => persistOllamaModel.flush());
 
     const placeholderRows = el('div', { className: 'placeholder-rows' });
     const rows = [];

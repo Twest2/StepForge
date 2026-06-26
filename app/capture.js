@@ -372,8 +372,13 @@ class CaptureService {
   armRecording() {
     const win = this.getWindow();
     const wantHide = Boolean(this.hiddenForSession && win && !win.isDestroyed());
-    const recorderWanted = this.settings.get('capture.captureOutsideClicks') !== false
-      && this.clickCaptureAvailable();
+    // Always start the frame recorder when stream capture is enabled — it
+    // buffers frames for click captures AND is used for interval/hotkey
+    // captures to avoid calling desktopCapturer.getSources() on every capture.
+    // On Linux/Wayland, each getSources() call goes through the XDG portal and
+    // shows a permission dialog; the stream backend eliminates that by keeping
+    // a live video stream open for the duration of the recording session.
+    const recorderWanted = this.settings.get('capture.streamCapture') !== false;
     // Recording is not "live" until the window is hidden and the buffer is
     // primed. While warming up, the window is still visible and over the
     // user's work, so clicks in this period are ignored (onOsClick checks
@@ -502,6 +507,24 @@ class CaptureService {
       // whatever replaced the user's workflow on screen.
       clog('click@', clickAt, 'no frame qualified — falling back to a fresh (post-click) shot');
       if (!sessionLive) return { ok: false, reason: 'session ended before the fallback shot' };
+    }
+
+    // For non-click triggers (interval, hotkey, manual) pull a frame from the
+    // stream backend's ring buffer when available. This avoids a
+    // desktopCapturer.getSources() call per capture — on Linux/Wayland that
+    // call goes through the XDG portal and can show a dialog every time.
+    if (trigger !== 'click' && this.streamBackend && this.streamBackend.isActive()) {
+      const frame = await this.streamBackend.frameForClick({
+        clickPos: this.screen.getCursorScreenPoint(),
+        clickAt: Date.now(),
+        strict: false, // no pre/post-click constraint for timed captures
+        leadMs: 0,
+      }).catch(() => null);
+      if (frame) {
+        const result = await this.storeFrameAsStep(this.session.guideId, 'fullscreen', frame);
+        if (result.ok) this.noteStepAdded(result.step, trigger);
+        return result;
+      }
     }
 
     if (this.shooting) return { ok: false, reason: 'capture already in progress' };
@@ -752,8 +775,15 @@ class CaptureService {
       if (!ok || stale || !this.session || this.session.paused) {
         backend.stop();
         if (!stale && this.session && !this.session.paused) {
-          console.error('[stepforge] stream capture backend failed to start — using in-process frame loop');
-          this.startFrameLoop();
+          if (this.clickCaptureAvailable()) {
+            console.error('[stepforge] stream capture backend failed to start — using in-process frame loop');
+            this.startFrameLoop();
+          } else {
+            // Without click capture the frame loop would spam getSources()
+            // every 200ms (triggering the portal dialog on Linux/Wayland).
+            // Interval/hotkey captures will take individual fresh shots instead.
+            console.error('[stepforge] stream capture backend failed to start — interval/hotkey captures will use fresh shots');
+          }
         }
         return;
       }
@@ -762,8 +792,12 @@ class CaptureService {
       this.notify('capture:state', this.state());
     } catch (err) {
       if (gen === this.captureGen && this.session && !this.session.paused) {
-        console.error(`[stepforge] stream capture backend error (${err && err.message}) — using in-process frame loop`);
-        this.startFrameLoop();
+        if (this.clickCaptureAvailable()) {
+          console.error(`[stepforge] stream capture backend error (${err && err.message}) — using in-process frame loop`);
+          this.startFrameLoop();
+        } else {
+          console.error(`[stepforge] stream capture backend error (${err && err.message}) — interval/hotkey captures will use fresh shots`);
+        }
       }
     } finally {
       if (gen === this.captureGen) this.streamBackendStarting = false;
@@ -788,8 +822,15 @@ class CaptureService {
    */
   degradeToFrameLoop() {
     this.streamBackend = null;
-    console.error('[stepforge] stream capture backend unhealthy — falling back to in-process frame loop');
-    if (this.session && !this.session.paused) this.startFrameLoop();
+    if (this.clickCaptureAvailable()) {
+      console.error('[stepforge] stream capture backend unhealthy — falling back to in-process frame loop');
+      if (this.session && !this.session.paused) this.startFrameLoop();
+    } else {
+      // No click capture means no click watcher either, so the frame loop
+      // is pointless and would spam getSources() every 200ms. Individual
+      // per-capture shots are the correct fallback.
+      console.error('[stepforge] stream capture backend unhealthy — continuing with per-capture fresh shots');
+    }
     this.notify('capture:state', this.state());
   }
 

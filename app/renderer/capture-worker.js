@@ -68,22 +68,18 @@
     };
     streams.set(key, state);
     try {
-      // The chromeMediaSource constraint set is Electron's documented bridge
-      // from a desktopCapturer source id to a live media stream.
+      // The chromeMediaSource constraint is Electron's bridge from a
+      // desktopCapturer source id to a live media stream. The legacy
+      // `mandatory` wrapper was removed in Electron 29 (Chromium 116+);
+      // constraints must now be flat (no mandatory/optional nesting).
       state.media = await navigator.mediaDevices.getUserMedia({
         audio: false,
         video: {
-          mandatory: {
-            chromeMediaSource: 'desktop',
-            chromeMediaSourceId: cmd.sourceId,
-            minWidth: physWidth,
-            maxWidth: physWidth,
-            minHeight: physHeight,
-            maxHeight: physHeight,
-            // No maxFrameRate: sampling cadence is controlled by the setInterval
-            // timer below, so the actual capture rate is always sampleMs-driven
-            // regardless of display refresh rate or power mode.
-          },
+          chromeMediaSource: 'desktop',
+          chromeMediaSourceId: cmd.sourceId,
+          // Sampling cadence is controlled by the setInterval timer, so the
+          // actual capture rate is sampleMs-driven regardless of display
+          // refresh rate. Resolution is driven by the source itself.
         },
       });
       const video = document.createElement('video');

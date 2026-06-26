@@ -154,6 +154,9 @@ class StreamCaptureBackend {
         stream.ready = msg.type === 'stream-ready';
         stream.failed = msg.type === 'stream-error';
       }
+      if (msg.type === 'stream-error') {
+        console.error(`[stepforge] capture worker stream-error display=${msg.displayId}: ${msg.reason}`);
+      }
       for (const check of [...this.startWaiters]) check();
       return;
     }

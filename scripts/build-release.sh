@@ -70,6 +70,7 @@ for (const rel of walk(examplesRoot, examplesRoot)) {
 }
 
 const pkg = require(path.join(rootDir, 'package.json'));
+const buildVersion = pkg.buildVersion || pkg.version;
 
 const { execSync } = require('node:child_process');
 function toolAvailable(cmd) {
@@ -88,7 +89,8 @@ const toolRows = Object.entries(tools)
 
 const report = `# StepForge Build Report
 
-Version: ${pkg.version}
+Build version: ${buildVersion}
+Package version: ${pkg.version}
 Generated: ${new Date().toISOString()}
 Host: ${process.platform} ${process.arch} (node ${process.version})
 
@@ -133,6 +135,7 @@ fs.writeFileSync(manifestFile, JSON.stringify({
   version: 1,
   generatedAt: new Date().toISOString(),
   packageVersion: pkg.version,
+  buildVersion,
   files,
 }, null, 2) + '\n');
 NODE

@@ -401,7 +401,7 @@ class StepForgeApp {
             el('div', { style: { fontWeight: 650 } }, folderLabel),
             q ? el('div.muted', {}, `Search: ${q}`) : el('div.muted', {}, `${this.state.library.guides.length} guides`),
           ),
-          el('div.muted', {}, this.state.info ? `StepForge ${this.state.info.version}` : ''),
+          el('div.muted', {}, this.state.info ? `StepForge ${this.state.info.buildVersion || this.state.info.version}` : ''),
         ),
         this.domBulkBar = el('div', {}),
         this.domLibraryResults = el('div', {}),

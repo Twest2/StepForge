@@ -21,6 +21,8 @@ test('Windows packaging uses an assisted NSIS installer', (t) => {
   assert.equal(config.nsis.createDesktopShortcut, true);
   assert.equal(config.nsis.createStartMenuShortcut, true);
   assert.equal(config.nsis.shortcutName, 'StepForge');
+  assert.equal(config.buildVersion, '0.3.2.1');
+  assert.equal(config.nsis.artifactName, '${productName} Setup ${buildVersion}.${ext}');
   assert.equal(config.nsis.include, 'build/installer.nsh');
   assert.equal(config.asar, true);
   assert.ok(config.files.includes('app/**/*'));
@@ -35,7 +37,7 @@ test('Windows packaging uses an assisted NSIS installer', (t) => {
   const tmp = makeTmpDir('windows-installer');
   t.after(() => rmrf(tmp));
   fs.mkdirSync(path.join(tmp, 'nested', 'deeper'), { recursive: true });
-  const installer = path.join(tmp, 'nested', 'deeper', 'StepForge Setup 0.2.0.exe');
+  const installer = path.join(tmp, 'nested', 'deeper', 'StepForge Setup 0.3.2.1.exe');
   fs.writeFileSync(installer, Buffer.from('fake installer'));
   assert.equal(findInstallerExe(tmp), installer);
 });

@@ -16,18 +16,25 @@ function stampVersion(rootDir, version) {
     throw new Error('version is required');
   }
 
+  const normalized = version.replace(/^v/i, '');
+  const parts = normalized.split('.');
+  const isFourPartBuild = parts.length === 4 && parts.every((part) => /^\d+$/.test(part));
+  const packageVersion = isFourPartBuild ? parts.slice(0, 3).join('.') : normalized;
+  const buildVersion = normalized;
+
   const pkgPath = path.join(rootDir, 'package.json');
   const pkg = readJson(pkgPath);
-  pkg.version = version;
+  pkg.version = packageVersion;
+  pkg.buildVersion = buildVersion;
   writeJson(pkgPath, pkg);
 
   const lockPath = path.join(rootDir, 'package-lock.json');
   if (!fs.existsSync(lockPath)) return;
 
   const lock = readJson(lockPath);
-  lock.version = version;
+  lock.version = packageVersion;
   if (lock.packages && lock.packages['']) {
-    lock.packages[''].version = version;
+    lock.packages[''].version = packageVersion;
   }
   writeJson(lockPath, lock);
 }

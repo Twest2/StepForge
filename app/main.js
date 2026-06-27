@@ -21,6 +21,7 @@ const { readLock } = require('../core/locks');
 const CaptureService = require('./capture');
 const { TextIntelService } = require('./text-intel');
 const { keepProcessesResponsive } = require('./win-power');
+const PACKAGE_JSON = require(path.join(__dirname, '..', 'package.json'));
 
 const APP_ID = 'com.stepforge.app';
 
@@ -762,6 +763,7 @@ function setupIpc() {
   h('shell:showItemInFolder', ({ target }) => shell.showItemInFolder(target));
   h('app:info', () => ({
     version: app.getVersion(),
+    buildVersion: PACKAGE_JSON.buildVersion || app.getVersion(),
     dataDir: store.root,
     platform: process.platform,
   }));

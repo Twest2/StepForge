@@ -128,7 +128,8 @@ test('capture worker requests the selected desktop source, not a plain camera st
   await streamReady;
 
   assert.equal(mediaCalls.length, 1);
-  assert.deepEqual(mediaCalls[0], {
+  const constraints = JSON.parse(JSON.stringify(mediaCalls[0]));
+  assert.deepEqual(constraints, {
     audio: false,
     video: {
       mandatory: {

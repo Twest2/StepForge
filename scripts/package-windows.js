@@ -52,6 +52,7 @@ function createWindowsInstallerConfig(outputDir) {
       createDesktopShortcut: true,
       createStartMenuShortcut: true,
       shortcutName: 'StepForge',
+      include: 'build/installer.nsh',
     },
   };
 }

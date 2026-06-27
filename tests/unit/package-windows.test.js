@@ -21,6 +21,7 @@ test('Windows packaging uses an assisted NSIS installer', (t) => {
   assert.equal(config.nsis.createDesktopShortcut, true);
   assert.equal(config.nsis.createStartMenuShortcut, true);
   assert.equal(config.nsis.shortcutName, 'StepForge');
+  assert.equal(config.nsis.include, 'build/installer.nsh');
   assert.equal(config.asar, true);
   assert.ok(config.files.includes('app/**/*'));
   assert.ok(config.files.includes('core/**/*'));

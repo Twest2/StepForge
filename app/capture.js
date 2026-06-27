@@ -1706,20 +1706,32 @@ public static class SFHook {
    * scaled away from 100% and on secondary monitors.
    */
   osPointToDip(osPoint) {
-    if (this.screen && typeof this.screen.screenToDipPoint === 'function') {
-      try {
-        const dip = this.screen.screenToDipPoint(osPoint);
-        if (dip && Number.isFinite(dip.x) && Number.isFinite(dip.y)) return dip;
-      } catch { /* fall through to manual conversion */ }
-    }
+    let geometryDip = null;
     try {
       const displays = this.screen && typeof this.screen.getAllDisplays === 'function'
         ? this.screen.getAllDisplays()
         : [];
-      const dip = physicalToDip(osPoint, displays);
-      if (dip) return dip;
-    } catch { /* no display geometry available */ }
-    return osPoint;
+      geometryDip = physicalToDip(osPoint, displays);
+    } catch {
+      geometryDip = null;
+    }
+    if (this.screen && typeof this.screen.screenToDipPoint === 'function') {
+      try {
+        const dip = this.screen.screenToDipPoint(osPoint);
+        if (dip && Number.isFinite(dip.x) && Number.isFinite(dip.y)) {
+          if (!geometryDip) return dip;
+          const offByX = Math.abs(dip.x - geometryDip.x);
+          const offByY = Math.abs(dip.y - geometryDip.y);
+          // Some Windows/Electron combinations have been observed to return a
+          // raw physical point here. That keeps the click marker off-screen on
+          // scaled displays, so trust the geometry path when the two disagree
+          // by more than a tiny rounding margin.
+          if (offByX <= 1 && offByY <= 1) return dip;
+          return geometryDip;
+        }
+      } catch { /* fall through to manual conversion */ }
+    }
+    return geometryDip || osPoint;
   }
 
   /**

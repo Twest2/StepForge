@@ -1,6 +1,7 @@
 {
   "name": "stepforge",
-  "version": "0.3.2.1",
+  "version": "0.3.2",
+  "buildVersion": "0.3.2.1",
   "description": "Fully offline desktop tool for capturing, annotating, and exporting step-by-step guides.",
   "main": "app/main.js",
   "author": "StepForge tyler@twestbrook.com",

@@ -20,5 +20,5 @@ fi
 
 node - <<'NODE'
 const pkg = require('./package.json');
-console.log(`StepForge ${pkg.version} bootstrap OK`);
+console.log(`StepForge ${pkg.buildVersion || pkg.version} bootstrap OK`);
 NODE

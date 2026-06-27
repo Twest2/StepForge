@@ -3,7 +3,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-VERSION="$(node -p "require('${ROOT_DIR}/package.json').version" 2>/dev/null || echo 0.0.0)"
+VERSION="$(node -p "const pkg=require('${ROOT_DIR}/package.json'); pkg.buildVersion || pkg.version" 2>/dev/null || echo 0.0.0)"
 OUT_DIR="${STEPFORGE_PACKAGE_DIR:-$ROOT_DIR/build/artifacts}"
 mkdir -p "$OUT_DIR"
 WORK_DIR="$(mktemp -d "${OUT_DIR%/}/.pkg.XXXXXX")"

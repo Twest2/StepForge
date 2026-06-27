@@ -1,10 +1,10 @@
 !include LogicLib.nsh
 !include nsDialogs.nsh
 
-Var StepForgeDesktopShortcutCheckbox
-Var StepForgeDesktopShortcutState
-
 !ifndef BUILD_UNINSTALLER
+  Var StepForgeDesktopShortcutCheckbox
+  Var StepForgeDesktopShortcutState
+
   ; Assisted installer page for the desktop shortcut choice.
   !macro customInit
     StrCpy $StepForgeDesktopShortcutState "true"

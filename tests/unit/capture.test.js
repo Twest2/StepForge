@@ -736,6 +736,27 @@ test('hook coordinates are converted physical → DIP via screenToDipPoint when 
   assert.deepEqual(seen, [{ x: 640, y: 320 }]);
 });
 
+test('bogus Windows screenToDipPoint results fall back to display geometry', () => {
+  const service = makeService({
+    screenApi: {
+      screenToDipPoint: (p) => ({ x: p.x, y: p.y }), // raw physical point: wrong on scaled displays
+      getAllDisplays: () => [
+        { id: 1, scaleFactor: 2, bounds: { x: 0, y: 0, width: 1440, height: 900 } },
+      ],
+      getCursorScreenPoint: () => { throw new Error('must not fall back to a cursor read'); },
+    },
+  });
+  service.session = { guideId: 'guide-dip-fallback', paused: false, count: 0, intervalSec: 0 };
+  const seen = [];
+  service.enqueueClickCapture = (clickPos) => {
+    seen.push(clickPos);
+  };
+
+  service.onOsClick(1770000000000, { x: 1500, y: 900 }, 'left');
+
+  assert.deepEqual(seen, [{ x: 750, y: 450 }]);
+});
+
 test('without screenToDipPoint, coordinates convert via display geometry (Linux/X11)', () => {
   const service = makeService({
     screenApi: {

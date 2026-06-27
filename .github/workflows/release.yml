@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release tag, e.g. v0.1.1 (the tag is created at the current commit on this branch)'
+        description: 'Release tag, e.g. v0.3.2.1 (the tag is created at the current commit on this branch)'
         required: true
         type: string
       prerelease:
@@ -42,7 +42,7 @@ jobs:
         shell: bash
         env:
           VERSION: ${{ inputs.version }}
-        run: npm version "${VERSION#v}" --no-git-tag-version --allow-same-version
+        run: node scripts/stamp-version.js "${VERSION#v}"
 
       - name: Configure Windows code signing
         shell: bash
@@ -86,7 +86,7 @@ jobs:
         shell: bash
         env:
           VERSION: ${{ inputs.version }}
-        run: npm version "${VERSION#v}" --no-git-tag-version --allow-same-version
+        run: node scripts/stamp-version.js "${VERSION#v}"
 
       - name: Package Linux artifacts (tarball + .deb)
         shell: bash

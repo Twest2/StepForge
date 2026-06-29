@@ -3,7 +3,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-VERSION="$(node -p "require('${ROOT_DIR}/package.json').version" 2>/dev/null || echo 0.0.0)"
+VERSION="$(node -p "const pkg=require('${ROOT_DIR}/package.json'); pkg.buildVersion || pkg.version" 2>/dev/null || echo 0.0.0)"
 OUT_DIR="${STEPFORGE_PACKAGE_DIR:-$ROOT_DIR/build/artifacts}"
 mkdir -p "$OUT_DIR"
 WORK_DIR="$(mktemp -d "${OUT_DIR%/}/.pkg.XXXXXX")"
@@ -46,8 +46,21 @@ fi
 cat > "$WORK_DIR/usr/bin/stepforge" <<'EOF'
 #!/usr/bin/env sh
 APP_DIR=/opt/stepforge
+ELECTRON="$APP_DIR/node_modules/.bin/electron"
+SANDBOX_HELPER="$APP_DIR/node_modules/electron/dist/chrome-sandbox"
 cd "$APP_DIR" || exit 1
-exec "$APP_DIR/node_modules/.bin/electron" "$APP_DIR" "$@"
+if command -v stat >/dev/null 2>&1 && [ -e "$SANDBOX_HELPER" ]; then
+  helper_uid="$(stat -c '%u' "$SANDBOX_HELPER" 2>/dev/null || echo '')"
+  helper_mode="$(stat -c '%a' "$SANDBOX_HELPER" 2>/dev/null || echo '')"
+  if [ "$helper_uid" = "0" ] && [ -n "$helper_mode" ]; then
+    helper_mode_num=$((8#$helper_mode))
+    if [ $((helper_mode_num & 04000)) -ne 0 ]; then
+      exec "$ELECTRON" "$APP_DIR" "$@"
+    fi
+  fi
+fi
+printf '%s\n' '[stepforge] Electron sandbox helper is not configured for this install; starting with --no-sandbox' >&2
+exec "$ELECTRON" --no-sandbox "$APP_DIR" "$@"
 EOF
 chmod 0755 "$WORK_DIR/usr/bin/stepforge"
 

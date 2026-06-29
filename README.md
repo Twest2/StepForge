@@ -64,6 +64,8 @@ using only Node built-ins.
 
 For a Windows installation, see [docs/windows_installation](docs/windows_installation.md) or for a developer/more in depth walkthrough, see [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md).
 
+On **Linux** (⚠️ work in progress — X11 vs Wayland, enabling per-click capture, the screen-share prompt), see [docs/GETTING_STARTED_WITH_LINUX.md](docs/GETTING_STARTED_WITH_LINUX.md).
+
 Requirements: Node.js 20+ and npm (Electron is the only dependency).
 
 ```bash

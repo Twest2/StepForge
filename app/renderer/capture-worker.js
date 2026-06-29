@@ -68,24 +68,39 @@
     };
     streams.set(key, state);
     try {
-      // The chromeMediaSource constraint set is Electron's documented bridge
-      // from a desktopCapturer source id to a live media stream.
-      state.media = await navigator.mediaDevices.getUserMedia({
-        audio: false,
-        video: {
-          mandatory: {
-            chromeMediaSource: 'desktop',
-            chromeMediaSourceId: cmd.sourceId,
-            minWidth: physWidth,
-            maxWidth: physWidth,
-            minHeight: physHeight,
-            maxHeight: physHeight,
-            // No maxFrameRate: sampling cadence is controlled by the setInterval
-            // timer below, so the actual capture rate is always sampleMs-driven
-            // regardless of display refresh rate or power mode.
+      if (cmd.useDisplayMedia) {
+        // GNOME Wayland path: desktopCapturer source ids fail with
+        // getUserMedia, so go through the portal-backed getDisplayMedia. The
+        // main process installs a setDisplayMediaRequestHandler that answers
+        // this request; the OS portal picker chooses the screen. The stream
+        // then stays open for the whole session — one prompt, not one per shot.
+        state.media = await navigator.mediaDevices.getDisplayMedia({
+          audio: false,
+          video: true,
+        });
+      } else {
+        // Keep the legacy desktop-capture constraint wrapper here: it binds
+        // the stream to the exact desktop source chosen in the main process.
+        // Without it Chromium can treat the request like a normal media
+        // request and pick the default camera device instead.
+        state.media = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: {
+            mandatory: {
+              chromeMediaSource: 'desktop',
+              chromeMediaSourceId: cmd.sourceId,
+              minWidth: physWidth,
+              maxWidth: physWidth,
+              minHeight: physHeight,
+              maxHeight: physHeight,
+              // No maxFrameRate: sampling cadence is controlled by the
+              // setInterval timer below, so the actual capture rate is always
+              // sampleMs-driven regardless of display refresh rate or power
+              // mode.
+            },
           },
-        },
-      });
+        });
+      }
       const video = document.createElement('video');
       video.muted = true;
       video.srcObject = state.media;

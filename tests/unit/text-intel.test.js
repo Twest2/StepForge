@@ -1,5 +1,7 @@
 'use strict';
 
+const fs = require('node:fs');
+const path = require('node:path');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
@@ -309,21 +311,112 @@ test('ollama connection test reports installed models', async (t) => {
     settings: makeSettings(),
     getWindow: () => null,
     dataDir: root,
-    fetchImpl: async () => ({
-      ok: true,
-      json: async () => ({
-        models: [
-          { name: 'llama3.2:1b' },
-          { name: 'qwen3:0.6b' },
-        ],
-      }),
-    }),
+    fetchImpl: async (url) => {
+      const pathname = new URL(url).pathname;
+      if (pathname === '/api/tags') {
+        return {
+          ok: true,
+          json: async () => ({
+            models: [
+              { name: 'llama3.2:1b' },
+              { name: 'qwen3:0.6b' },
+            ],
+          }),
+        };
+      }
+      if (pathname === '/api/show') {
+        return {
+          ok: true,
+          json: async () => ({
+            capabilities: ['completion', 'vision'],
+          }),
+        };
+      }
+      throw new Error(`unexpected fetch: ${pathname}`);
+    },
   });
 
   const result = await service.testAiConnection();
   assert.equal(result.ok, true);
   assert.equal(result.installed, true);
   assert.equal(result.model, 'llama3.2:1b');
+  assert.equal(result.vision, true);
+});
+
+test('vision-capable models receive the screenshot in the chat request', async (t) => {
+  const root = makeTmpDir('text-intel-ai-vision');
+  t.after(() => rmrf(root));
+  const imagePath = path.join(root, 'step.png');
+  fs.writeFileSync(imagePath, Buffer.from('fake screenshot bytes'));
+
+  const step = createStep({
+    title: 'Old title',
+    descriptionHtml: '<p>Old text</p>',
+    image: {
+      originalPath: 'original.png',
+      workingPath: 'working.png',
+      size: { width: 10, height: 10 },
+    },
+    captureMetadata: {
+      windowTitle: 'Settings',
+      appName: 'chrome',
+      ocrText: 'Open settings',
+      titleCandidate: 'Open settings',
+      mode: 'fullscreen',
+    },
+  });
+  const fetchCalls = [];
+  const service = new TextIntelService({
+    store: {
+      settingsDir: root,
+      getGuide: () => ({ guideId: 'g1', title: 'Guide', descriptionHtml: '', stepsOrder: ['s1'] }),
+      getStep: () => step,
+      stepImagePath: () => imagePath,
+      saveStep: (_, next) => next,
+    },
+    settings: makeSettings(),
+    getWindow: () => null,
+    dataDir: root,
+    fetchImpl: async (url, init = {}) => {
+      const pathname = new URL(url).pathname;
+      fetchCalls.push({ pathname, init });
+      if (pathname === '/api/show') {
+        return {
+          ok: true,
+          json: async () => ({
+            capabilities: ['completion', 'vision'],
+          }),
+        };
+      }
+      if (pathname === '/api/chat') {
+        return {
+          ok: true,
+          json: async () => ({
+            message: {
+              content: JSON.stringify({
+                title: 'Open settings',
+                description: 'Use the AI tab.',
+              }),
+            },
+          }),
+        };
+      }
+      throw new Error(`unexpected fetch: ${pathname}`);
+    },
+  });
+
+  const result = await service.generateStepPatch({
+    guideId: 'g1',
+    stepId: 's1',
+    target: 'all',
+  });
+
+  assert.equal(result.ok, true);
+  const chatCall = fetchCalls.find((call) => call.pathname === '/api/chat');
+  assert.ok(chatCall, 'expected an Ollama chat request');
+  const body = JSON.parse(chatCall.init.body);
+  assert.deepEqual(body.messages[1].images, [fs.readFileSync(imagePath).toString('base64')]);
+  assert.match(body.messages[1].content, /Screenshot: attached/i);
 });
 
 test('invalid ollama output fails safely without saving the step', async (t) => {

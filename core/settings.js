@@ -18,6 +18,9 @@ const DEFAULT_SETTINGS = {
     hotkeyPauseResume: 'CommandOrControl+Shift+2',
     captureOutsideClicks: true,
     confirmSimpleCapture: false,
+    // Fallback trigger when click capture is unavailable: keep the old timer
+    // fallback by default, but let users switch to hotkey-only recordings.
+    fallbackTrigger: 'interval', // interval | hotkey
     // Leading-edge click debounce (ms): clicks of the same button closer
     // together than this collapse into one step, so accidental fast/double
     // clicks don't each become a step. Clicks spaced further apart always

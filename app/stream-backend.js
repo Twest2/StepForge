@@ -83,9 +83,19 @@ class StreamCaptureBackend {
    * Spin up the worker and one stream per display that has a matching screen
    * source. Resolves true when at least one stream is delivering frames.
    */
-  async start({ displays = [], sources = [], sampleMs = DEFAULT_SAMPLE_MS, retentionMs = null, frameLimit = null } = {}) {
+  async start({
+    displays = [], sources = [], sampleMs = DEFAULT_SAMPLE_MS,
+    retentionMs = null, frameLimit = null, useDisplayMedia = false,
+  } = {}) {
     if (this.host) return this.active;
-    const pairs = pairDisplaysToSources(displays, sources);
+    // On GNOME Wayland, desktopCapturer source ids can't be reopened with
+    // getUserMedia ("Requested device not found") — the portal-backed
+    // getDisplayMedia path is the only one that works. There's no per-display
+    // source id in that mode, so capture a single stream against the primary
+    // display (the portal picker decides which screen is actually shared).
+    const pairs = useDisplayMedia
+      ? (displays.length ? [{ display: displays[0], sourceId: null }] : [])
+      : pairDisplaysToSources(displays, sources);
     if (!pairs.length) return false;
     try {
       this.host = await this.createHost((msg) => this.handleWorkerEvent(msg));
@@ -99,6 +109,7 @@ class StreamCaptureBackend {
         type: 'start-stream',
         displayId: display.id,
         sourceId,
+        useDisplayMedia,
         // The worker needs the physical pixel size to request a full-res
         // stream; bounds stay in DIP for marker math back in the main process.
         display: {
@@ -154,6 +165,9 @@ class StreamCaptureBackend {
         stream.ready = msg.type === 'stream-ready';
         stream.failed = msg.type === 'stream-error';
       }
+      if (msg.type === 'stream-error') {
+        console.error(`[stepforge] capture worker stream-error display=${msg.displayId}: ${msg.reason}`);
+      }
       for (const check of [...this.startWaiters]) check();
       return;
     }
@@ -167,7 +181,7 @@ class StreamCaptureBackend {
       clearTimeout(pending.timer);
       pending.timer = setTimeout(() => {
         this.settleRequest(msg.requestId, null);
-        this.noteFailure();
+        if (pending.failable !== false) this.noteFailure();
       }, this.encodeTimeoutMs);
       return;
     }
@@ -210,7 +224,7 @@ class StreamCaptureBackend {
    * Resolves null when no frame qualifies (caller falls back) — and also on
    * timeout, which additionally counts toward unhealthiness.
    */
-  frameForClick({ clickPos = null, clickAt = Date.now(), strict = true, leadMs = 0 } = {}) {
+  frameForClick({ clickPos = null, clickAt = Date.now(), strict = true, leadMs = 0, failable = true } = {}) {
     if (!this.active || !this.host) return Promise.resolve(null);
     const displays = [...this.streams.values()].filter((s) => s.ready).map((s) => s.display);
     const display = clickPos ? displayForDipPoint(clickPos, displays) : (displays[0] || null);
@@ -222,10 +236,15 @@ class StreamCaptureBackend {
     if (clickPos && !pointInBounds(clickPos, display.bounds)) return Promise.resolve(null);
     const requestId = this.nextRequestId++;
     return new Promise((resolve) => {
-      const pending = { resolve, display, timer: null };
+      // failable=false: a timeout resolves null but does NOT count toward
+      // unhealthiness. Interval/timed captures use this so a single slow PNG
+      // encode (common on software-rendered hosts with no GPU) can't trip the
+      // 2-strikes rule and tear down an otherwise-healthy stream — the bug
+      // that left Wayland recordings "stuck after two captures".
+      const pending = { resolve, display, timer: null, failable };
       pending.timer = setTimeout(() => {
         this.settleRequest(requestId, null);
-        this.noteFailure();
+        if (failable) this.noteFailure();
       }, this.ackTimeoutMs);
       this.requests.set(requestId, pending);
       this.hostSend({

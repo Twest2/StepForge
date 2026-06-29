@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const {
   app, BrowserWindow, ipcMain, dialog, shell, nativeTheme, globalShortcut,
-  clipboard, nativeImage, screen, powerSaveBlocker,
+  clipboard, nativeImage, screen, powerSaveBlocker, session, desktopCapturer,
 } = require('electron');
 
 const { GuideStore } = require('../core/store');
@@ -21,6 +21,7 @@ const { readLock } = require('../core/locks');
 const CaptureService = require('./capture');
 const { TextIntelService } = require('./text-intel');
 const { keepProcessesResponsive } = require('./win-power');
+const PACKAGE_JSON = require(path.join(__dirname, '..', 'package.json'));
 
 const APP_ID = 'com.stepforge.app';
 
@@ -95,6 +96,11 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       spellcheck: Boolean(settings.get('spellcheck')),
+      // During a recording the window is minimized (Linux) or hidden (Windows).
+      // A throttled renderer stops processing capture:added events, so the step
+      // list and capture bar appear "stuck" even though steps are saved. Keep
+      // the renderer live so the UI updates in real time while recording.
+      backgroundThrottling: false,
     },
   });
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
@@ -757,6 +763,7 @@ function setupIpc() {
   h('shell:showItemInFolder', ({ target }) => shell.showItemInFolder(target));
   h('app:info', () => ({
     version: app.getVersion(),
+    buildVersion: PACKAGE_JSON.buildVersion || app.getVersion(),
     dataDir: store.root,
     platform: process.platform,
   }));
@@ -834,6 +841,35 @@ if (!gotLock) {
       notify: captureNotify,
       textIntel,
     });
+
+    // Allow the hidden capture-worker renderer to open a desktop media stream.
+    // Electron 29+ requires an explicit permission grant for display-capture in
+    // renderer windows; without it getUserMedia/getDisplayMedia fails, the
+    // stream backend never starts, and every capture falls back to
+    // desktopCapturer.getSources() — which triggers the portal dialog on Linux
+    // on every single capture. StepForge is fully local/offline so allowing
+    // all permissions for our own content is safe.
+    session.defaultSession.setPermissionCheckHandler(() => true);
+    session.defaultSession.setPermissionRequestHandler((_wc, _perm, cb) => cb(true));
+
+    // On GNOME Wayland the only working screen-capture path is the portal-backed
+    // getDisplayMedia (desktopCapturer source ids fail with "device not found").
+    // The worker calls getDisplayMedia; this handler answers it. Calling
+    // getSources() *inside* the handler is the documented Wayland path: it
+    // drives the XDG portal picker (shown once when a recording starts), and
+    // the chosen source then streams for the whole session. (useSystemPicker is
+    // macOS-only today, harmless elsewhere.)
+    session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
+      desktopCapturer.getSources({ types: ['screen'] })
+        .then((sources) => {
+          console.log(`[stepforge] display-media request resolved: ${sources.length} screen source(s)`);
+          callback(sources.length ? { video: sources[0] } : {});
+        })
+        .catch((err) => {
+          console.error(`[stepforge] display-media getSources failed: ${err && err.message}`);
+          callback({});
+        });
+    }, { useSystemPicker: true });
 
     applyTheme();
     setupIpc();

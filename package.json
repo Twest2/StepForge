@@ -1,6 +1,7 @@
 {
   "name": "stepforge",
-  "version": "0.1.0",
+  "version": "0.3.2",
+  "buildVersion": "0.3.2.1",
   "description": "Fully offline desktop tool for capturing, annotating, and exporting step-by-step guides.",
   "main": "app/main.js",
   "author": "StepForge tyler@twestbrook.com",
@@ -8,7 +9,7 @@
   "private": true,
   "scripts": {
     "start": "node scripts/start-electron.js",
-    "test": "node --test tests/unit/",
+    "test": "node scripts/run-unit-tests.js",
     "sample": "node scripts/make-sample-guide.js",
     "package:windows": "node scripts/package-windows.js",
     "build": "bash scripts/build-release.sh",

@@ -10,6 +10,7 @@ const { build, Platform } = require('electron-builder');
 const ROOT_DIR = path.resolve(__dirname, '..');
 const PACKAGE_JSON = require(path.join(ROOT_DIR, 'package.json'));
 const APP_ID = 'com.stepforge.app';
+const BUILD_VERSION = PACKAGE_JSON.buildVersion || PACKAGE_JSON.version;
 
 function findInstallerExe(dir) {
   if (!fs.existsSync(dir)) return null;
@@ -32,6 +33,7 @@ function createWindowsInstallerConfig(outputDir) {
   return {
     appId: APP_ID,
     productName: 'StepForge',
+    buildVersion: BUILD_VERSION,
     directories: {
       output: outputDir,
     },
@@ -52,6 +54,8 @@ function createWindowsInstallerConfig(outputDir) {
       createDesktopShortcut: true,
       createStartMenuShortcut: true,
       shortcutName: 'StepForge',
+      artifactName: '${productName} Setup ${buildVersion}.${ext}',
+      include: 'build/installer.nsh',
     },
   };
 }
@@ -86,7 +90,7 @@ async function buildWindowsInstaller() {
   const releaseInstaller = path.join(releaseDir, path.basename(builtInstaller));
   fs.copyFileSync(builtInstaller, releaseInstaller);
 
-  console.log(`StepForge ${PACKAGE_JSON.version} Windows installer written to ${releaseInstaller}`);
+  console.log(`StepForge ${BUILD_VERSION} Windows installer written to ${releaseInstaller}`);
 }
 
 if (require.main === module) {

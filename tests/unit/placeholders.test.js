@@ -56,13 +56,16 @@ test('settings persist, deep-merge with defaults, and store global placeholders'
   assert.equal(s1.get('appearance'), DEFAULT_SETTINGS.appearance);
   s1.set('appearance', 'dark');
   s1.set('capture.delayMs', 1500);
+  s1.set('ai.ollama.model', 'qwen3:0.6b');
   s1.setGlobalPlaceholders({ Company: 'Acme', Author: 'Tyler' });
 
   // A fresh instance reads back the changed values merged over defaults.
   const s2 = new Settings(dir);
   assert.equal(s2.get('appearance'), 'dark');
   assert.equal(s2.get('capture.delayMs'), 1500);
+  assert.equal(s2.get('ai.ollama.model'), 'qwen3:0.6b');
   assert.equal(s2.get('capture.clickMarker'), DEFAULT_SETTINGS.capture.clickMarker);
+  assert.equal(s2.get('capture.fallbackTrigger'), DEFAULT_SETTINGS.capture.fallbackTrigger);
   assert.deepEqual(s2.getGlobalPlaceholders(), { Company: 'Acme', Author: 'Tyler' });
 });
 

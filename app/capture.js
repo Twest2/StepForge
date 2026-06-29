@@ -1,6 +1,7 @@
 'use strict';
 
 const path = require('node:path');
+const fs = require('node:fs');
 const { spawn, execFileSync } = require('node:child_process');
 const { desktopCapturer, screen, BrowserWindow, nativeImage, Tray, Menu } = require('electron');
 const raster = require('../core/raster');
@@ -107,6 +108,88 @@ function hasBinary(name) {
   }
 }
 
+// On Wayland, xinput only sees XWayland (X11-bridge) events — native Wayland
+// app clicks are delivered via the Wayland protocol and never reach xinput.
+// Treating it as "available" would leave the session with no click capture AND
+// no interval fallback, so zero steps get captured.
+function isWayland() {
+  if (process.platform !== 'linux') return false;
+  // XDG_SESSION_TYPE is the authoritative session hint when present. Some
+  // desktops still export WAYLAND_DISPLAY even when the active session is X11,
+  // so only fall back to it when XDG_SESSION_TYPE is unavailable.
+  const sessionType = String(process.env.XDG_SESSION_TYPE || '').toLowerCase();
+  if (sessionType) return sessionType === 'wayland';
+  return Boolean(process.env.WAYLAND_DISPLAY);
+}
+
+// ---- evdev (Linux kernel input) click reader --------------------------------
+// Reading /dev/input/event* directly sees mouse-button presses on BOTH X11 and
+// Wayland, because it taps the kernel input layer below the display server —
+// the one global-click source that survives Wayland's security model. It needs
+// read access to the device nodes (the user must be in the `input` group).
+//
+// Each event is a fixed-size `struct input_event`: a timeval, then u16 type,
+// u16 code, s32 value. The timeval is two `long`s, so the record is 24 bytes on
+// 64-bit and 16 on 32-bit; type/code/value always sit in the last 8 bytes.
+const EV_KEY = 0x01;
+const EVDEV_PRESS = 1;
+// BTN_LEFT/RIGHT/MIDDLE -> the same button-N naming the xinput path emits
+// (1=left, 2=middle, 3=right) so downstream debounce/marker logic is identical.
+const EVDEV_BUTTONS = { 272: 'button-1', 273: 'button-3', 274: 'button-2' };
+const EVDEV_RECORD_SIZE = (process.arch === 'x64' || process.arch === 'arm64'
+  || process.arch === 'ppc64' || process.arch === 's390x' || process.arch === 'loong64'
+  || process.arch === 'riscv64') ? 24 : 16;
+
+/**
+ * Decode a buffer of packed input_event records, returning the button presses
+ * found and any trailing partial record (a device read can split mid-record).
+ * Pure and size-parameterised so it is unit-testable without real devices.
+ */
+function decodeEvdevButtonPresses(buffer, recordSize = EVDEV_RECORD_SIZE) {
+  const presses = [];
+  let offset = 0;
+  while (buffer.length - offset >= recordSize) {
+    const type = buffer.readUInt16LE(offset + recordSize - 8);
+    const code = buffer.readUInt16LE(offset + recordSize - 6);
+    const value = buffer.readInt32LE(offset + recordSize - 4);
+    offset += recordSize;
+    if (type === EV_KEY && value === EVDEV_PRESS && EVDEV_BUTTONS[code]) {
+      presses.push(EVDEV_BUTTONS[code]);
+    }
+  }
+  return { presses, rest: buffer.subarray(offset) };
+}
+
+/**
+ * The /dev/input/event* nodes for pointing devices that are readable by this
+ * process. /proc/bus/input/devices lists every device with its Handlers line;
+ * a pointing device exposes a `mouseN` handler, and the matching `eventN` is
+ * the node to read. Unreadable nodes (no `input` group membership) are skipped.
+ */
+function readableEvdevMouseNodes() {
+  const nodes = [];
+  let table;
+  try {
+    table = fs.readFileSync('/proc/bus/input/devices', 'utf8');
+  } catch {
+    return nodes;
+  }
+  for (const block of table.split('\n\n')) {
+    const handlers = /H:\s*Handlers=([^\n]*)/.exec(block);
+    if (!handlers || !/\bmouse\d+\b/.test(handlers[1])) continue;
+    const event = /\bevent(\d+)\b/.exec(handlers[1]);
+    if (!event) continue;
+    const node = `/dev/input/event${event[1]}`;
+    try {
+      fs.accessSync(node, fs.constants.R_OK);
+      nodes.push(node);
+    } catch {
+      // Not readable — user is not in the `input` group for this node.
+    }
+  }
+  return nodes;
+}
+
 class CaptureService {
   constructor({
     store,
@@ -124,6 +207,9 @@ class CaptureService {
     // the global `screen` directly so coordinate handling stays testable.
     this.screen = screenApi;
     this.textIntel = textIntel;
+    // Cached display-server detection. A method (onWayland) reads this so tests
+    // can flip platform behavior without touching process.env.
+    this._wayland = isWayland();
     this.session = null; // { guideId, paused, count, intervalSec }
     this.intervalTimer = null;
     this.clickWatcher = null;
@@ -182,21 +268,62 @@ class CaptureService {
     return this.settings.get('capture.strictClickFrames') !== false;
   }
 
+  fallbackCaptureTrigger() {
+    const raw = String(this.settings.get('capture.fallbackTrigger') || 'interval').toLowerCase();
+    return raw === 'hotkey' ? 'hotkey' : 'interval';
+  }
+
+  fallbackIntervalSec() {
+    const raw = Number(this.settings.get('capture.autoIntervalSec'));
+    return Number.isFinite(raw) && raw > 0 ? raw : 5;
+  }
+
   clickCaptureAvailable() {
     if (this._clickAvail === undefined) {
-      this._clickAvail = process.platform === 'win32' || (process.platform === 'linux' && hasBinary('xinput'));
+      // Three click sources, in order of fidelity:
+      //  - Windows: the low-level mouse hook (position + timing);
+      //  - X11: xinput test-xi2 (position + timing) — but it can't see native
+      //    Wayland clicks, only XWayland ones, so it's gated to non-Wayland;
+      //  - Linux evdev (/dev/input): button presses on X11 AND Wayland, but no
+      //    cursor position on Wayland — used for per-click capture there (no
+      //    marker). Requires the user to be in the `input` group.
+      this._clickAvail = process.platform === 'win32'
+        || (process.platform === 'linux' && !this.onWayland() && hasBinary('xinput'))
+        || (process.platform === 'linux' && readableEvdevMouseNodes().length > 0);
     }
     return this._clickAvail;
   }
 
+  /** Whether this is a Wayland session (cached; overridable in tests). */
+  onWayland() {
+    return this._wayland;
+  }
+
+  /**
+   * Whether the in-process frame loop is a usable fallback recorder. It grabs
+   * via desktopCapturer.getSources(), which on Wayland is broken (throws) and
+   * pops the portal — so the loop is viable only off Wayland. On Wayland the
+   * portal-backed stream backend is the sole capture path.
+   */
+  canUseFrameLoop() {
+    return !this.onWayland();
+  }
+
   startSession(guideId, { intervalSec = null } = {}) {
     this.finishSession();
-    // Default trigger: clicks when the platform supports it, otherwise an
-    // interval so a session always produces steps even if the global hotkey
-    // never fires (common under Wayland/WSLg).
+    // Default trigger: clicks when the platform supports it, otherwise the
+    // user-selected fallback (timer or hotkey-only). That keeps Linux from
+    // silently dropping into an unwanted 5-second timer when click capture
+    // is unavailable.
     let interval = intervalSec;
     if (interval == null) {
-      interval = this.clickCaptureAvailable() ? 0 : (this.settings.get('capture.autoIntervalSec') || 5);
+      if (this.clickCaptureAvailable()) {
+        interval = 0;
+      } else if (this.fallbackCaptureTrigger() === 'hotkey') {
+        interval = 0;
+      } else {
+        interval = this.fallbackIntervalSec();
+      }
     }
     // Sessions start paused: nothing hides and no capturing happens until
     // the user explicitly presses "Start recording" in the capture bar, so
@@ -300,6 +427,7 @@ class CaptureService {
   showWindow() {
     const win = this.getWindow();
     if (win && !win.isDestroyed()) {
+      if (win.isMinimized()) win.restore();
       win.show();
       win.focus();
     }
@@ -321,7 +449,14 @@ class CaptureService {
     const sec = this.session && this.session.intervalSec;
     if (sec > 0) {
       this.intervalTimer = setInterval(() => {
-        this.sessionCapture('interval').catch(() => {});
+        // Don't let a slow capture (e.g. a multi-second software PNG encode on
+        // a GPU-less host) overlap with the next tick — overlapping requests
+        // would pile up and could trip the backend's failure counter.
+        if (this.intervalCapturing) return;
+        this.intervalCapturing = true;
+        this.sessionCapture('interval')
+          .catch(() => {})
+          .finally(() => { this.intervalCapturing = false; });
       }, sec * 1000);
     }
   }
@@ -358,8 +493,13 @@ class CaptureService {
   armRecording() {
     const win = this.getWindow();
     const wantHide = Boolean(this.hiddenForSession && win && !win.isDestroyed());
-    const recorderWanted = this.settings.get('capture.captureOutsideClicks') !== false
-      && this.clickCaptureAvailable();
+    // Always start the frame recorder when stream capture is enabled — it
+    // buffers frames for click captures AND is used for interval/hotkey
+    // captures to avoid calling desktopCapturer.getSources() on every capture.
+    // On Linux/Wayland, each getSources() call goes through the XDG portal and
+    // shows a permission dialog; the stream backend eliminates that by keeping
+    // a live video stream open for the duration of the recording session.
+    const recorderWanted = this.settings.get('capture.streamCapture') !== false;
     // Recording is not "live" until the window is hidden and the buffer is
     // primed. While warming up, the window is still visible and over the
     // user's work, so clicks in this period are ignored (onOsClick checks
@@ -383,7 +523,17 @@ class CaptureService {
         if (!this.session || this.session.paused) { this.warmingUp = false; return; }
       }
       if (wantHide && win && !win.isDestroyed() && win.isVisible()) {
-        win.hide();
+        // On Linux, always minimize rather than hide. GNOME's system tray
+        // (StatusNotifier) is unreliable — it can fail or half-export over
+        // dbus — so a hidden window can be impossible to bring back, leaving
+        // the user unable to stop the recording. A minimized window is always
+        // restorable from the taskbar, and minimized windows aren't rendered
+        // so they still stay out of the fullscreen capture.
+        if (process.platform === 'linux') {
+          win.minimize();
+        } else {
+          win.hide();
+        }
         // Let a couple of frames of the now-unobscured screen land before
         // the user's first click, so that frame shows their work, not the
         // app window that was just dismissed.
@@ -479,6 +629,46 @@ class CaptureService {
       // whatever replaced the user's workflow on screen.
       clog('click@', clickAt, 'no frame qualified — falling back to a fresh (post-click) shot');
       if (!sessionLive) return { ok: false, reason: 'session ended before the fallback shot' };
+    }
+
+    // For non-click triggers (interval, hotkey, manual) pull the latest frame
+    // from the stream backend's ring buffer when available. This avoids a
+    // desktopCapturer.getSources() call per capture — on Linux/Wayland that
+    // call goes through the XDG portal and shows a dialog every time.
+    //
+    // No clickPos: a timed capture has no click position, and passing a cursor
+    // point here is actively harmful on Wayland — getCursorScreenPoint() can
+    // return a stale/out-of-bounds point, which makes the backend reject the
+    // frame (wrong display / out of bounds) and fall through to a getSources()
+    // shot, i.e. a portal dialog on every interval tick.
+    if (trigger !== 'click' && this.streamBackend && this.streamBackend.isActive()) {
+      const frame = await this.streamBackend.frameForClick({
+        clickPos: null,
+        clickAt: Date.now(),
+        strict: false, // no pre/post-click constraint for timed captures
+        leadMs: 0,
+        failable: false, // a slow timed-capture encode must not kill the stream
+      }).catch(() => null);
+      if (frame) {
+        const result = await this.storeFrameAsStep(this.session.guideId, 'fullscreen', frame);
+        if (result.ok) this.noteStepAdded(result.step, trigger);
+        clog(trigger, 'capture stored from stream; total', this.session && this.session.count);
+        return result;
+      }
+      clog(trigger, 'capture: no frame from stream this tick — will retry next tick');
+    } else if (trigger !== 'click' && this.onWayland()) {
+      clog(trigger, 'capture: stream backend not active (active=',
+        Boolean(this.streamBackend && this.streamBackend.isActive()), ')');
+    }
+
+    // On Wayland the only screen-grab fallback below is desktopCapturer
+    // .getSources(), which pops the XDG portal dialog every call. For the
+    // automatic timed triggers that would mean a dialog on every tick, so skip
+    // the fallback and wait for the open stream to deliver a frame on a later
+    // tick. Explicit captures (manual, and click on X11) still fall through —
+    // one dialog for one deliberate action.
+    if (this.onWayland() && (trigger === 'interval' || trigger === 'hotkey')) {
+      return { ok: false, reason: 'waiting for the screen-share stream' };
     }
 
     if (this.shooting) return { ok: false, reason: 'capture already in progress' };
@@ -642,7 +832,11 @@ class CaptureService {
     };
 
     if (this.streamBackend && this.streamBackend.isActive() && grabMode === 'fullscreen') {
-      const frame = await this.streamBackend.frameForClick({ clickPos, clickAt: clickTime, strict, leadMs });
+      // On Wayland the stream is the only capture path (no frame-loop fallback),
+      // so a slow PNG encode must not let the 2-strikes rule tear it down.
+      const frame = await this.streamBackend.frameForClick({
+        clickPos, clickAt: clickTime, strict, leadMs, failable: !this.onWayland(),
+      });
       if (frame) return frame;
       // No qualifying frame (or the backend just went unhealthy): fall
       // through to the loop buffer / fresh-shot fallbacks below.
@@ -695,8 +889,11 @@ class CaptureService {
   async startClickFrameBackend() {
     const mode = this.settings.get('capture.mode') || 'fullscreen';
     // The worker streams screens; window-mode grabs need the loop's
-    // source-filtering logic.
-    if (this.settings.get('capture.streamCapture') === false || mode === 'window') {
+    // source-filtering logic. But the loop isn't viable on Wayland (getSources
+    // is broken/portal), so there we always take the stream backend regardless
+    // of the streamCapture/window settings.
+    if (this.canUseFrameLoop()
+      && (this.settings.get('capture.streamCapture') === false || mode === 'window')) {
       this.startFrameLoop();
       return;
     }
@@ -716,7 +913,11 @@ class CaptureService {
         onUnhealthy: () => this.degradeToFrameLoop(),
       });
       const displays = this.screen.getAllDisplays();
-      const sources = await desktopCapturer.getSources({
+      // On Wayland, desktopCapturer.getSources() both fails to yield usable
+      // source ids AND pops the portal dialog. Skip it entirely and drive the
+      // worker through getDisplayMedia (the portal picker chooses the screen).
+      const useDisplayMedia = this.onWayland();
+      const sources = useDisplayMedia ? [] : await desktopCapturer.getSources({
         types: ['screen'],
         thumbnailSize: { width: 1, height: 1 }, // ids only — skip thumbnail work
       });
@@ -724,23 +925,38 @@ class CaptureService {
         displays,
         sources: sources.map((s) => ({ id: s.id, display_id: s.display_id })),
         sampleMs: this.settings.get('capture.frameSampleMs') || 100,
+        useDisplayMedia,
       });
       const stale = gen !== this.captureGen;
       if (!ok || stale || !this.session || this.session.paused) {
         backend.stop();
         if (!stale && this.session && !this.session.paused) {
-          console.error('[stepforge] stream capture backend failed to start — using in-process frame loop');
-          this.startFrameLoop();
+          if (this.canUseFrameLoop()) {
+            console.error('[stepforge] stream capture backend failed to start — using in-process frame loop');
+            this.startFrameLoop();
+          } else {
+            // On Wayland the frame loop would spam getSources() (portal) with
+            // nothing usable, so there's no fallback — the recording needs the
+            // portal stream. Tell the user how to recover.
+            console.error('[stepforge] screen-share stream did not start — pick a screen in the share dialog, or stop and start recording again');
+          }
         }
         return;
       }
       this.streamBackend = backend;
-      clog('stream capture backend active');
+      // Visible in normal output (one line per recording): confirms the screen
+      // stream came up, so a "nothing records" report can be told apart from a
+      // stream that never started (which logs the failure paths above).
+      console.log(`[stepforge] screen-capture stream active (${useDisplayMedia ? 'getDisplayMedia/portal' : 'desktopCapturer'})`);
       this.notify('capture:state', this.state());
     } catch (err) {
       if (gen === this.captureGen && this.session && !this.session.paused) {
-        console.error(`[stepforge] stream capture backend error (${err && err.message}) — using in-process frame loop`);
-        this.startFrameLoop();
+        if (this.canUseFrameLoop()) {
+          console.error(`[stepforge] stream capture backend error (${err && err.message}) — using in-process frame loop`);
+          this.startFrameLoop();
+        } else {
+          console.error(`[stepforge] screen-share stream error (${err && err.message}) — stop and start recording again`);
+        }
       }
     } finally {
       if (gen === this.captureGen) this.streamBackendStarting = false;
@@ -765,8 +981,14 @@ class CaptureService {
    */
   degradeToFrameLoop() {
     this.streamBackend = null;
-    console.error('[stepforge] stream capture backend unhealthy — falling back to in-process frame loop');
-    if (this.session && !this.session.paused) this.startFrameLoop();
+    if (this.canUseFrameLoop()) {
+      console.error('[stepforge] stream capture backend unhealthy — falling back to in-process frame loop');
+      if (this.session && !this.session.paused) this.startFrameLoop();
+    } else {
+      // On Wayland the frame loop isn't viable (getSources is broken/portal),
+      // so there's nothing to fall back to — the stream is the only path.
+      console.error('[stepforge] screen-share stream stopped — stop and start recording again to re-share');
+    }
     this.notify('capture:state', this.state());
   }
 
@@ -775,13 +997,14 @@ class CaptureService {
     try {
       this.clickWatcherBuf = '';
       this.linuxEvent = null;
-      if (process.platform === 'linux' && hasBinary('xinput')) {
+      if (process.platform === 'linux' && !this.onWayland() && hasBinary('xinput')) {
         // Stream raw button events from the X server; one capture per press.
         // xinput block-buffers stdout when piped, so a press event can sit
         // in its buffer until later motion events flush it — by then the
         // cursor read in onOsClick lands where the mouse moved *after* the
         // click. stdbuf -oL forces line-buffering so events (and the cursor
         // read) line up with the actual click instant.
+        // (Skipped on Wayland: xinput only sees XWayland events — see isWayland.)
         const argv = hasBinary('stdbuf')
           ? ['stdbuf', '-oL', 'xinput', 'test-xi2', '--root']
           : ['xinput', 'test-xi2', '--root'];
@@ -789,6 +1012,13 @@ class CaptureService {
         this.clickWatcher.stdout.on('data', (chunk) => {
           this.ingestClickWatcherChunk(chunk.toString(), 'linux');
         });
+      } else if (process.platform === 'linux' && readableEvdevMouseNodes().length > 0) {
+        // Wayland (or X11 without xinput): read mouse buttons from the kernel
+        // input layer. This is the only global click source on Wayland, but it
+        // carries no cursor position — onOsClick gets a null point, so steps are
+        // captured per click without a marker. (X11 prefers the xinput branch
+        // above, which does carry root coordinates for the marker.)
+        this.startEvdevWatcher();
       } else if (process.platform === 'win32') {
         // Use a low-level Windows mouse hook instead of polling
         // GetAsyncKeyState. The low bit from GetAsyncKeyState can be consumed
@@ -1173,7 +1403,9 @@ public static class SFHook {
     console.error(`[stepforge] click watcher stopped${detail ? `: ${detail}` : ''}`);
     if (!this.session) return;
     if (!this.session.intervalSec) {
-      this.session.intervalSec = this.settings.get('capture.autoIntervalSec') || 5;
+      this.session.intervalSec = this.fallbackCaptureTrigger() === 'hotkey'
+        ? 0
+        : this.fallbackIntervalSec();
       this.applyInterval();
     }
     this.notify('capture:state', this.state());
@@ -1184,10 +1416,52 @@ public static class SFHook {
       try { this.clickWatcher.kill(); } catch { /* already gone */ }
       this.clickWatcher = null;
     }
+    this.stopEvdevWatcher();
     this.clickWatcherBuf = '';
     this.linuxEvent = null;
     this.discardPendingRawClick();
     this.lastAcceptedClickByButton.clear();
+  }
+
+  /**
+   * Open every readable mouse device node and turn button-down events into
+   * onOsClick calls. One physical mouse is normally one node; the leading-edge
+   * debounce in onOsClick collapses any cross-node duplicates. Frames are still
+   * served by the stream backend; this only supplies the click *trigger*.
+   */
+  startEvdevWatcher() {
+    const nodes = readableEvdevMouseNodes();
+    this.evdevStreams = [];
+    for (const node of nodes) {
+      try {
+        const stream = fs.createReadStream(node);
+        let buf = Buffer.alloc(0);
+        stream.on('data', (chunk) => {
+          buf = buf.length ? Buffer.concat([buf, chunk]) : chunk;
+          const { presses, rest } = decodeEvdevButtonPresses(buf);
+          buf = rest;
+          for (const button of presses) this.onOsClick(Date.now(), null, button);
+        });
+        // A device can disappear (unplugged); just drop that stream.
+        stream.on('error', () => {});
+        this.evdevStreams.push(stream);
+      } catch {
+        // Node became unreadable between enumeration and open — skip it.
+      }
+    }
+    if (!this.evdevStreams.length) {
+      console.error('[stepforge] no readable mouse input devices — add your user to the "input" group for per-click capture: sudo usermod -aG input "$USER" (then log out and back in)');
+    } else {
+      console.log(`[stepforge] per-click capture via evdev on ${this.evdevStreams.length} device(s)${this.onWayland() ? ' (Wayland: no click marker)' : ''}`);
+    }
+  }
+
+  stopEvdevWatcher() {
+    if (!this.evdevStreams) return;
+    for (const stream of this.evdevStreams) {
+      try { stream.destroy(); } catch { /* already closed */ }
+    }
+    this.evdevStreams = null;
   }
 
   /**
@@ -1396,7 +1670,11 @@ public static class SFHook {
     // filtered by the cursor-position check in sessionCapture, not by
     // window focus — WSLg reports focus unreliably.)
     let clickPos = osPoint ? this.osPointToDip(osPoint) : null;
-    if (!clickPos) clickPos = this.screen.getCursorScreenPoint();
+    // Read the live cursor as a fallback only off Wayland: Wayland refuses to
+    // report the global pointer position (getCursorScreenPoint returns 0,0), so
+    // a fallback there would stamp every click marker in the top-left corner.
+    // Leaving clickPos null means the step is captured with no (wrong) marker.
+    if (!clickPos && !this.onWayland()) clickPos = this.screen.getCursorScreenPoint();
     clog('click@', clickAt, button, 'os', osPoint, '-> dip', clickPos);
     this.pendingClickOsPoint = osPoint && Number.isFinite(osPoint.x) && Number.isFinite(osPoint.y)
       ? { x: osPoint.x, y: osPoint.y }
@@ -1428,20 +1706,32 @@ public static class SFHook {
    * scaled away from 100% and on secondary monitors.
    */
   osPointToDip(osPoint) {
-    if (this.screen && typeof this.screen.screenToDipPoint === 'function') {
-      try {
-        const dip = this.screen.screenToDipPoint(osPoint);
-        if (dip && Number.isFinite(dip.x) && Number.isFinite(dip.y)) return dip;
-      } catch { /* fall through to manual conversion */ }
-    }
+    let geometryDip = null;
     try {
       const displays = this.screen && typeof this.screen.getAllDisplays === 'function'
         ? this.screen.getAllDisplays()
         : [];
-      const dip = physicalToDip(osPoint, displays);
-      if (dip) return dip;
-    } catch { /* no display geometry available */ }
-    return osPoint;
+      geometryDip = physicalToDip(osPoint, displays);
+    } catch {
+      geometryDip = null;
+    }
+    if (this.screen && typeof this.screen.screenToDipPoint === 'function') {
+      try {
+        const dip = this.screen.screenToDipPoint(osPoint);
+        if (dip && Number.isFinite(dip.x) && Number.isFinite(dip.y)) {
+          if (!geometryDip) return dip;
+          const offByX = Math.abs(dip.x - geometryDip.x);
+          const offByY = Math.abs(dip.y - geometryDip.y);
+          // Some Windows/Electron combinations have been observed to return a
+          // raw physical point here. That keeps the click marker off-screen on
+          // scaled displays, so trust the geometry path when the two disagree
+          // by more than a tiny rounding margin.
+          if (offByX <= 1 && offByY <= 1) return dip;
+          return geometryDip;
+        }
+      } catch { /* fall through to manual conversion */ }
+    }
+    return geometryDip || osPoint;
   }
 
   /**
@@ -1761,3 +2051,5 @@ public static class SFHook {
 }
 
 module.exports = CaptureService;
+// Exposed for unit tests (pure, no device access).
+module.exports.decodeEvdevButtonPresses = decodeEvdevButtonPresses;

@@ -3,7 +3,11 @@
 
 const { spawn } = require('node:child_process');
 
-const { resolveElectronBinary, sanitizeElectronEnv } = require('./electron-launcher');
+const {
+  linuxSandboxLaunchArgs,
+  resolveElectronBinary,
+  sanitizeElectronEnv,
+} = require('./electron-launcher');
 
 let electronPath;
 try {
@@ -13,8 +17,19 @@ try {
   process.exit(1);
 }
 const env = sanitizeElectronEnv();
+const sandboxArgs = linuxSandboxLaunchArgs({ electronPath });
+if (sandboxArgs.includes('--no-sandbox')) {
+  console.warn('[stepforge] Electron sandbox helper is not configured for this install; starting with --no-sandbox');
+}
 
-const child = spawn(electronPath, ['.'], {
+// On Linux, prefer the native Ozone path when available and enable PipeWire-
+// based screen capture so desktopCapturer can go through the XDG Desktop
+// Portal on Wayland without affecting X11.
+const extraArgs = process.platform === 'linux'
+  ? ['--enable-features=WebRTCPipeWireCapturer', '--ozone-platform-hint=auto', ...sandboxArgs]
+  : [];
+
+const child = spawn(electronPath, [...extraArgs, '.'], {
   stdio: 'inherit',
   env,
   windowsHide: false,

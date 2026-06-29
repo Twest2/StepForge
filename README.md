@@ -1,9 +1,11 @@
 # StepForge
 
-StepForge is a **fully offline**, open-source desktop app for Windows and
-Linux that captures step-by-step workflows as screenshots, lets you annotate
-and describe each step in a focused three-pane editor, and exports the result
-to Markdown, DOCX, PPTX, PDF, HTML (WIP), GIF (WIP), confluence (WIP), Wiki.js (WIP), and image bundles (WIP). The current reconmendations for exporting is Markdown and PDF.
+StepForge is a **fully offline**, open-source desktop app for Windows, with
+Linux (WIP) builds. It captures step-by-step workflows as screenshots, lets
+you annotate and describe each step in a focused three-pane editor, and
+exports the result to Markdown, DOCX, PPTX, PDF, HTML (WIP), GIF (WIP),
+confluence (WIP), Wiki.js (WIP), and image bundles (WIP). The current
+reconmendations for exporting is Markdown and PDF.
 
 It is an independent offline desktop guide-capture tool inspired by publicly
 documented workflow patterns of commercial documentation tools like Folge. It contains no
@@ -60,7 +62,7 @@ using only Node built-ins.
 
 ## Getting Started
 
-For a windows installation, see [docs/windows_installation](docs/windows_installation.md) or for a developer/more in depth walkthrough, see [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md).
+For a Windows installation, see [docs/windows_installation](docs/windows_installation.md) or for a developer/more in depth walkthrough, see [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md).
 
 Requirements: Node.js 20+ and npm (Electron is the only dependency).
 
@@ -70,7 +72,8 @@ npm start          # launch StepForge
 ```
 
 First run creates the local data directory (`~/.local/share/stepforge` on
-Linux, `%APPDATA%/stepforge` on Windows; override with `STEPFORGE_DATA_DIR`).
+Linux (WIP), `%APPDATA%/stepforge` on Windows; override with
+`STEPFORGE_DATA_DIR`).
 
 ## Testing
 
@@ -92,7 +95,7 @@ documents, and validating the bytes of the output, not string matching.
 bash scripts/bootstrap-offline.sh   # verify toolchain availability
 bash scripts/verify.sh              # full test suite + smoke checks
 bash scripts/build-release.sh       # assemble runnable app directory
-bash scripts/package-linux.sh       # portable tar.gz + .deb (+ AppDir spec)
+bash scripts/package-linux.sh       # local Linux packaging (WIP; not part of release)
 npm run package:windows             # Windows installer .exe in releases/
 pwsh scripts/package-windows.ps1    # same Windows installer build via PowerShell
 ```

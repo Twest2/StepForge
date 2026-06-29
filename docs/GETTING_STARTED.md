@@ -25,9 +25,9 @@ That installs Electron and the local packaging tools used by the scripts.
 npm start
 ```
 
-The first launch creates the local StepForge data directory. On Linux it is
-usually under `~/.local/share/stepforge`. On Windows it is usually under
-`%APPDATA%/stepforge`.
+The first launch creates the local StepForge data directory. On Linux (WIP)
+it is usually under `~/.local/share/stepforge`. On Windows it is usually
+under `%APPDATA%/stepforge`.
 
 ## 3. Create your first guide
 
@@ -95,4 +95,5 @@ If you want to find commands quickly, press `Ctrl+/` for Quick Actions.
 1. `bash scripts/build-release.sh` assembles the offline release layout.
 2. `npm run package:windows` creates the Windows installer `.exe` in
    `releases/`.
-3. `bash scripts/package-linux.sh` creates Linux release artifacts.
+3. `bash scripts/package-linux.sh` creates Linux release artifacts (WIP;
+   local only).

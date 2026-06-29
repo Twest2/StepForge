@@ -111,7 +111,7 @@ click position. Three pieces make that hold:
 
 1. **OS click events** (`app/capture.js`): a low-level mouse hook on Windows
    (`CLICK x y button unixMs` lines), an `xinput test-xi2 --root` watcher on
-   X11. The Linux parser carries event-time `root:` coordinates and merges
+   X11. The Linux (WIP) parser carries event-time `root:` coordinates and merges
    raw/regular twin blocks structurally — there is no time-based debounce
    that could drop fast clicks, only suppression of identical duplicate
    deliveries. Physical coordinates convert to DIP via

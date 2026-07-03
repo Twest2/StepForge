@@ -1899,7 +1899,7 @@ class GuideEditor {
       onPreview: async ({ format, options }) => {
         const preview = await api.export.preview({ guideId: this.guideId, format, options });
         if (preview && preview.file) {
-          await api.shell.openPath({ target: preview.file }); // open in default viewer
+          await api.shell.openProduced({ target: preview.file }); // open in default viewer
           this.onToast('Preview opened (first steps only).');
         }
         return true;
@@ -1935,7 +1935,7 @@ class GuideEditor {
         else this.onToast('Could not save linked archive.', { error: true });
       },
       onOpenArchive: async () => {
-        await api.shell.showItemInFolder({ target: this.guide.linkedSource.path });
+        await api.shell.revealLinkedArchive({ guideId: this.guideId });
       },
     });
   }

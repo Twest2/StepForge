@@ -343,11 +343,14 @@ async function createElectronHost(onEvent) {
       preload: path.join(__dirname, 'capture-worker-preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
       // The worker must keep sampling while hidden — throttling a hidden
       // window is exactly the wrong default for a frame recorder.
       backgroundThrottling: false,
     },
   });
+  // The worker may only display capture-worker.html; deny navigation/popups.
+  require('./security').installWindowSecurity(win, 'captureWorker');
   const listener = (event, msg) => {
     if (event.sender === win.webContents) onEvent(msg);
   };

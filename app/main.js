@@ -599,6 +599,12 @@ function setupIpc() {
     validate: (a) => c.string(a.text, 200000)
       && c.optionalString(a.guideTitle, 1000) && c.optionalString(a.stepTitle, 1000),
   });
+  // Cancel outstanding AI requests, e.g. when a guide/editor closes, so a
+  // slow response can't resolve against data the user has moved on from.
+  h('ai:cancel', ({ guideId = null } = {}) => {
+    textIntel.cancelInflight(guideId || null);
+    return true;
+  }, { validate: (a) => c.optionalId(a.guideId) });
   h('placeholders:globals:get', () => settings.getGlobalPlaceholders());
   h('placeholders:globals:set', (values) => settings.setGlobalPlaceholders(values));
 

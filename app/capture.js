@@ -1025,6 +1025,11 @@ class CaptureService {
         // by other processes and a polling loop can miss short clicks under
         // load; WH_MOUSE_LL gives us one event for each button-down, with the
         // hook-time cursor position and timestamp.
+        //
+        // Raw typed-text capture is a keylogging surface, so the hook only
+        // emits printable CHAR events when the user explicitly opted in; by
+        // default the characters never even cross the process boundary.
+        const captureTypedText = this.settings.get('capture.captureTypedText') ? 'true' : 'false';
         const ps = `
 $ErrorActionPreference = 'Stop'
 Add-Type -TypeDefinition @'
@@ -1054,6 +1059,7 @@ public static class SFHook {
   private const uint PROCESS_POWER_THROTTLING_EXECUTION_SPEED = 0x1;
   private const uint HIGH_PRIORITY_CLASS = 0x00000080;
 
+  private static readonly bool CaptureTypedText = ${captureTypedText};
   private static IntPtr hook = IntPtr.Zero;
   private static IntPtr keyHook = IntPtr.Zero;
   private static LowLevelMouseProc proc = MouseHookCallback;
@@ -1306,8 +1312,10 @@ public static class SFHook {
             queue.Enqueue("KEY Escape " + unixMs); signal.Set();
           } else if (vk == 0x0D) {
             queue.Enqueue("KEY Enter " + unixMs); signal.Set();
-          } else {
-            // Map to Unicode character using current keyboard layout + shift state.
+          } else if (CaptureTypedText) {
+            // Map to Unicode character using current keyboard layout + shift
+            // state. Only reached when the user opted into typed-text capture;
+            // otherwise raw characters are never read or emitted.
             byte[] ks = new byte[256];
             GetKeyboardState(ks);
             var sb = new System.Text.StringBuilder(4);
@@ -1790,6 +1798,11 @@ public static class SFHook {
     this._keyLastAt = now;
 
     if (type === 'CHAR') {
+      // Raw typed-text capture is off by default: it can record passwords or
+      // other secrets. Only buffer printable characters when the user has
+      // explicitly opted in via capture.captureTypedText. Shortcut/navigation
+      // keys below are unaffected.
+      if (!this.settings.get('capture.captureTypedText')) return;
       const ch = typeof data === 'number' ? String.fromCharCode(data) : String(data);
       this._keyBuffer = (this._keyBuffer + ch).slice(-200);
     } else if (type === 'KEY') {

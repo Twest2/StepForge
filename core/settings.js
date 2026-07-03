@@ -45,6 +45,13 @@ const DEFAULT_SETTINGS = {
     // user is likely to click so the buffer holds frames of the now-visible
     // screen rather than the just-dismissed app window.
     postHideSettleMs: 150,
+    // Raw typed-text capture. When true, printable characters typed between
+    // captures are buffered and stored in step capture metadata (and can be
+    // sent to a configured AI host). This can record passwords or other
+    // secrets, so it is OFF by default and must be explicitly opted into.
+    // Shortcut detection (Ctrl+T, Enter, …) is unaffected — only raw
+    // character logging is gated here.
+    captureTypedText: false,
   },
   editor: {
     focusedViewDefaultForNewSteps: false,
@@ -52,6 +59,22 @@ const DEFAULT_SETTINGS = {
   },
   ai: {
     enabled: false,
+    // Auto-document captured steps in the background when a session capture
+    // lands. Requires enabled + a reachable model.
+    autoDoc: false,
+    // Local-first: only a loopback Ollama endpoint is contacted unless this
+    // is explicitly turned on. Turning it on sends screenshots and text to
+    // the configured remote host.
+    allowRemoteHost: false,
+    // Attach the step screenshot to AI requests (only for vision-capable
+    // models). Turning this off keeps requests text-only.
+    attachScreenshots: true,
+    // Per-request network deadline (ms). A dead endpoint fails fast instead
+    // of leaving UI actions pending forever.
+    timeoutMs: 60000,
+    // Skip attaching a screenshot larger than this many bytes (pre-base64)
+    // to avoid multi-hundred-MB request bodies.
+    maxImageBytes: 12 * 1024 * 1024,
     ollama: {
       host: 'http://127.0.0.1:11434',
       model: 'llama3.2:1b',

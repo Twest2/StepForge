@@ -2,7 +2,7 @@
   "name": "stepforge",
   "version": "0.3.2",
   "buildVersion": "0.3.2.1",
-  "description": "Fully offline desktop tool for capturing, annotating, and exporting step-by-step guides.",
+  "description": "Local-first desktop tool for capturing, annotating, and exporting step-by-step guides, with an optional user-configured local AI integration.",
   "main": "app/main.js",
   "author": "StepForge tyler@twestbrook.com",
   "license": "MPL-2.0",

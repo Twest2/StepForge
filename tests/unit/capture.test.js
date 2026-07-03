@@ -68,7 +68,9 @@ function makeFrame(name, ageMs = 0, overrides = {}) {
 // ---- fresh-shot fallback path ----------------------------------------------
 
 test('click-triggered session capture uses the low-latency hide pause', async () => {
-  const service = makeService();
+  // The fresh-shot fallback only runs in non-strict (balanced) mode; strict
+  // mode skips rather than storing a post-click shot.
+  const service = makeService({ settings: { 'capture.strictClickFrames': false } });
   service.session = { guideId: 'guide-1', paused: false, count: 0, intervalSec: 0 };
 
   let seenOptions = null;
@@ -1006,7 +1008,9 @@ test('a buffered frame from a different display is ignored for click capture', a
 });
 
 test('a stale buffered frame is not reused — the click falls back to a fresh shot', async () => {
-  const service = makeService();
+  // Balanced (non-strict) mode: a stale frame is rejected and the click takes
+  // the fresh-shot fallback. (Strict mode skips instead — see below.)
+  const service = makeService({ settings: { 'capture.strictClickFrames': false } });
   service.session = { guideId: 'guide-stale', paused: false, count: 0, intervalSec: 0 };
   service.latestFrame = makeFrame('stale-png', 10_000);
 
@@ -1022,12 +1026,12 @@ test('a stale buffered frame is not reused — the click falls back to a fresh s
   assert.equal(shootCalled, true, 'a stale buffered frame must not be reused');
 });
 
-test('strict mode: a frame whose grab started after the click is rejected', async () => {
-  // This replaces the old "idle click waits for the imminent loop frame"
-  // behavior: a grab that begins after the click can already show the
-  // click's effects, so strict mode takes the explicit fresh-shot fallback
-  // instead of passing it off as the click-time screen.
-  const service = makeService();
+test('strict mode: no pre-click frame is skipped, never stored as a post-click shot', async () => {
+  // A grab that begins after the click can already show the click's effects.
+  // Strict mode's promise is that a stored step never shows the post-click
+  // screen, so when no pre-click frame qualifies it SKIPS with a diagnostic
+  // rather than taking a fresh (post-click) shot.
+  const service = makeService(); // strict is the default
   service.session = { guideId: 'guide-strict', paused: false, count: 0, intervalSec: 0 };
   service.frameLoopRunning = true;
   service.frameLoopInFlight = false; // nothing in flight at click time
@@ -1041,11 +1045,18 @@ test('strict mode: a frame whose grab started after the click is rejected', asyn
     shootCalled = true;
     return { ok: true, step: { stepId: 'fresh-step' } };
   };
+  const diagnostics = [];
+  service.notify = (channel, payload) => {
+    if (channel === 'capture:diagnostic') diagnostics.push(payload);
+  };
 
   const result = await service.sessionCapture('click', { x: 1, y: 1 }, { at: clickAt });
 
-  assert.equal(result.ok, true);
-  assert.equal(shootCalled, true);
+  assert.equal(result.ok, false);
+  assert.match(result.reason, /strict/i);
+  assert.equal(shootCalled, false, 'strict mode must not store a post-click shot');
+  assert.equal(diagnostics.length, 1);
+  assert.equal(diagnostics[0].kind, 'strict-click-skipped');
 });
 
 test('balanced mode keeps the legacy slack: an imminent post-click frame is accepted', async () => {
@@ -1183,7 +1194,9 @@ test('click frames come from the stream backend when it is active', async () => 
 });
 
 test('a stream backend with no qualifying frame falls through to the fresh-shot path', async () => {
-  const service = makeService();
+  // Balanced (non-strict) mode: the fresh-shot fallback runs. Strict mode
+  // would skip rather than store a post-click shot.
+  const service = makeService({ settings: { 'capture.strictClickFrames': false } });
   service.session = { guideId: 'guide-stream-miss', paused: false, count: 0, intervalSec: 0 };
   service.streamBackend = {
     isActive: () => true,
@@ -1279,6 +1292,8 @@ test('click capture marks the click-time cursor position', async () => {
     if (key === 'capture.clickMarker') return true;
     if (key === 'capture.clickMarkerColor') return '#E5484D';
     if (key === 'editor.focusedViewDefaultForNewSteps') return false;
+    // Exercise the fresh-shot fallback: strict mode would skip instead.
+    if (key === 'capture.strictClickFrames') return false;
     return null;
   };
   service.session = { guideId: 'guide-4', paused: false, count: 0, intervalSec: 0 };

@@ -3,6 +3,7 @@
 const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
+const { pathToFileURL } = require('node:url');
 const {
   app, BrowserWindow, ipcMain, dialog, shell, nativeTheme, globalShortcut,
   clipboard, nativeImage, screen, powerSaveBlocker, session, desktopCapturer,
@@ -204,7 +205,12 @@ function createWindow() {
           // Second scenario, reproducing the "I clicked many times but only
           // got two screenshots" report: a fast burst of clicks immediately
           // followed by finishing the session, so most clicks are still
-          // queued (frames still encoding) when the stop lands.
+          // queued (frames still encoding) when the stop lands. This scenario
+          // tests the queue DRAIN, not strict timing — 30ms-apart clicks
+          // outpace the frame sampler, so run it in balanced mode where every
+          // queued click stores. (Strict-mode skip-vs-store is covered by the
+          // marker scenario above and by unit tests.)
+          settings.set('capture.strictClickFrames', false);
           const burstGuide = store.createGuide({ title: 'burst selftest' });
           capture.startSession(burstGuide.guideId, { intervalSec: 0 });
           capture.stopClickWatcher();
@@ -228,6 +234,7 @@ function createWindow() {
           const burstSteps = store.getGuide(burstGuide.guideId).stepsOrder.length;
           console.log('CLICK-SELFTEST burst:', burstSteps, 'of', burstCount,
             burstSteps === burstCount ? 'OK — no clicks dropped on finish' : 'FAIL — clicks lost');
+          settings.set('capture.strictClickFrames', true); // restore for later scenarios
 
           // Helper: wait until armRecording has finished warming (window
           // hidden, buffer primed) so an injected click counts as a real
@@ -514,7 +521,12 @@ function setupIpc() {
   });
   h('step:imagePath', ({ guideId, stepId, which }) => {
     const p = store.stepImagePath(guideId, stepId, which || 'working');
-    return p && fs.existsSync(p) ? `file://${p}?v=${fs.statSync(p).mtimeMs}` : null;
+    if (!p || !fs.existsSync(p)) return null;
+    // pathToFileURL correctly encodes spaces, #, %, drive letters, etc.; the
+    // mtime is a cache-buster so the renderer reloads after an edit.
+    const url = pathToFileURL(p);
+    url.searchParams.set('v', String(fs.statSync(p).mtimeMs));
+    return url.href;
   }, {
     validate: (a) => c.id(a.guideId) && c.id(a.stepId)
       && (a.which === undefined || a.which === null || c.oneOf(a.which, ['original', 'working'])),
@@ -651,43 +663,20 @@ function setupIpc() {
     }
     return result;
   }, { validate: (a) => c.id(a.guideId) });
-  let capturePowerBlocker = -1;
-  const startCapturePower = () => {
-    if (!powerSaveBlocker.isStarted(capturePowerBlocker)) {
-      capturePowerBlocker = powerSaveBlocker.start('prevent-app-suspension');
-    }
-  };
-  const stopCapturePower = () => {
-    if (powerSaveBlocker.isStarted(capturePowerBlocker)) {
-      powerSaveBlocker.stop(capturePowerBlocker);
-    }
-  };
 
-  // Opt every live Electron process (browser, GPU, the screen-capture utility,
-  // any renderers) out of EcoQoS for the duration of a recording. The hidden
-  // capture-worker renderer is created later, during warmup, so it opts itself
-  // out separately (see stream-backend.js); this covers the rest.
-  const keepCaptureProcessesResponsive = () => {
-    try {
-      keepProcessesResponsive(app.getAppMetrics().map((m) => m.pid));
-    } catch { /* metrics unavailable — best effort */ }
-  };
-
+  // Power/throttling state is owned entirely by the capture service's
+  // recording transitions (see createCapturePowerPolicy) so there is exactly
+  // one owner: it is held iff a session is actively recording, and paused,
+  // finished, tray, and second-instance transitions all release it correctly.
   h('capture:session', async ({ action, guideId, intervalSec }) => {
     if (action === 'start') {
       capture.startSession(guideId, { intervalSec: intervalSec ?? null });
-      startCapturePower();
-      keepCaptureProcessesResponsive();
     } else if (action === 'pause') {
       capture.togglePause(true);
-      stopCapturePower();
     } else if (action === 'resume') {
       capture.togglePause(false);
-      startCapturePower();
-      keepCaptureProcessesResponsive();
     } else if (action === 'finish') {
       capture.finishSession();
-      stopCapturePower();
     } else if (action === 'interval') {
       capture.setInterval(intervalSec);
     }
@@ -854,7 +843,7 @@ function setupIpc() {
     });
     const result = runExport(format, ast, previewDir, options || {});
     producedFiles.add(result.file);
-    return { ok: true, file: result.file, fileUrl: `file://${result.file}` };
+    return { ok: true, file: result.file, fileUrl: pathToFileURL(result.file).href };
   }, {
     validate: (a) => c.id(a.guideId) && validFormat(a.format)
       && (a.options === undefined || security.isPlainArgs(a.options)),
@@ -967,12 +956,36 @@ if (!gotLock) {
       }
     };
 
+    // Single owner of OS power/throttling state for recording. The capture
+    // service calls setRecording(true/false) on every recording transition;
+    // this holds a power-save blocker and opts live Electron processes out of
+    // EcoQoS while recording, and releases the blocker when recording stops.
+    const capturePowerPolicy = (() => {
+      let blocker = -1;
+      const keepResponsive = () => {
+        try { keepProcessesResponsive(app.getAppMetrics().map((m) => m.pid)); } catch { /* best effort */ }
+      };
+      return {
+        setRecording(recording) {
+          if (recording) {
+            if (!powerSaveBlocker.isStarted(blocker)) {
+              blocker = powerSaveBlocker.start('prevent-app-suspension');
+            }
+            keepResponsive();
+          } else if (powerSaveBlocker.isStarted(blocker)) {
+            powerSaveBlocker.stop(blocker);
+          }
+        },
+      };
+    })();
+
     capture = new CaptureService({
       store,
       settings,
       getWindow: () => mainWindow,
       notify: captureNotify,
       textIntel,
+      powerPolicy: capturePowerPolicy,
     });
 
     // Deny-by-default permission policy. The only grant in the entire app is
@@ -1023,6 +1036,19 @@ if (!gotLock) {
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });
+  });
+
+  // Drain clicks still encoding in the capture queue before the app exits, so
+  // a fast burst immediately before quit is not lost. Defer the quit exactly
+  // once with a bounded deadline, then let it proceed.
+  let quitDrained = false;
+  app.on('before-quit', (event) => {
+    if (quitDrained || !capture) return;
+    quitDrained = true;
+    event.preventDefault();
+    // Stop new clicks from being queued, then wait for the queue to settle.
+    capture.stopClickWatcher();
+    capture.drainPendingClicks(2000).finally(() => app.quit());
   });
 
   app.on('will-quit', () => {

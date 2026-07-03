@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+  pull_request:
   workflow_dispatch:
 
 jobs:
@@ -13,6 +14,11 @@ jobs:
     steps:
       - name: Checkout repository
         uses: https://gitea.com/actions/checkout@v4
+
+      - name: Use pinned Node toolchain
+        uses: https://github.com/actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
 
       - name: Install dependencies
         run: npm ci --cache ~/.npm --prefer-offline

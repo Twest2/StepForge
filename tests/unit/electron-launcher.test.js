@@ -8,9 +8,10 @@ const path = require('node:path');
 const {
   buildMissingElectronError,
   linuxSandboxLaunchArgs,
-  repairElectronInstall,
+  noSandboxExplicitlyAllowed,
   resolveElectronBinary,
 } = require('../../scripts/electron-launcher');
+const { checkNodeVersion, assertSupportedNode } = require('../../scripts/check-node-version');
 const { makeTmpDir, rmrf } = require('./helpers');
 
 test('resolves the Electron binary from path.txt when present', (t) => {
@@ -40,129 +41,51 @@ test('falls back to the platform binary when path.txt is absent', (t) => {
   );
 });
 
-test('repairs a broken Electron install before resolving the binary', (t) => {
-  const root = makeTmpDir('electron-repair');
-  t.after(() => rmrf(root));
-
-  fs.mkdirSync(path.join(root, 'dist'), { recursive: true });
-  fs.writeFileSync(
-    path.join(root, 'install.js'),
-    [
-      "const fs = require('node:fs');",
-      "const path = require('node:path');",
-      "if (process.env.ELECTRON_SKIP_BINARY_DOWNLOAD) process.exit(2);",
-      "fs.mkdirSync(path.join(__dirname, 'dist'), { recursive: true });",
-      "fs.writeFileSync(path.join(__dirname, 'dist', 'electron.exe'), 'binary');",
-      "fs.writeFileSync(path.join(__dirname, 'path.txt'), 'electron.exe');",
-    ].join('\n')
-  );
-
-  const originalSkip = process.env.ELECTRON_SKIP_BINARY_DOWNLOAD;
-  process.env.ELECTRON_SKIP_BINARY_DOWNLOAD = '1';
-  t.after(() => {
-    if (originalSkip === undefined) delete process.env.ELECTRON_SKIP_BINARY_DOWNLOAD;
-    else process.env.ELECTRON_SKIP_BINARY_DOWNLOAD = originalSkip;
-  });
-
-  assert.equal(
-    repairElectronInstall({ packageRoot: root }),
-    true
-  );
-  assert.equal(
-    resolveElectronBinary({ packageRoot: root, platform: 'win32' }),
-    path.join(root, 'dist', 'electron.exe')
-  );
-});
-
-test('rebuilds Electron through npm when the binary is missing', (t) => {
-  const root = makeTmpDir('electron-rebuild');
-  t.after(() => rmrf(root));
-
-  fs.mkdirSync(path.join(root, 'dist'), { recursive: true });
-  const fakeNpmCli = path.join(root, 'fake-npm-cli.js');
-  fs.writeFileSync(
-    fakeNpmCli,
-    [
-      "const fs = require('node:fs');",
-      "const path = require('node:path');",
-      "if (process.env.ELECTRON_SKIP_BINARY_DOWNLOAD) process.exit(2);",
-      "fs.mkdirSync(path.join(__dirname, 'dist'), { recursive: true });",
-      "fs.writeFileSync(path.join(__dirname, 'dist', 'electron.exe'), 'binary');",
-      "fs.writeFileSync(path.join(__dirname, 'path.txt'), 'electron.exe');",
-    ].join('\n')
-  );
-
-  const originalNpmExecPath = process.env.npm_execpath;
-  const originalNpmNodeExecPath = process.env.npm_node_execpath;
-  const originalSkip = process.env.ELECTRON_SKIP_BINARY_DOWNLOAD;
-  process.env.npm_execpath = fakeNpmCli;
-  process.env.npm_node_execpath = process.execPath;
-  process.env.ELECTRON_SKIP_BINARY_DOWNLOAD = '1';
-  t.after(() => {
-    if (originalNpmExecPath === undefined) delete process.env.npm_execpath;
-    else process.env.npm_execpath = originalNpmExecPath;
-    if (originalNpmNodeExecPath === undefined) delete process.env.npm_node_execpath;
-    else process.env.npm_node_execpath = originalNpmNodeExecPath;
-    if (originalSkip === undefined) delete process.env.ELECTRON_SKIP_BINARY_DOWNLOAD;
-    else process.env.ELECTRON_SKIP_BINARY_DOWNLOAD = originalSkip;
-  });
-
-  assert.equal(
-    resolveElectronBinary({ packageRoot: root, platform: 'win32' }),
-    path.join(root, 'dist', 'electron.exe')
-  );
-});
-
-test('falls back to npm install when rebuild does not repair the runtime', (t) => {
-  const root = makeTmpDir('electron-install-fallback');
-  t.after(() => rmrf(root));
-
-  fs.mkdirSync(path.join(root, 'dist'), { recursive: true });
-  const fakeNpmCli = path.join(root, 'fake-npm-cli.js');
-  fs.writeFileSync(
-    fakeNpmCli,
-    [
-      "const fs = require('node:fs');",
-      "const path = require('node:path');",
-      "const command = process.argv[2];",
-      "if (command === 'rebuild') process.exit(1);",
-      "if (command === 'install') {",
-      "  fs.mkdirSync(path.join(__dirname, 'dist'), { recursive: true });",
-      "  fs.writeFileSync(path.join(__dirname, 'dist', 'electron.exe'), 'binary');",
-      "  fs.writeFileSync(path.join(__dirname, 'path.txt'), 'electron.exe');",
-      "  process.exit(0);",
-      "}",
-      "process.exit(1);",
-    ].join('\n')
-  );
-
-  const originalNpmExecPath = process.env.npm_execpath;
-  const originalNpmNodeExecPath = process.env.npm_node_execpath;
-  process.env.npm_execpath = fakeNpmCli;
-  process.env.npm_node_execpath = process.execPath;
-  t.after(() => {
-    if (originalNpmExecPath === undefined) delete process.env.npm_execpath;
-    else process.env.npm_execpath = originalNpmExecPath;
-    if (originalNpmNodeExecPath === undefined) delete process.env.npm_node_execpath;
-    else process.env.npm_node_execpath = originalNpmNodeExecPath;
-  });
-
-  assert.equal(
-    resolveElectronBinary({ packageRoot: root, projectRoot: root, platform: 'win32' }),
-    path.join(root, 'dist', 'electron.exe')
-  );
-});
-
-test('reports a helpful error when the runtime is missing', (t) => {
+test('never runs npm when the runtime is missing: fails with npm ci diagnostics', (t) => {
   const root = makeTmpDir('electron-missing');
   t.after(() => rmrf(root));
 
   fs.mkdirSync(path.join(root, 'dist'), { recursive: true });
 
-  assert.throws(
-    () => resolveElectronBinary({ packageRoot: root, platform: 'win32' }),
-    /npm install/
+  // Point npm_execpath at a script that would create the binary if executed.
+  // The launcher must NOT execute it: runtime self-repair is forbidden.
+  const trapNpmCli = path.join(root, 'trap-npm-cli.js');
+  fs.writeFileSync(
+    trapNpmCli,
+    [
+      "const fs = require('node:fs');",
+      "const path = require('node:path');",
+      "fs.writeFileSync(path.join(__dirname, 'npm-was-invoked'), '1');",
+    ].join('\n')
   );
+
+  const originalNpmExecPath = process.env.npm_execpath;
+  process.env.npm_execpath = trapNpmCli;
+  t.after(() => {
+    if (originalNpmExecPath === undefined) delete process.env.npm_execpath;
+    else process.env.npm_execpath = originalNpmExecPath;
+  });
+
+  assert.throws(
+    () => resolveElectronBinary({ packageRoot: root, projectRoot: root, platform: 'win32' }),
+    /npm ci/
+  );
+  assert.equal(fs.existsSync(path.join(root, 'npm-was-invoked')), false);
+});
+
+test('missing electron package fails with npm ci diagnostics, not an install', (t) => {
+  const root = makeTmpDir('electron-no-package');
+  t.after(() => rmrf(root));
+
+  assert.throws(
+    () => resolveElectronBinary({ packageRoot: null, projectRoot: root, platform: 'win32' }),
+    /never installs dependencies at runtime[\s\S]*npm ci/
+  );
+});
+
+test('missing runtime error message explains recovery without runtime installs', (t) => {
+  const root = makeTmpDir('electron-missing-msg');
+  t.after(() => rmrf(root));
 
   const message = buildMissingElectronError({
     packageRoot: root,
@@ -170,16 +93,40 @@ test('reports a helpful error when the runtime is missing', (t) => {
     candidatePaths: [path.join(root, 'dist', 'electron.exe')],
   });
   assert.match(message, /Electron could not be started/);
-  assert.match(message, /Expected the binary in:/);
+  assert.match(message, /npm ci/);
+  assert.doesNotMatch(message, /npm install/);
 });
 
-test('uses --no-sandbox when the Linux sandbox helper is not root-owned and setuid', () => {
-  const args = linuxSandboxLaunchArgs({
-    electronPath: '/tmp/stepforge/node_modules/electron/dist/electron',
-    platform: 'linux',
-    statSync: () => ({ uid: 1000, mode: 0o100755 }),
-  });
-  assert.deepEqual(args, ['--no-sandbox']);
+test('refuses an unsandboxed Linux launch unless explicitly allowed', () => {
+  assert.throws(
+    () =>
+      linuxSandboxLaunchArgs({
+        electronPath: '/tmp/stepforge/node_modules/electron/dist/electron',
+        platform: 'linux',
+        statSync: () => ({ uid: 1000, mode: 0o100755 }),
+        env: {},
+        userNamespaces: () => false,
+      }),
+    /refuses to silently launch unsandboxed[\s\S]*STEPFORGE_ALLOW_NO_SANDBOX/
+  );
+});
+
+test('allows --no-sandbox only with an explicit dev/CI opt-in', () => {
+  for (const env of [
+    { STEPFORGE_ALLOW_NO_SANDBOX: '1' },
+    { ELECTRON_DISABLE_SANDBOX: '1' },
+  ]) {
+    const args = linuxSandboxLaunchArgs({
+      electronPath: '/tmp/stepforge/node_modules/electron/dist/electron',
+      platform: 'linux',
+      statSync: () => ({ uid: 1000, mode: 0o100755 }),
+      env,
+      userNamespaces: () => false,
+    });
+    assert.deepEqual(args, ['--no-sandbox']);
+  }
+  assert.equal(noSandboxExplicitlyAllowed({ STEPFORGE_ALLOW_NO_SANDBOX: '1' }), true);
+  assert.equal(noSandboxExplicitlyAllowed({}), false);
 });
 
 test('keeps the sandbox enabled when the Linux helper is root-owned and setuid', () => {
@@ -187,6 +134,26 @@ test('keeps the sandbox enabled when the Linux helper is root-owned and setuid',
     electronPath: '/tmp/stepforge/node_modules/electron/dist/electron',
     platform: 'linux',
     statSync: () => ({ uid: 0, mode: 0o104755 }),
+    env: {},
   });
   assert.deepEqual(args, []);
+});
+
+test('non-Linux platforms never receive sandbox launch flags', () => {
+  assert.deepEqual(linuxSandboxLaunchArgs({ platform: 'win32', env: {} }), []);
+  assert.deepEqual(linuxSandboxLaunchArgs({ platform: 'darwin', env: {} }), []);
+});
+
+test('node toolchain check compares against package.json engines', () => {
+  const ok = checkNodeVersion({ currentVersion: '99.0.0' });
+  assert.equal(ok.ok, true);
+
+  const tooOld = checkNodeVersion({ currentVersion: '18.19.1' });
+  assert.equal(tooOld.ok, false);
+  assert.match(tooOld.required, /^\d+\.\d+\.\d+$/);
+
+  assert.throws(
+    () => assertSupportedNode({ currentVersion: '18.19.1' }),
+    /requires Node .* or newer/
+  );
 });

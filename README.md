@@ -66,12 +66,16 @@ For a Windows installation, see [docs/windows_installation](docs/windows_install
 
 On **Linux** (⚠️ work in progress — X11 vs Wayland, enabling per-click capture, the screen-share prompt), see [docs/GETTING_STARTED_WITH_LINUX.md](docs/GETTING_STARTED_WITH_LINUX.md).
 
-Requirements: Node.js 20+ and npm (Electron is the only dependency).
+Requirements: Node.js 22.12+ and npm (pinned in `.nvmrc`; installs are
+refused on older Nodes because the packaging toolchain needs 22.12+).
 
 ```bash
-npm install        # one-time, fetches the Electron shell
+npm ci             # one-time, installs the locked dependency tree
 npm start          # launch StepForge
 ```
+
+Dependencies are only ever installed by you, via `npm ci` — the app never
+downloads or repairs packages at runtime.
 
 First run creates the local data directory (`~/.local/share/stepforge` on
 Linux (WIP), `%APPDATA%/stepforge` on Windows; override with

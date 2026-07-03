@@ -6,3 +6,5 @@ releases/
 .tmp/
 tests/.tmp/
 examples/.tmp/
+build/build_report.md
+build/artifacts_manifest.json

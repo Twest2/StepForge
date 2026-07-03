@@ -7,6 +7,9 @@
   "author": "StepForge tyler@twestbrook.com",
   "license": "MPL-2.0",
   "private": true,
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "scripts": {
     "start": "node scripts/start-electron.js",
     "test": "node scripts/run-unit-tests.js",

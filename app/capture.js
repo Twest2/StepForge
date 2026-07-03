@@ -2019,8 +2019,12 @@ public static class SFHook {
         webPreferences: {
           preload: path.join(__dirname, 'region-preload.js'),
           contextIsolation: true,
+          nodeIntegration: false,
+          sandbox: true,
         },
       });
+      // The overlay may only display region.html; deny navigation/popups.
+      require('./security').installWindowSecurity(overlay, 'region');
       let settled = false;
       const finish = (rect) => {
         if (settled) return;

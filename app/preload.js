@@ -95,8 +95,11 @@ const api = {
     cleanupPreviews: invoke('preview:cleanup'),
   },
   shell: {
-    openPath: invoke('shell:openPath'),
-    showItemInFolder: invoke('shell:showItemInFolder'),
+    // Intent-specific shell access only: files the main process produced,
+    // the guide's linked archive, and scheme-validated external links.
+    openProduced: invoke('shell:openProduced'),
+    revealLinkedArchive: invoke('shell:revealLinkedArchive'),
+    openExternal: invoke('shell:openExternal'),
   },
   app: {
     info: invoke('app:info'),

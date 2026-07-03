@@ -8,6 +8,7 @@ const {
   DEFAULT_CAPTURE_TITLES,
   buildCaptureTitle,
   normalizeOllamaHost,
+  validateOllamaHost,
   normalizeAiPatch,
   buildAiPrompt,
   applyAiPatchToStep,
@@ -74,9 +75,101 @@ class TextIntelService {
     this.workerQueue = Promise.resolve();
     this.ocrDataDir = path.join(dataDir, 'ocr', 'eng');
     this.modelCapabilityCache = new Map();
+    // In-flight AI request controllers, grouped by guide, so closing a guide
+    // (or quitting) can cancel outstanding requests instead of leaving them
+    // to resolve against stale data.
+    this.inflight = new Set();
+    // Bounded concurrency for AI network calls.
+    this.maxConcurrent = 2;
+    this.activeCount = 0;
+    this.waitQueue = [];
+  }
+
+  aiNetworkOptions() {
+    const ai = this.settings.get('ai') || {};
+    const timeoutMs = Number.isFinite(ai.timeoutMs) && ai.timeoutMs > 0 ? ai.timeoutMs : 60000;
+    const maxImageBytes = Number.isFinite(ai.maxImageBytes) && ai.maxImageBytes > 0
+      ? ai.maxImageBytes
+      : 12 * 1024 * 1024;
+    return {
+      allowRemote: Boolean(ai.allowRemoteHost),
+      attachScreenshots: ai.attachScreenshots !== false,
+      timeoutMs,
+      maxImageBytes,
+    };
+  }
+
+  // Resolve the endpoint against the local-first policy or throw a clear error.
+  resolveHost(host) {
+    const { allowRemote } = this.aiNetworkOptions();
+    const result = validateOllamaHost(host, { allowRemote });
+    if (!result.ok) {
+      const err = new Error(result.reason);
+      err.code = 'STEPFORGE_AI_HOST_BLOCKED';
+      throw err;
+    }
+    return result.host;
+  }
+
+  // fetch with a hard deadline and cooperative cancellation. Every AI network
+  // call goes through here so a dead endpoint can never hang the UI.
+  async fetchJson(url, { method = 'GET', body = null, guideId = null } = {}) {
+    const { timeoutMs } = this.aiNetworkOptions();
+    const controller = new AbortController();
+    if (guideId) controller._guideId = guideId;
+    this.inflight.add(controller);
+    const timer = setTimeout(() => controller.abort(new Error('timeout')), timeoutMs);
+    try {
+      const res = await this.fetch(url, {
+        method,
+        headers: body ? { 'Content-Type': 'application/json' } : undefined,
+        body: body ? JSON.stringify(body) : undefined,
+        signal: controller.signal,
+      });
+      return res;
+    } catch (err) {
+      if (controller.signal.aborted) {
+        // The abort reason distinguishes an explicit cancel from a timeout.
+        const reasonMsg = controller.signal.reason && controller.signal.reason.message;
+        const cancelled = reasonMsg === 'cancelled';
+        const wrapped = new Error(cancelled ? 'AI request cancelled.' : 'AI request timed out.');
+        wrapped.code = 'STEPFORGE_AI_ABORTED';
+        throw wrapped;
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
+      this.inflight.delete(controller);
+    }
+  }
+
+  // Cancel in-flight AI requests, optionally scoped to one guide.
+  cancelInflight(guideId = null) {
+    for (const controller of [...this.inflight]) {
+      if (!guideId || controller._guideId === guideId) {
+        try { controller.abort(new Error('cancelled')); } catch { /* already settled */ }
+        this.inflight.delete(controller);
+      }
+    }
+  }
+
+  // Bounded-concurrency gate for AI network work.
+  async withConcurrency(fn) {
+    if (this.activeCount >= this.maxConcurrent) {
+      await new Promise((resolve) => this.waitQueue.push(resolve));
+    }
+    this.activeCount += 1;
+    try {
+      return await fn();
+    } finally {
+      this.activeCount -= 1;
+      const next = this.waitQueue.shift();
+      if (next) next();
+    }
   }
 
   async shutdown() {
+    this.cancelInflight();
     if (this.worker) {
       try {
         await this.worker.terminate();
@@ -374,8 +467,19 @@ public static class Win32 {
     if (!config.ollama.host) {
       return { ok: false, reason: 'Set an Ollama host first.' };
     }
-    const tagsUrl = new URL('/api/tags', `${config.ollama.host.replace(/\/+$/, '')}/`);
-    const res = await this.fetch(tagsUrl, { method: 'GET' });
+    let host;
+    try {
+      host = this.resolveHost(config.ollama.host);
+    } catch (err) {
+      return { ok: false, reason: err.message };
+    }
+    const tagsUrl = new URL('/api/tags', `${host.replace(/\/+$/, '')}/`);
+    let res;
+    try {
+      res = await this.fetchJson(tagsUrl, { method: 'GET' });
+    } catch (err) {
+      return { ok: false, reason: err.message };
+    }
     if (!res.ok) {
       return { ok: false, reason: `Ollama check failed (${res.status})` };
     }
@@ -383,7 +487,7 @@ public static class Win32 {
     const models = Array.isArray(data?.models) ? data.models.map((model) => model.name).filter(Boolean) : [];
     const installed = config.ollama.model ? models.includes(config.ollama.model) : false;
     const vision = installed ? await this.modelSupportsVision({
-      host: config.ollama.host,
+      host,
       model: config.ollama.model,
     }) : false;
     return {
@@ -391,7 +495,7 @@ public static class Win32 {
       installed,
       vision,
       models,
-      host: config.ollama.host,
+      host,
       model: config.ollama.model,
     };
   }
@@ -407,10 +511,9 @@ public static class Win32 {
     const url = new URL('/api/show', `${normalizedHost.replace(/\/+$/, '')}/`);
     let capabilities = [];
     try {
-      const response = await this.fetch(url, {
+      const response = await this.fetchJson(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: normalizedModel }),
+        body: { model: normalizedModel },
       });
       if (response.ok) {
         const payload = await response.json();
@@ -439,12 +542,12 @@ public static class Win32 {
     return fs.readFileSync(imagePath).toString('base64');
   }
 
-  async callOllamaText({ host, model, prompt, systemPrompt }) {
+  async callOllamaText({ host, model, prompt, systemPrompt, guideId = null }) {
     const url = new URL('/api/chat', `${host.replace(/\/+$/, '')}/`);
-    const response = await this.fetch(url, {
+    const response = await this.withConcurrency(() => this.fetchJson(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+      guideId,
+      body: {
         model,
         stream: false,
         messages: [
@@ -452,8 +555,8 @@ public static class Win32 {
           { role: 'user', content: prompt },
         ],
         options: { temperature: 0.4 },
-      }),
-    });
+      },
+    }));
     if (!response.ok) throw new Error(`Ollama request failed (${response.status})`);
     const payload = await response.json();
     const content = payload?.message?.content;
@@ -461,16 +564,16 @@ public static class Win32 {
     return content.trim();
   }
 
-  async callOllama({ host, model, prompt, systemPrompt, images = [] }) {
+  async callOllama({ host, model, prompt, systemPrompt, images = [], guideId = null }) {
     const url = new URL('/api/chat', `${host.replace(/\/+$/, '')}/`);
     const userMessage = { role: 'user', content: prompt };
     if (Array.isArray(images) && images.length) {
       userMessage.images = images;
     }
-    const response = await this.fetch(url, {
+    const response = await this.withConcurrency(() => this.fetchJson(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+      guideId,
+      body: {
         model,
         stream: false,
         format: 'json',
@@ -481,8 +584,8 @@ public static class Win32 {
         options: {
           temperature: 0.2,
         },
-      }),
-    });
+      },
+    }));
     if (!response.ok) {
       throw new Error(`Ollama request failed (${response.status})`);
     }
@@ -508,6 +611,13 @@ public static class Win32 {
       if (!config.ollama.host || !config.ollama.model) {
         return { ok: false, reason: 'Configure Ollama host and model in Settings.' };
       }
+      let host;
+      try {
+        host = this.resolveHost(config.ollama.host);
+      } catch (err) {
+        return { ok: false, reason: err.message };
+      }
+      const netOptions = this.aiNetworkOptions();
 
       const guide = this.store.getGuide(guideId);
       const step = this.store.getStep(guideId, stepId);
@@ -522,10 +632,20 @@ public static class Win32 {
         return { ok: false, reason: 'Block not found.' };
       }
 
-      const screenshotBase64 = step.image ? this.readStepImageBase64(guideId, stepId) : '';
+      // Only attach a screenshot when the user allows it, the model can use
+      // it, and it is within the size budget (a full 4K PNG base64-expands to
+      // tens of MB in the request body).
+      let screenshotBase64 = '';
+      if (netOptions.attachScreenshots && step.image) {
+        const candidate = this.readStepImageBase64(guideId, stepId);
+        const bytes = candidate ? Math.floor((candidate.length * 3) / 4) : 0;
+        if (candidate && bytes <= netOptions.maxImageBytes) {
+          screenshotBase64 = candidate;
+        }
+      }
       const screenshotAttached = Boolean(screenshotBase64)
         ? await this.modelSupportsVision({
-          host: config.ollama.host,
+          host,
           model: config.ollama.model,
         })
         : false;
@@ -588,11 +708,12 @@ public static class Win32 {
       });
 
       const raw = await this.callOllama({
-        host: config.ollama.host,
+        host,
         model: config.ollama.model,
         prompt,
         systemPrompt,
         images: screenshotAttached ? [screenshotBase64] : [],
+        guideId,
       });
       const patch = normalizeAiPatch(raw);
       const updated = applyAiPatchToStep(step, patch, { target, blockId });
@@ -609,6 +730,12 @@ public static class Win32 {
       if (!config.enabled) return { ok: false, reason: 'Enable AI in settings first.' };
       if (!config.ollama.host || !config.ollama.model) {
         return { ok: false, reason: 'Configure Ollama host and model in Settings.' };
+      }
+      let host;
+      try {
+        host = this.resolveHost(config.ollama.host);
+      } catch (err) {
+        return { ok: false, reason: err.message };
       }
       const trimmed = normalizeWhitespace(text);
       if (!trimmed) return { ok: false, reason: 'No text to rewrite.' };
@@ -628,7 +755,7 @@ public static class Win32 {
       ].filter((l) => l !== null).join('\n');
 
       const result = await this.callOllamaText({
-        host: config.ollama.host,
+        host,
         model: config.ollama.model,
         prompt,
         systemPrompt: 'You are a documentation editor. Return only the improved text, nothing else.',

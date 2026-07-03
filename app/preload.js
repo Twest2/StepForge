@@ -56,6 +56,7 @@ const api = {
     test: invoke('ai:test'),
     fillStep: invoke('ai:fillStep'),
     rewriteText: invoke('ai:rewriteText'),
+    cancel: invoke('ai:cancel'),
   },
   capture: {
     shoot: invoke('capture:shoot'),

@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches: [main]
+  pull_request:
 
 # Cancel an in-progress run when newer commits are pushed to the same ref.
 concurrency:
@@ -15,14 +16,16 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
+      # Supported desktop targets are Windows and Linux. macOS is not a
+      # support target; do not imply it by testing on it.
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: .nvmrc
           cache: npm
 
       # The capture unit tests require app/capture.js, which require()s the
@@ -33,3 +36,23 @@ jobs:
 
       - name: Run unit tests
         run: npm test
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      # Production dependencies must be clean: these ship inside packages.
+      - name: Audit production dependencies (blocking)
+        run: npm audit --omit=dev --package-lock-only --audit-level=high
+
+      # Full-tree audit including build/dev tooling is an explicit separate
+      # signal: it must be visible but does not block unrelated changes.
+      - name: Audit full dependency tree (informational)
+        run: npm audit --package-lock-only --audit-level=high
+        continue-on-error: true

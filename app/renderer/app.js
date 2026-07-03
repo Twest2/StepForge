@@ -934,6 +934,24 @@ class StepForgeApp {
 
 window.StepForgeApp = StepForgeApp;
 
+// Links never navigate this window. http(s)/mailto links from guide content
+// open externally via the scheme-validated main-process handler; internal
+// step:/# links are handled by their own click handlers; everything else is
+// inert. The main process additionally denies all navigation, so this is the
+// user-experience half of a two-layer guarantee.
+document.addEventListener('click', (e) => {
+  const anchor = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+  if (!anchor) return;
+  const href = anchor.getAttribute('href') || '';
+  if (/^(https?|mailto):/i.test(href)) {
+    e.preventDefault();
+    api.shell.openExternal({ url: href });
+    return;
+  }
+  // Ensure a stray href can never navigate the privileged window.
+  if (!href.startsWith('#')) e.preventDefault();
+}, true);
+
 function boot() {
   const app = new StepForgeApp();
   app.init();

@@ -15,12 +15,13 @@ const { TemplateManager, FORMATS, FORMAT_LABELS } = require('../core/templates')
 const { buildRenderAst } = require('../core/renderast');
 const { runExport, EXPORTERS } = require('../exporters');
 const { runExportInWorker } = require('./export-runner');
-const { exportGuideArchive, importGuideArchive, saveLinkedGuide, readArchive } = require('../core/archive');
+const { exportGuideArchive, importGuideArchive, saveLinkedGuide } = require('../core/archive');
 const { createSnapshot, listSnapshots, restoreSnapshot } = require('../core/snapshots');
 const { readLock } = require('../core/locks');
 const CaptureService = require('./capture');
 const { TextIntelService } = require('./text-intel');
 const { keepProcessesResponsive } = require('./win-power');
+const security = require('./security');
 const PACKAGE_JSON = require(path.join(__dirname, '..', 'package.json'));
 
 const APP_ID = 'com.stepforge.app';
@@ -95,6 +96,7 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
       spellcheck: Boolean(settings.get('spellcheck')),
       // During a recording the window is minimized (Linux) or hidden (Windows).
       // A throttled renderer stops processing capture:added events, so the step
@@ -103,6 +105,10 @@ function createWindow() {
       backgroundThrottling: false,
     },
   });
+  // The main window may only ever display our index.html: all navigation
+  // away from it and every popup is denied, so no other document can run
+  // with this window's preload bridge.
+  security.installWindowSecurity(mainWindow, 'main');
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
@@ -375,7 +381,37 @@ function sendToRenderer(channel, payload) {
 // ---- IPC ------------------------------------------------------------------
 
 function setupIpc() {
-  const h = (channel, fn) => ipcMain.handle(channel, async (event, args = {}) => fn(args));
+  // Every invoke channel is guarded: the event must come from the current
+  // main window's top frame showing our index.html, the argument bag must be
+  // a plain object within a per-channel payload budget, and channels with
+  // risky inputs additionally validate fields before the handler runs.
+  const trustedSender = security.makeIpcSenderGuard({
+    getMainWebContents: () => (mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents : null),
+  });
+  const c = security.check;
+  const IMAGE_BUDGET = 256 * 1024 * 1024; // channels that carry base64 PNGs
+  const h = (channel, fn, opts = {}) => {
+    const { maxChars = 2 * 1024 * 1024, validate = null } = opts;
+    ipcMain.handle(channel, async (event, args = {}) => {
+      if (!trustedSender(event)) {
+        throw new Error(`${channel}: rejected — untrusted IPC sender`);
+      }
+      const a = args === undefined || args === null ? {} : args;
+      if (!security.isPlainArgs(a) || !security.payloadWithinBudget(a, maxChars)) {
+        throw new Error(`${channel}: rejected — invalid or oversized arguments`);
+      }
+      if (validate && !validate(a)) {
+        throw new Error(`${channel}: rejected — arguments failed validation`);
+      }
+      return fn(a);
+    });
+  };
+
+  // Files the main process itself produced (exports, previews); only these
+  // may be re-opened via the shell on renderer request.
+  const producedFiles = new security.ProducedFiles();
+  // Output directories the user actually picked in a dialog this session.
+  const chosenOutputDirs = new Set();
 
   // library
   h('library:list', () => ({
@@ -393,60 +429,71 @@ function setupIpc() {
     });
     reindex(guide.guideId);
     return guide;
-  });
+  }, { validate: (a) => c.optionalString(a.title, 500) });
   h('library:duplicate', ({ guideId }) => {
     const copy = store.duplicateGuide(guideId);
     reindex(copy.guideId);
     return copy;
-  });
+  }, { validate: (a) => c.id(a.guideId) });
   h('library:delete', ({ guideId }) => {
     store.deleteGuide(guideId);
     searchIndex.removeGuide(guideId);
     return true;
-  });
-  h('library:setFavorite', ({ guideId, favorite }) => store.setFavorite(guideId, favorite));
+  }, { validate: (a) => c.id(a.guideId) });
+  h('library:setFavorite', ({ guideId, favorite }) => store.setFavorite(guideId, favorite),
+    { validate: (a) => c.id(a.guideId) });
   h('library:trash:list', () => store.listTrash());
   h('library:trash:restore', ({ name }) => {
     const id = store.restoreFromTrash(name);
     reindex(id);
     return id;
-  });
+  }, { validate: (a) => c.fileName(a.name) });
   h('library:trash:purge', ({ names } = {}) => {
     if (names && names.length) store.purgeTrashItems(names);
     else store.purgeTrash();
     return true;
+  }, {
+    validate: (a) => a.names === undefined || a.names === null
+      || (Array.isArray(a.names) && a.names.length <= 1000 && a.names.every((n) => c.fileName(n))),
   });
-  h('folders:create', ({ name, parentId }) => store.createFolder(name, parentId || null));
-  h('folders:rename', ({ folderId, name }) => store.renameFolder(folderId, name));
-  h('folders:delete', ({ folderId }) => store.deleteFolder(folderId));
-  h('folders:moveGuide', ({ guideId, folderId }) => store.moveGuideToFolder(guideId, folderId || null));
+  h('folders:create', ({ name, parentId }) => store.createFolder(name, parentId || null),
+    { validate: (a) => c.string(a.name, 200) && c.optionalId(a.parentId) });
+  h('folders:rename', ({ folderId, name }) => store.renameFolder(folderId, name),
+    { validate: (a) => c.id(a.folderId) && c.string(a.name, 200) });
+  h('folders:delete', ({ folderId }) => store.deleteFolder(folderId),
+    { validate: (a) => c.id(a.folderId) });
+  h('folders:moveGuide', ({ guideId, folderId }) => store.moveGuideToFolder(guideId, folderId || null),
+    { validate: (a) => c.id(a.guideId) && c.optionalId(a.folderId) });
 
   // guide + steps
   h('guide:get', ({ guideId }) => ({
     guide: store.getGuide(guideId),
     steps: orderedSteps(guideId),
-  }));
+  }), { validate: (a) => c.id(a.guideId) });
   h('guide:save', ({ guide }) => {
     const saved = store.saveGuide(guide);
     reindex(guide.guideId);
     return saved;
-  });
+  }, { validate: (a) => security.isPlainArgs(a.guide) && a.guide && c.id(a.guide.guideId) });
   h('step:add', ({ guideId, fields, imageBase64, size, position }) => {
     const buf = imageBase64 ? Buffer.from(imageBase64, 'base64') : null;
     const step = store.addStep(guideId, fields || {}, buf, size || null, { position });
     reindex(guideId);
     return step;
+  }, {
+    maxChars: IMAGE_BUDGET,
+    validate: (a) => c.id(a.guideId) && c.optionalBase64(a.imageBase64) && c.optionalNumber(a.position, 0, 100000),
   });
   h('step:save', ({ guideId, step }) => {
     const saved = store.saveStep(guideId, step);
     reindex(guideId);
     return saved;
-  });
+  }, { validate: (a) => c.id(a.guideId) && security.isPlainArgs(a.step) && a.step && c.id(a.step.stepId) });
   h('step:delete', ({ guideId, stepId }) => {
     store.deleteStep(guideId, stepId);
     reindex(guideId);
     return true;
-  });
+  }, { validate: (a) => c.id(a.guideId) && c.id(a.stepId) });
   h('step:restore', ({ guideId, step, originalBase64, workingBase64, position }) => {
     const images = {
       original: originalBase64 ? Buffer.from(originalBase64, 'base64') : null,
@@ -455,20 +502,34 @@ function setupIpc() {
     const restored = store.restoreStep(guideId, step, images, position);
     reindex(guideId);
     return restored;
+  }, {
+    maxChars: IMAGE_BUDGET,
+    validate: (a) => c.id(a.guideId) && security.isPlainArgs(a.step) && a.step
+      && c.optionalBase64(a.originalBase64) && c.optionalBase64(a.workingBase64)
+      && c.optionalNumber(a.position, 0, 100000),
   });
-  h('steps:reorder', ({ guideId, order }) => store.reorderSteps(guideId, order));
+  h('steps:reorder', ({ guideId, order }) => store.reorderSteps(guideId, order), {
+    validate: (a) => c.id(a.guideId)
+      && Array.isArray(a.order) && a.order.length <= 100000 && a.order.every((id) => c.id(id)),
+  });
   h('step:imagePath', ({ guideId, stepId, which }) => {
     const p = store.stepImagePath(guideId, stepId, which || 'working');
     return p && fs.existsSync(p) ? `file://${p}?v=${fs.statSync(p).mtimeMs}` : null;
+  }, {
+    validate: (a) => c.id(a.guideId) && c.id(a.stepId)
+      && (a.which === undefined || a.which === null || c.oneOf(a.which, ['original', 'working'])),
   });
   h('step:setWorkingImage', ({ guideId, stepId, pngBase64, size, step }) =>
-    store.setWorkingImage(guideId, stepId, Buffer.from(pngBase64, 'base64'), size, step || null));
+    store.setWorkingImage(guideId, stepId, Buffer.from(pngBase64, 'base64'), size, step || null), {
+    maxChars: IMAGE_BUDGET,
+    validate: (a) => c.id(a.guideId) && c.id(a.stepId) && c.base64(a.pngBase64),
+  });
   h('step:resetWorkingImage', ({ guideId, stepId }) => {
     const p = store.stepImagePath(guideId, stepId, 'original');
     const img = nativeImage.createFromPath(p);
     const { width, height } = img.getSize();
     return store.resetWorkingImage(guideId, stepId, { width, height });
-  });
+  }, { validate: (a) => c.id(a.guideId) && c.id(a.stepId) });
   h('step:fromClipboard', ({ guideId, position }) => {
     const img = clipboard.readImage();
     if (img.isEmpty()) return { ok: false, reason: 'clipboard has no image' };
@@ -479,7 +540,7 @@ function setupIpc() {
     }, img.toPNG(), { width, height }, { position });
     reindex(guideId);
     return { ok: true, step };
-  });
+  }, { validate: (a) => c.id(a.guideId) && c.optionalNumber(a.position, 0, 100000) });
   h('step:importImage', async ({ guideId }) => {
     const res = await dialog.showOpenDialog(mainWindow, {
       title: 'Import images as steps',
@@ -497,11 +558,13 @@ function setupIpc() {
     }
     reindex(guideId);
     return { ok: true, steps };
-  });
+  }, { validate: (a) => c.id(a.guideId) });
 
   // search
-  h('search:query', ({ q, guideId }) => searchIndex.search(q, { guideId: guideId || null }));
-  h('search:titles', ({ q }) => searchIndex.searchTitles(q));
+  h('search:query', ({ q, guideId }) => searchIndex.search(q, { guideId: guideId || null }),
+    { validate: (a) => c.optionalString(a.q, 1000) && c.optionalId(a.guideId) });
+  h('search:titles', ({ q }) => searchIndex.searchTitles(q),
+    { validate: (a) => c.optionalString(a.q, 1000) });
 
   // settings + placeholders
   h('settings:all', () => settings.data);
@@ -510,13 +573,13 @@ function setupIpc() {
     if (keyPath === 'appearance') applyTheme();
     if (keyPath.startsWith('capture.hotkey')) registerHotkeys();
     return settings.data;
-  });
+  }, { validate: (a) => c.settingsKeyPath(a.keyPath) });
   h('ai:test', async ({ enabled = null, ollama = null } = {}) => {
     return textIntel.testAiConnection({
       enabled,
       ollama,
     });
-  });
+  }, { validate: (a) => (a.ollama === undefined || a.ollama === null || security.isPlainArgs(a.ollama)) });
   h('ai:fillStep', async ({ guideId, stepId, target = 'all', blockId = null } = {}) => {
     const result = await textIntel.generateStepPatch({
       guideId,
@@ -526,9 +589,15 @@ function setupIpc() {
     });
     if (result.ok) reindex(guideId);
     return result;
+  }, {
+    validate: (a) => c.id(a.guideId) && c.id(a.stepId) && c.optionalId(a.blockId)
+      && (a.target === undefined || c.oneOf(a.target, ['all', 'title', 'description', 'block'])),
   });
   h('ai:rewriteText', async ({ text, guideTitle = '', stepTitle = '' } = {}) => {
     return textIntel.rewriteText({ text, guideTitle, stepTitle });
+  }, {
+    validate: (a) => c.string(a.text, 200000)
+      && c.optionalString(a.guideTitle, 1000) && c.optionalString(a.stepTitle, 1000),
   });
   h('placeholders:globals:get', () => settings.getGlobalPlaceholders());
   h('placeholders:globals:set', (values) => settings.setGlobalPlaceholders(values));
@@ -552,6 +621,10 @@ function setupIpc() {
       }
     }
     return result;
+  }, {
+    validate: (a) => c.id(a.guideId)
+      && (a.mode === undefined || c.oneOf(a.mode, ['fullscreen', 'window', 'region']))
+      && c.optionalNumber(a.delayMs, 0, 600000),
   });
   h('capture:region', async ({ guideId }) => {
     const result = await capture.regionCapture(guideId);
@@ -571,7 +644,7 @@ function setupIpc() {
       }
     }
     return result;
-  });
+  }, { validate: (a) => c.id(a.guideId) });
   let capturePowerBlocker = -1;
   const startCapturePower = () => {
     if (!powerSaveBlocker.isStarted(capturePowerBlocker)) {
@@ -615,6 +688,10 @@ function setupIpc() {
     const state = capture.state();
     sendToRenderer('capture:state', state);
     return state;
+  }, {
+    validate: (a) => c.oneOf(a.action, ['start', 'pause', 'resume', 'finish', 'interval'])
+      && (a.action !== 'start' || c.id(a.guideId))
+      && c.optionalNumber(a.intervalSec, 0, 86400),
   });
   h('capture:state', () => capture.state());
 
@@ -629,7 +706,7 @@ function setupIpc() {
     if (res.canceled) return { ok: false };
     exportGuideArchive(store, guideId, res.filePath);
     return { ok: true, path: res.filePath };
-  });
+  }, { validate: (a) => c.id(a.guideId) });
   h('archive:open', async ({ mode }) => {
     const res = await dialog.showOpenDialog(mainWindow, {
       title: 'Open guide archive',
@@ -644,30 +721,38 @@ function setupIpc() {
     } catch (err) {
       return { ok: false, reason: err.message };
     }
-  });
-  h('archive:peek', ({ file }) => {
-    const { manifest } = readArchive(file);
-    return manifest;
-  });
-  h('archive:saveLinked', ({ guideId, force }) => saveLinkedGuide(store, guideId, { force: Boolean(force) }));
+  }, { validate: (a) => a.mode === undefined || c.oneOf(a.mode, ['copy', 'linked']) });
+  // archive:peek was removed: nothing in the renderer used it, and it let a
+  // compromised renderer read arbitrary local archives by path.
+  h('archive:saveLinked', ({ guideId, force }) => saveLinkedGuide(store, guideId, { force: Boolean(force) }),
+    { validate: (a) => c.id(a.guideId) });
 
   // snapshots
-  h('snapshots:list', ({ guideId }) => listSnapshots(store, guideId));
+  h('snapshots:list', ({ guideId }) => listSnapshots(store, guideId),
+    { validate: (a) => c.id(a.guideId) });
   h('snapshots:create', ({ guideId, label }) =>
-    createSnapshot(store, guideId, { label: label || 'manual', keepLast: settings.get('backups.keepLast') }));
+    createSnapshot(store, guideId, { label: label || 'manual', keepLast: settings.get('backups.keepLast') }),
+  { validate: (a) => c.id(a.guideId) && c.optionalString(a.label, 200) });
   h('snapshots:restore', ({ guideId, name }) => {
     const guide = restoreSnapshot(store, guideId, name);
     reindex(guideId);
     return guide;
-  });
+  }, { validate: (a) => c.id(a.guideId) && c.fileName(a.name) });
 
   // templates
-  h('templates:list', ({ format }) => templates.list(format));
-  h('templates:load', ({ format, name }) => templates.load(format, name));
-  h('templates:save', ({ format, name, options }) => templates.save(format, name, options));
-  h('templates:delete', ({ format, name }) => templates.remove(format, name));
-  h('templates:rename', ({ format, name, newName }) => templates.rename(format, name, newName));
-  h('templates:duplicate', ({ format, name }) => templates.duplicate(format, name));
+  const validFormat = (v) => c.oneOf(v, FORMATS);
+  h('templates:list', ({ format }) => templates.list(format),
+    { validate: (a) => validFormat(a.format) });
+  h('templates:load', ({ format, name }) => templates.load(format, name),
+    { validate: (a) => validFormat(a.format) && c.fileName(a.name) });
+  h('templates:save', ({ format, name, options }) => templates.save(format, name, options),
+    { validate: (a) => validFormat(a.format) && c.fileName(a.name) && security.isPlainArgs(a.options) });
+  h('templates:delete', ({ format, name }) => templates.remove(format, name),
+    { validate: (a) => validFormat(a.format) && c.fileName(a.name) });
+  h('templates:rename', ({ format, name, newName }) => templates.rename(format, name, newName),
+    { validate: (a) => validFormat(a.format) && c.fileName(a.name) && c.fileName(a.newName) });
+  h('templates:duplicate', ({ format, name }) => templates.duplicate(format, name),
+    { validate: (a) => validFormat(a.format) && c.fileName(a.name) });
   h('templates:export', async ({ format, name }) => {
     const res = await dialog.showSaveDialog(mainWindow, {
       defaultPath: `${name}.sfglt`,
@@ -676,7 +761,7 @@ function setupIpc() {
     if (res.canceled) return { ok: false };
     templates.exportTemplate(format, name, res.filePath);
     return { ok: true };
-  });
+  }, { validate: (a) => validFormat(a.format) && c.fileName(a.name) });
   h('templates:import', async () => {
     const res = await dialog.showOpenDialog(mainWindow, {
       filters: [{ name: 'StepForge template', extensions: ['sfglt'] }],
@@ -709,15 +794,24 @@ function setupIpc() {
     }[format];
     if (!mod) return {};
     return { ...require(mod).DEFAULT_TEMPLATE };
-  });
+  }, { validate: (a) => c.string(a.format, 40) });
   h('export:run', async ({ guideId, format, options, outDir }) => {
-    let dir = outDir || settings.get(`exports.lastOutputDirs.${format}`);
+    // The renderer may only nominate directories that came from this main
+    // process: a dialog pick from this session or a remembered last-output
+    // directory. Anything else is ignored and re-asked via the dialog.
+    const rememberedDirs = Object.values(settings.get('exports.lastOutputDirs') || {});
+    let dir = null;
+    if (outDir && (chosenOutputDirs.has(outDir) || rememberedDirs.includes(outDir))) {
+      dir = outDir;
+    }
+    if (!dir) dir = settings.get(`exports.lastOutputDirs.${format}`);
     if (!dir) {
       const res = await dialog.showOpenDialog(mainWindow, {
         title: 'Choose output folder', properties: ['openDirectory', 'createDirectory'],
       });
       if (res.canceled) return { ok: false };
       dir = res.filePaths[0];
+      chosenOutputDirs.add(dir);
     }
     settings.set(`exports.lastOutputDirs.${format}`, dir);
     const result = await runExportInWorker({
@@ -728,17 +822,23 @@ function setupIpc() {
       outDir: dir,
       globals: settings.getGlobalPlaceholders(),
     });
+    producedFiles.add(result.file);
     if (settings.get('exports.openFolderAfterExport')) shell.showItemInFolder(result.file);
     return { ok: true, ...result };
+  }, {
+    validate: (a) => c.id(a.guideId) && validFormat(a.format)
+      && (a.options === undefined || security.isPlainArgs(a.options))
+      && c.optionalString(a.outDir, 1000),
   });
   h('export:chooseDir', async ({ format }) => {
     const res = await dialog.showOpenDialog(mainWindow, {
       title: 'Choose output folder', properties: ['openDirectory', 'createDirectory'],
     });
     if (res.canceled) return null;
+    chosenOutputDirs.add(res.filePaths[0]);
     settings.set(`exports.lastOutputDirs.${format}`, res.filePaths[0]);
     return res.filePaths[0];
-  });
+  }, { validate: (a) => validFormat(a.format) });
   h('export:preview', ({ guideId, format, options }) => {
     const previewDir = path.join(store.tempDir, `preview-${guideId}-${format}`);
     fs.rmSync(previewDir, { recursive: true, force: true });
@@ -747,7 +847,11 @@ function setupIpc() {
       maxSteps: settings.get('exports.previewStepCount') || 3,
     });
     const result = runExport(format, ast, previewDir, options || {});
+    producedFiles.add(result.file);
     return { ok: true, file: result.file, fileUrl: `file://${result.file}` };
+  }, {
+    validate: (a) => c.id(a.guideId) && validFormat(a.format)
+      && (a.options === undefined || security.isPlainArgs(a.options)),
   });
   h('preview:cleanup', () => {
     for (const entry of fs.readdirSync(store.tempDir)) {
@@ -758,9 +862,32 @@ function setupIpc() {
     return true;
   });
 
-  // shell helpers
-  h('shell:openPath', ({ target }) => shell.openPath(target));
-  h('shell:showItemInFolder', ({ target }) => shell.showItemInFolder(target));
+  // shell helpers — intent-specific, no arbitrary paths from the renderer.
+  // Only files this main process produced (exports/previews) may be opened.
+  h('shell:openProduced', ({ target }) => {
+    if (!producedFiles.has(target)) {
+      return { ok: false, reason: 'not a StepForge-produced file' };
+    }
+    shell.openPath(target);
+    return { ok: true };
+  }, { validate: (a) => c.string(a.target, 2000) });
+  // Reveal the linked archive of a guide; the path comes from the store,
+  // never from the renderer.
+  h('shell:revealLinkedArchive', ({ guideId }) => {
+    const guide = store.getGuide(guideId);
+    const target = guide && guide.linkedSource && guide.linkedSource.path;
+    if (!target || !fs.existsSync(target)) return { ok: false, reason: 'no linked archive' };
+    shell.showItemInFolder(target);
+    return { ok: true };
+  }, { validate: (a) => c.id(a.guideId) });
+  // Open a user-clicked link in the system browser. Scheme-validated;
+  // everything that is not plain http(s)/mailto is refused.
+  h('shell:openExternal', ({ url }) => {
+    const safe = security.validateExternalUrl(url);
+    if (!safe) return { ok: false, reason: 'blocked URL' };
+    shell.openExternal(safe);
+    return { ok: true };
+  }, { validate: (a) => c.string(a.url, 2048) });
   h('app:info', () => ({
     version: app.getVersion(),
     buildVersion: PACKAGE_JSON.buildVersion || app.getVersion(),
@@ -842,15 +969,19 @@ if (!gotLock) {
       textIntel,
     });
 
-    // Allow the hidden capture-worker renderer to open a desktop media stream.
-    // Electron 29+ requires an explicit permission grant for display-capture in
-    // renderer windows; without it getUserMedia/getDisplayMedia fails, the
-    // stream backend never starts, and every capture falls back to
-    // desktopCapturer.getSources() — which triggers the portal dialog on Linux
-    // on every single capture. StepForge is fully local/offline so allowing
-    // all permissions for our own content is safe.
-    session.defaultSession.setPermissionCheckHandler(() => true);
-    session.defaultSession.setPermissionRequestHandler((_wc, _perm, cb) => cb(true));
+    // Deny-by-default permission policy. The only grant in the entire app is
+    // display capture (and the media permission getDisplayMedia consults) for
+    // the dedicated hidden capture-worker page. Electron 29+ requires that
+    // explicit grant; everything else — including our own main window — is
+    // rejected. "Content is local" is not a security control.
+    session.defaultSession.setPermissionCheckHandler((wc, permission, requestingOrigin, details) => {
+      const url = (details && details.requestingUrl) || (wc && wc.getURL()) || requestingOrigin;
+      return security.permissionAllowed(permission, url);
+    });
+    session.defaultSession.setPermissionRequestHandler((wc, permission, cb, details) => {
+      const url = (details && details.requestingUrl) || (wc && wc.getURL());
+      cb(security.permissionAllowed(permission, url));
+    });
 
     // On GNOME Wayland the only working screen-capture path is the portal-backed
     // getDisplayMedia (desktopCapturer source ids fail with "device not found").
@@ -860,6 +991,13 @@ if (!gotLock) {
     // the chosen source then streams for the whole session. (useSystemPicker is
     // macOS-only today, harmless elsewhere.)
     session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
+      // Only the capture worker page may open a desktop stream.
+      const frameUrl = request && request.frame && request.frame.url;
+      if (!security.isAppPageUrl(frameUrl, 'captureWorker')) {
+        console.error('[stepforge] display-media request denied for', frameUrl || '(unknown frame)');
+        callback({});
+        return;
+      }
       desktopCapturer.getSources({ types: ['screen'] })
         .then((sources) => {
           console.log(`[stepforge] display-media request resolved: ${sources.length} screen source(s)`);

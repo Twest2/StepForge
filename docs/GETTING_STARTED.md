@@ -11,13 +11,19 @@ For the windows installation, please see [windows_installation](windows_installa
 
 ## 1. Install
 
+Install the pinned Node toolchain first — Node 22.12 or newer (see
+`.nvmrc`; with nvm: `nvm install && nvm use`). Installs are refused on
+older Nodes.
+
 From the repository root:
 
 ```bash
-npm install
+npm ci
 ```
 
-That installs Electron and the local packaging tools used by the scripts.
+That installs the locked dependency tree — Electron and the local packaging
+tools used by the scripts. `npm ci` is the only supported installation path;
+the app never installs or repairs dependencies at runtime.
 
 ## 2. Launch the app
 

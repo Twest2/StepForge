@@ -4,6 +4,15 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
+const { assertSupportedNode } = require('./check-node-version');
+
+try {
+  assertSupportedNode();
+} catch (error) {
+  console.error(error.message);
+  process.exit(1);
+}
+
 function collectTestFiles(rootDir) {
   const files = [];
   if (!fs.existsSync(rootDir)) return files;

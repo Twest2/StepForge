@@ -3,6 +3,7 @@
 
 const { spawn } = require('node:child_process');
 
+const { assertSupportedNode } = require('./check-node-version');
 const {
   linuxSandboxLaunchArgs,
   resolveElectronBinary,
@@ -10,16 +11,21 @@ const {
 } = require('./electron-launcher');
 
 let electronPath;
+let sandboxArgs;
 try {
+  assertSupportedNode();
   electronPath = resolveElectronBinary();
+  sandboxArgs = linuxSandboxLaunchArgs({ electronPath });
 } catch (error) {
   console.error(error && error.message ? error.message : error);
   process.exit(1);
 }
 const env = sanitizeElectronEnv();
-const sandboxArgs = linuxSandboxLaunchArgs({ electronPath });
 if (sandboxArgs.includes('--no-sandbox')) {
-  console.warn('[stepforge] Electron sandbox helper is not configured for this install; starting with --no-sandbox');
+  console.warn(
+    '[stepforge] launching WITHOUT the Chromium sandbox (explicitly allowed via ' +
+      'STEPFORGE_ALLOW_NO_SANDBOX/ELECTRON_DISABLE_SANDBOX — development/CI only)'
+  );
 }
 
 // On Linux, prefer the native Ozone path when available and enable PipeWire-

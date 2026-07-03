@@ -13,13 +13,21 @@
 #   arm:      warmup click ignored, first armed click captured
 #   debounce: 4 of 4  (40ms burst collapses to 1, three 300ms clicks kept)
 #
-# If the environment can't run a desktop capture at all (no display/stream),
-# the scenarios never print, so the check skips rather than failing CI.
+# Skip policy (kept honest on purpose): the ONLY allowed skip is the upfront
+# absence of a display server, detected BEFORE launching. Once the app is
+# launched, failing to reach the scenarios is a real failure — a startup
+# crash (missing shared library, launcher bug) must never be reported as
+# "no capture environment".
 
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
+
+if [[ "$(uname -s)" == "Linux" && -z "${DISPLAY:-}" && -z "${WAYLAND_DISPLAY:-}" ]]; then
+  echo "click capture selftest SKIPPED: no display server (set DISPLAY or run under xvfb-run)"
+  exit 0
+fi
 
 TMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMP_ROOT"' EXIT
@@ -30,11 +38,17 @@ STEPFORGE_DATA_DIR="$TMP_ROOT/data" STEPFORGE_CLICK_SELFTEST=1 \
   timeout 120s npm start >"$LOG_FILE" 2>&1
 set -e
 
-# The self-test always prints this first line once it begins; without it the
-# app never reached the scenarios (couldn't launch / no capture environment).
+# The self-test always prints this line once the app is up (the frame source
+# is printed as a diagnostic even when no capture backend is available).
+# Its absence means the app never started — that is a failure, not a skip.
 if ! grep -q 'CLICK-SELFTEST source:' "$LOG_FILE"; then
-  echo "click capture selftest SKIPPED (no capture environment on this host)"
-  exit 0
+  echo "click capture selftest FAILED: the app never reached the self-test scenarios" >&2
+  if grep -Eq 'error while loading shared libraries' "$LOG_FILE"; then
+    echo "cause: Electron is missing system shared libraries on this host" >&2
+  fi
+  echo "----- startup output (last 40 lines) -----" >&2
+  tail -n 40 "$LOG_FILE" >&2
+  exit 1
 fi
 
 fail() {

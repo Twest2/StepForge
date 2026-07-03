@@ -198,11 +198,18 @@ class CaptureService {
     notify,
     screenApi = screen,
     textIntel = null,
+    powerPolicy = null,
   }) {
     this.store = store;
     this.settings = settings;
     this.getWindow = getWindow;
     this.notify = notify;
+    // Single owner of OS power/throttling state for the capture lifecycle.
+    // setRecording(true) is called exactly while a session is actively
+    // recording (session present and not paused); setRecording(false) whenever
+    // it pauses or ends. No-op by default so tests and non-Electron hosts work.
+    this.powerPolicy = powerPolicy || { setRecording() {} };
+    this._recordingPower = false;
     // Injectable for tests; the click/coordinate paths must never reach for
     // the global `screen` directly so coordinate handling stays testable.
     this.screen = screenApi;
@@ -213,6 +220,10 @@ class CaptureService {
     this.session = null; // { guideId, paused, count, intervalSec }
     this.intervalTimer = null;
     this.clickWatcher = null;
+    // Explicit trigger source rather than a bare boolean, so the UI can tell
+    // the truth about how clicks are being captured (or that they are not):
+    //   windows-hook | x11 | evdev-x11 | evdev-wayland | unavailable
+    this.clickSource = 'unavailable';
     this.frameLoopTimer = null;
     this.frameLoopRunning = false;
     this.frameWaiters = [];
@@ -240,6 +251,22 @@ class CaptureService {
     this.warmingUp = false;
   }
 
+  /**
+   * Reconcile OS power state with the actual recording state. Called after
+   * every session transition so there is exactly one owner: the blocker is
+   * held iff a session exists and is not paused. Idempotent.
+   */
+  syncPower() {
+    const recording = Boolean(this.session && !this.session.paused);
+    if (recording === this._recordingPower) return;
+    this._recordingPower = recording;
+    try {
+      this.powerPolicy.setRecording(recording);
+    } catch {
+      // power management is best-effort; never break capture over it
+    }
+  }
+
   state() {
     return this.session
       ? {
@@ -248,12 +275,21 @@ class CaptureService {
         guideId: this.session.guideId,
         count: this.session.count,
         intervalSec: this.session.intervalSec || 0,
-        clickCapture: Boolean(this.clickWatcher),
+        // clickCapture reflects any live global click source (xinput/evdev/
+        // Windows hook), not just the spawned-process watcher — evdev has no
+        // child process, so the old Boolean(this.clickWatcher) reported false
+        // while clicks were in fact being captured.
+        clickCapture: this.clickSource !== 'unavailable',
+        clickSource: this.clickSource,
         clickCaptureAvailable: this.clickCaptureAvailable(),
         clickFrameSource: this.streamBackend ? 'stream' : (this.frameLoopRunning ? 'loop' : 'idle'),
         strictClickFrames: this.strictClickFrames(),
       }
-      : { active: false, clickCaptureAvailable: this.clickCaptureAvailable() };
+      : {
+        active: false,
+        clickSource: this.clickSource,
+        clickCaptureAvailable: this.clickCaptureAvailable(),
+      };
   }
 
   /**
@@ -331,6 +367,9 @@ class CaptureService {
     this.session = { guideId, paused: true, count: 0, intervalSec: interval };
     if (this.settings.get('capture.captureOutsideClicks') !== false) this.startClickWatcher();
     this.applyInterval();
+    // A new session starts paused, so it must NOT hold the power blocker yet
+    // (it did before, leaking the blocker while idle). syncPower reconciles.
+    this.syncPower();
     this.notify('capture:state', this.state());
 
     // (Skipped for the dev screenshot hook, which needs a visible page.)
@@ -476,6 +515,9 @@ class CaptureService {
       this.stopFrameLoop();
       this.stopClickFrameBackend();
     }
+    // Recording only while unpaused: this is the one place tray/second-instance
+    // pauses previously bypassed, leaking the power blocker. syncPower owns it.
+    this.syncPower();
     if (this.rebuildTrayMenu) this.rebuildTrayMenu();
     this.notify('capture:state', this.state());
   }
@@ -555,11 +597,31 @@ class CaptureService {
     this.stopClickFrameBackend();
     this.destroySessionTray();
     this.session = null;
+    // A finished session never records: release the power blocker here so it
+    // can't outlive the recording (finish from any path — bar, tray, quit).
+    this.syncPower();
     if (this.hiddenForSession) {
       this.hiddenForSession = false;
       this.showWindow();
     }
     this.notify('capture:state', this.state());
+  }
+
+  /**
+   * Best-effort drain of clicks still encoding in the queue, for application
+   * shutdown. Resolves when the queue settles or the deadline passes so quit
+   * is never blocked indefinitely. Clicks captured mid-session are pinned to
+   * their guide id and stored even after the session ends (see onOsClick).
+   */
+  async drainPendingClicks(timeoutMs = 2000) {
+    try {
+      await Promise.race([
+        this.clickQueue.catch(() => {}),
+        new Promise((resolve) => setTimeout(resolve, Math.max(0, timeoutMs))),
+      ]);
+    } catch {
+      // best effort
+    }
   }
 
   /**
@@ -624,11 +686,22 @@ class CaptureService {
         if (result.ok) this.noteStepAdded(result.step, trigger, guideId);
         return result;
       }
-      // No usable frame: fall through to a one-off fresh shot — but only
-      // while still recording. After a stop, a fresh shot would show
-      // whatever replaced the user's workflow on screen.
-      clog('click@', clickAt, 'no frame qualified — falling back to a fresh (post-click) shot');
       if (!sessionLive) return { ok: false, reason: 'session ended before the fallback shot' };
+      // No usable pre-click frame. In strict mode a fresh shot now would be a
+      // POST-click frame — exactly what strict mode promises never to store.
+      // Skip with a visible diagnostic instead of silently labeling a
+      // post-click fallback as strict. Non-strict mode keeps the legacy
+      // fresh-shot fallback below.
+      if (this.strictClickFrames()) {
+        clog('click@', clickAt, 'strict mode — no pre-click frame; skipping rather than storing a post-click shot');
+        this.notify('capture:diagnostic', {
+          kind: 'strict-click-skipped',
+          guideId,
+          reason: 'No pre-click frame was ready for this click. In strict timing mode StepForge skips the shot rather than capturing the screen after the click.',
+        });
+        return { ok: false, reason: 'strict mode: no pre-click frame available for this click' };
+      }
+      clog('click@', clickAt, 'no frame qualified — falling back to a fresh (post-click) shot');
     }
 
     // For non-click triggers (interval, hotkey, manual) pull the latest frame
@@ -1009,6 +1082,7 @@ class CaptureService {
           ? ['stdbuf', '-oL', 'xinput', 'test-xi2', '--root']
           : ['xinput', 'test-xi2', '--root'];
         this.clickWatcher = spawn(argv[0], argv.slice(1), { stdio: ['ignore', 'pipe', 'ignore'] });
+        this.clickSource = 'x11';
         this.clickWatcher.stdout.on('data', (chunk) => {
           this.ingestClickWatcherChunk(chunk.toString(), 'linux');
         });
@@ -1374,6 +1448,7 @@ public static class SFHook {
           stdio: ['ignore', 'pipe', 'pipe'],
           windowsHide: true,
         });
+        this.clickSource = 'windows-hook';
         this.clickWatcher.stdout.on('data', (chunk) => {
           this.ingestClickWatcherChunk(chunk.toString(), 'win32');
         });
@@ -1425,6 +1500,7 @@ public static class SFHook {
       this.clickWatcher = null;
     }
     this.stopEvdevWatcher();
+    this.clickSource = 'unavailable';
     this.clickWatcherBuf = '';
     this.linuxEvent = null;
     this.discardPendingRawClick();
@@ -1450,26 +1526,48 @@ public static class SFHook {
           buf = rest;
           for (const button of presses) this.onOsClick(Date.now(), null, button);
         });
-        // A device can disappear (unplugged); just drop that stream.
-        stream.on('error', () => {});
+        // A device can disappear (unplugged): drop that stream, and if it was
+        // the last live click source, fall back like any other watcher loss
+        // instead of silently going dark.
+        stream.on('error', () => this.handleEvdevStreamLoss(stream, 'device read error'));
+        stream.on('close', () => this.handleEvdevStreamLoss(stream, 'device closed'));
         this.evdevStreams.push(stream);
       } catch {
         // Node became unreadable between enumeration and open — skip it.
       }
     }
     if (!this.evdevStreams.length) {
-      console.error('[stepforge] no readable mouse input devices — add your user to the "input" group for per-click capture: sudo usermod -aG input "$USER" (then log out and back in)');
+      this.clickSource = 'unavailable';
+      console.error('[stepforge] no readable mouse input devices for per-click capture (see docs/linux for the least-privilege device-access setup)');
     } else {
+      // evdev carries no cursor position on Wayland (no marker); on X11 without
+      // xinput it is the click source but likewise has no root coordinates.
+      this.clickSource = this.onWayland() ? 'evdev-wayland' : 'evdev-x11';
       console.log(`[stepforge] per-click capture via evdev on ${this.evdevStreams.length} device(s)${this.onWayland() ? ' (Wayland: no click marker)' : ''}`);
+    }
+  }
+
+  /** One evdev device stream ended; drop it and fall back if none remain. */
+  handleEvdevStreamLoss(stream, reason) {
+    if (!this.evdevStreams) return; // already stopped deliberately
+    const idx = this.evdevStreams.indexOf(stream);
+    if (idx === -1) return;
+    this.evdevStreams.splice(idx, 1);
+    try { stream.destroy(); } catch { /* already gone */ }
+    if (this.evdevStreams.length === 0) {
+      this.evdevStreams = null;
+      this.clickSource = 'unavailable';
+      this.handleClickWatcherLoss(`evdev ${reason}`);
     }
   }
 
   stopEvdevWatcher() {
     if (!this.evdevStreams) return;
-    for (const stream of this.evdevStreams) {
+    const streams = this.evdevStreams;
+    this.evdevStreams = null; // clear first so close handlers no-op
+    for (const stream of streams) {
       try { stream.destroy(); } catch { /* already closed */ }
     }
-    this.evdevStreams = null;
   }
 
   /**
@@ -2007,13 +2105,43 @@ public static class SFHook {
     const cropped = image.crop(rect);
     const size = cropped.getSize();
     if (!size.width || !size.height) return { ok: false, reason: 'empty selection' };
-    const step = await this.storeFrameAsStep(guideId, 'region', {
+    // storeFrameAsStep already returns { ok, step }; return it directly so
+    // callers see result.step.stepId — not result.step.step.stepId, which is
+    // what wrapping it in another { ok, step } produced (region selection and
+    // region auto-documentation both read result.step.stepId).
+    return this.storeFrameAsStep(guideId, 'region', {
       image: cropped,
       size,
       display,
       cursor: null,
     }, null, null);
-    return { ok: true, step };
+  }
+
+  /**
+   * Convert an overlay selection (display px) into an image-space crop rect,
+   * clamped to the image bounds. Returns null for an empty/invalid rect.
+   */
+  overlayRectToImageRect(rect, display, imgSize) {
+    if (!rect || !imgSize) return null;
+    const { width: iw, height: ih } = imgSize;
+    if (!iw || !ih) return null;
+    const sx = iw / display.bounds.width;
+    const sy = ih / display.bounds.height;
+    const toNum = (v) => (Number.isFinite(v) ? v : 0);
+    let x = Math.round(toNum(rect.x) * sx);
+    let y = Math.round(toNum(rect.y) * sy);
+    let w = Math.round(toNum(rect.w) * sx);
+    let h = Math.round(toNum(rect.h) * sy);
+    // Normalize negative-size drags (drawn up/left).
+    if (w < 0) { x += w; w = -w; }
+    if (h < 0) { y += h; h = -h; }
+    // Clamp to the image so image.crop can never read out of bounds.
+    x = Math.min(Math.max(0, x), iw);
+    y = Math.min(Math.max(0, y), ih);
+    w = Math.min(w, iw - x);
+    h = Math.min(h, ih - y);
+    if (w <= 0 || h <= 0) return null;
+    return { x, y, width: w, height: h };
   }
 
   /** Fullscreen overlay window that resolves with a crop rect (image px). */
@@ -2038,31 +2166,28 @@ public static class SFHook {
       });
       // The overlay may only display region.html; deny navigation/popups.
       require('./security').installWindowSecurity(overlay, 'region');
+      const { ipcMain } = require('electron');
       let settled = false;
+      // Idempotent cleanup: remove the IPC listener and close the overlay
+      // exactly once, whether the user picked, cancelled, closed, or the page
+      // failed to load. Previously the listener was only removed on a pick, so
+      // cancelling/closing leaked it (and the captured overlay/image refs).
       const finish = (rect) => {
         if (settled) return;
         settled = true;
+        ipcMain.removeListener('region:picked', onPick);
         if (!overlay.isDestroyed()) overlay.close();
         resolve(rect);
       };
-      const { ipcMain } = require('electron');
       const onPick = (event, rect) => {
         if (event.sender !== overlay.webContents) return;
-        ipcMain.removeListener('region:picked', onPick);
         if (!rect) return finish(null);
-        const imgSize = image.getSize();
-        const sx = imgSize.width / display.bounds.width;
-        const sy = imgSize.height / display.bounds.height;
-        finish({
-          x: Math.round(rect.x * sx),
-          y: Math.round(rect.y * sy),
-          width: Math.round(rect.w * sx),
-          height: Math.round(rect.h * sy),
-        });
+        finish(this.overlayRectToImageRect(rect, display, image.getSize()));
       };
       ipcMain.on('region:picked', onPick);
       overlay.on('closed', () => finish(null));
-      overlay.loadFile(path.join(__dirname, 'renderer', 'region.html'));
+      overlay.webContents.on('did-fail-load', () => finish(null));
+      overlay.loadFile(path.join(__dirname, 'renderer', 'region.html')).catch(() => finish(null));
     });
   }
 }

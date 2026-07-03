@@ -7,6 +7,13 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
+# The only allowed skip is the upfront absence of a display server. Any
+# failure after launch (missing shared library, crash) must fail the check.
+if [[ "$(uname -s)" == "Linux" && -z "${DISPLAY:-}" && -z "${WAYLAND_DISPLAY:-}" ]]; then
+  echo "startup smoke SKIPPED: no display server (set DISPLAY or run under xvfb-run)"
+  exit 0
+fi
+
 TMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMP_ROOT"' EXIT
 

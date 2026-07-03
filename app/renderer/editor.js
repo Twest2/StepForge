@@ -151,6 +151,11 @@ class GuideEditor {
 
   setActive(active) {
     this.active = Boolean(active);
+    // Leaving the editor cancels any in-flight AI request for this guide so a
+    // slow response can't resolve against a guide the user has closed.
+    if (!this.active && this.guideId) {
+      api.ai.cancel({ guideId: this.guideId }).catch(() => {});
+    }
   }
 
   setSettings(settings) {

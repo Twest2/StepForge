@@ -1,17 +1,26 @@
 # StepForge
 
-StepForge is a **fully offline**, open-source desktop app for Windows, with
+StepForge is a **local-first**, open-source desktop app for Windows, with
 Linux (WIP) builds. It captures step-by-step workflows as screenshots, lets
 you annotate and describe each step in a focused three-pane editor, and
 exports the result to Markdown, DOCX, PPTX, PDF, HTML (WIP), GIF (WIP),
 confluence (WIP), Wiki.js (WIP), and image bundles (WIP). The current
 reconmendations for exporting is Markdown and PDF.
 
-It is an independent offline desktop guide-capture tool inspired by publicly
-documented workflow patterns of commercial documentation tools like Folge. It contains no
-third-party branding, assets, or code from those tools, and it never talks to
-the network: no telemetry, no update checks, no license checks, no cloud, no
-remote AI.
+It is an independent desktop guide-capture tool inspired by publicly
+documented workflow patterns of commercial documentation tools like Folge. It
+contains no third-party branding, assets, or code from those tools.
+
+**Network and privacy contract.** StepForge has no telemetry, no update
+checks, no license checks, and no cloud. Guides never leave your machine on
+their own. The only outbound network feature is the **optional** AI
+integration: when *you* enable it and configure an [Ollama](https://ollama.com)
+endpoint, StepForge sends step screenshots and text to that endpoint to
+generate titles and descriptions. By default that endpoint must be **local
+(loopback)**; sending data to a remote host requires the explicit "Allow
+remote AI host" opt-in. See [docs/PRIVACY.md](docs/PRIVACY.md) for exactly
+what is collected and sent. Note that OCR (Tesseract) and its English language
+data are bundled production dependencies — Electron is not the only one.
 
 ## Overview
 

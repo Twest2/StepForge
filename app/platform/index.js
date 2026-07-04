@@ -63,4 +63,19 @@ function detectCapabilities({ platform = process.platform, env = process.env } =
   };
 }
 
-module.exports = { detectPlatform, createWindowContextProvider, detectCapabilities };
+/**
+ * The honest capture-trigger decision for the current capabilities. On Linux
+ * this defers to the diagnostics helper (which never promises per-click
+ * capture with coordinates on Wayland); other platforms have a fixed answer.
+ */
+function chooseCaptureTrigger(capabilities, userTriggerPreference = 'interval') {
+  if (capabilities && capabilities.os === 'linux') {
+    return require('./linux/diagnostics').chooseCaptureTrigger(capabilities, userTriggerPreference);
+  }
+  if (capabilities && capabilities.os === 'windows') {
+    return { trigger: 'click', clickSource: 'windows-hook', coordinates: true, marker: true, note: '' };
+  }
+  return { trigger: 'click', clickSource: capabilities ? capabilities.os : 'unavailable', coordinates: true, marker: true, note: '' };
+}
+
+module.exports = { detectPlatform, createWindowContextProvider, detectCapabilities, chooseCaptureTrigger };

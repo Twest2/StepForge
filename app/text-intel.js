@@ -624,6 +624,10 @@ public static class Win32 {
       if (!guide || !step) {
         return { ok: false, reason: 'Guide or step not found.' };
       }
+      // Snapshot the revision now: AI generation is slow, and the user may
+      // edit the step meanwhile. We save with this expectedRevision so a
+      // response built from stale data cannot overwrite a newer user edit.
+      const baseRevision = Number.isInteger(step.revision) ? step.revision : 0;
 
       const currentBlock = blockId
         ? [...(step.textBlocks || []), ...(step.codeBlocks || []), ...(step.tableBlocks || [])].find((b) => b.id === blockId) || null
@@ -716,8 +720,26 @@ public static class Win32 {
         guideId,
       });
       const patch = normalizeAiPatch(raw);
-      const updated = applyAiPatchToStep(step, patch, { target, blockId });
-      const saved = this.store.saveStep(guideId, updated);
+      // Re-read the step: while generation ran, a capture auto-doc or another
+      // background write may have advanced it. Apply the patch to the current
+      // step and save with the original expected revision so a user edit made
+      // during generation causes a conflict instead of a silent overwrite.
+      let currentStep = step;
+      try {
+        currentStep = this.store.getStep(guideId, stepId) || step;
+      } catch {
+        currentStep = step;
+      }
+      const updated = applyAiPatchToStep(currentStep, patch, { target, blockId });
+      let saved;
+      try {
+        saved = this.store.saveStep(guideId, updated, { expectedRevision: baseRevision });
+      } catch (err) {
+        if (err && err.code === 'STEPFORGE_REVISION_CONFLICT') {
+          return { ok: false, reason: 'The step changed while AI was generating; nothing was overwritten.' };
+        }
+        throw err;
+      }
       return { ok: true, step: saved, patch };
     } catch (err) {
       return { ok: false, reason: err && err.message ? err.message : 'AI generation failed.' };

@@ -25,59 +25,13 @@ case "$DEB_ARCH" in
   *) NODE_ARCH="$DEB_ARCH" ;;
 esac
 
-# A packaged app must contain a fixed runtime; never install at build time from
-# within the package step, and never ship without node_modules.
-if [ ! -d "$ROOT_DIR/node_modules/electron/dist" ]; then
-  echo "error: node_modules/electron is missing. Run 'npm ci' before packaging." >&2
-  exit 1
-fi
-
 WORK_DIR="$(mktemp -d "${OUT_DIR%/}/.deb.XXXXXX")"
 trap 'rm -rf "$WORK_DIR"' EXIT
-APP_DIR="$WORK_DIR/opt/stepforge"
-mkdir -p "$APP_DIR" "$WORK_DIR/usr/bin" "$WORK_DIR/DEBIAN"
-mkdir -p "$WORK_DIR/usr/share/applications"
-mkdir -p "$WORK_DIR/usr/share/mime/packages"
-mkdir -p "$WORK_DIR/usr/share/doc/stepforge"
 
-# --- application code (runtime only) ----------------------------------------
-for item in app core exporters package.json package-lock.json; do
-  cp -a "$ROOT_DIR/$item" "$APP_DIR/$item"
-done
+# Stage the shared runtime-only payload (fails if node_modules is missing).
+ROOT_DIR="$ROOT_DIR" STAGE_ROOT="$WORK_DIR" bash "$ROOT_DIR/packaging/linux/common/stage-runtime.sh"
 
-# --- runtime node_modules ----------------------------------------------------
-# The fixed Electron runtime (needed at runtime even though it is a dev dep):
-mkdir -p "$APP_DIR/node_modules"
-cp -a "$ROOT_DIR/node_modules/electron" "$APP_DIR/node_modules/electron"
-# Production npm dependencies (tesseract.js + language data + transitive):
-while IFS= read -r dep; do
-  [ -n "$dep" ] || continue
-  rel="${dep#"$ROOT_DIR"/}"
-  [ "$rel" != "$dep" ] || continue          # only paths under the repo
-  [ -d "$dep" ] || continue
-  mkdir -p "$APP_DIR/$(dirname "$rel")"
-  cp -a "$dep" "$APP_DIR/$rel"
-done < <(npm ls --omit=dev --all --parseable 2>/dev/null | tail -n +2)
-
-# Guard: the development-only packaging toolchain must not have leaked in.
-if [ -d "$APP_DIR/node_modules/electron-builder" ] || [ -d "$APP_DIR/node_modules/app-builder-lib" ]; then
-  echo "error: build-only dependency leaked into the package payload." >&2
-  exit 1
-fi
-
-# --- launcher ----------------------------------------------------------------
-install -m 0755 "$ROOT_DIR/packaging/linux/common/launcher.sh" "$WORK_DIR/usr/bin/stepforge"
-
-# --- desktop entry, icons, MIME ---------------------------------------------
-install -m 0644 "$ROOT_DIR/packaging/linux/common/stepforge.desktop" "$WORK_DIR/usr/share/applications/stepforge.desktop"
-install -m 0644 "$ROOT_DIR/packaging/linux/common/stepforge-mime.xml" "$WORK_DIR/usr/share/mime/packages/stepforge.xml"
-for size in 16 32 48 64 128 256 512; do
-  icon="$ROOT_DIR/packaging/assets/icons/stepforge-${size}.png"
-  [ -f "$icon" ] || continue
-  dest="$WORK_DIR/usr/share/icons/hicolor/${size}x${size}/apps"
-  mkdir -p "$dest"
-  install -m 0644 "$icon" "$dest/stepforge.png"
-done
+mkdir -p "$WORK_DIR/DEBIAN" "$WORK_DIR/usr/share/doc/stepforge"
 
 # --- license + docs pointer --------------------------------------------------
 if [ -f "$ROOT_DIR/LICENSE" ]; then

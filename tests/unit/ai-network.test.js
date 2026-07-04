@@ -181,6 +181,76 @@ test('shortcut detection still works with typed text disabled', () => {
   assert.equal(off.snapshotKeyContext().recentShortcut, 'Ctrl+T');
 });
 
+// ---- stale AI responses cannot overwrite user edits --------------------------
+
+test('an AI patch built from stale data does not clobber a mid-generation user edit', async (t) => {
+  const { GuideStore } = require('../../core/store');
+  const root = makeTmpDir('ai-stale-write');
+  t.after(() => rmrf(root));
+  const store = new GuideStore(root);
+  const guide = store.createGuide({ title: 'G' });
+  const step = store.addStep(guide.guideId, { title: 'original title' });
+
+  const service = new TextIntelService({
+    store,
+    settings: makeSettings(),
+    dataDir: root,
+    fetchImpl: async (url) => {
+      const pathname = new URL(url).pathname;
+      if (pathname === '/api/show') {
+        return { ok: true, json: async () => ({ capabilities: ['completion'] }) };
+      }
+      if (pathname === '/api/chat') {
+        // While the model "thinks", the user edits and saves the step.
+        const current = store.getStep(guide.guideId, step.stepId);
+        store.saveStep(guide.guideId, { ...current, title: 'user edit during generation' });
+        return {
+          ok: true,
+          json: async () => ({ message: { content: JSON.stringify({ title: 'AI title from stale context' }) } }),
+        };
+      }
+      throw new Error(`unexpected fetch: ${pathname}`);
+    },
+  });
+
+  const result = await service.generateStepPatch({ guideId: guide.guideId, stepId: step.stepId, target: 'title' });
+  assert.equal(result.ok, false);
+  assert.match(result.reason, /changed while AI was generating/i);
+  assert.equal(store.getStep(guide.guideId, step.stepId).title, 'user edit during generation');
+});
+
+test('an AI patch applies cleanly when nothing changed during generation', async (t) => {
+  const { GuideStore } = require('../../core/store');
+  const root = makeTmpDir('ai-clean-write');
+  t.after(() => rmrf(root));
+  const store = new GuideStore(root);
+  const guide = store.createGuide({ title: 'G' });
+  const step = store.addStep(guide.guideId, { title: '' });
+
+  const service = new TextIntelService({
+    store,
+    settings: makeSettings(),
+    dataDir: root,
+    fetchImpl: async (url) => {
+      const pathname = new URL(url).pathname;
+      if (pathname === '/api/show') {
+        return { ok: true, json: async () => ({ capabilities: ['completion'] }) };
+      }
+      if (pathname === '/api/chat') {
+        return {
+          ok: true,
+          json: async () => ({ message: { content: JSON.stringify({ title: 'Generated title' }) } }),
+        };
+      }
+      throw new Error(`unexpected fetch: ${pathname}`);
+    },
+  });
+
+  const result = await service.generateStepPatch({ guideId: guide.guideId, stepId: step.stepId, target: 'title' });
+  assert.equal(result.ok, true);
+  assert.equal(store.getStep(guide.guideId, step.stepId).title, 'Generated title');
+});
+
 // ---- source-level guards ----------------------------------------------------
 
 const fs = require('node:fs');

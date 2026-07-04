@@ -13,6 +13,22 @@ const {
 const { sanitizeHtml } = require('./sanitize');
 
 /**
+ * Thrown by revision-aware saves when the on-disk revision no longer matches
+ * the caller's expectation — i.e. someone else wrote in between. Callers that
+ * pass expectedRevision (background/AI/capture writes) use this to avoid
+ * clobbering a newer user edit.
+ */
+class RevisionConflictError extends Error {
+  constructor(kind, id, expected, actual) {
+    super(`${kind} ${id} changed since it was read (expected revision ${expected}, found ${actual})`);
+    this.name = 'RevisionConflictError';
+    this.code = 'STEPFORGE_REVISION_CONFLICT';
+    this.expected = expected;
+    this.actual = actual;
+  }
+}
+
+/**
  * Folder-based guide store. One directory per guide, one directory per step,
  * all JSON written atomically. This is the only module that knows the
  * on-disk layout of the library.
@@ -27,19 +43,47 @@ class GuideStore {
     this.guidesDir = path.join(this.libraryDir, 'guides');
     this.indexDir = path.join(this.libraryDir, 'index');
     this.trashDir = path.join(this.libraryDir, 'trash');
+    this.quarantineDir = path.join(this.libraryDir, 'quarantine');
     this.tempDir = path.join(rootDir, 'temp');
     this.sharedLinksDir = path.join(rootDir, 'shared-links');
     this.foldersFile = path.join(this.libraryDir, 'folders.json');
+    // In-memory log of files quarantined this session (corrupt/unreadable),
+    // surfaced to the UI instead of silently vanishing.
+    this.recoveryReport = [];
     this.ensureLayout();
   }
 
   ensureLayout() {
     for (const dir of [
       this.settingsDir, this.templatesDir, this.guidesDir, this.indexDir,
-      this.trashDir, this.tempDir, this.sharedLinksDir,
+      this.trashDir, this.quarantineDir, this.tempDir, this.sharedLinksDir,
     ]) {
       fs.mkdirSync(dir, { recursive: true });
     }
+  }
+
+  /**
+   * Move a corrupt/unreadable file or directory into quarantine (preserving
+   * the original bytes) and record it, rather than silently dropping it. A
+   * guide/step never just disappears without an explanation.
+   */
+  quarantine(sourcePath, kind, reason) {
+    const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const dest = path.join(this.quarantineDir, `${kind}-${path.basename(sourcePath)}-${stamp}`);
+    try {
+      fs.mkdirSync(this.quarantineDir, { recursive: true });
+      fs.renameSync(sourcePath, dest);
+    } catch {
+      // If we cannot move it (e.g. cross-device or vanished), still record it.
+    }
+    const entry = { kind, source: sourcePath, quarantined: dest, reason: String(reason || 'unreadable'), at: nowIso() };
+    this.recoveryReport.push(entry);
+    return entry;
+  }
+
+  /** Corrupt files quarantined this session (for a recovery UI). */
+  getRecoveryReport() {
+    return [...this.recoveryReport];
   }
 
   guideDir(guideId) {
@@ -70,10 +114,19 @@ class GuideStore {
     return normalizeGuide(raw);
   }
 
-  saveGuide(guide, { touch = true } = {}) {
+  saveGuide(guide, { touch = true, expectedRevision = null } = {}) {
     validateGuide(guide);
+    // Optimistic concurrency: a caller that read the guide can pass the
+    // revision it saw; if disk moved on since, refuse rather than clobber.
+    if (expectedRevision !== null) {
+      const current = this.guideExists(guide.guideId) ? this.getGuide(guide.guideId).revision : 0;
+      if (current !== expectedRevision) {
+        throw new RevisionConflictError('guide', guide.guideId, expectedRevision, current);
+      }
+    }
     const stored = deepClone(guide);
     stored.descriptionHtml = sanitizeHtml(stored.descriptionHtml);
+    stored.revision = (Number.isInteger(stored.revision) ? stored.revision : 0) + 1;
     if (touch) stored.updatedAt = nowIso();
     writeJsonSync(path.join(this.guideDir(guide.guideId), 'guide.json'), stored);
     return stored;
@@ -83,11 +136,16 @@ class GuideStore {
     const out = [];
     for (const entry of fs.readdirSync(this.guidesDir, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
-      const file = path.join(this.guidesDir, entry.name, 'guide.json');
+      const dir = path.join(this.guidesDir, entry.name);
+      const file = path.join(dir, 'guide.json');
+      if (!fs.existsSync(file)) continue; // in-progress/empty dir, not corruption
       try {
         out.push(normalizeGuide(readJsonSync(file)));
-      } catch {
-        // skip unreadable entries rather than failing the whole library
+      } catch (err) {
+        // A corrupt guide.json used to make the guide silently vanish from the
+        // library. Quarantine the directory (preserving it) and record it so
+        // the user can be told, instead of losing it without explanation.
+        this.quarantine(dir, 'guide', err && err.message);
       }
     }
     out.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
@@ -211,18 +269,38 @@ class GuideStore {
     if (!fs.existsSync(stepsRoot)) return map;
     for (const entry of fs.readdirSync(stepsRoot, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
+      const dir = path.join(stepsRoot, entry.name);
+      const file = path.join(dir, 'step.json');
+      if (!fs.existsSync(file)) continue;
       try {
-        map.set(entry.name, normalizeStep(readJsonSync(path.join(stepsRoot, entry.name, 'step.json'))));
-      } catch {
-        // skip unreadable step
+        map.set(entry.name, normalizeStep(readJsonSync(file)));
+      } catch (err) {
+        // Quarantine a corrupt step (preserving it) and record it rather than
+        // silently dropping it from the guide.
+        this.quarantine(dir, 'step', err && err.message);
       }
     }
     return map;
   }
 
-  saveStep(guideId, step) {
+  saveStep(guideId, step, { expectedRevision = null } = {}) {
+    // Optimistic concurrency for background/AI/capture writes: refuse to
+    // overwrite a step that changed since it was read. Direct user edits pass
+    // no expectedRevision (last-write-wins — the user is the authority).
+    if (expectedRevision !== null) {
+      let current = 0;
+      try {
+        current = this.getStep(guideId, step.stepId).revision;
+      } catch {
+        current = 0; // step vanished; treat as revision 0
+      }
+      if (current !== expectedRevision) {
+        throw new RevisionConflictError('step', step.stepId, expectedRevision, current);
+      }
+    }
     const stored = normalizeStep(deepClone(step));
     stored.descriptionHtml = sanitizeHtml(stored.descriptionHtml);
+    stored.revision = (Number.isInteger(stored.revision) ? stored.revision : 0) + 1;
     validateStep(stored);
     writeJsonSync(path.join(this.stepDir(guideId, step.stepId), 'step.json'), stored);
     const guide = this.getGuide(guideId);
@@ -352,4 +430,4 @@ class GuideStore {
   }
 }
 
-module.exports = { GuideStore };
+module.exports = { GuideStore, RevisionConflictError };

@@ -52,6 +52,9 @@ function createGuide(fields = {}) {
     favorite: Boolean(fields.favorite),
     linkedSource: fields.linkedSource || null,
     exportProfiles: { ...(fields.exportProfiles || {}) },
+    // Monotonic revision for optimistic concurrency. Absent in v1 data (reads
+    // as 0), bumped on every store write.
+    revision: Number.isInteger(fields.revision) && fields.revision >= 0 ? fields.revision : 0,
   };
 }
 
@@ -89,6 +92,8 @@ function createStep(fields = {}) {
     captureMetadata: (fields.captureMetadata && typeof fields.captureMetadata === 'object' && !Array.isArray(fields.captureMetadata))
       ? { ...fields.captureMetadata }
       : null,
+    // Monotonic revision for optimistic concurrency (see createGuide).
+    revision: Number.isInteger(fields.revision) && fields.revision >= 0 ? fields.revision : 0,
   };
 }
 

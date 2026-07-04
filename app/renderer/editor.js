@@ -124,6 +124,7 @@ class GuideEditor {
     this.currentZoom = 'fit';
     this.pendingSave = false;
     this.pendingGuideSave = false;
+    this.saveError = null;
     this.canvasHistory = [];
     this.canvasFuture = [];
     this.beforeCanvasSnapshot = null;
@@ -151,9 +152,14 @@ class GuideEditor {
 
   setActive(active) {
     this.active = Boolean(active);
-    // Leaving the editor cancels any in-flight AI request for this guide so a
-    // slow response can't resolve against a guide the user has closed.
     if (!this.active && this.guideId) {
+      // Leaving the editor: flush pending debounced saves so navigation can
+      // never drop the last edit (failures keep the dirty state and retry),
+      // and cancel any in-flight AI request for this guide so a slow response
+      // can't resolve against a guide the user has closed.
+      if (this.pendingSave || this.pendingGuideSave) {
+        this.saveAll().catch(() => {});
+      }
       api.ai.cancel({ guideId: this.guideId }).catch(() => {});
     }
   }
@@ -319,6 +325,7 @@ class GuideEditor {
       selectedAnnotationId: this.selectedAnnotationId,
       linked: Boolean(this.guide && this.guide.linkedSource),
       dirty: this.pendingSave || this.pendingGuideSave || this.descriptionDirty || this.titleDirty,
+      saveError: this.saveError || null,
       view: 'editor',
     };
   }
@@ -1424,8 +1431,22 @@ class GuideEditor {
 
   async flushStep(step = this.currentStep) {
     if (!step) return;
+    // Clear the dirty flag only AFTER a durable save. Clearing it first meant
+    // a rejected IPC save silently lost the unsaved state (and this runs from
+    // a debounce that does not handle rejections). Keep it dirty on failure,
+    // surface it, and retry on the next edit or explicit save.
+    let saved;
+    try {
+      saved = await api.step.save({ guideId: this.guideId, step });
+    } catch (err) {
+      this.pendingSave = true;
+      this.saveError = (err && err.message) || 'Save failed';
+      this.emitMeta();
+      this.onToast('Could not save this step — your changes are kept. Retrying…', { error: true });
+      return null;
+    }
     this.pendingSave = false;
-    const saved = await api.step.save({ guideId: this.guideId, step });
+    this.saveError = null;
     const committed = this.commitSavedStep(saved);
     if (this.selectedStepId === committed.stepId) {
       this.renderStepList();
@@ -1470,8 +1491,17 @@ class GuideEditor {
 
   async flushGuide() {
     if (!this.guide) return;
+    try {
+      await api.guide.save({ guide: this.guide });
+    } catch (err) {
+      this.pendingGuideSave = true;
+      this.saveError = (err && err.message) || 'Save failed';
+      this.emitMeta();
+      this.onToast('Could not save guide details — your changes are kept. Retrying…', { error: true });
+      return;
+    }
     this.pendingGuideSave = false;
-    await api.guide.save({ guide: this.guide });
+    this.saveError = null;
     this.emitMeta();
   }
 

@@ -1,0 +1,17 @@
+Package: stepforge
+Version: @VERSION@
+Section: utils
+Priority: optional
+Architecture: @ARCH@
+Depends: libnss3, libnspr4, libatk1.0-0, libatk-bridge2.0-0, libcups2, libgbm1, libasound2, libgtk-3-0, libxkbcommon0, libatspi2.0-0
+Recommends: xinput, x11-utils, xdg-desktop-portal, pipewire
+Maintainer: @MAINTAINER@
+Homepage: https://github.com/Twest2/StepForge
+Description: Local-first step-by-step guide capture and export tool
+ StepForge captures step-by-step workflows as screenshots, lets you annotate
+ and describe each step, and exports to Markdown, PDF, DOCX, PPTX, HTML, and
+ more. Local-first: no telemetry, with an optional user-configured local AI
+ integration.
+ .
+ This package bundles a fixed Electron runtime and only production
+ dependencies; it does not install anything at runtime.

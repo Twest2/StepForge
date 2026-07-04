@@ -9,7 +9,8 @@ const { chooseCaptureTrigger, detectLinuxCapabilities } = require('../../app/pla
 const platform = require('../../app/platform');
 
 const ROOT = path.resolve(__dirname, '..', '..');
-const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
+// Strip CR so assertions are robust to CRLF checkouts on Windows CI.
+const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8').replace(/\r\n/g, '\n');
 const exists = (rel) => fs.existsSync(path.join(ROOT, rel));
 
 // ---- honest trigger decisions ----------------------------------------------

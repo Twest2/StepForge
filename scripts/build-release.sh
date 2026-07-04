@@ -14,7 +14,14 @@ mkdir -p "$BUILD_ROOT"
 
 bash "$ROOT_DIR/scripts/bootstrap-offline.sh"
 node "$ROOT_DIR/scripts/make-sample-guide.js" --root "$EXAMPLES_ROOT"
-STEPFORGE_PACKAGE_DIR="$ARTIFACT_DIR" bash "$ROOT_DIR/scripts/package-linux.sh" >/dev/null
+# Production Linux package: a pruned runtime tree with real desktop
+# integration. Requires node_modules (fails otherwise); never installs at
+# build time. Skipped only when the Electron runtime is genuinely absent.
+if [ -d "$ROOT_DIR/node_modules/electron/dist" ]; then
+  STEPFORGE_PACKAGE_DIR="$ARTIFACT_DIR" bash "$ROOT_DIR/packaging/linux/debian/package.sh" >/dev/null
+else
+  echo "[build-release] skipping Linux .deb: node_modules/electron missing (run npm ci)" >&2
+fi
 
 BUILD_ROOT="$BUILD_ROOT" \
 ARTIFACT_DIR="$ARTIFACT_DIR" \

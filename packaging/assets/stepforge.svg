@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  StepForge application icon — original artwork.
+  A rising staircase of three blocks (the "steps" of a step-by-step guide)
+  over a rounded square, in the app's blue. No third-party assets.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2563eb"/>
+      <stop offset="1" stop-color="#1e3a8a"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="256" height="256" rx="56" fill="url(#bg)"/>
+  <!-- Three ascending steps -->
+  <g fill="#ffffff">
+    <rect x="52"  y="150" width="52" height="54" rx="8"/>
+    <rect x="102" y="116" width="52" height="88" rx="8"/>
+    <rect x="152" y="82"  width="52" height="122" rx="8"/>
+  </g>
+  <!-- Capture spark on the top step -->
+  <circle cx="178" cy="60" r="16" fill="#facc15"/>
+</svg>

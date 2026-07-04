@@ -900,8 +900,14 @@ function setupIpc() {
     platform: process.platform,
   }));
   // Platform capture-capability profile (session type, portal/PipeWire,
-  // xinput, click source, actionable messages) for the diagnostics UI.
-  h('platform:capabilities', () => require('./platform').detectCapabilities());
+  // xinput, click source, actionable messages) for the diagnostics UI, plus
+  // the honest active trigger for this machine and settings.
+  h('platform:capabilities', () => {
+    const platform = require('./platform');
+    const caps = platform.detectCapabilities();
+    const activeTrigger = platform.chooseCaptureTrigger(caps, settings.get('capture.fallbackTrigger') || 'interval');
+    return { ...caps, activeTrigger };
+  });
 }
 
 // ---- lifecycle --------------------------------------------------------------

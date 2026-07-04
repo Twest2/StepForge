@@ -898,6 +898,7 @@ function setupIpc() {
     buildVersion: PACKAGE_JSON.buildVersion || app.getVersion(),
     dataDir: store.root,
     platform: process.platform,
+    license: PACKAGE_JSON.license || 'CC-BY-NC-4.0',
   }));
   // Platform capture-capability profile (session type, portal/PipeWire,
   // xinput, click source, actionable messages) for the diagnostics UI, plus

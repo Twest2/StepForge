@@ -14,7 +14,10 @@
     "start": "node scripts/start-electron.js",
     "test": "node scripts/run-unit-tests.js",
     "sample": "node scripts/make-sample-guide.js",
+    "icons": "node scripts/make-icons.js",
     "package:windows": "node scripts/package-windows.js",
+    "package:linux:deb": "bash packaging/linux/debian/package.sh",
+    "package:linux:rpm": "bash packaging/linux/fedora/package.sh",
     "build": "bash scripts/build-release.sh",
     "verify": "bash scripts/verify.sh",
     "bootstrap": "bash scripts/bootstrap-offline.sh"

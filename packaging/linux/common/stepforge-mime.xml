@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-stepforge-guide">
+    <comment>StepForge guide archive</comment>
+    <glob pattern="*.sfgz"/>
+    <icon name="stepforge"/>
+  </mime-type>
+  <mime-type type="application/x-stepforge-template">
+    <comment>StepForge export template</comment>
+    <glob pattern="*.sfglt"/>
+    <icon name="stepforge"/>
+  </mime-type>
+</mime-info>

@@ -1,3 +1,36 @@
+# After action report
+
+## Done — 10 PRs implemented, merged, and CI-green on both forges
+I worked through ai_prompts/prompt4.md and shipped PRs 1–10 of the plan's recommended sequence. Each was a focused branch, opened on both GitHub (Twest2/StepForge #5–#14) and Gitea (Tyler/autodoc #21–#30), verified green on GitHub CI (Ubuntu + Windows + dependency audit), merged with the same SHA to both forges, and the Gitea mirror closed with a merge note. Final state: main is byte-identical across local, GitHub, and Gitea (cc724f8), main CI is green, no open PRs, 289 unit tests pass (0 fail).
+
+## PR	What it fixed
+1	Pinned Node ≥22.12 (.nvmrc/engines); removed all runtime npm self-repair; refuse silent --no-sandbox; CI on pull_request + prod/full audits; made the click E2E stop hiding startup crashes as "SKIPPED"; remediated the form-data/undici advisories
+2	Closed the renderer privilege boundary: navigation/popup denial, sandboxed windows, per-channel IPC sender+argument validation, deny-by-default permissions (display capture only for the capture worker), intent-specific shell access replacing arbitrary shell:openPath
+3	Truthful local-first AI/privacy contract: raw keystroke capture off by default, AbortController timeouts + cancellation + concurrency + image-size limits, loopback-only Ollama unless explicitly opted in, honest docs + new docs/PRIVACY.md
+4	Optimistic revision fields + compare-and-swap (stale AI responses can't clobber edits), autosave keeps dirty state on failed saves, corrupt guides/steps quarantined instead of silently vanishing
+5	Region-capture nested-result + listener-leak bugs, single-owner power blocker, explicit click-source reporting (evdev fix), strict-mode skips instead of storing post-click shots, pathToFileURL, shutdown drain
+6	ZIP-bomb limits, transactional archive import, atomic snapshot restore, exclusive locks (O_EXCL + token), search index reconcile at startup, implemented the dead automatic-backup settings
+7	Platform adapter layer — window-context detection extracted to app/platform/{windows,linux,darwin}/; shared code no longer branches on process.platform; Linux capability diagnostics
+8	Production .deb (runtime-only staging, no dev tree, detected arch, desktop/MIME/icons, original generated icon set), apt setup scripts, real launcher; retired the old broken packager
+9	Production .rpm + dnf setup, shared stage-runtime.sh so both formats never drift
+10	Honest Wayland triggers (never promises per-click coordinates it can't deliver) + a least-privilege mouse-only udev rule replacing the broad input group keylogging surface; .gitattributes so Unix scripts don't break on CRLF
+I verified real behavior where possible: built and inspected an actual 107 MB .deb, ran the click self-test (markers 3/3, burst 8/8), and confirmed the sandboxed app boots.
+
+## One blocking item I did not act on — the license (needs your decision)
+The plan calls this a legal release blocker that an implementation agent must not guess, and I agree. The repo currently contradicts itself:
+
+package.json → MPL-2.0 and CONTRIBUTING requires MPL-2.0 + DCO sign-off (permits commercial use)
+docs/LICENSE + README §License → Creative Commons Attribution-NonCommercial (forbids commercial use; also not a software license)
+there is no root LICENSE file
+MPL-2.0 and CC-BY-NC are mutually exclusive, and contributors have been signing off under a license the project doesn't actually ship. You need to pick one, then I can reconcile the SPDX field, root LICENSE, README, CONTRIBUTING, package payloads, and the About view in a single follow-up PR.
+
+## What remains (plan PRs 11–14 — larger, several need your input)
+Canonical blocks/callout-placement schema-v2 migration; lazy exports + Unicode font vendoring (needs a licensed-font choice); editor modularization + accessibility; and the signed reproducible release pipeline (needs signing keys). Also still open: the click self-test's arm/debounce scenarios fail on Linux — a pre-existing capture defect I surfaced honestly in PR 1 but didn't chase down (it needs on-device Linux capture debugging).
+
+Tell me your license choice and I'll do the reconciliation PR; tell me which of 11–14 to prioritize and I'll take it next.
+
+
+
 # StepForge comprehensive improvement plan
 
 This document is an implementation handoff for another coding agent. It is based on a repository-wide audit of commit `534a28e` on 2026-07-03. It is a plan, not authorization to make all changes in one unreviewable patch.

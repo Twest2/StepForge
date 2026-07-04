@@ -1,0 +1,19 @@
+# StepForge least-privilege input access (OPTIONAL, opt-in).
+#
+# Grants the user at the ACTIVE local session read/write access to MOUSE input
+# devices only, via systemd-logind's `uaccess` ACL. This is the least-privilege
+# alternative to joining the broad `input` group, which would grant access to
+# ALL input devices — including keyboards — for the user permanently, on every
+# session. StepForge never needs keystrokes, so this rule deliberately EXCLUDES
+# keyboards.
+#
+# Scope of what this grants:
+#   * only devices udev classifies as a mouse (ID_INPUT_MOUSE=1),
+#   * only when they are NOT also a keyboard (ID_INPUT_KEYBOARD!=1),
+#   * only to whoever is logged in at the physical seat (uaccess is
+#     session-scoped, not a permanent group membership).
+#
+# StepForge uses this only for the optional Wayland per-click *trigger* (button
+# presses, no coordinates). It is not required — the safe default is a global
+# hotkey or interval capture.
+SUBSYSTEM=="input", KERNEL=="event*", ENV{ID_INPUT_MOUSE}=="1", ENV{ID_INPUT_KEYBOARD}!="1", TAG+="uaccess"

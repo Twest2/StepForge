@@ -96,4 +96,61 @@ function detectLinuxCapabilities({
   };
 }
 
-module.exports = { detectLinuxCapabilities, detectSessionType };
+/**
+ * Decide the honest capture trigger for a Linux capability profile. StepForge
+ * must never *promise* per-click capture with coordinates on Wayland, because
+ * the platform does not expose pointer position to apps. Returns the trigger,
+ * whether clicks carry coordinates, whether a marker can be drawn, and a
+ * user-facing note. `userTriggerPreference` is the capture.fallbackTrigger
+ * setting ('interval' | 'hotkey') used only when no click source exists.
+ */
+function chooseCaptureTrigger(capabilities, userTriggerPreference = 'interval') {
+  const caps = capabilities || {};
+  const click = caps.clickCapture;
+
+  if (click === 'x11-xinput') {
+    return {
+      trigger: 'click',
+      clickSource: 'x11',
+      coordinates: true,
+      marker: true,
+      note: 'Per-click capture with an accurate marker (X11 + xinput).',
+    };
+  }
+  if (click === 'evdev-x11') {
+    return {
+      trigger: 'click',
+      clickSource: 'evdev-x11',
+      coordinates: true,
+      marker: true,
+      note: 'Per-click capture via kernel input devices (X11, no xinput).',
+    };
+  }
+  if (click === 'evdev-wayland') {
+    // Wayland exposes button presses (via evdev, if permitted) but NOT pointer
+    // position, so a step is captured per click but without a marker. This is
+    // only reached when the user opted into the least-privilege device rule.
+    return {
+      trigger: 'click',
+      clickSource: 'evdev-wayland',
+      coordinates: false,
+      marker: false,
+      note: 'Per-click capture on Wayland has no pointer position, so no marker is drawn.',
+    };
+  }
+
+  // No global click source: the safe baseline is the user's chosen fallback.
+  const trigger = userTriggerPreference === 'hotkey' ? 'hotkey' : 'interval';
+  return {
+    trigger,
+    clickSource: trigger,
+    coordinates: false,
+    marker: false,
+    note: caps.isWayland
+      ? 'Wayland does not expose global clicks; recording uses your ' + trigger + ' trigger. '
+        + 'Screen sharing is requested once per recording via the portal.'
+      : 'No global click source available; recording uses your ' + trigger + ' trigger.',
+  };
+}
+
+module.exports = { detectLinuxCapabilities, detectSessionType, chooseCaptureTrigger };

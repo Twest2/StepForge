@@ -17,7 +17,7 @@ const { buildRenderAst } = require('../core/renderast');
 const { runExport, EXPORTERS } = require('../exporters');
 const { runExportInWorker } = require('./export-runner');
 const { exportGuideArchive, importGuideArchive, saveLinkedGuide } = require('../core/archive');
-const { createSnapshot, listSnapshots, restoreSnapshot } = require('../core/snapshots');
+const { createSnapshot, listSnapshots, restoreSnapshot, autoSnapshotIfDue } = require('../core/snapshots');
 const { readLock } = require('../core/locks');
 const CaptureService = require('./capture');
 const { TextIntelService } = require('./text-intel');
@@ -72,6 +72,9 @@ function reindex(guideId) {
   } catch {
     // index failures must never block saves
   }
+  // Automatic backup policy runs on the same save choke point. It is
+  // self-contained and never throws, so it can't affect the save either.
+  autoSnapshotIfDue(store, guideId, settings);
 }
 
 function orderedSteps(guideId) {
@@ -734,6 +737,13 @@ function setupIpc() {
     return guide;
   }, { validate: (a) => c.id(a.guideId) && c.fileName(a.name) });
 
+  // recovery status: corrupt files quarantined this session and search index
+  // health, so the UI can surface them instead of data silently vanishing.
+  h('recovery:status', () => ({
+    quarantined: store.getRecoveryReport(),
+    searchStatus: searchIndex.status,
+  }));
+
   // templates
   const validFormat = (v) => c.oneOf(v, FORMATS);
   h('templates:list', ({ format }) => templates.list(format),
@@ -916,6 +926,17 @@ if (!gotLock) {
     store = new GuideStore(dataDir);
     settings = new Settings(store.settingsDir);
     searchIndex = new SearchIndex(store.indexDir);
+    // Rebuild/reconcile the index against the library at startup so a missing,
+    // corrupt, or version-mismatched index recovers instead of silently
+    // returning nothing.
+    try {
+      const summary = searchIndex.reconcile(store);
+      if (summary.reindexed || summary.removed || summary.status !== 'ok') {
+        console.log(`[stepforge] search index reconciled: ${JSON.stringify(summary)}`);
+      }
+    } catch (err) {
+      console.error(`[stepforge] search reconcile failed: ${err && err.message}`);
+    }
     templates = new TemplateManager(store.templatesDir);
     textIntel = new TextIntelService({
       store,

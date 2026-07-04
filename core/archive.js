@@ -124,18 +124,40 @@ function importGuideArchive(store, file, { mode = 'copy' } = {}) {
 }
 
 function finalizeImport(store, newGuide, idMap, stepJsons, stepFiles) {
+  // Transactional import: validate the guide and EVERY step first, then write
+  // the whole guide into a temporary staging directory, and only publish it
+  // with a single atomic rename. Previously guide.json was written before the
+  // steps validated, so a bad step left a partial guide in the library.
   validateGuide(newGuide);
-  writeJsonSync(path.join(store.guideDir(newGuide.guideId), 'guide.json'), newGuide);
-
+  const normalizedSteps = [];
   for (const [stepId, { raw }] of stepJsons) {
     const step = normalizeStep({ ...raw, stepId });
     step.parentStepId = raw.parentStepId ? idMap.get(raw.parentStepId) || null : null;
-    validateStep(step);
-    const dir = store.stepDir(newGuide.guideId, stepId);
-    writeJsonSync(path.join(dir, 'step.json'), step);
-    for (const { name, data } of stepFiles.get(stepId) || []) {
-      atomicWriteFileSync(path.join(dir, name), data);
+    validateStep(step); // throws before anything is written on a bad step
+    normalizedSteps.push([stepId, step]);
+  }
+
+  const finalDir = store.guideDir(newGuide.guideId);
+  if (fs.existsSync(finalDir)) throw new Error(`guide already exists: ${newGuide.guideId}`);
+  const stagingDir = `${finalDir}.importing-${Date.now()}`;
+  fs.rmSync(stagingDir, { recursive: true, force: true });
+  try {
+    fs.mkdirSync(stagingDir, { recursive: true });
+    writeJsonSync(path.join(stagingDir, 'guide.json'), newGuide);
+    for (const [stepId, step] of normalizedSteps) {
+      const dir = path.join(stagingDir, 'steps', stepId);
+      fs.mkdirSync(dir, { recursive: true });
+      writeJsonSync(path.join(dir, 'step.json'), step);
+      for (const { name, data } of stepFiles.get(stepId) || []) {
+        atomicWriteFileSync(path.join(dir, name), data);
+      }
     }
+    // Publish atomically. If the final dir appeared meanwhile, fail cleanly.
+    if (fs.existsSync(finalDir)) throw new Error(`guide already exists: ${newGuide.guideId}`);
+    fs.renameSync(stagingDir, finalDir);
+  } catch (err) {
+    fs.rmSync(stagingDir, { recursive: true, force: true });
+    throw err;
   }
   return store.getGuide(newGuide.guideId);
 }
@@ -160,7 +182,9 @@ function saveLinkedGuide(store, guideId, { force = false } = {}) {
     store.saveGuide(guide, { touch: false });
     return { saved: true, path: target };
   } finally {
-    releaseLock(target);
+    // Release by our acquisition token so we never remove a lock a concurrent
+    // force-steal replaced with theirs.
+    releaseLock(target, { lock: result.lock });
   }
 }
 

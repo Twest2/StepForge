@@ -14,7 +14,7 @@ const { blockText } = require('./blocks');
  * specific step in the editor.
  */
 
-const INDEX_VERSION = 1;
+const INDEX_VERSION = 2;
 
 function tokenize(text) {
   if (!text) return [];
@@ -27,20 +27,82 @@ function tokenize(text) {
 class SearchIndex {
   constructor(indexDir) {
     this.file = path.join(indexDir, 'search-index.json');
+    // Per-guide source fingerprints so a startup reconcile can tell which
+    // guides changed while the app was closed, without re-reading every step.
+    this.fingerprints = {}; // guideId -> fingerprint string
+    // Recovery status surfaced to the UI: 'ok' | 'reset' (missing/corrupt/
+    // version mismatch) | 'reconciled' (rebuilt from the store at startup).
+    this.status = 'ok';
+    const fileExisted = require('node:fs').existsSync(this.file);
     const stored = readJsonIfExists(this.file, null);
-    if (stored && stored.version === INDEX_VERSION) {
+    if (stored && stored.version === INDEX_VERSION && stored.docs && typeof stored.docs === 'object') {
       this.docs = stored.docs;
+      this.fingerprints = stored.fingerprints || {};
     } else {
+      // Missing, corrupt, or an older index version: start empty and mark it,
+      // so reconcile() rebuilds from the store instead of silently staying
+      // blank (which made search "work" but return nothing). A file that
+      // existed but could not be used is a 'reset' (recovery-worthy); a
+      // genuinely absent index on first run is just 'ok'.
       this.docs = {}; // docKey -> { guideId, stepId, title, text, updatedAt }
+      this.status = fileExisted ? 'reset' : 'ok';
     }
   }
 
   persist() {
-    writeJsonSync(this.file, { version: INDEX_VERSION, docs: this.docs });
+    writeJsonSync(this.file, {
+      version: INDEX_VERSION,
+      docs: this.docs,
+      fingerprints: this.fingerprints,
+    });
+  }
+
+  static fingerprint(guide) {
+    return `${guide.updatedAt || ''}:${Number.isInteger(guide.revision) ? guide.revision : 0}`;
+  }
+
+  /**
+   * Reconcile the index against the store at startup: reindex guides that are
+   * new or changed (by fingerprint), and drop index entries for guides that no
+   * longer exist. Returns a summary with a recovery status for the UI.
+   */
+  reconcile(store) {
+    const guides = store.listGuides();
+    const liveIds = new Set(guides.map((g) => g.guideId));
+    let reindexed = 0;
+    let removed = 0;
+
+    // Drop docs/fingerprints for guides that are gone.
+    for (const key of Object.keys(this.fingerprints)) {
+      if (!liveIds.has(key)) {
+        this.removeGuide(key, { persist: false });
+        delete this.fingerprints[key];
+        removed += 1;
+      }
+    }
+
+    for (const guide of guides) {
+      const fp = SearchIndex.fingerprint(guide);
+      const indexed = this.fingerprints[guide.guideId];
+      const hasDoc = Boolean(this.docs[`g:${guide.guideId}`]);
+      if (indexed === fp && hasDoc) continue; // unchanged
+      try {
+        this.indexGuide(guide, store.listSteps(guide.guideId), { persist: false });
+        reindexed += 1;
+      } catch {
+        // A single unreadable guide must not abort the whole reconcile.
+      }
+    }
+
+    this.persist();
+    if (this.status === 'reset' || reindexed > 0 || removed > 0) {
+      this.status = this.status === 'reset' ? 'reset' : 'reconciled';
+    }
+    return { status: this.status, reindexed, removed, total: guides.length };
   }
 
   /** (Re)index one guide and all of its steps. */
-  indexGuide(guide, stepsMap) {
+  indexGuide(guide, stepsMap, { persist = true } = {}) {
     this.removeGuide(guide.guideId, { persist: false });
 
     const placeholderText = Object.entries(guide.placeholders || {})
@@ -69,13 +131,15 @@ class SearchIndex {
         updatedAt: guide.updatedAt,
       };
     }
-    this.persist();
+    this.fingerprints[guide.guideId] = SearchIndex.fingerprint(guide);
+    if (persist) this.persist();
   }
 
   removeGuide(guideId, { persist = true } = {}) {
     for (const key of Object.keys(this.docs)) {
       if (this.docs[key].guideId === guideId) delete this.docs[key];
     }
+    delete this.fingerprints[guideId];
     if (persist) this.persist();
   }
 

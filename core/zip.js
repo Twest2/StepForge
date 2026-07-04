@@ -121,8 +121,22 @@ function zipSync(entries, { date = new Date(2026, 0, 1) } = {}) {
   return Buffer.concat([...localParts, centralBuf, eocd]);
 }
 
-/** Parse a zip buffer into [{ name, data }] with CRC verification. */
-function unzipSync(buffer) {
+// Resource limits for untrusted archives (share files, snapshots). These cap
+// memory and disk work so a ZIP bomb can't exhaust the machine. Callers that
+// build archives themselves may relax them; imports use the defaults.
+const DEFAULT_UNZIP_LIMITS = {
+  maxEntries: 50000,
+  maxTotalCompressed: 1024 * 1024 * 1024, // 1 GiB of stored bytes
+  maxTotalUncompressed: 4 * 1024 * 1024 * 1024, // 4 GiB inflated total
+  maxEntryUncompressed: 512 * 1024 * 1024, // 512 MiB per entry
+};
+
+/**
+ * Parse a zip buffer into [{ name, data }] with CRC verification and hard
+ * resource limits. `limits` overrides DEFAULT_UNZIP_LIMITS.
+ */
+function unzipSync(buffer, { limits = {} } = {}) {
+  const lim = { ...DEFAULT_UNZIP_LIMITS, ...limits };
   if (!Buffer.isBuffer(buffer) || buffer.length < 22) throw new Error('zip: too small');
   // Find end-of-central-directory record (scan backwards over the comment).
   let eocd = -1;
@@ -132,11 +146,14 @@ function unzipSync(buffer) {
   }
   if (eocd < 0) throw new Error('zip: end record not found');
   const count = buffer.readUInt16LE(eocd + 10);
+  if (count > lim.maxEntries) throw new Error(`zip: too many entries (${count} > ${lim.maxEntries})`);
   let pos = buffer.readUInt32LE(eocd + 16);
 
   const entries = [];
+  let totalCompressed = 0;
+  let totalUncompressed = 0;
   for (let i = 0; i < count; i++) {
-    if (buffer.readUInt32LE(pos) !== 0x02014b50) throw new Error('zip: bad central header');
+    if (pos + 46 > buffer.length || buffer.readUInt32LE(pos) !== 0x02014b50) throw new Error('zip: bad central header');
     const method = buffer.readUInt16LE(pos + 10);
     const crc = buffer.readUInt32LE(pos + 16);
     const compSize = buffer.readUInt32LE(pos + 20);
@@ -151,17 +168,33 @@ function unzipSync(buffer) {
     assertSafeEntryName(name);
     if (name.endsWith('/')) continue; // directory entry
 
+    // Budget checks BEFORE allocating/inflating: the declared sizes are
+    // attacker-controlled, so reject oversize claims up front.
+    if (uncompSize > lim.maxEntryUncompressed) {
+      throw new Error(`zip: entry too large (${uncompSize} > ${lim.maxEntryUncompressed}): ${name}`);
+    }
+    totalCompressed += compSize;
+    totalUncompressed += uncompSize;
+    if (totalCompressed > lim.maxTotalCompressed) throw new Error('zip: total compressed size exceeds limit');
+    if (totalUncompressed > lim.maxTotalUncompressed) throw new Error('zip: total inflated size exceeds limit');
+
     if (buffer.readUInt32LE(localOffset) !== 0x04034b50) throw new Error('zip: bad local header');
     const lNameLen = buffer.readUInt16LE(localOffset + 26);
     const lExtraLen = buffer.readUInt16LE(localOffset + 28);
     const dataStart = localOffset + 30 + lNameLen + lExtraLen;
+    if (dataStart + compSize > buffer.length) throw new Error(`zip: entry data out of range: ${name}`);
     const raw = buffer.subarray(dataStart, dataStart + compSize);
 
     let data;
     if (method === 0) data = Buffer.from(raw);
-    else if (method === 8) data = zlib.inflateRawSync(raw);
-    else throw new Error(`zip: unsupported method ${method} for ${name}`);
+    else if (method === 8) {
+      // Cap inflation so a small deflate stream can't expand to gigabytes —
+      // even if the declared uncompSize lied, this is the real guard.
+      data = zlib.inflateRawSync(raw, { maxOutputLength: lim.maxEntryUncompressed });
+    } else throw new Error(`zip: unsupported method ${method} for ${name}`);
 
+    // Exact length match (not "at least"): the inflated bytes must equal the
+    // declared uncompressed size, and the CRC must verify.
     if (data.length !== uncompSize) throw new Error(`zip: size mismatch for ${name}`);
     if (crc32(data) !== crc) throw new Error(`zip: CRC mismatch for ${name}`);
     entries.push({ name, data });
@@ -170,10 +203,10 @@ function unzipSync(buffer) {
 }
 
 /** Extract a zip buffer under destDir; every path is traversal-checked. */
-function extractZipSync(buffer, destDir) {
+function extractZipSync(buffer, destDir, { limits = {} } = {}) {
   const resolvedDest = path.resolve(destDir);
   const written = [];
-  for (const { name, data } of unzipSync(buffer)) {
+  for (const { name, data } of unzipSync(buffer, { limits })) {
     const target = path.resolve(resolvedDest, name);
     if (target !== resolvedDest && !target.startsWith(resolvedDest + path.sep)) {
       throw new Error(`zip: entry escapes destination: ${name}`);
@@ -203,4 +236,7 @@ function zipDirSync(dir, { filter = () => true, prefix = '' } = {}) {
   return zipSync(entries);
 }
 
-module.exports = { crc32, zipSync, unzipSync, extractZipSync, zipDirSync, assertSafeEntryName };
+module.exports = {
+  crc32, zipSync, unzipSync, extractZipSync, zipDirSync, assertSafeEntryName,
+  DEFAULT_UNZIP_LIMITS,
+};

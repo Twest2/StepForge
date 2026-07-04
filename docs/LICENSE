@@ -1,9 +1,14 @@
-Creative Commons Attribution-NonCommercial
+StepForge is licensed under the Creative Commons
+Attribution-NonCommercial 4.0 International License (CC BY-NC 4.0).
 
-Copyright (c) 2026 Tyler Westbrook
+The authoritative, full license text lives in the repository root:
 
-Permission is granted to use, copy, modify, and distribute this software for non-commercial purposes only.
+    ../LICENSE
 
-You may not sell this software, sell modified versions of it, or use it as part of a commercial product or service without written permission from the copyright holder.
+Summary: you may use, copy, modify, and share this software for
+NON-COMMERCIAL purposes, with attribution. Commercial use requires
+separate written permission from the copyright holder (Tyler Westbrook).
 
-This software is provided "as is", without warranty of any kind.
+  Human-readable summary: https://creativecommons.org/licenses/by-nc/4.0/
+  SPDX-License-Identifier:  CC-BY-NC-4.0
+  Copyright (c) 2026 Tyler Westbrook

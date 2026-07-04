@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=StepForge
+GenericName=Step-by-step guide capture
+Comment=Capture, annotate, and export step-by-step guides
+Exec=stepforge %U
+Icon=stepforge
+Terminal=false
+Categories=Office;Graphics;Utility;
+Keywords=documentation;screenshot;guide;capture;steps;
+StartupNotify=true
+StartupWMClass=StepForge
+MimeType=application/x-stepforge-guide;

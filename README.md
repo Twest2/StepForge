@@ -73,7 +73,12 @@ using only Node built-ins.
 
 For a Windows installation, see [docs/windows_installation](docs/windows_installation.md) or for a developer/more in depth walkthrough, see [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md).
 
-On **Linux** (⚠️ work in progress — X11 vs Wayland, enabling per-click capture, the screen-share prompt), see [docs/GETTING_STARTED_WITH_LINUX.md](docs/GETTING_STARTED_WITH_LINUX.md).
+On **Linux**, install from a package built for your distro family:
+apt-based (Debian/Ubuntu) → [docs/linux/apt.md](docs/linux/apt.md); dnf-based
+(Fedora) → [docs/linux/dnf.md](docs/linux/dnf.md). Wayland uses the XDG portal
+for screen capture and a hotkey/interval trigger (per-click capture with a
+marker needs X11 + xinput). The general developer walkthrough is
+[docs/GETTING_STARTED_WITH_LINUX.md](docs/GETTING_STARTED_WITH_LINUX.md).
 
 Requirements: Node.js 22.12+ and npm (pinned in `.nvmrc`; installs are
 refused on older Nodes because the packaging toolchain needs 22.12+).

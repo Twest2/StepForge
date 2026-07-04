@@ -33,6 +33,55 @@ test('the old non-production package-linux.sh is gone', () => {
   assert.equal(exists('scripts/package-linux.sh'), false);
 });
 
+test('Fedora/dnf packaging files exist in their own separate locations', () => {
+  for (const f of [
+    'packaging/linux/fedora/package.sh',
+    'packaging/linux/fedora/stepforge.spec',
+    'packaging/linux/common/stage-runtime.sh',
+    'scripts/linux/dnf/install-runtime-deps.sh',
+    'scripts/linux/dnf/install-build-deps.sh',
+    'docs/linux/dnf.md',
+    'tests/integration/linux/package-rpm.test.sh',
+  ]) {
+    assert.ok(exists(f), `expected ${f} to exist`);
+  }
+});
+
+test('the RPM spec declares runtime Requires, license, and MPL-2.0', () => {
+  const spec = read('packaging/linux/fedora/stepforge.spec');
+  assert.match(spec, /^License:\s+MPL-2\.0$/m);
+  assert.match(spec, /^Requires:\s+nss$/m);
+  assert.match(spec, /%license/);
+  assert.match(spec, /chrome-sandbox/); // %post makes the sandbox helper setuid
+  assert.match(spec, /@VERSION@/);
+  assert.doesNotMatch(spec, /fully offline/i);
+});
+
+test('the rpm builder shares staging and requires rpmbuild + node_modules', () => {
+  const script = read('packaging/linux/fedora/package.sh');
+  assert.match(script, /stage-runtime\.sh/);
+  assert.match(script, /rpmbuild/);
+  assert.match(script, /rpm --eval '%\{_arch\}'|uname -m/); // arch detected
+  assert.doesNotMatch(script, /cp -a "\$ROOT_DIR\/node_modules" /);
+});
+
+test('dnf setup scripts target dnf and keep build vs runtime deps separate', () => {
+  const runtime = read('scripts/linux/dnf/install-runtime-deps.sh');
+  const build = read('scripts/linux/dnf/install-build-deps.sh');
+  assert.match(runtime, /dnf install/);
+  assert.match(runtime, /nss/);
+  assert.doesNotMatch(runtime, /rpm-build|rpmdevtools/, 'runtime script must not install build tools');
+  assert.match(build, /rpm-build/);
+});
+
+test('the shared staging never copies the whole dev node_modules', () => {
+  const staging = read('packaging/linux/common/stage-runtime.sh');
+  assert.match(staging, /npm ls --omit=dev/);
+  assert.match(staging, /electron-builder/); // leak guard
+  assert.doesNotMatch(staging, /cp -a "\$ROOT_DIR\/node_modules" "\$APP_DIR/);
+  assert.match(staging, /node_modules\/electron\/dist/); // requires the runtime
+});
+
 test('the desktop entry is valid and app-branded', () => {
   const desktop = read('packaging/linux/common/stepforge.desktop');
   assert.match(desktop, /^\[Desktop Entry\]/);
@@ -62,11 +111,9 @@ test('the launcher refuses an unsandboxed launch unless explicitly opted in', ()
   assert.doesNotMatch(launcher, /npm (install|ci|rebuild)/);
 });
 
-test('the package builder requires node_modules and guards against dev-dep leaks', () => {
+test('the deb builder detects arch and delegates to shared staging', () => {
   const script = read('packaging/linux/debian/package.sh');
-  assert.match(script, /node_modules\/electron\/dist/);
-  assert.match(script, /npm ls --omit=dev/);
-  assert.match(script, /electron-builder/); // the leak guard references it
+  assert.match(script, /stage-runtime\.sh/); // runtime-only staging is shared
   assert.match(script, /dpkg --print-architecture/); // arch detected, not hardcoded
   assert.doesNotMatch(script, /cp -a "\$ROOT_DIR\/node_modules" /); // never copy the whole dev tree
 });

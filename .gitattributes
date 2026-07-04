@@ -1,0 +1,24 @@
+# Normalize line endings. Unix artifacts MUST stay LF: a shell script or
+# desktop/udev/spec file checked out with CRLF (e.g. on Windows with
+# core.autocrlf=true) fails to run on Linux — `#!/usr/bin/env bash\r` is a
+# "bad interpreter" error, and .desktop/.rules parsers choke on trailing \r.
+* text=auto eol=lf
+
+*.sh          text eol=lf
+*.desktop     text eol=lf
+*.rules       text eol=lf
+*.spec        text eol=lf
+*.xml         text eol=lf
+control.in    text eol=lf
+*.js          text eol=lf
+*.mjs         text eol=lf
+*.cjs         text eol=lf
+*.json        text eol=lf
+*.md          text eol=lf
+launcher.sh   text eol=lf
+
+# Binary assets must never be line-ending converted.
+*.png         binary
+*.ico         binary
+*.gz          binary
+*.traineddata binary

@@ -6,7 +6,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const ROOT = path.resolve(__dirname, '..', '..');
-const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
+// Strip CR so /^...$/m assertions are robust to CRLF checkouts on Windows CI.
+const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8').replace(/\r\n/g, '\n');
 const exists = (rel) => fs.existsSync(path.join(ROOT, rel));
 
 // These are structural checks that run in the normal (cross-platform) unit

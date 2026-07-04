@@ -77,6 +77,9 @@ const api = {
     create: invoke('snapshots:create'),
     restore: invoke('snapshots:restore'),
   },
+  recovery: {
+    status: invoke('recovery:status'),
+  },
   templates: {
     list: invoke('templates:list'),
     load: invoke('templates:load'),

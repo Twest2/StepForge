@@ -71,11 +71,10 @@ test('the enable script is opt-in and installs the least-privilege rule, not the
   const script = read('scripts/linux/enable-click-capture.sh');
   assert.match(script, /read -r reply/, 'must confirm before installing');
   assert.match(script, /60-stepforge-input\.rules/, 'installs the least-privilege udev rule');
-  // usermod may only appear in a comment (warning), never as an executed command.
-  for (const line of script.split('\n')) {
-    const code = line.replace(/#.*$/, '');
-    assert.doesNotMatch(code, /usermod -aG input/, 'must not run the broad input-group command');
-  }
+  // usermod may only appear in a comment (warning), never as an executed
+  // command. Check command position (line start, optional sudo) so this is
+  // robust to CRLF vs LF line endings across platforms.
+  assert.doesNotMatch(script, /^\s*(sudo\s+)?usermod\b/m, 'must not run the broad input-group command');
 });
 
 // ---- docs no longer push the broad input group ------------------------------

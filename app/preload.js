@@ -107,6 +107,7 @@ const api = {
   },
   app: {
     info: invoke('app:info'),
+    platformCapabilities: invoke('platform:capabilities'),
   },
 };
 

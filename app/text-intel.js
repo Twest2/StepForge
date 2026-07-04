@@ -2,7 +2,6 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { execFileSync, execFile } = require('node:child_process');
 
 const {
   DEFAULT_CAPTURE_TITLES,
@@ -22,15 +21,6 @@ const OCR_CROP = {
   width: 420,
   height: 220,
 };
-
-function hasBinary(name) {
-  try {
-    execFileSync('which', [name], { stdio: 'pipe' });
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 function clamp(v, min, max) {
   return Math.min(max, Math.max(min, v));
@@ -63,6 +53,7 @@ class TextIntelService {
     dataDir,
     fetchImpl = global.fetch,
     screenApi = null,
+    windowContextProvider = null,
   }) {
     this.store = store;
     this.settings = settings;
@@ -70,6 +61,10 @@ class TextIntelService {
     this.dataDir = dataDir;
     this.fetch = fetchImpl;
     this.screen = screenApi;
+    // OS-specific foreground-window/element detection is a platform adapter.
+    // This code no longer branches on process.platform; the factory selects it.
+    this.windowContext = windowContextProvider
+      || require('./platform').createWindowContextProvider();
     this.worker = null;
     this.workerPromise = null;
     this.workerQueue = Promise.resolve();
@@ -271,135 +266,13 @@ class TextIntelService {
 
   async collectForegroundWindowContext(osPoint = null) {
     try {
-      if (process.platform === 'win32') return this.collectWindowsWindowContext(osPoint);
-      if (process.platform === 'darwin') return this.collectMacWindowContext();
-      if (process.platform === 'linux') return this.collectLinuxWindowContext();
+      return await this.windowContext.collect(osPoint);
     } catch {
       // best effort only
+      return { appName: '', windowTitle: '' };
     }
-    return { appName: '', windowTitle: '' };
   }
 
-  async collectWindowsWindowContext(osPoint = null) {
-    const hasPoint = osPoint && Number.isFinite(osPoint.x) && Number.isFinite(osPoint.y);
-    const clickX = hasPoint ? Number(osPoint.x) : 0;
-    const clickY = hasPoint ? Number(osPoint.y) : 0;
-    const script = `
-      $clickX = ${clickX};
-      $clickY = ${clickY};
-      $elementLabel = '';
-      $elementRole = '';
-      $elementClass = '';
-      $elementProcessId = 0;
-      $elementValue = '';
-      if (${hasPoint ? '$true' : '$false'}) {
-        try {
-          Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes,WindowsBase | Out-Null
-          $point = New-Object System.Windows.Point($clickX, $clickY);
-          $element = [System.Windows.Automation.AutomationElement]::FromPoint($point);
-          if ($element) {
-            $current = $element.Current;
-            $elementLabel = $current.Name;
-            $elementRole = $current.LocalizedControlType;
-            $elementClass = $current.ClassName;
-            $elementProcessId = $current.ProcessId;
-            try {
-              $valPattern = [System.Windows.Automation.ValuePattern]::Pattern;
-              if ($element.GetSupportedPatterns() -contains $valPattern) {
-                $elementValue = $element.GetCurrentPattern($valPattern).Current.Value;
-              }
-            } catch { }
-          }
-        } catch { }
-      }
-      Add-Type @"
-using System;
-using System.Runtime.InteropServices;
-using System.Text;
-public static class Win32 {
-  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
-  [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-  public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
-  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
-}
-"@;
-      $hWnd = [Win32]::GetForegroundWindow();
-      $sb = New-Object System.Text.StringBuilder 512;
-      [void][Win32]::GetWindowText($hWnd, $sb, $sb.Capacity);
-      $pid = 0;
-      [void][Win32]::GetWindowThreadProcessId($hWnd, [ref]$pid);
-      $proc = Get-Process -Id $pid -ErrorAction SilentlyContinue | Select-Object -First 1;
-      $out = [ordered]@{
-        appName = if ($proc) { $proc.ProcessName } else { '' };
-        windowTitle = $sb.ToString();
-        elementLabel = $elementLabel;
-        elementRole = $elementRole;
-        elementClass = $elementClass;
-        elementValue = $elementValue;
-        elementProcessId = $elementProcessId;
-        pid = $pid;
-      };
-      $out | ConvertTo-Json -Compress;
-    `;
-    return new Promise(resolve => {
-      execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script], {
-        encoding: 'utf8',
-        timeout: 4000,
-        windowsHide: true,
-      }, (err, stdout) => {
-        if (err) { resolve({}); return; }
-        try { resolve(JSON.parse(stdout.trim() || '{}')); }
-        catch { resolve({}); }
-      });
-    });
-  }
-
-  collectMacWindowContext() {
-    const script = `
-      set appName to ""
-      set windowTitle to ""
-      tell application "System Events"
-        try
-          set frontApp to first application process whose frontmost is true
-          set appName to name of frontApp
-          try
-            set windowTitle to name of front window of frontApp
-          end try
-        end try
-      end tell
-      return appName & linefeed & windowTitle
-    `;
-    const result = execFileSync('osascript', ['-e', script], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-      timeout: 1200,
-    }).trimEnd();
-    const [appName = '', windowTitle = ''] = result.split(/\r?\n/);
-    return { appName, windowTitle };
-  }
-
-  collectLinuxWindowContext() {
-    if (!hasBinary('xprop')) return { appName: '', windowTitle: '' };
-    const active = execFileSync('xprop', ['-root', '_NET_ACTIVE_WINDOW'], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-      timeout: 1200,
-    });
-    const activeMatch = active.match(/window id # (0x[0-9a-fA-F]+)/);
-    if (!activeMatch) return { appName: '', windowTitle: '' };
-    const winId = activeMatch[1];
-    const details = execFileSync('xprop', ['-id', winId, '_NET_WM_NAME', 'WM_NAME', 'WM_CLASS'], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-      timeout: 1200,
-    });
-    const titleMatch = details.match(/(?:_NET_WM_NAME\(UTF8_STRING\)|WM_NAME\(STRING\)|WM_NAME\(UTF8_STRING\)) = "([^"]*)"/);
-    const classMatch = details.match(/WM_CLASS\(STRING\) = "([^"]*)"(?:, "([^"]*)")?/);
-    return {
-      appName: classMatch ? (classMatch[2] || classMatch[1] || '') : '',
-      windowTitle: titleMatch ? titleMatch[1] : '',
-    };
-  }
 
   async buildCaptureTitle({ mode, frame, clickPos, clickMeta = null }) {
     const ctx = await this.buildCaptureContext({ mode, frame, clickPos, clickMeta });

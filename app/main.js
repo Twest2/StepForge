@@ -899,6 +899,9 @@ function setupIpc() {
     dataDir: store.root,
     platform: process.platform,
   }));
+  // Platform capture-capability profile (session type, portal/PipeWire,
+  // xinput, click source, actionable messages) for the diagnostics UI.
+  h('platform:capabilities', () => require('./platform').detectCapabilities());
 }
 
 // ---- lifecycle --------------------------------------------------------------

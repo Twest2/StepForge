@@ -156,6 +156,10 @@ function createWindow() {
   // with this window's preload bridge.
   security.installWindowSecurity(mainWindow, 'main');
   mainWindow.webContents.on('before-input-event', (event, input) => {
+    // Electron reports both the key-down and key-up as separate
+    // before-input-event calls; only act on the down edge or every tap
+    // fires the shortcut twice regardless of the dedupe window below.
+    if (input.type !== 'keyDown') return;
     const kind = zoomShortcutFromInputEvent(input);
     if (!kind) return;
     event.preventDefault();

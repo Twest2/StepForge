@@ -66,6 +66,7 @@ let templates;
 let capture;
 let textIntel;
 let mainWindow;
+let lastZoomShortcut = null;
 
 function reindex(guideId) {
   try {
@@ -86,6 +87,16 @@ function orderedSteps(guideId) {
 
 function applyTheme() {
   nativeTheme.themeSource = settings.get('appearance') || 'system';
+}
+
+function dispatchZoomShortcut(kind) {
+  if (!kind) return;
+  const now = Date.now();
+  if (lastZoomShortcut && lastZoomShortcut.kind === kind && (now - lastZoomShortcut.at) < 50) {
+    return;
+  }
+  lastZoomShortcut = { kind, at: now };
+  sendToRenderer('editor:zoom-shortcut', kind);
 }
 
 function createWindow() {
@@ -118,7 +129,7 @@ function createWindow() {
     const kind = zoomShortcutFromInputEvent(input);
     if (!kind) return;
     event.preventDefault();
-    sendToRenderer('editor:zoom-shortcut', kind);
+    dispatchZoomShortcut(kind);
   });
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   mainWindow.once('ready-to-show', () => {
@@ -397,6 +408,25 @@ function createWindow() {
 
 function registerHotkeys() {
   globalShortcut.unregisterAll();
+  const zoomBindings = [
+    ['CommandOrControl+=', 'in'],
+    ['CommandOrControl+Shift+=', 'in'],
+    ['CommandOrControl+Add', 'in'],
+    ['CommandOrControl+-', 'out'],
+    ['CommandOrControl+Minus', 'out'],
+    ['CommandOrControl+Subtract', 'out'],
+    ['CommandOrControl+0', 'fit'],
+  ];
+  for (const [accel, kind] of zoomBindings) {
+    try {
+      if (globalShortcut.register(accel, () => dispatchZoomShortcut(kind))) {
+        // Keep registering the other spellings so keyboards with different
+        // plus/minus translations still land on the same action.
+      }
+    } catch {
+      // Invalid accelerators must not break startup.
+    }
+  }
   const accel = settings.get('capture.hotkeyCapture');
   const pauseAccel = settings.get('capture.hotkeyPauseResume');
   try {

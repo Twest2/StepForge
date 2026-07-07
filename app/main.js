@@ -409,13 +409,15 @@ function createWindow() {
 function registerHotkeys() {
   globalShortcut.unregisterAll();
   const zoomBindings = [
-    ['CommandOrControl+=', 'in'],
+    ['CommandOrControl+Plus', 'in'],
     ['CommandOrControl+Shift+=', 'in'],
-    ['CommandOrControl+Add', 'in'],
+    ['CommandOrControl+=', 'in'],
+    ['CommandOrControl+numadd', 'in'],
     ['CommandOrControl+-', 'out'],
     ['CommandOrControl+Minus', 'out'],
-    ['CommandOrControl+Subtract', 'out'],
+    ['CommandOrControl+numsub', 'out'],
     ['CommandOrControl+0', 'fit'],
+    ['CommandOrControl+num0', 'fit'],
   ];
   for (const [accel, kind] of zoomBindings) {
     try {

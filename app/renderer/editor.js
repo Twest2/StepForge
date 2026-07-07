@@ -105,6 +105,19 @@ function isEditableTarget(target) {
   );
 }
 
+const ZOOM_IN_KEYS = new Set(['=', '+', 'Add']);
+const ZOOM_OUT_KEYS = new Set(['-', '_', 'Subtract']);
+
+function zoomShortcutFromEvent(e) {
+  if (!(e.ctrlKey || e.metaKey)) return null;
+
+  const { key, code } = e;
+  if (key === '0' || code === 'Digit0' || code === 'Numpad0') return 'fit';
+  if (ZOOM_IN_KEYS.has(key) || code === 'Equal' || code === 'NumpadAdd') return 'in';
+  if (ZOOM_OUT_KEYS.has(key) || code === 'Minus' || code === 'NumpadSubtract') return 'out';
+  return null;
+}
+
 class GuideEditor {
   constructor({ root, onMetaChange = () => {}, onToast = toast, onBack = () => {} } = {}) {
     this.root = root;
@@ -1182,7 +1195,6 @@ class GuideEditor {
     const typeSelect = makeSelect(selected.type, [
       'rect', 'oval', 'line', 'arrow', 'text', 'tooltip', 'number', 'blur', 'highlight', 'magnify', 'cursor',
     ].map((type) => ({ value: type, label: ANNOTATION_TYPE_LABELS[type] || type })));
-    const textInput = el('input', { type: 'text', value: selected.text || '', placeholder: 'Annotation text' });
     const valueInput = el('input', { type: 'number', value: Number.isFinite(selected.value) ? selected.value : '', placeholder: 'Value' });
     const strokeInput = el('input', { type: 'color', value: style.stroke || '#E5484D' });
     const fillInput = el('input', { type: 'color', value: style.fill && style.fill !== 'transparent' ? style.fill : '#ffffff' });
@@ -1218,9 +1230,17 @@ class GuideEditor {
     const fields = new Set(ANNOTATION_FIELDS[selected.type] || []);
     const strokeLabel = (selected.type === 'text' || selected.type === 'number') ? 'Color' : 'Stroke';
     const typeLabel = ANNOTATION_TYPE_LABELS[selected.type] || selected.type;
+    const textInput = fields.has('text')
+      ? el('textarea', {
+        rows: Math.max(3, Math.min(8, String(selected.text || '').split('\n').length)),
+        placeholder: 'Annotation text',
+        spellcheck: true,
+      })
+      : el('input', { type: 'text', value: selected.text || '', placeholder: 'Annotation text' });
+    if (fields.has('text')) textInput.value = selected.text || '';
 
     const rows = [labeledRow('Type', typeSelect)];
-    if (fields.has('text')) rows.push(labeledRow('Text', textInput));
+    if (fields.has('text')) rows.push(labeledRow('Text', textInput, { stacked: true }));
     if (fields.has('value')) rows.push(labeledRow('Value', valueInput));
     if (fields.has('stroke')) rows.push(labeledRow(strokeLabel, strokeInput));
     if (fields.has('fill')) rows.push(labeledRow('Fill', fillInput));
@@ -2178,9 +2198,10 @@ class GuideEditor {
     ann.text = value;
     step.annotations = clone(step.annotations || []);
     this.pendingSave = true;
-    await this.flushStep(step);
+    this.canvas.setAnnotations(step.annotations || []);
     this.renderAnnotationPanel();
     this.emitMeta();
+    await this.flushStep(step);
   }
 
   formatDescription(command, block = null) {
@@ -2227,6 +2248,18 @@ class GuideEditor {
 
   onDocumentKeyDown(e) {
     if (!this.active || !this.guide) return;
+    const zoomShortcut = zoomShortcutFromEvent(e);
+    if (zoomShortcut) {
+      e.preventDefault();
+      if (zoomShortcut === 'in') {
+        this.setZoom(Math.min(3, (Number(this.currentZoom) || 1) + 0.25));
+      } else if (zoomShortcut === 'out') {
+        this.setZoom(Math.max(0.25, (Number(this.currentZoom) || 1) - 0.25));
+      } else {
+        this.setZoom('fit');
+      }
+      return;
+    }
     if ((e.ctrlKey || e.metaKey) && e.key === '/' && !e.shiftKey) {
       e.preventDefault();
       this.openQuickActions();
@@ -2268,21 +2301,6 @@ class GuideEditor {
         const idx = this.steps.findIndex((s) => s.stepId === this.selectedStepId);
         const next = this.steps[idx + (e.key === 'PageDown' ? 1 : -1)];
         if (next) this.selectStep(next.stepId);
-        return;
-      }
-      if ((e.ctrlKey || e.metaKey) && (e.key === '=' || e.key === '+')) {
-        e.preventDefault();
-        this.setZoom(Math.min(3, (Number(this.currentZoom) || 1) + 0.25));
-        return;
-      }
-      if ((e.ctrlKey || e.metaKey) && e.key === '-') {
-        e.preventDefault();
-        this.setZoom(Math.max(0.25, (Number(this.currentZoom) || 1) - 0.25));
-        return;
-      }
-      if ((e.ctrlKey || e.metaKey) && e.key === '0') {
-        e.preventDefault();
-        this.setZoom('fit');
         return;
       }
       // Copy / paste the selected annotation.

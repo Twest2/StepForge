@@ -169,7 +169,14 @@ function makeHotkeyInput(value = '') {
   return wrap;
 }
 
-async function promptText({ title, label = 'Value', value = '', placeholder = '', multiline = false } = {}) {
+async function promptText({
+  title,
+  label = 'Value',
+  value = '',
+  placeholder = '',
+  multiline = false,
+  onInput = null,
+} = {}) {
   return new Promise((resolve) => {
     const field = multiline
       ? el('textarea', { rows: 6, placeholder }, value)
@@ -196,6 +203,9 @@ async function promptText({ title, label = 'Value', value = '', placeholder = ''
         close();
         resolve(field.value);
       }
+    });
+    field.addEventListener('input', () => {
+      if (typeof onInput === 'function') onInput(field.value);
     });
 
     setTimeout(() => field.focus(), 0);

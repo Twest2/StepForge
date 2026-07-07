@@ -67,6 +67,9 @@ const api = {
     onState: (fn) => ipcRenderer.on('capture:state', (e, payload) => fn(payload)),
     onStepUpdated: (fn) => ipcRenderer.on('step:updated', (e, payload) => fn(payload)),
   },
+  editor: {
+    onZoomShortcut: (fn) => ipcRenderer.on('editor:zoom-shortcut', (e, payload) => fn(payload)),
+  },
   archive: {
     export: invoke('archive:export'),
     open: invoke('archive:open'),

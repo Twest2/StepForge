@@ -4,6 +4,7 @@
 
 const api = window.stepforge;
 const dialogs = window.StepForgeDialogs || {};
+const shortcuts = window.StepForgeShortcuts || {};
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
 const BLOCK_KIND_ORDER = { text: 0, code: 1, table: 2 };
@@ -105,16 +106,21 @@ function isEditableTarget(target) {
   );
 }
 
-const ZOOM_IN_KEYS = new Set(['=', '+', 'Add']);
-const ZOOM_OUT_KEYS = new Set(['-', '_', 'Subtract']);
-
 function zoomShortcutFromEvent(e) {
+  if (shortcuts.zoomShortcutFromKeyboardEvent) {
+    return shortcuts.zoomShortcutFromKeyboardEvent(e);
+  }
+
   if (!(e.ctrlKey || e.metaKey)) return null;
 
-  const { key, code } = e;
+  const { key, code, shiftKey } = e;
   if (key === '0' || code === 'Digit0' || code === 'Numpad0') return 'fit';
-  if (ZOOM_IN_KEYS.has(key) || code === 'Equal' || code === 'NumpadAdd') return 'in';
-  if (ZOOM_OUT_KEYS.has(key) || code === 'Minus' || code === 'NumpadSubtract') return 'out';
+  if (
+    key === '+' || key === '=' || key === 'Add' || key === 'Plus' ||
+    code === 'Equal' || code === 'NumpadAdd' ||
+    (key === '=' && shiftKey) || (code === 'Equal' && shiftKey)
+  ) return 'in';
+  if (key === '-' || key === '_' || key === 'Subtract' || key === 'Minus' || code === 'Minus' || code === 'NumpadSubtract') return 'out';
   return null;
 }
 
@@ -153,6 +159,13 @@ class GuideEditor {
 
     this.saveStepDebounced = debounce(() => this.flushStep(), 180);
     this.saveGuideDebounced = debounce(() => this.flushGuide(), 180);
+
+    if (api.editor && typeof api.editor.onZoomShortcut === 'function') {
+      api.editor.onZoomShortcut((kind) => {
+        if (!this.active || !this.guide) return;
+        this.applyZoomShortcut(kind);
+      });
+    }
 
     this.onDocumentKeyDown = this.onDocumentKeyDown.bind(this);
     document.addEventListener('keydown', this.onDocumentKeyDown, true);
@@ -1368,6 +1381,22 @@ class GuideEditor {
     if (mode === 1.5) this.dom.zoom150Btn.classList.add('active');
   }
 
+  applyZoomShortcut(kind) {
+    if (kind === 'in') {
+      this.setZoom(Math.min(3, (Number(this.currentZoom) || 1) + 0.25));
+      return true;
+    }
+    if (kind === 'out') {
+      this.setZoom(Math.max(0.25, (Number(this.currentZoom) || 1) - 0.25));
+      return true;
+    }
+    if (kind === 'fit') {
+      this.setZoom('fit');
+      return true;
+    }
+    return false;
+  }
+
   pushCanvasHistory(recordOrLabel = 'change') {
     if (!this.currentStep) return;
     const record = recordOrLabel && typeof recordOrLabel === 'object'
@@ -2188,19 +2217,38 @@ class GuideEditor {
   async editAnnotationText(ann) {
     const step = this.currentStep;
     if (!step || !ann) return;
+    const originalText = ann.text ?? '';
+    const applyText = (nextText, { persist = true } = {}) => {
+      const selected = this.canvas.selected();
+      if (!selected) return;
+      selected.text = nextText;
+      step.annotations = clone(this.canvas.annotations || []);
+      this.pendingSave = true;
+      this.canvas.setAnnotations(step.annotations || []);
+      this.renderAnnotationPanel();
+      this.emitMeta();
+      if (persist) this.saveStepDebounced();
+    };
     const value = await dialogs.promptText({
       title: ann.type === 'tooltip' ? 'Edit tooltip' : 'Edit text',
       label: 'Text',
-      value: ann.text || '',
+      value: originalText,
       multiline: true,
+      onInput: applyText,
     });
-    if (value == null) return;
-    ann.text = value;
-    step.annotations = clone(step.annotations || []);
-    this.pendingSave = true;
-    this.canvas.setAnnotations(step.annotations || []);
-    this.renderAnnotationPanel();
-    this.emitMeta();
+    this.saveStepDebounced.cancel();
+    if (value == null) {
+      const current = this.canvas.selected();
+      if ((current?.text ?? '') !== originalText) {
+        applyText(originalText, { persist: false });
+      }
+      await this.flushStep(step);
+      return;
+    }
+    const current = this.canvas.selected();
+    if ((current?.text ?? '') !== value) {
+      applyText(value, { persist: false });
+    }
     await this.flushStep(step);
   }
 
@@ -2251,13 +2299,7 @@ class GuideEditor {
     const zoomShortcut = zoomShortcutFromEvent(e);
     if (zoomShortcut) {
       e.preventDefault();
-      if (zoomShortcut === 'in') {
-        this.setZoom(Math.min(3, (Number(this.currentZoom) || 1) + 0.25));
-      } else if (zoomShortcut === 'out') {
-        this.setZoom(Math.max(0.25, (Number(this.currentZoom) || 1) - 0.25));
-      } else {
-        this.setZoom('fit');
-      }
+      this.applyZoomShortcut(zoomShortcut);
       return;
     }
     if ((e.ctrlKey || e.metaKey) && e.key === '/' && !e.shiftKey) {

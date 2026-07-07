@@ -178,6 +178,9 @@ class GuideEditor {
 
   setActive(active) {
     this.active = Boolean(active);
+    if (api.editor && typeof api.editor.setCanvasZoomActive === 'function') {
+      api.editor.setCanvasZoomActive(this.active);
+    }
     if (!this.active && this.guideId) {
       // Leaving the editor: flush pending debounced saves so navigation can
       // never drop the last edit (failures keep the dirty state and retry),

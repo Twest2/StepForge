@@ -22,7 +22,6 @@ const { readLock } = require('../core/locks');
 const CaptureService = require('./capture');
 const { TextIntelService } = require('./text-intel');
 const { keepProcessesResponsive } = require('./win-power');
-const { zoomShortcutFromInputEvent } = require('./shortcut-utils');
 const security = require('./security');
 const PACKAGE_JSON = require(path.join(__dirname, '..', 'package.json'));
 
@@ -114,12 +113,6 @@ function createWindow() {
   // away from it and every popup is denied, so no other document can run
   // with this window's preload bridge.
   security.installWindowSecurity(mainWindow, 'main');
-  mainWindow.webContents.on('before-input-event', (event, input) => {
-    const kind = zoomShortcutFromInputEvent(input);
-    if (!kind) return;
-    event.preventDefault();
-    sendToRenderer('editor:zoom-shortcut', kind);
-  });
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
@@ -255,6 +248,19 @@ function createWindow() {
             }
           };
 
+          const waitClickBackendReady = async () => {
+            for (let i = 0; i < 240; i++) {
+              const streamReady = Boolean(
+                capture.streamBackend
+                && typeof capture.streamBackend.isActive === 'function'
+                && capture.streamBackend.isActive(),
+              );
+              if (streamReady || capture.frameLoopRunning) return true;
+              await new Promise((res) => setTimeout(res, 50));
+            }
+            return false;
+          };
+
           // Third scenario: the real "Start recording" path. armRecording
           // warms the recorder while the window is visible and only arms the
           // session once it hides; the first click *after* arming must get a
@@ -275,6 +281,10 @@ function createWindow() {
           const warmupClicks = store.getGuide(armGuide.guideId).stepsOrder.length;
           capture.onOsClick(Date.now(), toPhysical({ x: bounds.x + 100, y: bounds.y + 100 }), 'button-1');
           await waitArmed();
+          if (!await waitClickBackendReady()) {
+            throw new Error('arm selftest backend never became ready');
+          }
+          await new Promise((res) => setTimeout(res, 1500));
           const armPoint = {
             x: Math.round(bounds.x + bounds.width * 0.4),
             y: Math.round(bounds.y + bounds.height * 0.4),
@@ -302,6 +312,10 @@ function createWindow() {
           capture.togglePause(false);
           await capture.startClickFrameBackend();
           await waitArmed();
+          if (!await waitClickBackendReady()) {
+            throw new Error('debounce selftest backend never became ready');
+          }
+          await new Promise((res) => setTimeout(res, 1500));
           await new Promise((res) => setTimeout(res, 300));
           const dbPoint = {
             x: Math.round(bounds.x + bounds.width * 0.55),

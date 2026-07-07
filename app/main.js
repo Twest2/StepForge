@@ -93,12 +93,6 @@ function applyTheme() {
 }
 
 function dispatchZoomShortcut(kind) {
-  if (!kind) return;
-  const now = Date.now();
-  if (lastZoomShortcut && lastZoomShortcut.kind === kind && (now - lastZoomShortcut.at) < 50) {
-    return;
-  }
-  lastZoomShortcut = { kind, at: now };
   sendToRenderer('editor:zoom-shortcut', kind);
 }
 
@@ -117,7 +111,17 @@ function applyUiZoom(kind) {
   wc.zoomLevel = Math.max(UI_ZOOM_LEVEL_MIN, Math.min(UI_ZOOM_LEVEL_MAX, wc.zoomLevel + delta));
 }
 
+// A single physical keypress reaches here twice — once via the global
+// accelerator registration, once via before-input-event — plus multiple
+// accelerator spellings can match the same key on some layouts. Collapse
+// same-kind repeats within 50ms so one keypress is one zoom step.
 function handleZoomShortcut(kind) {
+  if (!kind) return;
+  const now = Date.now();
+  if (lastZoomShortcut && lastZoomShortcut.kind === kind && (now - lastZoomShortcut.at) < 50) {
+    return;
+  }
+  lastZoomShortcut = { kind, at: now };
   if (canvasZoomActive) {
     dispatchZoomShortcut(kind);
   } else {

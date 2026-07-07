@@ -22,6 +22,7 @@ const { readLock } = require('../core/locks');
 const CaptureService = require('./capture');
 const { TextIntelService } = require('./text-intel');
 const { keepProcessesResponsive } = require('./win-power');
+const { zoomShortcutFromInputEvent } = require('./shortcut-utils');
 const security = require('./security');
 const PACKAGE_JSON = require(path.join(__dirname, '..', 'package.json'));
 
@@ -113,6 +114,12 @@ function createWindow() {
   // away from it and every popup is denied, so no other document can run
   // with this window's preload bridge.
   security.installWindowSecurity(mainWindow, 'main');
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    const kind = zoomShortcutFromInputEvent(input);
+    if (!kind) return;
+    event.preventDefault();
+    sendToRenderer('editor:zoom-shortcut', kind);
+  });
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();

@@ -186,6 +186,11 @@ async function promptText({ title, label = 'Value', value = '', placeholder = ''
     });
 
     field.addEventListener('keydown', (e) => {
+      if (multiline && e.key === 'Enter') {
+        // Let the textarea keep the Enter key for a new line.
+        e.stopPropagation();
+        return;
+      }
       if (!multiline && e.key === 'Enter') {
         e.preventDefault();
         close();

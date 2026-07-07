@@ -285,6 +285,8 @@ function createWindow() {
             throw new Error('arm selftest backend never became ready');
           }
           await new Promise((res) => setTimeout(res, 1500));
+          if (mainWindow.isVisible()) mainWindow.hide();
+          await new Promise((res) => setTimeout(res, 200));
           const armPoint = {
             x: Math.round(bounds.x + bounds.width * 0.4),
             y: Math.round(bounds.y + bounds.height * 0.4),
@@ -316,6 +318,8 @@ function createWindow() {
             throw new Error('debounce selftest backend never became ready');
           }
           await new Promise((res) => setTimeout(res, 1500));
+          if (mainWindow.isVisible()) mainWindow.hide();
+          await new Promise((res) => setTimeout(res, 200));
           await new Promise((res) => setTimeout(res, 300));
           const dbPoint = {
             x: Math.round(bounds.x + bounds.width * 0.55),

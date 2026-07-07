@@ -69,6 +69,7 @@ const api = {
   },
   editor: {
     onZoomShortcut: (fn) => ipcRenderer.on('editor:zoom-shortcut', (e, payload) => fn(payload)),
+    setCanvasZoomActive: (active) => ipcRenderer.send('editor:canvas-zoom-active', Boolean(active)),
   },
   archive: {
     export: invoke('archive:export'),

@@ -67,6 +67,9 @@ let capture;
 let textIntel;
 let mainWindow;
 let lastZoomShortcut = null;
+let canvasZoomActive = false;
+const UI_ZOOM_LEVEL_MIN = -8;
+const UI_ZOOM_LEVEL_MAX = 8;
 
 function reindex(guideId) {
   try {
@@ -99,6 +102,29 @@ function dispatchZoomShortcut(kind) {
   sendToRenderer('editor:zoom-shortcut', kind);
 }
 
+// Ctrl+=/Ctrl+-/Ctrl+0 zoom the step editor's canvas while a guide is open
+// there (dispatchZoomShortcut above); everywhere else — library, welcome,
+// dialogs — the same keys scale the whole window's UI like a browser.
+function applyUiZoom(kind) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const wc = mainWindow.webContents;
+  if (kind === 'fit') {
+    wc.zoomLevel = 0;
+    return;
+  }
+  const delta = kind === 'in' ? 1 : kind === 'out' ? -1 : 0;
+  if (!delta) return;
+  wc.zoomLevel = Math.max(UI_ZOOM_LEVEL_MIN, Math.min(UI_ZOOM_LEVEL_MAX, wc.zoomLevel + delta));
+}
+
+function handleZoomShortcut(kind) {
+  if (canvasZoomActive) {
+    dispatchZoomShortcut(kind);
+  } else {
+    applyUiZoom(kind);
+  }
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -129,7 +155,7 @@ function createWindow() {
     const kind = zoomShortcutFromInputEvent(input);
     if (!kind) return;
     event.preventDefault();
-    dispatchZoomShortcut(kind);
+    handleZoomShortcut(kind);
   });
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   mainWindow.once('ready-to-show', () => {
@@ -421,7 +447,7 @@ function registerHotkeys() {
   ];
   for (const [accel, kind] of zoomBindings) {
     try {
-      if (globalShortcut.register(accel, () => dispatchZoomShortcut(kind))) {
+      if (globalShortcut.register(accel, () => handleZoomShortcut(kind))) {
         // Keep registering the other spellings so keyboards with different
         // plus/minus translations still land on the same action.
       }
@@ -463,6 +489,14 @@ function setupIpc() {
     getMainWebContents: () => (mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents : null),
   });
   const c = security.check;
+
+  // The renderer reports whether the step editor (with a guide open) is the
+  // visible screen, so Ctrl+=/Ctrl+-/Ctrl+0 can pick canvas zoom vs UI zoom.
+  ipcMain.on('editor:canvas-zoom-active', (event, active) => {
+    if (!trustedSender(event)) return;
+    canvasZoomActive = Boolean(active);
+  });
+
   const IMAGE_BUDGET = 256 * 1024 * 1024; // channels that carry base64 PNGs
   const h = (channel, fn, opts = {}) => {
     const { maxChars = 2 * 1024 * 1024, validate = null } = opts;

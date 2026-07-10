@@ -247,11 +247,17 @@ test('GIF export honors template options (no title card/overlay/progress)', (t) 
 test('image bundle: annotated PNGs + metadata that references them', (t) => {
   const { ast, root } = fixtureAst(t, 'bundle');
   const out = path.join(root, 'out');
-  const { file, imageCount } = exportImageBundle(ast, out);
+  const { file, galleryFile, imageCount } = exportImageBundle(ast, out);
 
   assert.equal(imageCount, 2);
+  assert.ok(galleryFile && fs.existsSync(galleryFile), 'browsable gallery is written');
+  const gallery = fs.readFileSync(galleryFile, 'utf8');
+  assert.ok(gallery.includes('Configure AcmeSync backups'));
+  assert.ok(gallery.includes('Open AcmeSync settings'));
   const meta = JSON.parse(fs.readFileSync(file, 'utf8'));
   assert.equal(meta.steps.length, 3);
+  assert.equal(meta.steps[0].status, 'todo');
+  assert.equal(meta.steps[0].descriptionText, 'Click the gear icon, then choose Settings.');
   for (const step of meta.steps) {
     if (step.image) {
       const img = decodePng(fs.readFileSync(path.join(out, step.image)));
@@ -383,7 +389,7 @@ test('PPTX export: slides per step, master/layout/theme present, rels resolve', 
   const { ast, root } = fixtureAst(t, 'pptx');
   const { file, slideCount, imageCount } = exportPptx(ast, path.join(root, 'out'));
 
-  assert.equal(slideCount, 5, 'title slide + contents slide + 3 steps');
+  assert.equal(slideCount, 7, 'title + contents + 3 steps + code/table continuation slides');
   assert.equal(imageCount, 2);
   const entries = new Map(unzipSync(fs.readFileSync(file)).map((e) => [e.name, e.data]));
   for (const required of [
@@ -405,6 +411,10 @@ test('PPTX export: slides per step, master/layout/theme present, rels resolve', 
   const slide4 = entries.get('ppt/slides/slide4.xml').toString('utf8');
   assert.ok(slide4.includes('Warning: Access'));
   assert.ok(slide4.includes('Admins only.'));
+  const detailSlides = Array.from({ length: slideCount }, (_, i) => entries.get(`ppt/slides/slide${i + 1}.xml`).toString('utf8'));
+  assert.ok(detailSlides.some((xml) => xml.includes('Code — cron')));
+  assert.ok(detailSlides.some((xml) => xml.includes('0 2 * * * /usr/local/bin/acmesync --backup')));
+  assert.ok(detailSlides.some((xml) => xml.includes('Weekdays')));
   // image rels on slides resolve to media files.
   for (let i = 1; i <= slideCount; i++) {
     const rels = entries.get(`ppt/slides/_rels/slide${i}.xml.rels`).toString('utf8');

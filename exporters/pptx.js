@@ -5,7 +5,7 @@ const path = require('node:path');
 const { zipSync } = require('../core/zip');
 const { escapeXml } = require('../core/util');
 const { encodePng } = require('../core/png');
-const { guideSlug, renderAllImages, LEVEL_LABEL, stepContentGroups } = require('./common');
+const { guideSlug, renderAllImages, LEVEL_LABEL, stepContentGroups, codeBlockText } = require('./common');
 const { tocEntries, guideMetaLines, guideSummary } = require('./document-layout');
 
 /**
@@ -146,6 +146,71 @@ function tocSlideXml(ast, entries, { continued = false } = {}) {
   return slideXml(tocContent);
 }
 
+/**
+ * Code and table blocks do not belong on the screenshot slide: squeezing
+ * them below an image either makes them illegible or places them past the
+ * slide edge. Render them on continuation slides instead, with conservative
+ * pagination so every block in the guide makes it into the deck.
+ */
+function detailSlideShell(step, label, content, { continued = false } = {}) {
+  let body = rectShape(0, 0, SLIDE_W, 18000, '2563EB');
+  body += textBox(SLIDE_MARGIN, 430000, SLIDE_W - (SLIDE_MARGIN * 2), 480000,
+    para(`${step.number}. ${step.title || 'Untitled step'}`, { size: 2400, bold: true }));
+  body += textBox(SLIDE_MARGIN, 960000, SLIDE_W - (SLIDE_MARGIN * 2), 250000,
+    para(continued ? `${label} (continued)` : label, { size: 1400, color: '6B7280' }));
+  body += rectShape(SLIDE_MARGIN, 1260000, 1800000, 12000, '2563EB');
+  body += content;
+  return slideXml(body);
+}
+
+function codeDetailSlides(step, block) {
+  const lines = String(codeBlockText(block) || '').split('\n');
+  const chunks = chunkArray(lines.length ? lines : [''], 20);
+  const language = block.language ? `Code — ${block.language}` : 'Code';
+  return chunks.map((chunk, index) => {
+    const y = 1580000;
+    const h = 4200000;
+    const code = chunk.map((line) => para(line || ' ', { size: 1150, color: 'E5E7EB' })).join('');
+    return {
+      xml: detailSlideShell(step, language, [
+        rectShape(SLIDE_MARGIN, y, SLIDE_W - (SLIDE_MARGIN * 2), h, '111827'),
+        textBox(SLIDE_MARGIN + 120000, y + 100000, SLIDE_W - (SLIDE_MARGIN * 2) - 240000, h - 200000, code),
+      ].join(''), { continued: index > 0 }),
+      rels: [], media: [],
+    };
+  });
+}
+
+function tableDetailSlides(step, block) {
+  const rows = Array.isArray(block.rows) ? block.rows : [];
+  if (!rows.length) return [];
+  const [header, ...body] = rows;
+  const chunks = chunkArray(body, 10);
+  const pages = chunks.length ? chunks : [[]];
+  const cols = Math.max(1, ...rows.map((row) => Array.isArray(row) ? row.length : 0));
+  const x = SLIDE_MARGIN;
+  const w = SLIDE_W - (SLIDE_MARGIN * 2);
+  const colW = Math.floor(w / cols);
+  const rowH = 350000;
+  return pages.map((chunk, index) => {
+    let content = '';
+    [...[header], ...chunk].forEach((row, rowIndex) => {
+      const y = 1580000 + ((rowIndex) * rowH);
+      const fill = rowIndex === 0 ? 'EFF6FF' : (rowIndex % 2 ? 'FFFFFF' : 'F8FAFC');
+      for (let col = 0; col < cols; col++) {
+        const cellX = x + (col * colW);
+        content += rectShape(cellX, y, colW - 12000, rowH - 12000, fill);
+        content += textBox(cellX + 42000, y + 42000, colW - 96000, rowH - 84000,
+          para(String(row?.[col] ?? ''), { size: rowIndex === 0 ? 1150 : 1050, bold: rowIndex === 0, color: '1F2937' }));
+      }
+    });
+    return {
+      xml: detailSlideShell(step, 'Table', content, { continued: index > 0 }),
+      rels: [], media: [],
+    };
+  });
+}
+
 const THEME_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="StepForge">
 <a:themeElements>
@@ -216,6 +281,7 @@ function exportPptx(ast, outDir, template = {}) {
       afterDescription,
       beforeImage,
       afterImage,
+      rest,
     } = stepContentGroups(step);
     let content = rectShape(0, 0, SLIDE_W, 18000, '2563EB');
     const beforeTitleReserve = beforeTitle.reduce((sum, tb) => sum + calloutHeight(tb) + CALL_OUT_GAP, 0);
@@ -292,6 +358,13 @@ function exportPptx(ast, outDir, template = {}) {
       y += block.height + CALL_OUT_GAP;
     }
     slides.push({ xml: slideXml(content), rels, media });
+
+    // Keep code and tables readable and complete on their own continuation
+    // slides instead of dropping them from the presentation export.
+    for (const block of rest) {
+      if (block.kind === 'code') slides.push(...codeDetailSlides(step, block));
+      if (block.kind === 'table') slides.push(...tableDetailSlides(step, block));
+    }
   }
 
   const entries = [];

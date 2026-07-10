@@ -17,10 +17,10 @@ node "$ROOT_DIR/scripts/make-sample-guide.js" --root "$EXAMPLES_ROOT"
 # Production Linux package: a pruned runtime tree with real desktop
 # integration. Requires node_modules (fails otherwise); never installs at
 # build time. Skipped only when the Electron runtime is genuinely absent.
-if [ -d "$ROOT_DIR/node_modules/electron/dist" ]; then
+if [ -x "$ROOT_DIR/node_modules/electron/dist/electron" ]; then
   STEPFORGE_PACKAGE_DIR="$ARTIFACT_DIR" bash "$ROOT_DIR/packaging/linux/debian/package.sh" >/dev/null
 else
-  echo "[build-release] skipping Linux .deb: node_modules/electron missing (run npm ci)" >&2
+  echo "[build-release] skipping Linux .deb: Linux Electron runtime missing (run npm ci on Linux)" >&2
 fi
 
 BUILD_ROOT="$BUILD_ROOT" \

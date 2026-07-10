@@ -15,8 +15,10 @@ set -euo pipefail
 
 # A packaged app must contain a fixed runtime; never install at build time and
 # never ship without node_modules.
-if [ ! -d "$ROOT_DIR/node_modules/electron/dist" ]; then
-  echo "error: node_modules/electron is missing. Run 'npm ci' before packaging." >&2
+ELECTRON_BIN="$ROOT_DIR/node_modules/electron/dist/electron"
+if [ ! -x "$ELECTRON_BIN" ]; then
+  echo "error: Linux Electron runtime is missing at $ELECTRON_BIN." >&2
+  echo "Run 'npm ci' on Linux before packaging; do not package a Windows or macOS node_modules tree." >&2
   exit 1
 fi
 

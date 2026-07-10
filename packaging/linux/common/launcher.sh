@@ -8,7 +8,11 @@
 
 set -eu
 
-APP_DIR=/opt/stepforge
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+# The installed launcher lives in /usr/bin, while the portable archive keeps
+# the same usr/ + opt/ layout under its extraction directory. Resolving from
+# the launcher makes both forms work without a separate, less-tested script.
+APP_DIR="${STEPFORGE_APP_DIR:-$(CDPATH= cd -- "$SCRIPT_DIR/../../opt/stepforge" && pwd)}"
 ELECTRON="$APP_DIR/node_modules/electron/dist/electron"
 SANDBOX_HELPER="$APP_DIR/node_modules/electron/dist/chrome-sandbox"
 
@@ -29,8 +33,12 @@ sandbox_ok() {
   helper_mode="$(stat -c '%a' "$SANDBOX_HELPER" 2>/dev/null || echo '')"
   [ "$helper_uid" = "0" ] || return 1
   [ -n "$helper_mode" ] || return 1
-  # setuid bit set?
-  [ $(( $((8#$helper_mode)) & 04000 )) -ne 0 ] || return 1
+  # setuid bit set? stat -c %a returns four octal digits, and POSIX sh does
+  # not support Bash's 8# numeric prefix.
+  case "$helper_mode" in
+    [4567][0-7][0-7][0-7]) ;;
+    *) return 1 ;;
+  esac
   return 0
 }
 

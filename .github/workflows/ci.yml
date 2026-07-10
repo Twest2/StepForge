@@ -37,6 +37,13 @@ jobs:
       - name: Run unit tests
         run: npm test
 
+      # Build and inspect the real Linux package with the Linux Electron
+      # runtime installed by npm ci. This catches a host-target mismatch that
+      # unit tests cannot see.
+      - name: Verify Debian package
+        if: runner.os == 'Linux'
+        run: bash tests/integration/linux/package-deb.test.sh
+
   audit:
     name: Dependency audit
     runs-on: ubuntu-latest

@@ -9,7 +9,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
-for f in README.md docs/LICENSE package.json \
+for f in README.md LICENSE docs/LICENSE package.json \
          docs/ARCHITECTURE.md docs/SECURITY.md docs/CONTRIBUTING.md \
          docs/CODE_OF_CONDUCT.md docs/CHANGELOG.md docs/GETTING_STARTED.md \
          ai_prompts/prompt.md ai_prompts/prompt2.md; do
@@ -28,7 +28,7 @@ node -e '
     // clone, but in a complete checkout it must.
     throw new Error("entrypoint missing: " + pkg.main);
   }
-  if (pkg.license !== "MPL-2.0") throw new Error("unexpected license id");
+  if (pkg.license !== "CC-BY-NC-4.0") throw new Error("unexpected license id");
 ' 2>/dev/null || {
   # Tolerate missing entrypoint only if app/ has not been committed yet.
   if [[ -d app ]]; then

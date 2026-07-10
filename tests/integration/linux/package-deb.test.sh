@@ -16,8 +16,8 @@ if ! command -v dpkg-deb >/dev/null 2>&1; then
   echo "package-deb SKIPPED: dpkg-deb not installed (not an apt-based build host)"
   exit 0
 fi
-if [ ! -d "$ROOT_DIR/node_modules/electron/dist" ]; then
-  echo "package-deb SKIPPED: node_modules/electron missing (run npm ci first)"
+if [ ! -x "$ROOT_DIR/node_modules/electron/dist/electron" ]; then
+  echo "package-deb SKIPPED: Linux Electron runtime missing (run npm ci on Linux first)"
   exit 0
 fi
 
@@ -74,5 +74,20 @@ dpkg-deb --info "$DEB" | grep -q 'postinst' || fail "no postinst maintainer scri
 # The launcher must refuse an unsandboxed launch by default.
 grep -q 'STEPFORGE_ALLOW_NO_SANDBOX' packaging/linux/common/launcher.sh \
   || fail "launcher does not gate --no-sandbox behind an explicit opt-in"
+
+# The portable archive must be self-contained enough to launch from its
+# extraction directory: it has the same usr/ + opt/ layout as the package,
+# includes the license, and its launcher remains valid POSIX shell.
+TAR="$(find "$OUT_DIR" -maxdepth 1 -type f -name '*.tar.gz' -print -quit)"
+[ -n "$TAR" ] && [ -f "$TAR" ] || fail "builder did not produce a portable tarball"
+TAR_LIST="$OUT_DIR/portable-files.txt"
+tar -tzf "$TAR" > "$TAR_LIST"
+grep -qx 'opt/stepforge/app/main.js' "$TAR_LIST" || fail "portable app payload missing"
+grep -qx 'usr/bin/stepforge' "$TAR_LIST" || fail "portable launcher missing"
+grep -qx 'usr/share/doc/stepforge/copyright' "$TAR_LIST" || fail "portable license missing"
+PORTABLE_ROOT="$OUT_DIR/portable"
+mkdir -p "$PORTABLE_ROOT"
+tar -C "$PORTABLE_ROOT" -xzf "$TAR"
+dash -n "$PORTABLE_ROOT/usr/bin/stepforge" || fail "portable launcher is not POSIX shell"
 
 echo "package-deb OK ($(basename "$DEB"), $(du -h "$DEB" | cut -f1))"

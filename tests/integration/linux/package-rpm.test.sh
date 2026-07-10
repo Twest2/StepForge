@@ -12,8 +12,8 @@ if ! command -v rpmbuild >/dev/null 2>&1; then
   echo "package-rpm SKIPPED: rpmbuild not installed (not a dnf-based build host)"
   exit 0
 fi
-if [ ! -d "$ROOT_DIR/node_modules/electron/dist" ]; then
-  echo "package-rpm SKIPPED: node_modules/electron missing (run npm ci first)"
+if [ ! -x "$ROOT_DIR/node_modules/electron/dist/electron" ]; then
+  echo "package-rpm SKIPPED: Linux Electron runtime missing (run npm ci on Linux first)"
   exit 0
 fi
 

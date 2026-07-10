@@ -88,7 +88,9 @@ fi
 
 # --- portable tarball (INCLUDES the launcher, unlike the old script) ---------
 TAR_FILE="$OUT_DIR/stepforge_${VERSION}_linux-${NODE_ARCH}.tar.gz"
-tar -C "$WORK_DIR" -czf "$TAR_FILE" opt usr/bin/stepforge usr/share/applications usr/share/mime usr/share/icons
+tar -C "$WORK_DIR" -czf "$TAR_FILE" \
+  opt usr/bin/stepforge usr/share/applications usr/share/mime usr/share/icons \
+  usr/share/doc/stepforge
 
 # --- checksums ---------------------------------------------------------------
 ( cd "$OUT_DIR" && sha256sum "$(basename "$DEB_FILE")" "$(basename "$TAR_FILE")" > "stepforge_${VERSION}_${DEB_ARCH}.sha256" )

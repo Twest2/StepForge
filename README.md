@@ -144,6 +144,5 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the repo layout.
 
 ## License
 
-Creative Commons Attribution-NonCommercial 
-
-Basically, do whatever you want with it just don't make money off it or sell it.
+StepForge is licensed under the [Creative Commons Attribution-NonCommercial 4.0
+International License](https://creativecommons.org/licenses/by-nc/4.0/).

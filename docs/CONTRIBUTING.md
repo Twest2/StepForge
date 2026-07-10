@@ -23,8 +23,9 @@ guide-capture workflow patterns. To keep it legally clean:
 - Keep file formats (`.sfgz`, `.sfglt`, guide/step JSON) documented and
   versioned in `docs/` and `ARCHITECTURE.md`.
 
-Contributions are accepted under MPL-2.0 with a Developer Certificate of
-Origin sign-off (`git commit -s`).
+By submitting a contribution, you license that contribution under the
+Creative Commons Attribution-NonCommercial 4.0 International License
+(`CC-BY-NC-4.0`).
 
 ## Offline Rules
 

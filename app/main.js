@@ -66,7 +66,6 @@ let templates;
 let capture;
 let textIntel;
 let mainWindow;
-let lastZoomShortcut = null;
 let canvasZoomActive = false;
 const UI_ZOOM_LEVEL_MIN = -8;
 const UI_ZOOM_LEVEL_MAX = 8;
@@ -111,17 +110,11 @@ function applyUiZoom(kind) {
   wc.zoomLevel = Math.max(UI_ZOOM_LEVEL_MIN, Math.min(UI_ZOOM_LEVEL_MAX, wc.zoomLevel + delta));
 }
 
-// A single physical keypress reaches here twice — once via the global
-// accelerator registration, once via before-input-event — plus multiple
-// accelerator spellings can match the same key on some layouts. Collapse
-// same-kind repeats within 50ms so one keypress is one zoom step.
+// This is called only from the focused StepForge window's input handler.
+// Zoom is intentionally not a global shortcut: Ctrl/Cmd +, -, and 0 belong
+// to whichever application currently has focus.
 function handleZoomShortcut(kind) {
   if (!kind) return;
-  const now = Date.now();
-  if (lastZoomShortcut && lastZoomShortcut.kind === kind && (now - lastZoomShortcut.at) < 50) {
-    return;
-  }
-  lastZoomShortcut = { kind, at: now };
   if (canvasZoomActive) {
     dispatchZoomShortcut(kind);
   } else {
@@ -442,27 +435,6 @@ function createWindow() {
 
 function registerHotkeys() {
   globalShortcut.unregisterAll();
-  const zoomBindings = [
-    ['CommandOrControl+Plus', 'in'],
-    ['CommandOrControl+Shift+=', 'in'],
-    ['CommandOrControl+=', 'in'],
-    ['CommandOrControl+numadd', 'in'],
-    ['CommandOrControl+-', 'out'],
-    ['CommandOrControl+Minus', 'out'],
-    ['CommandOrControl+numsub', 'out'],
-    ['CommandOrControl+0', 'fit'],
-    ['CommandOrControl+num0', 'fit'],
-  ];
-  for (const [accel, kind] of zoomBindings) {
-    try {
-      if (globalShortcut.register(accel, () => handleZoomShortcut(kind))) {
-        // Keep registering the other spellings so keyboards with different
-        // plus/minus translations still land on the same action.
-      }
-    } catch {
-      // Invalid accelerators must not break startup.
-    }
-  }
   const accel = settings.get('capture.hotkeyCapture');
   const pauseAccel = settings.get('capture.hotkeyPauseResume');
   try {

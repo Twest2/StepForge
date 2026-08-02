@@ -48,9 +48,9 @@ test('Fedora/dnf packaging files exist in their own separate locations', () => {
   }
 });
 
-test('the RPM spec declares runtime Requires, license, and MPL-2.0', () => {
+test('the RPM spec declares runtime Requires, license, and CC-BY-NC-4.0', () => {
   const spec = read('packaging/linux/fedora/stepforge.spec');
-  assert.match(spec, /^License:\s+MPL-2\.0$/m);
+  assert.match(spec, /^License:\s+CC-BY-NC-4\.0$/m);
   assert.match(spec, /^Requires:\s+nss$/m);
   assert.match(spec, /%license/);
   assert.match(spec, /chrome-sandbox/); // %post makes the sandbox helper setuid

@@ -23,8 +23,11 @@ guide-capture workflow patterns. To keep it legally clean:
 - Keep file formats (`.sfgz`, `.sfglt`, guide/step JSON) documented and
   versioned in `docs/` and `ARCHITECTURE.md`.
 
-Contributions are accepted under MPL-2.0 with a Developer Certificate of
-Origin sign-off (`git commit -s`).
+StepForge is licensed under **Creative Commons Attribution-NonCommercial 4.0
+International (CC BY-NC 4.0)** — see the root [LICENSE](../LICENSE). By
+contributing you agree that your contributions are licensed under that same
+license, and you add a Developer Certificate of Origin sign-off to each commit
+(`git commit -s`) to certify you have the right to submit them.
 
 ## Offline Rules
 

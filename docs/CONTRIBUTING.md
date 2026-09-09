@@ -87,8 +87,9 @@ artifact from the PR's GitHub Actions run, extract it, and install it with:
 
 ```bash
 # Stop StepForge first, then remove any production or older test package.
-dpkg-query -W -f='Installed StepForge version: ${Version}\n' stepforge 2>/dev/null || true
-sudo apt remove stepforge
+if dpkg-query -W -f='Installed StepForge version: ${Version}\n' stepforge 2>/dev/null; then
+  sudo apt remove stepforge
+fi
 sudo apt install ./stepforge_<version>_amd64.deb
 dpkg-query -W -f='Now testing StepForge version: ${Version}\n' stepforge
 ```
@@ -99,6 +100,38 @@ production build from being mistaken for the test build. This removes the
 application but preserves the user's guides and settings under the home
 directory. Do not use `apt purge` unless you explicitly intend to remove
 those settings as well.
+
+### Build, install, and test a local Ubuntu package
+
+From a clean or intentionally modified checkout on Ubuntu 26.04 / GNOME 50,
+install the package build tools, use the pinned Node version, build the local
+package, and run the automated checks:
+
+```bash
+bash scripts/linux/apt/install-build-deps.sh
+nvm install && nvm use             # or another Node version from .nvmrc
+npm ci
+bash tests/run_test.sh
+npm run package:linux:deb
+find build/artifacts -maxdepth 1 -type f -name 'stepforge_*_amd64.deb' -printf '%f\n'
+```
+
+Close StepForge before replacing it. Install the `.deb` printed by the last
+command, removing any production or earlier test package first:
+
+```bash
+if dpkg-query -W -f='Installed StepForge version: ${Version}\n' stepforge 2>/dev/null; then
+  sudo apt remove stepforge
+fi
+sudo apt install ./build/artifacts/stepforge_<version>_amd64.deb
+dpkg-query -W -f='Now testing StepForge version: ${Version}\n' stepforge
+```
+
+The `.deb` declares its runtime dependencies, including the GNOME extension,
+portal, PipeWire, Python/GObject, and GStreamer pieces; `apt` resolves them.
+Log out and back in after the first local installation, then follow the manual
+recording checks below. Rebuild the package after changing application,
+extension, packaging, or icon files — do not test a stale artifact.
 
 Log out of Ubuntu and back in after the first installation so GNOME discovers
 the bundled extension. Then launch StepForge, create or open a guide, and

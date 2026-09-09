@@ -102,6 +102,27 @@ reopening a guide, exporting, screen-share cancellation, and clicks on a
 monitor that was not shared. The last case should show an actionable error and
 must not capture the wrong monitor.
 
+When testing is complete, remove the test package and disable its per-user
+extension setting:
+
+```bash
+gnome-extensions disable stepforge@twestbrook.com 2>/dev/null || true
+sudo apt remove stepforge
+```
+
+Review the packages shown before accepting any `autoremove` suggestion; do
+not remove shared GNOME, PipeWire, or portal packages that other applications
+use. Log out and back in if GNOME still shows the old recording indicator.
+Finally, delete the extracted test-artifact directory and its downloaded ZIP.
+
+If you installed the extension from a source checkout using
+`scripts/linux/install-gnome-extension.sh`, remove only that user copy after
+disabling it:
+
+```bash
+rm -rf ~/.local/share/gnome-shell/extensions/stepforge@twestbrook.com
+```
+
 For source-level validation, run:
 
 ```bash

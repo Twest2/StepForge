@@ -12,7 +12,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 cd "$ROOT_DIR"
 
-VERSION="$(node -p "require('./package.json').version")"
+VERSION="$(node -p "require('./package.json').buildVersion || require('./package.json').version")"
 MAINTAINER="${STEPFORGE_MAINTAINER:-StepForge <tyler@twestbrook.com>}"
 OUT_DIR="${STEPFORGE_PACKAGE_DIR:-$ROOT_DIR/build/artifacts}"
 mkdir -p "$OUT_DIR"
@@ -83,12 +83,12 @@ DEB_FILE="$OUT_DIR/stepforge_${VERSION}_${DEB_ARCH}.deb"
 if command -v fakeroot >/dev/null 2>&1; then
   fakeroot dpkg-deb --build "$WORK_DIR" "$DEB_FILE" >/dev/null
 else
-  dpkg-deb --build "$WORK_DIR" "$DEB_FILE" >/dev/null
+  dpkg-deb --root-owner-group --build "$WORK_DIR" "$DEB_FILE" >/dev/null
 fi
 
 # --- portable tarball (INCLUDES the launcher, unlike the old script) ---------
 TAR_FILE="$OUT_DIR/stepforge_${VERSION}_linux-${NODE_ARCH}.tar.gz"
-tar -C "$WORK_DIR" -czf "$TAR_FILE" opt usr/bin/stepforge usr/share/applications usr/share/mime usr/share/icons
+tar -C "$WORK_DIR" -czf "$TAR_FILE" opt usr/bin/stepforge usr/share/applications usr/share/mime usr/share/icons usr/share/gnome-shell
 
 # --- checksums ---------------------------------------------------------------
 ( cd "$OUT_DIR" && sha256sum "$(basename "$DEB_FILE")" "$(basename "$TAR_FILE")" > "stepforge_${VERSION}_${DEB_ARCH}.sha256" )

@@ -1,0 +1,8 @@
+{
+  "uuid": "stepforge@twestbrook.com",
+  "name": "StepForge Capture",
+  "description": "Required GNOME companion for StepForge workflow recording. Shares mouse button transitions and pointer coordinates only during an active recording; never records keyboard input.",
+  "shell-version": ["50"],
+  "version": 1,
+  "url": "https://github.com/Twest2/StepForge"
+}

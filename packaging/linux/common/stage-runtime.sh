@@ -31,6 +31,9 @@ for item in app core exporters package.json package-lock.json; do
   cp -a "$ROOT_DIR/$item" "$APP_DIR/$item"
 done
 
+# Python may have been inspected/tested locally; bytecode is not a runtime asset.
+find "$APP_DIR/app" -type d -name __pycache__ -prune -exec rm -r '{}' +
+
 # --- runtime node_modules ----------------------------------------------------
 # The fixed Electron runtime (needed at runtime even though it is a dev dep):
 cp -a "$ROOT_DIR/node_modules/electron" "$APP_DIR/node_modules/electron"
@@ -52,6 +55,13 @@ fi
 
 # --- launcher ----------------------------------------------------------------
 install -m 0755 "$ROOT_DIR/packaging/linux/common/launcher.sh" "$STAGE_ROOT/usr/bin/stepforge"
+
+# GNOME 50 companion, installed with the app and enabled per user on first run.
+EXT_DIR="$STAGE_ROOT/usr/share/gnome-shell/extensions/stepforge@twestbrook.com"
+mkdir -p "$EXT_DIR"
+for file in metadata.json extension.js buttons.js; do
+  install -m 0644 "$ROOT_DIR/gnome-extension/stepforge@twestbrook.com/$file" "$EXT_DIR/$file"
+done
 
 # --- desktop entry, icons, MIME ---------------------------------------------
 install -m 0644 "$ROOT_DIR/packaging/linux/common/stepforge.desktop" "$STAGE_ROOT/usr/share/applications/stepforge.desktop"

@@ -80,11 +80,13 @@ test('the enable script is opt-in and installs the least-privilege rule, not the
 
 // ---- docs no longer push the broad input group ------------------------------
 
-test('Linux docs recommend the least-privilege path and warn against the input group', () => {
+test('Linux docs state the supported GNOME target and warn against the input group', () => {
   const doc = read('docs/GETTING_STARTED_WITH_LINUX.md');
+  assert.match(doc, /Ubuntu 26\.04, GNOME Shell 50, and Wayland/);
+  assert.match(doc, /mandatory/i);
+  assert.match(doc, /not supported for regular global-click recording/i);
   assert.match(doc, /enable-click-capture\.sh/);
-  assert.match(doc, /least-privilege/i);
   // The broad group is now presented as a warning ("Do not use ..."), not a
   // recommended step.
-  assert.match(doc, /Do \*\*not\*\* use `sudo usermod/);
+  assert.match(doc, /Do not add the user to the broad `input` group/);
 });

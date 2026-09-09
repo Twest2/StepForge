@@ -43,6 +43,7 @@ production dependencies; it does not install anything at runtime.
 /usr/bin/stepforge
 /usr/share/applications/stepforge.desktop
 /usr/share/mime/packages/stepforge.xml
+/usr/share/gnome-shell/extensions/stepforge@twestbrook.com
 /usr/share/icons/hicolor/*/apps/stepforge.png
 %license /usr/share/licenses/stepforge/LICENSE
 

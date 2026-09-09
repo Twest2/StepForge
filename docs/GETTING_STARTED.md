@@ -3,9 +3,12 @@
 StepForge is a fully offline desktop app. Nothing is uploaded or synced, and
 all guides stay on your machine.
 
-# Windows installation
+# Installation
 
-For the windows installation, please see [windows_installation](windows_installation.md)
+For Windows, see [windows_installation](windows_installation.md). For the
+release-tested Linux target — Ubuntu 26.04 with GNOME Shell 50 on Wayland —
+see [GNOME Wayland installation](linux/gnome-wayland.md). Other Linux desktop
+paths are documented as developer/legacy paths, not release-tested targets.
 
 # Developer install
 
@@ -31,8 +34,8 @@ the app never installs or repairs dependencies at runtime.
 npm start
 ```
 
-The first launch creates the local StepForge data directory. On Linux (WIP)
-it is usually under `~/.local/share/stepforge`. On Windows it is usually
+The first launch creates the local StepForge data directory. On Linux it is
+usually under `~/.local/share/stepforge`. On Windows it is usually
 under `%APPDATA%/stepforge`.
 
 ## 3. Create your first guide
@@ -101,5 +104,5 @@ If you want to find commands quickly, press `Ctrl+/` for Quick Actions.
 1. `bash scripts/build-release.sh` assembles the offline release layout.
 2. `npm run package:windows` creates the Windows installer `.exe` in
    `releases/`.
-3. `bash scripts/package-linux.sh` creates Linux release artifacts (WIP;
-   local only).
+3. `npm run package:linux:deb` creates the Ubuntu 26.04 / GNOME 50 `.deb`,
+   portable archive, and checksum.

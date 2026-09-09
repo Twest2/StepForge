@@ -44,3 +44,24 @@ test('stampVersion splits build labels into package and build versions', () => {
     rmrf(root);
   }
 });
+
+test('stampVersion normalizes a short release label for Electron Builder', () => {
+  const root = makeTmpDir('stamp-version-short');
+  try {
+    fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({
+      name: 'stepforge', version: '0.1.0', private: true,
+    }));
+
+    stampVersion(root, 'v0.4');
+
+    const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+    assert.equal(pkg.version, '0.4.0');
+    assert.equal(pkg.buildVersion, '0.4.0');
+  } finally {
+    rmrf(root);
+  }
+});
+
+test('stampVersion rejects a release label Electron Builder cannot package', () => {
+  assert.throws(() => stampVersion('/does-not-matter', '0.4-beta'), /numeric major\.minor\.patch/);
+});

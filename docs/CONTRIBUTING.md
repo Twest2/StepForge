@@ -76,6 +76,50 @@ Please add lots of tests to each of your PR's and be descriptive with the
 tests so that the issue doesn't happen again or the feature doesn't get
 overwritten.
 
+## Linux Testing (Ubuntu 26.04 / GNOME Wayland)
+
+The supported Linux capture path targets Ubuntu 26.04 with GNOME Shell 50 on
+Wayland. The GNOME Shell extension is mandatory for click recording and is
+bundled in the Ubuntu package; it is not downloaded separately.
+
+To test a packaged build, download the `ubuntu-26.04-gnome-test-package`
+artifact from the PR's GitHub Actions run, extract it, and install it with:
+
+```bash
+sudo apt install ./stepforge_<version>_amd64.deb
+```
+
+Log out of Ubuntu and back in after the first installation so GNOME discovers
+the bundled extension. Then launch StepForge, create or open a guide, and
+start recording. Accept the extension-enable prompt, and select every monitor
+you intend to record in GNOME's screen-sharing dialog. Click normally in a
+native Wayland or XWayland application, then stop with **StepForge REC** in
+the GNOME top panel or from the StepForge window restored from the dock.
+
+Verify that normal clicks create steps with correctly positioned markers and
+the intended pre-click screenshot. Also test pause/resume, saving and
+reopening a guide, exporting, screen-share cancellation, and clicks on a
+monitor that was not shared. The last case should show an actionable error and
+must not capture the wrong monitor.
+
+For source-level validation, run:
+
+```bash
+bash tests/run_test.sh
+bash tests/integration/linux/gnome-shell.test.sh
+npm run package:linux:deb
+```
+
+The GNOME integration test uses a private headless compositor, D-Bus session,
+temporary configuration, and test-only virtual pointer. It does not enable an
+extension or inject input into the developer's real desktop. It requires the
+GNOME 50 runtime, GTK 4/AT-SPI introspection, PipeWire, and WirePlumber.
+
+GNOME click capture samples button state every 4 ms, so it is not a lossless
+hardware-event hook: exceptionally short clicks or a GNOME Shell stall can be
+missed. Report failures with the Ubuntu version, GNOME Shell version, Wayland
+status, monitor scaling/layout, application tested, and any displayed error.
+
 ## Review Checklist
 
 - The PR is linked to the correct issue.

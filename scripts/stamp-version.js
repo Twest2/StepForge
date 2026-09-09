@@ -16,11 +16,18 @@ function stampVersion(rootDir, version) {
     throw new Error('version is required');
   }
 
-  const normalized = version.replace(/^v/i, '');
-  const parts = normalized.split('.');
-  const isFourPartBuild = parts.length === 4 && parts.every((part) => /^\d+$/.test(part));
-  const packageVersion = isFourPartBuild ? parts.slice(0, 3).join('.') : normalized;
-  const buildVersion = normalized;
+  const requested = version.replace(/^v/i, '');
+  const parts = requested.split('.');
+  if (parts.length < 1 || parts.length > 4 || !parts.every((part) => /^(0|[1-9]\d*)$/.test(part))) {
+    throw new Error('version must be numeric major.minor.patch (or a four-part build version), for example 0.4.0 or 0.4.0.1');
+  }
+  // Electron Builder requires a three-component package version. Let release
+  // operators enter the natural shorthand "0.4" while producing valid,
+  // unambiguous package metadata (0.4.0). Four-part versions retain their
+  // final component as the installer/package build label.
+  const packageParts = [...parts, '0', '0'].slice(0, 3);
+  const packageVersion = packageParts.join('.');
+  const buildVersion = parts.length === 4 ? requested : packageVersion;
 
   const pkgPath = path.join(rootDir, 'package.json');
   const pkg = readJson(pkgPath);

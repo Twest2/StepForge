@@ -27,7 +27,7 @@
     "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
-    "electron": "^41.7.1",
-    "electron-builder": "^26.15.2"
+    "electron": "^41.10.7",
+    "electron-builder": "^26.15.3"
   }
 }

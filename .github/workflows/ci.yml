@@ -51,11 +51,12 @@ jobs:
       - name: Audit production dependencies (blocking)
         run: npm audit --omit=dev --package-lock-only --audit-level=high
 
-      # Full-tree audit including build/dev tooling is an explicit separate
-      # signal: it must be visible but does not block unrelated changes.
-      - name: Audit full dependency tree (informational)
+      # Electron is declared as a development dependency but is explicitly
+      # bundled into every release package. Build tooling also processes
+      # untrusted project inputs, so no high/critical advisory is allowed in
+      # the locked tree.
+      - name: Audit full dependency tree (blocking)
         run: npm audit --package-lock-only --audit-level=high
-        continue-on-error: true
 
   ubuntu-package:
     name: Ubuntu test package

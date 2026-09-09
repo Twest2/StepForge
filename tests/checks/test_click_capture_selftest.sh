@@ -24,6 +24,14 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
+# GNOME uses a separate input and frame backend. Exercise it in a private
+# GNOME session with native-client clicks and the real portal, rather than
+# injecting Windows/X11 hook events into the Linux service.
+if [[ "$(uname -s)" == Linux && "${XDG_SESSION_TYPE:-}" == wayland \
+      && "${XDG_CURRENT_DESKTOP:-}" =~ [Gg][Nn][Oo][Mm][Ee]|[Uu][Bb][Uu][Nn][Tt][Uu] ]]; then
+  exec bash tests/integration/linux/gnome-shell.test.sh
+fi
+
 if [[ "$(uname -s)" == "Linux" && -z "${DISPLAY:-}" && -z "${WAYLAND_DISPLAY:-}" ]]; then
   echo "click capture selftest SKIPPED: no display server (set DISPLAY or run under xvfb-run)"
   exit 0

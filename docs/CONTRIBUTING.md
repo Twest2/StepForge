@@ -86,8 +86,19 @@ To test a packaged build, download the `ubuntu-26.04-gnome-test-package`
 artifact from the PR's GitHub Actions run, extract it, and install it with:
 
 ```bash
+# Stop StepForge first, then remove any production or older test package.
+dpkg-query -W -f='Installed StepForge version: ${Version}\n' stepforge 2>/dev/null || true
+sudo apt remove stepforge
 sudo apt install ./stepforge_<version>_amd64.deb
+dpkg-query -W -f='Now testing StepForge version: ${Version}\n' stepforge
 ```
+
+Production and test `.deb` files intentionally use the same package name,
+`stepforge`. Removing the existing package before installation prevents an old
+production build from being mistaken for the test build. This removes the
+application but preserves the user's guides and settings under the home
+directory. Do not use `apt purge` unless you explicitly intend to remove
+those settings as well.
 
 Log out of Ubuntu and back in after the first installation so GNOME discovers
 the bundled extension. Then launch StepForge, create or open a guide, and

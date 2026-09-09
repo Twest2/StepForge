@@ -38,6 +38,7 @@ function detectLinuxCapabilities({
 } = {}) {
   const sessionType = detectSessionType(env);
   const isWayland = sessionType === 'wayland';
+  const gnomeRequired = isWayland && /gnome|ubuntu/i.test(env.XDG_CURRENT_DESKTOP || '');
 
   // XDG Desktop Portal + PipeWire are how Wayland screen capture works.
   const hasPortalBus = Boolean(env.DBUS_SESSION_BUS_ADDRESS);
@@ -62,7 +63,8 @@ function detectLinuxCapabilities({
 
   // Determine the click-capture profile for this session.
   let clickCapture;
-  if (!isWayland && hasXinput) clickCapture = 'x11-xinput';
+  if (gnomeRequired) clickCapture = 'gnome-extension-required';
+  else if (!isWayland && hasXinput) clickCapture = 'x11-xinput';
   else if (readableInputDevices > 0) clickCapture = isWayland ? 'evdev-wayland' : 'evdev-x11';
   else clickCapture = 'hotkey-or-interval-only';
 
@@ -84,6 +86,7 @@ function detectLinuxCapabilities({
     os: 'linux',
     sessionType,
     isWayland,
+    gnomeRequired,
     hasPortalBus,
     hasPipeWire,
     hasXinput,
@@ -107,6 +110,12 @@ function detectLinuxCapabilities({
 function chooseCaptureTrigger(capabilities, userTriggerPreference = 'interval') {
   const caps = capabilities || {};
   const click = caps.clickCapture;
+
+  if (click === 'gnome-extension-required') {
+    return { trigger: 'click', clickSource: 'gnome-extension-required',
+      coordinates: true, marker: true,
+      note: 'Requires StepForge Capture for GNOME 50. Records sampled mouse-button transitions with logical coordinates; recording is blocked until the extension and portal streams are ready.' };
+  }
 
   if (click === 'x11-xinput') {
     return {

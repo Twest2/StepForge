@@ -288,7 +288,8 @@ class StepForgeApp {
 
     // What is currently triggering captures, so the user knows what to do.
     const notStarted = s.paused && !s.count;
-    const trigger = notStarted ? 'ready'
+    const trigger = s.gnomeRequired && s.warmingUp ? 'waiting for screen sharing'
+      : notStarted ? 'ready'
       : s.paused ? 'paused'
         : s.clickCapture ? 'on click'
           : s.intervalSec > 0 ? `every ${s.intervalSec}s`

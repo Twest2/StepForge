@@ -1024,7 +1024,9 @@ function showRecordingReminder({
         el('div.recording-notice__badge', {}, 'Recording tip'),
         el('div.recording-notice__title', {}, headline),
         el('div.recording-notice__text', {},
-          'When you want to pause or stop, use the red tray icon in the system tray.',
+          document.body.classList.contains('platform-linux')
+            ? 'To stop, use StepForge REC in the GNOME top panel, or restore StepForge from the dock.'
+            : 'When you want to pause or stop, use the red tray icon in the system tray.',
         ),
       ),
       footer: [

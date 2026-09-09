@@ -76,6 +76,115 @@ Please add lots of tests to each of your PR's and be descriptive with the
 tests so that the issue doesn't happen again or the feature doesn't get
 overwritten.
 
+## Linux Testing (Ubuntu 26.04 / GNOME Wayland)
+
+The supported Linux capture path targets Ubuntu 26.04 with GNOME Shell 50 on
+Wayland. The GNOME Shell extension is mandatory for click recording and is
+bundled in the Ubuntu package; it is not downloaded separately.
+
+To test a packaged build, download the `ubuntu-26.04-gnome-test-package`
+artifact from the PR's GitHub Actions run, extract it, and install it with:
+
+```bash
+# Stop StepForge first, then remove any production or older test package.
+if dpkg-query -W -f='Installed StepForge version: ${Version}\n' stepforge 2>/dev/null; then
+  sudo apt remove stepforge
+fi
+sudo apt install ./stepforge_<version>_amd64.deb
+dpkg-query -W -f='Now testing StepForge version: ${Version}\n' stepforge
+```
+
+Production and test `.deb` files intentionally use the same package name,
+`stepforge`. Removing the existing package before installation prevents an old
+production build from being mistaken for the test build. This removes the
+application but preserves the user's guides and settings under the home
+directory. Do not use `apt purge` unless you explicitly intend to remove
+those settings as well.
+
+### Build, install, and test a local Ubuntu package
+
+From a clean or intentionally modified checkout on Ubuntu 26.04 / GNOME 50,
+install the package build tools, use the pinned Node version, build the local
+package, and run the automated checks:
+
+```bash
+bash scripts/linux/apt/install-build-deps.sh
+nvm install && nvm use             # or another Node version from .nvmrc
+npm ci
+bash tests/run_test.sh
+npm run package:linux:deb
+find build/artifacts -maxdepth 1 -type f -name 'stepforge_*_amd64.deb' -printf '%f\n'
+```
+
+Close StepForge before replacing it. Install the `.deb` printed by the last
+command, removing any production or earlier test package first:
+
+```bash
+if dpkg-query -W -f='Installed StepForge version: ${Version}\n' stepforge 2>/dev/null; then
+  sudo apt remove stepforge
+fi
+sudo apt install ./build/artifacts/stepforge_<version>_amd64.deb
+dpkg-query -W -f='Now testing StepForge version: ${Version}\n' stepforge
+```
+
+The `.deb` declares its runtime dependencies, including the GNOME extension,
+portal, PipeWire, Python/GObject, and GStreamer pieces; `apt` resolves them.
+Log out and back in after the first local installation, then follow the manual
+recording checks below. Rebuild the package after changing application,
+extension, packaging, or icon files — do not test a stale artifact.
+
+Log out of Ubuntu and back in after the first installation so GNOME discovers
+the bundled extension. Then launch StepForge, create or open a guide, and
+start recording. Accept the extension-enable prompt, and select every monitor
+you intend to record in GNOME's screen-sharing dialog. Click normally in a
+native Wayland or XWayland application, then stop with **StepForge REC** in
+the GNOME top panel or from the StepForge window restored from the dock.
+
+Verify that normal clicks create steps with correctly positioned markers and
+the intended pre-click screenshot. Also test pause/resume, saving and
+reopening a guide, exporting, screen-share cancellation, and clicks on a
+monitor that was not shared. The last case should show an actionable error and
+must not capture the wrong monitor.
+
+When testing is complete, remove the test package and disable its per-user
+extension setting:
+
+```bash
+gnome-extensions disable stepforge@twestbrook.com 2>/dev/null || true
+sudo apt remove stepforge
+```
+
+Review the packages shown before accepting any `autoremove` suggestion; do
+not remove shared GNOME, PipeWire, or portal packages that other applications
+use. Log out and back in if GNOME still shows the old recording indicator.
+Finally, delete the extracted test-artifact directory and its downloaded ZIP.
+
+If you installed the extension from a source checkout using
+`scripts/linux/install-gnome-extension.sh`, remove only that user copy after
+disabling it:
+
+```bash
+rm -rf ~/.local/share/gnome-shell/extensions/stepforge@twestbrook.com
+```
+
+For source-level validation, run:
+
+```bash
+bash tests/run_test.sh
+bash tests/integration/linux/gnome-shell.test.sh
+npm run package:linux:deb
+```
+
+The GNOME integration test uses a private headless compositor, D-Bus session,
+temporary configuration, and test-only virtual pointer. It does not enable an
+extension or inject input into the developer's real desktop. It requires the
+GNOME 50 runtime, GTK 4/AT-SPI introspection, PipeWire, and WirePlumber.
+
+GNOME click capture samples button state every 4 ms, so it is not a lossless
+hardware-event hook: exceptionally short clicks or a GNOME Shell stall can be
+missed. Report failures with the Ubuntu version, GNOME Shell version, Wayland
+status, monitor scaling/layout, application tested, and any displayed error.
+
 ## Review Checklist
 
 - The PR is linked to the correct issue.

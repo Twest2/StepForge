@@ -16,13 +16,15 @@ if [ "$(id -u)" -ne 0 ]; then SUDO="sudo"; fi
 
 PACKAGES=(
   # Chromium/Electron shared libraries
-  libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2
-  libgtk-3-0 libgbm1 libasound2 libxkbcommon0 libatspi2.0-0
+  libnss3 libnspr4 libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2t64 libdrm2
+  libgtk-3-0t64 libgbm1 libasound2t64 libxkbcommon0 libatspi2.0-0t64
   libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libxshmfence1
   # X11 per-click capture (marker-accurate) — X11 sessions only
   xinput x11-utils
   # Wayland screen-share via the XDG portal + PipeWire
-  xdg-desktop-portal pipewire
+  xdg-desktop-portal xdg-desktop-portal-gnome pipewire gnome-shell
+  python3 python3-gi gir1.2-gstreamer-1.0 gir1.2-gst-plugins-base-1.0
+  gir1.2-gdkpixbuf-2.0 gstreamer1.0-pipewire gstreamer1.0-plugins-base libglib2.0-bin
 )
 
 echo "Installing StepForge runtime dependencies via apt..."

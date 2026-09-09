@@ -153,6 +153,10 @@ class GnomeCaptureService extends CaptureService {
         this.notify('capture:state', this.state());
       }
     }).catch((error) => {
+      // Stopping a session deliberately tears down the helper after it drains
+      // selected frames. A late rejection must not turn a completed recording
+      // into a persistent, misleading UI warning.
+      if (this.session?.guideId !== guideId || this.session.paused) return;
       this.captureError = error.message;
       this.notify('capture:state', this.state());
       this.notify('capture:diagnostic', { kind: 'gnome-click-skipped', guideId, reason: error.message });

@@ -102,6 +102,17 @@ test('an unshared monitor produces an explicit error, no wrong-monitor screensho
   assert.match(service.state().captureError, /not shared/);
 });
 
+test('a late frame rejection after an intentional stop does not leave a capture warning', async () => {
+  const { service, backend } = fixture();
+  let rejectFrame;
+  backend.frameForClick = () => new Promise((_, reject) => { rejectFrame = reject; });
+  service.onGnomeClick({ x: 20, y: 30, at: 1000, button: 1 });
+  service.session.paused = true; // mirrors the explicit Stop recording action
+  rejectFrame(new Error('GNOME capture stopped.'));
+  await service.clickQueue;
+  assert.equal(service.state().captureError, '');
+});
+
 test('backend keeps selected frames alive while draining and converts monotonic time', async () => {
   const backend = new PortalBackend();
   backend.active = true;

@@ -311,12 +311,6 @@ class StepForgeApp {
       el('span', { title: `Capture session — ${trigger}` }, `Recording - ${trigger}`),
       pauseBtn,
     );
-    if (s.gnomeRequired && s.captureError) {
-      this.captureStatus.append(el('button', {
-        type: 'button', title: s.captureError,
-        onClick: () => dialogs.showInfoDialog('GNOME capture', s.captureError),
-      }, 'Capture needs attention'));
-    }
   }
 
   renderTopbar() {

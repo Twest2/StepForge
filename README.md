@@ -1,7 +1,7 @@
 # StepForge
 
-StepForge is a **local-first**, open-source desktop app for Windows, with
-Linux (WIP) builds. It captures step-by-step workflows as screenshots, lets
+StepForge is a **local-first**, open-source desktop app for Windows and
+Ubuntu 26.04 with GNOME 50 on Wayland. It captures step-by-step workflows as screenshots, lets
 you annotate and describe each step in a focused three-pane editor, and
 exports the result to Markdown, DOCX, PPTX, PDF, HTML (WIP), GIF (WIP),
 confluence (WIP), Wiki.js (WIP), and image bundles (WIP). The current
@@ -77,12 +77,10 @@ On **Ubuntu 26.04 / GNOME 50 Wayland**, the Ubuntu package includes the required
 StepForge Capture extension for regular click recording with markers. See the
 [GNOME setup and limitations](docs/linux/gnome-wayland.md).
 
-For the older generic **Linux** paths, install from a package built for your distro family:
-apt-based (Debian/Ubuntu) → [docs/linux/apt.md](docs/linux/apt.md); dnf-based
-(Fedora) → [docs/linux/dnf.md](docs/linux/dnf.md). Wayland uses the XDG portal
-for screen capture and a hotkey/interval trigger (per-click capture with a
-marker needs X11 + xinput). The general developer walkthrough is
-[docs/GETTING_STARTED_WITH_LINUX.md](docs/GETTING_STARTED_WITH_LINUX.md).
+Ubuntu 26.04 / GNOME 50 Wayland is the release-tested Linux target. X11 has a
+legacy generic capture path; Fedora/RHEL and other Wayland desktops have
+packaging/source instructions but are not release-tested for regular global
+click recording. See [Linux support](docs/GETTING_STARTED_WITH_LINUX.md).
 
 Requirements: Node.js 22.12+ and npm (pinned in `.nvmrc`; installs are
 refused on older Nodes because the packaging toolchain needs 22.12+).
@@ -96,7 +94,7 @@ Dependencies are only ever installed by you, via `npm ci` — the app never
 downloads or repairs packages at runtime.
 
 First run creates the local data directory (`~/.local/share/stepforge` on
-Linux (WIP), `%APPDATA%/stepforge` on Windows; override with
+Linux, `%APPDATA%/stepforge` on Windows; override with
 `STEPFORGE_DATA_DIR`).
 
 ## Testing
@@ -119,7 +117,7 @@ documents, and validating the bytes of the output, not string matching.
 bash scripts/bootstrap-offline.sh   # verify toolchain availability
 bash scripts/verify.sh              # full test suite + smoke checks
 bash scripts/build-release.sh       # assemble runnable app directory
-bash scripts/package-linux.sh       # local Linux packaging (WIP; not part of release)
+npm run package:linux:deb           # Ubuntu 26.04 / GNOME 50 package
 npm run package:windows             # Windows installer .exe in releases/
 pwsh scripts/package-windows.ps1    # same Windows installer build via PowerShell
 ```

@@ -1,56 +1,30 @@
 #!/usr/bin/env node
 'use strict';
 
-// Generate the StepForge PNG icon set from original geometry using the repo's
-// own rasterizer + PNG writer (no external image tooling or third-party art).
-// Mirrors packaging/assets/stepforge.svg. Output: packaging/assets/icons/.
+// Generate the shipped PNG icon set from the approved 512px StepForge raster
+// in this directory. Keeping the source in the icon set means packages use
+// the same artwork as the development application without external tooling.
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { createImage, fillRect, fillOval } = require('../core/raster');
-const { encodePng } = require('../core/png');
+const { decodePng, encodePng } = require('../core/png');
 
 const OUT_DIR = path.join(__dirname, '..', 'packaging', 'assets', 'icons');
+const SOURCE = path.join(OUT_DIR, 'stepforge-512.png');
 const SIZES = [16, 32, 48, 64, 128, 256, 512];
 
-const BG_TOP = [37, 99, 235, 255];
-const BG_BOTTOM = [30, 58, 138, 255];
-const WHITE = [255, 255, 255, 255];
-const SPARK = [250, 204, 21, 255];
-
-function lerp(a, b, t) {
-  return [
-    Math.round(a[0] + (b[0] - a[0]) * t),
-    Math.round(a[1] + (b[1] - a[1]) * t),
-    Math.round(a[2] + (b[2] - a[2]) * t),
-    255,
-  ];
-}
-
 function renderIcon(size) {
-  const img = createImage(size, size, [0, 0, 0, 0]);
-  const s = size / 256; // scale from the 256px reference design
-
-  // Rounded-square background approximated by a vertical gradient fill.
+  const source = decodePng(fs.readFileSync(SOURCE));
+  const data = Buffer.alloc(size * size * 4);
   for (let y = 0; y < size; y += 1) {
-    fillRect(img, 0, y, size, 1, lerp(BG_TOP, BG_BOTTOM, y / size));
+    const sourceY = Math.min(source.height - 1, Math.floor((y + 0.5) * source.height / size));
+    for (let x = 0; x < size; x += 1) {
+      const sourceX = Math.min(source.width - 1, Math.floor((x + 0.5) * source.width / size));
+      const from = (sourceY * source.width + sourceX) * 4;
+      source.data.copy(data, (y * size + x) * 4, from, from + 4);
+    }
   }
-
-  // Three ascending steps (x, y, w, h in reference px).
-  const steps = [
-    [52, 150, 52, 54],
-    [102, 116, 52, 88],
-    [152, 82, 52, 122],
-  ];
-  for (const [x, y, w, h] of steps) {
-    fillRect(img, Math.round(x * s), Math.round(y * s), Math.round(w * s), Math.round(h * s), WHITE);
-  }
-
-  // Capture spark on the top step.
-  const r = Math.max(2, Math.round(16 * s));
-  fillOval(img, Math.round(178 * s - r), Math.round(60 * s - r), r * 2, r * 2, SPARK);
-
-  return img;
+  return { width: size, height: size, data };
 }
 
 function main() {
@@ -59,9 +33,8 @@ function main() {
     const png = encodePng(renderIcon(size));
     fs.writeFileSync(path.join(OUT_DIR, `stepforge-${size}.png`), png);
   }
-  // A conventional default name for the desktop entry / hicolor 256px slot.
   fs.copyFileSync(path.join(OUT_DIR, 'stepforge-256.png'), path.join(OUT_DIR, 'stepforge.png'));
-  console.log(`wrote ${SIZES.length + 1} icons to ${OUT_DIR}`);
+  console.log(`wrote ${SIZES.length + 1} icons from ${path.basename(SOURCE)}`);
 }
 
 if (require.main === module) main();

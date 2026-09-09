@@ -4,6 +4,10 @@ This is the setup and packaging guide for **dnf-based** distributions. Debian,
 Ubuntu, and other apt-based systems have a separate guide:
 [apt.md](apt.md).
 
+> Fedora/RHEL packaging is a developer/legacy path. The release-tested Linux
+> target is Ubuntu 26.04 with GNOME Shell 50 on Wayland; do not represent the
+> dnf package as supporting GNOME Wayland regular-click recording.
+
 ## Install from the .rpm
 
 ```bash

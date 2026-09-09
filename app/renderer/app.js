@@ -288,7 +288,8 @@ class StepForgeApp {
 
     // What is currently triggering captures, so the user knows what to do.
     const notStarted = s.paused && !s.count;
-    const trigger = notStarted ? 'ready'
+    const trigger = s.gnomeRequired && s.warmingUp ? 'waiting for screen sharing'
+      : notStarted ? 'ready'
       : s.paused ? 'paused'
         : s.clickCapture ? 'on click'
           : s.intervalSec > 0 ? `every ${s.intervalSec}s`
@@ -310,6 +311,12 @@ class StepForgeApp {
       el('span', { title: `Capture session — ${trigger}` }, `Recording - ${trigger}`),
       pauseBtn,
     );
+    if (s.gnomeRequired && s.captureError) {
+      this.captureStatus.append(el('button', {
+        type: 'button', title: s.captureError,
+        onClick: () => dialogs.showInfoDialog('GNOME capture', s.captureError),
+      }, 'Capture needs attention'));
+    }
   }
 
   renderTopbar() {

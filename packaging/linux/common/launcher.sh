@@ -9,6 +9,10 @@
 set -eu
 
 APP_DIR=/opt/stepforge
+LAUNCHER_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+if [ -d "$LAUNCHER_DIR/../../opt/stepforge" ]; then
+  APP_DIR="$(CDPATH= cd -- "$LAUNCHER_DIR/../../opt/stepforge" && pwd)"
+fi
 ELECTRON="$APP_DIR/node_modules/electron/dist/electron"
 SANDBOX_HELPER="$APP_DIR/node_modules/electron/dist/chrome-sandbox"
 
@@ -30,7 +34,8 @@ sandbox_ok() {
   [ "$helper_uid" = "0" ] || return 1
   [ -n "$helper_mode" ] || return 1
   # setuid bit set?
-  [ $(( $((8#$helper_mode)) & 04000 )) -ne 0 ] || return 1
+  # POSIX sh (Ubuntu uses dash) has no bash-style 8# number syntax.
+  [ $(( 0$helper_mode & 04000 )) -ne 0 ] || return 1
   return 0
 }
 

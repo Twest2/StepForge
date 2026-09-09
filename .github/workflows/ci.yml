@@ -56,3 +56,29 @@ jobs:
       - name: Audit full dependency tree (informational)
         run: npm audit --package-lock-only --audit-level=high
         continue-on-error: true
+
+  ubuntu-package:
+    name: Ubuntu test package
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Build Ubuntu GNOME package
+        run: npm run package:linux:deb
+      - name: Verify package payload
+        run: |
+          dpkg-deb --contents build/artifacts/*.deb > /tmp/stepforge-payload.txt
+          grep 'gnome-shell/extensions/stepforge@twestbrook.com/extension.js' /tmp/stepforge-payload.txt
+          grep 'app/platform/linux/portal_capture.py' /tmp/stepforge-payload.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ubuntu-26.04-gnome-test-package
+          path: |
+            build/artifacts/*.deb
+            build/artifacts/*.sha256
+            build/artifacts/*.tar.gz
+          if-no-files-found: error

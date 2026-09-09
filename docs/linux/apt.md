@@ -1,6 +1,7 @@
 # StepForge on apt-based Linux (Debian / Ubuntu)
 
-This is the setup and packaging guide for **apt-based** distributions. Fedora
+The current `.deb` targets **Ubuntu 26.04 with GNOME 50**. See the
+[GNOME Wayland recording and testing guide](gnome-wayland.md). Fedora
 and other dnf-based systems have a separate guide: [dnf.md](dnf.md).
 
 ## Install from the .deb
@@ -15,6 +16,7 @@ apt pulls the required runtime libraries automatically (they are declared as
 - the app and a fixed Electron runtime under `/opt/stepforge`,
 - the `stepforge` launcher at `/usr/bin/stepforge`,
 - a desktop entry, icons, and `.sfgz`/`.sfglt` file associations.
+- the required StepForge Capture GNOME Shell extension.
 
 Launch it from your application menu or run `stepforge`.
 
@@ -44,10 +46,10 @@ bash scripts/linux/apt/install-runtime-deps.sh
 ## Capture capabilities on apt systems
 
 - **X11**: full per-click capture with an accurate marker (needs `xinput`).
-- **Wayland**: screen capture via the XDG Desktop Portal + PipeWire; the
-  portal asks permission once per recording. Per-click capture with
-  coordinates is not exposed by Wayland, so recording uses a global hotkey or
-  interval trigger. StepForge reports the active trigger honestly.
+- **GNOME 50 Wayland**: screen capture via the XDG Desktop Portal + PipeWire;
+  the bundled extension samples mouse clicks and coordinates for red markers.
+  Enable the extension on first recording and select the monitors to share.
+  See the GNOME guide for sampling limitations and supported capture modes.
 
 Run StepForge and open Settings → Diagnostics to see the detected session
 type, portal/PipeWire status, and the active capture profile.

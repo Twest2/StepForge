@@ -73,7 +73,11 @@ using only Node built-ins.
 
 For a Windows installation, see [docs/windows_installation](docs/windows_installation.md) or for a developer/more in depth walkthrough, see [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md).
 
-On **Linux**, install from a package built for your distro family:
+On **Ubuntu 26.04 / GNOME 50 Wayland**, the Ubuntu package includes the required
+StepForge Capture extension for regular click recording with markers. See the
+[GNOME setup and limitations](docs/linux/gnome-wayland.md).
+
+For the older generic **Linux** paths, install from a package built for your distro family:
 apt-based (Debian/Ubuntu) → [docs/linux/apt.md](docs/linux/apt.md); dnf-based
 (Fedora) → [docs/linux/dnf.md](docs/linux/dnf.md). Wayland uses the XDG portal
 for screen capture and a hotkey/interval trigger (per-click capture with a

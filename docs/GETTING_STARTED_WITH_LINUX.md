@@ -1,5 +1,10 @@
 # Getting Started with StepForge on Linux
 
+**Ubuntu 26.04 / GNOME 50:** use the new [GNOME Wayland guide](linux/gnome-wayland.md).
+The required extension is bundled with the Ubuntu package and provides sampled
+per-click recording with markers. The fallback/Xorg instructions below describe
+the older generic Linux path, not the new Ubuntu GNOME recording service.
+
 > ⚠️ **Work in progress.** Linux support is still under active development.
 > Expect rough edges — especially on Wayland (see the limitations below). X11 /
 > Xorg is the most complete path today. Please report issues.

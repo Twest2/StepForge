@@ -1377,14 +1377,14 @@ test('stored clicks automatically focus while preserving screenshot bytes and ma
   });
   const point = { x: 1900, y: 1060 };
   const clicked = await service.storeFrameAsStep('guide', 'fullscreen', frame, point);
-  assert.deepEqual(clicked.step.focusedView, { enabled: true, zoom: 2, panX: 1, panY: 0 });
+  assert.deepEqual(clicked.step.focusedView, { enabled: true, zoom: 1.5, panX: 1, panY: 0 });
   assert.equal(clicked.step.png, frame.png);
   const manual = await service.storeFrameAsStep('guide', 'fullscreen', frame);
   assert.equal(manual.step.focusedView.zoom, 1);
   const unknownWindow = await service.storeFrameAsStep('guide', 'window', frame, point);
   assert.equal(unknownWindow.step.focusedView.zoom, 1);
   const knownWindow = await service.storeFrameAsStep('guide', 'window', { ...frame, captureBounds: frame.display.bounds }, point);
-  assert.equal(knownWindow.step.focusedView.zoom, 2);
+  assert.equal(knownWindow.step.focusedView.zoom, 1.5);
   service.settings.get = (key) => key === 'capture.smartCropping' ? false : null;
   const disabled = await service.storeFrameAsStep('guide', 'fullscreen', frame, point);
   assert.equal(disabled.step.focusedView.enabled, false);

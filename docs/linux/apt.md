@@ -28,6 +28,7 @@ Once configured, `apt update` downloads the updated StepForge package list; it
 does **not** install upgrades by itself. To install all available upgrades:
 
 ```bash
+sudo apt update
 sudo apt upgrade
 ```
 

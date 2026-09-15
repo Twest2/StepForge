@@ -24,6 +24,7 @@ test('Linux packaging files exist in their expected separate locations', () => {
     'scripts/linux/apt/install-runtime-deps.sh',
     'scripts/linux/apt/install-build-deps.sh',
     'docs/linux/apt.md',
+    'docs/linux/launchpad-ppa.md',
     'tests/integration/linux/package-deb.test.sh',
   ]) {
     assert.ok(exists(f), `expected ${f} to exist`);
@@ -117,6 +118,26 @@ test('the deb builder detects arch and delegates to shared staging', () => {
   assert.match(script, /stage-runtime\.sh/); // runtime-only staging is shared
   assert.match(script, /dpkg --print-architecture/); // arch detected, not hardcoded
   assert.doesNotMatch(script, /cp -a "\$ROOT_DIR\/node_modules" /); // never copy the whole dev tree
+});
+
+test('Launchpad source packaging stages the tested runtime payload', () => {
+  for (const f of [
+    'scripts/launchpad/build-source-package.sh',
+    'packaging/linux/launchpad/debian/control',
+    'packaging/linux/launchpad/debian/rules',
+    'packaging/linux/launchpad/debian/source/format',
+  ]) {
+    assert.ok(exists(f), `expected ${f} to exist`);
+  }
+  const sourceBuilder = read('scripts/launchpad/build-source-package.sh');
+  const rules = read('packaging/linux/launchpad/debian/rules');
+  const control = read('packaging/linux/launchpad/debian/control');
+  assert.match(sourceBuilder, /stage-runtime\.sh/);
+  assert.match(sourceBuilder, /debuild -S -sa/);
+  assert.match(sourceBuilder, /--series/);
+  assert.match(rules, /payload\/\./);
+  assert.match(control, /^Architecture: amd64$/m);
+  assert.match(control, /^Build-Depends: debhelper-compat \(= 13\)$/m);
 });
 
 test('apt setup scripts target apt and keep build vs runtime deps separate', () => {

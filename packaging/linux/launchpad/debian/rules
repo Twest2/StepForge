@@ -1,0 +1,14 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@
+
+# The release workflow creates payload/ with the exact runtime-only tree used
+# by the locally tested .deb builder.  Keeping Electron and npm dependencies
+# in that payload makes Launchpad's isolated builders network-independent.
+override_dh_auto_build:
+	:
+
+override_dh_auto_install:
+	mkdir -p debian/stepforge
+	cp -a payload/. debian/stepforge/

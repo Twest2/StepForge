@@ -1,0 +1,12 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: StepForge
+Source: https://github.com/Twest2/StepForge
+
+Files: *
+Copyright: 2026 StepForge contributors
+License: CC-BY-NC-4.0
+ Creative Commons Attribution-NonCommercial 4.0 International
+ .
+ On Debian systems, the complete text of the Creative Commons Attribution-
+ NonCommercial 4.0 International license is available at
+ /usr/share/common-licenses/CC-BY-NC-4.0.

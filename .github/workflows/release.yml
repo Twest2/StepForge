@@ -20,6 +20,7 @@ on:
 # Needed for the release job to create the tag and the GitHub Release.
 permissions:
   contents: write
+  actions: write
 
 jobs:
   build-windows:
@@ -130,3 +131,13 @@ jobs:
             --target "${{ github.sha }}" \
             --generate-notes \
             "${flags[@]}"
+
+      # Releases created with GITHUB_TOKEN do not emit a release event that
+      # starts another workflow. Dispatch the PPA workflow explicitly so every
+      # stable release created here is uploaded to Launchpad.
+      - name: Start Launchpad PPA upload
+        if: inputs.prerelease == false
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.version }}
+        run: gh workflow run release-ppa.yml --ref "${{ github.sha }}" -f version="$TAG"

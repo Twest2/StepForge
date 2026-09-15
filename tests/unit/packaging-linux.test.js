@@ -133,7 +133,7 @@ test('Launchpad source packaging stages the tested runtime payload', () => {
   const rules = read('packaging/linux/launchpad/debian/rules');
   const control = read('packaging/linux/launchpad/debian/control');
   assert.match(sourceBuilder, /stage-runtime\.sh/);
-  assert.match(sourceBuilder, /debuild -S -sa/);
+  assert.match(sourceBuilder, /debuild "\$\{debuild_args\[@\]\}"/);
   assert.match(sourceBuilder, /--series/);
   assert.match(rules, /payload\/\./);
   assert.match(control, /^Architecture: amd64$/m);

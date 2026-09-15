@@ -2,7 +2,7 @@
 name: Bug report
 about: Create a report to help us improve StepForge
 title: "[BUG]"
-labels: Potential bug
+labels: Feature, Potential bug
 assignees: Twest2
 
 ---

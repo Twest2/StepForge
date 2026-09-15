@@ -38,7 +38,7 @@ jobs:
         run: npm ci
 
       - name: Install source-package tools
-        run: sudo apt-get update && sudo apt-get install --yes debhelper devscripts
+        run: sudo apt-get update && sudo apt-get install --yes build-essential debhelper devscripts
 
       - name: Create the unsigned PPA source package
         shell: bash

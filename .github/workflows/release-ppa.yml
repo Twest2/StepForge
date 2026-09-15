@@ -56,12 +56,18 @@ jobs:
           set -euo pipefail
           test -n "$LAUNCHPAD_GPG_PRIVATE_KEY" || { echo 'Missing LAUNCHPAD_GPG_PRIVATE_KEY secret.' >&2; exit 1; }
           test -n "$LAUNCHPAD_GPG_KEY_ID" || { echo 'Missing LAUNCHPAD_GPG_KEY_ID secret.' >&2; exit 1; }
+          test -n "$LAUNCHPAD_GPG_PASSPHRASE" || { echo 'Missing LAUNCHPAD_GPG_PASSPHRASE secret.' >&2; exit 1; }
           install -d -m 700 "$HOME/.gnupg"
           printf '%s' "$LAUNCHPAD_GPG_PRIVATE_KEY" | gpg --batch --import
-          if [ -n "$LAUNCHPAD_GPG_PASSPHRASE" ]; then
-            printf '%s' "$LAUNCHPAD_GPG_PASSPHRASE" | gpg --batch --pinentry-mode loopback \
-              --passphrase-fd 0 --local-user "$LAUNCHPAD_GPG_KEY_ID" --sign --output /dev/null /dev/null
-          fi
+          # debsign invokes GPG independently. Use this small wrapper so its
+          # passphrase request is handled without an interactive terminal.
+          cat > "$RUNNER_TEMP/gpg-debsign" <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          printf '%s' "$LAUNCHPAD_GPG_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 "$@"
+          EOF
+          chmod 0700 "$RUNNER_TEMP/gpg-debsign"
+          echo "DEBSIGN_PROGRAM=$RUNNER_TEMP/gpg-debsign" >> "$GITHUB_ENV"
 
       - name: Build signed source package
         shell: bash

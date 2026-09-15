@@ -37,7 +37,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name || inputs.version }}
+          # A normal release builds precisely the published tag. Manual runs
+          # use the chosen workflow ref, which lets us retry a release after
+          # fixing the PPA tooling without changing its release tag.
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref || github.event.release.tag_name }}
 
       - uses: actions/setup-node@v4
         with:

@@ -7,8 +7,19 @@ back to timed captures when the extension is missing.
 
 ## Install and test
 
-Install the `.deb` from the PR's **Ubuntu test package** artifact, or from a
-GitHub Release:
+For the stable release, install StepForge from the official Launchpad PPA
+(recommended):
+
+```bash
+sudo add-apt-repository ppa:twest39/stepforge
+sudo apt update
+sudo apt install stepforge
+```
+
+Later releases are installed with `sudo apt update && sudo apt upgrade`.
+
+Alternatively, install a specific `.deb` from a GitHub Release, or a PR's
+**Ubuntu test package** artifact:
 
 ```bash
 sudo apt install ./stepforge_<version>_amd64.deb

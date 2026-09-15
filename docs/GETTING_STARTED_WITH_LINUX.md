@@ -16,10 +16,24 @@ uninstall, privacy, and detailed recording instructions.
 
 ### Install
 
-Download the Ubuntu `.deb` from a GitHub Release, or the
-`ubuntu-26.04-gnome-test-package` artifact for a pull request. To avoid
-confusing a test build with an existing production install, remove the current
-package first, then verify the version after installation:
+**Recommended — install the stable release from the official Launchpad PPA.**
+Add the PPA once, then StepForge is installed and updated through apt:
+
+```bash
+sudo add-apt-repository ppa:twest39/stepforge
+sudo apt update
+sudo apt install stepforge
+```
+
+Use `sudo apt update && sudo apt upgrade` to install later StepForge updates.
+`apt update` checks for updates but does not install them.
+
+**Alternative — install a downloaded `.deb`.** Download the Ubuntu `.deb`
+from a GitHub Release, or use the `ubuntu-26.04-gnome-test-package` artifact
+for a pull request. This route is useful for testing a particular build; you
+must manually download later versions. To avoid confusing a test build with an
+existing production install, remove the current package first, then verify the
+version after installation:
 
 ```bash
 dpkg-query -W -f='Installed StepForge version: ${Version}\n' stepforge 2>/dev/null || true

@@ -135,6 +135,7 @@ test('Launchpad source packaging stages the tested runtime payload', () => {
   assert.match(sourceBuilder, /stage-runtime\.sh/);
   assert.match(sourceBuilder, /debuild "\$\{debuild_args\[@\]\}"/);
   assert.match(sourceBuilder, /--series/);
+  assert.match(rules, /override_dh_dwz/);
   assert.match(rules, /payload\/\./);
   assert.match(control, /^Architecture: amd64$/m);
   assert.match(control, /^Build-Depends: debhelper-compat \(= 13\)$/m);

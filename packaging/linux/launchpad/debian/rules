@@ -12,3 +12,9 @@ override_dh_auto_build:
 override_dh_auto_install:
 	mkdir -p debian/stepforge
 	cp -a payload/. debian/stepforge/
+
+# Electron is a prebuilt runtime, not code compiled by this Debian build.
+# dh_dwz cannot process its mixed debug-section formats on newer Ubuntu
+# builders, and debug optimisation would not improve the shipped runtime.
+override_dh_dwz:
+	:

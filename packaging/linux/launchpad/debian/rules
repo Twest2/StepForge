@@ -18,3 +18,9 @@ override_dh_auto_install:
 # builders, and debug optimisation would not improve the shipped runtime.
 override_dh_dwz:
 	:
+
+# Electron is a prebuilt runtime whose system dependencies are deliberately
+# declared in debian/control. Do not ask dh_shlibdeps to rediscover them from
+# an isolated build chroot: it cannot resolve those runtime libraries there.
+override_dh_shlibdeps:
+	:

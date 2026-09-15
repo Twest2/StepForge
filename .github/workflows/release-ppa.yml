@@ -68,7 +68,7 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/stamp-version.js "${TAG#v}"
-          VERSION="$(node -p \"require('./package.json').buildVersion\")"
+          VERSION="$(node -e "process.stdout.write(require('./package.json').buildVersion)")"
           bash scripts/launchpad/build-source-package.sh \
             --version "$VERSION" \
             --series "$LAUNCHPAD_SERIES" \

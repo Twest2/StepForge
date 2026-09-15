@@ -320,6 +320,7 @@ function showSettingsDialog({
       { value: 'window', label: 'Window' },
       { value: 'region', label: 'Region' },
     ]);
+    const smartCropping = el('input', { type: 'checkbox', checked: settings.capture?.smartCropping !== false });
     const clickMarker = el('input', { type: 'checkbox', checked: Boolean(settings.capture?.clickMarker) });
     const captureHotkey = makeHotkeyInput(settings.capture?.hotkeyCapture || '');
     const pauseHotkey = makeHotkeyInput(settings.capture?.hotkeyPauseResume || '');
@@ -440,6 +441,7 @@ function showSettingsDialog({
       ),
       el('fieldset', {},
         el('legend', {}, 'Editor'),
+        labeledRow('Automatically focus recorded clicks', smartCropping),
         labeledRow('Focused view for new steps', focusedDefault),
         labeledRow('Preview step count', previewCount),
       ),
@@ -486,6 +488,7 @@ function showSettingsDialog({
                 delayMs: Number(delayMs.value || 0),
                 mode: captureMode.value,
                 clickMarker: clickMarker.checked,
+                smartCropping: smartCropping.checked,
                 fallbackTrigger: fallbackTrigger.value === 'hotkey' ? 'hotkey' : 'interval',
                 autoIntervalSec: Math.max(1, Number(autoIntervalSec.value || 5)),
                 hotkeyCapture: captureHotkey.value.trim(),

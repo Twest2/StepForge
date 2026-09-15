@@ -48,7 +48,7 @@ jobs:
         run: npm ci
 
       - name: Install source-package tools
-        run: sudo apt-get update && sudo apt-get install --yes devscripts dput gnupg
+        run: sudo apt-get update && sudo apt-get install --yes build-essential debhelper devscripts dput gnupg
 
       - name: Import the Launchpad signing key
         shell: bash

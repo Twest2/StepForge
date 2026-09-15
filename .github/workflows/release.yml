@@ -48,7 +48,7 @@ jobs:
           set -euo pipefail
           node scripts/stamp-version.js "${VERSION#v}"
           PACKAGE_VERSION="$(node -e "process.stdout.write(require('./package.json').buildVersion)")"
-          bash scripts/launchpad/build-source-package.sh \
+          STEPFORGE_UNSIGN_SOURCE=1 bash scripts/launchpad/build-source-package.sh \
             --version "$PACKAGE_VERSION" \
             --series resolute \
             --out build/launchpad-preflight

@@ -50,13 +50,6 @@ The core workflow:
   hotkeys, click markers, clipboard paste, and PNG/JPEG/GIF import included.
   The full keyboard shortcut list lives under **More ▾ → Keyboard
   shortcuts** in the editor.
-- **Automatic click focus** — recorded clicks open in a non-destructive focused
-  view, with up to 1.5× zoom and at least 640×360 logical pixels of context.
-  Crops shift at screen edges and corners. Adjust Zoom/Pan or turn off Focused
-  per step; disable **Automatically focus recorded clicks** in Settings → Editor
-  for future captures. Editor previews and exports use the same view. Manual
-  captures, small images, and window captures without known screen coordinates
-  keep their full view (GNOME window captures provide those coordinates).
 - **Three-pane editor** — step tree with substeps, statuses
   (todo/in-progress/done), hidden/skipped steps, focused view (zoom/pan that
   never mutates the original image), autosave, and command-stack undo/redo.

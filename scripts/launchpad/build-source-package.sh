@@ -12,6 +12,7 @@ SERIES=""
 OUT_DIR="$ROOT_DIR/build/launchpad"
 KEY_ID=""
 SIGN_PROGRAM="${STEPFORGE_DEBSIGN_PROGRAM:-}"
+UNSIGNED_SOURCE="${STEPFORGE_UNSIGN_SOURCE:-}"
 
 usage() {
   cat <<'EOF'
@@ -88,6 +89,9 @@ tar --sort=name --mtime='UTC 2026-01-01' --owner=0 --group=0 --numeric-owner \
 
 pushd "$SOURCE_DIR" >/dev/null
 debuild_args=(-S -sa)
+if [ "$UNSIGNED_SOURCE" = "1" ]; then
+  debuild_args+=(-us -uc)
+fi
 if [ -n "$KEY_ID" ]; then
   debuild_args+=("-k$KEY_ID")
 fi

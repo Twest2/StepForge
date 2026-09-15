@@ -134,6 +134,7 @@ test('Launchpad source packaging stages the tested runtime payload', () => {
   const control = read('packaging/linux/launchpad/debian/control');
   assert.match(sourceBuilder, /stage-runtime\.sh/);
   assert.match(sourceBuilder, /debuild "\$\{debuild_args\[@\]\}"/);
+  assert.match(sourceBuilder, /STEPFORGE_UNSIGN_SOURCE/);
   assert.match(sourceBuilder, /--series/);
   assert.match(rules, /override_dh_dwz/);
   assert.match(rules, /override_dh_shlibdeps/);

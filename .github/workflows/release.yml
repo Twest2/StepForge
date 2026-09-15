@@ -140,4 +140,4 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.version }}
-        run: gh workflow run release-ppa.yml --ref "${{ github.sha }}" -f version="$TAG"
+        run: gh workflow run release-ppa.yml --ref main -f version="$TAG"

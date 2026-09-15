@@ -99,6 +99,6 @@ popd >/dev/null
 
 CHANGES="$WORK_DIR/stepforge_${PPA_VERSION}_source.changes"
 [ -f "$CHANGES" ] || { echo "error: expected source changes file was not created" >&2; exit 1; }
-cp "$WORK_DIR"/stepforge_"$PPA_VERSION"_* "$OUT_DIR/"
+cp "$WORK_DIR"/stepforge_"$PPA_VERSION".* "$OUT_DIR/"
 cp "$ORIG_TAR" "$OUT_DIR/"
 echo "$OUT_DIR/$(basename "$CHANGES")"

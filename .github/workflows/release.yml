@@ -23,6 +23,39 @@ permissions:
   actions: write
 
 jobs:
+  verify-launchpad-build:
+    name: Verify Launchpad package build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install release dependencies
+        run: npm ci
+
+      - name: Install source-package tools
+        run: sudo apt-get update && sudo apt-get install --yes debhelper devscripts
+
+      - name: Create the unsigned PPA source package
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          node scripts/stamp-version.js "${VERSION#v}"
+          PACKAGE_VERSION="$(node -e "process.stdout.write(require('./package.json').buildVersion)")"
+          bash scripts/launchpad/build-source-package.sh \
+            --version "$PACKAGE_VERSION" \
+            --series resolute \
+            --out build/launchpad-preflight
+
+      - name: Build source package in Ubuntu 26.04
+        run: bash scripts/launchpad/verify-launchpad-build.sh build/launchpad-preflight
+
   build-windows:
     name: Build Windows installer
     runs-on: windows-latest
@@ -99,7 +132,7 @@ jobs:
 
   release:
     name: Publish GitHub Release
-    needs: [build-windows, build-linux]
+    needs: [verify-launchpad-build, build-windows, build-linux]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

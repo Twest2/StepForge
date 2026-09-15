@@ -1,4 +1,4 @@
-# Ubuntu 26.04 / GNOME 50 recording
+# Ubuntu 26.04 / GNOME 50 installation
 
 StepForge's GNOME Wayland build requires the **StepForge Capture** Shell
 extension. The Ubuntu `.deb` installs it alongside the application. Recording

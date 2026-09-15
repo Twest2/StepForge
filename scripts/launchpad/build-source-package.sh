@@ -11,6 +11,7 @@ VERSION=""
 SERIES=""
 OUT_DIR="$ROOT_DIR/build/launchpad"
 KEY_ID=""
+SIGN_PROGRAM="${STEPFORGE_DEBSIGN_PROGRAM:-}"
 
 usage() {
   cat <<'EOF'
@@ -86,11 +87,14 @@ tar --sort=name --mtime='UTC 2026-01-01' --owner=0 --group=0 --numeric-owner \
   -C "$WORK_DIR" -czf "$ORIG_TAR" "$(basename "$SOURCE_DIR")"
 
 pushd "$SOURCE_DIR" >/dev/null
+debuild_args=(-S -sa)
 if [ -n "$KEY_ID" ]; then
-  debuild -S -sa -k"$KEY_ID"
-else
-  debuild -S -sa
+  debuild_args+=("-k$KEY_ID")
 fi
+if [ -n "$SIGN_PROGRAM" ]; then
+  debuild_args+=("-p$SIGN_PROGRAM")
+fi
+debuild "${debuild_args[@]}"
 popd >/dev/null
 
 CHANGES="$WORK_DIR/stepforge_${PPA_VERSION}_source.changes"

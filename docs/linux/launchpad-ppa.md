@@ -18,7 +18,7 @@ package, and Launchpad builds and hosts the resulting `.deb`.
    | --- | --- |
    | `LAUNCHPAD_GPG_PRIVATE_KEY` | ASCII-armored private key for the Launchpad-registered signing key |
    | `LAUNCHPAD_GPG_KEY_ID` | Fingerprint (preferred) or long key ID for that signing key |
-   | `LAUNCHPAD_GPG_PASSPHRASE` | Key passphrase, if the private key is encrypted |
+   | `LAUNCHPAD_GPG_PASSPHRASE` | Passphrase for the Launchpad signing key |
 
    Do not commit the private key to this repository. The workflow imports it
    only in the short-lived GitHub Actions runner that signs the upload.

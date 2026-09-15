@@ -28,6 +28,38 @@ makes the setuid `chrome-sandbox` helper usable as a fallback. StepForge will
 **not** silently launch unsandboxed — see the launcher's message if the
 sandbox is unavailable.
 
+## Install from the official Launchpad PPA
+
+For supported Ubuntu releases, the stable PPA publishes StepForge as
+`stepforge`. Add it once, then use normal apt upgrades:
+
+```bash
+sudo add-apt-repository ppa:twest39/stepforge
+sudo apt update
+sudo apt install stepforge
+```
+
+When a new StepForge release is published, its package is built by Launchpad
+and appears in that PPA. `apt update` downloads the updated package list; it
+does **not** install upgrades by itself. To install all available upgrades:
+
+```bash
+sudo apt upgrade
+```
+
+To have Ubuntu install upgrades automatically, enable its standard unattended
+upgrades service:
+
+```bash
+sudo apt install unattended-upgrades
+sudo dpkg-reconfigure --priority=low unattended-upgrades
+```
+
+The PPA currently publishes an `amd64` package because its bundled Electron
+runtime is architecture-specific. It targets the Ubuntu series selected in
+the PPA release workflow. Maintainers can find the one-time publishing setup
+in [the Launchpad PPA guide](launchpad-ppa.md).
+
 ## Install from the portable tarball
 
 ```bash

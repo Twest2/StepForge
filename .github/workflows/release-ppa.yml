@@ -59,12 +59,15 @@ jobs:
           test -n "$LAUNCHPAD_GPG_PASSPHRASE" || { echo 'Missing LAUNCHPAD_GPG_PASSPHRASE secret.' >&2; exit 1; }
           install -d -m 700 "$HOME/.gnupg"
           printf '%s' "$LAUNCHPAD_GPG_PRIVATE_KEY" | gpg --batch --import
-          # debsign invokes GPG independently. Use this small wrapper so its
-          # passphrase request is handled without an interactive terminal.
-          cat > "$RUNNER_TEMP/gpg-debsign" <<'EOF'
+          # debsign invokes GPG with a sanitised environment, so it cannot
+          # inherit the secret directly. Keep it in a mode-600, job-temporary
+          # file and have the signing wrapper read it non-interactively.
+          PASSPHRASE_FILE="$RUNNER_TEMP/launchpad-gpg-passphrase"
+          (umask 077; printf '%s' "$LAUNCHPAD_GPG_PASSPHRASE" > "$PASSPHRASE_FILE")
+          cat > "$RUNNER_TEMP/gpg-debsign" <<EOF
           #!/usr/bin/env bash
           set -euo pipefail
-          printf '%s' "$LAUNCHPAD_GPG_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 "$@"
+          exec gpg --batch --yes --pinentry-mode loopback --passphrase-file "$PASSPHRASE_FILE" "\$@"
           EOF
           chmod 0700 "$RUNNER_TEMP/gpg-debsign"
           echo "DEBSIGN_PROGRAM=$RUNNER_TEMP/gpg-debsign" >> "$GITHUB_ENV"

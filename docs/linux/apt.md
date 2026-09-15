@@ -15,6 +15,23 @@ sudo apt update
 sudo apt install stepforge
 ```
 
+### If apt reports `NO_PUBKEY` for the PPA
+
+This should not occur on a new installation: `add-apt-repository` normally
+imports the PPA's repository key. It can occur if the PPA was added before
+Launchpad finished creating its signing key. Import the current public key and
+attach it to the existing source entry, then update again:
+
+```bash
+sudo install -d -m 0755 /etc/apt/keyrings
+curl -fsSL 'https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x9CA861A99DEE6171' \
+  | gpg --dearmor \
+  | sudo tee /etc/apt/keyrings/twest39-stepforge.gpg >/dev/null
+sudo sed -i '/^Signed-By:/d; $a Signed-By: /etc/apt/keyrings/twest39-stepforge.gpg' \
+  /etc/apt/sources.list.d/twest39-ubuntu-stepforge-resolute.sources
+sudo apt update
+```
+
 When a new StepForge release is published, its package is built by Launchpad
 and appears in that PPA. `apt update` downloads the updated package list; it
 does **not** install upgrades by itself. To install all available upgrades:

@@ -51,7 +51,7 @@ The core workflow:
   The full keyboard shortcut list lives under **More ▾ → Keyboard
   shortcuts** in the editor.
 - **Automatic click focus** — recorded clicks open in a non-destructive focused
-  view, with up to 2× zoom and at least 640×360 logical pixels of context.
+  view, with up to 1.5× zoom and at least 640×360 logical pixels of context.
   Crops shift at screen edges and corners. Adjust Zoom/Pan or turn off Focused
   per step; disable **Automatically focus recorded clicks** in Settings → Editor
   for future captures. Editor previews and exports use the same view. Manual

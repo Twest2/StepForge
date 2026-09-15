@@ -10,8 +10,8 @@ function smartCrop(size, bounds, point) {
   const y = (point.y - bounds.y) / bounds.height;
   if (x < 0 || x > 1 || y < 0 || y > 1) return null;
 
-  // Keep at least 640 x 360 logical pixels of context and never zoom past 2x.
-  const zoom = Math.max(1, Math.min(2, bounds.width / 640, bounds.height / 360));
+  // Keep at least 640 x 360 logical pixels of context and keep at least two-thirds of each image dimension.
+  const zoom = Math.max(1, Math.min(1.5, bounds.width / 640, bounds.height / 360));
   if (zoom === 1) return null;
   const span = 1 / zoom;
   const clamp = (n) => Math.max(0, Math.min(1, n));

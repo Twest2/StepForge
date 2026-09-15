@@ -14,7 +14,7 @@ test('smart crop centers clicks and clamps all edges on scaled secondary display
     [1, 0.5, 1, 0.5], [0.5, 0, 0.5, 1], [0.5, 1, 0.5, 0],
   ]) {
     const view = smartCrop(size, bounds, { x: bounds.x + x * bounds.width, y: bounds.y + y * bounds.height });
-    assert.deepEqual(view, { enabled: true, zoom: 2, panX, panY });
+    assert.deepEqual(view, { enabled: true, zoom: 1.5, panX, panY });
   }
 });
 

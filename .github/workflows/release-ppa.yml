@@ -75,7 +75,7 @@ jobs:
           set -euo pipefail
           node scripts/stamp-version.js "${TAG#v}"
           VERSION="$(node -e "process.stdout.write(require('./package.json').buildVersion)")"
-          bash scripts/launchpad/build-source-package.sh \
+          STEPFORGE_DEBSIGN_PROGRAM="$DEBSIGN_PROGRAM" bash scripts/launchpad/build-source-package.sh \
             --version "$VERSION" \
             --series "$LAUNCHPAD_SERIES" \
             --key "$LAUNCHPAD_GPG_KEY_ID" \

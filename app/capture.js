@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const { spawn, execFileSync } = require('node:child_process');
 const { desktopCapturer, screen, BrowserWindow, nativeImage, Tray, Menu } = require('electron');
 const raster = require('../core/raster');
+const { smartCrop } = require('../core/smart-crop');
 const { encodePng } = require('../core/png');
 const {
   selectFrameForClick,
@@ -1982,12 +1983,17 @@ public static class SFHook {
       }
     }
 
+    // Desktop window thumbnails lack a reliable screen origin. Only use window
+    // coordinates when a backend supplies the actual captured bounds.
+    const cropBounds = frame.captureBounds || (mode === 'fullscreen' ? frame.display?.bounds : null);
+    const automaticView = this.settings.get('capture.smartCropping') !== false
+      ? smartCrop(frame.size, cropBounds, clickPos) : null;
     const { title, captureMetadata } = await this.buildStepMeta(mode, frame, clickPos, clickMeta);
     const step = this.store.addStep(guideId, {
       title,
       captureMetadata,
       annotations,
-      focusedView: {
+      focusedView: automaticView || {
         enabled: Boolean(this.settings.get('editor.focusedViewDefaultForNewSteps')),
         zoom: 1, panX: 0.5, panY: 0.5,
       },

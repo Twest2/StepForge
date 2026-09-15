@@ -1,5 +1,10 @@
 # Security
 
+## Security issues in the app
+
+Please report all security issues via email directly to `git@twestbrook.com`. Please do NOT create a public issue or PR supporting this.
+
+
 ## Offline Guarantee
 
 StepForge ships with **zero network code paths**. The application:

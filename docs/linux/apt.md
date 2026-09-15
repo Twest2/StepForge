@@ -4,31 +4,7 @@ The current `.deb` targets **Ubuntu 26.04 with GNOME 50**. See the
 [GNOME Wayland recording and testing guide](gnome-wayland.md). Fedora
 and other dnf-based systems have a separate guide: [dnf.md](dnf.md).
 
-## Install from the .deb
-
-```bash
-sudo apt install ./stepforge_<version>_amd64.deb
-```
-
-apt pulls the required runtime libraries automatically (they are declared as
-`Depends`). The package installs:
-
-- the app and a fixed Electron runtime under `/opt/stepforge`,
-- the `stepforge` launcher at `/usr/bin/stepforge`,
-- a desktop entry, icons, and `.sfgz`/`.sfglt` file associations.
-- the required StepForge Capture GNOME Shell extension.
-
-Launch it from your application menu or run `stepforge`.
-
-### Sandbox
-
-The launcher runs **sandboxed**. On most modern kernels the Chromium
-user-namespace sandbox works out of the box; the package's `postinst` also
-makes the setuid `chrome-sandbox` helper usable as a fallback. StepForge will
-**not** silently launch unsandboxed — see the launcher's message if the
-sandbox is unavailable.
-
-## Install from the official Launchpad PPA
+## Recommended: install from the official Launchpad PPA
 
 For supported Ubuntu releases, the stable PPA publishes StepForge as
 `stepforge`. Add it once, then use normal apt upgrades:
@@ -59,6 +35,36 @@ The PPA currently publishes an `amd64` package because its bundled Electron
 runtime is architecture-specific. It targets the Ubuntu series selected in
 the PPA release workflow. Maintainers can find the one-time publishing setup
 in [the Launchpad PPA guide](launchpad-ppa.md).
+
+## Alternative: install a downloaded `.deb`
+
+Download `stepforge_<version>_amd64.deb` from the GitHub Release, then run:
+
+```bash
+sudo apt install ./stepforge_<version>_amd64.deb
+```
+
+This is useful for installing a specific release or testing a release asset.
+Unlike the PPA method, it will not receive new StepForge versions through
+normal apt upgrades; download and install each newer `.deb` yourself.
+
+apt pulls the required runtime libraries automatically (they are declared as
+`Depends`). Either installation method installs:
+
+- the app and a fixed Electron runtime under `/opt/stepforge`,
+- the `stepforge` launcher at `/usr/bin/stepforge`,
+- a desktop entry, icons, and `.sfgz`/`.sfglt` file associations,
+- the required StepForge Capture GNOME Shell extension.
+
+Launch it from your application menu or run `stepforge`.
+
+### Sandbox
+
+The launcher runs **sandboxed**. On most modern kernels the Chromium
+user-namespace sandbox works out of the box; the package's `postinst` also
+makes the setuid `chrome-sandbox` helper usable as a fallback. StepForge will
+**not** silently launch unsandboxed — see the launcher's message if the
+sandbox is unavailable.
 
 ## Install from the portable tarball
 

@@ -75,7 +75,8 @@ For a Windows installation, see [docs/windows_installation](docs/windows_install
 
 On **Ubuntu 26.04 / GNOME 50 Wayland**, the Ubuntu package includes the required
 StepForge Capture extension for regular click recording with markers. See the
-[GNOME setup and limitations](docs/linux/gnome-wayland.md).
+[recommended apt installation and alternative `.deb` instructions](docs/linux/apt.md),
+then see the [GNOME setup and limitations](docs/linux/gnome-wayland.md).
 
 Ubuntu 26.04 / GNOME 50 Wayland is the release-tested Linux target. X11 has a
 legacy generic capture path; Fedora/RHEL and other Wayland desktops have

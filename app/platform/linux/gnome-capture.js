@@ -167,6 +167,7 @@ class GnomeCaptureService extends CaptureService {
     const geometry = cropGeometry(frame.display.bounds, rect, frame.size);
     const image = nativeImage.createFromBuffer(frame.png).crop(geometry.pixels);
     return { ...frame, mode, png: image.toPNG(), size: image.getSize(),
+      captureBounds: geometry.bounds,
       display: { ...frame.display, bounds: geometry.bounds } };
   }
 

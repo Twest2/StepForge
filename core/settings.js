@@ -13,6 +13,7 @@ const DEFAULT_SETTINGS = {
     mode: 'fullscreen', // fullscreen | window | region
     includeCursor: true,
     clickMarker: true,
+    smartCropping: true, // Automatically focus recorded clicks; keep original pixels.
     clickMarkerColor: '#E5484D',
     hotkeyCapture: 'CommandOrControl+Shift+1',
     hotkeyPauseResume: 'CommandOrControl+Shift+2',

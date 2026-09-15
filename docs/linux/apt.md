@@ -4,36 +4,27 @@ The current `.deb` targets **Ubuntu 26.04 with GNOME 50**. See the
 [GNOME Wayland recording and testing guide](gnome-wayland.md). Fedora
 and other dnf-based systems have a separate guide: [dnf.md](dnf.md).
 
-## Recommended: install from the official Launchpad PPA
+## Recommended: install from the official APT repository
 
-For supported Ubuntu releases, the stable PPA publishes StepForge as
-`stepforge`. Add it once, then use normal apt upgrades:
+For supported Ubuntu releases, install the stable `stepforge` package from the
+official StepForge APT repository. Add the repository once, then use normal
+apt upgrades:
 
 ```bash
-sudo add-apt-repository ppa:twest39/stepforge
+sudo mkdir -p /etc/apt/keyrings
+
+sudo curl -fsSL \
+  -o /etc/apt/keyrings/stepforge.gpg \
+  https://packages.twestbrook.com/debian/stepforge/keys/stepforge.gpg
+
+echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/stepforge.gpg] https://packages.twestbrook.com/debian/stepforge/ resolute main" \
+  | sudo tee /etc/apt/sources.list.d/stepforge.list
+
 sudo apt update
 sudo apt install stepforge
 ```
 
-### If apt reports `NO_PUBKEY` for the PPA
-
-This should not occur on a new installation: `add-apt-repository` normally
-imports the PPA's repository key. It can occur if the PPA was added before
-Launchpad finished creating its signing key. Import the current public key and
-attach it to the existing source entry, then update again:
-
-```bash
-sudo install -d -m 0755 /etc/apt/keyrings
-curl -fsSL 'https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x9CA861A99DEE6171' \
-  | gpg --dearmor \
-  | sudo tee /etc/apt/keyrings/twest39-stepforge.gpg >/dev/null
-sudo sed -i '/^Signed-By:/d; $a Signed-By: /etc/apt/keyrings/twest39-stepforge.gpg' \
-  /etc/apt/sources.list.d/twest39-ubuntu-stepforge-resolute.sources
-sudo apt update
-```
-
-When a new StepForge release is published, its package is built by Launchpad
-and appears in that PPA. `apt update` downloads the updated package list; it
+Once configured, `apt update` downloads the updated StepForge package list; it
 does **not** install upgrades by itself. To install all available upgrades:
 
 ```bash
@@ -48,10 +39,8 @@ sudo apt install unattended-upgrades
 sudo dpkg-reconfigure --priority=low unattended-upgrades
 ```
 
-The PPA currently publishes an `amd64` package because its bundled Electron
-runtime is architecture-specific. It targets the Ubuntu series selected in
-the PPA release workflow. Maintainers can find the one-time publishing setup
-in [the Launchpad PPA guide](launchpad-ppa.md).
+The repository currently publishes an `amd64` package because its bundled
+Electron runtime is architecture-specific. It targets Ubuntu `resolute`.
 
 ## Alternative: install a downloaded `.deb`
 
@@ -62,7 +51,7 @@ sudo apt install ./stepforge_<version>_amd64.deb
 ```
 
 This is useful for installing a specific release or testing a release asset.
-Unlike the PPA method, it will not receive new StepForge versions through
+Unlike the APT repository method, it will not receive new StepForge versions through
 normal apt upgrades; download and install each newer `.deb` yourself.
 
 apt pulls the required runtime libraries automatically (they are declared as
@@ -74,6 +63,23 @@ apt pulls the required runtime libraries automatically (they are declared as
 - the required StepForge Capture GNOME Shell extension.
 
 Launch it from your application menu or run `stepforge`.
+
+## Uninstall
+
+Remove StepForge while keeping the repository configured for a later
+reinstallation:
+
+```bash
+sudo apt remove stepforge
+```
+
+To also remove the StepForge APT repository and its signing key:
+
+```bash
+sudo rm /etc/apt/sources.list.d/stepforge.list
+sudo rm /etc/apt/keyrings/stepforge.gpg
+sudo apt update
+```
 
 ### Sandbox
 

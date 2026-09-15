@@ -16,11 +16,20 @@ uninstall, privacy, and detailed recording instructions.
 
 ### Install
 
-**Recommended — install the stable release from the official Launchpad PPA.**
-Add the PPA once, then StepForge is installed and updated through apt:
+**Recommended — install the stable release from the official StepForge APT
+repository.** Add the repository once, then StepForge is installed and updated
+through apt:
 
 ```bash
-sudo add-apt-repository ppa:twest39/stepforge
+sudo mkdir -p /etc/apt/keyrings
+
+sudo curl -fsSL \
+  -o /etc/apt/keyrings/stepforge.gpg \
+  https://packages.twestbrook.com/debian/stepforge/keys/stepforge.gpg
+
+echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/stepforge.gpg] https://packages.twestbrook.com/debian/stepforge/ resolute main" \
+  | sudo tee /etc/apt/sources.list.d/stepforge.list
+
 sudo apt update
 sudo apt install stepforge
 ```

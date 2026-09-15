@@ -7,11 +7,19 @@ back to timed captures when the extension is missing.
 
 ## Install and test
 
-For the stable release, install StepForge from the official Launchpad PPA
+For the stable release, install StepForge from the official APT repository
 (recommended):
 
 ```bash
-sudo add-apt-repository ppa:twest39/stepforge
+sudo mkdir -p /etc/apt/keyrings
+
+sudo curl -fsSL \
+  -o /etc/apt/keyrings/stepforge.gpg \
+  https://packages.twestbrook.com/debian/stepforge/keys/stepforge.gpg
+
+echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/stepforge.gpg] https://packages.twestbrook.com/debian/stepforge/ resolute main" \
+  | sudo tee /etc/apt/sources.list.d/stepforge.list
+
 sudo apt update
 sudo apt install stepforge
 ```

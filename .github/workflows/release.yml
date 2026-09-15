@@ -168,9 +168,26 @@ jobs:
       # Releases created with GITHUB_TOKEN do not emit a release event that
       # starts another workflow. Dispatch the PPA workflow explicitly so every
       # stable release created here is uploaded to Launchpad.
-      - name: Start Launchpad PPA upload
+      - name: Publish Debian package to ProGet
         if: inputs.prerelease == false
+        shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ inputs.version }}
-        run: gh workflow run release-ppa.yml --ref main -f version="$TAG"
+          PROGET_API_KEY: ${{ secrets.PROGET_API_KEY }}
+        run: |
+          set -euo pipefail
+      
+          DEB_FILE="$(find dist/linux-ubuntu -maxdepth 1 -name '*.deb' -type f | head -n 1)"
+      
+          if [ -z "$DEB_FILE" ]; then
+            echo "No .deb package found"
+            exit 1
+          fi
+      
+          echo "Uploading $DEB_FILE to ProGet..."
+      
+          curl --fail-with-body \
+            --request PUT \
+            --header "X-ApiKey: $PROGET_API_KEY" \
+            --header "Content-Type: application/octet-stream" \
+            --data-binary "@$DEB_FILE" \
+            "https://upload-packages-ksdbfjsadbfshjkafb.twestbrook.com/api/packages/stepforge/upload?distribution=resolute&component=main"

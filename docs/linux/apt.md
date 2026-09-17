@@ -24,20 +24,11 @@ sudo apt update
 sudo apt install stepforge
 ```
 
-Once configured, `apt update` downloads the updated StepForge package list; it
-does **not** install upgrades by itself. To install all available upgrades:
+Once configured, `apt update` downloads the updated StepForge package list. To install all available updates:
 
 ```bash
 sudo apt update
 sudo apt upgrade
-```
-
-To have Ubuntu install upgrades automatically, enable its standard unattended
-upgrades service:
-
-```bash
-sudo apt install unattended-upgrades
-sudo dpkg-reconfigure --priority=low unattended-upgrades
 ```
 
 The repository currently publishes an `amd64` package because its bundled
@@ -54,16 +45,6 @@ sudo apt install ./stepforge_<version>_amd64.deb
 This is useful for installing a specific release or testing a release asset.
 Unlike the APT repository method, it will not receive new StepForge versions through
 normal apt upgrades; download and install each newer `.deb` yourself.
-
-apt pulls the required runtime libraries automatically (they are declared as
-`Depends`). Either installation method installs:
-
-- the app and a fixed Electron runtime under `/opt/stepforge`,
-- the `stepforge` launcher at `/usr/bin/stepforge`,
-- a desktop entry, icons, and `.sfgz`/`.sfglt` file associations,
-- the required StepForge Capture GNOME Shell extension.
-
-Launch it from your application menu or run `stepforge`.
 
 ## Uninstall
 

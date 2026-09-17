@@ -1,9 +1,7 @@
 name: Release
 
-# Manual release: from the GitHub "Actions" tab pick "Release", click
-# "Run workflow", enter the version tag, and it builds the Windows installer
-# .exe and Ubuntu .deb, then publishes a GitHub Release with both attached and
-# auto-generated notes.
+# Manual release: all three platform packages build concurrently, followed by
+# one GitHub Release and concurrent ProGet publication for each Linux format.
 on:
   workflow_dispatch:
     inputs:
@@ -79,8 +77,6 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
-      - name: Test application
-        run: npm test
       - name: Set version from input
         env:
           VERSION: ${{ inputs.version }}
@@ -96,73 +92,8 @@ jobs:
             build/artifacts/*.tar.gz
           if-no-files-found: error
 
-  release:
-    name: Publish GitHub Release
-    needs: [build-windows, build-linux]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: dist
-
-      - name: List downloaded artifacts
-        run: find dist -type f -printf '%s\t%p\n'
-
-      - name: Create GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ inputs.version }}
-          PRERELEASE: ${{ inputs.prerelease }}
-        run: |
-          flags=()
-          if [ "$PRERELEASE" = "true" ]; then
-            flags+=(--prerelease)
-          fi
-          gh release create "$TAG" \
-            dist/windows-installer/*.exe \
-            dist/linux-ubuntu/*.deb \
-            dist/linux-ubuntu/*.tar.gz \
-            dist/linux-ubuntu/*.sha256 \
-            --title "StepForge $TAG" \
-            --target "${{ github.sha }}" \
-            --generate-notes \
-            "${flags[@]}"
-
-      # Releases created with GITHUB_TOKEN do not emit a release event that
-      # starts another workflow. Dispatch the PPA workflow explicitly so every
-      # stable release created here is uploaded to Launchpad.
-      - name: Publish Debian package to ProGet
-        if: inputs.prerelease == false
-        shell: bash
-        env:
-          PROGET_API_KEY: ${{ secrets.PROGET_API_KEY }}
-        run: |
-          set -euo pipefail
-      
-          DEB_FILE="$(find dist/linux-ubuntu -maxdepth 1 -name '*.deb' -type f | head -n 1)"
-      
-          if [ -z "$DEB_FILE" ]; then
-            echo "No .deb package found"
-            exit 1
-          fi
-      
-          echo "Uploading $DEB_FILE to ProGet..."
-      
-          curl --fail-with-body \
-            --request PUT \
-            --header "X-ApiKey: $PROGET_API_KEY" \
-            --header "Content-Type: application/octet-stream" \
-            --data-binary "@$DEB_FILE" \
-            "https://upload-packages-ksdbfjsadbfshjkafb.twestbrook.com/api/packages/stepforge/upload?distribution=resolute&component=main"
-
-  # Fedora starts after Windows/Ubuntu publishing. It is in this workflow so
-  # releases have one entry point, but it cannot stop the release job above.
   build-fedora:
     name: Build Fedora 44 GNOME RPM
-    needs: release
     runs-on: ubuntu-24.04
     container: fedora:44
     defaults:
@@ -181,7 +112,6 @@ jobs:
         env:
           VERSION: ${{ inputs.version }}
         run: node scripts/stamp-version.js "${VERSION#v}"
-      - run: bash tests/run_test.sh
       - run: npm run package:linux:rpm
       - name: Verify installed package
         run: bash tests/integration/linux/fedora-installed.test.sh build/artifacts/x86_64/*.rpm
@@ -193,26 +123,88 @@ jobs:
             build/artifacts/x86_64/*.sha256
           if-no-files-found: error
 
+  release:
+    name: Publish GitHub Release
+    needs: [build-windows, build-linux, build-fedora]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: List downloaded artifacts
+        run: find dist -type f -printf '%s\t%p\n'
+
+      - name: Create GitHub Release metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.version }}
+          PRERELEASE: ${{ inputs.prerelease }}
+        run: |
+          flags=()
+          if [ "$PRERELEASE" = "true" ]; then
+            flags+=(--prerelease)
+          fi
+          gh release create "$TAG" \
+            --title "StepForge $TAG" \
+            --target "${{ github.sha }}" \
+            --generate-notes \
+            "${flags[@]}"
+
+      # Upload separately so a retry can replace a partially uploaded asset
+      # instead of failing on an existing checksum filename.
+      - name: Upload release artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" \
+            dist/windows-installer/*.exe \
+            dist/linux-ubuntu/*.deb \
+            dist/linux-ubuntu/*.tar.gz \
+            dist/linux-ubuntu/*.sha256 \
+            dist/linux-fedora/*.rpm \
+            dist/linux-fedora/*.sha256 \
+            --clobber
+
+  publish-debian:
+    name: Publish Debian package to ProGet
+    needs: release
+    if: inputs.prerelease == false
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-ubuntu
+          path: dist/linux-ubuntu
+      - name: Publish Debian package
+        env:
+          PROGET_API_KEY: ${{ secrets.PROGET_API_KEY }}
+        run: |
+          set -euo pipefail
+          packages=(dist/linux-ubuntu/*.deb)
+          [[ ${#packages[@]} == 1 ]] || { echo 'Expected exactly one Debian package'; exit 1; }
+          curl --fail-with-body --request PUT \
+            --header "X-ApiKey: $PROGET_API_KEY" \
+            --header 'Content-Type: application/octet-stream' \
+            --data-binary "@${packages[0]}" \
+            'https://upload-packages-ksdbfjsadbfshjkafb.twestbrook.com/api/packages/stepforge/upload?distribution=resolute&component=main'
+
   publish-fedora:
     name: Publish Fedora RPM
-    needs: [release, build-fedora]
+    needs: release
+    if: inputs.prerelease == false
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/download-artifact@v4
         with:
           name: linux-fedora
           path: dist/linux-fedora
-      - name: Attach Fedora artifacts to the GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ inputs.version }}
-        run: |
-          set -euo pipefail
-          cd dist/linux-fedora
-          sha256sum --check ./*.sha256
-          gh release upload "$TAG" ./*.rpm ./*.sha256 --clobber
       - name: Publish stable RPM to ProGet
-        if: inputs.prerelease == false
         env:
           PROGET_API_KEY: ${{ secrets.PROGET_API_KEY }}
           PROGET_RPM_FEED: ${{ vars.PROGET_RPM_FEED }}

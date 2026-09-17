@@ -1,96 +1,142 @@
-# StepForge on Fedora 44 Workstation / GNOME 50
+# StepForge on Fedora
 
-The Fedora x86_64 RPM uses the same application, GNOME Capture extension,
-Python helper, and consented Portal/PipeWire capture path as Ubuntu. Fedora 44
-ships GNOME 50; the RPM requires GNOME 50 and rejects incompatible Shell
-versions. KDE, RHEL, and older Fedora releases are not supported by this RPM.
-See [Fedora's GNOME 50 target](https://fedoraproject.org/wiki/Test_Day:2026-02-11_GNOME_50_Desktop).
+StepForge provides an RPM package for **Fedora 44 Workstation with GNOME 50 on x86_64**.
 
-## Install an RPM
+The recommended installation method is the StepForge DNF repository because future StepForge releases can then be installed through normal Fedora updates.
 
-Download the `.fc44.x86_64.rpm` and its `.sha256` from a GitHub Release, or
-from the PR's `fedora-44-gnome-test-package` artifact. In their directory:
+If you prefer not to add the repository, you can also download the RPM directly from the [StepForge GitHub Releases](https://github.com/Twest2/StepForge/releases) page.
 
-```bash
-sha256sum --check stepforge-<version>-1.fc44.x86_64.rpm.sha256
-sudo dnf install ./stepforge-<version>-1.fc44.x86_64.rpm
-rpm -q stepforge
-```
+## Recommended: install from the StepForge DNF repository
 
-DNF installs the required GNOME, Python/GObject, GStreamer, PipeWire and portal
-libraries. The package includes Electron, production npm dependencies, desktop
-and MIME integration, and the extension in
-`/usr/share/gnome-shell/extensions/stepforge@twestbrook.com`.
-
-Log out and back in after the first install or extension update. Launch
-StepForge, open a guide, start recording, accept the extension-enable prompt,
-and share every monitor you intend to record. Normal clicks create steps with
-markers. Stop from **StepForge REC** in the GNOME panel or the restored app.
-See the [shared GNOME recording behavior and limitations](gnome-wayland.md#what-is-and-is-not-windows-parity).
-
-The launcher retains sandboxing; the RPM installs the Chromium sandbox helper
-with root ownership and mode 4755. Do not disable SELinux or the sandbox to
-work around a desktop failure. Report the failure with Fedora/GNOME versions.
-
-To remove the package (guides and settings in your home directory remain):
+First, make sure Fedora is up to date:
 
 ```bash
-gnome-extensions disable stepforge@twestbrook.com
-sudo dnf remove stepforge
+sudo dnf upgrade --refresh
 ```
 
-A source-installed per-user extension may override the packaged copy. Remove
-that old copy before testing package updates, as described in the GNOME guide.
+Add the StepForge repository:
 
-## ProGet repository setup
+```bash
+sudo tee /etc/yum.repos.d/stepforge-rpm.repo > /dev/null <<'EOF'
+[stepforge-rpm]
+name=StepForge RPM Repository
+baseurl=https://packages.twestbrook.com/rpm/stepforge-rpm/
+enabled=1
+gpgcheck=0
+EOF
+```
 
-ProGet's Debian and RPM feeds are different feed types. The existing Debian
-feed `stepforge` remains unchanged. Create a separate **RPM feed**, for example
-`stepforge-fedora`, on your existing ProGet server. Configure package signing
-in that feed and use its **Connect to Feed** instructions to install the DNF
-repository and its signing key on Fedora. Keep package signature verification
-enabled. Once configured:
+Refresh DNF's repository metadata:
+
+```bash
+sudo dnf clean metadata
+sudo dnf makecache --refresh
+```
+
+Install StepForge:
 
 ```bash
 sudo dnf install stepforge
+```
+
+You can verify the installed version with:
+
+```bash
+rpm -q stepforge
+```
+
+After the first installation or after an update to the bundled GNOME extension, log out and back in before recording.
+
+## Updating StepForge
+
+Because StepForge is installed through DNF, it can be updated alongside the rest of Fedora.
+
+To refresh repository metadata and install all available system updates:
+
+```bash
+sudo dnf update
+sudo dnf upgrade -y
+```
+
+To update only StepForge:
+
+```bash
 sudo dnf upgrade stepforge
 ```
 
-In GitHub repository **Settings → Secrets and variables → Actions**, configure:
+You do not need to manually download a new RPM when using the repository.
 
-| Setting | Type | Value |
-| --- | --- | --- |
-| `PROGET_RPM_FEED` | Variable | Your separate RPM feed name, e.g. `stepforge-fedora` |
-| `PROGET_API_KEY` | Secret | Existing key, with upload permission on the RPM feed |
-| `PROGET_UPLOAD_URL` | Optional variable | Upload server origin; defaults to the same host as the existing Debian workflow |
+## Alternative: install the RPM from GitHub Releases
 
-The Fedora workflow uses ProGet's [Upload Package API](https://docs.inedo.com/docs/proget/api/packages/upload),
-including the RPM filename in the URL. It does not send Debian distribution or
-component parameters. No credentials are required for PR builds.
+You can install StepForge without adding the DNF repository.
 
-## CI and releases
+Download the Fedora RPM from the [StepForge GitHub Releases](https://github.com/Twest2/StepForge/releases) page.
 
-**Fedora CI** is a separate workflow. It builds inside `fedora:44` on an x86_64
-runner, executes repository tests and RPM metadata/payload/checksum checks,
-installs the built RPM with DNF, imports the installed capture helper, checks
-GStreamer elements, and renders a packaged app window under Xvfb.
+The filename will look similar to:
 
-The existing **Release** workflow finishes Windows/Ubuntu publishing first,
-then calls **Release Fedora**. Fedora checks out that exact release tag,
-stamps the version, tests/builds/installs the RPM, and attaches only RPM and RPM
-checksum files to the existing GitHub Release. Stable releases also upload to
-the RPM feed; prereleases do not. Missing ProGet configuration fails the Fedora
-publish step with setup guidance, leaving the existing release assets intact.
+```text
+stepforge-<version>-1.fc44.x86_64.rpm
+```
 
-Retry **Release Fedora** manually with the same tag after fixing configuration.
-This can also add Fedora artifacts to a release whose tag contains the Fedora
-support files. Tags from before this change cannot use the new build/test
-scripts. Retries replace only the matching Fedora assets; they do not modify
-tags, Windows installers, Ubuntu packages, or the Debian feed.
+Then open a terminal in the directory containing the downloaded file and install it with:
 
-## Build from source
+```bash
+sudo dnf install ./stepforge-<version>-1.fc44.x86_64.rpm
+```
 
-On Fedora 44 Workstation:
+For example:
+
+```bash
+sudo dnf install ./stepforge-0.5.0.0-1.fc44.x86_64.rpm
+```
+
+Using `dnf install` instead of `rpm -i` allows DNF to automatically install required dependencies.
+
+If you downloaded the accompanying checksum file, you can verify the package before installing it:
+
+```bash
+sha256sum --check stepforge-<version>-1.fc44.x86_64.rpm.sha256
+```
+
+The GitHub Release method is useful if you want a specific version or do not want to add the StepForge repository.
+
+However, installations made this way **will not automatically receive new StepForge versions**. You will need to download and install each newer RPM yourself.
+
+## Uninstall
+
+Remove StepForge with:
+
+```bash
+sudo dnf remove stepforge
+```
+
+If you installed the DNF repository and also want to remove it:
+
+```bash
+sudo rm /etc/yum.repos.d/stepforge-rpm.repo
+sudo dnf clean metadata
+```
+
+Your StepForge guides and settings stored in your home directory are not automatically deleted when the package is removed.
+
+## GNOME Wayland recording
+
+The Fedora package includes the StepForge GNOME Capture extension and required capture helper.
+
+On GNOME Wayland, StepForge uses the XDG Desktop Portal and PipeWire for screen capture while the bundled GNOME extension provides mouse-click information and coordinates.
+
+On the first recording:
+
+1. Start a recording from StepForge.
+2. Allow the StepForge GNOME extension if prompted.
+3. Select the monitors you want StepForge to capture.
+4. Use the **StepForge REC** indicator in the GNOME panel to control the recording.
+
+See [GNOME Wayland recording and testing](gnome-wayland.md) for more information about capture behavior and limitations.
+
+## Build the RPM yourself
+
+To build StepForge from source on Fedora:
 
 ```bash
 bash scripts/linux/dnf/install-build-deps.sh
@@ -99,22 +145,10 @@ nvm install && nvm use
 npm ci
 bash tests/run_test.sh
 npm run package:linux:rpm
-# Output: build/artifacts/x86_64/*.rpm and *.rpm.sha256
 ```
 
-The Fedora builder shares `packaging/linux/common/stage-runtime.sh` with Debian
-and keeps its RPM metadata separate. It packages only runtime dependencies;
-it never installs dependencies when the application starts.
+The generated RPM and checksum are placed under:
 
-## Desktop verification
-
-Container CI verifies packaging, dependency resolution and UI startup. It
-cannot certify a real Fedora Wayland desktop or SELinux sandbox operation.
-Before a production release, install the RPM on Fedora 44 Workstation with
-SELinux enforcing and verify regular mouse/touchpad clicks, native Wayland and
-XWayland applications, multi-monitor scaling, pause/resume, cancellation,
-screen lock, extension disablement, save/reopen, and export. Check that a click
-on an unshared monitor reports an error without capturing the wrong monitor.
-The [GNOME integration test](../../tests/integration/linux/gnome-shell.test.sh)
-can additionally exercise a private GNOME compositor with the requisite test
-libraries installed; it does not interact with your real desktop.
+```text
+build/artifacts/x86_64/
+```

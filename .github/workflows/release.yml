@@ -472,7 +472,7 @@ jobs:
               --write-out '%{http_code}' \
               --request POST \
               --header "X-ApiKey: $PROGET_API_KEY" \
-              "https://upload-packages-ksdbfjsadbfshjkafb.twestbrook.com/api/packages/stepforge/delete?name=stepforge&version=$package_version"
+              "https://upload-packages-ksdbfjsadbfshjkafb.twestbrook.com/api/packages/stepforge/delete?name=stepforge&version=$package_version&qualifier=arch%3Damd64%26component%3Dmain%26distro%3Dresolute"
           )"
 
           case "$delete_status" in

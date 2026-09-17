@@ -12,6 +12,9 @@
 %global __os_install_post %{nil}
 # Do not export private bundled libraries as system RPM capabilities.
 %global __provides_exclude_from ^/opt/stepforge/.*$
+# Electron resolves this private library from its own runtime directory.
+# Preserve automatic detection of all other system library requirements.
+%global __requires_exclude ^libffmpeg[.]so.*$
 
 Name:           stepforge
 Version:        @VERSION@

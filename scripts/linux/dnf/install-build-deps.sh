@@ -14,6 +14,7 @@ if [ "$(id -u)" -ne 0 ]; then SUDO="sudo"; fi
 
 PACKAGES=(
   rpm-build rpmdevtools findutils tar gzip diffutils file   # build the .rpm
+  dpkg                    # shared build-release test also exercises the .deb/tar builder
   desktop-file-utils      # validate the .desktop entry
   ca-certificates         # npm ci over https
   xorg-x11-xauth dbus-daemon

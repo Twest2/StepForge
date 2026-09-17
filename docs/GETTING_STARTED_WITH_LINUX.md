@@ -71,6 +71,14 @@ clipped. Regions must fit within one shared monitor. Raw typed text and
 Windows UI Automation element labels are not collected on GNOME. Screen-share
 consent is always required; the extension does not bypass it.
 
+## Fedora 44 Workstation
+
+Fedora 44 / GNOME 50 Wayland has a separate RPM package and GitHub Actions
+build/install workflow. It shares Ubuntu's GNOME extension and Portal/PipeWire
+architecture. See [Fedora installation and ProGet setup](linux/dnf.md).
+Automated Fedora checks cover the installed package and UI startup; real
+Wayland desktop recording still needs the documented manual validation.
+
 ## Other Linux environments
 
 The following paths exist but are not the release-tested GNOME Wayland target:
@@ -78,7 +86,7 @@ The following paths exist but are not the release-tested GNOME Wayland target:
 | Environment | Status | Recording behavior |
 | --- | --- | --- |
 | X11/Xorg | Legacy/developer path | `xinput` can provide click positions and markers. |
-| Fedora/RHEL and other dnf systems | Packaging/developer path | See [dnf.md](linux/dnf.md); no GNOME Wayland regular-click support claim. |
+| RHEL and older Fedora releases | Not supported by the Fedora 44 RPM | The package requires GNOME 50. |
 | Other Wayland desktops (KDE, wlroots, etc.) | Not supported for regular global-click recording | Portal screenshots may work; use explicit captures rather than assuming click recording. |
 
 Do not add the user to the broad `input` group to work around Wayland input

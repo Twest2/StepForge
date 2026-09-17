@@ -7,15 +7,22 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 cd "$ROOT_DIR"
 
-VERSION="$(node -p "require('./package.json').version")"
+VERSION="$(node -p "require('./package.json').buildVersion || require('./package.json').version")"
 MAINTAINER="${STEPFORGE_MAINTAINER:-StepForge <tyler@twestbrook.com>}"
 OUT_DIR="${STEPFORGE_PACKAGE_DIR:-$ROOT_DIR/build/artifacts}"
 mkdir -p "$OUT_DIR"
+OUT_DIR="$(cd "$OUT_DIR" && pwd)"
 
 if ! command -v rpmbuild >/dev/null 2>&1; then
   echo "error: rpmbuild is not installed. Run scripts/linux/dnf/install-build-deps.sh" >&2
   exit 1
 fi
+
+# Reject metadata that cannot safely be substituted into the RPM spec.
+[[ "$VERSION" =~ ^[0-9]+(\.[0-9]+){2,3}$ ]] || {
+  echo "error: expected a numeric three- or four-component package version" >&2
+  exit 1
+}
 
 # RPM arch label from the host.
 RPM_ARCH="$(rpm --eval '%{_arch}' 2>/dev/null || uname -m)"

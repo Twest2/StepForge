@@ -15,6 +15,12 @@ test('Windows selects exactly the existing capture class regardless of Linux env
   assert.equal(captureServiceClass('linux', { XDG_SESSION_TYPE: 'wayland', XDG_CURRENT_DESKTOP: 'ubuntu:GNOME' }), Gnome);
 });
 
+test('Fedora GNOME Wayland selects the shared companion without changing other desktops', () => {
+  assert.equal(captureServiceClass('linux', { XDG_SESSION_TYPE: 'wayland', XDG_CURRENT_DESKTOP: 'GNOME' }), Gnome);
+  assert.equal(captureServiceClass('linux', { WAYLAND_DISPLAY: 'wayland-0', XDG_CURRENT_DESKTOP: 'GNOME' }), Gnome);
+  assert.equal(captureServiceClass('linux', { XDG_SESSION_TYPE: 'wayland', XDG_CURRENT_DESKTOP: 'KDE' }), Base);
+});
+
 test('Shell button transitions produce one step per press, including simultaneous and held buttons', async () => {
   const source = fs.readFileSync(path.join(__dirname, '../../gnome-extension/stepforge@twestbrook.com/buttons.js'), 'utf8');
   const { Buttons } = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));

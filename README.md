@@ -1,7 +1,7 @@
 # StepForge
 
 StepForge is a **local-first**, open-source desktop app for Windows and
-Ubuntu 26.04 with GNOME 50 on Wayland. It captures step-by-step workflows as screenshots, lets
+Ubuntu 26.04 and Fedora 44 Workstation with GNOME 50 on Wayland. It captures step-by-step workflows as screenshots, lets
 you annotate and describe each step in a focused three-pane editor, and
 exports the result to Markdown, DOCX, PPTX, PDF, HTML (WIP), GIF (WIP),
 confluence (WIP), Wiki.js (WIP), and image bundles (WIP). The current
@@ -78,10 +78,12 @@ StepForge Capture extension for regular click recording with markers. See the
 [recommended apt installation and alternative `.deb` instructions](docs/linux/apt.md),
 then see the [GNOME setup and limitations](docs/linux/gnome-wayland.md).
 
-Ubuntu 26.04 / GNOME 50 Wayland is the release-tested Linux target. X11 has a
-legacy generic capture path; Fedora/RHEL and other Wayland desktops have
-packaging/source instructions but are not release-tested for regular global
-click recording. See [Linux support](docs/GETTING_STARTED_WITH_LINUX.md).
+**Fedora 44 Workstation / GNOME 50 Wayland** has a separate RPM build and
+ProGet publishing workflow using the same GNOME capture architecture. See the
+[Fedora installation, repository setup, and validation guide](docs/linux/dnf.md).
+Ubuntu remains the release-tested desktop; Fedora has container build/install
+checks and a documented desktop validation checklist. See
+[Linux support](docs/GETTING_STARTED_WITH_LINUX.md) for other environments.
 
 Requirements: Node.js 22.12+ and npm (pinned in `.nvmrc`; installs are
 refused on older Nodes because the packaging toolchain needs 22.12+).
@@ -119,6 +121,7 @@ bash scripts/bootstrap-offline.sh   # verify toolchain availability
 bash scripts/verify.sh              # full test suite + smoke checks
 bash scripts/build-release.sh       # assemble runnable app directory
 npm run package:linux:deb           # Ubuntu 26.04 / GNOME 50 package
+npm run package:linux:rpm           # Fedora 44 / GNOME 50 RPM (separate workflow)
 npm run package:windows             # Windows installer .exe in releases/
 pwsh scripts/package-windows.ps1    # same Windows installer build via PowerShell
 ```

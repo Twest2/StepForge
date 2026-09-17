@@ -7,6 +7,14 @@
 %global debug_package %{nil}
 %global __brp_check_rpaths %{nil}
 %define _build_id_links none
+# Electron and OCR binaries are prebuilt upstream. Do not strip, rewrite
+# Python shebangs, or byte-compile this shared runtime payload.
+%global __os_install_post %{nil}
+# Do not export private bundled libraries as system RPM capabilities.
+%global __provides_exclude_from ^/opt/stepforge/.*$
+# Electron resolves this private library from its own runtime directory.
+# Preserve automatic detection of all other system library requirements.
+%global __requires_exclude ^libffmpeg[.]so.*$
 
 Name:           stepforge
 Version:        @VERSION@
@@ -26,9 +34,28 @@ Requires:       gtk3
 Requires:       mesa-libgbm
 Requires:       alsa-lib
 Requires:       libxkbcommon
+Requires:       at-spi2-core
+Requires:       libdrm
+Requires:       libXcomposite
+Requires:       libXdamage
+Requires:       libXfixes
+Requires:       libXrandr
+Requires:       libxshmfence
+# Same GNOME 50 companion + consented portal pipeline as the Ubuntu package.
+Requires:       gnome-shell >= 50
+Requires:       gnome-shell < 51
+Requires:       python3
+Requires:       python3-gobject
+Requires:       gdk-pixbuf2
+Requires:       gstreamer1
+Requires:       gstreamer1-plugins-base
+Requires:       pipewire-gstreamer
+Requires:       glib2
+Requires:       xdg-desktop-portal
+Requires:       xdg-desktop-portal-gnome
+Requires:       pipewire
+Requires:       wireplumber
 Recommends:     xinput
-Recommends:     xdg-desktop-portal
-Recommends:     pipewire
 
 # The payload is architecture-specific (bundles the Electron binary).
 %description
@@ -39,7 +66,9 @@ integration. This package bundles a fixed Electron runtime and only
 production dependencies; it does not install anything at runtime.
 
 %files
+%defattr(-,root,root,-)
 /opt/stepforge
+%attr(4755,root,root) /opt/stepforge/node_modules/electron/dist/chrome-sandbox
 /usr/bin/stepforge
 /usr/share/applications/stepforge.desktop
 /usr/share/mime/packages/stepforge.xml

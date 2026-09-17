@@ -184,10 +184,27 @@ jobs:
       - name: Publish Debian package
         env:
           PROGET_API_KEY: ${{ secrets.PROGET_API_KEY }}
+          VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
           packages=(dist/linux-ubuntu/*.deb)
           [[ ${#packages[@]} == 1 ]] || { echo 'Expected exactly one Debian package'; exit 1; }
+          package_version="${VERSION#v}"
+          # A replacement release must not be blocked by the exact package
+          # version left by an earlier failed publishing attempt. Only a 404
+          # (nothing to replace) is also acceptable; auth/server failures are
+          # surfaced and stop the release.
+          delete_status="$(curl --silent --show-error \
+            --output "$RUNNER_TEMP/proget-delete-response.json" \
+            --write-out '%{http_code}' \
+            --request POST \
+            --header "X-ApiKey: $PROGET_API_KEY" \
+            "https://upload-packages-ksdbfjsadbfshjkafb.twestbrook.com/api/packages/stepforge/delete?name=stepforge&version=$package_version")"
+          case "$delete_status" in
+            200) echo "Removed existing StepForge Debian package $package_version from ProGet." ;;
+            404) echo "No existing StepForge Debian package $package_version in ProGet." ;;
+            *) cat "$RUNNER_TEMP/proget-delete-response.json" >&2 || true; exit 1 ;;
+          esac
           curl --fail-with-body --request PUT \
             --header "X-ApiKey: $PROGET_API_KEY" \
             --header 'Content-Type: application/octet-stream' \

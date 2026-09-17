@@ -18,11 +18,12 @@ on:
 # Needed for the release job to create the tag and the GitHub Release.
 permissions:
   contents: write
-  
+
 jobs:
   build-windows:
     name: Build Windows installer
     runs-on: windows-latest
+
     steps:
       - uses: actions/checkout@v4
 
@@ -66,23 +67,30 @@ jobs:
           path: releases/*.exe
           if-no-files-found: error
 
+
   build-linux:
     name: Build Ubuntu GNOME package
     runs-on: ubuntu-24.04
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
           cache: npm
+
       - name: Install dependencies
         run: npm ci
+
       - name: Set version from input
         env:
           VERSION: ${{ inputs.version }}
         run: node scripts/stamp-version.js "${VERSION#v}"
+
       - name: Build Ubuntu package and checksums
         run: npm run package:linux:deb
+
       - uses: actions/upload-artifact@v4
         with:
           name: linux-ubuntu
@@ -92,29 +100,42 @@ jobs:
             build/artifacts/*.tar.gz
           if-no-files-found: error
 
+
   build-fedora:
     name: Build Fedora 44 GNOME RPM
     runs-on: ubuntu-24.04
     container: fedora:44
+
     defaults:
       run:
         shell: bash
+
     steps:
       - run: dnf install -y git findutils tar gzip xz
+
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
           cache: npm
+
       - run: bash scripts/linux/dnf/install-build-deps.sh
+
       - run: npm ci
+
       - name: Stamp release version
         env:
           VERSION: ${{ inputs.version }}
         run: node scripts/stamp-version.js "${VERSION#v}"
+
       - run: npm run package:linux:rpm
+
       - name: Verify installed package
-        run: bash tests/integration/linux/fedora-installed.test.sh build/artifacts/x86_64/*.rpm
+        run: |
+          bash tests/integration/linux/fedora-installed.test.sh \
+            build/artifacts/x86_64/*.rpm
+
       - uses: actions/upload-artifact@v4
         with:
           name: linux-fedora
@@ -123,10 +144,16 @@ jobs:
             build/artifacts/x86_64/*.sha256
           if-no-files-found: error
 
+
   release:
     name: Publish GitHub Release
-    needs: [build-windows, build-linux, build-fedora]
-    runs-on: ubuntu-latest
+    needs:
+      - build-windows
+      - build-linux
+      - build-fedora
+
+    runs-on: ubuntu-24.04
+
     steps:
       - uses: actions/checkout@v4
 
@@ -138,89 +165,346 @@ jobs:
       - name: List downloaded artifacts
         run: find dist -type f -printf '%s\t%p\n'
 
-      - name: Create GitHub Release metadata
+      # Make release creation idempotent. If a previous attempt created the
+      # release but later failed while uploading an asset, rerunning this
+      # workflow will reuse the existing release instead of failing here.
+      - name: Create or reuse GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.version }}
           PRERELEASE: ${{ inputs.prerelease }}
         run: |
+          set -euo pipefail
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "GitHub Release $TAG already exists; reusing it."
+            exit 0
+          fi
+
           flags=()
+
           if [ "$PRERELEASE" = "true" ]; then
             flags+=(--prerelease)
           fi
+
           gh release create "$TAG" \
             --title "StepForge $TAG" \
             --target "${{ github.sha }}" \
             --generate-notes \
             "${flags[@]}"
 
-      # Upload separately so a retry can replace a partially uploaded asset
-      # instead of failing on an existing checksum filename.
-      - name: Upload release artifacts
+      # GitHub Release uploads occasionally finish server-side even when the
+      # gh client receives an error. This uploader therefore:
+      #
+      # 1. Checks whether the exact asset already exists and is valid.
+      # 2. Removes stale/incomplete "starter" assets.
+      # 3. Uploads every asset independently.
+      # 4. Verifies size and SHA-256 after an upload.
+      # 5. Treats a client-side error as success if GitHub actually received
+      #    the complete file.
+      # 6. Retries incomplete uploads up to three times.
+      #
+      # Assets are uploaded concurrently so one slow GitHub upload does not
+      # block all of the others.
+      - name: Upload and verify release artifacts
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          gh release upload "$TAG" \
-            dist/windows-installer/*.exe \
-            dist/linux-ubuntu/*.deb \
-            dist/linux-ubuntu/*.tar.gz \
-            dist/linux-ubuntu/*.sha256 \
-            dist/linux-fedora/*.rpm \
-            dist/linux-fedora/*.sha256 \
-            --clobber
+          shopt -s nullglob
+
+          files=(
+            dist/windows-installer/*.exe
+            dist/linux-ubuntu/*.deb
+            dist/linux-ubuntu/*.tar.gz
+            dist/linux-ubuntu/*.sha256
+            dist/linux-fedora/*.rpm
+            dist/linux-fedora/*.sha256
+          )
+
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No release artifacts were found." >&2
+            exit 1
+          fi
+
+          get_asset_json() {
+            local asset_name="$1"
+
+            gh api \
+              "repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" |
+              jq -c \
+                --arg name "$asset_name" \
+                '[.assets[] | select(.name == $name)][0] // empty'
+          }
+
+          asset_matches_file() {
+            local file="$1"
+            local asset_name
+            local expected_size
+            local expected_digest
+            local asset_json
+            local state
+            local remote_size
+            local remote_digest
+
+            asset_name="$(basename "$file")"
+            expected_size="$(stat -c '%s' "$file")"
+            expected_digest="sha256:$(sha256sum "$file" | awk '{print $1}')"
+
+            asset_json="$(get_asset_json "$asset_name")"
+
+            if [ -z "$asset_json" ]; then
+              return 1
+            fi
+
+            state="$(jq -r '.state // empty' <<< "$asset_json")"
+            remote_size="$(jq -r '.size // 0' <<< "$asset_json")"
+            remote_digest="$(jq -r '.digest // empty' <<< "$asset_json")"
+
+            if [ "$state" != "uploaded" ]; then
+              return 1
+            fi
+
+            if [ "$remote_size" != "$expected_size" ]; then
+              return 1
+            fi
+
+            # Older GitHub responses may not provide the digest. If a digest
+            # exists, require it to match. Otherwise the uploaded state and
+            # exact byte count are used for verification.
+            if [ -n "$remote_digest" ] &&
+               [ "$remote_digest" != "$expected_digest" ]; then
+              return 1
+            fi
+
+            return 0
+          }
+
+          delete_asset() {
+            local asset_name="$1"
+            local asset_json
+            local asset_id
+            local state
+
+            asset_json="$(get_asset_json "$asset_name")"
+
+            if [ -z "$asset_json" ]; then
+              return 0
+            fi
+
+            asset_id="$(jq -r '.id' <<< "$asset_json")"
+            state="$(jq -r '.state // "unknown"' <<< "$asset_json")"
+
+            echo "Deleting existing asset:"
+            echo "  Name:  $asset_name"
+            echo "  State: $state"
+            echo "  ID:    $asset_id"
+
+            gh api \
+              --method DELETE \
+              "repos/${GITHUB_REPOSITORY}/releases/assets/${asset_id}"
+          }
+
+          wait_for_valid_asset() {
+            local file="$1"
+            local check
+
+            # Allow GitHub's release API a little time to become consistent
+            # after uploads finish.
+            for check in 1 2 3 4 5 6; do
+              if asset_matches_file "$file"; then
+                return 0
+              fi
+
+              sleep 5
+            done
+
+            return 1
+          }
+
+          upload_one() {
+            local file="$1"
+            local asset_name
+            local attempt
+            local exit_code
+
+            asset_name="$(basename "$file")"
+
+            echo
+            echo "============================================================"
+            echo "Processing: $asset_name"
+            echo "Size:       $(stat -c '%s' "$file") bytes"
+            echo "============================================================"
+
+            # If a previous attempt already uploaded this exact file, there is
+            # nothing else to do.
+            if asset_matches_file "$file"; then
+              echo "$asset_name is already completely uploaded and verified."
+              return 0
+            fi
+
+            # Remove a stale "starter" asset or an uploaded asset whose
+            # size/hash does not match the file we are trying to publish.
+            delete_asset "$asset_name"
+
+            for attempt in 1 2 3; do
+              echo
+              echo "Uploading $asset_name (attempt $attempt/3)..."
+
+              set +e
+              gh release upload "$TAG" "$file"
+              exit_code=$?
+              set -e
+
+              # This check is important. GitHub can successfully receive the
+              # file but gh can still return an error such as:
+              #
+              #   HTTP 422
+              #   ReleaseAsset.name already exists
+              #
+              # If GitHub has the complete, matching asset, count that as a
+              # successful upload regardless of gh's exit code.
+              if wait_for_valid_asset "$file"; then
+                if [ "$exit_code" -ne 0 ]; then
+                  echo
+                  echo "gh returned exit code $exit_code, but GitHub has the"
+                  echo "complete verified asset. Treating upload as success."
+                else
+                  echo "$asset_name uploaded and verified successfully."
+                fi
+
+                return 0
+              fi
+
+              if [ "$attempt" -eq 3 ]; then
+                echo
+                echo "ERROR: $asset_name was not successfully uploaded after"
+                echo "three attempts." >&2
+                return 1
+              fi
+
+              echo
+              echo "Upload did not produce a valid asset."
+              echo "Cleaning up any partial asset before retrying..."
+
+              delete_asset "$asset_name"
+
+              # Small backoff before another attempt.
+              sleep $((attempt * 10))
+            done
+          }
+
+          # Upload every release asset independently and concurrently.
+          #
+          # A failure in one background process is collected below instead of
+          # immediately stopping the others.
+          pids=()
+          names=()
+
+          for file in "${files[@]}"; do
+            upload_one "$file" &
+            pids+=("$!")
+            names+=("$(basename "$file")")
+          done
+
+          failed=0
+
+          for i in "${!pids[@]}"; do
+            if wait "${pids[$i]}"; then
+              echo "SUCCESS: ${names[$i]}"
+            else
+              echo "FAILED:  ${names[$i]}" >&2
+              failed=1
+            fi
+          done
+
+          if [ "$failed" -ne 0 ]; then
+            echo "One or more GitHub Release assets failed to upload." >&2
+            exit 1
+          fi
+
+          echo
+          echo "All GitHub Release assets are uploaded and verified."
+
 
   publish-debian:
     name: Publish Debian package to ProGet
     needs: release
     if: inputs.prerelease == false
     runs-on: ubuntu-24.04
+
     steps:
       - uses: actions/download-artifact@v4
         with:
           name: linux-ubuntu
           path: dist/linux-ubuntu
+
       - name: Publish Debian package
         env:
           PROGET_API_KEY: ${{ secrets.PROGET_API_KEY }}
           VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
+
           packages=(dist/linux-ubuntu/*.deb)
-          [[ ${#packages[@]} == 1 ]] || { echo 'Expected exactly one Debian package'; exit 1; }
+
+          [[ ${#packages[@]} == 1 ]] || {
+            echo 'Expected exactly one Debian package'
+            exit 1
+          }
+
           package_version="${VERSION#v}"
+
           # A replacement release must not be blocked by the exact package
           # version left by an earlier failed publishing attempt. Only a 404
           # (nothing to replace) is also acceptable; auth/server failures are
           # surfaced and stop the release.
-          delete_status="$(curl --silent --show-error \
-            --output "$RUNNER_TEMP/proget-delete-response.json" \
-            --write-out '%{http_code}' \
-            --request POST \
-            --header "X-ApiKey: $PROGET_API_KEY" \
-            "https://upload-packages-ksdbfjsadbfshjkafb.twestbrook.com/api/packages/stepforge/delete?name=stepforge&version=$package_version")"
+          delete_status="$(
+            curl \
+              --silent \
+              --show-error \
+              --output "$RUNNER_TEMP/proget-delete-response.json" \
+              --write-out '%{http_code}' \
+              --request POST \
+              --header "X-ApiKey: $PROGET_API_KEY" \
+              "https://upload-packages-ksdbfjsadbfshjkafb.twestbrook.com/api/packages/stepforge/delete?name=stepforge&version=$package_version"
+          )"
+
           case "$delete_status" in
-            200) echo "Removed existing StepForge Debian package $package_version from ProGet." ;;
-            404) echo "No existing StepForge Debian package $package_version in ProGet." ;;
-            *) cat "$RUNNER_TEMP/proget-delete-response.json" >&2 || true; exit 1 ;;
+            200)
+              echo "Removed existing StepForge Debian package $package_version from ProGet."
+              ;;
+            404)
+              echo "No existing StepForge Debian package $package_version in ProGet."
+              ;;
+            *)
+              cat "$RUNNER_TEMP/proget-delete-response.json" >&2 || true
+              exit 1
+              ;;
           esac
-          curl --fail-with-body --request PUT \
+
+          curl \
+            --fail-with-body \
+            --request PUT \
             --header "X-ApiKey: $PROGET_API_KEY" \
             --header 'Content-Type: application/octet-stream' \
             --data-binary "@${packages[0]}" \
             'https://upload-packages-ksdbfjsadbfshjkafb.twestbrook.com/api/packages/stepforge/upload?distribution=resolute&component=main'
+
 
   publish-fedora:
     name: Publish Fedora RPM
     needs: release
     if: inputs.prerelease == false
     runs-on: ubuntu-24.04
+
     steps:
       - uses: actions/download-artifact@v4
         with:
           name: linux-fedora
           path: dist/linux-fedora
+
       - name: Publish stable RPM to ProGet
         env:
           PROGET_API_KEY: ${{ secrets.PROGET_API_KEY }}
@@ -228,15 +512,34 @@ jobs:
           PROGET_UPLOAD_URL: ${{ vars.PROGET_UPLOAD_URL || 'https://upload-packages-ksdbfjsadbfshjkafb.twestbrook.com' }}
         run: |
           set -euo pipefail
+
           : "${PROGET_API_KEY:?Set the existing PROGET_API_KEY secret with upload permission for the RPM feed}"
           : "${PROGET_RPM_FEED:?Set PROGET_RPM_FEED to a separate ProGet RPM feed, e.g. stepforge-fedora}"
-          [[ "$PROGET_RPM_FEED" =~ ^[A-Za-z0-9_-]+$ ]] || { echo 'Invalid RPM feed name'; exit 1; }
-          [[ "$PROGET_UPLOAD_URL" == https://* ]] || { echo 'ProGet upload URL must use HTTPS'; exit 1; }
+
+          [[ "$PROGET_RPM_FEED" =~ ^[A-Za-z0-9_-]+$ ]] || {
+            echo 'Invalid RPM feed name'
+            exit 1
+          }
+
+          [[ "$PROGET_UPLOAD_URL" == https://* ]] || {
+            echo 'ProGet upload URL must use HTTPS'
+            exit 1
+          }
+
           shopt -s nullglob
+
           packages=(dist/linux-fedora/*.rpm)
-          [[ ${#packages[@]} == 1 ]] || { echo 'Expected exactly one Fedora RPM'; exit 1; }
+
+          [[ ${#packages[@]} == 1 ]] || {
+            echo 'Expected exactly one Fedora RPM'
+            exit 1
+          }
+
           rpm_file="${packages[0]}"
-          curl --fail-with-body --request PUT \
+
+          curl \
+            --fail-with-body \
+            --request PUT \
             --header "X-ApiKey: $PROGET_API_KEY" \
             --header 'Content-Type: application/octet-stream' \
             --data-binary "@$rpm_file" \

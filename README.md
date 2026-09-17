@@ -22,6 +22,37 @@ remote AI host" opt-in. See [docs/PRIVACY.md](docs/PRIVACY.md) for exactly
 what is collected and sent. Note that OCR (Tesseract) and its English language
 data are bundled production dependencies — Electron is not the only one.
 
+## Getting Started
+
+For a Windows installation, see [docs/windows_installation](docs/windows_installation.md) or for a developer/more in depth walkthrough, see [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md).
+
+On **Ubuntu 26.04 / GNOME 50 Wayland**, the Ubuntu package includes the required
+StepForge Capture extension for regular click recording with markers. See the
+[recommended apt installation and alternative `.deb` instructions](docs/linux/apt.md),
+then see the [GNOME setup and limitations](docs/linux/gnome-wayland.md).
+
+**Fedora 44 Workstation / GNOME 50 Wayland** has a separate RPM build and
+ProGet publishing workflow using the same GNOME capture architecture. See the
+[Fedora installation, repository setup, and validation guide](docs/linux/dnf.md).
+Ubuntu remains the release-tested desktop; Fedora has container build/install
+checks and a documented desktop validation checklist. See
+[Linux support](docs/GETTING_STARTED_WITH_LINUX.md) for other environments.
+
+Requirements: Node.js 22.12+ and npm (pinned in `.nvmrc`; installs are
+refused on older Nodes because the packaging toolchain needs 22.12+).
+
+```bash
+npm ci             # one-time, installs the locked dependency tree
+npm start          # launch StepForge
+```
+
+Dependencies are only ever installed by you, via `npm ci` — the app never
+downloads or repairs packages at runtime.
+
+First run creates the local data directory (`~/.local/share/stepforge` on
+Linux, `%APPDATA%/stepforge` on Windows; override with
+`STEPFORGE_DATA_DIR`).
+
 ## Overview
 
 The core workflow:
@@ -69,36 +100,6 @@ Everything except the Electron shell is dependency-free Node.js: the ZIP,
 PNG, GIF, PDF, DOCX, and PPTX writers are all implemented in this repository
 using only Node built-ins.
 
-## Getting Started
-
-For a Windows installation, see [docs/windows_installation](docs/windows_installation.md) or for a developer/more in depth walkthrough, see [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md).
-
-On **Ubuntu 26.04 / GNOME 50 Wayland**, the Ubuntu package includes the required
-StepForge Capture extension for regular click recording with markers. See the
-[recommended apt installation and alternative `.deb` instructions](docs/linux/apt.md),
-then see the [GNOME setup and limitations](docs/linux/gnome-wayland.md).
-
-**Fedora 44 Workstation / GNOME 50 Wayland** has a separate RPM build and
-ProGet publishing workflow using the same GNOME capture architecture. See the
-[Fedora installation, repository setup, and validation guide](docs/linux/dnf.md).
-Ubuntu remains the release-tested desktop; Fedora has container build/install
-checks and a documented desktop validation checklist. See
-[Linux support](docs/GETTING_STARTED_WITH_LINUX.md) for other environments.
-
-Requirements: Node.js 22.12+ and npm (pinned in `.nvmrc`; installs are
-refused on older Nodes because the packaging toolchain needs 22.12+).
-
-```bash
-npm ci             # one-time, installs the locked dependency tree
-npm start          # launch StepForge
-```
-
-Dependencies are only ever installed by you, via `npm ci` — the app never
-downloads or repairs packages at runtime.
-
-First run creates the local data directory (`~/.local/share/stepforge` on
-Linux, `%APPDATA%/stepforge` on Windows; override with
-`STEPFORGE_DATA_DIR`).
 
 ## Testing
 

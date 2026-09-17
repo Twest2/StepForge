@@ -32,18 +32,41 @@ for needle in \
   '/usr/share/applications/stepforge.desktop' \
   '/usr/share/mime/packages/stepforge.xml' \
   '/opt/stepforge/node_modules/electron/dist/electron' \
-  '/opt/stepforge/app/main.js'; do
-  echo "$listing" | grep -qF "$needle" || fail "missing packaged file: $needle"
+  '/opt/stepforge/app/main.js' \
+  '/opt/stepforge/app/platform/linux/portal_capture.py' \
+  '/usr/share/gnome-shell/extensions/stepforge@twestbrook.com/metadata.json' \
+  '/usr/share/gnome-shell/extensions/stepforge@twestbrook.com/extension.js' \
+  '/usr/share/gnome-shell/extensions/stepforge@twestbrook.com/buttons.js'; do
+  grep -qFx "$needle" <<< "$listing" || fail "missing packaged file: $needle"
 done
-echo "$listing" | grep -q '/usr/share/icons/hicolor/256x256/apps/stepforge.png' || fail "missing 256px icon"
+grep -q '/usr/share/icons/hicolor/256x256/apps/stepforge.png' <<< "$listing" || fail "missing 256px icon"
 
 # No dev tree / build tooling / app docs.
 for banned in 'electron-builder' '/opt/stepforge/docs/' '/opt/stepforge/ai_prompts/' '/opt/stepforge/examples/'; do
-  echo "$listing" | grep -qF "$banned" && fail "unexpected payload: $banned" || true
+  grep -qF "$banned" <<< "$listing" && fail "unexpected payload: $banned" || true
 done
 
-# Metadata sanity.
-rpm -qip "$RPM" 2>/dev/null | grep -q '^Name *: stepforge' || fail "rpm Name is not stepforge"
-rpm -qp --requires "$RPM" 2>/dev/null | grep -q '^nss' || fail "rpm does not Require nss"
+# Validate actual RPM metadata, including four-component stamped versions.
+[[ "$(rpm -qp --qf '%{NAME}' "$RPM")" == stepforge ]] || fail 'wrong package name'
+expected_version="$(node -p "require('./package.json').buildVersion || require('./package.json').version")"
+[[ "$(rpm -qp --qf '%{VERSION}' "$RPM")" == "$expected_version" ]] || fail 'release version was truncated'
+requires="$(rpm -qp --requires "$RPM")"
+for requirement in 'nss' 'gnome-shell >= 50' 'gnome-shell < 51' 'python3-gobject' \
+  'gstreamer1-plugins-base' 'pipewire-gstreamer' 'gdk-pixbuf2' \
+  'xdg-desktop-portal-gnome' 'pipewire' 'wireplumber'; do
+  grep -qFx "$requirement" <<< "$requires" || fail "missing dependency: $requirement"
+done
+if grep -q '^libffmpeg[.]so' <<< "$requires"; then
+  fail 'private bundled FFmpeg incorrectly required from system repositories'
+fi
+provides="$(rpm -qp --provides "$RPM")"
+if grep -qE 'lib(EGL|GLESv2|ffmpeg|vulkan)' <<< "$provides"; then
+  fail 'private Electron libraries exposed as system capabilities'
+fi
+( cd "$(dirname "$RPM")" && sha256sum --check "$(basename "$RPM").sha256" )
+# Check installed helper permissions from RPM metadata, without installing it.
+dump="$(rpm -qp --dump "$RPM")"
+helper="$(awk '$1 ~ /\/electron\/dist\/chrome-sandbox$/ {print $5, $6, $7}' <<< "$dump")"
+[[ "$helper" == '0104755 root root' ]] || fail "wrong sandbox helper attributes: $helper"
 
 echo "package-rpm OK ($(basename "$RPM"))"

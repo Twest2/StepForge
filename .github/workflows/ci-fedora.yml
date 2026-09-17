@@ -1,0 +1,45 @@
+name: Fedora CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fedora-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fedora-package:
+    name: Fedora 44 GNOME RPM (x86_64)
+    runs-on: ubuntu-24.04
+    container: fedora:44
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Install build tools
+        run: dnf install -y git findutils tar gzip xz
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: bash scripts/linux/dnf/install-build-deps.sh
+      - run: npm ci
+      - name: Run repository checks and RPM integration tests
+        run: bash tests/run_test.sh
+      - name: Build Fedora package
+        run: npm run package:linux:rpm
+      - name: Install and smoke-test the actual RPM
+        run: bash tests/integration/linux/fedora-installed.test.sh build/artifacts/x86_64/*.rpm
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fedora-44-gnome-test-package
+          path: |
+            build/artifacts/x86_64/*.rpm
+            build/artifacts/x86_64/*.sha256
+          if-no-files-found: error

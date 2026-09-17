@@ -157,3 +157,14 @@ jobs:
             --header "Content-Type: application/octet-stream" \
             --data-binary "@$DEB_FILE" \
             "https://upload-packages-ksdbfjsadbfshjkafb.twestbrook.com/api/packages/stepforge/upload?distribution=resolute&component=main"
+
+  # Fedora starts only after the existing release finishes. Its failure cannot
+  # prevent Windows/Ubuntu artifacts or Debian publishing from completing.
+  release-fedora:
+    name: Publish Fedora RPM
+    needs: release
+    uses: ./.github/workflows/release-fedora.yml
+    with:
+      version: ${{ inputs.version }}
+    secrets:
+      PROGET_API_KEY: ${{ secrets.PROGET_API_KEY }}

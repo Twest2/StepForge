@@ -1,0 +1,121 @@
+name: Release Fedora
+
+# Runs after the existing release, or manually to retry/backfill an existing
+# release. Builds the exact release tag; never creates or changes the tag.
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+    secrets:
+      PROGET_API_KEY:
+        required: false
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Existing GitHub Release tag, e.g. v0.4.1.9'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-fedora-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    runs-on: ubuntu-24.04
+    outputs:
+      prerelease: ${{ steps.release.outputs.prerelease }}
+    steps:
+      - name: Verify existing published release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          [[ "$TAG" =~ ^v?[0-9]+(\.[0-9]+){1,3}$ ]] || { echo 'Invalid release tag'; exit 1; }
+          gh release view "$TAG" --json isDraft,isPrerelease > release.json
+          jq -e '.isDraft == false' release.json
+          echo "prerelease=$(jq -r .isPrerelease release.json)" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: resolve
+    runs-on: ubuntu-24.04
+    container: fedora:44
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - run: dnf install -y git findutils tar gzip xz
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ inputs.version }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: bash scripts/linux/dnf/install-build-deps.sh
+      - run: npm ci
+      - name: Stamp release version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: node scripts/stamp-version.js "${VERSION#v}"
+      - run: bash tests/run_test.sh
+      - run: npm run package:linux:rpm
+      - name: Verify installed package
+        run: bash tests/integration/linux/fedora-installed.test.sh build/artifacts/x86_64/*.rpm
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-fedora
+          path: |
+            build/artifacts/x86_64/*.rpm
+            build/artifacts/x86_64/*.sha256
+          if-no-files-found: error
+
+  publish:
+    needs: [resolve, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-fedora
+          path: dist/linux-fedora
+      - name: Attach only Fedora artifacts to the existing release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          cd dist/linux-fedora
+          sha256sum --check ./*.sha256
+          gh release upload "$TAG" ./*.rpm ./*.sha256 --clobber
+      - name: Publish stable RPM to ProGet
+        if: needs.resolve.outputs.prerelease == 'false'
+        env:
+          PROGET_API_KEY: ${{ secrets.PROGET_API_KEY }}
+          PROGET_RPM_FEED: ${{ vars.PROGET_RPM_FEED }}
+          PROGET_UPLOAD_URL: ${{ vars.PROGET_UPLOAD_URL || 'https://upload-packages-ksdbfjsadbfshjkafb.twestbrook.com' }}
+        run: |
+          set -euo pipefail
+          : "${PROGET_API_KEY:?Set the existing PROGET_API_KEY secret with upload permission for the RPM feed}"
+          : "${PROGET_RPM_FEED:?Set PROGET_RPM_FEED to a separate ProGet RPM feed, e.g. stepforge-fedora}"
+          [[ "$PROGET_RPM_FEED" =~ ^[A-Za-z0-9_-]+$ ]] || { echo 'Invalid RPM feed name'; exit 1; }
+          [[ "$PROGET_UPLOAD_URL" == https://* ]] || { echo 'ProGet upload URL must use HTTPS'; exit 1; }
+          shopt -s nullglob
+          packages=(dist/linux-fedora/*.rpm)
+          [[ ${#packages[@]} == 1 ]] || { echo 'Expected exactly one Fedora RPM'; exit 1; }
+          rpm_file="${packages[0]}"
+          curl --fail-with-body --request PUT \
+            --header "X-ApiKey: $PROGET_API_KEY" \
+            --header 'Content-Type: application/octet-stream' \
+            --data-binary "@$rpm_file" \
+            "${PROGET_UPLOAD_URL%/}/api/packages/$PROGET_RPM_FEED/upload/$(basename "$rpm_file")"

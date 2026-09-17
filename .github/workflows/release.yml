@@ -158,13 +158,77 @@ jobs:
             --data-binary "@$DEB_FILE" \
             "https://upload-packages-ksdbfjsadbfshjkafb.twestbrook.com/api/packages/stepforge/upload?distribution=resolute&component=main"
 
-  # Fedora starts only after the existing release finishes. Its failure cannot
-  # prevent Windows/Ubuntu artifacts or Debian publishing from completing.
-  release-fedora:
-    name: Publish Fedora RPM
+  # Fedora starts after Windows/Ubuntu publishing. It is in this workflow so
+  # releases have one entry point, but it cannot stop the release job above.
+  build-fedora:
+    name: Build Fedora 44 GNOME RPM
     needs: release
-    uses: ./.github/workflows/release-fedora.yml
-    with:
-      version: ${{ inputs.version }}
-    secrets:
-      PROGET_API_KEY: ${{ secrets.PROGET_API_KEY }}
+    runs-on: ubuntu-24.04
+    container: fedora:44
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - run: dnf install -y git findutils tar gzip xz
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: bash scripts/linux/dnf/install-build-deps.sh
+      - run: npm ci
+      - name: Stamp release version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: node scripts/stamp-version.js "${VERSION#v}"
+      - run: bash tests/run_test.sh
+      - run: npm run package:linux:rpm
+      - name: Verify installed package
+        run: bash tests/integration/linux/fedora-installed.test.sh build/artifacts/x86_64/*.rpm
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-fedora
+          path: |
+            build/artifacts/x86_64/*.rpm
+            build/artifacts/x86_64/*.sha256
+          if-no-files-found: error
+
+  publish-fedora:
+    name: Publish Fedora RPM
+    needs: [release, build-fedora]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-fedora
+          path: dist/linux-fedora
+      - name: Attach Fedora artifacts to the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          cd dist/linux-fedora
+          sha256sum --check ./*.sha256
+          gh release upload "$TAG" ./*.rpm ./*.sha256 --clobber
+      - name: Publish stable RPM to ProGet
+        if: inputs.prerelease == false
+        env:
+          PROGET_API_KEY: ${{ secrets.PROGET_API_KEY }}
+          PROGET_RPM_FEED: ${{ vars.PROGET_RPM_FEED }}
+          PROGET_UPLOAD_URL: ${{ vars.PROGET_UPLOAD_URL || 'https://upload-packages-ksdbfjsadbfshjkafb.twestbrook.com' }}
+        run: |
+          set -euo pipefail
+          : "${PROGET_API_KEY:?Set the existing PROGET_API_KEY secret with upload permission for the RPM feed}"
+          : "${PROGET_RPM_FEED:?Set PROGET_RPM_FEED to a separate ProGet RPM feed, e.g. stepforge-fedora}"
+          [[ "$PROGET_RPM_FEED" =~ ^[A-Za-z0-9_-]+$ ]] || { echo 'Invalid RPM feed name'; exit 1; }
+          [[ "$PROGET_UPLOAD_URL" == https://* ]] || { echo 'ProGet upload URL must use HTTPS'; exit 1; }
+          shopt -s nullglob
+          packages=(dist/linux-fedora/*.rpm)
+          [[ ${#packages[@]} == 1 ]] || { echo 'Expected exactly one Fedora RPM'; exit 1; }
+          rpm_file="${packages[0]}"
+          curl --fail-with-body --request PUT \
+            --header "X-ApiKey: $PROGET_API_KEY" \
+            --header 'Content-Type: application/octet-stream' \
+            --data-binary "@$rpm_file" \
+            "${PROGET_UPLOAD_URL%/}/api/packages/$PROGET_RPM_FEED/upload/$(basename "$rpm_file")"

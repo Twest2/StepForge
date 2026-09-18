@@ -4,6 +4,8 @@ StepForge provides an RPM package for **Fedora 44 Workstation with GNOME 50 on x
 
 The recommended installation method is the StepForge DNF repository because future StepForge releases can then be installed through normal Fedora updates.
 
+Ubuntu and other .apt based installation guides can be found at (apt.md)[apt.md]
+
 If you prefer not to add the repository, you can also download the RPM directly from the [StepForge GitHub Releases](https://github.com/Twest2/StepForge/releases) page.
 
 ## Recommended: install from the StepForge DNF repository

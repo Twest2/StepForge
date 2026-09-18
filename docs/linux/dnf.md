@@ -16,7 +16,7 @@ First, make sure Fedora is up to date:
 sudo dnf upgrade --refresh
 ```
 
-Add the StepForge repository:
+Add the StepForge repository, refresh DNF's repository metadata, and install StepForge:
 
 ```bash
 sudo tee /etc/yum.repos.d/stepforge-rpm.repo > /dev/null <<'EOF'
@@ -26,18 +26,10 @@ baseurl=https://packages.twestbrook.com/rpm/stepforge-rpm/
 enabled=1
 gpgcheck=0
 EOF
-```
 
-Refresh DNF's repository metadata:
-
-```bash
 sudo dnf clean metadata
 sudo dnf makecache --refresh
-```
 
-Install StepForge:
-
-```bash
 sudo dnf install stepforge
 ```
 

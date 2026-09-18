@@ -81,7 +81,7 @@ test('the enable script is opt-in and installs the least-privilege rule, not the
 // ---- docs no longer push the broad input group ------------------------------
 
 test('Linux docs state the supported GNOME target and warn against the input group', () => {
-  const doc = read('docs/GETTING_STARTED_WITH_LINUX.md');
+  const doc = read('docs/linux/linux_install.md');
   assert.match(doc, /Ubuntu 26\.04, GNOME Shell 50, and Wayland/);
   assert.match(doc, /mandatory/i);
   assert.match(doc, /not supported for regular global-click recording/i);

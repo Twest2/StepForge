@@ -24,20 +24,20 @@ data are bundled production dependencies — Electron is not the only one.
 
 ## Installation
 
-For a Windows installation, see [docs/windows_installation](docs/windows_installation.md) or for a developer/more in depth walkthrough, see [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md).
+For Windows, see the [Windows installation guide](docs/windows_installation.md). For a more detailed developer setup and source walkthrough, see [Getting Started](docs/GETTING_STARTED.md).
 
-On **Ubuntu 26.04 / GNOME 50 Wayland**, the Ubuntu package includes the required
-StepForge Capture extension for regular click recording with markers. See the
-[recommended apt installation and alternative `.deb` instructions](docs/linux/apt.md),
-then see the [GNOME setup and limitations](docs/linux/gnome-wayland.md).
+For Linux, StepForge currently provides native packages for **Ubuntu 26.04** and **Fedora 44 Workstation**, with GNOME 50 Wayland as the primary supported desktop environment.
 
-**Fedora 44 Workstation / GNOME 50 Wayland** has a separate RPM build and
-ProGet publishing workflow using the same GNOME capture architecture. See the
-[Fedora installation, repository setup, and validation guide](docs/linux/dnf.md).
-Ubuntu remains the release-tested desktop; Fedora has container build/install
-checks and a documented desktop validation checklist. 
+See the [Linux installation guide](docs/GETTING_STARTED_WITH_LINUX.md) for:
 
-See [Linux support](docs/GETTING_STARTED_WITH_LINUX.md) for other environments.
+* Ubuntu installation through APT or a downloaded `.deb`
+* Fedora installation through DNF or a downloaded `.rpm`
+* Portable Linux builds
+* Running StepForge directly from source
+* Linux capture setup and GNOME Wayland notes
+
+The Ubuntu and Fedora packages include the required StepForge GNOME integration for click-based recording and marker placement.
+
 
 **Manual**
 

@@ -28,7 +28,7 @@ For Windows, see the [Windows installation guide](docs/windows_installation.md).
 
 For Linux, StepForge currently provides native packages for **Ubuntu 26.04** and **Fedora 44 Workstation**, with GNOME 50 Wayland as the primary supported desktop environment.
 
-See the [Linux installation guide](docs/GETTING_STARTED_WITH_LINUX.md) for:
+See the [Linux installation guide](docs/linux/linux_install.md) for:
 
 * Ubuntu installation through APT or a downloaded `.deb`
 * Fedora installation through DNF or a downloaded `.rpm`

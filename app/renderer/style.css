@@ -909,6 +909,7 @@ fieldset legend {
   flex-direction: column;
   align-items: center;
   padding: 9vh 32px 7vh;
+  overflow-y: auto;
 }
 .welcome-title { text-align: center; }
 .welcome-title h1 {
@@ -918,6 +919,45 @@ fieldset legend {
   letter-spacing: -0.015em;
 }
 .welcome-title p { font-size: 14px; margin: 0; }
+.welcome-recent {
+  width: min(520px, 100%);
+  margin-block: auto;
+  padding-block: 28px;
+  flex-shrink: 0;
+}
+.welcome-recent h2 {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+.welcome-recent h2::before,
+.welcome-recent h2::after {
+  content: '';
+  flex: 1;
+  border-top: 1px solid var(--border);
+}
+.welcome-recent ul { list-style: none; margin: 0; padding: 0; }
+.welcome-recent-guide {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  padding: 10px 12px;
+  border-color: transparent;
+  background: transparent;
+  text-align: left;
+  color: color-mix(in srgb, var(--text) 65%, var(--muted));
+}
+.welcome-recent-guide:hover { color: var(--text); }
+.welcome-recent-guide:focus-visible { outline: 2px solid var(--muted); outline-offset: 2px; }
+.welcome-recent-details { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.welcome-recent-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.welcome-recent + .welcome-actions { margin-top: 0; }
 .welcome-actions {
   margin-top: auto;
   display: flex;

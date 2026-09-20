@@ -131,6 +131,7 @@ class StepForgeApp {
     };
     this.state.trash = trash;
     this.editor.setSettings(settings);
+    if (this.state.view === 'welcome') this.renderWelcome();
   }
 
   async refreshLibrary({ keepFilter = true } = {}) {
@@ -159,10 +160,23 @@ class StepForgeApp {
     this.updateCaptureState(this.captureState);
   }
 
-  showWelcome() {
+  async showWelcome() {
+    if (this.editor.pendingSave || this.editor.pendingGuideSave) {
+      try {
+        await this.editor.saveAll();
+      } catch (err) {
+        toast(err.message, { error: true });
+        return;
+      }
+    }
     this.editor.setActive(false);
     this.setView('welcome');
     this.renderWelcome();
+    try {
+      await this.refreshLibrary();
+    } catch (err) {
+      console.error(err);
+    }
   }
 
   renderWelcome() {
@@ -174,6 +188,7 @@ class StepForgeApp {
           el('h1', {}, 'StepForge'),
           el('p.muted', {}, 'Capture, annotate, and export step-by-step guides. Local-first, no telemetry.'),
         ),
+        this.renderRecentGuides(),
         el('div.welcome-actions', {},
           el('button.welcome-btn.primary', {
             type: 'button',
@@ -198,6 +213,28 @@ class StepForgeApp {
           ),
         ),
       ),
+    );
+  }
+
+  renderRecentGuides() {
+    // The library already returns guides in descending updatedAt order.
+    const guides = this.state.library.guides.slice(0, 3);
+    if (!guides.length) return null;
+    return el('section.welcome-recent', { 'aria-labelledby': 'recent-guides-heading' },
+      el('h2#recent-guides-heading', {}, 'Recent guides'),
+      el('ul', {}, guides.map((guide) => el('li', {},
+        el('button.welcome-recent-guide', {
+          type: 'button',
+          title: guide.title,
+          onClick: () => this.openGuideAndArmCapture(guide.guideId),
+        },
+        el('span.welcome-recent-details', {},
+          el('span.welcome-recent-title', {}, guide.title),
+          el('span.muted', {}, `${guide.stepCount} ${guide.stepCount === 1 ? 'step' : 'steps'} • ${fmtDate(guide.updatedAt)}`),
+        ),
+        el('span.muted', { 'aria-hidden': 'true' }, '›'),
+        ),
+      ))),
     );
   }
 

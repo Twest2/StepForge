@@ -226,6 +226,10 @@ function showQuickActions({ query = '', commands = [], searchFn, onOpenItem, onC
     let items = [];
     let active = 0;
 
+    function updateActiveItem() {
+      [...results.children].forEach((row, idx) => row.classList.toggle('active', idx === active));
+    }
+
     function renderItems() {
       clearNode(results);
       if (!items.length) {
@@ -235,7 +239,7 @@ function showQuickActions({ query = '', commands = [], searchFn, onOpenItem, onC
       items.forEach((item, idx) => {
         results.append(el('div.qa-item', {
           className: `qa-item${idx === active ? ' active' : ''}`,
-          onMouseenter: () => { active = idx; renderItems(); },
+          onMouseenter: () => { active = idx; updateActiveItem(); },
           onClick: () => choose(idx),
         },
         el('span.kind', {}, item.kind || 'cmd'),
@@ -288,8 +292,8 @@ function showQuickActions({ query = '', commands = [], searchFn, onOpenItem, onC
     const debounced = debounce(refresh, 60);
     input.addEventListener('input', debounced);
     input.addEventListener('keydown', (e) => {
-      if (e.key === 'ArrowDown') { e.preventDefault(); active = Math.min(items.length - 1, active + 1); renderItems(); }
-      else if (e.key === 'ArrowUp') { e.preventDefault(); active = Math.max(0, active - 1); renderItems(); }
+      if (e.key === 'ArrowDown') { e.preventDefault(); active = Math.max(0, Math.min(items.length - 1, active + 1)); updateActiveItem(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); active = Math.max(0, active - 1); updateActiveItem(); }
       else if (e.key === 'Enter') { e.preventDefault(); choose(); }
       else if (e.key === 'Escape') { e.preventDefault(); close(); resolve(null); }
     });

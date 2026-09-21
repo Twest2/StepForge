@@ -1018,3 +1018,7 @@ fieldset legend {
 /* Optional cloud controls reuse the settings form and muted toolbar style. */
 .cloud-test-results { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
 .cloud-enable { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+
+.placeholder-markdown-content { flex: 2; min-width: 0; }
+.placeholder-markdown-content textarea { width: 100%; box-sizing: border-box; resize: vertical; }
+.placeholder-row input[type="checkbox"] { width: auto; flex: none; }

@@ -396,8 +396,11 @@ function showSettingsDialog({
     const placeholderRows = el('div', { className: 'placeholder-rows' });
     const rows = [];
     const addPlaceholderRow = (key = '', value = '') => {
-      const keyInput = makeInput(key);
-      const valueInput = makeInput(value);
+      const keyInput = makeInput(key, 'text', { 'aria-label': 'Placeholder name', placeholder: 'SupportInstructions' });
+      const markdown = el('input', { type: 'checkbox', checked: typeof value === 'object' ? value.format === 'markdown' : !key, 'aria-label': 'Interpret content as Markdown' });
+      const valueInput = el('textarea', { rows: 4, 'aria-label': 'Placeholder content', placeholder: 'Reusable text or Markdown' }, typeof value === 'object' ? value.text || '' : value);
+      const valueCell = el('div.placeholder-markdown-content', {}, valueInput, el('label', {}, markdown, ' Markdown'));
+
       const removeBtn = el('button.icon', {
         type: 'button',
         title: 'Remove placeholder',
@@ -408,7 +411,7 @@ function showSettingsDialog({
       }, '−');
       const row = el('div.placeholder-row', {},
         keyInput,
-        valueInput,
+        valueCell,
         removeBtn,
       );
       rows.push(row);
@@ -471,6 +474,7 @@ function showSettingsDialog({
       cloudPanel.node,
       el('fieldset', {},
         el('legend', {}, 'Global placeholders'),
+        el('div.muted', {}, 'Placeholder name (left) · Content (right). Insert using [[Name]]. Markdown supports paragraphs, **bold**, *italic*, lists, links, and code. Existing values remain plain text until Markdown is checked.'),
         placeholderRows,
         el('div.row', { style: { justifyContent: 'flex-start' } }, addPlaceholderBtn),
       ),
@@ -526,10 +530,10 @@ function showSettingsDialog({
                 },
               },
               placeholders: rows.reduce((acc, row) => {
-                const inputs = row.querySelectorAll('input');
-                const key = inputs[0].value.trim();
-                const value = inputs[1].value;
-                if (key) acc[key] = value;
+                const key = row.querySelector('input[type="text"]').value.trim();
+                const text = row.querySelector('textarea').value;
+                const markdown = row.querySelector('input[type="checkbox"]').checked;
+                if (key) acc[key] = markdown ? { format: 'markdown', text } : text;
                 return acc;
               }, {}),
             };

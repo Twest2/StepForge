@@ -1107,11 +1107,14 @@ class CaptureService {
         const captureTypedText = this.settings.get('capture.captureTypedText') ? 'true' : 'false';
         const ps = `
 $ErrorActionPreference = 'Stop'
-Add-Type -TypeDefinition @'
+Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes,WindowsBase
+$refs = @('System.dll', 'System.Core.dll', [System.Windows.Automation.AutomationElement].Assembly.Location, [System.Windows.Automation.ControlType].Assembly.Location, [System.Windows.Point].Assembly.Location)
+Add-Type -ReferencedAssemblies $refs -TypeDefinition @'
 using System;
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Windows.Automation;
 
 public static class SFHook {
   private const int WH_MOUSE_LL = 14;
@@ -1284,6 +1287,59 @@ public static class SFHook {
     try { return Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(s)); } catch { return "-"; }
   }
 
+  private sealed class ElementSnapshot {
+    public int X, Y, Generation;
+    public long At;
+    public IntPtr Window;
+    public string Line;
+  }
+  private static volatile ElementSnapshot hoveredElement;
+  private static int elementGeneration;
+  [DllImport("user32.dll")]
+  private static extern bool GetCursorPos(out POINT point);
+
+  // UIA can block on another application's process. Keep it off the hook
+  // thread and use only a fresh snapshot at the exact click position.
+  private static void ElementLoop() {
+    while (true) {
+      try {
+        POINT point;
+        if (GetCursorPos(out point)) {
+          int generation = elementGeneration;
+          long started = DateTime.UtcNow.Ticks;
+          IntPtr window = GetForegroundWindow();
+          var element = AutomationElement.FromPoint(new System.Windows.Point(point.x, point.y));
+          var current = element.Current;
+          string tab = "";
+          bool titleBar = false;
+          var parent = element;
+          for (int depth = 0; depth < 6; depth++) {
+            parent = TreeWalker.ControlViewWalker.GetParent(parent);
+            if (parent == null) break;
+            var info = parent.Current;
+            if (info.ControlType == ControlType.TabItem) { tab = info.Name; break; }
+            if (info.ControlType == ControlType.TitleBar) { titleBar = true; break; }
+            if (info.ControlType == ControlType.Window) break;
+          }
+          string app = "";
+          try {
+            using (var process = System.Diagnostics.Process.GetProcessById(current.ProcessId)) { app = process.ProcessName; }
+          } catch { }
+          POINT after;
+          if (GetCursorPos(out after) && after.x == point.x && after.y == point.y && window == GetForegroundWindow()) {
+            string role = System.Text.RegularExpressions.Regex.Replace(current.ControlType.ProgrammaticName.Replace("ControlType.", ""), "([a-z])([A-Z])", "$1 $2").ToLowerInvariant();
+            hoveredElement = new ElementSnapshot {
+              X = point.x, Y = point.y, At = started, Window = window, Generation = generation,
+              Line = "ELEM " + B64(current.IsPassword ? "Password" : current.Name) + " " + B64(role) + " " +
+                B64(current.AutomationId) + " " + B64(tab) + " " + (titleBar ? "1" : "0") + " " + (current.IsPassword ? "1" : "0") + " " + B64(app)
+            };
+          } else { hoveredElement = null; }
+        }
+      } catch { hoveredElement = null; }
+      Thread.Sleep(75);
+    }
+  }
+
   // Force this process to run at full CPU speed regardless of the power plan,
   // so the mouse-hook callback never trips LowLevelHooksTimeout and clicks
   // keep being delivered while the laptop is in eco / power-saving mode.
@@ -1307,6 +1363,10 @@ public static class SFHook {
     Thread writer = new Thread(WriterLoop);
     writer.IsBackground = true;
     writer.Start();
+    Thread elements = new Thread(ElementLoop);
+    elements.IsBackground = true;
+    elements.SetApartmentState(ApartmentState.MTA);
+    elements.Start();
 
     hook = SetWindowsHookEx(WH_MOUSE_LL, proc, GetModuleHandle(null), 0);
     if (hook == IntPtr.Zero) {
@@ -1352,6 +1412,13 @@ public static class SFHook {
           string t = GetFwTitle(), a = GetFwApp();
           queue.Enqueue("CTX " + B64(t) + " " + B64(a) + " " + unixMs);
         } catch { }
+        var target = hoveredElement;
+        if (target != null && target.Generation == elementGeneration && target.X == data.pt.x && target.Y == data.pt.y &&
+            target.Window == GetForegroundWindow() && DateTime.UtcNow.Ticks - target.At < TimeSpan.TicksPerMillisecond * 300) {
+          queue.Enqueue(target.Line);
+        }
+        Interlocked.Increment(ref elementGeneration);
+        hoveredElement = null;
         queue.Enqueue("CLICK " + data.pt.x + " " + data.pt.y + " " + button + " " + unixMs);
         signal.Set();
       }
@@ -1662,6 +1729,20 @@ public static class SFHook {
         const charM = /^CHAR\s+(\d+)\s+(\d+)\s*$/.exec(trimmed);
         if (charM) {
           this.onKeyboardEvent('CHAR', Number(charM[1]), Number(charM[2]));
+          continue;
+        }
+        const elementMatch = /^ELEM\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+([01])\s+([01])\s+(\S+)$/.exec(trimmed);
+        if (elementMatch && this._pendingWindowContext) {
+          const decode = value => value === '-' ? '' : Buffer.from(value, 'base64').toString('utf8');
+          Object.assign(this._pendingWindowContext, {
+            elementLabel: decode(elementMatch[1]),
+            elementRole: decode(elementMatch[2]),
+            elementAutomationId: decode(elementMatch[3]),
+            parentTabTitle: decode(elementMatch[4]),
+            inTitleBar: elementMatch[5] === '1',
+            elementIsPassword: elementMatch[6] === '1',
+            appName: decode(elementMatch[7]) || this._pendingWindowContext.appName,
+          });
           continue;
         }
         // CTX is emitted just before its paired CLICK from MouseHookCallback.

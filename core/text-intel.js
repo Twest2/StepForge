@@ -444,6 +444,13 @@ function pickBestTitleFragment(text, { source = 'window', metadata = {} } = {}) 
   return best ? formatCaptureTitle(best, { source, metadata }) : '';
 }
 
+function isPasswordField(metadata = {}) {
+  const role = normalizeWhitespace(metadata.elementRole || '').toLowerCase();
+  return Boolean(metadata.elementIsPassword) ||
+    (/^(edit|text field|input|field|textbox|text box)$/.test(role) &&
+      /password|passcode|\bpin\b/i.test(metadata.elementLabel || ''));
+}
+
 function buildCaptureTitle({ mode = 'fullscreen', metadata = {}, ocrText = '', recentTyped = '', recentShortcut = '' } = {}) {
   const app = cleanAppName(metadata.appName);
 
@@ -453,47 +460,41 @@ function buildCaptureTitle({ mode = 'fullscreen', metadata = {}, ocrText = '', r
     return app ? qualifyTitleWithApp(base, metadata.appName) : base;
   }
 
-  // 2. UIAutomation element value — what's actually typed inside the clicked field.
-  const elementValue = normalizeWhitespace(metadata.elementValue || '');
-  if (elementValue) {
-    const roleLower = normalizeWhitespace(metadata.elementRole || '').toLowerCase();
-    const labelLower = normalizeWhitespace(metadata.elementLabel || '').toLowerCase();
-    const looksLikeSearch = /(search|find|query|omnibox|address bar)/.test(roleLower + ' ' + labelLower);
-    const action = looksLikeSearch ? 'Search for' : 'Type';
-    const base = `${action} "${elementValue}"`;
-    return app ? qualifyTitleWithApp(base, metadata.appName) : base;
-  }
+  const label = displayText(metadata.elementLabel || '');
+  const role = normalizeWhitespace(metadata.elementRole || '').toLowerCase();
+  const qualify = title => app ? qualifyTitleWithApp(title, metadata.appName) : title;
 
-  // 3. Keyboard-buffer text (typed between captures) + input role context.
+  // Name the field, never its existing value. A clicked field can contain text
+  // from an earlier action (or credentials); that is not evidence of typing.
+  if (isPasswordField(metadata)) {
+    return qualify('Enter password');
+  }
+  const isInput = /^(edit|text field|input|field|combo box|textbox|text box)$/.test(role);
+  if (isInput) return qualify(label ? `Enter ${label}` : 'Enter text');
+
+  // Close only the target established by accessible ancestry. A generic Close
+  // button in a web dialog must not be described as closing the browser.
+  const isClose = role === 'button' &&
+    (/^close(?: tab| window)?$/i.test(label) || metadata.elementAutomationId === 'Close');
+  if (isClose && metadata.parentTabTitle) {
+    return qualify(`Close "${displayText(metadata.parentTabTitle)}" tab`);
+  }
+  if (isClose && metadata.inTitleBar) return app ? `Close ${app}` : 'Close window';
+
   const typed = normalizeWhitespace(recentTyped || '');
-  if (typed) {
-    const roleLower = normalizeWhitespace(metadata.elementRole || '').toLowerCase();
-    const labelLower = normalizeWhitespace(metadata.elementLabel || '').toLowerCase();
-    const isSearchRole = /(search box|searchbox|search field|search bar|search input)/.test(roleLower);
-    const looksLikeSearch = isSearchRole || /(search|find|query|omnibox|address bar)/.test(roleLower + ' ' + labelLower);
-    const isAnyInput = /(text field|edit|input|field|combo box|textbox|text box)/.test(roleLower);
-    if (looksLikeSearch) {
-      const base = `Search for "${typed}"`;
-      return app ? qualifyTitleWithApp(base, metadata.appName) : base;
-    }
-    if (isAnyInput) {
-      const base = `Type "${typed}"`;
-      return app ? qualifyTitleWithApp(base, metadata.appName) : base;
-    }
+  if (typed && /^(search box|searchbox|search field|search bar|search input)$/.test(role)) {
+    return qualify(`Search for "${typed}"`);
   }
 
-  // 4. OCR text around the click — link text, button labels, menu items.
+  // Accessible control names describe the actual target, unlike a wide OCR
+  // crop that can include neighboring buttons. Preserve names containing pipes.
+  if (label && !/^(window|pane|document|group|custom)$/.test(role) && !isPathOrUrlLike(label) &&
+      (verbForElementRole(role) || isUsefulTitleCandidate(label, { source: 'element' }))) {
+    return qualify(formatCaptureTitle(label, { source: 'element', metadata }));
+  }
+
   const ocrPhrase = pickBestOcrPhrase(ocrText);
-  if (ocrPhrase) {
-    const title = formatCaptureTitle(ocrPhrase, { source: 'ocr', metadata });
-    return app ? qualifyTitleWithApp(title, metadata.appName) : title;
-  }
-
-  // 5. UIAutomation element label.
-  const elementPhrase = pickBestTitleFragment(metadata.elementLabel, { source: 'element', metadata });
-  if (elementPhrase) {
-    return app ? qualifyTitleWithApp(elementPhrase, metadata.appName) : elementPhrase;
-  }
+  if (ocrPhrase) return qualify(formatCaptureTitle(ocrPhrase, { source: 'ocr', metadata }));
 
   // 6. Window title (browser suffix + app name stripped) → page title or search query.
   const strippedWindowTitle = stripBrowserNameSuffix(metadata.windowTitle || '', metadata.appName);
@@ -897,6 +898,7 @@ function applyAiPatchToStep(step, patch, { target = 'all', blockId = null } = {}
 module.exports = {
   DEFAULT_CAPTURE_TITLES,
   buildCaptureTitle,
+  isPasswordField,
   plainTextToHtml,
   normalizeOllamaHost,
   isLoopbackHost,

@@ -13,7 +13,8 @@
  * WindowContextProvider
  *   collect(osPoint?: {x,y}) -> Promise<{
  *     appName, windowTitle,
- *     elementLabel?, elementRole?, elementClass?, elementValue?
+ *     elementLabel?, elementRole?, elementClass?, elementValue?,
+ *     elementIsPassword?, elementAutomationId?, parentTabTitle?, inTitleBar?
  *   }>
  *   Best-effort foreground window / clicked-element context. Never throws;
  *   returns {} (or partial) when unavailable.

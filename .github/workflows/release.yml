@@ -35,8 +35,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Stamp the requested version onto package.json so the produced artifact
-      # carries it. Not committed back — it only affects this build.
+      - name: Configure StepForge Google sign-in
+        env:
+          STEPFORGE_GOOGLE_CLIENT_ID: ${{ vars.STEPFORGE_GOOGLE_CLIENT_ID }}
+        run: node scripts/configure-google-oauth.js
+
+      # Version and Google registration are stamped only into this build.
       - name: Set version from input
         shell: bash
         env:
@@ -83,6 +87,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Configure StepForge Google sign-in
+        env:
+          STEPFORGE_GOOGLE_CLIENT_ID: ${{ vars.STEPFORGE_GOOGLE_CLIENT_ID }}
+        run: node scripts/configure-google-oauth.js
+
       - name: Set version from input
         env:
           VERSION: ${{ inputs.version }}
@@ -123,6 +132,11 @@ jobs:
       - run: bash scripts/linux/dnf/install-build-deps.sh
 
       - run: npm ci
+
+      - name: Configure StepForge Google sign-in
+        env:
+          STEPFORGE_GOOGLE_CLIENT_ID: ${{ vars.STEPFORGE_GOOGLE_CLIENT_ID }}
+        run: node scripts/configure-google-oauth.js
 
       - name: Stamp release version
         env:

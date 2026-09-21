@@ -1014,3 +1014,7 @@ fieldset legend {
 .card-list { display: flex; flex-direction: column; gap: 8px; }
 .card-list .row { align-items: center; }
 .row { display: flex; gap: 8px; align-items: center; }
+
+/* Optional cloud controls reuse the settings form and muted toolbar style. */
+.cloud-test-results { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
+.cloud-enable { display: flex; align-items: center; gap: 8px; margin-top: 14px; }

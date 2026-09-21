@@ -3,6 +3,15 @@
 StepForge is a fully offline desktop app. Nothing is uploaded or synced, and
 all guides stay on your machine.
 
+## Guide storage location
+
+Settings shows the active guide-storage folder and the platform default. Choose
+an empty folder to move the complete local library. StepForge copies and
+verifies the library on the next start before activating the destination; the
+previous folder remains as a backup. Cancelling the picker or a pending move
+does not change the active library. `STEPFORGE_DATA_DIR` continues to override
+this preference for managed or test launches.
+
 # Installation
 
 For Windows, see [windows_installation](windows_installation.md). For the

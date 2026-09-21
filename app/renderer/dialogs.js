@@ -312,6 +312,32 @@ function showSettingsDialog({
   return new Promise((resolve) => {
     const form = el('form', { className: 'settings-form' });
     const cloudPanel = makeCloudSettings(api);
+    const storageStatus = el('div.muted', {}, 'Checking guide storage location…');
+    const chooseStorageBtn = el('button', { type: 'button' }, 'Choose folder…');
+    const resetStorageBtn = el('button', { type: 'button' }, 'Use default');
+    const cancelStorageBtn = el('button', { type: 'button', hidden: true }, 'Cancel pending move');
+    let storageInfo = null;
+    const refreshStorage = async () => {
+      try {
+        storageInfo = await api.storage.status();
+        const defaultNote = storageInfo.current === storageInfo.defaultPath ? 'Using the default location.' : `Default: ${storageInfo.defaultPath}`;
+        const pending = storageInfo.pending ? ` A verified move to ${storageInfo.pending} will run the next time StepForge starts.` : '';
+        storageStatus.textContent = `${storageInfo.current}. ${defaultNote}${pending}${storageInfo.locked ? ' Controlled by STEPFORGE_DATA_DIR.' : ''}${storageInfo.error ? ` ${storageInfo.error}` : ''}`;
+        chooseStorageBtn.disabled = storageInfo.locked;
+        resetStorageBtn.disabled = storageInfo.locked || storageInfo.current === storageInfo.defaultPath;
+        cancelStorageBtn.hidden = !storageInfo.pending;
+      } catch (error) {
+        storageStatus.textContent = error.message || 'Could not read guide storage location.';
+      }
+    };
+    chooseStorageBtn.addEventListener('click', async () => {
+      try { await api.storage.choose(); await refreshStorage(); } catch (error) { storageStatus.textContent = error.message || 'Could not schedule the library move.'; }
+    });
+    resetStorageBtn.addEventListener('click', async () => {
+      try { await api.storage.reset(); await refreshStorage(); } catch (error) { storageStatus.textContent = error.message || 'Could not schedule the library move.'; }
+    });
+    cancelStorageBtn.addEventListener('click', async () => { await api.storage.cancelMove(); await refreshStorage(); });
+    void refreshStorage();
 
     const appearance = makeSelect(settings.appearance || 'system', [
       { value: 'system', label: 'System' },
@@ -428,6 +454,12 @@ function showSettingsDialog({
         labeledRow('Theme', appearance),
         labeledRow('Spellcheck', spellcheck),
         labeledRow('Open folder after export', openFolder),
+      ),
+      el('fieldset', {},
+        el('legend', {}, 'Guide storage'),
+        storageStatus,
+        el('div.row', { style: { justifyContent: 'flex-start', marginTop: '8px' } }, chooseStorageBtn, resetStorageBtn, cancelStorageBtn),
+        el('div.muted', {}, 'Choose an empty folder. StepForge copies and verifies the full library, then activates it on restart. The previous library is retained as a backup.'),
       ),
       el('fieldset', {},
         el('legend', {}, 'Capture'),

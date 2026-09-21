@@ -56,7 +56,7 @@ const DEFAULT_SETTINGS = {
     captureTypedText: false,
   },
   editor: {
-    focusedViewDefaultForNewSteps: false,
+    focusedViewDefaultForNewSteps: true,
     autoTitleTemplate: '[[Mode]] capture [[Time]]',
   },
   ai: {

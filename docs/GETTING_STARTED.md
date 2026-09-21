@@ -33,3 +33,17 @@ the app never installs or repairs dependencies at runtime.
 ```bash
 npm start
 ```
+
+## Generated step titles
+
+New captures receive local, automatic titles based on the recorded action.
+On Windows, StepForge prefers accessible control names, such as `Click Profile`,
+`Enter Username`, or `Close "Documentation" tab in Chrome`, when available.
+Password fields use a generic instruction, and existing field values are not
+copied into titles. Each capture describes one action; you can edit its title
+or combine instructions yourself in the editor.
+
+Applications expose different amounts of accessibility information. If a
+control cannot be identified, StepForge falls back to nearby text, the window
+name, or the capture type. No AI setup is required, and existing guides and
+manually edited titles are unchanged.

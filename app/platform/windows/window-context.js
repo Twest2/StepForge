@@ -22,6 +22,7 @@ function createWindowsWindowContextProvider() {
       $elementClass = '';
       $elementProcessId = 0;
       $elementValue = '';
+      $elementIsPassword = $false;
       if (${hasPoint ? '$true' : '$false'}) {
         try {
           Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes,WindowsBase | Out-Null
@@ -30,12 +31,14 @@ function createWindowsWindowContextProvider() {
           if ($element) {
             $current = $element.Current;
             $elementLabel = $current.Name;
-            $elementRole = $current.LocalizedControlType;
+            $elementRole = ($current.ControlType.ProgrammaticName -replace '^ControlType[.]', '' -creplace '([a-z])([A-Z])', '$1 $2').ToLowerInvariant();
+            $elementIsPassword = $current.IsPassword;
+            if ($elementIsPassword) { $elementLabel = 'Password'; }
             $elementClass = $current.ClassName;
             $elementProcessId = $current.ProcessId;
             try {
               $valPattern = [System.Windows.Automation.ValuePattern]::Pattern;
-              if ($element.GetSupportedPatterns() -contains $valPattern) {
+              if (!$elementIsPassword -and ($element.GetSupportedPatterns() -contains $valPattern)) {
                 $elementValue = $element.GetCurrentPattern($valPattern).Current.Value;
               }
             } catch { }
@@ -56,9 +59,9 @@ public static class Win32 {
       $hWnd = [Win32]::GetForegroundWindow();
       $sb = New-Object System.Text.StringBuilder 512;
       [void][Win32]::GetWindowText($hWnd, $sb, $sb.Capacity);
-      $pid = 0;
-      [void][Win32]::GetWindowThreadProcessId($hWnd, [ref]$pid);
-      $proc = Get-Process -Id $pid -ErrorAction SilentlyContinue | Select-Object -First 1;
+      $foregroundProcessId = 0;
+      [void][Win32]::GetWindowThreadProcessId($hWnd, [ref]$foregroundProcessId);
+      $proc = Get-Process -Id $foregroundProcessId -ErrorAction SilentlyContinue | Select-Object -First 1;
       $out = [ordered]@{
         appName = if ($proc) { $proc.ProcessName } else { '' };
         windowTitle = $sb.ToString();
@@ -66,8 +69,9 @@ public static class Win32 {
         elementRole = $elementRole;
         elementClass = $elementClass;
         elementValue = $elementValue;
+        elementIsPassword = $elementIsPassword;
         elementProcessId = $elementProcessId;
-        pid = $pid;
+        pid = $foregroundProcessId;
       };
       $out | ConvertTo-Json -Compress;
     `;

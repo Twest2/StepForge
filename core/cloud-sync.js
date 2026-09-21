@@ -160,7 +160,7 @@ class CloudSync {
     this.publish('syncing', 'Syncing with Google Drive…');
     const account = await this.drive.account();
     check();
-    const stateFile = path.join(this.directory, `sync-${digest(`${this.drive.status().clientId}:${account}`)}.json`);
+    const stateFile = path.join(this.directory, `sync-${digest(`${this.drive.clientId}:${account}`)}.json`);
     if (this.stateFile !== stateFile) {
       this.stateFile = stateFile;
       this.state = readJsonIfExists(stateFile, { records: {} });

@@ -53,12 +53,13 @@ and configure an endpoint:
 
 ## Optional Google Drive sharing
 
-Google Drive sharing is off by default. Signing in uses Google's OAuth endpoints
+Google Drive sharing is off by default. Choosing Sign in with Google and
+granting access enables automatic sharing. Sign-in uses Google's OAuth endpoints
 and a local loopback callback. Connection testing refreshes authentication,
 checks app storage, and uploads/downloads/deletes a small random test file;
 it does not upload guides.
 
-Once you explicitly enable sharing, all local guides (including screenshots,
+Once you connect your Google account, all local guides (including screenshots,
 text, annotations, placeholders, and stored capture context) are uploaded as
 archives to that Google account's private app storage. Updates from your other
 devices are downloaded automatically. This access is limited to app storage,

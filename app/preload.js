@@ -55,7 +55,7 @@ const api = {
   cloud: {
     setEditorDirty: (dirty) => ipcRenderer.send('cloud:editor-dirty', Boolean(dirty)),
     status: invoke('cloud:status'),
-    connect: invoke('cloud:connect'),
+    connect: () => ipcRenderer.invoke('cloud:connect'),
     cancel: invoke('cloud:cancel'),
     disconnect: invoke('cloud:disconnect'),
     enable: invoke('cloud:enable'),

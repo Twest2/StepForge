@@ -13,7 +13,7 @@ contains no third-party branding, assets, or code from those tools.
 
 **Network and privacy contract.** StepForge has no telemetry, no update
 checks, and no license checks. Optional Google Drive sharing is **off by
-default**; after sign-in and explicit enablement it synchronizes your guides
+default**; choosing Sign in with Google and granting access synchronizes your guides
 between computers. See [Google Drive setup and testing](docs/GOOGLE_DRIVE.md).
 The **optional** AI integration is also off by default: when *you* enable it and configure an [Ollama](https://ollama.com)
 endpoint, StepForge sends step screenshots and text to that endpoint to

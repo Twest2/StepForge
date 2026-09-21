@@ -80,7 +80,12 @@ const UI_ZOOM_LEVEL_MAX = 8;
 
 function reindex(guideId) {
   try {
-    searchIndex.indexGuide(store.getGuide(guideId), store.listSteps(guideId));
+    const guide = store.getGuide(guideId);
+    if (store.isCaptureDraft(guide)) {
+      searchIndex.removeGuide(guideId);
+    } else {
+      searchIndex.indexGuide(guide, store.listSteps(guideId));
+    }
   } catch {
     // index failures must never block saves
   }
@@ -550,14 +555,14 @@ function setupIpc() {
     })),
     folders: store.loadFolders(),
   }));
-  h('library:create', ({ title }) => {
+  h('library:create', ({ title, captureDraft }) => {
     const guide = store.createGuide({
       title: title || 'Untitled guide',
       flags: { focusedViewDefault: Boolean(settings.get('editor.focusedViewDefaultForNewSteps')) },
-    });
+    }, { captureDraft: captureDraft === true });
     reindex(guide.guideId);
     return guide;
-  }, { validate: (a) => c.optionalString(a.title, 500) });
+  }, { validate: (a) => c.optionalString(a.title, 500) && (a.captureDraft === undefined || typeof a.captureDraft === 'boolean') });
   h('library:duplicate', ({ guideId }) => {
     const copy = store.duplicateGuide(guideId);
     reindex(copy.guideId);
@@ -590,7 +595,10 @@ function setupIpc() {
     { validate: (a) => c.id(a.folderId) && c.string(a.name, 200) });
   h('folders:delete', ({ folderId }) => store.deleteFolder(folderId),
     { validate: (a) => c.id(a.folderId) });
-  h('folders:moveGuide', ({ guideId, folderId }) => store.moveGuideToFolder(guideId, folderId || null),
+  h('folders:moveGuide', ({ guideId, folderId }) => {
+    store.moveGuideToFolder(guideId, folderId || null);
+    reindex(guideId);
+  },
     { validate: (a) => c.id(a.guideId) && c.optionalId(a.folderId) });
 
   // guide + steps
@@ -1151,6 +1159,7 @@ if (!gotLock) {
       // Auto-document session captures in the background when autoDoc is enabled.
       // Single-shot captures (capture:shoot) are handled synchronously in the IPC handler.
       if (channel === 'capture:added' && payload?.step && payload?.guideId) {
+        reindex(payload.guideId);
         const aiConf = settings.get('ai') || {};
         if (aiConf.enabled && aiConf.autoDoc) {
           textIntel.generateStepPatch({

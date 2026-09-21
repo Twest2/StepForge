@@ -78,7 +78,7 @@ function makeCloudSettings(api) {
     el('div.row', {}, test, sync),
   );
   const node = el('fieldset', {},
-    el('legend', {}, 'Google Drive sharing (optional)'),
+    el('legend', {}, 'Google Drive sharing'),
     el('p.muted', {}, 'Store and synchronize your guides privately using your Google Drive account. Signing in enables automatic sharing of all your guides, including screenshots and text. You can turn sharing off at any time.'),
     status,
     el('div.row', {}, connect, cancel, disconnect),

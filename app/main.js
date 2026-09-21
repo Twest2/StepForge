@@ -6,11 +6,13 @@ const os = require('node:os');
 const { pathToFileURL } = require('node:url');
 const {
   app, BrowserWindow, ipcMain, dialog, shell, nativeTheme, globalShortcut,
-  clipboard, nativeImage, screen, powerSaveBlocker, session, desktopCapturer,
+  clipboard, nativeImage, safeStorage, screen, powerSaveBlocker, session, desktopCapturer,
 } = require('electron');
 
 const { GuideStore } = require('../core/store');
 const { Settings } = require('../core/settings');
+const { GoogleDrive } = require('./google-drive');
+const { CloudSync } = require('../core/cloud-sync');
 const { SearchIndex } = require('../core/search');
 const { TemplateManager, FORMATS, FORMAT_LABELS } = require('../core/templates');
 const { buildRenderAst } = require('../core/renderast');
@@ -45,8 +47,8 @@ app.commandLine.appendSwitch('disable-renderer-backgrounding');
 app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
 
 /**
- * StepForge main process. Zero network code: no telemetry, no updates, no
- * remote anything. The renderer is sandboxed; everything below is the full
+ * StepForge main process. Optional AI and Google Drive integrations are opt-in.
+ * No telemetry or update checks. The renderer is sandboxed; this is the full
  * privileged surface.
  */
 
@@ -65,6 +67,11 @@ let searchIndex;
 let templates;
 let capture;
 let textIntel;
+let googleDrive;
+let cloudSync;
+let cloudConnecting = false;
+let cloudTesting = false;
+let cloudEditorDirty = false;
 let mainWindow;
 let lastZoomShortcut = null;
 let canvasZoomActive = false;
@@ -80,6 +87,7 @@ function reindex(guideId) {
   // Automatic backup policy runs on the same save choke point. It is
   // self-contained and never throws, so it can't affect the save either.
   autoSnapshotIfDue(store, guideId, settings);
+  cloudSync?.markChanged(guideId);
 }
 
 function orderedSteps(guideId) {
@@ -505,6 +513,10 @@ function setupIpc() {
     canvasZoomActive = Boolean(active);
   });
 
+  ipcMain.on('cloud:editor-dirty', (event, dirty) => {
+    if (trustedSender(event)) cloudEditorDirty = Boolean(dirty);
+  });
+
   const IMAGE_BUDGET = 256 * 1024 * 1024; // channels that carry base64 PNGs
   const h = (channel, fn, opts = {}) => {
     const { maxChars = 2 * 1024 * 1024, validate = null } = opts;
@@ -687,9 +699,56 @@ function setupIpc() {
   h('search:titles', ({ q }) => searchIndex.searchTitles(q),
     { validate: (a) => c.optionalString(a.q, 1000) });
 
+  // Cloud access is confined to the main process; tokens never enter IPC.
+  const cloudStatus = () => ({ ...googleDrive.status(), ...cloudSync.status, enabled: settings.get('cloud.enabled') === true });
+  h('cloud:status', cloudStatus);
+  h('cloud:connect', async () => {
+    if (cloudTesting || cloudConnecting) throw new Error('Wait for Google sign-in or testing to finish.');
+    cloudConnecting = true;
+    try {
+      await googleDrive.connect();
+      await googleDrive.account();
+      // The sign-in control explicitly explains that connecting enables sharing.
+      settings.set('cloud.enabled', true);
+      cloudSync.start();
+      return cloudStatus();
+    } finally { cloudConnecting = false; }
+  }, { validate: (a) => Object.keys(a).length === 0 });
+  h('cloud:cancel', () => { googleDrive.cancel(); return { ok: true }; });
+  h('cloud:disconnect', async () => {
+    settings.set('cloud.enabled', false);
+    cloudSync.stop();
+    googleDrive.disconnect();
+    await cloudSync.running;
+    cloudSync.publish('off', 'Google Drive disconnected. Local guides and cloud copies are kept.');
+    return cloudStatus();
+  });
+  h('cloud:enable', async ({ enabled }) => {
+    if (cloudConnecting || cloudTesting) throw new Error('Wait for Google sign-in or connection testing to finish.');
+    if (enabled && !googleDrive.status().connected) throw new Error('Sign in to Google Drive first.');
+    settings.set('cloud.enabled', enabled);
+    if (enabled) cloudSync.start();
+    else { cloudSync.stop(); await cloudSync.running; cloudSync.publish('off', 'Google Drive sharing is off.'); }
+    return cloudStatus();
+  }, { validate: (a) => typeof a.enabled === 'boolean' });
+  h('cloud:sync', () => cloudSync.sync());
+  h('cloud:test', async () => {
+    if (cloudConnecting || cloudTesting) throw new Error('Google sign-in or testing is already in progress.');
+    cloudTesting = true;
+    cloudSync.stop();
+    try {
+      await cloudSync.running;
+      return await googleDrive.test();
+    } finally {
+      cloudTesting = false;
+      if (settings.get('cloud.enabled') === true) cloudSync.start();
+    }
+  });
+
   // settings + placeholders
   h('settings:all', () => settings.data);
   h('settings:set', ({ keyPath, value }) => {
+    if (keyPath === 'cloud' || keyPath.startsWith('cloud.')) throw new Error('Use the Google Drive sharing controls.');
     settings.set(keyPath, value);
     if (keyPath === 'appearance') applyTheme();
     if (keyPath.startsWith('capture.hotkey')) registerHotkeys();
@@ -1041,6 +1100,20 @@ if (!gotLock) {
     const dataDir = resolveDataDir();
     store = new GuideStore(dataDir);
     settings = new Settings(store.settingsDir);
+    googleDrive = new GoogleDrive({ directory: store.settingsDir, safeStorage, openExternal: (url) => shell.openExternal(url) });
+    cloudSync = new CloudSync({
+      store, drive: googleDrive,
+      enabled: () => settings.get('cloud.enabled') === true && !cloudTesting,
+      // Conservatively defer incoming replacements while any editor is active.
+      // This also covers pending debounced input and background capture work.
+      canUpload: () => !cloudEditorDirty,
+      canReplace: () => !canvasZoomActive && !cloudEditorDirty && !(capture && capture.session && !capture.session.paused),
+      onChange: (guideId) => {
+        reindex(guideId);
+        sendToRenderer('cloud:library-changed', { guideId });
+      },
+      onStatus: (status) => sendToRenderer('cloud:status', { ...googleDrive.status(), ...status, enabled: settings.get('cloud.enabled') === true }),
+    });
     searchIndex = new SearchIndex(store.indexDir);
     // Rebuild/reconcile the index against the library at startup so a missing,
     // corrupt, or version-mismatched index recovers instead of silently
@@ -1068,6 +1141,7 @@ if (!gotLock) {
     let lastClickFrameSource = null;
     const captureNotify = (channel, payload) => {
       sendToRenderer(channel, payload);
+      if (channel === 'capture:added' && payload?.guideId) cloudSync?.markChanged(payload.guideId);
       if (channel === 'capture:state' && payload && payload.clickFrameSource !== lastClickFrameSource) {
         lastClickFrameSource = payload.clickFrameSource;
         if (payload.clickFrameSource === 'stream') {
@@ -1169,6 +1243,7 @@ if (!gotLock) {
     setupIpc();
     createWindow();
     registerHotkeys();
+    if (settings.get('cloud.enabled') === true) cloudSync.start();
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -1189,6 +1264,7 @@ if (!gotLock) {
   });
 
   app.on('will-quit', () => {
+    cloudSync?.stop();
     globalShortcut.unregisterAll();
     if (capture) {
       // Targeted cleanup (not finishSession — that re-shows the window).

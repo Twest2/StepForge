@@ -307,6 +307,7 @@ function showSettingsDialog({
 } = {}) {
   return new Promise((resolve) => {
     const form = el('form', { className: 'settings-form' });
+    const cloudPanel = makeCloudSettings(api);
 
     const appearance = makeSelect(settings.appearance || 'system', [
       { value: 'system', label: 'System' },
@@ -463,6 +464,7 @@ function showSettingsDialog({
           'When auto-document is on, each capture is automatically documented by AI. Turn it off to use AI manually only.',
         ),
       ),
+      cloudPanel.node,
       el('fieldset', {},
         el('legend', {}, 'Global placeholders'),
         placeholderRows,
@@ -475,7 +477,7 @@ function showSettingsDialog({
       body: form,
       wide: true,
       footer: [
-        el('button', { type: 'button', onClick: () => { close(); resolve(false); } }, 'Cancel'),
+        el('button', { type: 'button', onClick: () => { cloudPanel.dispose(); close(); resolve(false); } }, 'Cancel'),
         el('button.primary', {
           type: 'submit',
           onClick: async (e) => {
@@ -528,12 +530,13 @@ function showSettingsDialog({
               }, {}),
             };
             await onSave(next);
+            cloudPanel.dispose();
             close();
             resolve(true);
           },
         }, 'Save'),
       ],
-      onClose: () => resolve(false),
+      onClose: () => { cloudPanel.dispose(); resolve(false); },
     });
 
     form.addEventListener('submit', (e) => e.preventDefault());

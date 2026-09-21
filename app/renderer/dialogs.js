@@ -226,6 +226,10 @@ function showQuickActions({ query = '', commands = [], searchFn, onOpenItem, onC
     let items = [];
     let active = 0;
 
+    function updateActiveItem() {
+      [...results.children].forEach((row, idx) => row.classList.toggle('active', idx === active));
+    }
+
     function renderItems() {
       clearNode(results);
       if (!items.length) {
@@ -235,7 +239,7 @@ function showQuickActions({ query = '', commands = [], searchFn, onOpenItem, onC
       items.forEach((item, idx) => {
         results.append(el('div.qa-item', {
           className: `qa-item${idx === active ? ' active' : ''}`,
-          onMouseenter: () => { active = idx; renderItems(); },
+          onMouseenter: () => { active = idx; updateActiveItem(); },
           onClick: () => choose(idx),
         },
         el('span.kind', {}, item.kind || 'cmd'),
@@ -288,8 +292,8 @@ function showQuickActions({ query = '', commands = [], searchFn, onOpenItem, onC
     const debounced = debounce(refresh, 60);
     input.addEventListener('input', debounced);
     input.addEventListener('keydown', (e) => {
-      if (e.key === 'ArrowDown') { e.preventDefault(); active = Math.min(items.length - 1, active + 1); renderItems(); }
-      else if (e.key === 'ArrowUp') { e.preventDefault(); active = Math.max(0, active - 1); renderItems(); }
+      if (e.key === 'ArrowDown') { e.preventDefault(); active = Math.max(0, Math.min(items.length - 1, active + 1)); updateActiveItem(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); active = Math.max(0, active - 1); updateActiveItem(); }
       else if (e.key === 'Enter') { e.preventDefault(); choose(); }
       else if (e.key === 'Escape') { e.preventDefault(); close(); resolve(null); }
     });
@@ -307,6 +311,7 @@ function showSettingsDialog({
 } = {}) {
   return new Promise((resolve) => {
     const form = el('form', { className: 'settings-form' });
+    const cloudPanel = makeCloudSettings(api);
 
     const appearance = makeSelect(settings.appearance || 'system', [
       { value: 'system', label: 'System' },
@@ -324,7 +329,7 @@ function showSettingsDialog({
     const clickMarker = el('input', { type: 'checkbox', checked: Boolean(settings.capture?.clickMarker) });
     const captureHotkey = makeHotkeyInput(settings.capture?.hotkeyCapture || '');
     const pauseHotkey = makeHotkeyInput(settings.capture?.hotkeyPauseResume || '');
-    const focusedDefault = el('input', { type: 'checkbox', checked: Boolean(settings.editor?.focusedViewDefaultForNewSteps) });
+    const focusedDefault = el('input', { type: 'checkbox', checked: settings.editor?.focusedViewDefaultForNewSteps !== false });
     const previewCount = makeInput(settings.exports?.previewStepCount ?? 3, 'number', { min: 1, step: 1 });
     const openFolder = el('input', { type: 'checkbox', checked: Boolean(settings.exports?.openFolderAfterExport) });
     const captureOutside = el('input', { type: 'checkbox', checked: Boolean(settings.capture?.captureOutsideClicks) });
@@ -463,6 +468,7 @@ function showSettingsDialog({
           'When auto-document is on, each capture is automatically documented by AI. Turn it off to use AI manually only.',
         ),
       ),
+      cloudPanel.node,
       el('fieldset', {},
         el('legend', {}, 'Global placeholders'),
         placeholderRows,
@@ -475,7 +481,7 @@ function showSettingsDialog({
       body: form,
       wide: true,
       footer: [
-        el('button', { type: 'button', onClick: () => { close(); resolve(false); } }, 'Cancel'),
+        el('button', { type: 'button', onClick: () => { cloudPanel.dispose(); close(); resolve(false); } }, 'Cancel'),
         el('button.primary', {
           type: 'submit',
           onClick: async (e) => {
@@ -528,12 +534,13 @@ function showSettingsDialog({
               }, {}),
             };
             await onSave(next);
+            cloudPanel.dispose();
             close();
             resolve(true);
           },
         }, 'Save'),
       ],
-      onClose: () => resolve(false),
+      onClose: () => { cloudPanel.dispose(); resolve(false); },
     });
 
     form.addEventListener('submit', (e) => e.preventDefault());

@@ -7,6 +7,7 @@ const DEFAULT_SETTINGS = {
   schemaVersion: 1,
   appearance: 'system', // system | light | dark
   language: 'en',
+  cloud: { enabled: false }, // Explicit opt-in; credentials live in OS-encrypted storage.
   spellcheck: true,
   capture: {
     delayMs: 0,
@@ -55,7 +56,7 @@ const DEFAULT_SETTINGS = {
     captureTypedText: false,
   },
   editor: {
-    focusedViewDefaultForNewSteps: false,
+    focusedViewDefaultForNewSteps: true,
     autoTitleTemplate: '[[Mode]] capture [[Time]]',
   },
   ai: {

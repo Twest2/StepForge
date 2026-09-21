@@ -14,7 +14,6 @@ Local guides remain usable offline.
    and guides begin synchronizing automatically.
 4. Sign in to the same Google account in StepForge on your other computer.
 
-You do not need an API key, client ID, client secret, or Google Cloud project.
 You can cancel sign-in at any time. Turn off **Automatically sync guides** to
 pause sharing, or choose **Disconnect** to remove this device's connection.
 
@@ -62,44 +61,13 @@ Settings and shows pending, syncing, synced, conflict, or error states.
   sharing is enabled; Settings reports authentication, permission, quota, and
   connection errors.
 
-## Credentials and scope
 
-The main process opens the Google OAuth browser flow using PKCE, a random
-state value, and a short-lived loopback callback listener. It requests only
-`https://www.googleapis.com/auth/drive.appdata`, not access to all Drive files.
-Your access and refresh tokens are encrypted using Electron's
-OS-backed `safeStorage` and are never returned to the renderer or written to
-ordinary settings. Linux's insecure `basic_text` fallback is refused; unlock
-or configure an OS keyring if sign-in reports a credential-store error.
 
-Guides are transferred over HTTPS. The archive itself is not end-to-end
-encrypted by StepForge; the Google account's storage protections apply.
-No telemetry or StepForge-hosted account/server is involved.
 
-## Verification
 
-Automated tests use real local guide/archive files and mocked Google responses.
-They cover PKCE/state validation, cancellation, secure credential persistence,
-refresh and revoked tokens, paginated listing, the connection probe, clean
-cross-device updates, concurrent/offline edits, conflict copies, active-editor
-protection, integrity failure, retry, disabled mode, and interrupted installs.
 
-Before release, use a build configured with StepForge's registration and two isolated devices:
 
-1. Confirm sharing starts off and ordinary capture/edit/export works offline.
-2. Sign in and run the connection test; check that every stage passes.
-3. Confirm signing in enables sharing on both devices. Edit a guide on A; wait for synced; close
-   the editor on B and verify its title, steps, images, and annotations update.
-4. Edit both copies offline, reconnect, and confirm both edits remain available
-   as separate guides after synchronization. Repeat with simultaneous uploads.
-5. Open a guide on B while A uploads; verify B shows pending and preserves its
-   unsaved input until leaving the editor.
-6. Revoke access in Google, then run the connection test. Check the actionable
-   sign-in error. Disconnect/reconnect and verify recovery.
-7. Disable sharing during a transfer; confirm further background work stops
-   and local guides remain. Restart to verify the setting persists.
-
-Maintainers: see [Google sign-in release configuration](GOOGLE_DRIVE_RELEASE.md)
+Maintainers/contributers: see [Google sign-in release configuration](GOOGLE_DRIVE_RELEASE.md)
 for the one-time application registration and packaging requirements.
 
 Google references: [Desktop OAuth](https://developers.google.com/identity/protocols/oauth2/native-app),

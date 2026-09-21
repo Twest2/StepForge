@@ -740,6 +740,16 @@ function setupIpc() {
     return cloudStatus();
   }, { validate: (a) => typeof a.enabled === 'boolean' });
   h('cloud:sync', () => cloudSync.sync());
+  h('cloud:storage', () => cloudSync.storage());
+  h('cloud:history', ({ guideId }) => cloudSync.history(guideId),
+    { validate: (a) => c.id(a.guideId) });
+  h('cloud:prune', () => cloudSync.prune());
+  h('cloud:restore', ({ guideId, versionId }) => cloudSync.restore(guideId, versionId),
+    { validate: (a) => c.id(a.guideId) && c.id(a.versionId) });
+  h('cloud:setGuideSharing', ({ guideId, sharingEnabled }) => cloudSync.setSharing(guideId, sharingEnabled),
+    { validate: (a) => c.id(a.guideId) && typeof a.sharingEnabled === 'boolean' });
+  h('cloud:deleteGuideSnapshots', ({ guideId }) => cloudSync.removeGuideSnapshots(guideId),
+    { validate: (a) => c.id(a.guideId) });
   h('cloud:test', async () => {
     if (cloudConnecting || cloudTesting) throw new Error('Google sign-in or testing is already in progress.');
     cloudTesting = true;

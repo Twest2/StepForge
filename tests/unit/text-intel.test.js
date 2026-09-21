@@ -181,15 +181,80 @@ test('typed text with search input role produces Search for title', () => {
   assert.equal(title, 'Search for "oracle" in Chrome');
 });
 
-test('UIAutomation element value takes priority over keyboard buffer', () => {
+test('existing field values and keyboard text are not copied into input titles', () => {
   const title = buildCaptureTitle({
     mode: 'fullscreen',
     metadata: { elementRole: 'edit', elementValue: 'oracle', appName: 'chrome' },
     ocrText: '',
     recentTyped: 'ignored',
   });
-  // elementValue (from UIAutomation) wins over the keyboard buffer
-  assert.ok(title.includes('oracle'), `expected oracle in title, got: ${title}`);
+  assert.equal(title, 'Enter text in Chrome');
+});
+
+test('accessible controls win over unrelated OCR, including generic button labels', () => {
+  for (const label of ['Profile', 'Continue', 'Cancel', 'OK', 'Submit']) {
+    assert.equal(buildCaptureTitle({
+      metadata: { elementLabel: label, elementRole: 'button' }, ocrText: 'Delete account',
+    }), `Click ${label}`);
+  }
+  assert.equal(buildCaptureTitle({
+    metadata: { elementLabel: 'Docs | StepForge', elementRole: 'hyperlink' }, ocrText: 'Other link',
+  }), 'Select Docs | StepForge');
+});
+
+test('close controls use tab or title-bar ancestry, never guess a dialog is a window', () => {
+  const metadata = { elementLabel: 'Close', elementRole: 'button', appName: 'chrome', windowTitle: 'Active page - Chrome' };
+  assert.equal(buildCaptureTitle({ metadata: { ...metadata, parentTabTitle: 'Other website' } }), 'Close "Other website" tab in Chrome');
+  assert.equal(buildCaptureTitle({ metadata: { ...metadata, inTitleBar: true } }), 'Close Chrome');
+  assert.equal(buildCaptureTitle({ metadata }), 'Click Close in Chrome');
+  assert.equal(buildCaptureTitle({ metadata: { ...metadata, elementLabel: 'Schließen', elementAutomationId: 'Close', inTitleBar: true } }), 'Close Chrome');
+});
+
+test('input titles describe fields without copying values or adjacent OCR', () => {
+  for (const metadata of [
+    { elementLabel: 'Username', elementRole: 'edit', elementValue: 'private-user' },
+    { elementLabel: 'Username', elementRole: 'text box' },
+  ]) {
+    assert.equal(buildCaptureTitle({ metadata, recentTyped: 'private-user', ocrText: 'Continue' }), 'Enter Username');
+  }
+  for (const metadata of [
+    { elementLabel: 'Password', elementRole: 'edit' },
+    { elementLabel: 'Secret', elementRole: 'edit', elementIsPassword: true },
+  ]) {
+    assert.equal(buildCaptureTitle({ metadata: { ...metadata, elementValue: 'secret' }, recentTyped: 'secret', ocrText: 'secret' }), 'Enter password');
+  }
+  assert.equal(buildCaptureTitle({ metadata: { elementLabel: 'Reset password', elementRole: 'button' } }), 'Click Reset password');
+});
+
+test('missing accessible names retain OCR and capture-mode fallbacks', () => {
+  assert.equal(buildCaptureTitle({ metadata: { elementLabel: '', elementRole: 'button' }, ocrText: 'Continue' }), 'Click Continue');
+  assert.equal(buildCaptureTitle({ metadata: { elementLabel: 'Whole page', elementRole: 'document' }, ocrText: 'Continue' }), 'Click Continue');
+  assert.equal(buildCaptureTitle({ mode: 'region' }), 'Region capture');
+});
+
+test('capture context carries accessible targets and removes password text before storage', async (t) => {
+  const root = makeTmpDir('text-intel-context');
+  t.after(() => rmrf(root));
+  const service = new TextIntelService({ store: { settingsDir: root }, settings: makeSettings(), dataDir: root });
+  service.ocrAroundClick = async () => ({ text: 'secret' });
+  service.collectForegroundWindowContext = async () => { throw new Error('must use pre-click context'); };
+  const password = await service.buildCaptureContext({
+    mode: 'fullscreen', clickMeta: {
+      windowContext: { elementLabel: 'Password', elementRole: 'edit', elementIsPassword: true, elementValue: 'secret' },
+      keyContext: { recentTyped: 'secret' },
+    },
+  });
+  assert.equal(password.title, 'Enter password');
+  assert.equal(password.captureMetadata.ocrText, '');
+  assert.equal(password.captureMetadata.recentTyped, '');
+  assert.equal(password.captureMetadata.elementValue, '');
+  const tab = await service.buildCaptureContext({
+    mode: 'fullscreen', clickMeta: {
+      windowContext: { elementLabel: 'Close', elementRole: 'button', parentTabTitle: 'Docs', appName: 'chrome' },
+    },
+  });
+  assert.equal(tab.title, 'Close "Docs" tab in Chrome');
+  assert.equal(tab.captureMetadata.parentTabTitle, 'Docs');
 });
 
 test('app-qualified OCR title includes app name', () => {

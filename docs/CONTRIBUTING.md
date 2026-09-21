@@ -31,8 +31,10 @@ license, and you add a Developer Certificate of Origin sign-off to each commit
 
 ## Offline Rules
 
-- No network code paths in the application. No telemetry, update checks,
-  license checks, remote fonts, or remote APIs — **ever**.
+- Core workflows must work offline. No telemetry, update checks, license
+  checks, or remote fonts. Optional AI and Google Drive integrations must stay
+  off by default, require explicit opt-in, and follow the documented privacy
+  contract. Do not add other network integrations without maintainer agreement.
 - No new runtime dependencies without prior maintainer agreement; prefer
   internal implementations using Node built-ins. This is due to all the 
   security issues that have arrose lately with NPM dependencies.

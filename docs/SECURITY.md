@@ -5,24 +5,27 @@
 Please report all security issues via email directly to `git@twestbrook.com`. Please do NOT create a public issue or PR supporting this.
 
 
-## Offline Guarantee
+## Network boundary
 
-StepForge ships with **zero network code paths**. The application:
+Core capture, editing, and exports work offline. There is no telemetry,
+analytics, update checking, or license validation. Optional AI and Google Drive
+sharing are explicitly configured and off by default; see [PRIVACY.md](PRIVACY.md).
+The sandboxed renderer has no direct network or token access.
 
-- opens no sockets and performs no HTTP requests,
-- has no telemetry, crash reporting, or analytics,
-- performs no update checks and no license validation,
-- has no account system, cloud sync, or remote AI integration,
-- embeds no remote fonts, CDNs, or external references in exports.
-
-The only network activity in the project's lifetime is the one-time
-development fetch of the Electron shell via npm (see
-`build/agent_audit.md`). The packaged app never goes online.
+Google Drive uses browser-based OAuth with PKCE and state validation, a
+short-lived listener bound to 127.0.0.1, and the limited `drive.appdata` scope.
+Tokens are stored through OS-backed Electron safeStorage; plaintext Linux
+fallback is refused. Google requests use fixed HTTPS endpoints, reject
+redirects, and have time and transfer-size limits. Turning sync off cancels
+in-flight requests; it cannot undo a request already accepted by Google.
 
 ## Threat Model
 
-Because the app is local-only, the realistic attack surface is **malicious
-files opened by the user**:
+The app accepts user-imported files and, when sharing is enabled, archives from
+Google Drive app storage. Downloaded archives are untrusted and must pass the
+same archive validation before installation. Immutable cloud versions preserve
+concurrent writes. Incoming replacements are deferred while editing or recording,
+and staged installation retains local backups. See [GOOGLE_DRIVE.md](GOOGLE_DRIVE.md).
 
 ### Archive imports (`.sfgz`, `.sfglt`)
 

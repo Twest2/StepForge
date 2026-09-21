@@ -101,10 +101,16 @@ jobs:
           cache: npm
       - run: bash scripts/linux/dnf/install-build-deps.sh
       - run: npm ci
-      - name: Run repository checks and RPM integration tests
-        run: bash tests/run_test.sh
       - name: Build Fedora package
         run: npm run package:linux:rpm
+      - name: Run repository checks and RPM integration tests
+        run: |
+          packages=(build/artifacts/x86_64/*.rpm)
+          [[ ${#packages[@]} == 1 && -f "${packages[0]}" ]] || {
+            echo 'Expected exactly one Fedora RPM' >&2
+            exit 1
+          }
+          STEPFORGE_TEST_RPM="${packages[0]}" bash tests/run_test.sh
       - name: Install and smoke-test the actual RPM
         run: bash tests/integration/linux/fedora-installed.test.sh build/artifacts/x86_64/*.rpm
       - uses: actions/upload-artifact@v4

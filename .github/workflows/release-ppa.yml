@@ -75,6 +75,11 @@ jobs:
           chmod 0700 "$RUNNER_TEMP/gpg-debsign"
           echo "DEBSIGN_PROGRAM=$RUNNER_TEMP/gpg-debsign" >> "$GITHUB_ENV"
 
+      - name: Configure StepForge Google sign-in
+        env:
+          STEPFORGE_GOOGLE_CLIENT_ID: ${{ vars.STEPFORGE_GOOGLE_CLIENT_ID }}
+        run: node scripts/configure-google-oauth.js
+
       - name: Build signed source package
         shell: bash
         run: |

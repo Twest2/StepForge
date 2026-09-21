@@ -6,6 +6,7 @@ const path = require('node:path');
 const {
   DEFAULT_CAPTURE_TITLES,
   buildCaptureTitle,
+  isPasswordField,
   normalizeOllamaHost,
   validateOllamaHost,
   normalizeAiPatch,
@@ -292,17 +293,24 @@ class TextIntelService {
         : this.collectForegroundWindowContext(clickMeta?.osPoint || null),
       this.ocrAroundClick(frame, clickPos),
     ]);
-    const title = buildCaptureTitle({ mode, metadata, ocrText: ocr.text, recentTyped, recentShortcut });
+    const isPassword = isPasswordField(metadata);
+    const safeOcr = isPassword ? '' : (ocr.text || '');
+    const safeTyped = isPassword ? '' : recentTyped;
+    const title = buildCaptureTitle({ mode, metadata, ocrText: safeOcr, recentTyped: safeTyped, recentShortcut });
     return {
       title,
       captureMetadata: {
-        ocrText: ocr.text || '',
+        ocrText: safeOcr,
         windowTitle: metadata.windowTitle || '',
         appName: metadata.appName || '',
-        elementLabel: metadata.elementLabel || '',
+        elementLabel: isPassword ? 'Password' : (metadata.elementLabel || ''),
         elementRole: metadata.elementRole || '',
-        elementValue: metadata.elementValue || '',
-        recentTyped,
+        elementValue: isPassword ? '' : (metadata.elementValue || ''),
+        elementIsPassword: Boolean(isPassword),
+        parentTabTitle: metadata.parentTabTitle || '',
+        inTitleBar: Boolean(metadata.inTitleBar),
+        elementAutomationId: metadata.elementAutomationId || '',
+        recentTyped: safeTyped,
         recentShortcut,
         mode,
       },

@@ -397,7 +397,9 @@ class StepForgeApp {
             { label: 'Guide information…', action: () => this.editor.openGuideInfo() },
             { label: 'Guide placeholders…', action: () => this.editor.openGuidePlaceholders() },
             { label: 'Backups & snapshots…', action: () => this.editor.openBackupsDialog() },
-            { label: 'Generate all text fields with AI (experimental)', action: () => this.editor.generateAllTextFieldsWithAi() },
+            ...(this.editor.isAiEnabled() ? [
+              { label: 'Generate all text fields with AI (experimental)', action: () => this.editor.generateAllTextFieldsWithAi() },
+            ] : []),
             { label: guide && guide.linkedSource ? 'Linked guide…' : 'Linked guide (not linked)', action: () => this.editor.openLinkedGuide() },
             'sep',
             { label: 'Keyboard shortcuts…', action: () => this.editor.openShortcutsHelp() },

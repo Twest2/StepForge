@@ -1,5 +1,13 @@
 # Optional Google Drive sharing
 
+> **Google Drive is currently in testing.**
+> Google Drive sharing is currently available only to Google accounts that
+> have been added as approved test users for StepForge's Google OAuth app.
+> If your account is not an approved test user, Google will block sign-in.
+> This restriction is temporary while the Google integration is being tested.
+> To be added to the test list, please contact git@twestbrook.com. You will 
+> be added just Google requires a list of accounts.
+
 Google Drive sharing is off until you choose **Sign in with Google**. Signing
 in and allowing access enables automatic sharing of your local guides,
 including screenshots, annotations, descriptions, and capture metadata.

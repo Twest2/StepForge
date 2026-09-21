@@ -90,9 +90,11 @@ class GoogleDrive {
         } catch {
           /* no raw response in errors */
         }
-        const error = new Error(response.status === 401 || reason === 'invalid_grant'
-          ? 'Google authorization expired or was revoked. Disconnect and sign in again.'
-          : `Google Drive request failed (${response.status}${reason ? `: ${reason}` : ''}${description ? ` — ${description}` : ''}).`
+        const error = new Error(
+          response.status === 401 || reason === 'invalid_grant'
+            ? 'Google authorization expired or was revoked. Disconnect and sign in again.'
+            : `Google Drive request failed (${response.status}${reason ? ': ' + reason : ''}${description ? ' — ' + description : ''}).`
+        );
         error.status = response.status;
         throw error;
       }

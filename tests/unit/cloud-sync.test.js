@@ -26,6 +26,11 @@ function setup(t) {
       files.push(file); bytes.set(file.id, data); return file;
     },
     async download(id) { return bytes.get(id); },
+    async deleteFile(id) {
+      const index = files.findIndex((file) => file.id === id);
+      if (index >= 0) files.splice(index, 1);
+      bytes.delete(id);
+    },
   };
   function device(name, options = {}) {
     const store = new GuideStore(path.join(root, name));
@@ -239,4 +244,41 @@ test('unsaved editor input prevents reporting a partially saved guide as uploade
   const a = device('a', { canUpload: () => !dirty }); addGuide(a.store);
   assert.equal((await synced(a.sync)).phase, 'pending'); assert.equal(files.length, 0);
   dirty = false; await synced(a.sync); assert.equal(files.length, 1);
+});
+
+test('Drive retention keeps the current snapshot and two prior snapshots', async (t) => {
+  const { device, files } = setup(t); const a = device('a');
+  const id = addGuide(a.store); await synced(a.sync);
+  for (const title of ['Second', 'Third', 'Fourth']) {
+    edit(a.store, id, title); await synced(a.sync);
+  }
+  const versions = files.filter((file) => file.appProperties.guideId === id);
+  assert.equal(versions.length, 3);
+  assert.deepEqual(versions.map((file) => file.name), ['Second.sfgz', 'Third.sfgz', 'Fourth.sfgz']);
+  const usage = await a.sync.storage();
+  assert.equal(usage.snapshotCount, 3);
+  assert.equal(usage.pruneCount, 0);
+});
+
+test('guide cloud opt-out stops uploads and removing cloud copies leaves the guide local', async (t) => {
+  const { device, files } = setup(t); const a = device('a');
+  const id = addGuide(a.store); await synced(a.sync);
+  await a.sync.setSharing(id, false);
+  edit(a.store, id, 'Private'); await synced(a.sync);
+  assert.equal(files.length, 1);
+  const result = await a.sync.removeGuideSnapshots(id);
+  assert.equal(result.removed, 1);
+  assert.equal(a.store.guideExists(id), true);
+  assert.equal(a.store.getGuide(id).cloud.sharingEnabled, false);
+  assert.equal(files.length, 0);
+});
+
+test('a retained previous cloud snapshot can be restored', async (t) => {
+  const { device } = setup(t); const a = device('a');
+  const id = addGuide(a.store); await synced(a.sync);
+  edit(a.store, id, 'Changed'); await synced(a.sync);
+  const history = await a.sync.history(id);
+  assert.equal(history.length, 2);
+  await a.sync.restore(id, history[1].id);
+  assert.equal(a.store.getGuide(id).title, 'Original');
 });

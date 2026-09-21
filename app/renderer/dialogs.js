@@ -926,7 +926,7 @@ function showPlaceholdersDialog({ title = 'Placeholders', hint = '', values = {}
  * shown at the top of the guide, below the title, and surfaced on the PDF
  * cover page and the top of other export formats.
  */
-function showGuideInfoDialog({ values = {}, onSave } = {}) {
+function showGuideInfoDialog({ values = {}, onSave, onCloudSnapshots, onDeleteCloudSnapshots } = {}) {
   return new Promise((resolve) => {
     const authorInput = makeInput(values.author || '', 'text', { placeholder: 'e.g. Jane Doe' });
     const coAuthorsInput = makeInput(values.coAuthors || '', 'text', { placeholder: 'e.g. Alex Lee, Sam Patel' });
@@ -935,6 +935,7 @@ function showGuideInfoDialog({ values = {}, onSave } = {}) {
       rows: 4,
       placeholder: 'A short summary of this guide.',
     }, values.description || '');
+    const shareInput = el('input', { type: 'checkbox', checked: values.sharingEnabled !== false });
 
     const { close } = openModal({
       title: 'Guide information',
@@ -947,8 +948,13 @@ function showGuideInfoDialog({ values = {}, onSave } = {}) {
         labeledRow('Description', descriptionInput, { stacked: true }),
         el('div.muted', { style: { marginTop: '-4px' } },
           'Shown on the first page of the PDF and at the top of other export formats.'),
+        el('label.cloud-enable', {}, shareInput, ' Include this guide in Google Drive sharing'),
+        el('div.muted', { style: { marginTop: '-4px' } },
+          'When off, this guide stays only on this device.'),
       ),
       footer: [
+        el('button', { type: 'button', onClick: () => onCloudSnapshots?.() }, 'Cloud snapshots'),
+        el('button', { type: 'button', className: 'danger', onClick: () => onDeleteCloudSnapshots?.() }, 'Remove cloud copies'),
         el('button', { onClick: () => { close(); resolve(false); } }, 'Cancel'),
         el('button.primary', {
           onClick: async () => {
@@ -957,12 +963,30 @@ function showGuideInfoDialog({ values = {}, onSave } = {}) {
               coAuthors: coAuthorsInput.value.trim(),
               organization: organizationInput.value.trim(),
               description: descriptionInput.value.trim(),
+              sharingEnabled: shareInput.checked,
             });
             close();
             resolve(true);
           },
         }, 'Save'),
       ],
+      onClose: () => resolve(false),
+    });
+  });
+}
+
+function showCloudSnapshotsDialog({ snapshots = [], onRestore } = {}) {
+  return new Promise((resolve) => {
+    const list = snapshots.length
+      ? el('div', {}, ...snapshots.map((snapshot, index) => el('div.form-row', {},
+        el('div', {}, index === 0 ? 'Current cloud snapshot' : `Previous snapshot ${index}`, snapshot.createdTime ? el('div.muted', {}, new Date(snapshot.createdTime).toLocaleString()) : null),
+        index === 0 ? el('span.muted', {}, 'Current') : el('button', { type: 'button', onClick: async () => { await onRestore?.(snapshot); close(); resolve(true); } }, 'Restore'),
+      )))
+      : el('div.muted', {}, 'No cloud snapshots are available for this guide.');
+    const { close } = openModal({
+      title: 'Cloud snapshots', body: el('div', {},
+        el('div.muted', { style: { marginBottom: '10px' } }, 'The current snapshot and up to two previous snapshots are retained.'), list),
+      footer: [el('button.primary', { onClick: () => { close(); resolve(false); } }, 'Close')],
       onClose: () => resolve(false),
     });
   });
@@ -1059,6 +1083,7 @@ window.StepForgeDialogs = {
   showBackupsDialog,
   showPlaceholdersDialog,
   showGuideInfoDialog,
+  showCloudSnapshotsDialog,
   showShortcutsDialog,
   showTemplateManager,
   showRecordingReminder,

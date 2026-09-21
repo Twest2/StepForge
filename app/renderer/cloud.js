@@ -5,6 +5,7 @@ function makeCloudSettings(api) {
   const status = el('p.muted', { role: 'status', 'aria-live': 'polite' }, 'Loading Google Drive status…');
   const results = el('pre.cloud-test-results.muted', { role: 'status', 'aria-live': 'polite' });
   const enabled = el('input', { type: 'checkbox' });
+  const storage = el('p.muted', { role: 'status' }, 'Drive archive usage will appear after connecting.');
   let current = {};
   let busy = false;
   let signingIn = false;
@@ -66,25 +67,51 @@ function makeCloudSettings(api) {
     const result = await api.cloud.sync();
     results.textContent = result.message;
   }) }, 'Sync now');
+  const formatBytes = (bytes) => {
+    if (!bytes) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB'];
+    const unit = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
+    return `${(bytes / (1024 ** unit)).toFixed(unit ? 1 : 0)} ${units[unit]}`;
+  };
+  const refreshStorage = async () => {
+    const summary = await api.cloud.storage();
+    storage.textContent = `${formatBytes(summary.bytes)} used by ${summary.snapshotCount} private snapshot${summary.snapshotCount === 1 ? '' : 's'} across ${summary.guideCount} guide${summary.guideCount === 1 ? '' : 's'}.`
+      + (summary.pruneCount ? ` ${formatBytes(summary.reclaimableBytes)} can be reclaimed.` : '');
+    prune.disabled = busy || !summary.pruneCount;
+  };
+  const prune = el('button', { type: 'button', onClick: async () => {
+    const ok = await confirmDialog('Remove older Google Drive snapshots? The newest snapshot and two previous snapshots on every version branch will be kept.', { danger: true, okLabel: 'Prune old snapshots' });
+    if (!ok) return;
+    await run(prune, 'Pruning…', async () => { await api.cloud.prune(); await refreshStorage(); });
+  } }, 'Prune old snapshots');
   enabled.addEventListener('change', () => run(sync, 'Applying…', async () => {
     // Capture the requested value before run() restores the saved control state.
     await api.cloud.enable({ enabled: !current.enabled });
   }));
   const connectedControls = el('div.hidden', {},
     el('label.cloud-enable', {}, enabled, ' Automatically sync guides'),
-    el('p.muted', {}, 'Incoming updates wait until the editor is closed and capture is stopped. Conflicts keep both versions in your library. Deletions stay local. Archives are stored in private app storage, not the My Drive file list.'),
+    el('p.muted', {}, 'Incoming updates wait until the editor is closed and capture is stopped. Conflicts keep both versions in your library. Archives are stored in private app storage, not the My Drive file list.'),
+    el('h4', {}, 'Private archive storage'),
+    storage,
+    el('p.muted', {}, 'Each guide keeps its newest snapshot and two earlier snapshots. Pruning never removes a retained snapshot.'),
+    el('div.row', {}, prune),
     el('h4', {}, 'Google Drive testing'),
     el('p.muted', {}, 'Checks sign-in, token refresh, storage access, and upload/download integrity using a small temporary file, then deletes it. No guides are uploaded by this test.'),
     el('div.row', {}, test, sync),
   );
   const node = el('fieldset', {},
     el('legend', {}, 'Google Drive sharing'),
-    el('p.muted', {}, 'Store and synchronize your guides privately using your Google Drive account. Signing in enables automatic sharing of all your guides, including screenshots and text. You can turn sharing off at any time.'),
+    el('p.muted', {}, 'Store and synchronize your guides privately using your Google Drive account. Signing in enables automatic sharing of your guides, including screenshots and text. You can exclude an individual guide from its Guide information.'),
     status,
     el('div.row', {}, connect, cancel, disconnect),
     connectedControls, results,
   );
   const unsubscribe = api.cloud.onStatus((next) => { if (!disposed) update(next); });
-  api.cloud.status().then((next) => { if (!disposed) update(next); }).catch((err) => { status.textContent = err.message; });
+  api.cloud.status().then(async (next) => {
+    if (!disposed) {
+      update(next);
+      if (next.connected) await refreshStorage().catch((err) => { storage.textContent = err.message; });
+    }
+  }).catch((err) => { status.textContent = err.message; });
   return { node, dispose() { disposed = true; unsubscribe(); if (signingIn) void api.cloud.cancel().catch(() => {}); } };
 }

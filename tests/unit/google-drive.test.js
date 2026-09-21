@@ -61,7 +61,12 @@ test('OAuth uses loopback, state and PKCE and persists only encrypted credential
   const raw = fs.readFileSync(drive.file).toString();
   assert.ok(!raw.includes('refresh-secret')); assert.ok(!raw.includes('client-secret'));
   assert.equal(drive.status().refresh_token, undefined);
-  const restarted = new GoogleDrive({ directory, safeStorage, clientId: 'test.apps.googleusercontent.com' });
+  const restarted = new GoogleDrive({
+    directory,
+    safeStorage,
+    clientId: 'test.apps.googleusercontent.com',
+    clientSecret: 'test-client-secret'
+  });
   assert.equal(restarted.status().connected, true);
   assert.equal(restarted.credentials.refresh_token, 'refresh-secret');
 });

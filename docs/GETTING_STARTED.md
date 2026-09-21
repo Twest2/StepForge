@@ -47,12 +47,3 @@ Applications expose different amounts of accessibility information. If a
 control cannot be identified, StepForge falls back to nearby text, the window
 name, or the capture type. No AI setup is required, and existing guides and
 manually edited titles are unchanged.
-
-## Empty capture drafts
-
-Starting New Capture, or accepting the default blank New Guide title, creates
-a draft. Until you save a step or edit the guide, it stays out of the library
-and search, including after restarting the app. Draft data remains on disk.
-Saving a title, description, metadata, or other guide change makes it a normal
-library entry; it stays there even if you later remove its last step.
-Existing, imported, and explicitly named guides are unaffected.

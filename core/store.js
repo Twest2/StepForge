@@ -2,6 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { isDeepStrictEqual } = require('node:util');
 const {
   newId, nowIso, writeJsonSync, readJsonSync, readJsonIfExists,
   atomicWriteFileSync, deepClone,
@@ -98,11 +99,35 @@ class GuideStore {
 
   // ---- guides -------------------------------------------------------------
 
-  createGuide(fields = {}) {
+  createGuide(fields = {}, { captureDraft = false } = {}) {
     const guide = createGuide(fields);
     validateGuide(guide);
+    if (captureDraft) writeJsonSync(path.join(this.guideDir(guide.guideId), 'capture-draft.json'), guide);
     writeJsonSync(path.join(this.guideDir(guide.guideId), 'guide.json'), guide);
     return guide;
+  }
+
+  // Only explicitly created capture drafts qualify. Never infer this from a
+  // default-looking title: old, imported, and intentionally empty guides count.
+  isCaptureDraft(guide) {
+    const file = path.join(this.guideDir(guide.guideId), 'capture-draft.json');
+    if (!fs.existsSync(file)) return false;
+    try {
+      const comparable = value => {
+        const { revision, createdAt, updatedAt, ...content } = normalizeGuide(value);
+        content.title = content.title.trim();
+        if (!content.descriptionHtml.replace(/<\/?(?:p|div|br)\b[^>]*>|&nbsp;|\s/gi, '')) content.descriptionHtml = '';
+        return content;
+      };
+      return isDeepStrictEqual(comparable(guide), comparable(readJsonSync(file)));
+    } catch {
+      // If the marker cannot be read, show the guide rather than hide data.
+      return false;
+    }
+  }
+
+  publishCaptureDraft(guideId) {
+    fs.rmSync(path.join(this.guideDir(guideId), 'capture-draft.json'), { force: true });
   }
 
   guideExists(guideId) {
@@ -129,6 +154,7 @@ class GuideStore {
     stored.revision = (Number.isInteger(stored.revision) ? stored.revision : 0) + 1;
     if (touch) stored.updatedAt = nowIso();
     writeJsonSync(path.join(this.guideDir(guide.guideId), 'guide.json'), stored);
+    if (!this.isCaptureDraft(stored)) this.publishCaptureDraft(stored.guideId);
     return stored;
   }
 
@@ -140,7 +166,8 @@ class GuideStore {
       const file = path.join(dir, 'guide.json');
       if (!fs.existsSync(file)) continue; // in-progress/empty dir, not corruption
       try {
-        out.push(normalizeGuide(readJsonSync(file)));
+        const guide = normalizeGuide(readJsonSync(file));
+        if (!this.isCaptureDraft(guide)) out.push(guide);
       } catch (err) {
         // A corrupt guide.json used to make the guide silently vanish from the
         // library. Quarantine the directory (preserving it) and record it so
@@ -427,6 +454,7 @@ class GuideStore {
       data.guideFolders[guideId] = folderId;
     }
     this.saveFolders(data);
+    if (folderId !== null) this.publishCaptureDraft(guideId);
   }
 }
 

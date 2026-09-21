@@ -159,7 +159,16 @@ class StepForgeApp {
     this.updateCaptureState(this.captureState);
   }
 
-  showWelcome() {
+  async flushEditorBeforeNavigation() {
+    if (this.editor.pendingSave || this.editor.pendingGuideSave) {
+      await this.editor.saveAll();
+      if (this.editor.pendingSave || this.editor.pendingGuideSave) return false;
+    }
+    return true;
+  }
+
+  async showWelcome() {
+    if (!await this.flushEditorBeforeNavigation()) return;
     this.editor.setActive(false);
     this.setView('welcome');
     this.renderWelcome();
@@ -202,7 +211,7 @@ class StepForgeApp {
   }
 
   async startNewCapture() {
-    const guide = await api.library.create({ title: 'Untitled capture' });
+    const guide = await api.library.create({ title: 'Untitled capture', captureDraft: true });
     await this.refreshData();
     await this.openGuide(guide.guideId);
     await this.armCaptureSession(guide.guideId);
@@ -217,12 +226,14 @@ class StepForgeApp {
   }
 
   async showLibrary(reason = null) {
+    if (!await this.flushEditorBeforeNavigation()) return;
     this.editor.setActive(false);
     this.setView('library');
     if (reason === 'new') {
       await this.createGuide();
       return;
     }
+    await this.refreshData();
     this.renderLibrary();
   }
 
@@ -782,7 +793,7 @@ class StepForgeApp {
       placeholder: 'Untitled guide',
     });
     if (title == null) return;
-    const guide = await api.library.create({ title: title.trim() || 'Untitled guide' });
+    const guide = await api.library.create({ title: title.trim() || 'Untitled guide', captureDraft: !title.trim() || title.trim() === 'Untitled guide' });
     await this.refreshLibrary();
     // Arm a (paused) capture session like every other open path, so the
     // "Start recording" bar appears and actually controls this new guide.

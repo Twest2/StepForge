@@ -12,31 +12,56 @@ const API = 'https://www.googleapis.com/drive/v3';
 const MAX_ARCHIVE_BYTES = 256 * 1024 * 1024;
 
 class GoogleDrive {
-  constructor({ directory, safeStorage, openExternal, clientId = GOOGLE_OAUTH.clientId, fetchImpl = globalThis.fetch }) {
+  constructor({
+    directory,
+    safeStorage,
+    openExternal,
+    clientId = GOOGLE_OAUTH.clientId,
+    clientSecret = GOOGLE_OAUTH.clientSecret,
+    fetchImpl = globalThis.fetch,
+  }) {
     this.file = path.join(directory, 'google-drive.credentials');
+  
     this.clientId = clientId;
-    this.available = /^[A-Za-z0-9._-]+\.apps\.googleusercontent\.com$/.test(clientId || '');
+    this.clientSecret = clientSecret;
+  
+    this.available =
+      /^[A-Za-z0-9._-]+\.apps\.googleusercontent\.com$/.test(clientId || '') &&
+      Boolean(clientSecret);
+  
     this.safeStorage = safeStorage;
     this.openExternal = openExternal;
     this.fetch = fetchImpl;
+  
     this.credentials = null;
     this.loadError = null;
     this.controllers = new Set();
     this.generation = 0;
+  
     try {
       if (fs.existsSync(this.file)) {
         this.requireEncryption();
-        const stored = JSON.parse(safeStorage.decryptString(fs.readFileSync(this.file)));
+  
+        const stored = JSON.parse(
+          safeStorage.decryptString(fs.readFileSync(this.file))
+        );
+  
         if (this.available && stored.clientId === this.clientId) {
           this.credentials = stored;
-          // Discard user-supplied secrets from pre-release builds.
-          if (Object.hasOwn(stored, 'clientSecret')) { delete stored.clientSecret; this.save(); }
+  
+          // Remove any old stored client secret from pre-release builds.
+          if (Object.hasOwn(stored, 'clientSecret')) {
+            delete stored.clientSecret;
+            this.save();
+          }
         } else {
-          this.loadError = 'Please sign in again to connect this version of StepForge.';
+          this.loadError =
+            'Please sign in again to connect this version of StepForge.';
         }
       }
     } catch {
-      this.loadError = 'Stored Google credentials could not be unlocked. Disconnect and sign in again.';
+      this.loadError =
+        'Stored Google credentials could not be unlocked. Disconnect and sign in again.';
     }
   }
 
@@ -176,8 +201,14 @@ class GoogleDrive {
       if (generation !== this.generation) throw new Error('Google sign-in cancelled.');
       await this.openExternal(`https://accounts.google.com/o/oauth2/v2/auth?${query}`);
       const code = await codePromise;
-      const tokens = await this.tokenRequest({ client_id: clientId, code, code_verifier: verifier,
-        redirect_uri: redirectUri, grant_type: 'authorization_code' });
+      const tokens = await this.tokenRequest({
+        client_id: clientId,
+        client_secret: this.clientSecret,
+        code,
+        code_verifier: verifier,
+        redirect_uri: redirectUri,
+        grant_type: 'authorization_code'
+      });
       if (generation !== this.generation) throw new Error('Google sign-in cancelled.');
       if (!tokens.refresh_token || (tokens.scope && !tokens.scope.split(' ').includes(SCOPE))) throw new Error('Google did not grant offline Drive access. Sign in again and allow app storage access.');
       this.credentials = { ...tokens, clientId, expiresAt: Date.now() + Number(tokens.expires_in || 3600) * 1000 };
@@ -197,8 +228,12 @@ class GoogleDrive {
     if (!force && credentials.access_token && credentials.expiresAt > Date.now() + 60000) return credentials.access_token;
     if (!this.refreshing) {
       this.refreshing = (async () => {
-        const tokens = await this.tokenRequest({ client_id: this.clientId,
-          refresh_token: credentials.refresh_token, grant_type: 'refresh_token' });
+        const tokens = await this.tokenRequest({
+          client_id: this.clientId,
+          client_secret: this.clientSecret,
+          refresh_token: credentials.refresh_token,
+          grant_type: 'refresh_token'
+        });
         if (this.credentials !== credentials) throw new Error('Google account changed during authentication.');
         Object.assign(credentials, tokens, { expiresAt: Date.now() + Number(tokens.expires_in || 3600) * 1000 });
         this.save();

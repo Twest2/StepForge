@@ -324,7 +324,7 @@ function showSettingsDialog({
     const clickMarker = el('input', { type: 'checkbox', checked: Boolean(settings.capture?.clickMarker) });
     const captureHotkey = makeHotkeyInput(settings.capture?.hotkeyCapture || '');
     const pauseHotkey = makeHotkeyInput(settings.capture?.hotkeyPauseResume || '');
-    const focusedDefault = el('input', { type: 'checkbox', checked: Boolean(settings.editor?.focusedViewDefaultForNewSteps) });
+    const focusedDefault = el('input', { type: 'checkbox', checked: settings.editor?.focusedViewDefaultForNewSteps !== false });
     const previewCount = makeInput(settings.exports?.previewStepCount ?? 3, 'number', { min: 1, step: 1 });
     const openFolder = el('input', { type: 'checkbox', checked: Boolean(settings.exports?.openFolderAfterExport) });
     const captureOutside = el('input', { type: 'checkbox', checked: Boolean(settings.capture?.captureOutsideClicks) });

@@ -210,6 +210,7 @@ class GuideEditor {
       ...(this.dom?.blocksList ? [...this.dom.blocksList.querySelectorAll('button[data-ai-action]')] : []),
     ].filter(Boolean);
     for (const button of buttons) {
+      button.hidden = !enabled;
       button.disabled = !enabled;
       button.title = enabled
         ? button.dataset.aiTitle || 'Generate with AI'
@@ -1928,6 +1929,7 @@ class GuideEditor {
         await api.settings.setGlobalPlaceholders(next.placeholders || {});
       },
     });
+    this.setSettings(await api.settings.all());
   }
 
   async openExportDialog() {

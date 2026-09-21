@@ -16,7 +16,14 @@ function setup(t, options = {}) {
     encryptString(text) { const iv = crypto.randomBytes(16); const cipher = crypto.createCipheriv('aes-256-cbc', key, iv); return Buffer.concat([iv, cipher.update(text), cipher.final()]); },
     decryptString(bytes) { const cipher = crypto.createDecipheriv('aes-256-cbc', key, bytes.subarray(0, 16)); return Buffer.concat([cipher.update(bytes.subarray(16)), cipher.final()]).toString(); },
   };
-  const drive = new GoogleDrive({ directory, safeStorage, clientId: 'test.apps.googleusercontent.com', openExternal: async () => {}, ...options });
+  const drive = new GoogleDrive({
+    directory,
+    safeStorage,
+    clientId: 'test.apps.googleusercontent.com',
+    clientSecret: 'test-client-secret',
+    openExternal: async () => {},
+    ...options
+  });
   t.after(() => drive.cancel());
   return { drive, directory, safeStorage };
 }
@@ -43,7 +50,7 @@ test('OAuth uses loopback, state and PKCE and persists only encrypted credential
       const params = new URLSearchParams(options.body);
       assert.equal(params.get('grant_type'), 'authorization_code');
       assert.equal(params.get('client_id'), 'test.apps.googleusercontent.com');
-      assert.equal(params.has('client_secret'), false);
+      assert.equal(params.get('client_secret'), 'test-client-secret');
       assert.equal(crypto.createHash('sha256').update(params.get('code_verifier')).digest('base64url'), authorization.searchParams.get('code_challenge'));
       assert.equal(params.get('code'), 'code');
       return json({ access_token: 'access-secret', refresh_token: 'refresh-secret', expires_in: 3600, scope: SCOPE });
@@ -88,7 +95,10 @@ test('access token refresh is shared, persisted, and does not expose the refresh
   const { drive } = setup(t, { fetchImpl: async (url, options) => {
     requests++;
     assert.equal(new URLSearchParams(options.body).get('refresh_token'), 'refresh-secret');
-    assert.equal(new URLSearchParams(options.body).has('client_secret'), false);
+    assert.equal(
+      new URLSearchParams(options.body).get('client_secret'),
+      'test-client-secret'
+    );
     return json({ access_token: 'new-access', expires_in: 3600 });
   } });
   authorize(drive); drive.credentials.expiresAt = 0;

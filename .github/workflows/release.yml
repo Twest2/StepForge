@@ -38,6 +38,7 @@ jobs:
       - name: Configure StepForge Google sign-in
         env:
           STEPFORGE_GOOGLE_CLIENT_ID: ${{ vars.STEPFORGE_GOOGLE_CLIENT_ID }}
+          STEPFORGE_GOOGLE_CLIENT_SECRET: ${{ secrets.STEPFORGE_GOOGLE_CLIENT_SECRET }}
         run: node scripts/configure-google-oauth.js
 
       # Version and Google registration are stamped only into this build.
@@ -90,6 +91,7 @@ jobs:
       - name: Configure StepForge Google sign-in
         env:
           STEPFORGE_GOOGLE_CLIENT_ID: ${{ vars.STEPFORGE_GOOGLE_CLIENT_ID }}
+          STEPFORGE_GOOGLE_CLIENT_SECRET: ${{ secrets.STEPFORGE_GOOGLE_CLIENT_SECRET }}
         run: node scripts/configure-google-oauth.js
 
       - name: Set version from input
@@ -136,6 +138,7 @@ jobs:
       - name: Configure StepForge Google sign-in
         env:
           STEPFORGE_GOOGLE_CLIENT_ID: ${{ vars.STEPFORGE_GOOGLE_CLIENT_ID }}
+          STEPFORGE_GOOGLE_CLIENT_SECRET: ${{ secrets.STEPFORGE_GOOGLE_CLIENT_SECRET }}
         run: node scripts/configure-google-oauth.js
 
       - name: Stamp release version

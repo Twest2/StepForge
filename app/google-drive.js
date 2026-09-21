@@ -77,10 +77,22 @@ class GoogleDrive {
       const response = await this.fetch(url, { ...options, signal: controller.signal, redirect: 'error' });
       if (!response.ok) {
         let reason = '';
-        try { const body = await response.json(); reason = typeof body.error === 'string' ? body.error : body.error?.errors?.[0]?.reason; } catch { /* no raw response in errors */ }
+        let description = '';
+        
+        try {
+          const body = await response.json();
+        
+          reason = typeof body.error === 'string'
+            ? body.error
+            : body.error?.errors?.[0]?.reason;
+        
+          description = body.error_description || '';
+        } catch {
+          /* no raw response in errors */
+        }
         const error = new Error(response.status === 401 || reason === 'invalid_grant'
           ? 'Google authorization expired or was revoked. Disconnect and sign in again.'
-          : `Google Drive request failed (${response.status}${reason ? `: ${reason}` : ''}). Check the API configuration, connection and storage quota, then retry.`);
+          : `Google Drive request failed (${response.status}${reason ? `: ${reason}` : ''}${description ? ` — ${description}` : ''}).`
         error.status = response.status;
         throw error;
       }

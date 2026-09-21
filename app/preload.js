@@ -52,6 +52,18 @@ const api = {
     globalPlaceholders: invoke('placeholders:globals:get'),
     setGlobalPlaceholders: invoke('placeholders:globals:set'),
   },
+  cloud: {
+    setEditorDirty: (dirty) => ipcRenderer.send('cloud:editor-dirty', Boolean(dirty)),
+    status: invoke('cloud:status'),
+    connect: invoke('cloud:connect'),
+    cancel: invoke('cloud:cancel'),
+    disconnect: invoke('cloud:disconnect'),
+    enable: invoke('cloud:enable'),
+    sync: invoke('cloud:sync'),
+    test: invoke('cloud:test'),
+    onStatus: (fn) => { const listener = (e, payload) => fn(payload); ipcRenderer.on('cloud:status', listener); return () => ipcRenderer.removeListener('cloud:status', listener); },
+    onLibraryChanged: (fn) => ipcRenderer.on('cloud:library-changed', (e, payload) => fn(payload)),
+  },
   ai: {
     test: invoke('ai:test'),
     fillStep: invoke('ai:fillStep'),

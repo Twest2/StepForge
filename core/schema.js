@@ -54,6 +54,9 @@ function createGuide(fields = {}) {
     // retain the default of sharing when the account-level setting is enabled.
     cloud: {
       sharingEnabled: fields.cloud?.sharingEnabled !== false,
+      // Set only after a successful cloud sync. It lets an offline restart
+      // distinguish a formerly shared guide from a local-only guide.
+      wasShared: fields.cloud?.wasShared === true,
     },
     linkedSource: fields.linkedSource || null,
     exportProfiles: { ...(fields.exportProfiles || {}) },
@@ -171,6 +174,7 @@ function validateGuide(guide) {
   if (guide.metadata && typeof guide.metadata !== 'object') errors.push('metadata must be an object');
   if (guide.cloud && typeof guide.cloud !== 'object') errors.push('cloud must be an object');
   if (guide.cloud && typeof guide.cloud.sharingEnabled !== 'boolean') errors.push('cloud.sharingEnabled must be a boolean');
+  if (guide.cloud && typeof guide.cloud.wasShared !== 'boolean') errors.push('cloud.wasShared must be a boolean');
   if (errors.length) throw new Error(`invalid guide: ${errors.join('; ')}`);
   return guide;
 }

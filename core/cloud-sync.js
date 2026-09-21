@@ -70,14 +70,17 @@ function storageSummary(files) {
 
 /** Immutable Drive snapshots: concurrent writers create branches, never overwrite bytes. */
 class CloudSync {
-  constructor({ store, drive, enabled, canReplace = () => true, canUpload = () => true, onChange = () => {}, onStatus = () => {}, settleMs = 3000 }) {
-    Object.assign(this, { store, drive, enabled, canReplace, canUpload, onChange, onStatus, settleMs });
+  constructor({ store, drive, enabled, canReplace = () => true, canUpload = () => true, onChange = () => {}, onDelete = () => {}, onStatus = () => {}, settleMs = 3000 }) {
+    Object.assign(this, { store, drive, enabled, canReplace, canUpload, onChange, onDelete, onStatus, settleMs });
     this.directory = path.join(store.root, 'cloud');
     fs.mkdirSync(this.directory, { recursive: true });
     this.changedAt = new Map();
     this.fingerprints = new Map();
     this.generation = 0;
     this.state = { records: {} };
+    this.pendingFile = path.join(this.directory, 'pending-deletions.json');
+    this.pending = readJsonIfExists(this.pendingFile, { records: {} });
+    this.pending.records ||= {};
     this.status = { phase: 'off', message: 'Google Drive sharing is off.' };
     this.recover();
   }
@@ -204,6 +207,95 @@ class CloudSync {
 
   saveState() { writeJsonSync(this.stateFile, this.state); }
 
+  savePending() { writeJsonSync(this.pendingFile, this.pending); }
+
+  pendingArchive(id) { return path.join(this.directory, 'deletions', `${id}.sfgz`); }
+
+  stageDeletion(id) {
+    // Only a guide which this device has already synchronized gets a cloud
+    // deletion record. A local-only guide remains local-only.
+    if (!this.store.guideExists(id) || (!this.state.records[id] && !this.store.getGuide(id).cloud?.wasShared) || !this.isSharingEnabled(id)) return false;
+    const guide = this.store.getGuide(id);
+    const local = this.localSnapshot(id);
+    const archive = this.pendingArchive(id);
+    fs.mkdirSync(path.dirname(archive), { recursive: true });
+    atomicWriteFileSync(archive, zipSync(local.entries));
+    this.pending.records[id] = { title: guide.title, hash: local.hash, deletedAt: new Date().toISOString() };
+    this.savePending();
+    if (this.enabled()) this.markChanged(id);
+    return true;
+  }
+
+  clearPendingDeletion(id) {
+    delete this.pending.records[id];
+    fs.rmSync(this.pendingArchive(id), { force: true });
+    this.savePending();
+  }
+
+  deletionStates(files) {
+    const states = new Map();
+    for (const file of files) {
+      const props = file.appProperties || {};
+      if (!validId(props.guideId) || !validId(file.id)) continue;
+      const previous = states.get(props.guideId);
+      if (!previous || compareText(`${previous.createdTime || ''}:${previous.id}`, `${file.createdTime || ''}:${file.id}`) <= 0) states.set(props.guideId, file);
+    }
+    return states;
+  }
+
+  async deletedGuides() {
+    if (!this.drive.status().connected) throw new Error('Sign in to Google Drive first.');
+    const [files, deletionFiles] = await Promise.all([this.drive.listVersions(), this.drive.listDeletions()]);
+    const states = this.deletionStates(deletionFiles);
+    return [...states.values()].filter((file) => ['deleted', 'purged'].includes(file.appProperties?.state)).map((file) => {
+      const recovery = files.find((candidate) => candidate.id === file.appProperties.recoveryId);
+      return { guideId: file.appProperties.guideId, title: file.appProperties.title || 'Deleted guide', deletedAt: file.appProperties.deletedAt || file.createdTime || '',
+        recoveryId: recovery?.id || null, size: Number(recovery?.size || 0), purged: file.appProperties.state === 'purged' };
+    });
+  }
+
+  async restoreDeletedGuide(id) {
+    if (!this.canReplace(id)) throw new Error('Close the editor or stop capture before restoring a cloud guide.');
+    const [files, deletionFiles] = await Promise.all([this.drive.listVersions(), this.drive.listDeletions()]);
+    const marker = this.deletionStates(deletionFiles).get(id);
+    const recovery = files.find((file) => file.id === marker?.appProperties?.recoveryId);
+    if (!marker || marker.appProperties.state !== 'deleted' || !recovery) throw new Error('No recoverable cloud snapshot is available for this guide.');
+    const bytes = await this.drive.download(recovery.id);
+    this.validateDownload(bytes, id, recovery.appProperties.hash);
+    if (!this.canReplace(id)) throw new Error('The guide became active while restoring. No changes were made.');
+    this.install(bytes, id, id);
+    const restored = await this.drive.upload({ data: Buffer.from('{}'), name: `Restored ${marker.appProperties.title || 'guide'}`,
+      properties: { stepforge: 'deletion-v1', guideId: id, state: 'restored', restoredAt: new Date().toISOString() } });
+    await Promise.all(deletionFiles.filter((file) => file.appProperties?.guideId === id && file.id !== restored.id).map((file) => this.drive.deleteFile(file.id)));
+    delete this.state.records[id];
+    if (this.stateFile) this.saveState();
+    this.markChanged(id);
+    return { ok: true };
+  }
+
+  async permanentlyDeleteRecovery(id) {
+    const [files, deletionFiles] = await Promise.all([this.drive.listVersions(), this.drive.listDeletions()]);
+    const marker = this.deletionStates(deletionFiles).get(id);
+    if (!marker || marker.appProperties.state !== 'deleted') throw new Error('No deleted-guide recovery snapshot is available.');
+    const purged = await this.drive.upload({ data: Buffer.from('{}'), name: `Deleted ${marker.appProperties.title || 'guide'}`,
+      properties: { stepforge: 'deletion-v1', guideId: id, state: 'purged', title: marker.appProperties.title || '', deletedAt: marker.appProperties.deletedAt || new Date().toISOString() } });
+    const recoveryId = marker.appProperties.recoveryId;
+    if (recoveryId) await this.drive.deleteFile(recoveryId);
+    await Promise.all(deletionFiles.filter((file) => file.appProperties?.guideId === id && file.id !== purged.id).map((file) => this.drive.deleteFile(file.id)));
+    delete this.state.records[id];
+    if (this.stateFile) this.saveState();
+    return { ok: true };
+  }
+
+  markWasShared(id) {
+    if (!this.store.guideExists(id)) return;
+    const guide = this.store.getGuide(id);
+    if (guide.cloud?.wasShared) return;
+    guide.cloud = { ...(guide.cloud || {}), wasShared: true };
+    this.store.saveGuide(guide);
+    this.fingerprints.delete(id);
+  }
+
   recover() {
     const journal = path.join(this.directory, 'install.json');
     const pending = readJsonIfExists(journal, null);
@@ -273,9 +365,48 @@ class CloudSync {
       this.stateFile = stateFile;
       this.state = readJsonIfExists(stateFile, { records: {} });
     }
-    const files = await this.drive.listVersions();
+    this.state.records ||= {};
+    const [files, deletionFiles] = await Promise.all([this.drive.listVersions(), this.drive.listDeletions()]);
     check();
+    const deletions = this.deletionStates(deletionFiles);
+    // Deletions are explicit Drive records, never inferred from a missing
+    // directory. This makes an offline device converge without allowing an
+    // old local copy to recreate the guide.
+    for (const [id, marker] of deletions) {
+      if (!['deleted', 'purged'].includes(marker.appProperties?.state)) continue;
+      if (this.store.guideExists(id)) {
+        this.store.deleteGuide(id);
+        this.onDelete(id);
+      }
+      delete this.state.records[id];
+      if (this.pending.records[id]) this.clearPendingDeletion(id);
+    }
+    for (const [id, pendingDelete] of Object.entries(this.pending.records)) {
+      check();
+      const remote = deletions.get(id);
+      if (remote && ['deleted', 'purged'].includes(remote.appProperties?.state)) {
+        this.clearPendingDeletion(id);
+        continue;
+      }
+      const archive = this.pendingArchive(id);
+      if (!fs.existsSync(archive)) throw new Error(`Pending cloud deletion for ${id} is missing its recovery archive.`);
+      const recovery = await this.drive.upload({ data: fs.readFileSync(archive), name: `${pendingDelete.title} (deleted).sfgz`,
+        properties: { stepforge: 'guide-v1', guideId: id, hash: pendingDelete.hash } });
+      check();
+      const marker = await this.drive.upload({ data: Buffer.from('{}'), name: `Deleted ${pendingDelete.title}`,
+        properties: { stepforge: 'deletion-v1', guideId: id, state: 'deleted', title: pendingDelete.title, deletedAt: pendingDelete.deletedAt, recoveryId: recovery.id } });
+      check();
+      await Promise.all(files.filter((file) => file.appProperties?.guideId === id && file.id !== recovery.id).map((file) => this.drive.deleteFile(file.id)));
+      await Promise.all(deletionFiles.filter((file) => file.appProperties?.guideId === id && file.id !== marker.id).map((file) => this.drive.deleteFile(file.id)));
+      deletions.set(id, marker);
+      delete this.state.records[id];
+      this.clearPendingDeletion(id);
+      this.saveState();
+    }
     const groups = guideVersions(files);
+    for (const [id, marker] of deletions) {
+      if (['deleted', 'purged'].includes(marker.appProperties?.state)) groups.delete(id);
+    }
     for (const guide of this.store.listGuides()) if (!groups.has(guide.guideId)) groups.set(guide.guideId, []);
     let pending = false;
     let conflicts = 0;
@@ -330,15 +461,23 @@ class CloudSync {
           if (!this.canReplace(id) || this.store.guideExists(id) !== exists
               || (exists && this.localSnapshot(id).hash !== local.hash)) { pending = true; continue; }
           if (!local || local.hash !== latest.appProperties.hash) this.install(incoming, id, id);
+          const alreadyMarkedShared = this.store.getGuide(id).cloud?.wasShared === true;
+          if (!alreadyMarkedShared) this.markWasShared(id);
           local = this.localSnapshot(id);
           exists = true;
-          this.state.records[id] = { head: latest.id, heads: heads.map((h) => h.id), hash: local.hash };
+          this.state.records[id] = { head: latest.id, heads: heads.map((h) => h.id), hash: alreadyMarkedShared ? local.hash : latest.appProperties.hash };
           this.saveState();
         }
         if (!exists) continue;
         const baseline = Object.hasOwn(this.state.records, id) ? this.state.records[id] : null;
         if (!baseline || local.hash !== baseline.hash) {
           if (!this.canUpload(id)) { pending = true; continue; }
+          // Persist the shared marker in the first archive so a later offline
+          // deletion can safely tell a shared guide from a local-only guide.
+          if (!this.store.getGuide(id).cloud?.wasShared) {
+            this.markWasShared(id);
+            local = this.localSnapshot(id);
+          }
           const file = await this.drive.upload({ data: zipSync(local.entries), name: `${this.store.getGuide(id).title}.sfgz`,
             properties: { stepforge: 'guide-v1', guideId: id, hash: local.hash, ...(baseline?.head ? { parent: baseline.head } : {}) } });
           check();

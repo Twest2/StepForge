@@ -569,8 +569,13 @@ function setupIpc() {
     return copy;
   }, { validate: (a) => c.id(a.guideId) });
   h('library:delete', ({ guideId }) => {
+    // Stage the exact archive before moving it to local Trash. This is a
+    // synchronous, offline-safe operation; the Drive record is sent by the
+    // normal background sync rather than making deletion wait on the network.
+    cloudSync?.stageDeletion(guideId);
     store.deleteGuide(guideId);
     searchIndex.removeGuide(guideId);
+    void cloudSync?.sync();
     return true;
   }, { validate: (a) => c.id(a.guideId) });
   h('library:setFavorite', ({ guideId, favorite }) => store.setFavorite(guideId, favorite),
@@ -742,6 +747,11 @@ function setupIpc() {
   h('cloud:sync', () => cloudSync.sync());
   h('cloud:storage', () => cloudSync.storage());
   h('cloud:history', ({ guideId }) => cloudSync.history(guideId),
+    { validate: (a) => c.id(a.guideId) });
+  h('cloud:deletedGuides', () => cloudSync.deletedGuides());
+  h('cloud:restoreDeletedGuide', ({ guideId }) => cloudSync.restoreDeletedGuide(guideId),
+    { validate: (a) => c.id(a.guideId) });
+  h('cloud:permanentlyDeleteRecovery', ({ guideId }) => cloudSync.permanentlyDeleteRecovery(guideId),
     { validate: (a) => c.id(a.guideId) });
   h('cloud:prune', () => cloudSync.prune());
   h('cloud:restore', ({ guideId, versionId }) => cloudSync.restore(guideId, versionId),
@@ -1128,6 +1138,10 @@ if (!gotLock) {
       canReplace: () => !canvasZoomActive && !cloudEditorDirty && !(capture && capture.session && !capture.session.paused),
       onChange: (guideId) => {
         reindex(guideId);
+        sendToRenderer('cloud:library-changed', { guideId });
+      },
+      onDelete: (guideId) => {
+        searchIndex.removeGuide(guideId);
         sendToRenderer('cloud:library-changed', { guideId });
       },
       onStatus: (status) => sendToRenderer('cloud:status', { ...googleDrive.status(), ...status, enabled: settings.get('cloud.enabled') === true }),

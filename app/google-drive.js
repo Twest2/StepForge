@@ -270,12 +270,20 @@ class GoogleDrive {
   }
 
   async listVersions() {
+    return this.listAppData("trashed = false and appProperties has { key='stepforge' and value='guide-v1' }");
+  }
+
+  async listDeletions() {
+    return this.listAppData("trashed = false and appProperties has { key='stepforge' and value='deletion-v1' }");
+  }
+
+  async listAppData(queryText) {
     const generation = this.generation;
     const files = [];
     let pageToken = '';
     do {
       if (generation !== this.generation) throw new Error('Google Drive request cancelled.');
-      const query = new URLSearchParams({ spaces: 'appDataFolder', q: "trashed = false and appProperties has { key='stepforge' and value='guide-v1' }",
+      const query = new URLSearchParams({ spaces: 'appDataFolder', q: queryText,
         fields: 'nextPageToken,files(id,name,createdTime,size,appProperties)', pageSize: '1000', ...(pageToken ? { pageToken } : {}) });
       const page = await this.authorized(`${API}/files?${query}`);
       files.push(...(page.files || []));

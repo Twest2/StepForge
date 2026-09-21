@@ -26,6 +26,11 @@ class StepForgeApp {
       selectedTrash: new Set(),
     };
     this.editorMeta = null;
+    this.cloudStatus = document.getElementById('cloud-status');
+    this.cloudStatus.addEventListener('click', () => this.openSettings());
+    api.cloud.onStatus((status) => this.renderCloudStatus(status));
+    api.cloud.onLibraryChanged(() => this.refreshLibrary().catch(console.error));
+    api.cloud.status().then((status) => this.renderCloudStatus(status)).catch(console.error);
     this.libraryRenderToken = 0;
 
     this.view.innerHTML = `
@@ -255,7 +260,16 @@ class StepForgeApp {
     await this.armCaptureSession(guideId);
   }
 
+  renderCloudStatus(status) {
+    this.cloudStatus.classList.toggle('hidden', !status.enabled && !status.error);
+    const labels = { synced: 'Drive: synced', syncing: 'Drive: syncing…', pending: 'Drive: pending', conflict: 'Drive: conflict copies', error: 'Drive: needs attention', disconnected: 'Drive: sign in' };
+    this.cloudStatus.textContent = labels[status.phase] || 'Google Drive';
+    this.cloudStatus.title = status.error || status.message || 'Google Drive settings';
+    this.cloudStatus.setAttribute('aria-label', this.cloudStatus.title);
+  }
+
   onEditorMeta(meta) {
+    api.cloud.setEditorDirty(Boolean(meta?.dirty));
     this.editorMeta = meta;
     if (this.state.view === 'editor') this.renderTopbar();
     this.updateCaptureState(this.captureState || null);

@@ -12,9 +12,10 @@ documented workflow patterns of commercial documentation tools like Folge. It
 contains no third-party branding, assets, or code from those tools.
 
 **Network and privacy contract.** StepForge has no telemetry, no update
-checks, no license checks, and no cloud. Guides never leave your machine on
-their own. The only outbound network feature is the **optional** AI
-integration: when *you* enable it and configure an [Ollama](https://ollama.com)
+checks, and no license checks. Optional Google Drive sharing is **off by
+default**; after sign-in and explicit enablement it synchronizes your guides
+between computers. See [Google Drive setup and testing](docs/GOOGLE_DRIVE.md).
+The **optional** AI integration is also off by default: when *you* enable it and configure an [Ollama](https://ollama.com)
 endpoint, StepForge sends step screenshots and text to that endpoint to
 generate titles and descriptions. By default that endpoint must be **local
 (loopback)**; sending data to a remote host requires the explicit "Allow
@@ -129,9 +130,9 @@ this machine and which packaging tools were unavailable.
 
 ## Offline Guarantee
 
-The shipping app makes **zero network calls**. There is no telemetry, no
-update check, no license validation, no cloud sync, no account system, and no
-remote AI. Exports embed no remote fonts or CDN references. See
+Capture, editing, and export work offline. AI and Google Drive sharing make
+network requests only when explicitly used or enabled. There is no telemetry,
+update check, or license validation. Exports embed no remote fonts or CDN references. See
 [docs/SECURITY.md](docs/SECURITY.md) for the threat model.
 
 ## Contributing

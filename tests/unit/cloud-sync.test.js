@@ -16,7 +16,8 @@ function setup(t) {
   const bytes = new Map();
   const drive = {
     calls: 0,
-    status: () => ({ connected: true, clientId: 'test-client' }),
+    clientId: 'test-client',
+    status: () => ({ connected: true }),
     account: async () => 'account-a',
     cancel() {},
     async listVersions() { this.calls++; return [...files]; },

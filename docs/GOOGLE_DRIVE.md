@@ -1,33 +1,30 @@
 # Optional Google Drive sharing
 
-Google Drive sharing is off by default. Sign-in and connection testing do not
-turn it on. Enabling **Automatically share guides with Google Drive** uploads
-all guides in the local library, including screenshot files, annotations,
-descriptions, and capture metadata, to the selected Google account. It also
-downloads guides from your other devices. Local guides remain usable offline.
+Google Drive sharing is off until you choose **Sign in with Google**. Signing
+in and allowing access enables automatic sharing of your local guides,
+including screenshots, annotations, descriptions, and capture metadata.
+Local guides remain usable offline.
 
-## Set up and test authentication
+## Connect your Google account
 
-1. In [Google Cloud Console](https://console.cloud.google.com/), create or select
-   a project and enable **Google Drive API**.
-2. Configure the OAuth consent screen. If the project is in Testing, add your
-   Google account as a test user. Google may expire test-mode refresh tokens;
-   if StepForge reports revoked/expired authorization, disconnect and sign in
-   again. Public distribution requires appropriate Google OAuth configuration.
-3. Create an OAuth client of type **Desktop app**, not Web application.
-4. In StepForge, open **Settings → Google Drive sharing → Google OAuth setup**.
-   Enter the client ID and client secret from that Desktop app client.
-5. Choose **Sign in with Google**, complete consent in your system browser,
-   and return to StepForge. You can cancel sign-in in Settings.
-6. Choose **Test Google Drive connection**. The results separately report:
-   - authentication and refresh-token validity;
-   - access to StepForge's Drive app storage;
-   - uploading a small random test file;
-   - downloading it and checking that its bytes match;
-   - deleting the temporary test file.
-   No guide is uploaded by the connection test. A failed cleanup is reported.
-7. Enable automatic sharing when ready. Repeat on the other computer using
-   the **same Google account and OAuth project**, preferably the same client.
+1. Open **Settings → Google Drive sharing** and choose **Sign in with Google**.
+2. Choose your Google account in the browser and allow StepForge to store its
+   app data in Drive. StepForge does not request access to your other Drive files.
+3. Return to StepForge. Settings shows **Connected as** your email address,
+   and guides begin synchronizing automatically.
+4. Sign in to the same Google account in StepForge on your other computer.
+
+You do not need an API key, client ID, client secret, or Google Cloud project.
+You can cancel sign-in at any time. Turn off **Automatically sync guides** to
+pause sharing, or choose **Disconnect** to remove this device's connection.
+
+## Test your connection
+
+After connecting, choose **Test Google Drive connection**. It checks sign-in,
+refreshes authorization, checks private storage access, uploads and downloads
+a small temporary file, verifies its bytes, and deletes it. Each result is
+shown separately. The test itself does not upload a guide; existing automatic
+synchronization resumes afterwards if enabled.
 
 These cloud controls apply immediately, independently of the Settings Save or
 Cancel buttons. **Sync now** requests a pass; the top-bar Drive indicator opens
@@ -70,7 +67,7 @@ Settings and shows pending, syncing, synced, conflict, or error states.
 The main process opens the Google OAuth browser flow using PKCE, a random
 state value, and a short-lived loopback callback listener. It requests only
 `https://www.googleapis.com/auth/drive.appdata`, not access to all Drive files.
-Tokens and the configured client credentials are encrypted using Electron's
+Your access and refresh tokens are encrypted using Electron's
 OS-backed `safeStorage` and are never returned to the renderer or written to
 ordinary settings. Linux's insecure `basic_text` fallback is refused; unlock
 or configure an OS keyring if sign-in reports a credential-store error.
@@ -87,11 +84,11 @@ refresh and revoked tokens, paginated listing, the connection probe, clean
 cross-device updates, concurrent/offline edits, conflict copies, active-editor
 protection, integrity failure, retry, disabled mode, and interrupted installs.
 
-Before release, use a real OAuth Desktop app client and two isolated devices:
+Before release, use a build configured with StepForge's registration and two isolated devices:
 
 1. Confirm sharing starts off and ordinary capture/edit/export works offline.
 2. Sign in and run the connection test; check that every stage passes.
-3. Enable sharing on both devices. Edit a guide on A; wait for synced; close
+3. Confirm signing in enables sharing on both devices. Edit a guide on A; wait for synced; close
    the editor on B and verify its title, steps, images, and annotations update.
 4. Edit both copies offline, reconnect, and confirm both edits remain available
    as separate guides after synchronization. Repeat with simultaneous uploads.
@@ -101,6 +98,9 @@ Before release, use a real OAuth Desktop app client and two isolated devices:
    sign-in error. Disconnect/reconnect and verify recovery.
 7. Disable sharing during a transfer; confirm further background work stops
    and local guides remain. Restart to verify the setting persists.
+
+Maintainers: see [Google sign-in release configuration](GOOGLE_DRIVE_RELEASE.md)
+for the one-time application registration and packaging requirements.
 
 Google references: [Desktop OAuth](https://developers.google.com/identity/protocols/oauth2/native-app),
 [app storage](https://developers.google.com/workspace/drive/api/guides/appdata),

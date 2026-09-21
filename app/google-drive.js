@@ -5,14 +5,17 @@ const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 const { atomicWriteFileSync } = require('../core/util');
+const GOOGLE_OAUTH = require('./google-oauth-config.json');
 
 const SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
 const API = 'https://www.googleapis.com/drive/v3';
 const MAX_ARCHIVE_BYTES = 256 * 1024 * 1024;
 
 class GoogleDrive {
-  constructor({ directory, safeStorage, openExternal, fetchImpl = globalThis.fetch }) {
+  constructor({ directory, safeStorage, openExternal, clientId = GOOGLE_OAUTH.clientId, fetchImpl = globalThis.fetch }) {
     this.file = path.join(directory, 'google-drive.credentials');
+    this.clientId = clientId;
+    this.available = /^[A-Za-z0-9._-]+\.apps\.googleusercontent\.com$/.test(clientId || '');
     this.safeStorage = safeStorage;
     this.openExternal = openExternal;
     this.fetch = fetchImpl;
@@ -23,7 +26,14 @@ class GoogleDrive {
     try {
       if (fs.existsSync(this.file)) {
         this.requireEncryption();
-        this.credentials = JSON.parse(safeStorage.decryptString(fs.readFileSync(this.file)));
+        const stored = JSON.parse(safeStorage.decryptString(fs.readFileSync(this.file)));
+        if (this.available && stored.clientId === this.clientId) {
+          this.credentials = stored;
+          // Discard user-supplied secrets from pre-release builds.
+          if (Object.hasOwn(stored, 'clientSecret')) { delete stored.clientSecret; this.save(); }
+        } else {
+          this.loadError = 'Please sign in again to connect this version of StepForge.';
+        }
       }
     } catch {
       this.loadError = 'Stored Google credentials could not be unlocked. Disconnect and sign in again.';
@@ -43,7 +53,7 @@ class GoogleDrive {
   }
 
   status() {
-    return { connected: Boolean(this.credentials?.refresh_token), clientId: this.credentials?.clientId || '', email: this.credentials?.email || '', error: this.loadError };
+    return { connected: Boolean(this.credentials?.refresh_token), available: this.available, email: this.credentials?.email || '', error: this.loadError };
   }
 
   cancel() {
@@ -109,11 +119,12 @@ class GoogleDrive {
     });
   }
 
-  async connect({ clientId, clientSecret = '' }) {
+  async connect() {
+    if (!this.available) throw new Error('Google sign-in is unavailable in this build of StepForge. Please use a release with Google sign-in enabled.');
+    const clientId = this.clientId;
     if (this.cancelLogin) throw new Error('Google sign-in is already in progress.');
     if (this.credentials) throw new Error('Disconnect the current Google account before signing in again.');
     this.requireEncryption();
-    if (!/^[A-Za-z0-9._-]+\.apps\.googleusercontent\.com$/.test(clientId)) throw new Error('Enter a Google OAuth Desktop app client ID.');
     const generation = this.generation;
     const verifier = crypto.randomBytes(32).toString('base64url');
     const state = crypto.randomBytes(32).toString('base64url');
@@ -151,11 +162,11 @@ class GoogleDrive {
       if (generation !== this.generation) throw new Error('Google sign-in cancelled.');
       await this.openExternal(`https://accounts.google.com/o/oauth2/v2/auth?${query}`);
       const code = await codePromise;
-      const tokens = await this.tokenRequest({ client_id: clientId, client_secret: clientSecret, code, code_verifier: verifier,
+      const tokens = await this.tokenRequest({ client_id: clientId, code, code_verifier: verifier,
         redirect_uri: redirectUri, grant_type: 'authorization_code' });
       if (generation !== this.generation) throw new Error('Google sign-in cancelled.');
       if (!tokens.refresh_token || (tokens.scope && !tokens.scope.split(' ').includes(SCOPE))) throw new Error('Google did not grant offline Drive access. Sign in again and allow app storage access.');
-      this.credentials = { ...tokens, clientId, clientSecret, expiresAt: Date.now() + Number(tokens.expires_in || 3600) * 1000 };
+      this.credentials = { ...tokens, clientId, expiresAt: Date.now() + Number(tokens.expires_in || 3600) * 1000 };
       try { this.save(); } catch (err) { this.credentials = null; throw err; }
       return this.status();
     } finally {
@@ -172,7 +183,7 @@ class GoogleDrive {
     if (!force && credentials.access_token && credentials.expiresAt > Date.now() + 60000) return credentials.access_token;
     if (!this.refreshing) {
       this.refreshing = (async () => {
-        const tokens = await this.tokenRequest({ client_id: credentials.clientId, client_secret: credentials.clientSecret,
+        const tokens = await this.tokenRequest({ client_id: this.clientId,
           refresh_token: credentials.refresh_token, grant_type: 'refresh_token' });
         if (this.credentials !== credentials) throw new Error('Google account changed during authentication.');
         Object.assign(credentials, tokens, { expiresAt: Date.now() + Number(tokens.expires_in || 3600) * 1000 });

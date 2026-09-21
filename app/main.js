@@ -702,16 +702,18 @@ function setupIpc() {
   // Cloud access is confined to the main process; tokens never enter IPC.
   const cloudStatus = () => ({ ...googleDrive.status(), ...cloudSync.status, enabled: settings.get('cloud.enabled') === true });
   h('cloud:status', cloudStatus);
-  h('cloud:connect', async ({ clientId, clientSecret }) => {
+  h('cloud:connect', async () => {
     if (cloudTesting || cloudConnecting) throw new Error('Wait for Google sign-in or testing to finish.');
     cloudConnecting = true;
     try {
-      await googleDrive.connect({ clientId: clientId.trim(), clientSecret: (clientSecret || '').trim() });
+      await googleDrive.connect();
       await googleDrive.account();
-      cloudSync.publish('connected', 'Google Drive connected. Enable sharing to sync guides.');
+      // The sign-in control explicitly explains that connecting enables sharing.
+      settings.set('cloud.enabled', true);
+      cloudSync.start();
       return cloudStatus();
     } finally { cloudConnecting = false; }
-  }, { validate: (a) => (c.string(a.clientId, 500) && a.clientId.trim().length > 0) && c.optionalString(a.clientSecret, 500) });
+  }, { validate: (a) => Object.keys(a).length === 0 });
   h('cloud:cancel', () => { googleDrive.cancel(); return { ok: true }; });
   h('cloud:disconnect', async () => {
     settings.set('cloud.enabled', false);

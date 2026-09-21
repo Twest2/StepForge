@@ -16,12 +16,12 @@ function setup(t, options = {}) {
     encryptString(text) { const iv = crypto.randomBytes(16); const cipher = crypto.createCipheriv('aes-256-cbc', key, iv); return Buffer.concat([iv, cipher.update(text), cipher.final()]); },
     decryptString(bytes) { const cipher = crypto.createDecipheriv('aes-256-cbc', key, bytes.subarray(0, 16)); return Buffer.concat([cipher.update(bytes.subarray(16)), cipher.final()]).toString(); },
   };
-  const drive = new GoogleDrive({ directory, safeStorage, openExternal: async () => {}, ...options });
+  const drive = new GoogleDrive({ directory, safeStorage, clientId: 'test.apps.googleusercontent.com', openExternal: async () => {}, ...options });
   t.after(() => drive.cancel());
   return { drive, directory, safeStorage };
 }
 function authorize(drive) {
-  drive.credentials = { clientId: 'test.apps.googleusercontent.com', clientSecret: 'client-secret', refresh_token: 'refresh-secret', access_token: 'access-secret', expiresAt: Date.now() + 3600000 };
+  drive.credentials = { clientId: 'test.apps.googleusercontent.com', refresh_token: 'refresh-secret', access_token: 'access-secret', expiresAt: Date.now() + 3600000 };
 }
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
@@ -42,17 +42,19 @@ test('OAuth uses loopback, state and PKCE and persists only encrypted credential
       assert.equal(url, 'https://oauth2.googleapis.com/token');
       const params = new URLSearchParams(options.body);
       assert.equal(params.get('grant_type'), 'authorization_code');
+      assert.equal(params.get('client_id'), 'test.apps.googleusercontent.com');
+      assert.equal(params.has('client_secret'), false);
       assert.equal(crypto.createHash('sha256').update(params.get('code_verifier')).digest('base64url'), authorization.searchParams.get('code_challenge'));
       assert.equal(params.get('code'), 'code');
       return json({ access_token: 'access-secret', refresh_token: 'refresh-secret', expires_in: 3600, scope: SCOPE });
     },
   });
-  await drive.connect({ clientId: 'test.apps.googleusercontent.com', clientSecret: 'client-secret' });
+  await drive.connect();
   assert.equal(drive.status().connected, true);
   const raw = fs.readFileSync(drive.file).toString();
   assert.ok(!raw.includes('refresh-secret')); assert.ok(!raw.includes('client-secret'));
   assert.equal(drive.status().refresh_token, undefined);
-  const restarted = new GoogleDrive({ directory, safeStorage });
+  const restarted = new GoogleDrive({ directory, safeStorage, clientId: 'test.apps.googleusercontent.com' });
   assert.equal(restarted.status().connected, true);
   assert.equal(restarted.credentials.refresh_token, 'refresh-secret');
 });
@@ -60,7 +62,7 @@ test('OAuth uses loopback, state and PKCE and persists only encrypted credential
 test('OAuth cancellation closes the listener and does not persist credentials', async (t) => {
   let opened;
   const { drive } = setup(t, { openExternal: async (url) => { opened = new URL(url); queueMicrotask(() => drive.cancel()); } });
-  await assert.rejects(drive.connect({ clientId: 'test.apps.googleusercontent.com' }), /cancelled/);
+  await assert.rejects(drive.connect(), /cancelled/);
   assert.equal(drive.status().connected, false);
   assert.equal(fs.existsSync(drive.file), false);
   await assert.rejects(fetch(opened.searchParams.get('redirect_uri')));
@@ -72,13 +74,13 @@ test('OAuth rejects denied consent', async (t) => {
     redirect.searchParams.set('state', auth.searchParams.get('state')); redirect.searchParams.set('error', 'access_denied');
     await fetch(redirect);
   } });
-  await assert.rejects(drive.connect({ clientId: 'test.apps.googleusercontent.com' }), /denied/);
+  await assert.rejects(drive.connect(), /denied/);
   assert.equal(drive.status().connected, false);
 });
 
 test('sign-in refuses plaintext storage backends', async (t) => {
   const { drive } = setup(t, { safeStorage: { isEncryptionAvailable: () => true, getSelectedStorageBackend: () => 'basic_text' } });
-  await assert.rejects(drive.connect({ clientId: 'test.apps.googleusercontent.com' }), /credential store/);
+  await assert.rejects(drive.connect(), /credential store/);
 });
 
 test('access token refresh is shared, persisted, and does not expose the refresh token', async (t) => {
@@ -86,6 +88,7 @@ test('access token refresh is shared, persisted, and does not expose the refresh
   const { drive } = setup(t, { fetchImpl: async (url, options) => {
     requests++;
     assert.equal(new URLSearchParams(options.body).get('refresh_token'), 'refresh-secret');
+    assert.equal(new URLSearchParams(options.body).has('client_secret'), false);
     return json({ access_token: 'new-access', expires_in: 3600 });
   } });
   authorize(drive); drive.credentials.expiresAt = 0;
@@ -213,7 +216,7 @@ test('a cancelled authorization exchange cannot recreate disconnected credential
       return json({ access_token: 'late-access', refresh_token: 'late-refresh', scope: SCOPE });
     },
   });
-  await assert.rejects(drive.connect({ clientId: 'test.apps.googleusercontent.com' }), /cancelled/);
+  await assert.rejects(drive.connect(), /cancelled/);
   assert.equal(drive.status().connected, false); assert.equal(fs.existsSync(drive.file), false);
 });
 
@@ -226,6 +229,37 @@ test('missing Drive consent never persists a connection', async (t) => {
     },
     fetchImpl: async () => json({ access_token: 'access', refresh_token: 'refresh', scope: 'email' }),
   });
-  await assert.rejects(drive.connect({ clientId: 'test.apps.googleusercontent.com' }), /did not grant/);
+  await assert.rejects(drive.connect(), /did not grant/);
   assert.equal(fs.existsSync(drive.file), false);
+});
+
+test('an unconfigured development build never opens a fabricated Google sign-in', async (t) => {
+  let opened = false;
+  const { drive } = setup(t, { clientId: '', openExternal: async () => { opened = true; } });
+  assert.equal(drive.status().available, false);
+  await assert.rejects(drive.connect(), /unavailable in this build/);
+  assert.equal(opened, false);
+});
+
+test('stored tokens from a different application registration require sign-in again', (t) => {
+  const { drive, directory, safeStorage } = setup(t);
+  authorize(drive); drive.save();
+  const updated = new GoogleDrive({ directory, safeStorage, clientId: 'official.apps.googleusercontent.com' });
+  assert.equal(updated.status().connected, false);
+  assert.match(updated.status().error, /sign in again/);
+  assert.equal(updated.status().clientId, undefined);
+});
+
+test('the main-process registration cannot be overridden by connect arguments', async (t) => {
+  let requestedClient;
+  const { drive } = setup(t, {
+    openExternal: async (url) => {
+      const auth = new URL(url); requestedClient = auth.searchParams.get('client_id');
+      const redirect = new URL(auth.searchParams.get('redirect_uri'));
+      redirect.searchParams.set('state', auth.searchParams.get('state')); redirect.searchParams.set('error', 'access_denied');
+      await fetch(redirect);
+    },
+  });
+  await assert.rejects(drive.connect({ clientId: 'other.apps.googleusercontent.com' }), /denied/);
+  assert.equal(requestedClient, 'test.apps.googleusercontent.com');
 });

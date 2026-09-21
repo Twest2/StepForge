@@ -133,7 +133,10 @@ this machine and which packaging tools were unavailable.
 Capture, editing, and export work offline. AI and Google Drive sharing make
 network requests only when explicitly used or enabled. There is no telemetry,
 update check, or license validation. Exports embed no remote fonts or CDN references. See
-[docs/SECURITY.md](docs/SECURITY.md) for the threat model.
+[docs/SECURITY.md](docs/SECURITY.md) for the threat model. 
+
+> **Note:** Google Drive sharing is currently in testing and requires your
+> Google account to be added as an approved StepForge test user. Please contact git@twestbrook.com to be added.
 
 ## Contributing
 

@@ -1,6 +1,7 @@
 'use strict';
 
-const { htmlToText } = require('./util');
+const { markdownHtml, isMarkdown, placeholderText } = require('./placeholder-markdown');
+const { htmlToText, escapeHtml } = require('./util');
 
 /**
  * Placeholders are [[Name]] tokens usable in titles, descriptions, text
@@ -37,9 +38,22 @@ function expandPlaceholders(text, values) {
   return String(text).replace(TOKEN_RE, (whole, name) => {
     const key = name.trim();
     return Object.prototype.hasOwnProperty.call(values, key) && values[key] != null
-      ? String(values[key])
+      ? placeholderText(values[key])
       : whole;
   });
+}
+
+function expandRichPlaceholders(html, values) {
+  // Unwrap a paragraph occupied entirely by a Markdown token so lists/paragraphs
+  // are not nested in a paragraph. Tokens inside tag attributes stay plain text.
+  const prepared = String(html || '').replace(/<p>\s*(\[\[([A-Za-z0-9_ .-]+)\]\])\s*<\/p>/g,
+    (whole, token, name) => isMarkdown(values[name.trim()]) ? token : whole);
+  return prepared.split(/(<[^>]+>)/g).map(part => part.replace(TOKEN_RE, (whole, name) => {
+    const key = name.trim();
+    if (!Object.hasOwn(values, key) || values[key] == null) return whole;
+    if (!part.startsWith('<') && isMarkdown(values[key])) return markdownHtml(values[key].text);
+    return escapeHtml(placeholderText(values[key]));
+  })).join('');
 }
 
 /** List distinct placeholder names used in a string. */
@@ -74,6 +88,7 @@ module.exports = {
   systemPlaceholders,
   resolveScopes,
   expandPlaceholders,
+  expandRichPlaceholders,
   listPlaceholders,
   collectGuidePlaceholders,
 };

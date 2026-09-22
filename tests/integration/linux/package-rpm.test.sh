@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Integration test: build the production .rpm and assert it is a real,
+# Integration test: build or reuse a production .rpm and assert it is a real,
 # runtime-only package. Honest skip policy: skip ONLY when the prerequisites
 # are genuinely absent (rpmbuild missing or node_modules not installed). Once
 # we build, any structural failure fails the test.
@@ -8,22 +8,29 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 cd "$ROOT_DIR"
 
-if ! command -v rpmbuild >/dev/null 2>&1; then
-  echo "package-rpm SKIPPED: rpmbuild not installed (not a dnf-based build host)"
-  exit 0
-fi
-if [ ! -d "$ROOT_DIR/node_modules/electron/dist" ]; then
-  echo "package-rpm SKIPPED: node_modules/electron missing (run npm ci first)"
-  exit 0
-fi
-
-OUT_DIR="$(mktemp -d)"
-trap 'rm -rf "$OUT_DIR"' EXIT
-
-RPM="$(STEPFORGE_PACKAGE_DIR="$OUT_DIR" bash packaging/linux/fedora/package.sh | tail -1)"
-[ -f "$RPM" ] || { echo "package-rpm FAILED: builder produced no .rpm" >&2; exit 1; }
-
 fail() { echo "package-rpm FAILED: $1" >&2; exit 1; }
+
+[[ $# -le 1 ]] || fail 'Usage: package-rpm.test.sh [existing.rpm]'
+if [[ $# == 1 ]]; then
+  # CI supplies the exact artifact it will install and upload. Never skip or
+  # rebuild an explicitly requested artifact, even on a host without RPM tools.
+  RPM="$1"
+  [[ -f "$RPM" ]] || fail "RPM not found: $RPM"
+  command -v rpm >/dev/null 2>&1 || fail 'rpm is required to validate an existing package'
+else
+  if ! command -v rpmbuild >/dev/null 2>&1; then
+    echo "package-rpm SKIPPED: rpmbuild not installed (not a dnf-based build host)"
+    exit 0
+  fi
+  if [ ! -d "$ROOT_DIR/node_modules/electron/dist" ]; then
+    echo "package-rpm SKIPPED: node_modules/electron missing (run npm ci first)"
+    exit 0
+  fi
+  OUT_DIR="$(mktemp -d)"
+  trap 'rm -rf "$OUT_DIR"' EXIT
+  RPM="$(STEPFORGE_PACKAGE_DIR="$OUT_DIR" bash packaging/linux/fedora/package.sh | tail -1)"
+  [[ -f "$RPM" ]] || fail 'builder produced no .rpm'
+fi
 
 listing="$(rpm -qlp "$RPM" 2>/dev/null)"
 

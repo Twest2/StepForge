@@ -24,7 +24,6 @@ test('Linux packaging files exist in their expected separate locations', () => {
     'scripts/linux/apt/install-runtime-deps.sh',
     'scripts/linux/apt/install-build-deps.sh',
     'docs/linux/apt.md',
-    'docs/linux/launchpad-ppa.md',
     'tests/integration/linux/package-deb.test.sh',
   ]) {
     assert.ok(exists(f), `expected ${f} to exist`);

@@ -40,6 +40,7 @@ for needle in \
   '/usr/share/mime/packages/stepforge.xml' \
   '/opt/stepforge/node_modules/electron/dist/electron' \
   '/opt/stepforge/app/main.js' \
+  '/opt/stepforge/app/assets/stepforge.png' \
   '/opt/stepforge/app/platform/linux/portal_capture.py' \
   '/usr/share/gnome-shell/extensions/stepforge@twestbrook.com/metadata.json' \
   '/usr/share/gnome-shell/extensions/stepforge@twestbrook.com/extension.js' \

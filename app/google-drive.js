@@ -309,6 +309,10 @@ class GoogleDrive {
 
   download(id) { return this.authorized(`${API}/files/${encodeURIComponent(id)}?alt=media`, { binary: true }); }
 
+  deleteFile(id) {
+    return this.authorized(`${API}/files/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+
   async test() {
     const checks = [];
     let probe;
@@ -329,7 +333,7 @@ class GoogleDrive {
     } finally {
       if (probe) {
         try {
-          await this.authorized(`${API}/files/${encodeURIComponent(probe.id)}`, { method: 'DELETE' });
+          await this.deleteFile(probe.id);
           checks.push('Test file cleanup: passed');
         } catch { checks.push('Test file cleanup failed; a small test file remains in app storage.'); }
       }

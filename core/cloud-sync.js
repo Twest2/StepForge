@@ -26,6 +26,48 @@ function headsOf(files) {
     compareText(a.createdTime || '', b.createdTime || '') || compareText(a.id, b.id));
 }
 
+const RETAIN_PER_BRANCH = 3; // current snapshot plus the two prior snapshots
+
+function guideVersions(files) {
+  const groups = new Map();
+  for (const file of files) {
+    const props = file.appProperties || {};
+    if (!validId(props.guideId) || !validId(file.id) || !/^[a-f0-9]{64}$/.test(props.hash || '')) continue;
+    if (!groups.has(props.guideId)) groups.set(props.guideId, []);
+    groups.get(props.guideId).push(file);
+  }
+  return groups;
+}
+
+function protectedVersions(versions, retain = RETAIN_PER_BRANCH) {
+  const byId = new Map(versions.map((file) => [file.id, file]));
+  const keep = new Set();
+  for (const head of headsOf(versions)) {
+    let current = head;
+    for (let count = 0; current && count < retain; count += 1) {
+      keep.add(current.id);
+      current = byId.get(current.appProperties?.parent);
+    }
+  }
+  return keep;
+}
+
+function storageSummary(files) {
+  const groups = guideVersions(files);
+  let bytes = 0;
+  let reclaimableBytes = 0;
+  let pruneCount = 0;
+  for (const versions of groups.values()) {
+    const keep = protectedVersions(versions);
+    for (const file of versions) {
+      const size = Number(file.size || 0);
+      bytes += Number.isFinite(size) ? size : 0;
+      if (!keep.has(file.id)) { pruneCount += 1; reclaimableBytes += Number.isFinite(size) ? size : 0; }
+    }
+  }
+  return { guideCount: groups.size, snapshotCount: [...groups.values()].reduce((count, versions) => count + versions.length, 0), bytes, pruneCount, reclaimableBytes };
+}
+
 /** Immutable Drive snapshots: concurrent writers create branches, never overwrite bytes. */
 class CloudSync {
   constructor({ store, drive, enabled, canReplace = () => true, canUpload = () => true, onChange = () => {}, onStatus = () => {}, settleMs = 3000 }) {
@@ -67,6 +109,72 @@ class CloudSync {
     clearTimeout(this.timer);
     this.timer = setTimeout(() => { void this.sync(); }, this.settleMs + 50);
     this.timer.unref?.();
+  }
+
+  isSharingEnabled(id) {
+    return this.store.guideExists(id) && this.store.getGuide(id).cloud?.sharingEnabled !== false;
+  }
+
+  async storage() {
+    if (!this.drive.status().connected) throw new Error('Sign in to Google Drive first.');
+    return storageSummary(await this.drive.listVersions());
+  }
+
+  async history(id) {
+    if (!this.drive.status().connected) throw new Error('Sign in to Google Drive first.');
+    return (await this.drive.listVersions())
+      .filter((file) => file.appProperties?.guideId === id)
+      .sort((a, b) => compareText(b.createdTime || '', a.createdTime || '') || compareText(b.id, a.id))
+      .slice(0, RETAIN_PER_BRANCH)
+      .map((file, index) => ({ id: file.id, createdTime: file.createdTime || '', size: Number(file.size || 0), current: index === 0 }));
+  }
+
+  async prune() {
+    if (!this.drive.status().connected) throw new Error('Sign in to Google Drive first.');
+    const files = await this.drive.listVersions();
+    const groups = guideVersions(files);
+    const remove = [];
+    for (const versions of groups.values()) {
+      const keep = protectedVersions(versions);
+      remove.push(...versions.filter((file) => !keep.has(file.id)));
+    }
+    for (const file of remove) await this.drive.deleteFile(file.id);
+    return { ...storageSummary(files), pruned: remove.length };
+  }
+
+  async setSharing(id, sharingEnabled) {
+    if (!this.store.guideExists(id)) throw new Error('Guide no longer exists.');
+    const guide = this.store.getGuide(id);
+    guide.cloud = { ...(guide.cloud || {}), sharingEnabled: Boolean(sharingEnabled) };
+    this.store.saveGuide(guide);
+    this.fingerprints.delete(id);
+    if (sharingEnabled) this.markChanged(id);
+    return guide.cloud;
+  }
+
+  async removeGuideSnapshots(id) {
+    await this.setSharing(id, false);
+    if (!this.drive.status().connected) return { removed: 0 };
+    const files = (await this.drive.listVersions()).filter((file) => file.appProperties?.guideId === id);
+    for (const file of files) await this.drive.deleteFile(file.id);
+    delete this.state.records[id];
+    if (this.stateFile) this.saveState();
+    return { removed: files.length };
+  }
+
+  async restore(id, versionId) {
+    if (!this.canReplace(id)) throw new Error('Close the editor or stop capture before restoring a cloud snapshot.');
+    const files = await this.drive.listVersions();
+    const version = files.find((file) => file.id === versionId && file.appProperties?.guideId === id);
+    if (!version) throw new Error('That cloud snapshot is no longer available.');
+    const bytes = await this.drive.download(version.id);
+    this.validateDownload(bytes, id, version.appProperties.hash);
+    if (!this.canReplace(id)) throw new Error('The guide became active while restoring. No changes were made.');
+    this.install(bytes, id, id);
+    delete this.state.records[id];
+    if (this.stateFile) this.saveState();
+    this.markChanged(id);
+    return { ok: true };
   }
 
   // Poll file metadata rather than rereading every screenshot in an unchanged
@@ -167,13 +275,7 @@ class CloudSync {
     }
     const files = await this.drive.listVersions();
     check();
-    const groups = new Map();
-    for (const file of files) {
-      const props = file.appProperties || {};
-      if (!validId(props.guideId) || !validId(file.id) || !/^[a-f0-9]{64}$/.test(props.hash || '')) continue;
-      if (!groups.has(props.guideId)) groups.set(props.guideId, []);
-      groups.get(props.guideId).push(file);
-    }
+    const groups = guideVersions(files);
     for (const guide of this.store.listGuides()) if (!groups.has(guide.guideId)) groups.set(guide.guideId, []);
     let pending = false;
     let conflicts = 0;
@@ -181,6 +283,9 @@ class CloudSync {
     for (const [id, versions] of groups) {
       try {
         check();
+        // A guide can remain local while all of its private Drive snapshots
+        // are removed. Never download or upload it while it is opted out.
+        if (this.store.guideExists(id) && !this.isSharingEnabled(id)) continue;
         const record = Object.hasOwn(this.state.records, id) ? this.state.records[id] : null;
         if (record?.head && !versions.some((f) => f.id === record.head)) { pending = true; continue; }
         let exists = this.store.guideExists(id);
@@ -251,6 +356,9 @@ class CloudSync {
     else if (conflicts) this.publish('conflict', `${conflicts} conflict ${conflicts === 1 ? 'copy preserved' : 'copies preserved'} in your library.`, { lastSync: new Date().toISOString() });
     else if (pending) this.publish('pending', 'Changes pending. Incoming updates wait until the guide is closed.');
     else this.publish('synced', 'Guides are synced with Google Drive.', { lastSync: new Date().toISOString() });
+    // Snapshots are immutable. Retain the current version and two prior
+    // versions on every live conflict branch after a successful sync.
+    if (!errors.length && !pending) await this.prune();
     return this.status;
   }
 
@@ -265,4 +373,4 @@ class CloudSync {
   }
 }
 
-module.exports = { CloudSync, snapshot, headsOf };
+module.exports = { CloudSync, snapshot, headsOf, guideVersions, protectedVersions, storageSummary, RETAIN_PER_BRANCH };

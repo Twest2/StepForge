@@ -166,7 +166,7 @@ function finalizeImport(store, newGuide, idMap, stepJsons, stepFiles) {
  * Write a linked guide back to its shared archive (explicit Ctrl+S save).
  * Takes the advisory lock for the duration of the write.
  */
-function saveLinkedGuide(store, guideId, { force = false } = {}) {
+async function writeLinkedGuide(store, guideId, { force = false } = {}) {
   const guide = store.getGuide(guideId);
   if (!guide.linkedSource || !guide.linkedSource.path) {
     throw new Error('guide is not linked to a shared archive');
@@ -177,15 +177,31 @@ function saveLinkedGuide(store, guideId, { force = false } = {}) {
     return { saved: false, conflict: result.conflict };
   }
   try {
-    exportGuideArchive(store, guideId, target);
-    guide.linkedSource.lastSavedAt = nowIso();
-    store.saveGuide(guide, { touch: false });
+    await require('./background-archive').writeArchive(buildArchiveEntries(store, guideId), target);
+    // Re-read metadata: editing can continue while the worker writes.
+    const latest = store.getGuide(guideId);
+    if (latest.linkedSource?.path === target) {
+      latest.linkedSource.lastSavedAt = nowIso();
+      store.saveGuide(latest, { touch: false });
+    }
     return { saved: true, path: target };
   } finally {
     // Release by our acquisition token so we never remove a lock a concurrent
     // force-steal replaced with theirs.
     releaseLock(target, { lock: result.lock });
   }
+}
+
+// Serialize the entire lock lifecycle, including repeated Ctrl+S requests.
+const linkedSaves = new Map();
+function saveLinkedGuide(store, guideId, options) {
+  const key = store.guideDir(guideId);
+  const previous = linkedSaves.get(key) || Promise.resolve();
+  const job = previous.catch(() => {}).then(() => writeLinkedGuide(store, guideId, options));
+  linkedSaves.set(key, job);
+  const cleanup = () => { if (linkedSaves.get(key) === job) linkedSaves.delete(key); };
+  job.then(cleanup, cleanup);
+  return job;
 }
 
 module.exports = {

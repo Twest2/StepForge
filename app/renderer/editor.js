@@ -619,7 +619,8 @@ class GuideEditor {
       this.currentStep.title = this.dom.titleInput.value;
       this.pendingSave = true;
       this.saveStepDebounced();
-      this.renderStepList();
+      const row = [...this.dom.stepsList.children].find((node) => node.dataset.stepId === this.selectedStepId);
+      if (row) row.querySelector('.t').textContent = this.currentStep.title || 'Untitled step';
       this.emitMeta();
       this.updateAiButtonHints();
     });

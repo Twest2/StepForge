@@ -6,6 +6,7 @@ const path = require('node:path');
 const { GuideStore } = require('./store');
 const { buildArchiveEntries, readArchive, importGuideArchive } = require('./archive');
 const { zipSync } = require('./zip');
+const { encodeArchive } = require('./background-archive');
 const { atomicWriteFileSync, writeJsonSync, readJsonIfExists } = require('./util');
 
 const validId = (id) => typeof id === 'string' && /^[A-Za-z0-9_-]{1,100}$/.test(id) && !['__proto__', 'constructor', 'prototype'].includes(id);
@@ -187,6 +188,9 @@ class CloudSync {
     const visit = (dir) => {
       for (const entry of fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => compareText(a.name, b.name))) {
         const file = path.join(dir, entry.name);
+        // History is not uploaded; backup counter/snapshot changes must not
+        // invalidate the screenshot hash cache on every autosave.
+        if (dir === this.store.guideDir(id) && entry.name === 'history') continue;
         if (entry.isDirectory()) visit(file);
         else {
           const stat = fs.statSync(file);
@@ -478,7 +482,14 @@ class CloudSync {
             this.markWasShared(id);
             local = this.localSnapshot(id);
           }
-          const file = await this.drive.upload({ data: zipSync(local.entries), name: `${this.store.getGuide(id).title}.sfgz`,
+          const name = `${this.store.getGuide(id).title}.sfgz`;
+          const data = await encodeArchive(local.entries);
+          check();
+          if (!this.store.guideExists(id) || !this.isSharingEnabled(id) || !this.canUpload(id)) {
+            pending = true;
+            continue;
+          }
+          const file = await this.drive.upload({ data, name,
             properties: { stepforge: 'guide-v1', guideId: id, hash: local.hash, ...(baseline?.head ? { parent: baseline.head } : {}) } });
           check();
           this.state.records[id] = { head: file.id, heads: [...heads.filter((h) => h.id !== baseline?.head).map((h) => h.id), file.id], hash: local.hash };

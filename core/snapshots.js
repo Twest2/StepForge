@@ -2,7 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { zipDirSync, extractZipSync } = require('./zip');
+const { zipDirSync, directoryEntries, extractZipSync } = require('./zip');
 const { atomicWriteFileSync, readJsonSync } = require('./util');
 const { validateGuide } = require('./schema');
 
@@ -16,25 +16,31 @@ function snapshotsDir(store, guideId) {
   return path.join(store.guideDir(guideId), 'history', 'snapshots');
 }
 
+let lastSnapshotMs = 0;
 function snapshotName(label) {
-  // Keep milliseconds: stripping them made two snapshots taken within the same
-  // second collide on filename (the second silently overwrote the first, so
-  // rapid automatic backups produced only one file). ms keeps names unique and
-  // still chronologically sortable.
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  // Reserve a monotonically increasing timestamp even for multiple backups
+  // in one clock tick (or a backwards clock adjustment).
+  lastSnapshotMs = Math.max(Date.now(), lastSnapshotMs + 1);
+  const stamp = new Date(lastSnapshotMs).toISOString().replace(/[:.]/g, '-');
   return label ? `${stamp}-${label.replace(/[^A-Za-z0-9_-]+/g, '_')}.zip` : `${stamp}.zip`;
 }
 
-function createSnapshot(store, guideId, { label = '', keepLast = 0 } = {}) {
+function createSnapshot(store, guideId, { label = '', keepLast = 0, background = false } = {}) {
   const guideDir = store.guideDir(guideId);
   if (!fs.existsSync(path.join(guideDir, 'guide.json'))) throw new Error(`guide not found: ${guideId}`);
-  const buf = zipDirSync(guideDir, {
+  const content = (background ? directoryEntries : zipDirSync)(guideDir, {
     filter: (rel) => rel !== 'history' && !rel.startsWith('history/'),
   });
   const dir = snapshotsDir(store, guideId);
   fs.mkdirSync(dir, { recursive: true });
   const name = snapshotName(label);
-  atomicWriteFileSync(path.join(dir, name), buf);
+  if (background) {
+    return require('./background-archive').writeArchive(content, path.join(dir, name)).then(() => {
+      if (keepLast > 0) pruneSnapshots(store, guideId, keepLast);
+      return name;
+    });
+  }
+  atomicWriteFileSync(path.join(dir, name), content);
   if (keepLast > 0) pruneSnapshots(store, guideId, keepLast);
   return name;
 }
@@ -120,7 +126,7 @@ function restoreSnapshot(store, guideId, name) {
  * Returns the snapshot name when one was taken, else null. Never throws — a
  * backup failure must not break the save that triggered it.
  */
-function autoSnapshotIfDue(store, guideId, settings) {
+async function autoSnapshotIfDue(store, guideId, settings) {
   try {
     const backups = (settings && settings.get && settings.get('backups')) || {};
     if (backups.automatic === false) return null;
@@ -137,9 +143,10 @@ function autoSnapshotIfDue(store, guideId, settings) {
     count += 1;
 
     if (count >= everyN) {
-      createSnapshot(store, guideId, { label: 'auto', keepLast });
+      const pending = createSnapshot(store, guideId, { label: 'auto', keepLast, background: true });
       count = 0;
       atomicWriteFileSync(counterFile, JSON.stringify({ count }));
+      await pending;
       return true;
     }
     atomicWriteFileSync(counterFile, JSON.stringify({ count }));

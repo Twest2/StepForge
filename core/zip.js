@@ -70,7 +70,7 @@ function zipSync(entries, { date = new Date(2026, 0, 1) } = {}) {
     const data = Buffer.isBuffer(entry.data) ? entry.data : Buffer.from(String(entry.data), 'utf8');
     const crc = crc32(data);
     let method = 8;
-    let payload = zlib.deflateRawSync(data, { level: 6 });
+    let payload = entry.store ? data : zlib.deflateRawSync(data, { level: 6 });
     if (entry.store || payload.length >= data.length) {
       method = 0;
       payload = data;
@@ -219,7 +219,7 @@ function extractZipSync(buffer, destDir, { limits = {} } = {}) {
 }
 
 /** Zip a directory tree (relative names, sorted for determinism). */
-function zipDirSync(dir, { filter = () => true, prefix = '' } = {}) {
+function directoryEntries(dir, { filter = () => true, prefix = '' } = {}) {
   const entries = [];
   const walk = (rel) => {
     const abs = path.join(dir, rel);
@@ -233,10 +233,14 @@ function zipDirSync(dir, { filter = () => true, prefix = '' } = {}) {
     }
   };
   walk('');
-  return zipSync(entries);
+  return entries;
+}
+
+function zipDirSync(dir, options) {
+  return zipSync(directoryEntries(dir, options));
 }
 
 module.exports = {
-  crc32, zipSync, unzipSync, extractZipSync, zipDirSync, assertSafeEntryName,
+  directoryEntries, crc32, zipSync, unzipSync, extractZipSync, zipDirSync, assertSafeEntryName,
   DEFAULT_UNZIP_LIMITS,
 };

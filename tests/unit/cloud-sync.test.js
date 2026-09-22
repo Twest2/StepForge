@@ -319,3 +319,49 @@ test('restoring a deleted cloud guide makes it available to another device again
   assert.equal(b.store.getGuide(id).title, 'Original');
   assert.deepEqual(await a.sync.deletedGuides(), []);
 });
+
+test('backup history changes do not invalidate cached cloud content', (t) => {
+  const { device } = setup(t);
+  const { store, sync } = device('a');
+  const id = addGuide(store);
+  const before = sync.localSnapshot(id).hash;
+  const cached = sync.fingerprints.get(id);
+  writeJsonSync(path.join(store.guideDir(id), 'history', 'autosave-counter.json'), { count: 5 });
+  assert.equal(sync.localSnapshot(id).hash, before);
+  assert.equal(sync.fingerprints.get(id), cached);
+  edit(store, id, 'Real edit');
+  assert.notEqual(sync.localSnapshot(id).hash, before);
+});
+
+test('stopping sync while the archive worker runs prevents upload', async (t) => {
+  const { device, files } = setup(t);
+  let sync;
+  const a = device('a', { canUpload: () => {
+    setImmediate(() => sync.stop());
+    return true;
+  } });
+  sync = a.sync;
+  addGuide(a.store);
+  await sync.sync();
+  assert.equal(files.length, 0);
+});
+
+test('edits during archive encoding remain pending and the uploaded hash matches its bytes', async (t) => {
+  const { device, files, bytes } = setup(t);
+  let a, id, scheduled = false;
+  a = device('a', { canUpload: () => {
+    if (!scheduled) {
+      scheduled = true;
+      setImmediate(() => edit(a.store, id, 'Edited during encoding'));
+    }
+    return true;
+  } });
+  id = addGuide(a.store);
+  await synced(a.sync);
+  assert.equal(files.length, 1);
+  a.sync.validateDownload(bytes.get(files[0].id), id, files[0].appProperties.hash);
+  assert.notEqual(snapshot(a.store, id).hash, files[0].appProperties.hash);
+  await synced(a.sync);
+  assert.equal(files.length, 2);
+  assert.equal(snapshot(a.store, id).hash, files[1].appProperties.hash);
+});

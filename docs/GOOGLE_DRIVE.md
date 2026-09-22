@@ -81,3 +81,10 @@ for the one-time application registration and packaging requirements.
 Google references: [Desktop OAuth](https://developers.google.com/identity/protocols/oauth2/native-app),
 [app storage](https://developers.google.com/workspace/drive/api/guides/appdata),
 [uploads](https://developers.google.com/workspace/drive/api/guides/manage-uploads).
+
+Archive compression for normal uploads runs in a background worker shared with
+linked archive writes and automatic backups. Jobs run one at a time to limit CPU
+and disk contention. Uploads recheck cancellation and sharing permissions after
+compression, and edits made during compression remain pending for the next sync.
+File discovery and content hashing still run on the main process. Backup history
+is excluded from cloud change detection because it is not part of uploaded guides.

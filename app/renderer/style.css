@@ -1024,9 +1024,16 @@ fieldset legend {
 .global-placeholder-rows .placeholder-row,
 .global-placeholder-header {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) 32px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 32px;
   gap: 8px;
   align-items: start;
 }
 .global-placeholder-header { color: var(--muted); font-size: 12px; }
-.global-placeholder-rows .placeholder-row input { min-width: 0; box-sizing: border-box; }
+.global-placeholder-header.hidden { display: none; }
+.global-placeholder-rows { margin-top: 12px; }
+.global-placeholder-rows .placeholder-row input {
+  min-width: 0;
+  box-sizing: border-box;
+  align-self: stretch;
+}
+.global-placeholder-rows textarea { display: block; }

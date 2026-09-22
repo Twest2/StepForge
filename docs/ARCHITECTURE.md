@@ -85,7 +85,8 @@ guide.json + step.json + settings
                ──► exporters/html.js        self-contained .html (simple, or
                                             rich: sidebar, done toggles, zoom)
                ──► exporters/confluence.js  <title>-confluence/: storage-format
-                                            page.xhtml, page.json, attachments/
+                                            page.xhtml, REST request bodies
+                                            (Cloud v2 + Data Center), attachments/
                ──► exporters/pdf.js         native PDF writer (core/pdf.js)
                ──► exporters/gif.js         GIF89a encoder (core/gif.js)
                ──► exporters/image-bundle.js <title>-images/: numbered PNGs +

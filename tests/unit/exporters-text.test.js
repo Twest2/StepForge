@@ -222,7 +222,9 @@ test('Wiki.js export: wiki callouts, no raw HTML decoration, images exist', (t) 
   const md = fs.readFileSync(file, 'utf8');
 
   const lines = md.split('\n');
-  assert.equal(lines[0], '# Configure AcmeSync backups');
+  // Wiki.js shows the page title itself, so the body starts with the summary.
+  assert.ok(!lines.some((l) => l.startsWith('# ')));
+  assert.equal(lines[0], '*3 steps · generated ' + ast.generatedAt.slice(0, 10) + '*');
   // Wiki.js shows its own page TOC; no inline one or HTML anchors by default.
   assert.ok(!lines.includes('## Contents'));
   assert.ok(!md.includes('<div') && !md.includes('<a id='), 'no raw HTML');
@@ -284,7 +286,9 @@ test('Confluence export: storage-format page, REST body, attachments and import 
   assert.ok(xml.includes('<ac:parameter ac:name="">step-1</ac:parameter>'), 'anchor macro per step');
   assert.ok(xml.includes('ac:name="toc"'));
   assert.ok(xml.includes('<ac:structured-macro ac:name="note"><ac:parameter ac:name="title">Access</ac:parameter>'));
-  assert.ok(xml.includes('<ac:structured-macro ac:name="code"><ac:parameter ac:name="language">cron</ac:parameter>'));
+  // "cron" isn't a Confluence code language, so the block falls back to plain text.
+  assert.ok(xml.includes('<ac:structured-macro ac:name="code"><ac:plain-text-body>'));
+  assert.ok(!xml.includes('ac:name="language">cron'));
 
   // Tags balance, so the fragment is well-formed once wrapped in a root.
   const stack = [];
@@ -302,13 +306,48 @@ test('Confluence export: storage-format page, REST body, attachments and import 
     assert.equal(img.width, 320);
   }
 
-  const body = JSON.parse(fs.readFileSync(path.join(folder, 'page.json'), 'utf8'));
-  assert.equal(body.type, 'page');
-  assert.equal(body.title, 'Configure AcmeSync backups');
-  assert.equal(body.space.key, 'SPACEKEY');
-  assert.equal(body.body.storage.representation, 'storage');
-  assert.equal(body.body.storage.value.trim(), xml.trim());
-  assert.ok(fs.readFileSync(path.join(folder, 'HOW-TO-IMPORT.txt'), 'utf8').includes('SPACEKEY'));
+  // Cloud: REST API v2 (POST /wiki/api/v2/pages).
+  const cloud = JSON.parse(fs.readFileSync(path.join(folder, 'page-cloud.json'), 'utf8'));
+  assert.deepEqual(Object.keys(cloud).sort(), ['body', 'spaceId', 'status', 'title']);
+  assert.equal(cloud.spaceId, 'SPACE_ID');
+  assert.equal(cloud.status, 'current');
+  assert.equal(cloud.title, 'Configure AcmeSync backups');
+  assert.deepEqual(cloud.body, { representation: 'storage', value: xml.trim() });
+  // Data Center: POST /rest/api/content.
+  const dc = JSON.parse(fs.readFileSync(path.join(folder, 'page-datacenter.json'), 'utf8'));
+  assert.equal(dc.type, 'page');
+  assert.equal(dc.space.key, 'SPACEKEY');
+  assert.deepEqual(dc.body.storage, { value: xml.trim(), representation: 'storage' });
+  const howTo = fs.readFileSync(path.join(folder, 'HOW-TO-IMPORT.txt'), 'utf8');
+  assert.ok(howTo.includes('/wiki/api/v2/pages') && howTo.includes('X-Atlassian-Token: nocheck'));
+});
+
+test('Confluence export stays well-formed with messy descriptions', (t) => {
+  const root = makeTmpDir('expconfmessy');
+  t.after(() => rmrf(root));
+  const { store, guide, s2 } = buildFixtureGuide(path.join(root, 'data'));
+  const step = store.getStep(guide.guideId, s2.stepId);
+  step.title = 'Save & exit <now> ]]> done';
+  // Unclosed and stray tags, HTML-only entities and a bare ampersand.
+  step.descriptionHtml = '<p>caf&eacute; &hellip; A & B <b>bold <i>both</p></b></i><ul><li>one</ul><p>&bogus;</p>';
+  step.codeBlocks = [{ id: 'c', language: 'Python', code: 'print("]]>")' }];
+  store.saveStep(guide.guideId, step);
+
+  const { file } = exportConfluence(buildRenderAst(store, guide.guideId), path.join(root, 'out'));
+  const xml = fs.readFileSync(file, 'utf8');
+  assert.ok(xml.includes('caf&#233; &#8230; A &amp; B'));
+  assert.ok(xml.includes('&amp;bogus;'));
+  assert.ok(xml.includes('<ac:parameter ac:name="language">py</ac:parameter>'));
+
+  const bare = xml.replace(/<!\[CDATA\[[\s\S]*?\]\]>/g, '');
+  assert.ok(!/&(?!(?:amp|lt|gt|quot|apos|#\d+);)/.test(bare), 'every & starts an XML entity');
+  const stack = [];
+  for (const m of bare.matchAll(/<(\/?)([\w:]+)[^>]*?(\/?)>/g)) {
+    if (m[3]) continue;
+    if (m[1]) assert.equal(stack.pop(), m[2]);
+    else stack.push(m[2]);
+  }
+  assert.deepEqual(stack, []);
 });
 
 test('Simple HTML export is self-contained with valid embedded images', (t) => {

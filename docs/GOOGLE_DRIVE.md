@@ -27,15 +27,16 @@ pause sharing, or choose **Disconnect** to remove this device's connection.
 
 ## Test your connection
 
-After connecting, choose **Test Google Drive connection**. It checks sign-in,
+After connecting, open **Advanced** and choose **Test connection**. It checks sign-in,
 refreshes authorization, checks private storage access, uploads and downloads
 a small temporary file, verifies its bytes, and deletes it. Each result is
 shown separately. The test itself does not upload a guide; existing automatic
 synchronization resumes afterwards if enabled.
 
 These cloud controls apply immediately, independently of the Settings Save or
-Cancel buttons. **Sync now** requests a pass; the top-bar Drive indicator opens
-Settings and shows pending, syncing, synced, conflict, or error states.
+Cancel buttons. **Sync now** requests a pass. While you are signed in with
+**Auto-sync** on, a Drive indicator in the top bar shows pending, syncing,
+synced, conflict, or error states and opens Settings. It is hidden otherwise.
 
 ## Sync behavior
 
@@ -60,11 +61,15 @@ Settings and shows pending, syncing, synced, conflict, or error states.
 - Deleting a guide is local-only. A guide already synchronized and deleted
   locally is not automatically restored by subsequent polls. Another device
   still has its copy, and a fresh installation can download the cloud copy.
-- This initial implementation retains cloud versions and local replacement
-  backups; it does not automatically prune them. They consume storage. Guides
-  use complete snapshots rather than incremental image transfers. Transfers
+- Each guide keeps its latest snapshot and up to two previous snapshots in
+  Drive; older ones are pruned automatically after a successful sync. Local
+  replacement backups are not pruned. Guides use complete snapshots rather
+  than incremental image transfers. Transfers
   are limited to 256 MB per archive and have a 60-second request deadline;
   unusually large guides or slow connections may need a later retry.
+- If another computer's pruning removes the version this computer last synced,
+  this computer re-evaluates the guide after two minutes, downloads the latest
+  version, and keeps any unsynced local edits as a conflict copy.
 - Network failures leave local edits intact. Background polling retries while
   sharing is enabled; Settings reports authentication, permission, quota, and
   connection errors.
@@ -91,20 +96,40 @@ is excluded from cloud change detection because it is not part of uploaded guide
 
 ## Browse and manage Drive guides
 
-In **Settings → Google Drive sharing → Guides in Google Drive**, choose
-**Refresh Drive files** to list all active StepForge cloud guides, including
-ones not in this device's library. Each entry shows its snapshot count and
-storage usage. Deleted guides remain in the separate recovery section.
+**Settings → Google Drive sharing** shows the connected account, sync status,
+and an **Auto-sync** switch. Below it:
 
-Choose **Snapshots**, select a dated version, and choose **Restore snapshot**.
-Close the guide editor and stop capture first. Restoring replaces the local
-content and preserves the previous local copy in the cloud backup directory.
-With sharing enabled, the restored content becomes a new cloud version on the
-next sync. A guide already excluded from sharing stays excluded. Only snapshots
-still retained in Drive are available.
+- **Storage** shows how much space StepForge uses in Drive. The app folder is
+  hidden, so this is the only place to see it. The bar splits the total into
+  latest versions, previous versions, and deleted-guide recovery copies, and
+  shows the share of your Google storage quota when Google reports one.
+  **Free up space** deletes every previous version after confirmation. The
+  latest version of every guide is always kept. Removed versions cannot be
+  restored.
+- **Guides in Drive** lists every active cloud guide, including ones not in
+  this computer's library. Choose **Versions** to see the latest version and
+  up to two previous versions, then **Restore** one. Close the guide editor
+  and stop capture first. Restoring replaces the local content and preserves
+  the previous local copy in the cloud backup directory. With sharing enabled,
+  the restored content becomes a new cloud version on the next sync. A guide
+  already excluded from sharing stays excluded. Guides only in Drive also offer
+  **Download**, which installs the latest version on this computer.
+- **Delete from Drive** removes all of that guide's cloud versions after
+  confirmation. This cannot be undone. Local copies are kept and this computer
+  stops sharing that guide. Other computers still sharing it may upload it again.
+- **Recently deleted** lists recovery copies of deleted guides, which can be
+  restored or permanently deleted.
 
-**Delete Drive copies** removes all of that guide's cloud snapshots after
-confirmation. This cannot be undone. Local copies are kept and this device
-stops sharing that guide. Other devices still sharing it may upload it again.
+### Use this computer as the source of truth
+
+**Advanced → Replace Drive with this computer** makes this computer's library
+the only content in Drive. After confirmation it deletes every cloud version,
+previous version, and recovery copy, then uploads the guides on this computer.
+Guides that were in Drive but are not on this computer are marked deleted, so
+your other computers move them to their trash. Guides on other computers that
+are still in this library update to this computer's version; unsynced edits on
+those computers are kept as conflict copies. Auto-sync must be on. This cannot
+be undone.
+
 These actions apply immediately; the Settings Save button is not required.
 Confirmations return to the same Settings panel, keeping unsaved fields intact.

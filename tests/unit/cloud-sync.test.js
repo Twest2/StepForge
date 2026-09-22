@@ -259,7 +259,76 @@ test('Drive retention keeps the current snapshot and two prior snapshots', async
   assert.deepEqual(versions.map((file) => file.name), ['Second.sfgz', 'Third.sfgz', 'Fourth.sfgz']);
   const usage = await a.sync.storage();
   assert.equal(usage.snapshotCount, 3);
-  assert.equal(usage.pruneCount, 0);
+  assert.equal(usage.pruneCount, 2);
+  assert.equal(usage.bytes, usage.latestBytes + usage.previousBytes);
+});
+
+test('manual pruning keeps only the latest snapshot of every guide', async (t) => {
+  const { device, files } = setup(t); const a = device('a');
+  const id = addGuide(a.store); await synced(a.sync);
+  for (const title of ['Second', 'Third']) { edit(a.store, id, title); await synced(a.sync); }
+  const other = addGuide(a.store); await synced(a.sync);
+  const result = await a.sync.prune();
+  assert.equal(result.pruned, 2);
+  assert.deepEqual(files.filter((file) => file.appProperties.guideId === id).map((file) => file.name), ['Third.sfgz']);
+  assert.equal(files.filter((file) => file.appProperties.guideId === other).length, 1);
+  assert.equal((await a.sync.storage()).pruneCount, 0);
+  assert.equal(a.store.getGuide(id).title, 'Third');
+});
+
+test('a device whose baseline was pruned remotely catches up instead of waiting forever', async (t) => {
+  const { device } = setup(t); const a = device('a'); const b = device('b');
+  const id = addGuide(a.store); await synced(a.sync); await synced(b.sync);
+  for (const title of ['Second', 'Third', 'Fourth']) { edit(a.store, id, title); await synced(a.sync); }
+  await a.sync.prune();
+  assert.equal((await synced(b.sync)).phase, 'pending');
+  const record = b.sync.state.records[id];
+  record.syncedAt = Date.now() - 10 * 60 * 1000;
+  assert.equal((await synced(b.sync)).phase, 'synced');
+  assert.equal(b.store.getGuide(id).title, 'Fourth');
+});
+
+test('storage separates deleted-guide recovery copies from live guides', async (t) => {
+  const { device } = setup(t); const a = device('a');
+  const kept = addGuide(a.store); const removed = addGuide(a.store); await synced(a.sync);
+  assert.equal(a.sync.stageDeletion(removed), true);
+  a.store.deleteGuide(removed); await synced(a.sync);
+  const usage = await a.sync.storage();
+  assert.equal(usage.guideCount, 1);
+  assert.ok(usage.recoveryBytes >= 0);
+  assert.equal(usage.snapshotCount, 2);
+  assert.ok(a.store.guideExists(kept));
+});
+
+test('replacing Drive with this computer removes everything else and propagates to other devices', async (t) => {
+  const { device, files } = setup(t); const a = device('a'); const b = device('b');
+  const shared = addGuide(a.store); const elsewhere = addGuide(b.store);
+  await synced(a.sync); await synced(b.sync); await synced(a.sync);
+  const deleted = addGuide(a.store); await synced(a.sync);
+  assert.equal(a.sync.stageDeletion(deleted), true);
+  a.store.deleteGuide(deleted); await synced(a.sync);
+  a.store.deleteGuide(elsewhere);
+  edit(a.store, shared, 'Source of truth');
+  const result = await a.sync.replaceCloudWithLocal();
+  assert.equal(result.uploading, 1);
+  const versions = files.filter((file) => file.appProperties.stepforge === 'guide-v1');
+  assert.deepEqual(versions.map((file) => file.appProperties.guideId), [shared]);
+  assert.equal(versions[0].appProperties.parent, undefined);
+  const markers = files.filter((file) => file.appProperties.stepforge === 'deletion-v1');
+  assert.deepEqual(markers.map((file) => file.appProperties.state).sort(), ['purged', 'purged']);
+  for (const record of Object.values(b.sync.state.records)) record.syncedAt = 0;
+  await synced(b.sync);
+  assert.equal(b.store.guideExists(elsewhere), false);
+  assert.equal(b.store.getGuide(shared).title, 'Source of truth');
+  assert.deepEqual((await b.sync.guides()).map((guide) => guide.guideId), [shared]);
+});
+
+test('replacing Drive requires automatic sync to be on', async (t) => {
+  const { device, files } = setup(t); const a = device('a');
+  addGuide(a.store); await synced(a.sync);
+  const off = device('off', { enabled: () => false });
+  await assert.rejects(off.sync.replaceCloudWithLocal(), /Turn on automatic sync/);
+  assert.equal(files.length, 1);
 });
 
 test('guide cloud opt-out stops uploads and removing cloud copies leaves the guide local', async (t) => {

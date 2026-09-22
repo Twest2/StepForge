@@ -306,8 +306,9 @@ class StepForgeApp {
   }
 
   renderCloudStatus(status) {
-    this.cloudStatus.classList.toggle('hidden', !status.enabled && !status.error);
-    const labels = { synced: 'Drive: synced', syncing: 'Drive: syncing…', pending: 'Drive: pending', conflict: 'Drive: conflict copies', error: 'Drive: needs attention', disconnected: 'Drive: sign in' };
+    // Google Drive is opt-in: only users who are signed in with sync on see it.
+    this.cloudStatus.classList.toggle('hidden', !(status.connected && status.enabled));
+    const labels = { synced: 'Drive: synced', syncing: 'Drive: syncing…', pending: 'Drive: pending', conflict: 'Drive: conflict copies', error: 'Drive: needs attention' };
     this.cloudStatus.textContent = labels[status.phase] || 'Google Drive';
     this.cloudStatus.title = status.error || status.message || 'Google Drive settings';
     this.cloudStatus.setAttribute('aria-label', this.cloudStatus.title);
@@ -463,7 +464,7 @@ class StepForgeApp {
             el('div', { style: { fontWeight: 650 } }, folderLabel),
             q ? el('div.muted', {}, `Search: ${q}`) : el('div.muted', {}, `${this.state.library.guides.length} guides`),
           ),
-          el('div.muted', {}, this.state.info ? `StepForge ${this.state.info.buildVersion || this.state.info.version}` : ''),
+          el('div.muted', {}, this.state.info ? `StepForge ${this.state.info.buildVersion || this.state.info.version}${this.state.info.devBuild ? ' (dev)' : ''}` : ''),
         ),
         this.domBulkBar = el('div', {}),
         this.domLibraryResults = el('div', {}),

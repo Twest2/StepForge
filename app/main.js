@@ -14,6 +14,7 @@ const { LibraryLocation } = require('../core/library-location');
 const { Settings } = require('../core/settings');
 const { GoogleDrive } = require('./google-drive');
 const { CloudSync } = require('../core/cloud-sync');
+const { createCredentialVault } = require('./credential-vault');
 const { SearchIndex } = require('../core/search');
 const { TemplateManager, FORMATS, FORMAT_LABELS } = require('../core/templates');
 const { buildRenderAst } = require('../core/renderast');
@@ -757,6 +758,7 @@ function setupIpc() {
   h('cloud:permanentlyDeleteRecovery', ({ guideId }) => cloudSync.permanentlyDeleteRecovery(guideId),
     { validate: (a) => c.id(a.guideId) });
   h('cloud:prune', () => cloudSync.prune());
+  h('cloud:replaceCloudWithLocal', () => cloudSync.replaceCloudWithLocal());
   h('cloud:restore', ({ guideId, versionId }) => cloudSync.restore(guideId, versionId),
     { validate: (a) => c.id(a.guideId) && c.id(a.versionId) });
   h('cloud:setGuideSharing', ({ guideId, sharingEnabled }) => cloudSync.setSharing(guideId, sharingEnabled),
@@ -1101,9 +1103,13 @@ function setupIpc() {
     shell.openExternal(safe);
     return { ok: true };
   }, { validate: (a) => c.string(a.url, 2048) });
+  // Linux packages launch the bundled Electron against /opt/stepforge, so
+  // app.isPackaged is false there too. Only a source checkout is a dev build.
+  const devBuild = !app.isPackaged && fs.existsSync(path.join(__dirname, '..', '.git'));
   h('app:info', () => ({
     version: app.getVersion(),
-    buildVersion: app.isPackaged ? (PACKAGE_JSON.buildVersion || app.getVersion()) : 'dev',
+    buildVersion: PACKAGE_JSON.buildVersion || app.getVersion(),
+    devBuild,
     dataDir: store.root,
     platform: process.platform,
     license: PACKAGE_JSON.license || 'CC-BY-NC-4.0',
@@ -1151,7 +1157,7 @@ if (!gotLock) {
     const dataDir = libraryLocation.applyPending();
     store = new GuideStore(dataDir);
     settings = new Settings(store.settingsDir);
-    googleDrive = new GoogleDrive({ directory: store.settingsDir, safeStorage, openExternal: (url) => shell.openExternal(url) });
+    googleDrive = new GoogleDrive({ directory: store.settingsDir, safeStorage, vault: createCredentialVault(), openExternal: (url) => shell.openExternal(url) });
     cloudSync = new CloudSync({
       store, drive: googleDrive,
       enabled: () => settings.get('cloud.enabled') === true && !cloudTesting,
@@ -1299,6 +1305,11 @@ if (!gotLock) {
     setupIpc();
     createWindow();
     registerHotkeys();
+    // A restored sign-in (after an update or reinstall) resumes sync on its own.
+    void googleDrive.recover().then((recovered) => {
+      if (recovered) cloudSync.publish(cloudSync.status.phase, cloudSync.status.message);
+      if (recovered && settings.get('cloud.enabled') === true) void cloudSync.sync();
+    });
     if (settings.get('cloud.enabled') === true) cloudSync.start();
 
     app.on('activate', () => {

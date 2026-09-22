@@ -9,8 +9,13 @@ if (!isMainThread && workerData?.archiveJob) {
     ...entry,
     data: typeof entry.data === 'string' ? entry.data : Buffer.from(entry.data),
   }));
-  atomicWriteFileSync(workerData.destination, zipSync(entries));
-  parentPort.postMessage(true);
+  const bytes = zipSync(entries);
+  if (workerData.destination) {
+    atomicWriteFileSync(workerData.destination, bytes);
+    parentPort.postMessage(null);
+  } else {
+    parentPort.postMessage(bytes);
+  }
 }
 
 // One archive at a time limits CPU/disk contention. Input bytes are captured
@@ -22,10 +27,11 @@ function writeArchive(entries, destination) {
       workerData: { archiveJob: true, entries, destination },
     });
     let complete = false;
-    worker.once('message', () => { complete = true; });
+    let result;
+    worker.once('message', (value) => { complete = true; result = value; });
     worker.once('error', reject);
     worker.once('exit', (code) => {
-      if (code === 0 && complete) resolve();
+      if (code === 0 && complete) resolve(result == null ? undefined : Buffer.from(result));
       else reject(new Error(`Archive worker exited without completing (code ${code})`));
     });
   }));
@@ -33,4 +39,8 @@ function writeArchive(entries, destination) {
   return job;
 }
 
-module.exports = { writeArchive };
+async function drainArchives() {
+  let pending;
+  do { pending = tail; await pending; } while (pending !== tail);
+}
+module.exports = { writeArchive, encodeArchive: (entries) => writeArchive(entries), drainArchives };

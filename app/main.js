@@ -721,7 +721,17 @@ function setupIpc() {
 
   // Cloud access is confined to the main process; tokens never enter IPC.
   const cloudStatus = () => ({ ...googleDrive.status(), ...cloudSync.status, enabled: settings.get('cloud.enabled') === true });
-  h('cloud:status', cloudStatus);
+  h('cloud:status', () => {
+    if (googleDrive.status().connected) {
+      // Show cached identity immediately, then refresh the optional profile.
+      const previous = googleDrive.status();
+      void googleDrive.account().then(() => {
+        const next = googleDrive.status();
+        if (next.photoLink !== previous.photoLink || next.email !== previous.email) sendToRenderer('cloud:status', cloudStatus());
+      }).catch(() => {});
+    }
+    return cloudStatus();
+  });
   h('cloud:connect', async () => {
     if (cloudTesting || cloudConnecting) throw new Error('Wait for Google sign-in or testing to finish.');
     cloudConnecting = true;

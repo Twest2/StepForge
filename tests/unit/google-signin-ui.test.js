@@ -13,19 +13,23 @@ function panel(initial) {
   const nodes = [];
   let current = initial;
   let passedArgs;
+  let onStatus;
 
   const context = {
     el(spec, props = {}, ...children) {
+      const classes = new Set(spec.split('.').slice(1));
       const node = {
         spec,
         ...props,
         children: children.flat(),
         textContent: '',
         classList: {
-          add() {},
-          remove() {},
-          toggle() {},
+          add(name) { classes.add(name); },
+          remove(name) { classes.delete(name); },
+          contains(name) { return classes.has(name); },
+          toggle(name, enabled) { if (enabled) classes.add(name); else classes.delete(name); },
         },
+        removeAttribute(name) { delete this[name]; },
         addEventListener(type, action) {
           this[type] = action;
         },
@@ -44,7 +48,8 @@ function panel(initial) {
         return current;
       },
 
-      onStatus() {
+      onStatus(callback) {
+        onStatus = callback;
         return () => {};
       },
 
@@ -78,6 +83,7 @@ function panel(initial) {
     nodes,
     result,
     args: () => passedArgs,
+    update: (next) => { current = next; onStatus(next); },
   };
 }
 
@@ -274,3 +280,32 @@ test(
     );
   }
 );
+
+
+test('account avatar shows the photo, falls back on failure, and clears on disconnect', async () => {
+  const initial = { available: true, connected: true, enabled: false, email: 'test@example.com',
+    photoLink: 'https://lh3.googleusercontent.com/avatar' };
+  const { nodes, update, result } = panel(initial);
+  await Promise.resolve();
+  const avatar = nodes.find((node) => node.spec === 'div.cloud-avatar');
+  const [letter, photo] = avatar.children;
+  assert.equal(photo.src, initial.photoLink);
+  assert.equal(photo.referrerPolicy, 'no-referrer');
+  assert.equal(photo.classList.contains('hidden'), false);
+  assert.equal(letter.classList.contains('hidden'), true);
+  photo.error();
+  assert.equal(photo.classList.contains('hidden'), true);
+  assert.equal(letter.classList.contains('hidden'), false);
+  assert.equal(letter.textContent, 'T');
+  update(initial);
+  assert.equal(photo.classList.contains('hidden'), true);
+  update({ ...initial, photoLink: 'https://lh3.googleusercontent.com/new-avatar' });
+  assert.equal(photo.classList.contains('hidden'), false);
+  update({ connected: false });
+  assert.equal(photo.src, undefined);
+  assert.equal(photo.classList.contains('hidden'), true);
+  update({ ...initial, photoLink: '' });
+  assert.equal(letter.textContent, 'T');
+  assert.equal(letter.classList.contains('hidden'), false);
+  result.dispose();
+});

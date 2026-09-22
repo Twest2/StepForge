@@ -1315,7 +1315,15 @@ if (!gotLock) {
     event.preventDefault();
     // Stop new clicks from being queued, then wait for the queue to settle.
     capture.stopClickWatcher();
-    capture.drainPendingClicks(2000).finally(() => app.quit());
+    cloudSync?.stop();
+    // Electron quits even with active worker threads. Let durable archive
+    // writes and the stopped cloud cycle finish before terminating workers.
+    (async () => {
+      await capture.drainPendingClicks(2000);
+      await cloudSync?.running;
+      await require('../core/background-archive').drainArchives();
+    })().catch((err) => console.error('[stepforge] shutdown drain failed:', err))
+      .finally(() => app.quit());
   });
 
   app.on('will-quit', () => {

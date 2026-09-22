@@ -471,10 +471,10 @@ class StepForgeApp {
           el('div.lib-header-actions', {},
             canSelect && count ? el('button', {
               type: 'button',
-              className: this.state.selectMode ? 'active-toggle' : '',
+              className: this.state.selectMode ? 'primary' : '',
               'aria-pressed': String(this.state.selectMode),
               onClick: () => this.toggleSelectMode(),
-            }, this.state.selectMode ? 'Done' : 'Select') : null,
+            }, 'Select') : null,
             trash && count && !this.state.selectMode ? el('button.danger', { type: 'button', onClick: () => this.purgeTrashItem() }, 'Empty trash') : null,
             trash ? null : el('button', { type: 'button', onClick: (e) => this.openImportMenu(e) }, 'Import ▾'),
             trash ? null : el('button.primary', { type: 'button', onClick: () => this.createGuide() }, 'New guide'),
@@ -646,11 +646,10 @@ class StepForgeApp {
           ]);
         },
       },
-      this.selectionCheck(selected, (e) => {
+      selectMode ? this.selectionCheck(selected, (e) => {
         e.stopPropagation();
-        if (!this.state.selectMode) { this.state.selectMode = true; this.renderLibrary(); }
         this.toggleTrashSelection(item.name);
-      }),
+      }) : null,
       el('h4', {}, item.title),
       el('div.card-footer', {},
         el('span', {}, `${item.stepCount} step${item.stepCount === 1 ? '' : 's'}`),
@@ -695,10 +694,10 @@ class StepForgeApp {
         this.guideContextMenu(e, guide);
       },
     },
-    this.selectionCheck(selected, (e) => {
+    selectMode ? this.selectionCheck(selected, (e) => {
       e.stopPropagation();
       this.selectGuideFromClick(guide.guideId, e, { toggle: true });
-    }),
+    }) : null,
     el('button.fav', {
       type: 'button',
       className: `fav${guide.favorite ? ' on' : ''}`,

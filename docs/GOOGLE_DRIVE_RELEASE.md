@@ -35,15 +35,55 @@ the same public registration in `app/google-oauth-config.json` in each package.
 Release jobs fail if no valid application ID is configured, instead of shipping
 an apparently working sign-in button that cannot authenticate.
 
-For a local maintainer build, set `STEPFORGE_GOOGLE_CLIENT_ID` in the build
-shell and run the same script before launching/packaging. This is build-time
-configuration only; users do not set environment variables or edit files.
-Do not use another application's Google client ID or a fabricated placeholder.
+For a local maintainer build that you package, set `STEPFORGE_GOOGLE_CLIENT_ID`
+and `STEPFORGE_GOOGLE_CLIENT_SECRET` in the build shell and run the same script
+before packaging. This is build-time configuration only; users do not set
+environment variables or edit files. Do not use another application's Google
+client ID or a fabricated placeholder.
 
-The source checkout deliberately has an empty ID until StepForge's real
-registration is supplied. Development/test builds without it keep local
+The source checkout deliberately has an empty ID, and it must never be
+committed with the real client. Development builds without a client keep local
 features working and display “Google sign-in is unavailable in this build of
-StepForge.” They do not ask users to configure it themselves.
+StepForge.”
+
+## Signing in from a development build
+
+To test Drive features before a release, give your source checkout the client
+without touching `app/google-oauth-config.json`:
+
+```bash
+npm run setup:google-dev
+```
+
+This copies the client from the installed Linux release
+(`/opt/stepforge/app/google-oauth-config.json`) into `google-oauth.local.json`
+at the repository root. The file is gitignored, readable only by you, and
+outside `app/`, so packaging never includes it. Other sources:
+
+```bash
+npm run setup:google-dev -- --from path/to/google-oauth-config.json
+STEPFORGE_GOOGLE_CLIENT_ID=… STEPFORGE_GOOGLE_CLIENT_SECRET=… npm run setup:google-dev
+npm run setup:google-dev -- --remove
+```
+
+A development build can also read `STEPFORGE_GOOGLE_CLIENT_ID` and
+`STEPFORGE_GOOGLE_CLIENT_SECRET` directly from its environment. A release build
+always uses its stamped client and ignores both.
+
+Development and release builds share the same library folder by default, and
+Drive actions such as **Free up space** and **Replace Drive with this computer**
+affect everything stored for that Google account. Test against a separate
+library:
+
+```bash
+STEPFORGE_DATA_DIR="$HOME/.local/share/stepforge-dev" npm start
+```
+
+For fully separate Drive data, sign in with a second Google account. While the
+OAuth app is in testing, add that account as a test user in the Google Cloud
+console first. Development builds do not use the operating-system sign-in
+backup, so their sign-in stays with their own library folder and never
+replaces or clears the release build's backup.
 
 Tokens stored by an earlier build with a different user-supplied registration
 are not reused by the official client. The user signs in again; guides are

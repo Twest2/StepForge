@@ -138,6 +138,7 @@ class GuideEditor {
     this.selectedStepId = null;
     this.stepSelectMode = false;
     this.selectedSteps = new Set();
+    this.stepSelectionAnchor = null;
     this.selectedAnnotationId = null;
     this.currentTool = 'select';
     this.currentZoom = 'fit';
@@ -365,6 +366,9 @@ class GuideEditor {
 
   async open(guideId, stepId = null) {
     this.guideId = guideId;
+    this.stepSelectMode = false;
+    this.selectedSteps = new Set();
+    this.stepSelectionAnchor = null;
     this.selectedStepId = stepId;
     this.selectedAnnotationId = null;
     this.canvasHistory = [];
@@ -382,6 +386,8 @@ class GuideEditor {
     this.guide = guide;
     this.steps = steps;
     this.stepMap = new Map(steps.map((step) => [step.stepId, step]));
+    this.selectedSteps = new Set([...this.selectedSteps].filter((id) => this.stepMap.has(id)));
+    if (!this.stepMap.has(this.stepSelectionAnchor)) this.stepSelectionAnchor = null;
     if (!this.shellMounted) this.mountShell();
     // An explicitly requested step (new capture, added step, restored
     // neighbour) wins; otherwise keep the current selection if it survived.
@@ -424,7 +430,7 @@ class GuideEditor {
           el('div.row', {},
             this.dom.addStepBtn = el('button.primary', { type: 'button' }, 'Add'),
             this.dom.importBtn = el('button', { type: 'button' }, 'Import'),
-            this.dom.selectStepsBtn = el('button', { type: 'button' }, 'Select'),
+            this.dom.selectStepsBtn = el('button', { type: 'button', title: 'Select steps; Shift-click to select a range' }, 'Select'),
           ),
         ),
         this.dom.stepsList = el('div.steps-list'),
@@ -993,8 +999,11 @@ class GuideEditor {
       const itemProps = {
         className: `step-item${selected ? ' selected' : ''}${depth ? ' sub' : ''}${step.skipped ? ' skipped' : ''}${step.hidden ? ' hiddenstep' : ''}`,
         dataset: { stepId: step.stepId },
-        onClick: () => {
-          if (this.stepSelectMode) this.toggleStepSelection(step.stepId);
+        onMouseDown: (e) => {
+          if (this.stepSelectMode && e.shiftKey) e.preventDefault();
+        },
+        onClick: (e) => {
+          if (this.stepSelectMode) this.toggleStepSelection(step.stepId, e.shiftKey);
           else this.selectStep(step.stepId);
         },
         onContextMenu: (e) => {
@@ -1030,8 +1039,11 @@ class GuideEditor {
           ? el('input', {
             type: 'checkbox',
             checked,
-            onClick: (e) => e.stopPropagation(),
-            onChange: () => this.toggleStepSelection(step.stepId),
+            'aria-label': `Select step ${number || step.title || ''}`,
+            onClick: (e) => {
+              e.stopPropagation();
+              this.toggleStepSelection(step.stepId, e.shiftKey);
+            },
           })
           : null,
         el('span.status-dot', { className: `status-dot status-${step.status}` }),
@@ -1054,22 +1066,35 @@ class GuideEditor {
   toggleStepSelectMode() {
     this.stepSelectMode = !this.stepSelectMode;
     this.selectedSteps = new Set();
+    this.stepSelectionAnchor = null;
     this.renderStepList();
   }
 
-  toggleStepSelection(stepId) {
-    if (this.selectedSteps.has(stepId)) this.selectedSteps.delete(stepId);
-    else this.selectedSteps.add(stepId);
+  toggleStepSelection(stepId, shiftKey = false) {
+    const target = this.steps.findIndex((step) => step.stepId === stepId);
+    if (target < 0) return;
+    const anchor = this.steps.findIndex((step) => step.stepId === this.stepSelectionAnchor);
+    if (shiftKey && anchor >= 0) {
+      for (let i = Math.min(anchor, target); i <= Math.max(anchor, target); i++) {
+        this.selectedSteps.add(this.steps[i].stepId);
+      }
+    } else {
+      if (this.selectedSteps.has(stepId)) this.selectedSteps.delete(stepId);
+      else this.selectedSteps.add(stepId);
+      this.stepSelectionAnchor = stepId;
+    }
     this.renderStepList();
   }
 
   selectAllSteps() {
     this.selectedSteps = new Set(this.steps.map((s) => s.stepId));
+    this.stepSelectionAnchor = null;
     this.renderStepList();
   }
 
   clearStepSelection() {
     this.selectedSteps = new Set();
+    this.stepSelectionAnchor = null;
     this.renderStepList();
   }
 
@@ -1110,6 +1135,7 @@ class GuideEditor {
     if (entries.length) this.pushCanvasHistory({ type: 'delete-step', steps: entries, order });
     this.stepSelectMode = false;
     this.selectedSteps = new Set();
+    this.stepSelectionAnchor = null;
     await this.reload(null);
     this.onToast(`${ids.length} step${ids.length === 1 ? '' : 's'} deleted. Press Ctrl+Z to undo.`);
   }

@@ -393,13 +393,13 @@ function showSettingsDialog({
       { value: 'region', label: 'Region' },
     ]);
     const smartCropping = el('input', { type: 'checkbox', checked: settings.capture?.smartCropping !== false });
-    const focusValue = Number(settings.capture?.focusAmount ?? 1.5);
+    const focusValue = Number(settings.capture?.focusAmount ?? 1.25);
     const focusAmount = el('input', { type: 'range', min: 1, max: 2, step: 0.05,
-      'aria-label': 'Default focus amount', value: Number.isFinite(focusValue) ? Math.max(1, Math.min(2, focusValue)) : 1.5 });
+      'aria-label': 'Default focus amount', value: Number.isFinite(focusValue) ? Math.max(1, Math.min(2, focusValue)) : 1.25 });
     const focusLabel = el('output', {}, `${Number(focusAmount.value).toFixed(2)}×`);
     focusAmount.addEventListener('input', () => { focusLabel.textContent = `${Number(focusAmount.value).toFixed(2)}×`; });
     const focusControl = el('div.row.settings-range', {}, focusAmount, focusLabel, el('button', { type: 'button', onClick: () => {
-      focusAmount.value = '1.5'; focusLabel.textContent = '1.50×';
+      focusAmount.value = '1.25'; focusLabel.textContent = '1.25×';
     } }, 'Reset'));
     const clickMarker = el('input', { type: 'checkbox', checked: Boolean(settings.capture?.clickMarker) });
     const captureHotkey = makeHotkeyInput(settings.capture?.hotkeyCapture || '');
@@ -408,9 +408,9 @@ function showSettingsDialog({
     const previewCount = makeInput(settings.exports?.previewStepCount ?? 3, 'number', { min: 1, step: 1 });
     const openFolder = el('input', { type: 'checkbox', checked: Boolean(settings.exports?.openFolderAfterExport) });
     const captureOutside = el('input', { type: 'checkbox', checked: Boolean(settings.capture?.captureOutsideClicks) });
-    const fallbackTrigger = makeSelect(settings.capture?.fallbackTrigger || 'interval', [
+    const fallbackTrigger = makeSelect(settings.capture?.fallbackTrigger === 'interval' ? 'interval' : 'hotkey', [
+      { value: 'hotkey', label: 'Hotkey' },
       { value: 'interval', label: 'Timed interval' },
-      { value: 'hotkey', label: 'Hotkey only' },
     ]);
     const autoIntervalSec = makeInput(settings.capture?.autoIntervalSec ?? 5, 'number', { min: 1, step: 1 });
     const keepLast = makeInput(settings.backups?.keepLast ?? 10, 'number', { min: 0, step: 1 });
@@ -427,8 +427,8 @@ function showSettingsDialog({
     }, 250);
 
     const syncFallbackUi = () => {
-      autoIntervalSec.disabled = fallbackTrigger.value === 'hotkey';
-      intervalRow.classList.toggle('disabled', autoIntervalSec.disabled);
+      // The timer only matters for timed captures, so hide it otherwise.
+      intervalRow.hidden = fallbackTrigger.value !== 'interval';
     };
     const intervalRow = el('div');
     fallbackTrigger.addEventListener('change', syncFallbackUi);
@@ -533,7 +533,7 @@ function showSettingsDialog({
           settingRow('Capture with', 'Some desktops don’t report clicks. Choose how steps are captured instead.', fallbackTrigger),
           (intervalRow.append(settingRow('Timer interval', 'Seconds between timed captures.', autoIntervalSec)), intervalRow)),
         settingsCard('Hotkeys',
-          settingRow('Capture', 'Take a step. Also used when clicks can’t be detected and “Hotkey only” is selected.', captureHotkey),
+          settingRow('Capture', 'Take a step. Also used when clicks can’t be detected.', captureHotkey),
           settingRow('Pause / resume', 'Pause or resume the capture session.', pauseHotkey)),
       ] },
       { id: 'editor', label: 'Editor', description: 'Defaults for new steps and automatic backups.', content: [
@@ -620,7 +620,7 @@ function showSettingsDialog({
                 clickMarker: clickMarker.checked,
                 smartCropping: smartCropping.checked,
                 focusAmount: Number(focusAmount.value),
-                fallbackTrigger: fallbackTrigger.value === 'hotkey' ? 'hotkey' : 'interval',
+                fallbackTrigger: fallbackTrigger.value === 'interval' ? 'interval' : 'hotkey',
                 autoIntervalSec: Math.max(1, Number(autoIntervalSec.value || 5)),
                 hotkeyCapture: captureHotkey.value.trim(),
                 hotkeyPauseResume: pauseHotkey.value.trim(),

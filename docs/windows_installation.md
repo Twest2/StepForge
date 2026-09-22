@@ -6,6 +6,11 @@ Author: Tyler Westbrook
 
 *10 steps · generated 2026-06-23*
 
+<div class="sf-callout sf-callout-tip" style="border-left: 4px solid #10b981; padding: 14px 16px; margin: 14px 0; border-radius: 0 16px 16px 0;">
+<div style="font-weight: 700; color: #047857; margin-bottom: 6px;">Tip: Easier updates with Chocolatey</div>
+<div style="color: inherit;"><p>If you use <a href="https://chocolatey.org">Chocolatey</a>, you can install StepForge with <code>choco install stepforge</code> and update it later with <code>choco upgrade stepforge</code>. See <a href="windows/chocolatey.md">StepForge on Windows with Chocolatey</a>. The steps below install StepForge manually from GitHub Releases.</p></div>
+</div>
+
 Welcome to StepForge the easy documentation writer! This guide shows you how to setup StepForge on your windows computer step by step. As a demo of this project, this guide was 100% made with StepForge with no outside editing. Enjoy!
 
 ## Contents

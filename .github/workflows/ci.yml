@@ -44,7 +44,7 @@ jobs:
           # A fixture verifies packing and payload inclusion without installing anything.
           $installerName = 'StepForge Setup 0.0.0.1.exe'
           Set-Content (Join-Path $packageRoot "tools/$installerName") 'packaging smoke test'
-          choco pack "$packageRoot/stepforge.nuspec" --version 0.0.0.1 --out-directory $packageRoot
+          choco pack "$packageRoot/stepforge.nuspec" --version 0.0.0.1 --outputdirectory $packageRoot
           if ($LASTEXITCODE -ne 0) { throw 'Chocolatey packaging failed' }
           Add-Type -AssemblyName System.IO.Compression.FileSystem
           $archive = [System.IO.Compression.ZipFile]::OpenRead("$packageRoot/stepforge.0.0.0.1.nupkg")

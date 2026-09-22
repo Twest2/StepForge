@@ -26,6 +26,11 @@ class StepForgeApp {
       selectedTrash: new Set(),
     };
     this.editorMeta = null;
+    this.cloudStatus = document.getElementById('cloud-status');
+    this.cloudStatus.addEventListener('click', () => this.openSettings());
+    api.cloud.onStatus((status) => this.renderCloudStatus(status));
+    api.cloud.onLibraryChanged(() => this.refreshLibrary().catch(console.error));
+    api.cloud.status().then((status) => this.renderCloudStatus(status)).catch(console.error);
     this.libraryRenderToken = 0;
 
     this.view.innerHTML = `
@@ -131,6 +136,7 @@ class StepForgeApp {
     };
     this.state.trash = trash;
     this.editor.setSettings(settings);
+    if (this.state.view === 'welcome') this.renderWelcome();
   }
 
   async refreshLibrary({ keepFilter = true } = {}) {
@@ -159,10 +165,29 @@ class StepForgeApp {
     this.updateCaptureState(this.captureState);
   }
 
-  showWelcome() {
+  async flushEditorBeforeNavigation() {
+    if (this.editor.pendingSave || this.editor.pendingGuideSave) {
+      try {
+        await this.editor.saveAll();
+      } catch (err) {
+        toast(err.message, { error: true });
+        return false;
+      }
+      if (this.editor.pendingSave || this.editor.pendingGuideSave) return false;
+    }
+    return true;
+  }
+
+  async showWelcome() {
+    if (!await this.flushEditorBeforeNavigation()) return;
     this.editor.setActive(false);
     this.setView('welcome');
     this.renderWelcome();
+    try {
+      await this.refreshLibrary();
+    } catch (err) {
+      console.error(err);
+    }
   }
 
   renderWelcome() {
@@ -174,6 +199,7 @@ class StepForgeApp {
           el('h1', {}, 'StepForge'),
           el('p.muted', {}, 'Capture, annotate, and export step-by-step guides. Local-first, no telemetry.'),
         ),
+        this.renderRecentGuides(),
         el('div.welcome-actions', {},
           el('button.welcome-btn.primary', {
             type: 'button',
@@ -201,8 +227,30 @@ class StepForgeApp {
     );
   }
 
+  renderRecentGuides() {
+    // The library already returns guides in descending updatedAt order.
+    const guides = this.state.library.guides.slice(0, 3);
+    if (!guides.length) return null;
+    return el('section.welcome-recent', { 'aria-labelledby': 'recent-guides-heading' },
+      el('h2#recent-guides-heading', {}, 'Recent guides'),
+      el('ul', {}, guides.map((guide) => el('li', {},
+        el('button.welcome-recent-guide', {
+          type: 'button',
+          title: guide.title,
+          onClick: () => this.openGuideAndArmCapture(guide.guideId),
+        },
+        el('span.welcome-recent-details', {},
+          el('span.welcome-recent-title', {}, guide.title),
+          el('span.muted', {}, `${guide.stepCount} ${guide.stepCount === 1 ? 'step' : 'steps'} • ${fmtDate(guide.updatedAt)}`),
+        ),
+        el('span.muted', { 'aria-hidden': 'true' }, '›'),
+        ),
+      ))),
+    );
+  }
+
   async startNewCapture() {
-    const guide = await api.library.create({ title: 'Untitled capture' });
+    const guide = await api.library.create({ title: 'Untitled capture', captureDraft: true });
     await this.refreshData();
     await this.openGuide(guide.guideId);
     await this.armCaptureSession(guide.guideId);
@@ -217,12 +265,14 @@ class StepForgeApp {
   }
 
   async showLibrary(reason = null) {
+    if (!await this.flushEditorBeforeNavigation()) return;
     this.editor.setActive(false);
     this.setView('library');
     if (reason === 'new') {
       await this.createGuide();
       return;
     }
+    await this.refreshData();
     this.renderLibrary();
   }
 
@@ -255,7 +305,16 @@ class StepForgeApp {
     await this.armCaptureSession(guideId);
   }
 
+  renderCloudStatus(status) {
+    this.cloudStatus.classList.toggle('hidden', !status.enabled && !status.error);
+    const labels = { synced: 'Drive: synced', syncing: 'Drive: syncing…', pending: 'Drive: pending', conflict: 'Drive: conflict copies', error: 'Drive: needs attention', disconnected: 'Drive: sign in' };
+    this.cloudStatus.textContent = labels[status.phase] || 'Google Drive';
+    this.cloudStatus.title = status.error || status.message || 'Google Drive settings';
+    this.cloudStatus.setAttribute('aria-label', this.cloudStatus.title);
+  }
+
   onEditorMeta(meta) {
+    api.cloud.setEditorDirty(Boolean(meta?.dirty));
     this.editorMeta = meta;
     if (this.state.view === 'editor') this.renderTopbar();
     this.updateCaptureState(this.captureState || null);
@@ -346,7 +405,9 @@ class StepForgeApp {
             { label: 'Guide information…', action: () => this.editor.openGuideInfo() },
             { label: 'Guide placeholders…', action: () => this.editor.openGuidePlaceholders() },
             { label: 'Backups & snapshots…', action: () => this.editor.openBackupsDialog() },
-            { label: 'Generate all text fields with AI (experimental)', action: () => this.editor.generateAllTextFieldsWithAi() },
+            ...(this.editor.isAiEnabled() ? [
+              { label: 'Generate all text fields with AI (experimental)', action: () => this.editor.generateAllTextFieldsWithAi() },
+            ] : []),
             { label: guide && guide.linkedSource ? 'Linked guide…' : 'Linked guide (not linked)', action: () => this.editor.openLinkedGuide() },
             'sep',
             { label: 'Keyboard shortcuts…', action: () => this.editor.openShortcutsHelp() },
@@ -767,7 +828,7 @@ class StepForgeApp {
   async bulkDelete() {
     const ids = [...this.state.selectedGuides];
     if (!ids.length) return;
-    const ok = await confirmDialog(`Delete ${ids.length} guide${ids.length === 1 ? '' : 's'}? They'll move to Trash.`, { danger: true, okLabel: 'Delete' });
+    const ok = await confirmDialog(`Delete ${ids.length} guide${ids.length === 1 ? '' : 's'}? They'll move to Trash. Google Drive-shared guides are also removed from your other devices, with one cloud recovery snapshot retained.`, { danger: true, okLabel: 'Delete' });
     if (!ok) return;
     await Promise.all(ids.map((guideId) => api.library.delete({ guideId })));
     this.state.selectedGuides = new Set();
@@ -782,7 +843,7 @@ class StepForgeApp {
       placeholder: 'Untitled guide',
     });
     if (title == null) return;
-    const guide = await api.library.create({ title: title.trim() || 'Untitled guide' });
+    const guide = await api.library.create({ title: title.trim() || 'Untitled guide', captureDraft: !title.trim() || title.trim() === 'Untitled guide' });
     await this.refreshLibrary();
     // Arm a (paused) capture session like every other open path, so the
     // "Start recording" bar appears and actually controls this new guide.
@@ -834,7 +895,7 @@ class StepForgeApp {
   async deleteGuide(guideId) {
     const guide = this.state.library.guides.find((g) => g.guideId === guideId);
     if (!guide) return;
-    const ok = await confirmDialog(`Delete “${guide.title}”?`, { danger: true, okLabel: 'Delete' });
+    const ok = await confirmDialog(`Delete “${guide.title}”? It moves to Trash. If it is shared with Google Drive, it is also removed from your other devices and one cloud recovery snapshot is retained.`, { danger: true, okLabel: 'Delete' });
     if (!ok) return;
     await api.library.delete({ guideId });
     await this.refreshLibrary();

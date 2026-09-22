@@ -1,18 +1,26 @@
-# StepForge on apt-based Linux (Debian / Ubuntu)
+# StepForge on apt-based Linux
 
-The current `.deb` targets **Ubuntu 26.04 with GNOME 50**. See the
-[GNOME Wayland recording and testing guide](gnome-wayland.md). Fedora
-and other dnf-based systems have a separate guide: [dnf.md](dnf.md).
+StepForge provides a `.deb` package for **Ubuntu 26.04 with GNOME 50 on amd64/x86_64**.
 
-## Recommended: install from the official APT repository
+The recommended installation method is the official StepForge APT repository. This allows StepForge to receive updates through the same `apt update` and `apt upgrade` commands used for the rest of the system.
 
-For supported Ubuntu releases, install the stable `stepforge` package from the
-official StepForge APT repository. Add the repository once, then use normal
-apt upgrades:
+You can also download a `.deb` directly from the [StepForge GitHub Releases](https://github.com/Twest2/StepForge/releases) page if you prefer a manual installation.
+
+Fedora and other DNF-based systems have a separate guide: [dnf.md](dnf.md).
+
+For information about recording on GNOME Wayland, see [GNOME Wayland recording and testing](gnome-wayland.md).
+
+## Recommended: install from the StepForge APT repository
+
+Create the APT keyring directory if it does not already exist:
 
 ```bash
 sudo mkdir -p /etc/apt/keyrings
+```
 
+Download the StepForge repository signing key, add the StepForge repository, and refresh apt and install StepForge:
+
+```bash
 sudo curl -fsSL \
   -o /etc/apt/keyrings/stepforge.gpg \
   https://packages.twestbrook.com/debian/stepforge/keys/stepforge.gpg
@@ -24,57 +32,67 @@ sudo apt update
 sudo apt install stepforge
 ```
 
-Once configured, `apt update` downloads the updated StepForge package list; it
-does **not** install upgrades by itself. To install all available upgrades:
+The repository currently provides an `amd64` package targeting Ubuntu 26.04 `resolute`.
+
+## Updating StepForge
+
+Once the StepForge repository is configured, StepForge behaves like any other package installed through APT.
+
+To refresh package information and install all available system updates:
 
 ```bash
 sudo apt update
 sudo apt upgrade
 ```
 
-To have Ubuntu install upgrades automatically, enable its standard unattended
-upgrades service:
+StepForge will be upgraded automatically whenever a newer version is available.
+
+To update only StepForge:
 
 ```bash
-sudo apt install unattended-upgrades
-sudo dpkg-reconfigure --priority=low unattended-upgrades
+sudo apt update
+sudo apt install --only-upgrade stepforge
 ```
 
-The repository currently publishes an `amd64` package because its bundled
-Electron runtime is architecture-specific. It targets Ubuntu `resolute`.
+You do not need to manually download a new `.deb` when using the APT repository.
 
-## Alternative: install a downloaded `.deb`
+## Alternative: install the `.deb` from GitHub Releases
 
-Download `stepforge_<version>_amd64.deb` from the GitHub Release, then run:
+If you do not want to add the StepForge APT repository, download the Ubuntu `.deb` from the [StepForge GitHub Releases](https://github.com/Twest2/StepForge/releases) page.
+
+The filename will look similar to:
+
+```text
+stepforge_<version>_amd64.deb
+```
+
+Open a terminal in the directory containing the downloaded file and install it with:
 
 ```bash
 sudo apt install ./stepforge_<version>_amd64.deb
 ```
 
-This is useful for installing a specific release or testing a release asset.
-Unlike the APT repository method, it will not receive new StepForge versions through
-normal apt upgrades; download and install each newer `.deb` yourself.
+For example:
 
-apt pulls the required runtime libraries automatically (they are declared as
-`Depends`). Either installation method installs:
+```bash
+sudo apt install ./stepforge_0.5.0.0_amd64.deb
+```
 
-- the app and a fixed Electron runtime under `/opt/stepforge`,
-- the `stepforge` launcher at `/usr/bin/stepforge`,
-- a desktop entry, icons, and `.sfgz`/`.sfglt` file associations,
-- the required StepForge Capture GNOME Shell extension.
+Using `apt install` instead of `dpkg -i` allows APT to automatically install required dependencies.
 
-Launch it from your application menu or run `stepforge`.
+This method is useful for installing a specific release or testing a release package.
+
+However, installations made directly from GitHub **will not automatically receive newer StepForge versions** unless the StepForge APT repository is also configured. To update, download the newer `.deb` and install it using the same command.
 
 ## Uninstall
 
-Remove StepForge while keeping the repository configured for a later
-reinstallation:
+To remove StepForge while leaving the APT repository configured:
 
 ```bash
 sudo apt remove stepforge
 ```
 
-To also remove the StepForge APT repository and its signing key:
+If you also want to remove the StepForge repository and signing key:
 
 ```bash
 sudo rm /etc/apt/sources.list.d/stepforge.list
@@ -82,50 +100,88 @@ sudo rm /etc/apt/keyrings/stepforge.gpg
 sudo apt update
 ```
 
-### Sandbox
+Your StepForge guides and settings stored in your home directory are not automatically deleted when the package is removed.
 
-The launcher runs **sandboxed**. On most modern kernels the Chromium
-user-namespace sandbox works out of the box; the package's `postinst` also
-makes the setuid `chrome-sandbox` helper usable as a fallback. StepForge will
-**not** silently launch unsandboxed — see the launcher's message if the
-sandbox is unavailable.
+## Sandbox
 
-## Install from the portable tarball
+StepForge launches with Chromium sandboxing enabled.
+
+On modern Linux kernels, the Chromium user-namespace sandbox normally works automatically. The Debian package also configures the bundled `chrome-sandbox` helper as a fallback.
+
+StepForge will not silently disable sandboxing if neither method is available. Instead, the launcher will display an error explaining the problem.
+
+## Portable tarball
+
+A portable Linux tarball is also available from GitHub Releases:
+
+```text
+stepforge_<version>_linux-x64.tar.gz
+```
+
+Extract it with:
 
 ```bash
 tar -xzf stepforge_<version>_linux-x64.tar.gz
-# Install the runtime libraries first (see below), then run:
-./usr/bin/stepforge         # or move opt/stepforge to /opt and use the launcher
 ```
 
-The tarball includes the `/usr/bin/stepforge` launcher (unlike older builds).
-Install the runtime libraries with:
+Then run:
+
+```bash
+./usr/bin/stepforge
+```
+
+The tarball includes the StepForge application and launcher, but system runtime libraries must already be installed.
+
+For a source checkout, those dependencies can be installed with:
 
 ```bash
 bash scripts/linux/apt/install-runtime-deps.sh
 ```
 
-## Capture capabilities on apt systems
+The `.deb` package is recommended over the portable tarball for normal Ubuntu installations because APT can manage package dependencies and upgrades.
 
-- **X11**: full per-click capture with an accurate marker (needs `xinput`).
-- **GNOME 50 Wayland**: screen capture via the XDG Desktop Portal + PipeWire;
-  the bundled extension samples mouse clicks and coordinates for red markers.
-  Enable the extension on first recording and select the monitors to share.
-  See the GNOME guide for sampling limitations and supported capture modes.
+## Capture capabilities
 
-Run StepForge and open Settings → Diagnostics to see the detected session
-type, portal/PipeWire status, and the active capture profile.
+### X11
 
-## Build the .deb yourself
+StepForge supports per-click capture with an accurate mouse marker.
+
+`xinput` is required for click detection.
+
+### GNOME 50 Wayland
+
+StepForge uses the XDG Desktop Portal and PipeWire for screen capture.
+
+The bundled StepForge GNOME extension detects mouse clicks and provides coordinates used for recording markers.
+
+On the first recording:
+
+1. Start a recording from StepForge.
+2. Enable the StepForge extension if prompted.
+3. Select the monitors you want to share.
+4. Record normally.
+
+See [GNOME Wayland recording and testing](gnome-wayland.md) for detailed capture behavior and limitations.
+
+You can also open **Settings → Diagnostics** inside StepForge to view the detected session type, Portal/PipeWire status, and active capture configuration.
+
+## Build the `.deb` yourself
+
+To build StepForge from source:
 
 ```bash
-bash scripts/linux/apt/install-build-deps.sh   # dpkg-dev, fakeroot, xvfb, …
-nvm install && nvm use                          # pinned Node 22 (see .nvmrc)
+bash scripts/linux/apt/install-build-deps.sh
+nvm install && nvm use
 npm ci
-npm run package:linux:deb                        # -> build/artifacts/*.deb + tarball + sha256
+npm run package:linux:deb
 ```
 
-The builder stages **only** runtime files: the app code, a fixed Electron
-runtime, and production npm dependencies. It never copies the development
-`node_modules`, docs, prompts, or examples, and it fails if `node_modules` is
-missing rather than producing an unusable artifact.
+The generated Debian package, portable tarball, and checksum files are placed under:
+
+```text
+build/artifacts/
+```
+
+The package builder includes only files required at runtime: the StepForge application, bundled Electron runtime, production dependencies, launcher, and Linux integration files.
+
+Development dependencies, documentation, prompts, and other source-only files are not included in the installed package.

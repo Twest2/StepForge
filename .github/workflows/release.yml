@@ -600,7 +600,7 @@ jobs:
 
           Copy-Item -LiteralPath $installer.FullName -Destination packaging/windows/chocolatey/tools/
           New-Item -ItemType Directory -Force -Path dist/chocolatey | Out-Null
-          choco pack packaging/windows/chocolatey/stepforge.nuspec --version $version --out-directory dist/chocolatey
+          choco pack packaging/windows/chocolatey/stepforge.nuspec --version $version --outputdirectory dist/chocolatey
           if ($LASTEXITCODE -ne 0) { throw "choco pack failed with exit code $LASTEXITCODE" }
 
           "CHOCO_VERSION=$version" >> $env:GITHUB_ENV

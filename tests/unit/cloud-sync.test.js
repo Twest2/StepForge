@@ -21,6 +21,7 @@ function setup(t) {
     account: async () => 'account-a',
     cancel() {},
     async listVersions() { this.calls++; return [...files]; },
+    async listDeletions() { return files.filter((file) => file.appProperties?.stepforge === 'deletion-v1'); },
     async upload({ data, name, properties }) {
       const file = { id: `file-${files.length + 1}`, name, appProperties: properties, createdTime: String(files.length).padStart(6, '0') };
       files.push(file); bytes.set(file.id, data); return file;
@@ -281,4 +282,40 @@ test('a retained previous cloud snapshot can be restored', async (t) => {
   assert.equal(history.length, 2);
   await a.sync.restore(id, history[1].id);
   assert.equal(a.store.getGuide(id).title, 'Original');
+});
+
+test('a shared guide deletion reaches another device and leaves one cloud recovery snapshot', async (t) => {
+  const { device, files } = setup(t); const a = device('a'); const b = device('b');
+  const id = addGuide(a.store); await synced(a.sync); await synced(b.sync);
+  assert.equal(a.sync.stageDeletion(id), true);
+  a.store.deleteGuide(id); await synced(a.sync); await synced(b.sync);
+  assert.equal(a.store.guideExists(id), false);
+  assert.equal(b.store.guideExists(id), false);
+  const recovery = files.filter((file) => file.appProperties?.guideId === id && file.appProperties?.stepforge === 'guide-v1');
+  assert.equal(recovery.length, 1);
+  const deleted = await a.sync.deletedGuides();
+  assert.equal(deleted.length, 1);
+  assert.equal(deleted[0].recoveryId, recovery[0].id);
+});
+
+test('a permanent deletion record prevents a stale device from recreating a guide', async (t) => {
+  const { device, files } = setup(t); const a = device('a'); const stale = device('stale');
+  const id = addGuide(a.store); await synced(a.sync); await synced(stale.sync);
+  assert.equal(a.sync.stageDeletion(id), true);
+  a.store.deleteGuide(id); await synced(a.sync);
+  await a.sync.permanentlyDeleteRecovery(id);
+  await synced(stale.sync);
+  assert.equal(stale.store.guideExists(id), false);
+  assert.equal(files.filter((file) => file.appProperties?.guideId === id && file.appProperties?.stepforge === 'guide-v1').length, 0);
+  assert.equal((await a.sync.deletedGuides())[0].purged, true);
+});
+
+test('restoring a deleted cloud guide makes it available to another device again', async (t) => {
+  const { device } = setup(t); const a = device('a'); const b = device('b');
+  const id = addGuide(a.store); await synced(a.sync); await synced(b.sync);
+  a.sync.stageDeletion(id); a.store.deleteGuide(id); await synced(a.sync); await synced(b.sync);
+  await a.sync.restoreDeletedGuide(id); await synced(a.sync); await synced(b.sync);
+  assert.equal(a.store.getGuide(id).title, 'Original');
+  assert.equal(b.store.getGuide(id).title, 'Original');
+  assert.deepEqual(await a.sync.deletedGuides(), []);
 });

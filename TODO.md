@@ -1,3 +1,5 @@
 Make sure that google drive snapshots aren't taking up lots of storage due to the snapshot architecture, make it so that users can restore up to 2 previous snapshots. Allow users to prune the drive with a confirmation message, pruning only gets rid of the old and never the most recent. It keeps the most recent. Also add UI/UX for showing how much space it being used in google drive since folder is hidden.
 
 Redo the google drive settings UI/UX so that it looks better. Be able to have a "source of truth" with is what is on a computer. It deletes everything in drive then sets what's locally as everything.
+
+Make sure that app version is shown in settings and is accurate, not showing dev in prod builds.

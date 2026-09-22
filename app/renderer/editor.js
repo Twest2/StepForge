@@ -2002,6 +2002,7 @@ class GuideEditor {
       defaultFormat: 'pdf',
       defaultOutDir: settings.exports?.lastOutputDirs?.pdf || '',
       onChooseDir: async (format) => api.export.chooseDir({ format }),
+      onChooseImage: async () => api.export.chooseImage(),
       onLoadDefaults: async (format) => api.export.defaults({ format }),
       onLoadTemplate: async (format, name) => api.templates.load({ format, name }),
       onSaveTemplate: async (format, name, options) => {

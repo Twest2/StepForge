@@ -244,22 +244,41 @@ test('GIF export honors template options (no title card/overlay/progress)', (t) 
   assert.equal(decodeGif(fs.readFileSync(file)).frames.length, 2);
 });
 
-test('image bundle: annotated PNGs + metadata that references them', (t) => {
+test('image bundle: numbered PNGs in one folder + index.json that references them', (t) => {
   const { ast, root } = fixtureAst(t, 'bundle');
   const out = path.join(root, 'out');
-  const { file, imageCount } = exportImageBundle(ast, out);
+  const { file, folder, imageCount, zipFile } = exportImageBundle(ast, out);
 
   assert.equal(imageCount, 2);
+  assert.equal(zipFile, null, 'no zip unless asked for');
+  assert.equal(path.dirname(file), folder);
+  assert.equal(path.basename(folder), 'configure-acmesync-backups-images');
   const meta = JSON.parse(fs.readFileSync(file, 'utf8'));
   assert.equal(meta.steps.length, 3);
-  for (const step of meta.steps) {
-    if (step.image) {
-      const img = decodePng(fs.readFileSync(path.join(out, step.image)));
-      assert.equal(img.width, 320);
-    }
+  assert.deepEqual(meta.steps.map((s) => s.image), [
+    'step-01-open-acmesync-settings.png', null, 'step-02-enable-nightly-backups.png',
+  ]);
+  assert.equal(meta.steps[0].description, 'Click the gear icon, then choose Settings.');
+  for (const step of meta.steps.filter((s) => s.image)) {
+    const img = decodePng(fs.readFileSync(path.join(folder, step.image)));
+    assert.equal(img.width, 320);
+    assert.equal(img.height, step.height);
   }
-  // The empty substep has no image entry.
-  assert.equal(meta.steps.filter((s) => s.image).length, 2);
+});
+
+test('image bundle: captions add a bar under each image; zip packages the folder', (t) => {
+  const { ast, root } = fixtureAst(t, 'bundlecap');
+  const out = path.join(root, 'out');
+  const { folder, zipFile } = exportImageBundle(ast, out, { captions: true, zip: true });
+  const img = decodePng(fs.readFileSync(path.join(folder, 'step-01-open-acmesync-settings.png')));
+  assert.equal(img.width, 320);
+  assert.ok(img.height > 200, 'caption bar extends the image');
+  const names = unzipSync(fs.readFileSync(zipFile)).map((e) => e.name).sort();
+  assert.deepEqual(names, [
+    'configure-acmesync-backups-images/index.json',
+    'configure-acmesync-backups-images/step-01-open-acmesync-settings.png',
+    'configure-acmesync-backups-images/step-02-enable-nightly-backups.png',
+  ]);
 });
 
 test('image bundle watermark is composited into the output pixels', (t) => {
@@ -270,11 +289,11 @@ test('image bundle watermark is composited into the output pixels', (t) => {
   const markFile = path.join(root, 'mark.png');
   fs.writeFileSync(markFile, encodePng(mark));
 
-  exportImageBundle(ast, out, { watermarkPath: markFile, watermarkOpacity: 1 });
-  const meta = JSON.parse(fs.readFileSync(path.join(out, 'configure-acmesync-backups-bundle.json'), 'utf8'));
+  const { file, folder } = exportImageBundle(ast, out, { watermarkPath: markFile, watermarkOpacity: 1 });
+  const meta = JSON.parse(fs.readFileSync(file, 'utf8'));
   const imgPath = meta.steps.find((s) => s.image).image;
-  const img = decodePng(fs.readFileSync(path.join(out, imgPath)));
-  const p = ((img.height - 24) * img.width + (img.width - 24)) * 4;
+  const img = decodePng(fs.readFileSync(path.join(folder, imgPath)));
+  const p = ((img.height - 18) * img.width + (img.width - 18)) * 4;
   assert.ok(img.data[p] > 200 && img.data[p + 2] > 200 && img.data[p + 1] < 60,
     'watermark pixels present in bottom-right corner');
 });

@@ -691,13 +691,21 @@ function showExportDialog({
   onLoadTemplate,      // async (format, name) => saved options
   onSaveTemplate,      // async (format, name, options)
   onManageTemplates,   // async (format) => refreshed template name list
+  onChooseImage,       // async () => picked image path or null
 } = {}) {
   return new Promise((resolve) => {
     const formatOptions = (formats || []).map((f) => {
       if (typeof f === 'string') return { value: f, label: f };
-      return { value: f.id || f.value || f.name, label: f.label || f.id || f.value || f.name };
+      return {
+        value: f.id || f.value || f.name,
+        label: f.label || f.id || f.value || f.name,
+        description: f.description || '',
+        options: f.options || {},
+      };
     });
+    const formatInfo = (value) => formatOptions.find((f) => f.value === value) || {};
     const formatSelect = makeSelect(defaultFormat, formatOptions);
+    const formatDesc = el('div.muted.export-format-desc');
     const templateSelect = makeSelect('', [{ value: '', label: 'Default template' }]);
     const outDirInput = makeInput(defaultOutDir, 'text', { placeholder: 'Choose an output folder' });
     const optionsHost = el('div', { className: 'export-options' });
@@ -706,29 +714,71 @@ function showExportDialog({
     let defaults = {};
     let current = {};
 
+    const toColorValue = (v) => (/^#[0-9a-f]{6}$/i.test(String(v)) ? String(v).toLowerCase() : '#000000');
+
+    function optionControl(key, defVal, value, info) {
+      const set = (v) => {
+        current[key] = v;
+        // Options that only apply when this one is set show or hide with it.
+        if (Object.values(formatInfo(formatSelect.value).options || {}).some((o) => o.dependsOn === key)) renderOptions();
+      };
+      if (typeof defVal === 'boolean') {
+        const input = el('input', { type: 'checkbox', checked: Boolean(value) });
+        input.addEventListener('change', () => set(input.checked));
+        return makeSwitch(input, info.label);
+      }
+      if (typeof defVal === 'number') {
+        const scale = info.scale || 1;
+        const input = makeInput(Math.round((value / scale) * 1000) / 1000, 'number', {
+          step: info.step ?? 'any', min: info.min ?? '', max: info.max ?? '',
+        });
+        input.addEventListener('input', () => {
+          if (input.value !== '') set(Math.round(Number(input.value) * scale * 1000) / 1000);
+        });
+        return info.unit ? el('div.row.export-number', {}, input, el('span.muted', {}, info.unit)) : input;
+      }
+      if (info.type === 'color') {
+        const input = makeInput(toColorValue(value), 'color');
+        input.addEventListener('input', () => set(input.value.toUpperCase()));
+        return input;
+      }
+      if (info.type === 'textarea') {
+        const input = el('textarea', { rows: 3, spellcheck: false, placeholder: info.placeholder || '' });
+        input.value = value;
+        input.addEventListener('input', () => set(input.value));
+        return input;
+      }
+      if (info.type === 'file') {
+        const input = makeInput(value, 'text', { readOnly: true, placeholder: 'None' });
+        const clear = el('button', { type: 'button', disabled: !value,
+          onClick: () => { input.value = ''; clear.disabled = true; set(''); } }, 'Clear');
+        const choose = el('button', { type: 'button', disabled: typeof onChooseImage !== 'function',
+          onClick: async () => {
+            const picked = await onChooseImage?.();
+            if (picked) { input.value = picked; clear.disabled = false; set(picked); }
+          } }, 'Choose…');
+        return el('div.row', {}, input, choose, clear);
+      }
+      const input = makeInput(value, 'text', { placeholder: info.placeholder || '' });
+      input.addEventListener('input', () => set(input.value));
+      return input;
+    }
+
     function renderOptions() {
       clearNode(optionsHost);
+      const meta = formatInfo(formatSelect.value).options || {};
       const entries = Object.entries(defaults)
-        .filter(([, v]) => ['boolean', 'number', 'string'].includes(typeof v));
+        .filter(([key, v]) => ['boolean', 'number', 'string'].includes(typeof v) && !meta[key]?.hidden)
+        .filter(([key]) => !meta[key]?.dependsOn || (current[meta[key].dependsOn] ?? defaults[meta[key].dependsOn]));
       if (!entries.length) {
         optionsHost.append(el('div.muted', {}, 'This format has no adjustable options.'));
         return;
       }
       for (const [key, defVal] of entries) {
+        const info = meta[key] || {};
         const value = current[key] ?? defVal;
-        const label = key.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase());
-        let control;
-        if (typeof defVal === 'boolean') {
-          control = el('input', { type: 'checkbox', checked: Boolean(value) });
-          control.addEventListener('change', () => { current[key] = control.checked; });
-        } else if (typeof defVal === 'number') {
-          control = makeInput(value, 'number', { step: 'any' });
-          control.addEventListener('input', () => { current[key] = Number(control.value); });
-        } else {
-          control = makeInput(value, 'text');
-          control.addEventListener('input', () => { current[key] = control.value; });
-        }
-        optionsHost.append(labeledRow(label, control));
+        const label = info.label || key.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase());
+        optionsHost.append(settingRow(label, info.hint || '', optionControl(key, defVal, value, { ...info, label })));
       }
     }
 
@@ -747,7 +797,9 @@ function showExportDialog({
       for (const name of list) templateSelect.append(el('option', { value: name }, name));
     }
 
-    formatSelect.addEventListener('change', () => { refreshTemplates(); refreshOptions(); });
+    const refreshFormatDesc = () => { formatDesc.textContent = formatInfo(formatSelect.value).description || ''; };
+    formatSelect.addEventListener('change', () => { refreshFormatDesc(); refreshTemplates(); refreshOptions(); });
+    refreshFormatDesc();
     templateSelect.addEventListener('change', () => refreshOptions());
     refreshTemplates();
     refreshOptions();
@@ -783,7 +835,7 @@ function showExportDialog({
     }, 'Manage…');
 
     const body = el('div.export-dialog', {},
-      labeledRow('Format', formatSelect),
+      labeledRow('Format', el('div.export-format', {}, formatSelect, formatDesc)),
       labeledRow('Template', el('div.row', {}, templateSelect, saveTplBtn, manageBtn)),
       labeledRow('Output folder', el('div.row', {}, outDirInput, el('button', {
         type: 'button',

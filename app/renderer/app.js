@@ -212,7 +212,7 @@ class StepForgeApp {
       el('div.welcome', {},
         el('div.welcome-title', {},
           el('h1', {}, 'StepForge'),
-          el('p.muted', {}, 'Capture, annotate, and export step-by-step guides. Local-first, no telemetry.'),
+          el('p.muted', {}, 'Capture, annotate, and export step-by-step guides.'),
         ),
         this.renderRecentGuides(),
         el('div.welcome-actions', {},

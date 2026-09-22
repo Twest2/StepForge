@@ -587,6 +587,7 @@ function setupIpc() {
   h('library:setFavorite', ({ guideId, favorite }) => store.setFavorite(guideId, favorite),
     { validate: (a) => c.id(a.guideId) });
   h('library:trash:list', () => store.listTrash());
+  h('library:trash:items', () => store.listTrashItems());
   h('library:trash:restore', ({ name }) => {
     const id = store.restoreFromTrash(name);
     reindex(id);

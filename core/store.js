@@ -213,6 +213,16 @@ class GuideStore {
     });
   }
 
+  /** Trashed guides with their titles and deletion times, newest first. */
+  listTrashItems() {
+    return this.listTrash().map((name) => {
+      const guide = readJsonIfExists(path.join(this.trashDir, name, 'guide.json'), {});
+      const stamp = Number(name.match(/-(\d{10,})$/)?.[1]);
+      return { name, title: guide.title || 'Untitled guide', stepCount: (guide.stepsOrder || []).length,
+        deletedAt: Number.isFinite(stamp) ? new Date(stamp).toISOString() : null };
+    }).sort((a, b) => String(b.deletedAt || '').localeCompare(String(a.deletedAt || '')));
+  }
+
   purgeTrash() {
     for (const name of fs.readdirSync(this.trashDir)) {
       fs.rmSync(path.join(this.trashDir, name), { recursive: true, force: true });

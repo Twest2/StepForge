@@ -17,6 +17,7 @@ const api = {
     delete: invoke('library:delete'),
     setFavorite: invoke('library:setFavorite'),
     trashList: invoke('library:trash:list'),
+    trashItems: invoke('library:trash:items'),
     trashRestore: invoke('library:trash:restore'),
     trashPurge: invoke('library:trash:purge'),
   },

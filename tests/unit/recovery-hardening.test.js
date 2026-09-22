@@ -258,7 +258,7 @@ test('a corrupt index file resets to a recoverable status', (t) => {
 
 // ---- automatic backups ------------------------------------------------------
 
-test('autoSnapshotIfDue takes a snapshot every N saves and prunes', (t) => {
+test('autoSnapshotIfDue takes a snapshot every N saves and prunes', async (t) => {
   const root = makeTmpDir('auto-backup');
   t.after(() => rmrf(root));
   const store = new GuideStore(root);
@@ -272,28 +272,44 @@ test('autoSnapshotIfDue takes a snapshot every N saves and prunes', (t) => {
   const dir = path.join(store.guideDir(guide.guideId), 'history', 'snapshots');
   const count = () => (fs.existsSync(dir) ? fs.readdirSync(dir).filter((n) => n.endsWith('.zip')).length : 0);
 
-  assert.equal(autoSnapshotIfDue(store, guide.guideId, s), null); // 1
-  assert.equal(autoSnapshotIfDue(store, guide.guideId, s), null); // 2
-  assert.equal(autoSnapshotIfDue(store, guide.guideId, s), true); // 3 -> snapshot
+  assert.equal(await autoSnapshotIfDue(store, guide.guideId, s), null); // 1
+  assert.equal(await autoSnapshotIfDue(store, guide.guideId, s), null); // 2
+  assert.equal(await autoSnapshotIfDue(store, guide.guideId, s), true); // 3 -> snapshot
   assert.equal(count(), 1);
-  autoSnapshotIfDue(store, guide.guideId, s); // 1
-  autoSnapshotIfDue(store, guide.guideId, s); // 2
-  autoSnapshotIfDue(store, guide.guideId, s); // 3 -> snapshot
+  await autoSnapshotIfDue(store, guide.guideId, s); // 1
+  await autoSnapshotIfDue(store, guide.guideId, s); // 2
+  await autoSnapshotIfDue(store, guide.guideId, s); // 3 -> snapshot
   assert.equal(count(), 2);
-  autoSnapshotIfDue(store, guide.guideId, s);
-  autoSnapshotIfDue(store, guide.guideId, s);
-  autoSnapshotIfDue(store, guide.guideId, s); // 3rd snapshot, pruned to keepLast=2
+  await autoSnapshotIfDue(store, guide.guideId, s);
+  await autoSnapshotIfDue(store, guide.guideId, s);
+  await autoSnapshotIfDue(store, guide.guideId, s); // 3rd snapshot, pruned to keepLast=2
   assert.equal(count(), 2, 'pruned to keepLast');
 });
 
-test('autoSnapshotIfDue is a no-op when automatic backups are off', (t) => {
+test('autoSnapshotIfDue is a no-op when automatic backups are off', async (t) => {
   const root = makeTmpDir('auto-backup-off');
   t.after(() => rmrf(root));
   const store = new GuideStore(root);
   const guide = store.createGuide({ title: 'G' });
   const s = { get: () => ({ automatic: false, everyNSaves: 1 }) };
-  assert.equal(autoSnapshotIfDue(store, guide.guideId, s), null);
-  assert.equal(autoSnapshotIfDue(store, guide.guideId, s), null);
+  assert.equal(await autoSnapshotIfDue(store, guide.guideId, s), null);
+  assert.equal(await autoSnapshotIfDue(store, guide.guideId, s), null);
   const dir = path.join(store.guideDir(guide.guideId), 'history', 'snapshots');
   assert.equal(fs.existsSync(dir) ? fs.readdirSync(dir).length : 0, 0);
+});
+
+test('snapshots created in the same clock tick keep separate recovery files', (t) => {
+  const root = makeTmpDir('snapshot-clock');
+  t.after(() => rmrf(root));
+  const store = new GuideStore(root);
+  const guide = store.createGuide({ title: 'First' });
+  const fixedTime = Date.now();
+  t.mock.method(Date, 'now', () => fixedTime);
+  const first = createSnapshot(store, guide.guideId, { label: 'manual' });
+  guide.title = 'Second';
+  store.saveGuide(guide);
+  const second = createSnapshot(store, guide.guideId, { label: 'manual' });
+  assert.notEqual(first, second);
+  assert.equal(restoreSnapshot(store, guide.guideId, first).title, 'First');
+  assert.equal(restoreSnapshot(store, guide.guideId, second).title, 'Second');
 });

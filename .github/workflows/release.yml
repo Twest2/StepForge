@@ -1,7 +1,8 @@
 name: Release
 
 # Manual release: all three platform packages build concurrently, followed by
-# one GitHub Release and concurrent ProGet publication for each Linux format.
+# one GitHub Release and concurrent ProGet publication for the Linux packages
+# and the Windows Chocolatey package.
 on:
   workflow_dispatch:
     inputs:
@@ -565,3 +566,70 @@ jobs:
             --header 'Content-Type: application/octet-stream' \
             --data-binary "@$rpm_file" \
             "${PROGET_UPLOAD_URL%/}/api/packages/$PROGET_RPM_FEED/upload/$(basename "$rpm_file")"
+
+
+  publish-chocolatey:
+    name: Publish Chocolatey package to ProGet
+    needs: release
+    if: inputs.prerelease == false
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-installer
+          path: dist/windows
+
+      # The package embeds the released installer, so Chocolatey installs the
+      # exact bytes published on GitHub without downloading anything.
+      - name: Build Chocolatey package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $installers = @(Get-ChildItem -Path dist/windows -Filter 'StepForge Setup *.exe')
+          if ($installers.Count -ne 1) { throw 'Expected exactly one Windows installer' }
+          $installer = $installers[0]
+
+          if ($installer.Name -notmatch '^StepForge Setup (\d+(\.\d+){2,3})\.exe$') {
+            throw "Unexpected installer name: $($installer.Name)"
+          }
+          $version = $Matches[1]
+
+          Copy-Item -LiteralPath $installer.FullName -Destination packaging/windows/chocolatey/tools/
+          New-Item -ItemType Directory -Force -Path dist/chocolatey | Out-Null
+          choco pack packaging/windows/chocolatey/stepforge.nuspec --version $version --out-directory dist/chocolatey
+          if ($LASTEXITCODE -ne 0) { throw "choco pack failed with exit code $LASTEXITCODE" }
+
+          "CHOCO_VERSION=$version" >> $env:GITHUB_ENV
+
+      - name: Publish Chocolatey package
+        shell: pwsh
+        env:
+          PROGET_API_KEY: ${{ secrets.PROGET_API_KEY }}
+          PROGET_CHOCO_FEED: ${{ vars.PROGET_CHOCO_FEED || 'stepforge-choco' }}
+          PROGET_UPLOAD_URL: ${{ vars.PROGET_UPLOAD_URL || 'https://upload-packages-ksdbfjsadbfshjkafb.twestbrook.com' }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          if (-not $env:PROGET_API_KEY) { throw 'Set the PROGET_API_KEY secret with upload permission for the Chocolatey feed' }
+          if ($env:PROGET_CHOCO_FEED -notmatch '^[A-Za-z0-9_-]+$') { throw 'Invalid Chocolatey feed name' }
+          if (-not $env:PROGET_UPLOAD_URL.StartsWith('https://')) { throw 'ProGet upload URL must use HTTPS' }
+
+          $base = $env:PROGET_UPLOAD_URL.TrimEnd('/')
+          $package = Get-Item "dist/chocolatey/stepforge.$env:CHOCO_VERSION.nupkg"
+
+          # A re-run replaces a version left by an earlier failed attempt.
+          # ProGet answers 200 whether or not the version existed.
+          $delete = Invoke-WebRequest -Method Post -SkipHttpErrorCheck `
+            -Headers @{ 'X-ApiKey' = $env:PROGET_API_KEY } `
+            -Uri "$base/api/packages/$env:PROGET_CHOCO_FEED/delete?name=stepforge&version=$env:CHOCO_VERSION"
+          if ($delete.StatusCode -notin 200, 404) {
+            Write-Error $delete.Content
+            throw "Could not clear an existing StepForge $env:CHOCO_VERSION package (HTTP $($delete.StatusCode))"
+          }
+
+          choco push $package.FullName --source "$base/nuget/$env:PROGET_CHOCO_FEED/" --api-key $env:PROGET_API_KEY --execution-timeout 1800
+          if ($LASTEXITCODE -ne 0) { throw "choco push failed with exit code $LASTEXITCODE" }

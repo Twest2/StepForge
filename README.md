@@ -25,7 +25,14 @@ data are bundled production dependencies — Electron is not the only one.
 
 ## Installation
 
-For Windows, see the [Windows installation guide](docs/windows_installation.md). For a more detailed developer setup and source walkthrough, see [Getting Started](docs/GETTING_STARTED.md).
+For Windows, install and update StepForge with Chocolatey:
+
+```powershell
+choco source add --name=stepforge --source=https://packages.twestbrook.com/nuget/stepforge-choco/
+choco install stepforge --source=stepforge -y
+```
+
+See [StepForge on Windows with Chocolatey](docs/windows/chocolatey.md) for updating and uninstalling, or the [Windows installation guide](docs/windows_installation.md) to install manually from GitHub Releases. For a more detailed developer setup and source walkthrough, see [Getting Started](docs/GETTING_STARTED.md).
 
 For Linux, StepForge currently provides native packages for **Ubuntu 26.04** and **Fedora 44 Workstation**, with GNOME 50 Wayland as the primary supported desktop environment.
 

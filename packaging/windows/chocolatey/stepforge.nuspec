@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The release workflow sets the version with `choco pack --version` and
+     copies the signed or unsigned NSIS installer into tools/ before packing. -->
+<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
+  <metadata>
+    <id>stepforge</id>
+    <version>0.0.0</version>
+    <title>StepForge</title>
+    <authors>Tyler Westbrook</authors>
+    <owners>Tyler Westbrook</owners>
+    <projectUrl>https://github.com/Twest2/StepForge</projectUrl>
+    <projectSourceUrl>https://github.com/Twest2/StepForge</projectSourceUrl>
+    <docsUrl>https://github.com/Twest2/StepForge/blob/main/docs/windows_installation.md</docsUrl>
+    <bugTrackerUrl>https://github.com/Twest2/StepForge/issues</bugTrackerUrl>
+    <iconUrl>https://raw.githubusercontent.com/Twest2/StepForge/main/packaging/assets/icons/stepforge-128.png</iconUrl>
+    <licenseUrl>https://github.com/Twest2/StepForge/blob/main/LICENSE</licenseUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <releaseNotes>https://github.com/Twest2/StepForge/releases</releaseNotes>
+    <tags>stepforge documentation screenshots guides step-by-step</tags>
+    <summary>Local-first tool for capturing, annotating, and exporting step-by-step guides.</summary>
+    <description>StepForge captures step-by-step workflows as screenshots, lets you annotate and describe each step, and exports to Markdown, PDF, DOCX, PPTX, HTML, and more. Local-first: no telemetry, with an optional user-configured local AI integration.
+
+This package installs StepForge for all users with the official Windows installer.</description>
+  </metadata>
+  <files>
+    <file src="tools\**" target="tools" />
+  </files>
+</package>

@@ -21,9 +21,14 @@ const LOCAL_FILE = path.join(ROOT_DIR, 'google-oauth.local.json');
 const INSTALLED_CONFIGS = ['/opt/stepforge/app/google-oauth-config.json'];
 const CLIENT_ID = /^[A-Za-z0-9._-]+\.apps\.googleusercontent\.com$/;
 
+// `git check-ignore` exits 0 when ignored and 1 when not. Anything else (git
+// missing, not a repository, "dubious ownership") is an error, not a "no".
 function isGitIgnored(file, cwd = ROOT_DIR) {
-  const result = spawnSync('git', ['check-ignore', '-q', file], { cwd });
-  return result.status === 0;
+  const result = spawnSync('git', ['check-ignore', '-q', file], { cwd, encoding: 'utf8' });
+  if (result.status === 0) return true;
+  if (result.status === 1) return false;
+  const reason = (result.error?.message || result.stderr || '').trim().split('\n')[0];
+  throw new Error(`Could not check with git whether ${file} is ignored${reason ? `: ${reason}` : ''}.`);
 }
 
 function findSource({ from, env = process.env, installed = INSTALLED_CONFIGS } = {}) {

@@ -3,6 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 const { resolveOAuthConfig, LOCAL_OAUTH_FILE } = require('../../app/google-drive');
 const { setupDevGoogleOAuth, isGitIgnored } = require('../../scripts/setup-dev-google-oauth');
 const { makeTmpDir, rmrf } = require('./helpers');
@@ -33,9 +34,21 @@ test('development builds use environment variables, then the local file, else st
 test('the local credential file is gitignored and outside the packaged app folder', () => {
   assert.equal(path.basename(LOCAL_OAUTH_FILE), 'google-oauth.local.json');
   assert.equal(path.dirname(LOCAL_OAUTH_FILE), path.resolve(__dirname, '../..'));
-  assert.equal(isGitIgnored('google-oauth.local.json'), true);
+  const ignored = fs.readFileSync(path.join(__dirname, '../../.gitignore'), 'utf8').split(/\r?\n/).map((line) => line.trim());
+  assert.ok(ignored.includes('google-oauth.local.json'));
   assert.match(fs.readFileSync(path.join(__dirname, '../../scripts/package-windows.js'), 'utf8'), /files: \[\s*'app\/\*\*\/\*',\s*'core\/\*\*\/\*',\s*'exporters\/\*\*\/\*',\s*'package\.json',\s*\]/);
   assert.match(fs.readFileSync(path.join(__dirname, '../../packaging/linux/common/stage-runtime.sh'), 'utf8'), /for item in app core exporters package\.json package-lock\.json; do/);
+});
+
+test('the git ignore check reports ignored, not ignored, and git errors distinctly', (t) => {
+  const git = spawnSync('git', ['--version']);
+  if (git.status !== 0) { t.skip('git is not installed'); return; }
+  const repo = tmp(t);
+  assert.equal(spawnSync('git', ['init', '-q'], { cwd: repo }).status, 0);
+  fs.writeFileSync(path.join(repo, '.gitignore'), 'google-oauth.local.json\n');
+  assert.equal(isGitIgnored('google-oauth.local.json', repo), true);
+  assert.equal(isGitIgnored('other.json', repo), false);
+  assert.throws(() => isGitIgnored('google-oauth.local.json', path.join(repo, 'missing')), /Could not check with git/);
 });
 
 test('setup copies the installed release client into a private local file', (t) => {

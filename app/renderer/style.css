@@ -1086,7 +1086,14 @@ fieldset legend {
 .blocks-list .block-card textarea,
 .blocks-list .block-card input { width: 100%; }
 .blocks-list .block-card { gap: 6px; }
-.export-options { display: flex; flex-direction: column; gap: 6px; padding: 4px 2px; max-height: 260px; overflow-y: auto; }
+.export-options { display: flex; flex-direction: column; padding: 0 4px; max-height: 320px; overflow-y: auto; }
+.export-options .setting-row { padding: 9px 0; }
+.export-options .setting-control { flex: none; max-width: 55%; }
+.export-options .setting-control input[type="number"] { width: 90px; }
+.export-options .setting-control input[type="color"] { width: 44px; height: 28px; padding: 2px; }
+.export-options .setting-control textarea { width: 260px; font-family: ui-monospace, monospace; font-size: 12px; }
+.export-format { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
+.export-format-desc { font-size: 12px; line-height: 1.4; }
 .placeholder-row { display: flex; gap: 8px; margin-bottom: 6px; }
 .placeholder-row input { flex: 1; }
 .card-list { display: flex; flex-direction: column; gap: 8px; }

@@ -81,18 +81,24 @@ guide.json + step.json + settings
         ▼                     hidden/skipped, focused-view geometry)
    Render AST  ──► exporters/json.js        .json + steps-<title>/ images
                ──► exporters/markdown.js    .md  + steps-<title>/ images
-               ──► exporters/wikijs.js      .md  + steps-<title>/ images
-               ──► exporters/html-simple.js single self-contained .html
-               ──► exporters/html-rich.js   checkboxes + floating TOC
+               ──► exporters/wikijs.js      Wiki.js 2 .md + steps-<title>/ images
+               ──► exporters/html.js        self-contained .html (simple, or
+                                            rich: sidebar, done toggles, zoom)
+               ──► exporters/confluence.js  <title>-confluence/: .docx for the
+                                            website's Word import; optional
+                                            rest-api/ (storage format + bodies)
                ──► exporters/pdf.js         native PDF writer (core/pdf.js)
                ──► exporters/gif.js         GIF89a encoder (core/gif.js)
-               ──► exporters/image-bundle.js annotated PNGs + metadata
+               ──► exporters/image-bundle.js <title>-images/: numbered PNGs +
+                                            index.json, optional .zip
                ──► exporters/docx.js        zip+XML (core/zip.js)
                ──► exporters/pptx.js        zip+XML (core/zip.js)
 ```
 
 Image-bearing exporters rasterize annotations with `core/raster.js` on top of
-PNG pixels decoded by `core/png.js`. Every exporter accepts a template object
+PNG pixels decoded by `core/png.js`. Text in rasterized images (annotation
+labels, GIF captions) is anti-aliased from the glyph atlases in `core/fonts/`
+(rendered from Lato by `scripts/make-font-atlas.js`; SIL Open Font License). Every exporter accepts a template object
 (per-format settings persisted under `settings/templates/`, shareable as
 `.sfglt` zip files).
 

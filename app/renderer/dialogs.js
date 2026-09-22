@@ -393,13 +393,14 @@ function showSettingsDialog({
     ollamaModel.addEventListener('input', () => persistOllamaModel());
     ollamaModel.addEventListener('blur', () => persistOllamaModel.flush());
 
-    const placeholderRows = el('div', { className: 'placeholder-rows' });
+    const placeholderRows = el('div', { className: 'placeholder-rows global-placeholder-rows' },
+      el('div.global-placeholder-header', {}, el('span', {}, 'Placeholder name'), el('span', {}, 'Content')),
+    );
     const rows = [];
     const addPlaceholderRow = (key = '', value = '') => {
-      const keyInput = makeInput(key, 'text', { 'aria-label': 'Placeholder name', placeholder: 'SupportInstructions' });
-      const markdown = el('input', { type: 'checkbox', checked: typeof value === 'object' ? value.format === 'markdown' : !key, 'aria-label': 'Interpret content as Markdown' });
+      const keyInput = makeInput(key, 'text', { 'aria-label': 'Placeholder name', placeholder: '[[placeholder-name]]' });
       const valueInput = el('textarea', { rows: 4, 'aria-label': 'Placeholder content', placeholder: 'Reusable text or Markdown' }, typeof value === 'object' ? value.text || '' : value);
-      const valueCell = el('div.placeholder-markdown-content', {}, valueInput, el('label', {}, markdown, ' Markdown'));
+      const valueCell = el('div.placeholder-markdown-content', {}, valueInput);
 
       const removeBtn = el('button.icon', {
         type: 'button',
@@ -414,6 +415,9 @@ function showSettingsDialog({
         valueCell,
         removeBtn,
       );
+      // Keep unchanged legacy plain-text values intact when saving Settings.
+      row.placeholderValue = value;
+      row.placeholderOriginalText = valueInput.value;
       rows.push(row);
       placeholderRows.append(row);
       return row;
@@ -474,7 +478,7 @@ function showSettingsDialog({
       cloudPanel.node,
       el('fieldset', {},
         el('legend', {}, 'Global placeholders'),
-        el('div.muted', {}, 'Placeholder name (left) · Content (right). Insert using [[Name]]. Markdown supports paragraphs, **bold**, *italic*, lists, links, and code. Existing values remain plain text until Markdown is checked.'),
+        el('div.muted', {}, 'Global placeholders to use in all your guides.'),
         placeholderRows,
         el('div.row', { style: { justifyContent: 'flex-start' } }, addPlaceholderBtn),
       ),
@@ -530,10 +534,10 @@ function showSettingsDialog({
                 },
               },
               placeholders: rows.reduce((acc, row) => {
-                const key = row.querySelector('input[type="text"]').value.trim();
+                const key = row.querySelector('input[type="text"]').value.trim().replace(/^\[\[(.*?)\]\]$/, '$1').trim();
                 const text = row.querySelector('textarea').value;
-                const markdown = row.querySelector('input[type="checkbox"]').checked;
-                if (key) acc[key] = markdown ? { format: 'markdown', text } : text;
+                if (key) acc[key] = typeof row.placeholderValue === 'string' && row.placeholderValue && text === row.placeholderOriginalText
+                  ? row.placeholderValue : { format: 'markdown', text };
                 return acc;
               }, {}),
             };

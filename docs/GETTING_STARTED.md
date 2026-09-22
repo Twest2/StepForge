@@ -51,8 +51,8 @@ manually edited titles are unchanged.
 ### Markdown placeholders
 
 Settings → Global placeholders accepts multiline content. Use a short name on
-the left and insert it as `[[Name]]` in your guide. Check Markdown for paragraphs,
-**bold**, *italic*, lists, links, inline code, and fenced code. Existing values
-stay plain text until you opt in. Export/preview descriptions render formatting;
+the left and insert it as `[[Name]]` in your guide. New or edited content supports
+Markdown automatically. Existing plain-text values remain unchanged until edited.
+Export/preview descriptions render formatting;
 titles use readable text. The editor retains tokens and the original Markdown
 source for editing. Raw HTML is displayed as text, not executed.

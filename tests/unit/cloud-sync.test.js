@@ -13,6 +13,7 @@ function setup(t) {
   const root = makeTmpDir('cloud-sync');
   t.after(() => rmrf(root));
   const files = [];
+  let nextFileId = 0;
   const bytes = new Map();
   const drive = {
     calls: 0,
@@ -23,7 +24,7 @@ function setup(t) {
     async listVersions() { this.calls++; return [...files]; },
     async listDeletions() { return files.filter((file) => file.appProperties?.stepforge === 'deletion-v1'); },
     async upload({ data, name, properties }) {
-      const file = { id: `file-${files.length + 1}`, name, appProperties: properties, createdTime: String(files.length).padStart(6, '0') };
+      const file = { id: `file-${++nextFileId}`, name, appProperties: properties, createdTime: String(nextFileId).padStart(6, '0') };
       files.push(file); bytes.set(file.id, data); return file;
     },
     async download(id) { return bytes.get(id); },
@@ -364,4 +365,72 @@ test('edits during archive encoding remain pending and the uploaded hash matches
   await synced(a.sync);
   assert.equal(files.length, 2);
   assert.equal(snapshot(a.store, id).hash, files[1].appProperties.hash);
+});
+
+test('Drive guide browser lists local and cloud-only guides with all available versions', async (t) => {
+  const { device, files } = setup(t); const a = device('a'); const b = device('b');
+  a.sync.prune = async () => ({});
+  const id = addGuide(a.store); await synced(a.sync);
+  for (let i = 0; i < 4; i++) { edit(a.store, id, `Revision ${i}`); await synced(a.sync); }
+  const local = await a.sync.guides(); const remote = await b.sync.guides();
+  assert.equal(local.length, 1);
+  assert.equal(local[0].local, true);
+  assert.equal(remote[0].local, false);
+  assert.equal(remote[0].guideId, id);
+  assert.equal(remote[0].snapshotCount, files.length);
+  assert.equal((await b.sync.history(id)).length, files.length);
+  assert.equal(a.sync.stageDeletion(id), true);
+  a.store.deleteGuide(id); await synced(a.sync);
+  assert.equal((await b.sync.guides()).length, 0);
+  assert.equal((await b.sync.deletedGuides()).length, 1);
+});
+
+test('cloud-only snapshots can be deleted without creating or deleting local guides', async (t) => {
+  const { device } = setup(t); const a = device('a'); const b = device('b');
+  const id = addGuide(a.store); await synced(a.sync);
+  assert.equal((await b.sync.removeGuideSnapshots(id)).removed, 1);
+  assert.equal(b.store.guideExists(id), false);
+  assert.equal(a.store.guideExists(id), true);
+  assert.equal((await b.sync.guides()).length, 0);
+});
+
+test('restored snapshot stays restored through sync and reaches another device', async (t) => {
+  const { device } = setup(t); const a = device('a'); const b = device('b');
+  const id = addGuide(a.store); await synced(a.sync); await synced(b.sync);
+  edit(a.store, id, 'Newer'); await synced(a.sync); await synced(b.sync);
+  const history = await a.sync.history(id);
+  await a.sync.restore(id, history[1].id);
+  await synced(a.sync); await synced(b.sync);
+  assert.equal(a.store.getGuide(id).title, 'Original');
+  assert.equal(b.store.getGuide(id).title, 'Original');
+  assert.equal(a.store.listGuides().length, 1);
+});
+
+test('restore before the first sync preserves its baseline and local sharing opt-out', async (t) => {
+  const { device } = setup(t); const a = device('a'); const b = device('b', { enabled: () => false });
+  const id = addGuide(a.store); await synced(a.sync);
+  edit(a.store, id, 'Newer'); await synced(a.sync);
+  const history = await b.sync.history(id);
+  await b.sync.restore(id, history[1].id);
+  assert.equal(b.store.getGuide(id).title, 'Original');
+  await b.sync.setSharing(id, false);
+  await b.sync.restore(id, history[0].id);
+  assert.equal(b.store.getGuide(id).cloud.sharingEnabled, false);
+  assert.equal(b.store.getGuide(id).title, 'Newer');
+});
+
+test('manual deletion waits for an in-flight upload and prevents a racing sync', async (t) => {
+  const { device, drive } = setup(t); const a = device('a');
+  const id = addGuide(a.store);
+  const upload = drive.upload.bind(drive);
+  let entered, release;
+  const started = new Promise((resolve) => { entered = resolve; });
+  const gate = new Promise((resolve) => { release = resolve; });
+  drive.upload = async (args) => { entered(); await gate; return upload(args); };
+  const syncing = a.sync.sync(); await started;
+  const removing = a.sync.removeGuideSnapshots(id);
+  await a.sync.sync();
+  release(); await syncing; await removing;
+  assert.equal((await a.sync.guides()).length, 0);
+  assert.equal(a.store.getGuide(id).cloud.sharingEnabled, false);
 });

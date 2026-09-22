@@ -88,3 +88,23 @@ and disk contention. Uploads recheck cancellation and sharing permissions after
 compression, and edits made during compression remain pending for the next sync.
 File discovery and content hashing still run on the main process. Backup history
 is excluded from cloud change detection because it is not part of uploaded guides.
+
+## Browse and manage Drive guides
+
+In **Settings → Google Drive sharing → Guides in Google Drive**, choose
+**Refresh Drive files** to list all active StepForge cloud guides, including
+ones not in this device's library. Each entry shows its snapshot count and
+storage usage. Deleted guides remain in the separate recovery section.
+
+Choose **Snapshots**, select a dated version, and choose **Restore snapshot**.
+Close the guide editor and stop capture first. Restoring replaces the local
+content and preserves the previous local copy in the cloud backup directory.
+With sharing enabled, the restored content becomes a new cloud version on the
+next sync. A guide already excluded from sharing stays excluded. Only snapshots
+still retained in Drive are available.
+
+**Delete Drive copies** removes all of that guide's cloud snapshots after
+confirmation. This cannot be undone. Local copies are kept and this device
+stops sharing that guide. Other devices still sharing it may upload it again.
+These actions apply immediately; the Settings Save button is not required.
+Confirmations return to the same Settings panel, keeping unsaved fields intact.

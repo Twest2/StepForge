@@ -110,7 +110,7 @@ function makeCloudSettings(api) {
     avatar,
     el('div.cloud-account-info', {}, email, el('div.cloud-status-line', {}, dot, phaseText, lastSync)),
     el('div.cloud-account-actions', {},
-      el('label.cloud-switch', { title: 'Automatically sync guides' }, enabled, el('span.cloud-switch-track', { 'aria-hidden': 'true' }), 'Auto-sync'),
+      el('label.switch', { title: 'Automatically sync guides' }, enabled, el('span.switch-track', { 'aria-hidden': 'true' }), 'Auto-sync'),
       sync, disconnect),
   );
 

@@ -207,7 +207,7 @@ https://id.atlassian.com/manage-profile/security/api-tokens
 1. Find the ID of the space the page goes in. Replace KEY with the space key
    (shown in the space's URL, e.g. .../wiki/spaces/KEY/...):
 
-     curl -u you@example.com:API_TOKEN \
+     curl -u you@example.com:API_TOKEN \\
        "https://YOUR-SITE.atlassian.net/wiki/api/v2/spaces?keys=KEY"
 
    Copy the "id" value from the response.
@@ -218,8 +218,8 @@ https://id.atlassian.com/manage-profile/security/api-tokens
 
 3. Create the page:
 
-     curl -u you@example.com:API_TOKEN -H "Content-Type: application/json" \
-       -X POST -d @page-cloud.json \
+     curl -u you@example.com:API_TOKEN -H "Content-Type: application/json" \\
+       -X POST -d @page-cloud.json \\
        https://YOUR-SITE.atlassian.net/wiki/api/v2/pages
 
    Copy the new page's "id" from the response.
@@ -227,8 +227,8 @@ https://id.atlassian.com/manage-profile/security/api-tokens
 4. Upload the screenshots to it (replace PAGE_ID):
 
      for f in attachments/*.png; do
-       curl -u you@example.com:API_TOKEN -H "X-Atlassian-Token: nocheck" \
-         -X POST -F "file=@$f" \
+       curl -u you@example.com:API_TOKEN -H "X-Atlassian-Token: nocheck" \\
+         -X POST -F "file=@$f" \\
          https://YOUR-SITE.atlassian.net/wiki/rest/api/content/PAGE_ID/child/attachment
      done
 
@@ -244,8 +244,8 @@ You need a personal access token (Profile > Personal Access Tokens).
 
 2. Create the page:
 
-     curl -H "Authorization: Bearer TOKEN" -H "Content-Type: application/json" \
-       -X POST -d @page-datacenter.json \
+     curl -H "Authorization: Bearer TOKEN" -H "Content-Type: application/json" \\
+       -X POST -d @page-datacenter.json \\
        https://YOUR-CONFLUENCE/rest/api/content
 
    Copy the new page's "id" from the response.
@@ -253,8 +253,8 @@ You need a personal access token (Profile > Personal Access Tokens).
 3. Upload the screenshots to it (replace PAGE_ID):
 
      for f in attachments/*.png; do
-       curl -H "Authorization: Bearer TOKEN" -H "X-Atlassian-Token: nocheck" \
-         -X POST -F "file=@$f" \
+       curl -H "Authorization: Bearer TOKEN" -H "X-Atlassian-Token: nocheck" \\
+         -X POST -F "file=@$f" \\
          https://YOUR-CONFLUENCE/rest/api/content/PAGE_ID/child/attachment
      done
 

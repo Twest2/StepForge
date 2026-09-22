@@ -6,6 +6,7 @@ function makeCloudSettings(api) {
   const results = el('pre.cloud-test-results.muted', { role: 'status', 'aria-live': 'polite' });
   const enabled = el('input', { type: 'checkbox' });
   const storage = el('p.muted', { role: 'status' }, 'Drive archive usage will appear after connecting.');
+  const deletedList = el('div.muted', {}, 'No deleted cloud guides.');
   let current = {};
   let busy = false;
   let signingIn = false;
@@ -79,6 +80,28 @@ function makeCloudSettings(api) {
       + (summary.pruneCount ? ` ${formatBytes(summary.reclaimableBytes)} can be reclaimed.` : '');
     prune.disabled = busy || !summary.pruneCount;
   };
+  const refreshDeleted = async () => {
+    const guides = await api.cloud.deletedGuides();
+    deletedList.replaceChildren();
+    if (!guides.length) { deletedList.textContent = 'No deleted cloud guides.'; return; }
+    deletedList.classList.remove('muted');
+    for (const guide of guides) {
+      const restore = el('button', { type: 'button', disabled: guide.purged, onClick: async () => {
+        const ok = await confirmDialog(`Restore “${guide.title}” to your shared library?`, { okLabel: 'Restore' });
+        if (!ok) return;
+        await run(restore, 'Restoring…', async () => { await api.cloud.restoreDeletedGuide({ guideId: guide.guideId }); await refreshDeleted(); });
+      } }, 'Restore');
+      const remove = el('button', { type: 'button', disabled: guide.purged, onClick: async () => {
+        const ok = await confirmDialog(`Permanently delete the Google Drive recovery snapshot for “${guide.title}”? It cannot be restored afterwards.`, { danger: true, okLabel: 'Delete permanently' });
+        if (!ok) return;
+        await run(remove, 'Deleting…', async () => { await api.cloud.permanentlyDeleteRecovery({ guideId: guide.guideId }); await refreshDeleted(); await refreshStorage(); });
+      } }, guide.purged ? 'Recovery deleted' : 'Delete permanently');
+      deletedList.append(el('div.form-row', {},
+        el('div', {}, guide.title, el('div.muted', {}, `${guide.purged ? 'Recovery permanently deleted' : `${formatBytes(guide.size)} recovery snapshot`} · ${guide.deletedAt ? new Date(guide.deletedAt).toLocaleString() : 'date unavailable'}`)),
+        el('div.row', {}, restore, remove),
+      ));
+    }
+  };
   const prune = el('button', { type: 'button', onClick: async () => {
     const ok = await confirmDialog('Remove older Google Drive snapshots? The newest snapshot and two previous snapshots on every version branch will be kept.', { danger: true, okLabel: 'Prune old snapshots' });
     if (!ok) return;
@@ -95,6 +118,9 @@ function makeCloudSettings(api) {
     storage,
     el('p.muted', {}, 'Each guide keeps its newest snapshot and two earlier snapshots. Pruning never removes a retained snapshot.'),
     el('div.row', {}, prune),
+    el('h4', {}, 'Deleted guide recovery'),
+    el('p.muted', {}, 'A guide deleted from a shared library is removed from connected devices. One private recovery snapshot remains until you restore it or delete it permanently.'),
+    deletedList,
     el('h4', {}, 'Google Drive testing'),
     el('p.muted', {}, 'Checks sign-in, token refresh, storage access, and upload/download integrity using a small temporary file, then deletes it. No guides are uploaded by this test.'),
     el('div.row', {}, test, sync),
@@ -110,7 +136,10 @@ function makeCloudSettings(api) {
   api.cloud.status().then(async (next) => {
     if (!disposed) {
       update(next);
-      if (next.connected) await refreshStorage().catch((err) => { storage.textContent = err.message; });
+      if (next.connected) {
+        await refreshStorage().catch((err) => { storage.textContent = err.message; });
+        await refreshDeleted().catch((err) => { deletedList.textContent = err.message; });
+      }
     }
   }).catch((err) => { status.textContent = err.message; });
   return { node, dispose() { disposed = true; unsubscribe(); if (signingIn) void api.cloud.cancel().catch(() => {}); } };

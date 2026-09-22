@@ -828,7 +828,7 @@ class StepForgeApp {
   async bulkDelete() {
     const ids = [...this.state.selectedGuides];
     if (!ids.length) return;
-    const ok = await confirmDialog(`Delete ${ids.length} guide${ids.length === 1 ? '' : 's'}? They'll move to Trash.`, { danger: true, okLabel: 'Delete' });
+    const ok = await confirmDialog(`Delete ${ids.length} guide${ids.length === 1 ? '' : 's'}? They'll move to Trash. Google Drive-shared guides are also removed from your other devices, with one cloud recovery snapshot retained.`, { danger: true, okLabel: 'Delete' });
     if (!ok) return;
     await Promise.all(ids.map((guideId) => api.library.delete({ guideId })));
     this.state.selectedGuides = new Set();
@@ -895,7 +895,7 @@ class StepForgeApp {
   async deleteGuide(guideId) {
     const guide = this.state.library.guides.find((g) => g.guideId === guideId);
     if (!guide) return;
-    const ok = await confirmDialog(`Delete “${guide.title}”?`, { danger: true, okLabel: 'Delete' });
+    const ok = await confirmDialog(`Delete “${guide.title}”? It moves to Trash. If it is shared with Google Drive, it is also removed from your other devices and one cloud recovery snapshot is retained.`, { danger: true, okLabel: 'Delete' });
     if (!ok) return;
     await api.library.delete({ guideId });
     await this.refreshLibrary();

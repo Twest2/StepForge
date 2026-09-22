@@ -269,6 +269,15 @@ class GoogleDrive {
     return credentials.accountId;
   }
 
+  // Account-wide Google storage. The app folder is hidden, so this gives its
+  // usage context. `limit` is absent for unlimited plans.
+  async quota() {
+    const info = await this.authorized(`${API}/about?fields=storageQuota(limit,usage)`);
+    const limit = Number(info.storageQuota?.limit);
+    const usage = Number(info.storageQuota?.usage);
+    return { limit: Number.isFinite(limit) ? limit : null, usage: Number.isFinite(usage) ? usage : null };
+  }
+
   async listVersions() {
     return this.listAppData("trashed = false and appProperties has { key='stepforge' and value='guide-v1' }");
   }

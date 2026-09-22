@@ -757,6 +757,7 @@ function setupIpc() {
   h('cloud:permanentlyDeleteRecovery', ({ guideId }) => cloudSync.permanentlyDeleteRecovery(guideId),
     { validate: (a) => c.id(a.guideId) });
   h('cloud:prune', () => cloudSync.prune());
+  h('cloud:replaceCloudWithLocal', () => cloudSync.replaceCloudWithLocal());
   h('cloud:restore', ({ guideId, versionId }) => cloudSync.restore(guideId, versionId),
     { validate: (a) => c.id(a.guideId) && c.id(a.versionId) });
   h('cloud:setGuideSharing', ({ guideId, sharingEnabled }) => cloudSync.setSharing(guideId, sharingEnabled),
@@ -1101,9 +1102,13 @@ function setupIpc() {
     shell.openExternal(safe);
     return { ok: true };
   }, { validate: (a) => c.string(a.url, 2048) });
+  // Linux packages launch the bundled Electron against /opt/stepforge, so
+  // app.isPackaged is false there too. Only a source checkout is a dev build.
+  const devBuild = !app.isPackaged && fs.existsSync(path.join(__dirname, '..', '.git'));
   h('app:info', () => ({
     version: app.getVersion(),
-    buildVersion: app.isPackaged ? (PACKAGE_JSON.buildVersion || app.getVersion()) : 'dev',
+    buildVersion: PACKAGE_JSON.buildVersion || app.getVersion(),
+    devBuild,
     dataDir: store.root,
     platform: process.platform,
     license: PACKAGE_JSON.license || 'CC-BY-NC-4.0',

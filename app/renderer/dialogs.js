@@ -338,6 +338,12 @@ function showSettingsDialog({
     });
     cancelStorageBtn.addEventListener('click', async () => { await api.storage.cancelMove(); await refreshStorage(); });
     void refreshStorage();
+    const versionLabel = el('strong', {}, 'StepForge');
+    const versionDetail = el('div.muted', {}, '');
+    api.app.info().then((info) => {
+      versionLabel.textContent = `StepForge ${info.buildVersion || info.version}`;
+      versionDetail.textContent = info.devBuild ? 'Development build running from source.' : `Release build · ${info.license}`;
+    }).catch(() => { versionDetail.textContent = 'Version information is unavailable.'; });
 
     const appearance = makeSelect(settings.appearance || 'system', [
       { value: 'system', label: 'System' },
@@ -528,6 +534,10 @@ function showSettingsDialog({
         el('div.muted', {}, 'Global placeholders to use in all your guides.'),
         placeholderRows,
         el('div.row', { style: { justifyContent: 'flex-start' } }, addPlaceholderBtn),
+      ),
+      el('fieldset', {},
+        el('legend', {}, 'About'),
+        el('div.settings-about', {}, el('div', {}, versionLabel, versionDetail)),
       ),
     );
 

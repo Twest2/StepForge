@@ -393,9 +393,9 @@ function showSettingsDialog({
     ollamaModel.addEventListener('input', () => persistOllamaModel());
     ollamaModel.addEventListener('blur', () => persistOllamaModel.flush());
 
-    const placeholderRows = el('div', { className: 'placeholder-rows global-placeholder-rows' },
-      el('div.global-placeholder-header', {}, el('span', {}, 'Placeholder name'), el('span', {}, 'Content')),
-    );
+    const placeholderHeader = el('div.global-placeholder-header.hidden', {},
+      el('span', {}, 'Placeholder name'), el('span', {}, 'Content'));
+    const placeholderRows = el('div', { className: 'placeholder-rows global-placeholder-rows' }, placeholderHeader);
     const rows = [];
     const addPlaceholderRow = (key = '', value = '') => {
       const keyInput = makeInput(key, 'text', { 'aria-label': 'Placeholder name', placeholder: '[[placeholder-name]]' });
@@ -408,6 +408,7 @@ function showSettingsDialog({
         onClick: () => {
           row.remove();
           rows.splice(rows.indexOf(row), 1);
+          placeholderHeader.classList.toggle('hidden', rows.length === 0);
         },
       }, '−');
       const row = el('div.placeholder-row', {},
@@ -419,6 +420,7 @@ function showSettingsDialog({
       row.placeholderValue = value;
       row.placeholderOriginalText = valueInput.value;
       rows.push(row);
+      placeholderHeader.classList.remove('hidden');
       placeholderRows.append(row);
       return row;
     };

@@ -60,10 +60,15 @@ Drive sync is **off by default**. When you sign in
 
 - Sign-in happens in your browser on Google's site. StepForge never sees your
   password.
+- StepForge requests one permission, `drive.appdata`, which only covers the
+  files it creates in its own hidden folder in your Drive. It can't see your
+  other Drive files.
 - **Your whole library is uploaded**: screenshots, text, annotations,
-  placeholders, and the capture details listed above. It goes to a private
-  app-only area of *your* Google Drive, not to StepForge or anyone else.
-  StepForge can't see your other Drive files.
+  placeholders, and the capture details listed above. It goes to that private
+  folder in *your* Google Drive, not to StepForge or anyone else.
+- StepForge also reads your Google account's email address, profile photo, and
+  Drive storage usage to show which account is connected and how much space
+  it's using.
 - Data travels over HTTPS. It isn't additionally encrypted by StepForge.
 - Your Google token is stored encrypted with your operating system's
   credential storage.
@@ -72,6 +77,13 @@ Drive sync is **off by default**. When you sign in
 - Turning sync off stops transfers. **Disconnect** also removes the saved
   sign-in. Neither deletes guides from your computer or from Drive. Deleting a
   guide locally doesn't delete it from Drive.
+- To remove everything StepForge stored in Drive, revoke its access in your
+  [Google Account](https://myaccount.google.com/connections), then in Google
+  Drive open **Settings → Manage apps**, find StepForge, and choose
+  **Delete hidden app data**.
+- StepForge's use of information received from Google APIs adheres to the
+  [Google API Services User Data Policy](https://developers.google.com/terms/api-services-user-data-policy),
+  including the Limited Use requirements.
 
 ## Bundled components
 

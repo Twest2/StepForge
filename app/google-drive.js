@@ -5,7 +5,27 @@ const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 const { atomicWriteFileSync } = require('../core/util');
-const GOOGLE_OAUTH = require('./google-oauth-config.json');
+
+// Release builds get the client stamped into google-oauth-config.json. A source
+// checkout leaves it empty; developers can supply the client through the
+// environment or a gitignored file at the repository root, outside app/ so
+// packaging never copies it (see `npm run setup:google-dev`).
+const LOCAL_OAUTH_FILE = path.join(__dirname, '..', 'google-oauth.local.json');
+
+function resolveOAuthConfig({ committed = require('./google-oauth-config.json'), env = process.env, localFile = LOCAL_OAUTH_FILE } = {}) {
+  if (committed.clientId) return { clientId: committed.clientId, clientSecret: committed.clientSecret || '', source: 'release' };
+  if (env.STEPFORGE_GOOGLE_CLIENT_ID) {
+    return { clientId: env.STEPFORGE_GOOGLE_CLIENT_ID.trim(), clientSecret: (env.STEPFORGE_GOOGLE_CLIENT_SECRET || '').trim(), source: 'environment' };
+  }
+  try {
+    const local = JSON.parse(fs.readFileSync(localFile, 'utf8'));
+    return { clientId: String(local.clientId || '').trim(), clientSecret: String(local.clientSecret || '').trim(), source: 'local' };
+  } catch {
+    return { clientId: '', clientSecret: '', source: 'none' };
+  }
+}
+
+const GOOGLE_OAUTH = resolveOAuthConfig();
 
 const SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
 const API = 'https://www.googleapis.com/drive/v3';
@@ -403,4 +423,4 @@ class GoogleDrive {
   }
 }
 
-module.exports = { GoogleDrive, SCOPE, MAX_ARCHIVE_BYTES };
+module.exports = { GoogleDrive, SCOPE, MAX_ARCHIVE_BYTES, resolveOAuthConfig, LOCAL_OAUTH_FILE };

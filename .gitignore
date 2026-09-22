@@ -9,3 +9,6 @@ tests/.tmp/
 examples/.tmp/
 build/build_report.md
 build/artifacts_manifest.json
+
+# Google OAuth client for development builds (npm run setup:google-dev)
+google-oauth.local.json

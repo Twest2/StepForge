@@ -91,7 +91,7 @@ test('.sfgz export -> import(copy) round-trips full guide content with new ids',
   assert.equal(parent.annotations[0].type, 'rect');
 });
 
-test('linked import keeps identity; explicit save writes back to the archive', (t) => {
+test('linked import keeps identity; explicit save writes back to the archive', async (t) => {
   const dir = makeTmpDir('linked');
   t.after(() => rmrf(dir));
   const storeA = new GuideStore(path.join(dir, 'userA'));
@@ -110,14 +110,20 @@ test('linked import keeps identity; explicit save writes back to the archive', (
   // Local edit + explicit save-back, then the other user re-reads the file.
   linked.title = 'Install VPN v2';
   storeB.saveGuide(linked);
-  const result = saveLinkedGuide(storeB, linked.guideId);
+  const saving = saveLinkedGuide(storeB, linked.guideId);
+  await new Promise((resolve) => setImmediate(resolve));
+  const newer = storeB.getGuide(linked.guideId);
+  newer.title = 'Edited during archive write';
+  storeB.saveGuide(newer);
+  const result = await saving;
+  assert.equal(storeB.getGuide(linked.guideId).title, 'Edited during archive write');
   assert.equal(result.saved, true);
   assert.equal(readArchive(shared).guide.title, 'Install VPN v2');
   // Lock is released after a successful save.
   assert.equal(readLock(shared), null);
 });
 
-test('lock conflicts block linked save until forced', (t) => {
+test('lock conflicts block linked save until forced', async (t) => {
   const dir = makeTmpDir('locks');
   t.after(() => rmrf(dir));
   const store = new GuideStore(path.join(dir, 'data'));
@@ -133,12 +139,12 @@ test('lock conflicts block linked save until forced', (t) => {
     acquiredAt: new Date().toISOString(),
   }));
 
-  const blocked = saveLinkedGuide(linkedStore, linked.guideId);
+  const blocked = await saveLinkedGuide(linkedStore, linked.guideId);
   assert.equal(blocked.saved, false);
   assert.equal(blocked.conflict.host, 'other-machine');
 
   // Forcing (the user chose "save anyway" in the conflict dialog) succeeds.
-  const forced = saveLinkedGuide(linkedStore, linked.guideId, { force: true });
+  const forced = await saveLinkedGuide(linkedStore, linked.guideId, { force: true });
   assert.equal(forced.saved, true);
 
   // A stale lock (crashed peer) does not block.
@@ -146,7 +152,7 @@ test('lock conflicts block linked save until forced', (t) => {
     host: 'other-machine', user: 'colleague', pid: 99,
     acquiredAt: new Date(Date.now() - 9 * 3600 * 1000).toISOString(),
   }));
-  assert.equal(saveLinkedGuide(linkedStore, linked.guideId).saved, true);
+  assert.equal((await saveLinkedGuide(linkedStore, linked.guideId)).saved, true);
 });
 
 test('acquire/release lock lifecycle for this process', (t) => {

@@ -403,25 +403,36 @@ function showSettingsDialog({
     ollamaModel.addEventListener('input', () => persistOllamaModel());
     ollamaModel.addEventListener('blur', () => persistOllamaModel.flush());
 
-    const placeholderRows = el('div', { className: 'placeholder-rows' });
+    const placeholderHeader = el('div.global-placeholder-header.hidden', {},
+      el('span', {}, 'Placeholder name'), el('span', {}, 'Content'));
+    const placeholderRows = el('div', { className: 'placeholder-rows global-placeholder-rows' }, placeholderHeader);
     const rows = [];
     const addPlaceholderRow = (key = '', value = '') => {
-      const keyInput = makeInput(key);
-      const valueInput = makeInput(value);
+      const keyInput = el('textarea.global-placeholder-name', { rows: 4, 'aria-label': 'Placeholder name', placeholder: '[[placeholder-name]]' }, key);
+      keyInput.addEventListener('keydown', (event) => { if (event.key === 'Enter') event.preventDefault(); });
+      keyInput.addEventListener('input', () => { keyInput.value = keyInput.value.replace(/[\r\n]/g, ''); });
+      const valueInput = el('textarea.global-placeholder-value', { rows: 4, 'aria-label': 'Placeholder content', placeholder: 'Markdown or regular text' }, typeof value === 'object' ? value.text || '' : value);
+      const valueCell = el('div.placeholder-markdown-content', {}, valueInput);
+
       const removeBtn = el('button.icon', {
         type: 'button',
         title: 'Remove placeholder',
         onClick: () => {
           row.remove();
           rows.splice(rows.indexOf(row), 1);
+          placeholderHeader.classList.toggle('hidden', rows.length === 0);
         },
       }, '−');
       const row = el('div.placeholder-row', {},
         keyInput,
-        valueInput,
+        valueCell,
         removeBtn,
       );
+      // Keep unchanged legacy plain-text values intact when saving Settings.
+      row.placeholderValue = value;
+      row.placeholderOriginalText = valueInput.value;
       rows.push(row);
+      placeholderHeader.classList.remove('hidden');
       placeholderRows.append(row);
       return row;
     };
@@ -482,6 +493,7 @@ function showSettingsDialog({
       cloudPanel.node,
       el('fieldset', {},
         el('legend', {}, 'Global placeholders'),
+        el('div.muted', {}, 'Global placeholders to use in all your guides.'),
         placeholderRows,
         el('div.row', { style: { justifyContent: 'flex-start' } }, addPlaceholderBtn),
       ),
@@ -538,10 +550,10 @@ function showSettingsDialog({
                 },
               },
               placeholders: rows.reduce((acc, row) => {
-                const inputs = row.querySelectorAll('input');
-                const key = inputs[0].value.trim();
-                const value = inputs[1].value;
-                if (key) acc[key] = value;
+                const key = row.querySelector('.global-placeholder-name').value.trim().replace(/^\[\[(.*?)\]\]$/, '$1').trim();
+                const text = row.querySelector('.global-placeholder-value').value;
+                if (key) acc[key] = typeof row.placeholderValue === 'string' && row.placeholderValue && text === row.placeholderOriginalText
+                  ? row.placeholderValue : { format: 'markdown', text };
                 return acc;
               }, {}),
             };

@@ -19,7 +19,10 @@ Each user gets their own tokens for their own account.
 
 1. Create the StepForge Google Cloud project and enable the Google Drive API.
 2. Configure the OAuth consent screen with the StepForge name, contact
-   address, homepage, and privacy policy.
+   address, homepage, privacy policy, and terms of service. The StepForge
+   website provides all three (`/`, `/privacy/`, `/terms/`) and its README has
+   a field-by-field checklist. The website's domain must be verified in Google
+   Search Console.
 3. Create an OAuth client of type **Desktop app**, restricted to the
    `drive.appdata` scope.
 4. Move the app to **production** and complete any branding or verification

@@ -6,7 +6,10 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 function editor() {
-  const context = { window: {} };
+  const context = { window: {},
+    el: (tag, props, ...children) => ({ tag, props, children }),
+    clearNode: (node) => { node.children = []; },
+  };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/editor.js'), 'utf8'), context);
   const instance = Object.create(context.window.GuideEditor.prototype);
   Object.assign(instance, {
@@ -57,4 +60,33 @@ test('clear, select all, and exiting/reentering Select mode reset the range anch
   assert.deepEqual(selected(e), []);
   e.toggleStepSelection('e', true);
   assert.deepEqual(selected(e), ['e']);
+});
+
+
+test('rendered rows and checkboxes carry Shift-click and normal mode still opens a step', () => {
+  const e = editor();
+  e.stepMap = new Map(e.steps.map((s) => [s.stepId, s]));
+  e.selectedStepId = 'a';
+  e.dom = {
+    stepsList: { children: [], append(item) { this.children.push(item); } },
+    stepCount: {}, selectStepsBtn: {},
+  };
+  e.renderStepBulkBar = () => {};
+  Object.getPrototypeOf(e).renderStepList.call(e);
+  const rows = e.dom.stepsList.children;
+  rows[0].props.onClick({ shiftKey: false });
+  let stopped = false;
+  rows[2].children[0].props.onClick({ shiftKey: true, stopPropagation() { stopped = true; } });
+  assert.equal(stopped, true);
+  assert.deepEqual(selected(e), ['a', 'b', 'child']);
+  rows[4].props.onClick({ shiftKey: true });
+  assert.deepEqual(selected(e), ['a', 'b', 'child', 'd', 'e']);
+  let prevented = false;
+  rows[4].props.onMouseDown({ shiftKey: true, preventDefault() { prevented = true; } });
+  assert.equal(prevented, true);
+  e.stepSelectMode = false;
+  let opened;
+  e.selectStep = (id) => { opened = id; };
+  rows[3].props.onClick({ shiftKey: true });
+  assert.equal(opened, 'd');
 });

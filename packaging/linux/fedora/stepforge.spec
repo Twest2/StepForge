@@ -56,6 +56,7 @@ Requires:       xdg-desktop-portal-gnome
 Requires:       pipewire
 Requires:       wireplumber
 Recommends:     xinput
+Recommends:     libsecret
 
 # The payload is architecture-specific (bundles the Electron binary).
 %description

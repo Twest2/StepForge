@@ -1068,7 +1068,7 @@ function setupIpc() {
   }, { validate: (a) => c.string(a.url, 2048) });
   h('app:info', () => ({
     version: app.getVersion(),
-    buildVersion: PACKAGE_JSON.buildVersion || app.getVersion(),
+    buildVersion: app.isPackaged ? (PACKAGE_JSON.buildVersion || app.getVersion()) : 'dev',
     dataDir: store.root,
     platform: process.platform,
     license: PACKAGE_JSON.license || 'CC-BY-NC-4.0',

@@ -1,7 +1,7 @@
 'use strict';
 
 /** Return a non-destructive focused view for a click in logical screen coordinates. */
-function smartCrop(size, bounds, point, focusAmount = 1.5) {
+function smartCrop(size, bounds, point, focusAmount = 1.25) {
   if (!size || !bounds || !point ||
       ![size.width, size.height, bounds.x, bounds.y, bounds.width, bounds.height,
         point.x, point.y].every(Number.isFinite) ||
@@ -12,7 +12,7 @@ function smartCrop(size, bounds, point, focusAmount = 1.5) {
 
   // Keep at least 640 x 360 logical pixels of context and half of each image dimension.
   const amount = typeof focusAmount === 'number' && Number.isFinite(focusAmount)
-    ? Math.max(1, Math.min(2, Math.round(focusAmount * 20) / 20)) : 1.5;
+    ? Math.max(1, Math.min(2, Math.round(focusAmount * 20) / 20)) : 1.25;
   const zoom = Math.max(1, Math.min(amount, bounds.width / 640, bounds.height / 360));
   if (zoom === 1) return null;
   const span = 1 / zoom;

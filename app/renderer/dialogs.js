@@ -24,6 +24,26 @@ function makeSelect(value, options) {
   );
 }
 
+/** Settings row: a title and optional description beside its control. */
+function settingRow(title, description, control) {
+  return el('div.setting-row', {},
+    el('div.setting-text', {},
+      el('div.setting-title', {}, title),
+      description ? el('div.setting-desc', {}, description) : null),
+    el('div.setting-control', {}, control));
+}
+
+/** Wraps a checkbox as an on/off switch; the checkbox keeps its `checked` state. */
+function makeSwitch(input, label) {
+  input.classList.add('switch-input');
+  return el('label.switch', { title: label }, input, el('span.switch-track', { 'aria-hidden': 'true' }),
+    el('span.sr-only', {}, label));
+}
+
+function settingsCard(title, ...rows) {
+  return el('div.settings-card', {}, title ? el('div.settings-card-title', {}, title) : null, ...rows);
+}
+
 const HOTKEY_LABELS = {
   CommandOrControl: 'Ctrl',
   Control: 'Ctrl',
@@ -308,11 +328,14 @@ function showSettingsDialog({
   settings,
   placeholders = {},
   onSave,
+  section: initialSection = 'general',
 } = {}) {
   return new Promise((resolve) => {
     const form = el('form', { className: 'settings-form' });
     const cloudPanel = makeCloudSettings(api);
-    const storageStatus = el('div.muted', {}, 'Checking guide storage location…');
+    const storagePath = el('code.settings-path', {}, 'Checking guide storage location…');
+    const storageNote = el('div.setting-desc', {}, '');
+    const showStorageError = (message) => { storageNote.textContent = message; storageNote.classList.add('error'); };
     const chooseStorageBtn = el('button', { type: 'button' }, 'Choose folder…');
     const resetStorageBtn = el('button', { type: 'button' }, 'Use default');
     const cancelStorageBtn = el('button', { type: 'button', hidden: true }, 'Cancel pending move');
@@ -320,30 +343,42 @@ function showSettingsDialog({
     const refreshStorage = async () => {
       try {
         storageInfo = await api.storage.status();
-        const defaultNote = storageInfo.current === storageInfo.defaultPath ? 'Using the default location.' : `Default: ${storageInfo.defaultPath}`;
-        const pending = storageInfo.pending ? ` A verified move to ${storageInfo.pending} will run the next time StepForge starts.` : '';
-        storageStatus.textContent = `${storageInfo.current}. ${defaultNote}${pending}${storageInfo.locked ? ' Controlled by STEPFORGE_DATA_DIR.' : ''}${storageInfo.error ? ` ${storageInfo.error}` : ''}`;
+        storagePath.textContent = storageInfo.current;
+        storagePath.title = storageInfo.current;
+        const notes = [storageInfo.current === storageInfo.defaultPath ? 'Default location.' : `Default: ${storageInfo.defaultPath}`];
+        if (storageInfo.pending) notes.push(`Moving to ${storageInfo.pending} the next time StepForge starts.`);
+        if (storageInfo.locked) notes.push('Set by STEPFORGE_DATA_DIR for this session.');
+        if (storageInfo.error) notes.push(storageInfo.error);
+        storageNote.textContent = notes.join(' ');
+        storageNote.classList.toggle('error', Boolean(storageInfo.error));
         chooseStorageBtn.disabled = storageInfo.locked;
         resetStorageBtn.disabled = storageInfo.locked || storageInfo.current === storageInfo.defaultPath;
         cancelStorageBtn.hidden = !storageInfo.pending;
       } catch (error) {
-        storageStatus.textContent = error.message || 'Could not read guide storage location.';
+        showStorageError(error.message || 'Could not read guide storage location.');
       }
     };
     chooseStorageBtn.addEventListener('click', async () => {
-      try { await api.storage.choose(); await refreshStorage(); } catch (error) { storageStatus.textContent = error.message || 'Could not schedule the library move.'; }
+      try { await api.storage.choose(); await refreshStorage(); } catch (error) { showStorageError(error.message || 'Could not schedule the library move.'); }
     });
     resetStorageBtn.addEventListener('click', async () => {
-      try { await api.storage.reset(); await refreshStorage(); } catch (error) { storageStatus.textContent = error.message || 'Could not schedule the library move.'; }
+      try { await api.storage.reset(); await refreshStorage(); } catch (error) { showStorageError(error.message || 'Could not schedule the library move.'); }
     });
     cancelStorageBtn.addEventListener('click', async () => { await api.storage.cancelMove(); await refreshStorage(); });
     void refreshStorage();
-    const versionLabel = el('strong', {}, 'StepForge');
-    const versionDetail = el('div.muted', {}, '');
+    const versionLabel = el('span', {}, '—');
+    const buildLabel = el('span.settings-chip', {}, '');
+    const licenseLabel = el('span', {}, '—');
+    const dataDirLabel = el('code.settings-path', {}, '—');
     api.app.info().then((info) => {
-      versionLabel.textContent = `StepForge ${info.buildVersion || info.version}`;
-      versionDetail.textContent = info.devBuild ? 'Development build running from source.' : `Release build · ${info.license}`;
-    }).catch(() => { versionDetail.textContent = 'Version information is unavailable.'; });
+      versionLabel.textContent = info.buildVersion || info.version;
+      buildLabel.textContent = info.devBuild ? 'Development build' : 'Release';
+      buildLabel.classList.toggle('dev', Boolean(info.devBuild));
+      licenseLabel.textContent = info.license || '—';
+      dataDirLabel.textContent = info.dataDir || '—';
+      dataDirLabel.title = info.dataDir || '';
+    }).catch(() => { versionLabel.textContent = 'Unavailable'; });
+    const openLink = (url) => () => { void api.shell.openExternal({ url }).catch(() => {}); };
 
     const appearance = makeSelect(settings.appearance || 'system', [
       { value: 'system', label: 'System' },
@@ -358,16 +393,14 @@ function showSettingsDialog({
       { value: 'region', label: 'Region' },
     ]);
     const smartCropping = el('input', { type: 'checkbox', checked: settings.capture?.smartCropping !== false });
-    const focusValue = Number(settings.capture?.focusAmount ?? 1.5);
+    const focusValue = Number(settings.capture?.focusAmount ?? 1.25);
     const focusAmount = el('input', { type: 'range', min: 1, max: 2, step: 0.05,
-      'aria-label': 'Default focus amount', value: Number.isFinite(focusValue) ? Math.max(1, Math.min(2, focusValue)) : 1.5 });
+      'aria-label': 'Default focus amount', value: Number.isFinite(focusValue) ? Math.max(1, Math.min(2, focusValue)) : 1.25 });
     const focusLabel = el('output', {}, `${Number(focusAmount.value).toFixed(2)}×`);
     focusAmount.addEventListener('input', () => { focusLabel.textContent = `${Number(focusAmount.value).toFixed(2)}×`; });
-    const focusControl = el('div', {},
-      el('div.row', {}, focusAmount, focusLabel, el('button', { type: 'button', onClick: () => {
-        focusAmount.value = '1.5'; focusLabel.textContent = '1.50×';
-      } }, 'Reset')),
-      el('div.muted', {}, 'More context (1×) → closer focus (2×). Applies to new automatic captures only.'));
+    const focusControl = el('div.row.settings-range', {}, focusAmount, focusLabel, el('button', { type: 'button', onClick: () => {
+      focusAmount.value = '1.25'; focusLabel.textContent = '1.25×';
+    } }, 'Reset'));
     const clickMarker = el('input', { type: 'checkbox', checked: Boolean(settings.capture?.clickMarker) });
     const captureHotkey = makeHotkeyInput(settings.capture?.hotkeyCapture || '');
     const pauseHotkey = makeHotkeyInput(settings.capture?.hotkeyPauseResume || '');
@@ -375,18 +408,17 @@ function showSettingsDialog({
     const previewCount = makeInput(settings.exports?.previewStepCount ?? 3, 'number', { min: 1, step: 1 });
     const openFolder = el('input', { type: 'checkbox', checked: Boolean(settings.exports?.openFolderAfterExport) });
     const captureOutside = el('input', { type: 'checkbox', checked: Boolean(settings.capture?.captureOutsideClicks) });
-    const fallbackTrigger = makeSelect(settings.capture?.fallbackTrigger || 'interval', [
+    const fallbackTrigger = makeSelect(settings.capture?.fallbackTrigger === 'interval' ? 'interval' : 'hotkey', [
+      { value: 'hotkey', label: 'Hotkey' },
       { value: 'interval', label: 'Timed interval' },
-      { value: 'hotkey', label: 'Hotkey only' },
     ]);
     const autoIntervalSec = makeInput(settings.capture?.autoIntervalSec ?? 5, 'number', { min: 1, step: 1 });
-    const confirmSimple = el('input', { type: 'checkbox', checked: Boolean(settings.capture?.confirmSimpleCapture) });
     const keepLast = makeInput(settings.backups?.keepLast ?? 10, 'number', { min: 0, step: 1 });
     const aiEnabled = el('input', { type: 'checkbox', checked: Boolean(settings.ai?.enabled) });
     const aiAutoDoc = el('input', { type: 'checkbox', checked: Boolean(settings.ai?.autoDoc) });
     const ollamaHost = makeInput(settings.ai?.ollama?.host || 'http://127.0.0.1:11434');
     const ollamaModel = makeInput(settings.ai?.ollama?.model || 'llama3.2:1b');
-    const aiStatus = el('div', { className: 'muted ai-status' }, 'AI stays local through Ollama. Vision-capable models can also inspect the screenshot attached to each step.');
+    const aiStatus = el('div', { className: 'ai-status' }, 'Not tested yet. Vision-capable models can also inspect each step’s screenshot.');
     const testAiBtn = el('button', { type: 'button' }, 'Test connection');
     const persistOllamaModel = debounce(() => {
       const model = ollamaModel.value.trim();
@@ -395,14 +427,17 @@ function showSettingsDialog({
     }, 250);
 
     const syncFallbackUi = () => {
-      autoIntervalSec.disabled = fallbackTrigger.value === 'hotkey';
+      // The timer only matters for timed captures, so hide it otherwise.
+      intervalRow.hidden = fallbackTrigger.value !== 'interval';
     };
+    const intervalRow = el('div');
     fallbackTrigger.addEventListener('change', syncFallbackUi);
     syncFallbackUi();
 
-    const updateAiStatus = (message, { error = false } = {}) => {
+    const updateAiStatus = (message, { error = false, ok = false } = {}) => {
       aiStatus.textContent = message;
       aiStatus.classList.toggle('error', Boolean(error));
+      aiStatus.classList.toggle('ok', Boolean(ok));
     };
 
     const testAiConnection = async () => {
@@ -422,7 +457,7 @@ function showSettingsDialog({
         if (result.installed) {
           updateAiStatus(result.vision
             ? `Connected to ${result.host} with ${result.model}. It can inspect screenshots.`
-            : `Connected to ${result.host} with ${result.model}. This model is text-only, so StepForge will use OCR and metadata only.`);
+            : `Connected to ${result.host} with ${result.model}. This model is text-only, so StepForge will use OCR and metadata only.`, { ok: true });
         } else {
           updateAiStatus(`Connected to ${result.host}. Model ${result.model} is not installed yet.`, { error: true });
         }
@@ -475,71 +510,95 @@ function showSettingsDialog({
       onClick: () => addPlaceholderRow(),
     }, 'Add placeholder');
 
-    form.append(
-      el('fieldset', {},
-        el('legend', {}, 'Appearance'),
-        labeledRow('Theme', appearance),
-        labeledRow('Spellcheck', spellcheck),
-        labeledRow('Open folder after export', openFolder),
-      ),
-      el('fieldset', {},
-        el('legend', {}, 'Guide storage'),
-        storageStatus,
-        el('div.row', { style: { justifyContent: 'flex-start', marginTop: '8px' } }, chooseStorageBtn, resetStorageBtn, cancelStorageBtn),
-        el('div.muted', {}, 'Choose an empty folder. StepForge copies and verifies the full library, then activates it on restart. The previous library is retained as a backup.'),
-      ),
-      el('fieldset', {},
-        el('legend', {}, 'Capture'),
-        labeledRow('Default mode', captureMode),
-        labeledRow('Delay (ms)', delayMs),
-        labeledRow('Click marker', clickMarker),
-        labeledRow('Capture outside clicks', captureOutside),
-        labeledRow('When clicks are unavailable', fallbackTrigger),
-        labeledRow('Timer interval (seconds)', autoIntervalSec),
-        labeledRow('Confirm simple capture', confirmSimple),
-        labeledRow('Capture hotkey', captureHotkey),
-        labeledRow('Pause / resume hotkey', pauseHotkey),
-        el('div.muted', {},
-          'Hotkey fallback uses the Capture hotkey. Timer fallback uses the interval above.',
-        ),
-      ),
-      el('fieldset', {},
-        el('legend', {}, 'Editor'),
-        labeledRow('Automatically focus recorded clicks', smartCropping),
-        labeledRow('Default focus amount', focusControl),
-        labeledRow('Focused view for new steps', focusedDefault),
-        labeledRow('Preview step count', previewCount),
-      ),
-      el('fieldset', {},
-        el('legend', {}, 'Backups'),
-        labeledRow('Keep last snapshots', keepLast),
-      ),
-      el('fieldset', {},
-        el('legend', {}, 'AI'),
-        labeledRow('Enable AI (experimental)', aiEnabled),
-        labeledRow('Auto-document captures', aiAutoDoc),
-        labeledRow('Ollama host', ollamaHost),
-        labeledRow('Ollama model', ollamaModel),
-        el('div.row', { style: { justifyContent: 'space-between' } },
-          aiStatus,
-          testAiBtn,
-        ),
-        el('div.muted', {},
-          'When auto-document is on, each capture is automatically documented by AI. Turn it off to use AI manually only.',
-        ),
-      ),
-      cloudPanel.node,
-      el('fieldset', {},
-        el('legend', {}, 'Global placeholders'),
-        el('div.muted', {}, 'Global placeholders to use in all your guides.'),
-        placeholderRows,
-        el('div.row', { style: { justifyContent: 'flex-start' } }, addPlaceholderBtn),
-      ),
-      el('fieldset', {},
-        el('legend', {}, 'About'),
-        el('div.settings-about', {}, el('div', {}, versionLabel, versionDetail)),
-      ),
-    );
+    const sections = [
+      { id: 'general', label: 'General', description: 'Appearance, exports, and where your guides are stored.', content: [
+        settingsCard('Appearance',
+          settingRow('Theme', 'Match your system, or always use light or dark.', appearance),
+          settingRow('Spellcheck', 'Underline misspelled words while editing.', makeSwitch(spellcheck, 'Spellcheck'))),
+        settingsCard('Exports',
+          settingRow('Open folder after export', 'Show the exported file in your file manager.', makeSwitch(openFolder, 'Open folder after export')),
+          settingRow('Preview step count', 'How many steps the export preview renders.', previewCount)),
+        settingsCard('Guide storage',
+          el('div.settings-storage', {}, storagePath, storageNote),
+          el('div.settings-actions', {}, chooseStorageBtn, resetStorageBtn, cancelStorageBtn),
+          el('div.setting-desc', {}, 'Choose an empty folder. StepForge copies and verifies your library, then switches to it the next time it starts. The old library is kept as a backup.')),
+      ] },
+      { id: 'capture', label: 'Capture', description: 'How StepForge records steps.', content: [
+        settingsCard('Recording',
+          settingRow('Default mode', 'What a new capture records.', captureMode),
+          settingRow('Delay', 'Milliseconds to wait before each screenshot.', delayMs),
+          settingRow('Click marker', 'Draw a marker where you clicked.', makeSwitch(clickMarker, 'Click marker')),
+          settingRow('Capture outside clicks', 'Record clicks in other apps while a capture session is running.', makeSwitch(captureOutside, 'Capture outside clicks'))),
+        settingsCard('When clicks can’t be detected',
+          settingRow('Capture with', 'Some desktops don’t report clicks. Choose how steps are captured instead.', fallbackTrigger),
+          (intervalRow.append(settingRow('Timer interval', 'Seconds between timed captures.', autoIntervalSec)), intervalRow)),
+        settingsCard('Hotkeys',
+          settingRow('Capture', 'Take a step. Also used when clicks can’t be detected.', captureHotkey),
+          settingRow('Pause / resume', 'Pause or resume the capture session.', pauseHotkey)),
+      ] },
+      { id: 'editor', label: 'Editor', description: 'Defaults for new steps and automatic backups.', content: [
+        settingsCard('New steps',
+          settingRow('Focus recorded clicks', 'Zoom new screenshots toward where you clicked.', makeSwitch(smartCropping, 'Focus recorded clicks')),
+          settingRow('Default focus amount', 'More context (1×) to closer focus (2×). Applies to new captures only.', focusControl),
+          settingRow('Focused view for new steps', 'Open new steps in focused view.', makeSwitch(focusedDefault, 'Focused view for new steps'))),
+        settingsCard('Backups',
+          settingRow('Snapshots to keep', 'Older backup snapshots of each guide are removed. 0 keeps all of them.', keepLast)),
+      ] },
+      { id: 'ai', label: 'AI', badge: 'Beta', description: 'Optional titles and descriptions from a local Ollama model. Nothing is sent anywhere else.', content: [
+        settingsCard(null,
+          settingRow('Enable AI', 'Show AI actions in the editor.', makeSwitch(aiEnabled, 'Enable AI')),
+          settingRow('Auto-document captures', 'Describe each new capture automatically. Turn off to use AI only when you ask.', makeSwitch(aiAutoDoc, 'Auto-document captures'))),
+        settingsCard('Ollama',
+          settingRow('Host', 'Where Ollama is running.', ollamaHost),
+          settingRow('Model', 'Any installed model. Vision models can read screenshots.', ollamaModel),
+          el('div.settings-test', {}, aiStatus, testAiBtn)),
+      ] },
+      { id: 'drive', label: 'Google Drive', description: 'Back up and sync guides with your Google account. Changes here apply immediately.', content: [cloudPanel.node] },
+      { id: 'placeholders', label: 'Placeholders', description: 'Reusable text for every guide. Type [[name]] in a guide to insert it.', content: [
+        settingsCard(null, placeholderRows, el('div.settings-actions', {}, addPlaceholderBtn)),
+      ] },
+      { id: 'about', label: 'About', description: '', content: [
+        el('div.settings-about', {},
+          el('div.settings-about-mark', { 'aria-hidden': 'true' }, 'SF'),
+          el('div', {}, el('div.settings-about-name', {}, 'StepForge'),
+            el('div.setting-desc', {}, 'Local-first step-by-step guides.'))),
+        settingsCard(null,
+          settingRow('Version', null, el('div.row', {}, versionLabel, buildLabel)),
+          settingRow('License', null, licenseLabel),
+          settingRow('Data folder', null, dataDirLabel)),
+        el('div.settings-actions', {},
+          el('button', { type: 'button', onClick: openLink('https://github.com/Twest2/StepForge') }, 'Project on GitHub'),
+          el('button', { type: 'button', onClick: openLink('https://github.com/Twest2/StepForge/releases') }, 'Release notes'),
+          el('button', { type: 'button', onClick: openLink('https://github.com/Twest2/StepForge/issues') }, 'Report an issue')),
+      ] },
+    ];
+    const navButtons = new Map();
+    const panes = new Map();
+    const showSection = (id) => {
+      for (const [key, button] of navButtons) {
+        button.classList.toggle('active', key === id);
+        button.setAttribute('aria-selected', String(key === id));
+      }
+      for (const [key, pane] of panes) pane.hidden = key !== id;
+      content.scrollTop = 0;
+    };
+    const nav = el('nav.settings-nav', { role: 'tablist', 'aria-label': 'Settings sections' });
+    const content = el('div.settings-content');
+    for (const item of sections) {
+      const button = el('button.settings-nav-item', { type: 'button', role: 'tab', onClick: () => showSection(item.id) },
+        item.label, item.badge ? el('span.settings-chip', {}, item.badge) : null);
+      navButtons.set(item.id, button);
+      nav.append(button);
+      const pane = el('section.settings-pane', { role: 'tabpanel', 'aria-label': item.label },
+        item.id === 'about' ? null : el('header.settings-pane-head', {},
+          el('h3', {}, item.label),
+          item.description ? el('p.setting-desc', {}, item.description) : null),
+        ...item.content);
+      panes.set(item.id, pane);
+      content.append(pane);
+    }
+    form.append(el('div.settings-layout', {}, nav, content));
+    showSection(navButtons.has(initialSection) ? initialSection : 'general');
 
     const { close } = openModal({
       title: 'Settings',
@@ -561,12 +620,11 @@ function showSettingsDialog({
                 clickMarker: clickMarker.checked,
                 smartCropping: smartCropping.checked,
                 focusAmount: Number(focusAmount.value),
-                fallbackTrigger: fallbackTrigger.value === 'hotkey' ? 'hotkey' : 'interval',
+                fallbackTrigger: fallbackTrigger.value === 'interval' ? 'interval' : 'hotkey',
                 autoIntervalSec: Math.max(1, Number(autoIntervalSec.value || 5)),
                 hotkeyCapture: captureHotkey.value.trim(),
                 hotkeyPauseResume: pauseHotkey.value.trim(),
                 captureOutsideClicks: captureOutside.checked,
-                confirmSimpleCapture: confirmSimple.checked,
               },
               editor: {
                 ...settings.editor,

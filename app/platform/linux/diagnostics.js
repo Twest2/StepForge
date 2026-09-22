@@ -107,7 +107,7 @@ function detectLinuxCapabilities({
  * user-facing note. `userTriggerPreference` is the capture.fallbackTrigger
  * setting ('interval' | 'hotkey') used only when no click source exists.
  */
-function chooseCaptureTrigger(capabilities, userTriggerPreference = 'interval') {
+function chooseCaptureTrigger(capabilities, userTriggerPreference = 'hotkey') {
   const caps = capabilities || {};
   const click = caps.clickCapture;
 
@@ -149,7 +149,7 @@ function chooseCaptureTrigger(capabilities, userTriggerPreference = 'interval') 
   }
 
   // No global click source: the safe baseline is the user's chosen fallback.
-  const trigger = userTriggerPreference === 'hotkey' ? 'hotkey' : 'interval';
+  const trigger = userTriggerPreference === 'interval' ? 'interval' : 'hotkey';
   return {
     trigger,
     clickSource: trigger,

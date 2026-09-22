@@ -1021,4 +1021,12 @@ fieldset legend {
 
 .placeholder-markdown-content { flex: 2; min-width: 0; }
 .placeholder-markdown-content textarea { width: 100%; box-sizing: border-box; resize: vertical; }
-.placeholder-row input[type="checkbox"] { width: auto; flex: none; }
+.global-placeholder-rows .placeholder-row,
+.global-placeholder-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) 32px;
+  gap: 8px;
+  align-items: start;
+}
+.global-placeholder-header { color: var(--muted); font-size: 12px; }
+.global-placeholder-rows .placeholder-row input { min-width: 0; box-sizing: border-box; }

@@ -190,6 +190,7 @@ function saveLinkedGuide(store, guideId, { force = false } = {}) {
 
 module.exports = {
   ARCHIVE_FORMAT,
+  buildArchiveEntries,
   exportGuideArchive,
   readArchive,
   importGuideArchive,

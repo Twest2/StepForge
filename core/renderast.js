@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { sanitizeHtml } = require('./sanitize');
 const { htmlToText, linkifyMarkdownLinks, deepClone } = require('./util');
-const { systemPlaceholders, resolveScopes, expandPlaceholders } = require('./placeholders');
+const { systemPlaceholders, resolveScopes, expandPlaceholders, expandRichPlaceholders } = require('./placeholders');
 const { decodePng } = require('./png');
 const { renderAnnotations, applyFocusedView } = require('./raster');
 const { orderedBlocks, blockText } = require('./blocks');
@@ -35,7 +35,7 @@ function buildRenderAst(store, guideId, { globals = {}, now = new Date(), maxSte
   // Description fields additionally turn literal "[text](url)" markdown
   // link syntax (as inserted by the editor's Link button) into real <a>
   // tags before sanitizing, so exporters render an actual link.
-  const expandDesc = (html) => linkifyMarkdownLinks(expand(html || ''));
+  const expandDesc = (html) => linkifyMarkdownLinks(expandRichPlaceholders(html || '', values));
 
   const steps = [];
   const topCounter = { n: 0 };

@@ -226,6 +226,10 @@ function showQuickActions({ query = '', commands = [], searchFn, onOpenItem, onC
     let items = [];
     let active = 0;
 
+    function updateActiveItem() {
+      [...results.children].forEach((row, idx) => row.classList.toggle('active', idx === active));
+    }
+
     function renderItems() {
       clearNode(results);
       if (!items.length) {
@@ -235,7 +239,7 @@ function showQuickActions({ query = '', commands = [], searchFn, onOpenItem, onC
       items.forEach((item, idx) => {
         results.append(el('div.qa-item', {
           className: `qa-item${idx === active ? ' active' : ''}`,
-          onMouseenter: () => { active = idx; renderItems(); },
+          onMouseenter: () => { active = idx; updateActiveItem(); },
           onClick: () => choose(idx),
         },
         el('span.kind', {}, item.kind || 'cmd'),
@@ -288,8 +292,8 @@ function showQuickActions({ query = '', commands = [], searchFn, onOpenItem, onC
     const debounced = debounce(refresh, 60);
     input.addEventListener('input', debounced);
     input.addEventListener('keydown', (e) => {
-      if (e.key === 'ArrowDown') { e.preventDefault(); active = Math.min(items.length - 1, active + 1); renderItems(); }
-      else if (e.key === 'ArrowUp') { e.preventDefault(); active = Math.max(0, active - 1); renderItems(); }
+      if (e.key === 'ArrowDown') { e.preventDefault(); active = Math.max(0, Math.min(items.length - 1, active + 1)); updateActiveItem(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); active = Math.max(0, active - 1); updateActiveItem(); }
       else if (e.key === 'Enter') { e.preventDefault(); choose(); }
       else if (e.key === 'Escape') { e.preventDefault(); close(); resolve(null); }
     });
@@ -307,6 +311,33 @@ function showSettingsDialog({
 } = {}) {
   return new Promise((resolve) => {
     const form = el('form', { className: 'settings-form' });
+    const cloudPanel = makeCloudSettings(api);
+    const storageStatus = el('div.muted', {}, 'Checking guide storage location…');
+    const chooseStorageBtn = el('button', { type: 'button' }, 'Choose folder…');
+    const resetStorageBtn = el('button', { type: 'button' }, 'Use default');
+    const cancelStorageBtn = el('button', { type: 'button', hidden: true }, 'Cancel pending move');
+    let storageInfo = null;
+    const refreshStorage = async () => {
+      try {
+        storageInfo = await api.storage.status();
+        const defaultNote = storageInfo.current === storageInfo.defaultPath ? 'Using the default location.' : `Default: ${storageInfo.defaultPath}`;
+        const pending = storageInfo.pending ? ` A verified move to ${storageInfo.pending} will run the next time StepForge starts.` : '';
+        storageStatus.textContent = `${storageInfo.current}. ${defaultNote}${pending}${storageInfo.locked ? ' Controlled by STEPFORGE_DATA_DIR.' : ''}${storageInfo.error ? ` ${storageInfo.error}` : ''}`;
+        chooseStorageBtn.disabled = storageInfo.locked;
+        resetStorageBtn.disabled = storageInfo.locked || storageInfo.current === storageInfo.defaultPath;
+        cancelStorageBtn.hidden = !storageInfo.pending;
+      } catch (error) {
+        storageStatus.textContent = error.message || 'Could not read guide storage location.';
+      }
+    };
+    chooseStorageBtn.addEventListener('click', async () => {
+      try { await api.storage.choose(); await refreshStorage(); } catch (error) { storageStatus.textContent = error.message || 'Could not schedule the library move.'; }
+    });
+    resetStorageBtn.addEventListener('click', async () => {
+      try { await api.storage.reset(); await refreshStorage(); } catch (error) { storageStatus.textContent = error.message || 'Could not schedule the library move.'; }
+    });
+    cancelStorageBtn.addEventListener('click', async () => { await api.storage.cancelMove(); await refreshStorage(); });
+    void refreshStorage();
 
     const appearance = makeSelect(settings.appearance || 'system', [
       { value: 'system', label: 'System' },
@@ -321,10 +352,20 @@ function showSettingsDialog({
       { value: 'region', label: 'Region' },
     ]);
     const smartCropping = el('input', { type: 'checkbox', checked: settings.capture?.smartCropping !== false });
+    const focusValue = Number(settings.capture?.focusAmount ?? 1.5);
+    const focusAmount = el('input', { type: 'range', min: 1, max: 2, step: 0.05,
+      'aria-label': 'Default focus amount', value: Number.isFinite(focusValue) ? Math.max(1, Math.min(2, focusValue)) : 1.5 });
+    const focusLabel = el('output', {}, `${Number(focusAmount.value).toFixed(2)}×`);
+    focusAmount.addEventListener('input', () => { focusLabel.textContent = `${Number(focusAmount.value).toFixed(2)}×`; });
+    const focusControl = el('div', {},
+      el('div.row', {}, focusAmount, focusLabel, el('button', { type: 'button', onClick: () => {
+        focusAmount.value = '1.5'; focusLabel.textContent = '1.50×';
+      } }, 'Reset')),
+      el('div.muted', {}, 'More context (1×) → closer focus (2×). Applies to new automatic captures only.'));
     const clickMarker = el('input', { type: 'checkbox', checked: Boolean(settings.capture?.clickMarker) });
     const captureHotkey = makeHotkeyInput(settings.capture?.hotkeyCapture || '');
     const pauseHotkey = makeHotkeyInput(settings.capture?.hotkeyPauseResume || '');
-    const focusedDefault = el('input', { type: 'checkbox', checked: Boolean(settings.editor?.focusedViewDefaultForNewSteps) });
+    const focusedDefault = el('input', { type: 'checkbox', checked: settings.editor?.focusedViewDefaultForNewSteps !== false });
     const previewCount = makeInput(settings.exports?.previewStepCount ?? 3, 'number', { min: 1, step: 1 });
     const openFolder = el('input', { type: 'checkbox', checked: Boolean(settings.exports?.openFolderAfterExport) });
     const captureOutside = el('input', { type: 'checkbox', checked: Boolean(settings.capture?.captureOutsideClicks) });
@@ -388,25 +429,36 @@ function showSettingsDialog({
     ollamaModel.addEventListener('input', () => persistOllamaModel());
     ollamaModel.addEventListener('blur', () => persistOllamaModel.flush());
 
-    const placeholderRows = el('div', { className: 'placeholder-rows' });
+    const placeholderHeader = el('div.global-placeholder-header.hidden', {},
+      el('span', {}, 'Placeholder name'), el('span', {}, 'Content'));
+    const placeholderRows = el('div', { className: 'placeholder-rows global-placeholder-rows' }, placeholderHeader);
     const rows = [];
     const addPlaceholderRow = (key = '', value = '') => {
-      const keyInput = makeInput(key);
-      const valueInput = makeInput(value);
+      const keyInput = el('textarea.global-placeholder-name', { rows: 4, 'aria-label': 'Placeholder name', placeholder: '[[placeholder-name]]' }, key);
+      keyInput.addEventListener('keydown', (event) => { if (event.key === 'Enter') event.preventDefault(); });
+      keyInput.addEventListener('input', () => { keyInput.value = keyInput.value.replace(/[\r\n]/g, ''); });
+      const valueInput = el('textarea.global-placeholder-value', { rows: 4, 'aria-label': 'Placeholder content', placeholder: 'Markdown or regular text' }, typeof value === 'object' ? value.text || '' : value);
+      const valueCell = el('div.placeholder-markdown-content', {}, valueInput);
+
       const removeBtn = el('button.icon', {
         type: 'button',
         title: 'Remove placeholder',
         onClick: () => {
           row.remove();
           rows.splice(rows.indexOf(row), 1);
+          placeholderHeader.classList.toggle('hidden', rows.length === 0);
         },
       }, '−');
       const row = el('div.placeholder-row', {},
         keyInput,
-        valueInput,
+        valueCell,
         removeBtn,
       );
+      // Keep unchanged legacy plain-text values intact when saving Settings.
+      row.placeholderValue = value;
+      row.placeholderOriginalText = valueInput.value;
       rows.push(row);
+      placeholderHeader.classList.remove('hidden');
       placeholderRows.append(row);
       return row;
     };
@@ -423,6 +475,12 @@ function showSettingsDialog({
         labeledRow('Theme', appearance),
         labeledRow('Spellcheck', spellcheck),
         labeledRow('Open folder after export', openFolder),
+      ),
+      el('fieldset', {},
+        el('legend', {}, 'Guide storage'),
+        storageStatus,
+        el('div.row', { style: { justifyContent: 'flex-start', marginTop: '8px' } }, chooseStorageBtn, resetStorageBtn, cancelStorageBtn),
+        el('div.muted', {}, 'Choose an empty folder. StepForge copies and verifies the full library, then activates it on restart. The previous library is retained as a backup.'),
       ),
       el('fieldset', {},
         el('legend', {}, 'Capture'),
@@ -442,6 +500,7 @@ function showSettingsDialog({
       el('fieldset', {},
         el('legend', {}, 'Editor'),
         labeledRow('Automatically focus recorded clicks', smartCropping),
+        labeledRow('Default focus amount', focusControl),
         labeledRow('Focused view for new steps', focusedDefault),
         labeledRow('Preview step count', previewCount),
       ),
@@ -463,8 +522,10 @@ function showSettingsDialog({
           'When auto-document is on, each capture is automatically documented by AI. Turn it off to use AI manually only.',
         ),
       ),
+      cloudPanel.node,
       el('fieldset', {},
         el('legend', {}, 'Global placeholders'),
+        el('div.muted', {}, 'Global placeholders to use in all your guides.'),
         placeholderRows,
         el('div.row', { style: { justifyContent: 'flex-start' } }, addPlaceholderBtn),
       ),
@@ -475,7 +536,7 @@ function showSettingsDialog({
       body: form,
       wide: true,
       footer: [
-        el('button', { type: 'button', onClick: () => { close(); resolve(false); } }, 'Cancel'),
+        el('button', { type: 'button', onClick: () => { cloudPanel.dispose(); close(); resolve(false); } }, 'Cancel'),
         el('button.primary', {
           type: 'submit',
           onClick: async (e) => {
@@ -489,6 +550,7 @@ function showSettingsDialog({
                 mode: captureMode.value,
                 clickMarker: clickMarker.checked,
                 smartCropping: smartCropping.checked,
+                focusAmount: Number(focusAmount.value),
                 fallbackTrigger: fallbackTrigger.value === 'hotkey' ? 'hotkey' : 'interval',
                 autoIntervalSec: Math.max(1, Number(autoIntervalSec.value || 5)),
                 hotkeyCapture: captureHotkey.value.trim(),
@@ -520,20 +582,21 @@ function showSettingsDialog({
                 },
               },
               placeholders: rows.reduce((acc, row) => {
-                const inputs = row.querySelectorAll('input');
-                const key = inputs[0].value.trim();
-                const value = inputs[1].value;
-                if (key) acc[key] = value;
+                const key = row.querySelector('.global-placeholder-name').value.trim().replace(/^\[\[(.*?)\]\]$/, '$1').trim();
+                const text = row.querySelector('.global-placeholder-value').value;
+                if (key) acc[key] = typeof row.placeholderValue === 'string' && row.placeholderValue && text === row.placeholderOriginalText
+                  ? row.placeholderValue : { format: 'markdown', text };
                 return acc;
               }, {}),
             };
             await onSave(next);
+            cloudPanel.dispose();
             close();
             resolve(true);
           },
         }, 'Save'),
       ],
-      onClose: () => resolve(false),
+      onClose: () => { cloudPanel.dispose(); resolve(false); },
     });
 
     form.addEventListener('submit', (e) => e.preventDefault());
@@ -919,7 +982,7 @@ function showPlaceholdersDialog({ title = 'Placeholders', hint = '', values = {}
  * shown at the top of the guide, below the title, and surfaced on the PDF
  * cover page and the top of other export formats.
  */
-function showGuideInfoDialog({ values = {}, onSave } = {}) {
+function showGuideInfoDialog({ values = {}, onSave, onCloudSnapshots, onDeleteCloudSnapshots } = {}) {
   return new Promise((resolve) => {
     const authorInput = makeInput(values.author || '', 'text', { placeholder: 'e.g. Jane Doe' });
     const coAuthorsInput = makeInput(values.coAuthors || '', 'text', { placeholder: 'e.g. Alex Lee, Sam Patel' });
@@ -928,6 +991,7 @@ function showGuideInfoDialog({ values = {}, onSave } = {}) {
       rows: 4,
       placeholder: 'A short summary of this guide.',
     }, values.description || '');
+    const shareInput = el('input', { type: 'checkbox', checked: values.sharingEnabled !== false });
 
     const { close } = openModal({
       title: 'Guide information',
@@ -940,8 +1004,13 @@ function showGuideInfoDialog({ values = {}, onSave } = {}) {
         labeledRow('Description', descriptionInput, { stacked: true }),
         el('div.muted', { style: { marginTop: '-4px' } },
           'Shown on the first page of the PDF and at the top of other export formats.'),
+        el('label.cloud-enable', {}, shareInput, ' Include this guide in Google Drive sharing'),
+        el('div.muted', { style: { marginTop: '-4px' } },
+          'When off, this guide stays only on this device.'),
       ),
       footer: [
+        el('button', { type: 'button', onClick: () => onCloudSnapshots?.() }, 'Cloud snapshots'),
+        el('button', { type: 'button', className: 'danger', onClick: () => onDeleteCloudSnapshots?.() }, 'Remove cloud copies'),
         el('button', { onClick: () => { close(); resolve(false); } }, 'Cancel'),
         el('button.primary', {
           onClick: async () => {
@@ -950,12 +1019,30 @@ function showGuideInfoDialog({ values = {}, onSave } = {}) {
               coAuthors: coAuthorsInput.value.trim(),
               organization: organizationInput.value.trim(),
               description: descriptionInput.value.trim(),
+              sharingEnabled: shareInput.checked,
             });
             close();
             resolve(true);
           },
         }, 'Save'),
       ],
+      onClose: () => resolve(false),
+    });
+  });
+}
+
+function showCloudSnapshotsDialog({ snapshots = [], onRestore } = {}) {
+  return new Promise((resolve) => {
+    const list = snapshots.length
+      ? el('div', {}, ...snapshots.map((snapshot, index) => el('div.form-row', {},
+        el('div', {}, index === 0 ? 'Current cloud snapshot' : `Previous snapshot ${index}`, snapshot.createdTime ? el('div.muted', {}, new Date(snapshot.createdTime).toLocaleString()) : null),
+        index === 0 ? el('span.muted', {}, 'Current') : el('button', { type: 'button', onClick: async () => { await onRestore?.(snapshot); close(); resolve(true); } }, 'Restore'),
+      )))
+      : el('div.muted', {}, 'No cloud snapshots are available for this guide.');
+    const { close } = openModal({
+      title: 'Cloud snapshots', body: el('div', {},
+        el('div.muted', { style: { marginBottom: '10px' } }, 'The current snapshot and up to two previous snapshots are retained.'), list),
+      footer: [el('button.primary', { onClick: () => { close(); resolve(false); } }, 'Close')],
       onClose: () => resolve(false),
     });
   });
@@ -1052,6 +1139,7 @@ window.StepForgeDialogs = {
   showBackupsDialog,
   showPlaceholdersDialog,
   showGuideInfoDialog,
+  showCloudSnapshotsDialog,
   showShortcutsDialog,
   showTemplateManager,
   showRecordingReminder,

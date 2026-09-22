@@ -1,22 +1,20 @@
 # StepForge privacy and network contract
 
 StepForge is **local-first**. Guides, screenshots, and settings live on your
-machine and are never uploaded on their own. This document describes exactly
-what data StepForge collects locally and the one situation in which data
-leaves your device.
+machine. Network integrations are off by default. This document describes
+what StepForge collects locally and the optional features that send data.
 
 ## What never happens
 
 - No telemetry or analytics.
 - No update checks, license checks, or "phone home".
-- No cloud storage or sync.
+- No cloud storage or sync unless you explicitly enable Google Drive sharing.
 - No dependency downloads at runtime (dependencies are installed only by you,
   via `npm ci`).
 
 ## Data StepForge collects locally
 
-When you capture a step, StepForge may record, **stored only on disk in your
-data directory**, capture context to help title and describe the step:
+When you capture a step, StepForge may record, **stored locally in your data directory**, capture context to help title and describe the step:
 
 - The screenshot image.
 - OCR text read from the region around your click (via the bundled Tesseract
@@ -35,7 +33,7 @@ title the current step and are not retained beyond it. With the setting off,
 raw characters are never read or stored (on Windows they never even leave the
 keyboard-hook process).
 
-## The one outbound feature: optional AI
+## Optional AI
 
 StepForge has an **optional** AI integration that generates step titles and
 descriptions with a local large-language-model runtime
@@ -52,6 +50,26 @@ and configure an endpoint:
   configured; StepForge cannot control what that host does with them.
 - Every AI request has a timeout, can be cancelled (closing the guide cancels
   in-flight requests), and runs under a bounded concurrency limit.
+
+## Optional Google Drive sharing
+
+Google Drive sharing is off by default. Choosing Sign in with Google and
+granting access enables automatic sharing. Sign-in uses Google's OAuth endpoints
+and a local loopback callback. Connection testing refreshes authentication,
+checks app storage, and uploads/downloads/deletes a small random test file;
+it does not upload guides.
+
+Once you connect your Google account, all local guides (including screenshots,
+text, annotations, placeholders, and stored capture context) are uploaded as
+archives to that Google account's private app storage. Updates from your other
+devices are downloaded automatically. This access is limited to app storage,
+not your other Drive files. It uses HTTPS, not StepForge end-to-end encryption.
+
+Credentials are OS-encrypted locally and are never sent to the renderer.
+Turning sharing off stops background transfers. Disconnecting also removes
+local credentials, but preserves cloud and local guides. Cloud archive versions
+and local replacement backups are retained; local deletion does not delete
+cloud copies. See [Google Drive setup, testing, and limitations](GOOGLE_DRIVE.md).
 
 ## Bundled dependencies
 

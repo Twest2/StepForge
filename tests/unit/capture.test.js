@@ -1390,3 +1390,28 @@ test('stored clicks automatically focus while preserving screenshot bytes and ma
   assert.equal(disabled.step.focusedView.enabled, false);
   assert.equal(disabled.step.focusedView.zoom, 1);
 });
+
+
+test('Windows control context stays attached to its paired click and clears for the next click', () => {
+  const service = makeService();
+  const contexts = [];
+  service.onOsClick = () => {
+    contexts.push(service._pendingWindowContext);
+    service._pendingWindowContext = null;
+  };
+  const b64 = text => Buffer.from(text).toString('base64');
+  service.processClickWatcherData([
+    `CTX ${b64('Other app')} ${b64('notepad')} 1000`,
+    `ELEM ${b64('Close')} ${b64('button')} - ${b64('Docs | StepForge')} 0 0 ${b64('chrome')}`,
+    'CLICK 20 30 left 1000',
+    `CTX ${b64('Page - Chrome')} ${b64('chrome')} 1500`,
+    'CLICK 20 30 left 1500',
+    '',
+  ].join('\n'), 'win32');
+  assert.equal(contexts[0].appName, 'chrome');
+  assert.equal(contexts[0].parentTabTitle, 'Docs | StepForge');
+  assert.equal(contexts[0].elementRole, 'button');
+  assert.equal(contexts[0].inTitleBar, false);
+  assert.equal(contexts[0].elementIsPassword, false);
+  assert.deepEqual(contexts[1], { windowTitle: 'Page - Chrome', appName: 'chrome' });
+});

@@ -211,6 +211,7 @@ class GuideEditor {
       ...(this.dom?.blocksList ? [...this.dom.blocksList.querySelectorAll('button[data-ai-action]')] : []),
     ].filter(Boolean);
     for (const button of buttons) {
+      button.hidden = !enabled;
       button.disabled = !enabled;
       button.title = enabled
         ? button.dataset.aiTitle || 'Generate with AI'
@@ -1874,12 +1875,38 @@ class GuideEditor {
       values: {
         ...this.guide.metadata,
         description: htmlToPlainText(this.guide.descriptionHtml || ''),
+        sharingEnabled: this.guide.cloud?.sharingEnabled !== false,
       },
-      onSave: async ({ description, ...metadata }) => {
+      onSave: async ({ description, sharingEnabled, ...metadata }) => {
         this.guide.metadata = metadata;
         this.guide.descriptionHtml = textToHtml(description);
+        this.guide.cloud = { ...(this.guide.cloud || {}), sharingEnabled };
         await api.guide.save({ guide: this.guide });
         this.onToast('Guide information saved.');
+      },
+      onCloudSnapshots: async () => {
+        try {
+          const snapshots = await api.cloud.history({ guideId: this.guideId });
+          await dialogs.showCloudSnapshotsDialog({
+            snapshots,
+            onRestore: async (snapshot) => {
+              const ok = await confirmDialog('Restore this cloud snapshot? Your current local guide is kept as a Drive snapshot first.', { okLabel: 'Restore' });
+              if (!ok) return;
+              await api.cloud.restore({ guideId: this.guideId, versionId: snapshot.id });
+              await this.reload();
+              this.onToast('Cloud snapshot restored.');
+            },
+          });
+        } catch (err) { this.onToast(err.message); }
+      },
+      onDeleteCloudSnapshots: async () => {
+        const ok = await confirmDialog('Remove every Google Drive snapshot for this guide? This also turns off Google Drive sharing for the guide. The local guide is kept.', { danger: true, okLabel: 'Remove cloud copies' });
+        if (!ok) return;
+        try {
+          await api.cloud.deleteGuideSnapshots({ guideId: this.guideId });
+          this.guide.cloud = { ...(this.guide.cloud || {}), sharingEnabled: false };
+          this.onToast('Google Drive copies removed.');
+        } catch (err) { this.onToast(err.message); }
       },
     });
   }
@@ -1954,6 +1981,7 @@ class GuideEditor {
         await api.settings.setGlobalPlaceholders(next.placeholders || {});
       },
     });
+    this.setSettings(await api.settings.all());
   }
 
   async openExportDialog() {

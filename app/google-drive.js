@@ -31,6 +31,14 @@ const SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
 const API = 'https://www.googleapis.com/drive/v3';
 const MAX_ARCHIVE_BYTES = 256 * 1024 * 1024;
 
+function googlePhotoLink(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && url.hostname.endsWith('.googleusercontent.com') &&
+      !url.username && !url.password && !url.port ? url.href : '';
+  } catch { return ''; }
+}
+
 class GoogleDrive {
   constructor({
     directory,
@@ -139,7 +147,7 @@ class GoogleDrive {
   }
 
   status() {
-    return { connected: Boolean(this.credentials?.refresh_token), available: this.available, email: this.credentials?.email || '', error: this.loadError };
+    return { connected: Boolean(this.credentials?.refresh_token), available: this.available, email: this.credentials?.email || '', photoLink: googlePhotoLink(this.credentials?.photoLink), error: this.loadError };
   }
 
   cancel() {
@@ -151,6 +159,7 @@ class GoogleDrive {
   disconnect() {
     this.cancel();
     this.credentials = null;
+    this.profileLoadedFor = null;
     this.loadError = null;
     this.vaulted = null;
     fs.rmSync(this.file, { force: true });
@@ -322,15 +331,33 @@ class GoogleDrive {
   }
 
   async account() {
-    if (this.credentials?.accountId) return this.credentials.accountId;
     const credentials = this.credentials;
-    const info = await this.authorized(`${API}/about?fields=user(permissionId,emailAddress)`);
-    if (credentials !== this.credentials) throw new Error('Google account changed.');
-    if (!info.user?.permissionId) throw new Error('Google did not return an account identity.');
-    credentials.accountId = info.user.permissionId;
-    credentials.email = info.user.emailAddress || '';
-    this.save();
-    return credentials.accountId;
+    if (credentials?.accountId && this.profileLoadedFor === credentials) return credentials.accountId;
+    if (this.accountRequest?.credentials === credentials) return this.accountRequest.promise;
+    const cachedAccountId = credentials?.accountId;
+    const promise = (async () => {
+      try {
+        const info = await this.authorized(`${API}/about?fields=user(permissionId,emailAddress,photoLink)`);
+        if (credentials !== this.credentials) throw new Error('Google account changed.');
+        if (!info.user?.permissionId) throw new Error('Google did not return an account identity.');
+        credentials.accountId = info.user.permissionId;
+        credentials.email = info.user.emailAddress || '';
+        credentials.photoLink = googlePhotoLink(info.user.photoLink);
+        this.save();
+        this.profileLoadedFor = credentials;
+        return credentials.accountId;
+      } catch (error) {
+        // Refreshing an optional photo must not block an already-known account.
+        if (credentials === this.credentials && cachedAccountId) {
+          this.profileLoadedFor = credentials;
+          return cachedAccountId;
+        }
+        throw error;
+      }
+    })();
+    this.accountRequest = { credentials, promise };
+    try { return await promise; }
+    finally { if (this.accountRequest?.promise === promise) this.accountRequest = null; }
   }
 
   // Account-wide Google storage. The app folder is hidden, so this gives its

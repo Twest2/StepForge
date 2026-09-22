@@ -91,7 +91,14 @@ function makeCloudSettings(api) {
   );
 
   /* Account header */
-  const avatar = el('div.cloud-avatar', { 'aria-hidden': 'true' }, '?');
+  const avatarInitial = el('span', {}, '?');
+  const avatarPhoto = el('img.hidden', { alt: '', referrerPolicy: 'no-referrer' });
+  let avatarUrl = '';
+  avatarPhoto.addEventListener('error', () => {
+    avatarPhoto.classList.add('hidden');
+    avatarInitial.classList.remove('hidden');
+  });
+  const avatar = el('div.cloud-avatar', { 'aria-hidden': 'true' }, avatarInitial, avatarPhoto);
   const email = el('strong.cloud-email', {}, 'Google account');
   const dot = el('span.cloud-dot', { 'aria-hidden': 'true' });
   const phaseText = el('span', {}, '');
@@ -230,7 +237,15 @@ function makeCloudSettings(api) {
     prune.disabled = busy || !lastStorage?.pruneCount;
 
     email.textContent = next.email || 'Google account';
-    avatar.textContent = (next.email || '?').slice(0, 1).toUpperCase();
+    avatarInitial.textContent = (next.email || '?').slice(0, 1).toUpperCase();
+    const photoLink = connected ? next.photoLink || '' : '';
+    if (photoLink !== avatarUrl) {
+      avatarUrl = photoLink;
+      avatarPhoto.classList.toggle('hidden', !photoLink);
+      avatarInitial.classList.toggle('hidden', Boolean(photoLink));
+      if (photoLink) avatarPhoto.src = photoLink;
+      else avatarPhoto.removeAttribute('src');
+    }
     const phase = next.error ? 'error' : next.enabled ? next.phase || 'pending' : 'off';
     const [tone, label] = PHASES[phase] || PHASES.pending;
     dot.className = `cloud-dot ${tone}`;

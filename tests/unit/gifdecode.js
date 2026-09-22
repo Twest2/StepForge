@@ -39,13 +39,18 @@ function decodeGif(buf) {
       const fh = buf.readUInt16LE(pos + 6);
       const lpacked = buf[pos + 8];
       pos += 9;
-      if (lpacked & 0x80) pos += (2 << (lpacked & 0x07)) * 3;
+      let framePalette = palette;
+      if (lpacked & 0x80) {
+        const size = (2 << (lpacked & 0x07)) * 3;
+        framePalette = buf.subarray(pos, pos + size);
+        pos += size;
+      }
       const minCode = buf[pos++];
       const chunks = [];
       while (buf[pos] !== 0) { chunks.push(buf.subarray(pos + 1, pos + 1 + buf[pos])); pos += 1 + buf[pos]; }
       pos++;
       const indices = lzwDecode(Buffer.concat(chunks), minCode, fw * fh);
-      frames.push({ width: fw, height: fh, indices });
+      frames.push({ width: fw, height: fh, indices, palette: framePalette });
     } else {
       throw new Error(`unknown block 0x${block.toString(16)} at ${pos - 1}`);
     }

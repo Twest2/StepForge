@@ -1,6 +1,6 @@
 'use strict';
 
-const { FONT8X8 } = require('./font8x8');
+const text = require('./text-raster');
 
 /**
  * Software rasterizer for annotation rendering in exports. Operates on
@@ -69,13 +69,28 @@ function ovalCoverage(cx, cy, rx, ry, px, py) {
   return dx * dx + dy * dy;
 }
 
+/** Approximate pixel coverage (0..1) of an ellipse, anti-aliased across its edge. */
+function ovalEdgeCoverage(cx, cy, rx, ry, px, py) {
+  const dx = px - cx, dy = py - cy;
+  const f = (dx * dx) / (rx * rx) + (dy * dy) / (ry * ry) - 1;
+  const gx = (2 * dx) / (rx * rx), gy = (2 * dy) / (ry * ry);
+  const g = Math.hypot(gx, gy);
+  const dist = g > 1e-9 ? -f / g : Math.min(rx, ry);
+  return Math.max(0, Math.min(1, dist + 0.5));
+}
+
+function withAlpha(color, cov) {
+  return [color[0], color[1], color[2], Math.round(color[3] * cov)];
+}
+
 function fillOval(img, x, y, w, h, color) {
   const cx = x + w / 2, cy = y + h / 2, rx = Math.max(1, w / 2), ry = Math.max(1, h / 2);
-  const y0 = Math.max(0, Math.floor(y)), y1 = Math.min(img.height, Math.ceil(y + h));
-  const x0 = Math.max(0, Math.floor(x)), x1 = Math.min(img.width, Math.ceil(x + w));
+  const y0 = Math.max(0, Math.floor(y) - 1), y1 = Math.min(img.height, Math.ceil(y + h) + 1);
+  const x0 = Math.max(0, Math.floor(x) - 1), x1 = Math.min(img.width, Math.ceil(x + w) + 1);
   for (let yy = y0; yy < y1; yy++) {
     for (let xx = x0; xx < x1; xx++) {
-      if (ovalCoverage(cx, cy, rx, ry, xx + 0.5, yy + 0.5) <= 1) blendPixel(img, xx, yy, color);
+      const cov = ovalEdgeCoverage(cx, cy, rx, ry, xx + 0.5, yy + 0.5);
+      if (cov > 0) blendPixel(img, xx, yy, cov >= 1 ? color : withAlpha(color, cov));
     }
   }
 }
@@ -84,14 +99,13 @@ function strokeOval(img, x, y, w, h, color, t) {
   const cx = x + w / 2, cy = y + h / 2;
   const rxO = Math.max(1, w / 2 + t / 2), ryO = Math.max(1, h / 2 + t / 2);
   const rxI = Math.max(0.5, w / 2 - t / 2), ryI = Math.max(0.5, h / 2 - t / 2);
-  const y0 = Math.max(0, Math.floor(cy - ryO)), y1 = Math.min(img.height, Math.ceil(cy + ryO));
-  const x0 = Math.max(0, Math.floor(cx - rxO)), x1 = Math.min(img.width, Math.ceil(cx + rxO));
+  const y0 = Math.max(0, Math.floor(cy - ryO) - 1), y1 = Math.min(img.height, Math.ceil(cy + ryO) + 1);
+  const x0 = Math.max(0, Math.floor(cx - rxO) - 1), x1 = Math.min(img.width, Math.ceil(cx + rxO) + 1);
   for (let yy = y0; yy < y1; yy++) {
     for (let xx = x0; xx < x1; xx++) {
       const px = xx + 0.5, py = yy + 0.5;
-      if (ovalCoverage(cx, cy, rxO, ryO, px, py) <= 1 && ovalCoverage(cx, cy, rxI, ryI, px, py) > 1) {
-        blendPixel(img, xx, yy, color);
-      }
+      const cov = ovalEdgeCoverage(cx, cy, rxO, ryO, px, py) - ovalEdgeCoverage(cx, cy, rxI, ryI, px, py);
+      if (cov > 0) blendPixel(img, xx, yy, cov >= 1 ? color : withAlpha(color, cov));
     }
   }
 }
@@ -207,43 +221,39 @@ function magnifyRegion(img, x, y, w, h, zoom, borderColor, t) {
 
 // ---- text -----------------------------------------------------------------
 
-function glyphFor(ch) {
-  const code = ch.codePointAt(0);
-  return FONT8X8[code >= 0 && code < 128 ? code : 63]; // '?' fallback
+function measureText(str, sizePx, opts = {}) {
+  return text.measureText(str, sizePx, opts.weight);
 }
 
-/** Width/height of text at a pixel size (8x8 glyphs, integer scaled). */
-function measureText(text, sizePx) {
-  const scale = Math.max(1, Math.round(sizePx / 8));
-  const lines = String(text).split('\n');
-  const w = Math.max(...lines.map((l) => l.length)) * 8 * scale;
-  return { width: w, height: lines.length * 10 * scale, scale, lineHeight: 10 * scale };
+function drawText(img, x, y, str, sizePx, color, opts) {
+  text.drawText(img, x, y, str, sizePx, color, opts);
 }
 
-function drawText(img, x, y, text, sizePx, color) {
-  const { scale, lineHeight } = measureText(text, sizePx);
-  const lines = String(text).split('\n');
-  let ty = Math.round(y);
-  for (const line of lines) {
-    let tx = Math.round(x);
-    for (const ch of line) {
-      const glyph = glyphFor(ch);
-      for (let gy = 0; gy < 8; gy++) {
-        const row = glyph[gy];
-        for (let gx = 0; gx < 8; gx++) {
-          if (!(row & (1 << gx))) continue;
-          fillRect(img, tx + gx * scale, ty + gy * scale, scale, scale, color);
-        }
+function drawTextCentered(img, cx, cy, str, sizePx, color, opts) {
+  text.drawTextCentered(img, cx, cy, str, sizePx, color, opts);
+}
+
+/** Filled rectangle with anti-aliased rounded corners. */
+function fillRoundRect(img, x, y, w, h, r, color) {
+  r = Math.max(0, Math.min(r, w / 2, h / 2));
+  if (r < 1) { fillRect(img, x, y, w, h, color); return; }
+  fillRect(img, x + r, y, w - 2 * r, h, color);
+  fillRect(img, x, y + r, r, h - 2 * r, color);
+  fillRect(img, x + w - r, y + r, r, h - 2 * r, color);
+  const corners = [[x + r, y + r], [x + w - r, y + r], [x + r, y + h - r], [x + w - r, y + h - r]];
+  corners.forEach(([cx, cy], i) => {
+    const qx = i % 2 === 0 ? Math.floor(x) : Math.round(x + w - r);
+    const qy = i < 2 ? Math.floor(y) : Math.round(y + h - r);
+    for (let yy = qy; yy < qy + Math.ceil(r) + 1; yy++) {
+      for (let xx = qx; xx < qx + Math.ceil(r) + 1; xx++) {
+        const inCornerX = i % 2 === 0 ? xx < Math.round(x + r) : xx >= Math.round(x + w - r);
+        const inCornerY = i < 2 ? yy < Math.round(y + r) : yy >= Math.round(y + h - r);
+        if (!inCornerX || !inCornerY) continue;
+        const cov = ovalEdgeCoverage(cx, cy, r, r, xx + 0.5, yy + 0.5);
+        if (cov > 0) blendPixel(img, xx, yy, cov >= 1 ? color : withAlpha(color, cov));
       }
-      tx += 8 * scale;
     }
-    ty += lineHeight;
-  }
-}
-
-function drawTextCentered(img, cx, cy, text, sizePx, color) {
-  const m = measureText(text, sizePx);
-  drawText(img, cx - m.width / 2, cy - m.height / 2 + m.scale, text, sizePx, color);
+  });
 }
 
 function drawCursorIcon(img, x, y, sizePx, color) {
@@ -274,8 +284,37 @@ function crop(img, x, y, w, h) {
   return out;
 }
 
-/** Bilinear resize. */
+/** Area-averaging downscale: every source pixel contributes, so fine UI text stays legible. */
+function shrink(img, w, h) {
+  const out = createImage(w, h);
+  const kx = img.width / w, ky = img.height / h;
+  const acc = new Float64Array(4);
+  for (let yy = 0; yy < h; yy++) {
+    const sy0 = yy * ky, sy1 = sy0 + ky;
+    for (let xx = 0; xx < w; xx++) {
+      const sx0 = xx * kx, sx1 = sx0 + kx;
+      acc.fill(0);
+      let area = 0;
+      for (let sy = Math.floor(sy0); sy < Math.min(img.height, Math.ceil(sy1)); sy++) {
+        const wy = Math.min(sy + 1, sy1) - Math.max(sy, sy0);
+        for (let sx = Math.floor(sx0); sx < Math.min(img.width, Math.ceil(sx1)); sx++) {
+          const wgt = wy * (Math.min(sx + 1, sx1) - Math.max(sx, sx0));
+          const p = (sy * img.width + sx) * 4;
+          acc[0] += img.data[p] * wgt; acc[1] += img.data[p + 1] * wgt;
+          acc[2] += img.data[p + 2] * wgt; acc[3] += img.data[p + 3] * wgt;
+          area += wgt;
+        }
+      }
+      const dp = (yy * w + xx) * 4;
+      for (let c = 0; c < 4; c++) out.data[dp + c] = Math.round(acc[c] / area);
+    }
+  }
+  return out;
+}
+
+/** Resize: area-averaged when shrinking, bilinear when enlarging. */
 function resize(img, w, h) {
+  if (w < img.width && h < img.height) return shrink(img, w, h);
   const out = createImage(w, h);
   for (let yy = 0; yy < h; yy++) {
     const sy = ((yy + 0.5) * img.height) / h - 0.5;
@@ -323,6 +362,7 @@ function renderAnnotations(baseImg, annotations = []) {
   const px = (frac, total) => frac * total;
   const strokePx = (sw) => Math.max(1, Math.round((sw || 3) * W / 1000));
   const fontPx = (style) => Math.max(8, Math.round((style.fontSize || 0.022) * H));
+  const semibold = { weight: 'bold' };
 
   const ordered = [...annotations].sort((a, b) => (DRAW_ORDER[a.type] ?? 3) - (DRAW_ORDER[b.type] ?? 3));
 
@@ -359,27 +399,26 @@ function renderAnnotations(baseImg, annotations = []) {
         magnifyRegion(img, x, y, w, h, ann.zoom || 2, stroke, t);
         break;
       case 'text': {
-        drawText(img, x, y, ann.text || '', fontPx(style), stroke[3] > 0 ? stroke : [0, 0, 0, 255]);
+        drawText(img, x, y, ann.text || '', fontPx(style), stroke[3] > 0 ? stroke : [0, 0, 0, 255], semibold);
         break;
       }
       case 'tooltip': {
         const bg = parseColor(style.fill === 'transparent' || !style.fill ? '#1F2937' : style.fill);
-        fillRect(img, x, y, w, h, bg);
-        strokeRect(img, x, y, w, h, parseColor(style.stroke, [17, 24, 39, 255]), Math.max(1, Math.round(t / 2)));
+        fillRoundRect(img, x, y, w, h, Math.min(6 * W / 1000 + 2, h / 3), bg);
         const tail = style.tail || 'bottom';
         const ts = Math.max(6, Math.min(w, h) * 0.25);
         if (tail === 'bottom') fillPolygon(img, [[x + w / 2 - ts, y + h], [x + w / 2 + ts, y + h], [x + w / 2, y + h + ts * 1.4]], bg);
         if (tail === 'top') fillPolygon(img, [[x + w / 2 - ts, y], [x + w / 2 + ts, y], [x + w / 2, y - ts * 1.4]], bg);
         if (tail === 'left') fillPolygon(img, [[x, y + h / 2 - ts], [x, y + h / 2 + ts], [x - ts * 1.4, y + h / 2]], bg);
         if (tail === 'right') fillPolygon(img, [[x + w, y + h / 2 - ts], [x + w, y + h / 2 + ts], [x + w + ts * 1.4, y + h / 2]], bg);
-        drawTextCentered(img, x + w / 2, y + h / 2, ann.text || '', fontPx(style), textColor);
+        drawTextCentered(img, x + w / 2, y + h / 2, text.fitText(ann.text || '', fontPx(style), Math.max(8, w - 8), semibold), fontPx(style), textColor, semibold);
         break;
       }
       case 'number': {
         const r = Math.max(8, Math.min(w, h) / 2);
         const cx = x + w / 2, cy = y + h / 2;
         fillOval(img, cx - r, cy - r, r * 2, r * 2, stroke);
-        drawTextCentered(img, cx, cy, String(ann.value ?? '?'), Math.max(8, r), textColor);
+        drawTextCentered(img, cx, cy, String(ann.value ?? '?'), Math.max(8, r), textColor, semibold);
         break;
       }
       case 'cursor':
@@ -411,7 +450,7 @@ function applyFocusedView(img, fv) {
 module.exports = {
   createImage, cloneImage, parseColor, blendPixel,
   fillRect, strokeRect, fillOval, strokeOval, drawLine, drawArrow,
-  fillPolygon, boxBlur, magnifyRegion,
+  fillRoundRect, fillPolygon, boxBlur, magnifyRegion,
   measureText, drawText, drawTextCentered, drawCursorIcon,
   crop, resize, drawImage,
   renderAnnotations, applyFocusedView,

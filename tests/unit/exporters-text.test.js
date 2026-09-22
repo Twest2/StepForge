@@ -14,6 +14,7 @@ const { exportConfluence } = require('../../exporters/confluence');
 const { htmlToMarkdown } = require('../../exporters/htmlmd');
 const { stepContentGroups } = require('../../exporters/common');
 const { decodePng } = require('../../core/png');
+const { unzipSync } = require('../../core/zip');
 const { buildFixtureGuide } = require('./fixture-guide');
 const { makeTmpDir, rmrf } = require('./helpers');
 
@@ -200,7 +201,7 @@ test('text block positions render around the title, description, and image', (t)
   const html = fs.readFileSync(exportHtmlSimple(ast, htmlOut).file, 'utf8');
   assertIncreasingOrder(html, [
     'Before title',
-    '<h2>1. Open AcmeSync settings</h2>',
+    '<span class="step-num">1</span>\n    <h2>Open AcmeSync settings</h2>',
     'After title',
     'Before description',
     'docs.example.com',
@@ -211,7 +212,7 @@ test('text block positions render around the title, description, and image', (t)
   ]);
 });
 
-test('Wiki.js export: TOC is included, wiki callouts render, images exist', (t) => {
+test('Wiki.js export: wiki callouts, no raw HTML decoration, images exist', (t) => {
   const root = makeTmpDir('expwikijs');
   t.after(() => rmrf(root));
   const { store, guide } = buildFixtureGuide(path.join(root, 'data'));
@@ -222,8 +223,12 @@ test('Wiki.js export: TOC is included, wiki callouts render, images exist', (t) 
   const md = fs.readFileSync(file, 'utf8');
 
   const lines = md.split('\n');
-  assert.equal(lines[0], '# Configure AcmeSync backups');
-  assert.ok(lines.some((l) => l === '## Contents'));
+  // Wiki.js shows the page title itself, so the body starts with the summary.
+  assert.ok(!lines.some((l) => l.startsWith('# ')));
+  assert.equal(lines[0], '*3 steps · generated ' + ast.generatedAt.slice(0, 10) + '*');
+  // Wiki.js shows its own page TOC; no inline one or HTML anchors by default.
+  assert.ok(!lines.includes('## Contents'));
+  assert.ok(!md.includes('<div') && !md.includes('<a id='), 'no raw HTML');
   assert.ok(lines.some((l) => l.startsWith('## 1. Open AcmeSync settings')));
   assert.ok(lines.some((l) => l.startsWith('> **Access**')));
   assert.ok(lines.includes('> Admins only.'));
@@ -237,29 +242,167 @@ test('Wiki.js export: TOC is included, wiki callouts render, images exist', (t) 
   }
 });
 
-test('Confluence export writes storage-format XML and image attachments', (t) => {
-  const root = makeTmpDir('expconf');
+test('Wiki.js export: contents list, asset folder links and page metadata are opt-in', (t) => {
+  const root = makeTmpDir('expwikijsopts');
   t.after(() => rmrf(root));
   const { store, guide } = buildFixtureGuide(path.join(root, 'data'));
+  const ast = buildRenderAst(store, guide.guideId);
+  const { file } = exportWikiJs(ast, path.join(root, 'out'), { toc: true, assetFolder: 'guides/images/', frontMatter: true });
+  const md = fs.readFileSync(file, 'utf8');
+  const lines = md.split('\n');
+
+  assert.equal(lines[0], '---');
+  assert.ok(lines.includes('title: "Configure AcmeSync backups"'));
+  assert.ok(lines.includes('editor: markdown'));
+  assert.ok(lines.includes('## Contents'));
+  const tocAnchors = [...md.matchAll(/\]\(#(step-[^)]+)\)/g)].map((m) => m[1]);
+  assert.ok(tocAnchors.length >= 3);
+  for (const anchor of tocAnchors) assert.ok(md.includes(`<a id="${anchor}"></a>`), `anchor ${anchor} exists`);
+  const imgRefs = [...md.matchAll(/!\[[^\]]*\]\(([^)]+)\)/g)].map((m) => m[1]);
+  assert.equal(imgRefs.length, 2);
+  for (const ref of imgRefs) assert.match(ref, /^\/guides\/images\/\d{3}-[a-z0-9-]+\.png$/);
+});
+
+test('Confluence export: a Word document for the website importer, plus instructions', (t) => {
+  const root = makeTmpDir('expconfword');
+  t.after(() => rmrf(root));
+  const { store, guide, s1, s2 } = buildFixtureGuide(path.join(root, 'data'));
+  const step = store.getStep(guide.guideId, s2.stepId);
+  step.descriptionHtml = `<p>See <a href="step:${s1.stepId}">step one</a>, caf&eacute;.</p><ol><li>First</li><li>Second</li></ol><ul><li>Dot</li></ul>`;
+  store.saveStep(guide.guideId, step);
+
+  const { file, folder, imageCount, apiPage } = exportConfluence(buildRenderAst(store, guide.guideId), path.join(root, 'out'));
+  assert.equal(path.basename(folder), 'configure-acmesync-backups-confluence');
+  assert.equal(path.basename(file), 'Configure AcmeSync backups.docx');
+  assert.equal(imageCount, 2);
+  assert.equal(apiPage, null);
+  assert.deepEqual(fs.readdirSync(folder).sort(), ['Configure AcmeSync backups.docx', 'HOW-TO-IMPORT.txt']);
+
+  const parts = new Map(unzipSync(fs.readFileSync(file)).map((e) => [e.name, e.data]));
+  for (const name of ['[Content_Types].xml', '_rels/.rels', 'word/document.xml', 'word/styles.xml', 'word/numbering.xml', 'word/_rels/document.xml.rels']) {
+    assert.ok(parts.has(name), `missing ${name}`);
+  }
+  const doc = parts.get('word/document.xml').toString('utf8');
+  const rels = parts.get('word/_rels/document.xml.rels').toString('utf8');
+  // What Confluence's Word importer turns into native content: heading styles,
+  // real lists, inline images, links, tables. Nothing it drops (TOC fields, page breaks).
+  assert.ok(doc.includes('<w:pStyle w:val="Heading2"/>') && doc.includes('<w:pStyle w:val="Heading3"/>'));
+  assert.ok(!/instrText|w:type="page"|pageBreakBefore|txbx/.test(doc));
+  assert.equal((doc.match(/<w:numId w:val="\d+"\/>/g) || []).length, 3, 'list items use Word numbering');
+  assert.ok(doc.includes('<w:hyperlink w:anchor="step_1">'));
+  assert.ok(doc.includes('café'));
+  for (const id of [...doc.matchAll(/r:(?:embed|id)="([^"]+)"/g)].map((m) => m[1])) {
+    const target = new RegExp(`Id="${id}"[^>]*Target="([^"]+)"`).exec(rels);
+    assert.ok(target, `relationship ${id} exists`);
+    if (!/TargetMode="External"/.test(new RegExp(`<Relationship Id="${id}"[^>]*>`).exec(rels)[0])) {
+      assert.ok(parts.has(`word/${target[1]}`), `part for ${id}`);
+    }
+  }
+  const media = [...parts.keys()].filter((k) => k.startsWith('word/media/'));
+  assert.equal(media.length, 2);
+  assert.equal(decodePng(parts.get(media[0])).width, 320);
+  // Well-formed: tags balance.
+  const stack = [];
+  for (const m of doc.replace(/<\?xml[^>]*>/, '').matchAll(/<(\/?)([\w:]+)[^>]*?(\/?)>/g)) {
+    if (m[3]) continue;
+    if (m[1]) assert.equal(stack.pop(), m[2]);
+    else stack.push(m[2]);
+  }
+  assert.deepEqual(stack, []);
+
+  const howTo = fs.readFileSync(path.join(folder, 'HOW-TO-IMPORT.txt'), 'utf8');
+  assert.ok(howTo.includes('Templates and import') && howTo.includes('Import Word Document'));
+  assert.ok(howTo.includes("Split by heading: Don't split"));
+  assert.ok(!howTo.includes('curl'), 'API steps only when asked for');
+});
+
+test('Confluence export: optional REST API files (storage-format page, request bodies, attachments)', (t) => {
+  const root = makeTmpDir('expconf');
+  t.after(() => rmrf(root));
+  const { store, guide, s1, s2 } = buildFixtureGuide(path.join(root, 'data'));
+  const step = store.getStep(guide.guideId, s2.stepId);
+  step.descriptionHtml = `<p>Line one<br>line&nbsp;two, see <a href="step:${s1.stepId}">the first step</a>.</p>`;
+  store.saveStep(guide.guideId, step);
   const out = path.join(root, 'out');
 
   const ast = buildRenderAst(store, guide.guideId);
-  const { file, attachmentCount } = exportConfluence(ast, out);
-  const xml = fs.readFileSync(file, 'utf8');
+  const { folder: exportDir, apiPage } = exportConfluence(ast, out, { apiFiles: true });
+  const folder = path.join(exportDir, 'rest-api');
+  assert.equal(apiPage, path.join(folder, 'page.xhtml'));
+  const xml = fs.readFileSync(apiPage, 'utf8');
 
-  assert.equal(attachmentCount, 2);
-  assert.ok(xml.includes('<ac:structured-macro ac:name="code">'));
-  assert.ok(xml.includes('ri:attachment ri:filename='));
-  assert.ok(xml.includes('0 2 * * * /usr/local/bin/acmesync --backup'));
+  // Body only (no <html> wrapper), XML-safe markup.
+  assert.ok(!xml.includes('<html') && !xml.includes('<?xml'));
+  assert.ok(xml.includes('<br />') && !/<br>/.test(xml));
+  assert.ok(xml.includes('&#160;') && !xml.includes('&nbsp;'));
+  assert.ok(xml.includes('<ac:link ac:anchor="step-1"><ac:plain-text-link-body><![CDATA[the first step]]>'));
+  assert.ok(xml.includes('<ac:parameter ac:name="">step-1</ac:parameter>'), 'anchor macro per step');
+  assert.ok(xml.includes('ac:name="toc"'));
+  assert.ok(xml.includes('<ac:structured-macro ac:name="note"><ac:parameter ac:name="title">Access</ac:parameter>'));
+  // "cron" isn't a Confluence code language, so the block falls back to plain text.
+  assert.ok(xml.includes('<ac:structured-macro ac:name="code"><ac:plain-text-body>'));
+  assert.ok(!xml.includes('ac:name="language">cron'));
 
-  const attachmentsDir = path.join(out, 'configure-acmesync-backups-attachments');
-  const files = fs.readdirSync(attachmentsDir);
-  assert.equal(files.length, 2);
-  for (const name of files) {
-    const img = decodePng(fs.readFileSync(path.join(attachmentsDir, name)));
-    assert.equal(img.width, 320);
-    assert.equal(img.height, 200);
+  // Tags balance, so the fragment is well-formed once wrapped in a root.
+  const stack = [];
+  for (const m of xml.replace(/<!\[CDATA\[[\s\S]*?\]\]>/g, '').matchAll(/<(\/?)([\w:]+)[^>]*?(\/?)>/g)) {
+    if (m[3]) continue;
+    if (m[1]) assert.equal(stack.pop(), m[2]);
+    else stack.push(m[2]);
   }
+  assert.deepEqual(stack, []);
+
+  const refs = [...xml.matchAll(/ri:filename="([^"]+)"/g)].map((m) => m[1]);
+  assert.equal(refs.length, 2);
+  for (const name of refs) {
+    const img = decodePng(fs.readFileSync(path.join(folder, 'attachments', name)));
+    assert.equal(img.width, 320);
+  }
+
+  // Cloud: REST API v2 (POST /wiki/api/v2/pages).
+  const cloud = JSON.parse(fs.readFileSync(path.join(folder, 'page-cloud.json'), 'utf8'));
+  assert.deepEqual(Object.keys(cloud).sort(), ['body', 'spaceId', 'status', 'title']);
+  assert.equal(cloud.spaceId, 'SPACE_ID');
+  assert.equal(cloud.status, 'current');
+  assert.equal(cloud.title, 'Configure AcmeSync backups');
+  assert.deepEqual(cloud.body, { representation: 'storage', value: xml.trim() });
+  // Data Center: POST /rest/api/content.
+  const dc = JSON.parse(fs.readFileSync(path.join(folder, 'page-datacenter.json'), 'utf8'));
+  assert.equal(dc.type, 'page');
+  assert.equal(dc.space.key, 'SPACEKEY');
+  assert.deepEqual(dc.body.storage, { value: xml.trim(), representation: 'storage' });
+  const howTo = fs.readFileSync(path.join(exportDir, 'HOW-TO-IMPORT.txt'), 'utf8');
+  assert.ok(howTo.includes('/wiki/api/v2/pages') && howTo.includes('X-Atlassian-Token: nocheck'));
+  // Multi-line commands keep their shell line continuations.
+  assert.ok(howTo.includes('-X POST -d @page-cloud.json \\\n'));
+});
+
+test('Confluence export stays well-formed with messy descriptions', (t) => {
+  const root = makeTmpDir('expconfmessy');
+  t.after(() => rmrf(root));
+  const { store, guide, s2 } = buildFixtureGuide(path.join(root, 'data'));
+  const step = store.getStep(guide.guideId, s2.stepId);
+  step.title = 'Save & exit <now> ]]> done';
+  // Unclosed and stray tags, HTML-only entities and a bare ampersand.
+  step.descriptionHtml = '<p>caf&eacute; &hellip; A & B <b>bold <i>both</p></b></i><ul><li>one</ul><p>&bogus;</p>';
+  step.codeBlocks = [{ id: 'c', language: 'Python', code: 'print("]]>")' }];
+  store.saveStep(guide.guideId, step);
+
+  const { apiPage } = exportConfluence(buildRenderAst(store, guide.guideId), path.join(root, 'out'), { apiFiles: true });
+  const xml = fs.readFileSync(apiPage, 'utf8');
+  assert.ok(xml.includes('caf&#233; &#8230; A &amp; B'));
+  assert.ok(xml.includes('&amp;bogus;'));
+  assert.ok(xml.includes('<ac:parameter ac:name="language">py</ac:parameter>'));
+
+  const bare = xml.replace(/<!\[CDATA\[[\s\S]*?\]\]>/g, '');
+  assert.ok(!/&(?!(?:amp|lt|gt|quot|apos|#\d+);)/.test(bare), 'every & starts an XML entity');
+  const stack = [];
+  for (const m of bare.matchAll(/<(\/?)([\w:]+)[^>]*?(\/?)>/g)) {
+    if (m[3]) continue;
+    if (m[1]) assert.equal(stack.pop(), m[2]);
+    else stack.push(m[2]);
+  }
+  assert.deepEqual(stack, []);
 });
 
 test('Simple HTML export is self-contained with valid embedded images', (t) => {
@@ -318,6 +461,29 @@ test('Rich HTML export: TOC matches sections, checkboxes per step, local-only pe
   for (const banned of ['fetch(', 'XMLHttpRequest', 'WebSocket', 'navigator.sendBeacon', 'http://']) {
     assert.ok(!html.includes(banned), `must not contain ${banned}`);
   }
+});
+
+test('Markdown export: links to other steps point at their heading anchors', (t) => {
+  const root = makeTmpDir('expmdlinks');
+  t.after(() => rmrf(root));
+  const { store, guide, s1, s2 } = buildFixtureGuide(path.join(root, 'data'));
+  const step = store.getStep(guide.guideId, s2.stepId);
+  step.descriptionHtml = `<p>Go back to <a href="step:${s1.stepId}">step one</a>.</p>`;
+  store.saveStep(guide.guideId, step);
+  const ast = buildRenderAst(store, guide.guideId);
+  const md = fs.readFileSync(exportMarkdown(ast, path.join(root, 'out')).file, 'utf8');
+  assert.ok(md.includes('[step one](#step-1)'));
+  assert.ok(md.includes('<a id="step-1"></a>'));
+});
+
+test('Rich HTML export: no authoring status chips; screenshots open in a lightbox', (t) => {
+  const root = makeTmpDir('exprichui');
+  t.after(() => rmrf(root));
+  const { store, guide } = buildFixtureGuide(path.join(root, 'data'));
+  const html = fs.readFileSync(exportHtmlRich(buildRenderAst(store, guide.guideId), path.join(root, 'out')).file, 'utf8');
+  assert.ok(!/status-chip|>Todo<|>In progress</.test(html));
+  assert.ok(html.includes('class="lightbox"'));
+  assert.ok(html.includes('@media print'));
 });
 
 test('htmlToMarkdown converts the sanitizer-allowed tag set', () => {

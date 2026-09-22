@@ -131,14 +131,28 @@ test('GIF encoder produces decodable frames with correct pixels and looping', ()
 
   const colorAt = (frame, x, y) => {
     const idx = frame.indices[y * frame.width + x];
-    return [decoded.palette[idx * 3], decoded.palette[idx * 3 + 1], decoded.palette[idx * 3 + 2]];
+    return [frame.palette[idx * 3], frame.palette[idx * 3 + 1], frame.palette[idx * 3 + 2]];
   };
-  // Quantization tolerance: channels within 26 of target.
-  const near = (a, b) => a.every((v, i) => Math.abs(v - b[i]) <= 26);
+  // Each frame has its own adaptive palette, so flat colors come back exactly.
+  const near = (a, b) => a.every((v, i) => Math.abs(v - b[i]) <= 1);
   assert.ok(near(colorAt(decoded.frames[0], 15, 8), [255, 0, 0]), 'frame1 red');
   assert.ok(near(colorAt(decoded.frames[1], 25, 8), [0, 0, 255]), 'frame2 blue');
   assert.ok(near(colorAt(decoded.frames[1], 5, 8), [0, 255, 0]), 'frame2 left green');
   assert.equal(decoded.frames[0].indices.length, 31 * 17, 'every pixel decoded');
+});
+
+test('GIF palettes adapt per frame so UI colors survive quantization', () => {
+  // Off-grid colors a fixed palette would shift noticeably.
+  const ui = [[0, 104, 255], [229, 72, 77], [244, 246, 248], [24, 33, 43], [101, 113, 129]];
+  const img = raster.createImage(50, 10);
+  ui.forEach((c, i) => raster.fillRect(img, i * 10, 0, 10, 10, [...c, 255]));
+  const decoded = decodeGif(encodeGif([raster.createImage(50, 10, [0, 0, 0, 255]), img]));
+  const frame = decoded.frames[1];
+  ui.forEach((c, i) => {
+    const idx = frame.indices[5 * 50 + i * 10 + 5];
+    const got = [frame.palette[idx * 3], frame.palette[idx * 3 + 1], frame.palette[idx * 3 + 2]];
+    assert.deepEqual(got, c, `color ${i} should be exact`);
+  });
 });
 
 test('GIF with a complex frame (forces LZW code growth) still round-trips', () => {
@@ -227,4 +241,28 @@ test('wrapText breaks long paragraphs to the given width', () => {
   }
   // Round-trip: joining gives back all words in order.
   assert.equal(lines.join(' ').replace(/\s+/g, ' '), 'alpha beta gamma delta epsilon zeta eta theta');
+});
+
+test('text fitting: ellipsis keeps text inside the width, wrapping respects maxLines', () => {
+  const text = require('../../core/text-raster');
+  const long = 'Open the administrator portal and find the user you need to reset';
+  const fitted = text.fitText(long, 16, 150);
+  assert.ok(fitted.endsWith('…'));
+  assert.ok(text.lineWidth(fitted, 16) <= 150);
+  assert.equal(text.fitText('Short', 16, 150), 'Short');
+
+  const lines = text.wrapText(long, 16, 200, { maxLines: 2 });
+  assert.equal(lines.length, 2);
+  assert.ok(lines[1].endsWith('…'));
+  for (const line of lines) assert.ok(text.lineWidth(line, 16) <= 200);
+});
+
+test('GIF encoder honors per-frame delays', () => {
+  const frames = [raster.createImage(4, 4), raster.createImage(4, 4, [0, 0, 0, 255])];
+  const gif = encodeGif(frames, { delays: [120, 400] });
+  const delays = [];
+  for (let i = 0; i < gif.length - 5; i++) {
+    if (gif[i] === 0x21 && gif[i + 1] === 0xf9 && gif[i + 2] === 4) delays.push(gif.readUInt16LE(i + 4));
+  }
+  assert.deepEqual(delays, [120, 400]);
 });

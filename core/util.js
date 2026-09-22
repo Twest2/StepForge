@@ -50,7 +50,27 @@ function readJsonIfExists(file, fallback) {
   }
 }
 
-const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', '#39': "'" };
+// Named HTML entities beyond the XML five, as code points.
+const NAMED_ENTITIES = {
+  nbsp: 160, iexcl: 161, cent: 162, pound: 163, euro: 8364, yen: 165, copy: 169, reg: 174, trade: 8482,
+  deg: 176, plusmn: 177, times: 215, divide: 247, micro: 181, para: 182, middot: 183, sect: 167,
+  laquo: 171, raquo: 187, lsquo: 8216, rsquo: 8217, ldquo: 8220, rdquo: 8221, sbquo: 8218, bdquo: 8222,
+  ndash: 8211, mdash: 8212, hellip: 8230, bull: 8226, prime: 8242, larr: 8592, rarr: 8594, uarr: 8593,
+  darr: 8595, harr: 8596, check: 10003, ensp: 8194, emsp: 8195, thinsp: 8201, zwj: 8205, zwnj: 8204,
+  agrave: 224, aacute: 225, acirc: 226, atilde: 227, auml: 228, aring: 229, aelig: 230, ccedil: 231,
+  egrave: 232, eacute: 233, ecirc: 234, euml: 235, igrave: 236, iacute: 237, icirc: 238, iuml: 239,
+  ntilde: 241, ograve: 242, oacute: 243, ocirc: 244, otilde: 245, ouml: 246, oslash: 248, ugrave: 249,
+  uacute: 250, ucirc: 251, uuml: 252, yacute: 253, yuml: 255, szlig: 223,
+  Agrave: 192, Aacute: 193, Acirc: 194, Atilde: 195, Auml: 196, Aring: 197, AElig: 198, Ccedil: 199,
+  Egrave: 200, Eacute: 201, Ecirc: 202, Euml: 203, Igrave: 204, Iacute: 205, Icirc: 206, Iuml: 207,
+  Ntilde: 209, Ograve: 210, Oacute: 211, Ocirc: 212, Otilde: 213, Ouml: 214, Oslash: 216, Ugrave: 217,
+  Uacute: 218, Ucirc: 219, Uuml: 220, Yacute: 221,
+};
+
+const ENTITIES = {
+  amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', '#39': "'",
+  ...Object.fromEntries(Object.entries(NAMED_ENTITIES).filter(([k]) => k !== 'nbsp').map(([k, v]) => [k, String.fromCodePoint(v)])),
+};
 
 function decodeEntities(text) {
   return text.replace(/&(#x?[0-9a-fA-F]+|[a-zA-Z]+|#39);/g, (m, name) => {
@@ -130,6 +150,7 @@ module.exports = {
   readJsonSync,
   readJsonIfExists,
   htmlToText,
+  NAMED_ENTITIES,
   linkifyMarkdownLinks,
   decodeEntities,
   escapeHtml,

@@ -9,22 +9,26 @@ and the clipboard.
 ## Repository Layout
 
 ```text
-app/            Electron shell: main process, preload bridge, renderer UI
-core/           Dependency-free domain logic (schema, store, archive, search,
-                placeholders, render AST, png/gif/pdf/zip primitives, locks,
-                snapshots, settings)
-exporters/      One module per output format, all consuming the Render AST
-scripts/        bootstrap / verify / build / package scripts (sh + ps1)
+app/              Electron shell: main process, preload bridge, renderer UI,
+                  capture, Google Drive client, AI (Ollama) client
+core/             Dependency-free domain logic (schema, store, archive, search,
+                  placeholders, render AST, png/gif/pdf/zip primitives, locks,
+                  snapshots, settings, cloud sync engine)
+exporters/        One module per output format, all consuming the Render AST
+gnome-extension/  GNOME Shell extension used for click capture on Wayland
+packaging/        Windows (NSIS, Chocolatey) and Linux (deb, rpm, Launchpad)
+scripts/          bootstrap / verify / build / package scripts (sh + ps1)
 tests/
-  run_test.sh   entrypoint — runs every tests/checks/test_*.sh
-  checks/       shell wrappers that invoke the node test suites
-  unit/         node:test workflow suites
-  fixtures/     test images and guides
-examples/       sample guide + sample exports
-assets/         app icon and packaged static assets
-build/          agent_audit.md, build_report.md, artifacts_manifest.json
-docs/           file-format and data-model documentation
-vendor/         reserved for vendored deps (reuse only; nothing fetched)
+  run_test.sh     entrypoint — runs every tests/checks/test_*.sh
+  checks/         shell wrappers that invoke the node test suites
+  unit/           node:test workflow suites
+  integration/    packaging and headless GNOME Shell tests
+  fixtures/       test images and guides
+examples/         sample guide + sample exports (npm run sample)
+assets/           source app artwork (npm run icons regenerates the rest)
+build/            installer includes; generated build reports (gitignored)
+docs/             user, install, and contributor documentation
+ai_prompts/       prompt handoffs used during development
 ```
 
 ## Data Model
@@ -171,16 +175,39 @@ has no capture environment), so a regression in click→screenshot→step
 behavior fails the suite. `STEPFORGE_CAPTURE_LOG=1` prints one diagnostic
 line per click decision.
 
+## Network Boundary
+
+Core capture, editing, and export have no network code paths: no telemetry,
+no update or license checks, and no remote fonts or CDN references in exports.
+The only network features are opt-in and off by default:
+
+- **AI** (`app/text-intel.js`, `core/text-intel.js`) talks to a user-configured
+  Ollama endpoint. Non-loopback hosts are refused unless
+  `ai.allowRemoteHost` is set. Requests have timeouts, bounded concurrency,
+  and are cancelled when the guide closes.
+- **Google Drive sync** (`app/google-drive.js`, `core/cloud-sync.js`) stores
+  complete `.sfgz` snapshots in the `appDataFolder`. Each upload is an
+  immutable version linked to its parent, so concurrent devices never
+  overwrite each other; divergent edits become conflict copies. Downloads are
+  untrusted and pass archive validation before a journaled, staged
+  replacement that keeps a local backup. Archive compression runs one job at a
+  time in a background worker shared with linked-archive writes and
+  automatic backups. See [GOOGLE_DRIVE.md](GOOGLE_DRIVE.md) and
+  [SECURITY.md](SECURITY.md).
+
+The sandboxed renderer never makes network requests or sees tokens; both
+integrations run in the main process.
+
 ## Security Rules
 
-- Zero network code paths: no sockets, no telemetry, no update or license
-  checks, no remote fonts in exports.
 - Archive imports validate every entry name against path traversal and
   absolute paths before extraction (`core/zip.js`).
 - Linked guides use sidecar `*.lock-sfgz` lock files; conflicts surface a
   keep-editing / discard dialog and last-write-wins is documented.
 - Renderer runs with `contextIsolation: true`, `nodeIntegration: false`,
   and `sandbox` enabled; only the preload API is exposed.
+- Description HTML is sanitized against an allowlist on save and again on
+  render and export (`core/sanitize.js`).
 
 ## Workflow
 
@@ -188,4 +215,6 @@ line per click decision.
    `tests/unit/`.
 2. Put shell checks in `tests/checks/` so the shared runner picks them up.
 3. Run `bash tests/run_test.sh` locally.
-4. Open a pull request so CI can verify on PR open.
+4. Open a pull request linked to an issue; CI runs the same suite.
+
+The full process is in [CONTRIBUTING.md](CONTRIBUTING.md).

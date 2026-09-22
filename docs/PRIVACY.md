@@ -1,83 +1,96 @@
-# StepForge privacy and network contract
+# Privacy
 
-StepForge is **local-first**. Guides, screenshots, and settings live on your
-machine. Network integrations are off by default. This document describes
-what StepForge collects locally and the optional features that send data.
+**Short version:** StepForge keeps your guides on your computer. It has no
+accounts, collects no analytics, and doesn't contact the internet unless you
+turn on Google Drive sync or point AI at a remote server.
 
-## What never happens
+## What StepForge never does
 
-- No telemetry or analytics.
-- No update checks, license checks, or "phone home".
-- No cloud storage or sync unless you explicitly enable Google Drive sharing.
-- No dependency downloads at runtime (dependencies are installed only by you,
-  via `npm ci`).
+- No telemetry, analytics, or crash reporting.
+- No update checks, license checks, or "phoning home".
+- No uploads unless you sign in to Google Drive.
+- No downloading code or components while it runs.
 
-## Data StepForge collects locally
+## What StepForge stores on your computer
 
-When you capture a step, StepForge may record, **stored locally in your data directory**, capture context to help title and describe the step:
+When you capture a step, StepForge saves the following in your
+[data folder](#where-your-data-lives) to build the step and suggest its title:
 
-- The screenshot image.
-- OCR text read from the region around your click (via the bundled Tesseract
-  engine — this runs locally, it is not a network call).
-- The foreground window title and application name.
-- The accessibility label/role/value of the clicked UI element (Windows).
-- Keyboard shortcuts you pressed (for example `Ctrl+T`).
+| Item | Why |
+| --- | --- |
+| The screenshot | It's the step. |
+| Text near your click, read with on-device OCR | To title the step, e.g. *Click Save*. OCR runs locally with the bundled Tesseract engine. |
+| The active window's title and application name | Context for the title. |
+| The clicked element's accessibility label and role (Windows) | A more precise title. |
+| Keyboard shortcuts you pressed, such as `Ctrl+T` | So steps like *Press Ctrl+T* are recorded. |
 
-### Raw typed text is OFF by default
+### Typed text is not recorded by default
 
-StepForge can additionally record the **raw printable characters** you type
-between captures. Because this can capture passwords or other secrets, it is
-**disabled by default**. It is only recorded when you explicitly enable
-`capture.captureTypedText`, and even then the characters are used only to
-title the current step and are not retained beyond it. With the setting off,
-raw characters are never read or stored (on Windows they never even leave the
-keyboard-hook process).
+StepForge can optionally record the characters you type between clicks to
+title steps like *Type the server name*. Because that could capture a password,
+it's **off by default**. It only turns on if you set `capture.captureTypedText`
+in the settings file, and even then characters are used only to title the
+current step and aren't kept afterwards. With the setting off, typed
+characters are never read (on Windows they don't leave the keyboard hook).
+
+> [!TIP]
+> Screenshots show whatever was on screen. Use the **Blur** tool to hide
+> anything sensitive before you share a guide.
 
 ## Optional AI
 
-StepForge has an **optional** AI integration that generates step titles and
-descriptions with a local large-language-model runtime
-([Ollama](https://ollama.com)). It is **off by default**. When you turn it on
-and configure an endpoint:
+AI descriptions are **off by default**. When you enable them
+([setup guide](getting_started_with_ai.md)):
 
-- StepForge sends the step **screenshot** (only to vision-capable models, only
-  when "Attach screenshots" is on, and only if within the size limit) and the
-  step **text/capture context** to the configured Ollama endpoint.
-- By default the endpoint must be a **local (loopback) address** — for example
-  `http://127.0.0.1:11434`. StepForge refuses to send data to a non-loopback
-  host unless you explicitly enable **"Allow remote AI host"**. Enabling that
-  option means your screenshots and text are sent to the remote host you
-  configured; StepForge cannot control what that host does with them.
-- Every AI request has a timeout, can be cancelled (closing the guide cancels
-  in-flight requests), and runs under a bounded concurrency limit.
+- StepForge sends the step's text and capture details, and for image-capable
+  models the screenshot, to the [Ollama](https://ollama.com) server you
+  configure.
+- **By default that server must be on your own computer** (a loopback address
+  such as `127.0.0.1`). StepForge refuses other addresses unless you
+  explicitly set `ai.allowRemoteHost`. If you do, your screenshots and text go
+  to that server, and StepForge can't control what it does with them.
+- Screenshots can be left out entirely by setting `ai.attachScreenshots` to
+  `false`.
+- Every request has a timeout and is cancelled when you close the guide.
 
-## Optional Google Drive sharing
+## Optional Google Drive sync
 
-Google Drive sharing is off by default. Choosing Sign in with Google and
-granting access enables automatic sharing. Sign-in uses Google's OAuth endpoints
-and a local loopback callback. Connection testing refreshes authentication,
-checks app storage, and uploads/downloads/deletes a small random test file;
-it does not upload guides.
+Drive sync is **off by default**. When you sign in
+([how it works](GOOGLE_DRIVE.md)):
 
-Once you connect your Google account, all local guides (including screenshots,
-text, annotations, placeholders, and stored capture context) are uploaded as
-archives to that Google account's private app storage. Updates from your other
-devices are downloaded automatically. This access is limited to app storage,
-not your other Drive files. It uses HTTPS, not StepForge end-to-end encryption.
+- Sign-in happens in your browser on Google's site. StepForge never sees your
+  password.
+- **Your whole library is uploaded**: screenshots, text, annotations,
+  placeholders, and the capture details listed above. It goes to a private
+  app-only area of *your* Google Drive, not to StepForge or anyone else.
+  StepForge can't see your other Drive files.
+- Data travels over HTTPS. It isn't additionally encrypted by StepForge.
+- Your Google token is stored encrypted with your operating system's
+  credential storage.
+- **Test connection** uploads, downloads, and deletes a small random file; it
+  never uploads a guide.
+- Turning sync off stops transfers. **Disconnect** also removes the saved
+  sign-in. Neither deletes guides from your computer or from Drive. Deleting a
+  guide locally doesn't delete it from Drive.
 
-Credentials are OS-encrypted locally and are never sent to the renderer.
-Turning sharing off stops background transfers. Disconnecting also removes
-local credentials, but preserves cloud and local guides. Cloud archive versions
-and local replacement backups are retained; local deletion does not delete
-cloud copies. See [Google Drive setup, testing, and limitations](GOOGLE_DRIVE.md).
+## Bundled components
 
-## Bundled dependencies
-
-Beyond the Electron desktop shell, StepForge bundles the Tesseract OCR engine
-and its English language data as production dependencies. All OCR runs locally.
+Besides the Electron desktop runtime, StepForge includes the Tesseract OCR
+engine and its English language data. All text recognition happens on your
+computer.
 
 ## Where your data lives
 
-- Windows: `%APPDATA%\stepforge`
-- Linux: `~/.local/share/stepforge` (or `$XDG_DATA_HOME/stepforge`)
-- Override with the `STEPFORGE_DATA_DIR` environment variable.
+| System | Location |
+| --- | --- |
+| Windows | `%APPDATA%\stepforge` |
+| Linux | `~/.local/share/stepforge` (or `$XDG_DATA_HOME/stepforge`) |
+
+You can move your library under **Settings → General → Guide storage**, or
+override the location with the `STEPFORGE_DATA_DIR` environment variable.
+Uninstalling StepForge leaves this folder in place. Delete it to remove all of
+your guides and settings.
+
+## Questions
+
+Email `git@twestbrook.com` with any privacy question.

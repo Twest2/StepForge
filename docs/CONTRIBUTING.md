@@ -1,197 +1,261 @@
-# Contributing
+# Contributing to StepForge
 
-Thanks for improving StepForge.
+Thanks for helping improve StepForge. Bug reports, documentation fixes, and
+code are all welcome.
 
-## Before You Start
+**Contents:** [Workflow](#workflow) · [Ground rules](#ground-rules) ·
+[Run from source](#run-stepforge-from-source) · [Tests](#tests) ·
+[Build packages](#build-installable-packages) ·
+[Test on Ubuntu / GNOME](#testing-on-ubuntu-and-gnome-wayland) ·
+[Review checklist](#review-checklist)
 
-- Open or link the issue that describes the work.
-- Keep the change small and focused.
-- If the work does not have an issue yet, create one first so the PR can
-  reference it.
+## Workflow
 
-## Clean-Room Rules
+1. **Start with an issue.** Find an existing one or
+   [open a new one](https://github.com/Twest2/StepForge/issues/new/choose)
+   describing the bug or change. Every pull request must link to an issue.
+2. **Create a branch that includes the issue number**, for example
+   `feat/123-export-page-numbers` or `fix/123-missing-marker`.
+3. **Keep it focused.** One issue per branch. Put unrelated clean-up in its own
+   branch.
+4. **Sign off each commit** with `git commit -s` (the
+   [Developer Certificate of Origin](https://developercertificate.org/)).
+5. **Open a pull request** using the template. Include `Closes #123` (or
+   `Fixes` / `Relates to`), a summary of what changed, and anything a reviewer
+   should check by hand.
 
-StepForge is an independent reimplementation of publicly documented
-guide-capture workflow patterns. To keep it legally clean:
+CI runs the full test suite on every pull request.
 
-- Do **not** use the names, logos, icons, screenshots, or UI strings of
-  commercial documentation products anywhere in code, assets, or docs.
-- Do **not** copy wording from other products' documentation into the UI.
-- Do **not** decompile, disassemble, or otherwise inspect proprietary
-  binaries to derive behavior.
-- Implement behavior from public descriptions and your own design only.
-- Keep file formats (`.sfgz`, `.sfglt`, guide/step JSON) documented and
-  versioned in `docs/` and `ARCHITECTURE.md`.
+## Ground rules
 
-StepForge is licensed under **Creative Commons Attribution-NonCommercial 4.0
-International (CC BY-NC 4.0)** — see the root [LICENSE](../LICENSE). By
-contributing you agree that your contributions are licensed under that same
-license, and you add a Developer Certificate of Origin sign-off to each commit
-(`git commit -s`) to certify you have the right to submit them.
+### Offline first
 
-## Offline Rules
+- Core features must work offline. No telemetry, update checks, license checks,
+  or remote fonts.
+- Optional integrations (AI and Google Drive) stay **off by default**, require
+  explicit opt-in, and follow the [privacy policy](PRIVACY.md). Discuss any new
+  network feature with the maintainer before building it.
 
-- Core workflows must work offline. No telemetry, update checks, license
-  checks, or remote fonts. Optional AI and Google Drive integrations must stay
-  off by default, require explicit opt-in, and follow the documented privacy
-  contract. Do not add other network integrations without maintainer agreement.
-- No new runtime dependencies without prior maintainer agreement; prefer
-  internal implementations using Node built-ins. This is due to all the 
-  security issues that have arrose lately with NPM dependencies.
+### No new runtime dependencies
 
-## Branching
+Please don't add runtime dependencies without the maintainer's agreement first.
+Prefer small internal implementations built on Node's standard library. Every
+dependency is supply-chain risk, and npm has seen too many compromised packages
+to add them casually.
 
-- Use a branch name that includes the issue number, such as
-  `feat/123-add-awsome-feature`.
-- Keep unrelated cleanup in a separate branch, only have the fix in the
-  branch.
+### Clean-room rules
 
-## Pull Requests
+StepForge is an independent implementation of publicly described
+guide-capture workflows. To keep it that way:
 
-- Every pull request must reference an issue number in the body with
-  `Closes #123`, `Fixes #123`, or `Relates to #123`.
-- Summarize the change clearly and call out anything a reviewer should
-  verify manually.
-- Update docs when behavior changes.
-- Every exporter or storage change **requires tests**; output changes
-  require updated snapshot fixtures under `tests/fixtures/`.
+- Don't use the names, logos, icons, screenshots, or UI text of commercial
+  documentation products in code, assets, or docs.
+- Don't copy wording from other products' documentation.
+- Don't decompile or inspect proprietary software to work out its behavior.
+- Build from public descriptions and your own design.
+- Keep file formats (`.sfgz`, `.sfglt`, guide and step JSON) documented and
+  versioned in [ARCHITECTURE.md](ARCHITECTURE.md).
+
+### License
+
+StepForge is licensed under
+[CC BY-NC 4.0](../LICENSE). By contributing, you agree your contribution is
+released under the same license.
+
+## Run StepForge from source
+
+You'll need **Git** and **Node.js 22.12 or newer** (the exact version is in
+`.nvmrc`; older versions are refused).
+
+```bash
+git clone https://github.com/Twest2/StepForge.git
+cd StepForge
+nvm install && nvm use      # or install Node 22.12+ another way
+```
+
+**On Linux,** install the system libraries and the GNOME extension:
+
+```bash
+bash scripts/linux/apt/install-runtime-deps.sh    # Ubuntu / Debian
+bash scripts/linux/dnf/install-runtime-deps.sh    # Fedora
+bash scripts/linux/install-gnome-extension.sh     # then log out and back in
+```
+
+**Then, on any platform:**
+
+```bash
+npm ci        # installs the exact locked dependency versions
+npm start     # launches StepForge
+```
+
+Use `npm ci` rather than `npm install`: it installs exactly what's in
+`package-lock.json`. StepForge never installs or repairs dependencies while it
+runs.
+
+> [!TIP]
+> Keep your development data separate from your real library:
+>
+> ```bash
+> STEPFORGE_DATA_DIR="$HOME/.local/share/stepforge-dev" npm start
+> ```
+
+To try Google Drive features from a source checkout, see
+[Signing in from a development checkout](GOOGLE_DRIVE_RELEASE.md#signing-in-from-a-development-checkout).
+
+**Useful scripts**
+
+| Command | What it does |
+| --- | --- |
+| `npm start` | Run the app |
+| `npm test` | Run the unit test suites |
+| `npm run sample` | Regenerate the sample guide and exports in `examples/` |
+| `npm run icons` | Regenerate app and package icons from `assets/images/` |
+| `bash scripts/verify.sh` | Full test suite plus smoke checks |
+| `bash scripts/bootstrap-offline.sh` | Check that the build toolchain is available |
 
 ## Tests
 
-Run the local checks before opening or updating a PR:
+Run the whole suite before opening or updating a pull request:
 
 ```bash
 bash tests/run_test.sh
 ```
 
-Put new shell checks in `tests/checks/` so the shared runner picks them up
-automatically. The shell checks invoke the `node --test` workflow suites in
-`tests/unit/`.
+The runner executes every `tests/checks/test_*.sh`, which in turn run the
+`node --test` suites in `tests/unit/`. To add tests, put workflow suites in
+`tests/unit/` and any new shell check in `tests/checks/`; the runner picks
+both up automatically.
 
-Write tests that exercise **real workflows and verify actual output** —
-create a guide, export it, parse the bytes that came out. DO NOT WRITE A TEST THAT GREPS FOR CODE.
+**What good tests look like here:**
 
-The Gitea workflow in `.gitea/workflows/tests.yaml` and `.github/workflows/ci.yaml` runs the same command
-automatically on pushes and pull requests.
+- **Exercise real workflows and check real output.** Create a guide, export
+  it, and parse the bytes that come out.
+- **Never write a test that just greps the source code.**
+- Every exporter or storage change needs tests. Changes to output also need
+  updated fixtures in `tests/fixtures/`.
+- Name and describe tests clearly so that whoever breaks one later understands
+  what it protects.
 
-Please add lots of tests to each of your PR's and be descriptive with the
-tests so that the issue doesn't happen again or the feature doesn't get
-overwritten.
+The same command runs in CI through `.github/workflows/ci.yml` and
+`.gitea/workflows/tests.yaml`.
 
-## Linux Testing (Ubuntu 26.04 / GNOME Wayland)
+## Build installable packages
 
-The supported Linux capture path targets Ubuntu 26.04 with GNOME Shell 50 on
-Wayland. The GNOME Shell extension is mandatory for click recording and is
-bundled in the Ubuntu package; it is not downloaded separately.
+| Target | Command | Output |
+| --- | --- | --- |
+| Windows installer | `npm run package:windows` (or `pwsh scripts/package-windows.ps1`) | `releases/` |
+| Ubuntu `.deb` + portable `.tar.gz` | `npm run package:linux:deb` | `build/artifacts/` |
+| Fedora `.rpm` | `npm run package:linux:rpm` | `build/artifacts/x86_64/` |
+| Unpacked app folder | `bash scripts/build-release.sh` | `build/` |
 
-To test a packaged build, download the `ubuntu-26.04-gnome-test-package`
-artifact from the PR's GitHub Actions run, extract it, and install it with:
+Linux builds need the build tools first:
 
 ```bash
-# Stop StepForge first, then remove any production or older test package.
-if dpkg-query -W -f='Installed StepForge version: ${Version}\n' stepforge 2>/dev/null; then
-  sudo apt remove stepforge
-fi
-sudo apt install ./stepforge_<version>_amd64.deb
-dpkg-query -W -f='Now testing StepForge version: ${Version}\n' stepforge
+bash scripts/linux/apt/install-build-deps.sh    # Ubuntu
+bash scripts/linux/dnf/install-build-deps.sh    # Fedora
 ```
 
-Production and test `.deb` files intentionally use the same package name,
-`stepforge`. Removing the existing package before installation prevents an old
-production build from being mistaken for the test build. This removes the
-application but preserves the user's guides and settings under the home
-directory. Do not use `apt purge` unless you explicitly intend to remove
-those settings as well.
+Packages contain only what's needed at runtime: the app, the bundled Electron
+runtime, production dependencies, the launcher, and the Linux integration.
+Docs, prompts, tests, and dev dependencies are left out.
 
-### Build, install, and test a local Ubuntu package
+## Testing on Ubuntu and GNOME Wayland
 
-From a clean or intentionally modified checkout on Ubuntu 26.04 / GNOME 50,
-install the package build tools, use the pinned Node version, build the local
-package, and run the automated checks:
+The main Linux target is **Ubuntu 26.04 with GNOME Shell 50 on Wayland**. Click
+recording depends on the StepForge GNOME extension, which the `.deb` bundles.
+
+### Install a test package
+
+Get a `.deb` either by downloading the `ubuntu-26.04-gnome-test-package`
+artifact from the pull request's GitHub Actions run, or by building one
+yourself:
 
 ```bash
 bash scripts/linux/apt/install-build-deps.sh
-nvm install && nvm use             # or another Node version from .nvmrc
+nvm install && nvm use
 npm ci
 bash tests/run_test.sh
 npm run package:linux:deb
-find build/artifacts -maxdepth 1 -type f -name 'stepforge_*_amd64.deb' -printf '%f\n'
 ```
 
-Close StepForge before replacing it. Install the `.deb` printed by the last
-command, removing any production or earlier test package first:
+Close StepForge, then replace any installed copy. Test and production packages
+share the name `stepforge`, so remove the old one first to be sure you're
+testing the right build:
 
 ```bash
-if dpkg-query -W -f='Installed StepForge version: ${Version}\n' stepforge 2>/dev/null; then
+if dpkg-query -W -f='Installed: ${Version}\n' stepforge 2>/dev/null; then
   sudo apt remove stepforge
 fi
-sudo apt install ./build/artifacts/stepforge_<version>_amd64.deb
-dpkg-query -W -f='Now testing StepForge version: ${Version}\n' stepforge
+sudo apt install ./stepforge_<version>_amd64.deb     # or ./build/artifacts/stepforge_<version>_amd64.deb
+dpkg-query -W -f='Now testing: ${Version}\n' stepforge
 ```
 
-The `.deb` declares its runtime dependencies, including the GNOME extension,
-portal, PipeWire, Python/GObject, and GStreamer pieces; `apt` resolves them.
-Log out and back in after the first local installation, then follow the manual
-recording checks below. Rebuild the package after changing application,
-extension, packaging, or icon files — do not test a stale artifact.
+`apt remove` keeps your guides and settings. Don't use `apt purge` unless you
+mean to delete them. Rebuild after changing app, extension, packaging, or icon
+files so you never test a stale package.
 
-Log out of Ubuntu and back in after the first installation so GNOME discovers
-the bundled extension. Then launch StepForge, create or open a guide, and
-start recording. Accept the extension-enable prompt, and select every monitor
-you intend to record in GNOME's screen-sharing dialog. Click normally in a
-native Wayland or XWayland application, then stop with **StepForge REC** in
-the GNOME top panel or from the StepForge window restored from the dock.
+### What to check
 
-Verify that normal clicks create steps with correctly positioned markers and
-the intended pre-click screenshot. Also test pause/resume, saving and
-reopening a guide, exporting, screen-share cancellation, and clicks on a
-monitor that was not shared. The last case should show an actionable error and
-must not capture the wrong monitor.
+Log out and back in after the first install so GNOME loads the extension. Then
+create or open a guide, start recording, accept the extension prompt, and share
+every monitor you'll use. Click through native Wayland and XWayland apps and
+stop with **StepForge REC** or from the StepForge window.
 
-When testing is complete, remove the test package and disable its per-user
-extension setting:
+- [ ] Each normal click creates one step, with the pre-click screenshot and a
+      correctly placed marker.
+- [ ] Pause and resume work.
+- [ ] Guides save, reopen, and export correctly.
+- [ ] Cancelling the screen-share prompt is handled cleanly.
+- [ ] Clicking on a monitor that wasn't shared shows a clear error and never
+      captures the wrong screen.
+
+When reporting a capture problem, include the Ubuntu and GNOME Shell versions,
+whether you're on Wayland, your monitor layout and scaling, the app you were
+clicking in, and any error shown.
+
+### Automated GNOME tests
+
+```bash
+bash tests/integration/linux/gnome-shell.test.sh
+```
+
+This runs a private headless GNOME Shell with its own D-Bus session and a
+test-only virtual pointer. It never enables extensions or sends input to your
+real desktop. It needs the GNOME 50 runtime, GTK 4 / AT-SPI introspection,
+PipeWire, and WirePlumber.
+
+> [!NOTE]
+> GNOME click capture samples the button state every 4 ms. It isn't a
+> hardware-level hook, so an extremely short click or a GNOME Shell stall can
+> be missed.
+
+### Clean up afterwards
 
 ```bash
 gnome-extensions disable stepforge@twestbrook.com 2>/dev/null || true
 sudo apt remove stepforge
 ```
 
-Review the packages shown before accepting any `autoremove` suggestion; do
-not remove shared GNOME, PipeWire, or portal packages that other applications
-use. Log out and back in if GNOME still shows the old recording indicator.
-Finally, delete the extracted test-artifact directory and its downloaded ZIP.
-
-If you installed the extension from a source checkout using
-`scripts/linux/install-gnome-extension.sh`, remove only that user copy after
-disabling it:
+If you installed the extension from a source checkout, remove that copy too:
 
 ```bash
 rm -rf ~/.local/share/gnome-shell/extensions/stepforge@twestbrook.com
 ```
 
-For source-level validation, run:
+Check the list before accepting any `apt autoremove` suggestion. Don't remove
+shared GNOME, PipeWire, or portal packages other apps rely on. Log out and back
+in if the recording indicator is still visible.
 
-```bash
-bash tests/run_test.sh
-bash tests/integration/linux/gnome-shell.test.sh
-npm run package:linux:deb
-```
+## Review checklist
 
-The GNOME integration test uses a private headless compositor, D-Bus session,
-temporary configuration, and test-only virtual pointer. It does not enable an
-extension or inject input into the developer's real desktop. It requires the
-GNOME 50 runtime, GTK 4/AT-SPI introspection, PipeWire, and WirePlumber.
+Before requesting review, make sure:
 
-GNOME click capture samples button state every 4 ms, so it is not a lossless
-hardware-event hook: exceptionally short clicks or a GNOME Shell stall can be
-missed. Report failures with the Ubuntu version, GNOME Shell version, Wayland
-status, monitor scaling/layout, application tested, and any displayed error.
+- [ ] The pull request links the right issue.
+- [ ] `bash tests/run_test.sh` passes locally.
+- [ ] New behavior has tests that check real output.
+- [ ] Docs are updated for anything users will notice.
+- [ ] The change stays within the issue's scope.
+- [ ] Anything that still needs manual verification is listed in the PR.
+- [ ] No new network calls, dependencies, or third-party branding.
 
-## Review Checklist
-
-- The PR is linked to the correct issue.
-- The test suite passes locally.
-- Any relevant docs or comments are updated.
-- The change stays within the intended scope.
-- The PR body explains any manual verification that is still needed.
-- No network calls, no new dependencies, no trademarked assets.
+Please follow the [code of conduct](CODE_OF_CONDUCT.md) in all project spaces.

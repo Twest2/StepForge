@@ -132,6 +132,11 @@ test('delete moves guide to trash and restore brings it back intact', (t) => {
   assert.equal(store.guideExists(guide.guideId), false);
   const trash = store.listTrash();
   assert.equal(trash.length, 1);
+  const [item] = store.listTrashItems();
+  assert.equal(item.name, trash[0]);
+  assert.equal(item.title, 'Disposable');
+  assert.equal(item.stepCount, 1);
+  assert.ok(Math.abs(Date.parse(item.deletedAt) - Date.now()) < 60000);
 
   const restoredId = store.restoreFromTrash(trash[0]);
   assert.equal(restoredId, guide.guideId);

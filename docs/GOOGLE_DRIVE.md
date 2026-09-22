@@ -34,8 +34,9 @@ shown separately. The test itself does not upload a guide; existing automatic
 synchronization resumes afterwards if enabled.
 
 These cloud controls apply immediately, independently of the Settings Save or
-Cancel buttons. **Sync now** requests a pass; the top-bar Drive indicator opens
-Settings and shows pending, syncing, synced, conflict, or error states.
+Cancel buttons. **Sync now** requests a pass. While you are signed in with
+**Auto-sync** on, a Drive indicator in the top bar shows pending, syncing,
+synced, conflict, or error states and opens Settings. It is hidden otherwise.
 
 ## Sync behavior
 

@@ -1031,9 +1031,11 @@ fieldset legend {
 .global-placeholder-header { color: var(--muted); font-size: 12px; }
 .global-placeholder-header.hidden { display: none; }
 .global-placeholder-rows { margin-top: 12px; }
-.global-placeholder-rows .placeholder-row input {
+.global-placeholder-rows .global-placeholder-name {
+  width: 100%;
   min-width: 0;
   box-sizing: border-box;
   align-self: stretch;
+  resize: none;
 }
 .global-placeholder-rows textarea { display: block; }

@@ -398,8 +398,10 @@ function showSettingsDialog({
     const placeholderRows = el('div', { className: 'placeholder-rows global-placeholder-rows' }, placeholderHeader);
     const rows = [];
     const addPlaceholderRow = (key = '', value = '') => {
-      const keyInput = makeInput(key, 'text', { 'aria-label': 'Placeholder name', placeholder: '[[placeholder-name]]' });
-      const valueInput = el('textarea', { rows: 4, 'aria-label': 'Placeholder content', placeholder: 'Reusable text or Markdown' }, typeof value === 'object' ? value.text || '' : value);
+      const keyInput = el('textarea.global-placeholder-name', { rows: 4, 'aria-label': 'Placeholder name', placeholder: '[[placeholder-name]]' }, key);
+      keyInput.addEventListener('keydown', (event) => { if (event.key === 'Enter') event.preventDefault(); });
+      keyInput.addEventListener('input', () => { keyInput.value = keyInput.value.replace(/[\r\n]/g, ''); });
+      const valueInput = el('textarea.global-placeholder-value', { rows: 4, 'aria-label': 'Placeholder content', placeholder: 'Markdown or regular text' }, typeof value === 'object' ? value.text || '' : value);
       const valueCell = el('div.placeholder-markdown-content', {}, valueInput);
 
       const removeBtn = el('button.icon', {
@@ -536,8 +538,8 @@ function showSettingsDialog({
                 },
               },
               placeholders: rows.reduce((acc, row) => {
-                const key = row.querySelector('input[type="text"]').value.trim().replace(/^\[\[(.*?)\]\]$/, '$1').trim();
-                const text = row.querySelector('textarea').value;
+                const key = row.querySelector('.global-placeholder-name').value.trim().replace(/^\[\[(.*?)\]\]$/, '$1').trim();
+                const text = row.querySelector('.global-placeholder-value').value;
                 if (key) acc[key] = typeof row.placeholderValue === 'string' && row.placeholderValue && text === row.placeholderOriginalText
                   ? row.placeholderValue : { format: 'markdown', text };
                 return acc;

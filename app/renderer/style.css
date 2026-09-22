@@ -1041,3 +1041,9 @@ fieldset legend {
   resize: none;
 }
 .global-placeholder-rows textarea { display: block; }
+
+/* Nested confirmations preserve the Settings form underneath. */
+.modal[hidden] { display: none; }
+.cloud-guide { padding: 10px 0; border-bottom: 1px solid var(--border); }
+.cloud-guide-list { max-height: 380px; overflow-y: auto; }
+.cloud-snapshot-list select { min-width: 0; max-width: 100%; flex: 1; }

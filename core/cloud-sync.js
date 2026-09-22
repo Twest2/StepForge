@@ -124,12 +124,38 @@ class CloudSync {
     return storageSummary(await this.drive.listVersions());
   }
 
+  async guides() {
+    if (!this.drive.status().connected) throw new Error('Sign in to Google Drive first.');
+    const [files, markers] = await Promise.all([this.drive.listVersions(), this.drive.listDeletions()]);
+    const deleted = this.deletionStates(markers);
+    return [...guideVersions(files)].filter(([id]) =>
+      !['deleted', 'purged'].includes(deleted.get(id)?.appProperties.state)
+    ).map(([id, versions]) => {
+      versions.sort((a, b) => compareText(b.createdTime || '', a.createdTime || '') || compareText(b.id, a.id));
+      const latest = versions[0];
+      return { guideId: id, title: latest.name?.replace(/\.sfgz$/, '') || 'Untitled guide',
+        snapshotCount: versions.length, bytes: versions.reduce((n, f) => n + (Number(f.size) || 0), 0),
+        updatedAt: latest.createdTime || '', local: this.store.guideExists(id) };
+    }).sort((a, b) => compareText(a.title, b.title) || compareText(a.guideId, b.guideId));
+  }
+
+  // A manual mutation waits for any active sync and prevents another cycle
+  // from uploading/deleting snapshots while the user changes cloud history.
+  mutate(action) {
+    this.manualCount = (this.manualCount || 0) + 1;
+    const job = (this.manualTail || Promise.resolve()).catch(() => {}).then(async () => {
+      await this.running;
+      return action();
+    });
+    this.manualTail = job;
+    return job.finally(() => { this.manualCount -= 1; });
+  }
+
   async history(id) {
     if (!this.drive.status().connected) throw new Error('Sign in to Google Drive first.');
     return (await this.drive.listVersions())
       .filter((file) => file.appProperties?.guideId === id)
       .sort((a, b) => compareText(b.createdTime || '', a.createdTime || '') || compareText(b.id, a.id))
-      .slice(0, RETAIN_PER_BRANCH)
       .map((file, index) => ({ id: file.id, createdTime: file.createdTime || '', size: Number(file.size || 0), current: index === 0 }));
   }
 
@@ -156,9 +182,11 @@ class CloudSync {
     return guide.cloud;
   }
 
-  async removeGuideSnapshots(id) {
-    await this.setSharing(id, false);
-    if (!this.drive.status().connected) return { removed: 0 };
+  removeGuideSnapshots(id) { return this.mutate(() => this.removeGuideSnapshotsNow(id)); }
+
+  async removeGuideSnapshotsNow(id) {
+    if (!this.drive.status().connected) throw new Error('Sign in to Google Drive first.');
+    if (this.store.guideExists(id)) await this.setSharing(id, false);
     const files = (await this.drive.listVersions()).filter((file) => file.appProperties?.guideId === id);
     for (const file of files) await this.drive.deleteFile(file.id);
     delete this.state.records[id];
@@ -166,16 +194,33 @@ class CloudSync {
     return { removed: files.length };
   }
 
-  async restore(id, versionId) {
+  restore(id, versionId) { return this.mutate(() => this.restoreNow(id, versionId)); }
+
+  async restoreNow(id, versionId) {
+    if (!this.drive.status().connected) throw new Error('Sign in to Google Drive first.');
     if (!this.canReplace(id)) throw new Error('Close the editor or stop capture before restoring a cloud snapshot.');
+    const account = await this.drive.account();
+    const stateFile = path.join(this.directory, `sync-${digest(`${this.drive.clientId}:${account}`)}.json`);
+    if (this.stateFile !== stateFile) {
+      this.stateFile = stateFile;
+      this.state = readJsonIfExists(stateFile, { records: {} });
+    }
+    this.state.records ||= {};
     const files = await this.drive.listVersions();
     const version = files.find((file) => file.id === versionId && file.appProperties?.guideId === id);
     if (!version) throw new Error('That cloud snapshot is no longer available.');
     const bytes = await this.drive.download(version.id);
     this.validateDownload(bytes, id, version.appProperties.hash);
     if (!this.canReplace(id)) throw new Error('The guide became active while restoring. No changes were made.');
+    const sharing = this.store.guideExists(id) ? this.store.getGuide(id).cloud?.sharingEnabled : undefined;
     this.install(bytes, id, id);
-    delete this.state.records[id];
+    if (sharing === false) await this.setSharing(id, false);
+    // Accept the current remote heads as the baseline, then upload the
+    // restored content as a new version instead of downloading those heads.
+    const heads = headsOf(files.filter((file) => file.appProperties?.guideId === id));
+    const latest = heads.at(-1);
+    this.state.records[id] = { head: latest?.id, heads: heads.map((file) => file.id), hash: latest?.appProperties.hash };
+
     if (this.stateFile) this.saveState();
     this.markChanged(id);
     return { ok: true };
@@ -345,6 +390,7 @@ class CloudSync {
   }
 
   sync() {
+    if (this.manualCount) return Promise.resolve(this.status);
     if (this.running) return this.running;
     this.running = this.run().catch((err) => {
       if (this.enabled()) this.publish('error', err.message);

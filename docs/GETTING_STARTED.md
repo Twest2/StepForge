@@ -47,12 +47,3 @@ Applications expose different amounts of accessibility information. If a
 control cannot be identified, StepForge falls back to nearby text, the window
 name, or the capture type. No AI setup is required, and existing guides and
 manually edited titles are unchanged.
-
-### Markdown placeholders
-
-Settings → Global placeholders accepts multiline content. Use a short name on
-the left and insert it as `[[Name]]` in your guide. New or edited content supports
-Markdown automatically. Existing plain-text values remain unchanged until edited.
-Export/preview descriptions render formatting;
-titles use readable text. The editor retains tokens and the original Markdown
-source for editing. Raw HTML is displayed as text, not executed.

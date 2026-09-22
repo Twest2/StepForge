@@ -53,51 +53,19 @@ npm start          # launch StepForge
 
 ## Overview
 
-The core workflow:
+StepForge is a free and open-source alternative to documentation tools like Folge. It automatically creates step-by-step documentation as you work, reducing the need to manually write instructions and capture screenshots.
 
-1. **Capture** — take full-screen, active-window, or region screenshots with
-   configurable delay, pause/resume, and global hotkeys; or import images and
-   paste from the clipboard.
-2. **Annotate** — rectangles, ovals, lines, arrows, text, tooltips, numbered
-   markers, blur, highlight, magnify, and crop on a resolution-independent
-   annotation scene graph.
-3. **Describe** — rich-text titles and descriptions, informational text
-   blocks, code blocks, tables, step links, and placeholders.
-4. **Export** — every exporter renders from the same normalized Render AST,
-   so output is deterministic across formats.
+Whether you're documenting a workflow, setting up a development environment, creating a tutorial, or recording a process, StepForge captures screenshots and generates organized steps as you go. This makes creating clear, visual documentation significantly faster and easier.
 
+## What problem does this app solve?
 
-## What's Included
+Creating good documentation is often slow, tedious, and easy to neglect. People have to stop what they're doing to take screenshots, write instructions, organize steps, and format everything afterward.
 
-- **Guide library** with folders, favorites, title search, full-text search,
-  duplicate/move/delete, and a quick-actions palette (`Ctrl+/`).
-- **Capture engine** — the editor's **Capture ▾** button offers full screen,
-  active window, and region capture (the app hides itself during the shot),
-  plus continuous capture sessions that grab a step on every click where the
-  OS allows it, or on a 3/5/10 s auto-interval everywhere else. The REC bar
-  shows the live count and the start/pause control. Delay, global
-  hotkeys, click markers, clipboard paste, and PNG/JPEG/GIF import included.
-  The full keyboard shortcut list lives under **More ▾ → Keyboard
-  shortcuts** in the editor.
-- **Three-pane editor** — step tree with substeps, statuses
-  (todo/in-progress/done), hidden/skipped steps, focused view (zoom/pan that
-  never mutates the original image), autosave, and command-stack undo/redo.
-- **Annotation canvas** — normalized JSON scene graph with
-  resolution-independent coordinates; annotations render identically in the
-  editor and in every exporter.
-- **Sharing & backups** — single-file `.sfgz` archives (zip-based, path-
-  traversal validated), linked guides with `.lock-sfgz` lock files and
-  explicit save, plus automated snapshot backups and restore.
-- **Exports** — JSON, Markdown, Simple HTML, Rich HTML (checkboxes + floating
-  TOC), PDF, animated GIF, image bundle, DOCX, and PPTX, with per-format
-  export templates shareable as `.sfglt` files.
-- **Settings & theming** — system/light/dark themes, capture options,
-  keyboard shortcuts, preview step count.
+Because of that extra effort, documentation often contains too few screenshots or relies heavily on instructions like “click here” or “select this option.” Without a visual showing exactly where to click, those instructions can be confusing—especially for someone unfamiliar with the software or workflow.
 
-Everything except the Electron shell is dependency-free Node.js: the ZIP,
-PNG, GIF, PDF, DOCX, and PPTX writers are all implemented in this repository
-using only Node built-ins.
+StepForge solves this by capturing screenshots and recording each step as the process happens. This makes it easier to create detailed, visual documentation where users can see exactly what to do, rather than having to interpret written instructions alone.
 
+By combining screenshots and written instructions in a single editor, StepForge helps you create polished, visual documentation that is easy to understand, easy to follow, and easy to work with.
 
 ## Testing
 

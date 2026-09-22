@@ -47,10 +47,3 @@ Applications expose different amounts of accessibility information. If a
 control cannot be identified, StepForge falls back to nearby text, the window
 name, or the capture type. No AI setup is required, and existing guides and
 manually edited titles are unchanged.
-
-### Default capture focus
-
-In Settings → Editor, use Default focus amount to choose from 1× (full context)
-to 1.5× (closer focus), in 0.05 increments. Reset restores 1.5×. The setting
-applies only to new automatically focused captures; existing steps and original
-screenshots are preserved. Small displays retain the minimum context area.

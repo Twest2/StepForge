@@ -1034,6 +1034,8 @@ fieldset legend {
 .global-placeholder-rows .global-placeholder-name {
   width: 100%;
   min-width: 0;
+  min-height: 0;
+  contain: size;
   box-sizing: border-box;
   align-self: stretch;
   resize: none;

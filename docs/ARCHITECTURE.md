@@ -84,9 +84,9 @@ guide.json + step.json + settings
                ──► exporters/wikijs.js      Wiki.js 2 .md + steps-<title>/ images
                ──► exporters/html.js        self-contained .html (simple, or
                                             rich: sidebar, done toggles, zoom)
-               ──► exporters/confluence.js  <title>-confluence/: storage-format
-                                            page.xhtml, REST request bodies
-                                            (Cloud v2 + Data Center), attachments/
+               ──► exporters/confluence.js  <title>-confluence/: .docx for the
+                                            website's Word import; optional
+                                            rest-api/ (storage format + bodies)
                ──► exporters/pdf.js         native PDF writer (core/pdf.js)
                ──► exporters/gif.js         GIF89a encoder (core/gif.js)
                ──► exporters/image-bundle.js <title>-images/: numbered PNGs +

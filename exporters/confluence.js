@@ -2,32 +2,47 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { slugify, escapeXml, htmlToText } = require('../core/util');
+const { slugify, escapeXml, htmlToText, NAMED_ENTITIES } = require('../core/util');
 const { encodePng } = require('../core/png');
 const { guideSlug, renderAllImages, stepContentGroups, codeBlockText } = require('./common');
 const { anchorFor, guideMetaLines } = require('./document-layout');
+const { buildConfluenceWord } = require('./confluence-word');
 
 /**
  * Confluence export. Writes a folder containing:
- *   page.xhtml         the page body in Confluence storage format (the
- *                      format the REST API and source editors accept)
- *   page-cloud.json    REST API v2 request body (Confluence Cloud)
- *   page-datacenter.json  REST API request body (Confluence Data Center/Server)
- *   attachments/       the rendered screenshots the page references
- *   HOW-TO-IMPORT.txt  step-by-step import instructions
+ *   <Guide title>.docx   a Word document built for Confluence's built-in
+ *                        Word import, so anyone can create the page from
+ *                        the browser (see confluence-word.js)
+ *   HOW-TO-IMPORT.txt    step-by-step import instructions
+ * and, when apiFiles is on, rest-api/ with the page in storage format
+ * (page.xhtml), REST request bodies for Cloud (v2) and Data Center, and the
+ * screenshots as attachments/.
  */
 
 const DEFAULT_TEMPLATE = {
   includeImages: true,
+  apiFiles: false,
   toc: true,
   imageWidth: 760,
 };
 
 const OPTION_INFO = {
   includeImages: { label: 'Include screenshots' },
-  toc: { label: 'Add a table of contents' },
-  imageWidth: { label: 'Screenshot width', unit: 'px', min: 200, max: 1600, step: 10, hint: 'Display width on the page; the full-size image is attached.' },
+  apiFiles: { label: 'Also include REST API files', hint: 'For admins who publish pages with the Confluence API instead of the website.' },
+  toc: { label: 'Add a table of contents', hint: 'REST API page only.', dependsOn: 'apiFiles' },
+  imageWidth: { label: 'Screenshot width', unit: 'px', min: 200, max: 1600, step: 10, hint: 'REST API page only. The full-size image is attached.', dependsOn: 'apiFiles' },
 };
+
+/** The guide title as a safe file name, so the imported page is easy to recognize. */
+function wordFileName(ast) {
+  const name = String(ast.guide.title || '')
+    .replace(/[\\/:*?"<>|\u0000-\u001f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[. ]+$/, '')
+    .slice(0, 120);
+  return `${name || guideSlug(ast)}.docx`;
+}
 
 const PANEL_FOR_LEVEL = {
   info: 'info',
@@ -63,23 +78,6 @@ function cdata(text) {
   return `<![CDATA[${String(text || '').replace(/]]>/g, ']]]]><![CDATA[>')}]]>`;
 }
 
-// Named HTML entities XML doesn't define; anything else unknown is escaped.
-const HTML_ENTITIES = {
-  nbsp: 160, iexcl: 161, cent: 162, pound: 163, euro: 8364, yen: 165, copy: 169, reg: 174, trade: 8482,
-  deg: 176, plusmn: 177, times: 215, divide: 247, micro: 181, para: 182, middot: 183, sect: 167,
-  laquo: 171, raquo: 187, lsquo: 8216, rsquo: 8217, ldquo: 8220, rdquo: 8221, sbquo: 8218, bdquo: 8222,
-  ndash: 8211, mdash: 8212, hellip: 8230, bull: 8226, prime: 8242, larr: 8592, rarr: 8594, uarr: 8593,
-  darr: 8595, harr: 8596, check: 10003, ensp: 8194, emsp: 8195, thinsp: 8201, zwj: 8205, zwnj: 8204,
-  agrave: 224, aacute: 225, acirc: 226, atilde: 227, auml: 228, aring: 229, aelig: 230, ccedil: 231,
-  egrave: 232, eacute: 233, ecirc: 234, euml: 235, igrave: 236, iacute: 237, icirc: 238, iuml: 239,
-  ntilde: 241, ograve: 242, oacute: 243, ocirc: 244, otilde: 245, ouml: 246, oslash: 248, ugrave: 249,
-  uacute: 250, ucirc: 251, uuml: 252, yacute: 253, yuml: 255, szlig: 223,
-  Agrave: 192, Aacute: 193, Acirc: 194, Atilde: 195, Auml: 196, Aring: 197, AElig: 198, Ccedil: 199,
-  Egrave: 200, Eacute: 201, Ecirc: 202, Euml: 203, Igrave: 204, Iacute: 205, Icirc: 206, Iuml: 207,
-  Ntilde: 209, Ograve: 210, Oacute: 211, Ocirc: 212, Otilde: 213, Ouml: 214, Oslash: 216, Ugrave: 217,
-  Uacute: 218, Ucirc: 219, Uuml: 220, Yacute: 221,
-};
-
 const VOID = new Set(['br', 'hr']);
 
 /**
@@ -112,7 +110,7 @@ function toStorage(html, ast) {
     .replace(/<(br|hr)(\s[^>]*)?\s*\/?>/gi, '<$1 />')
     .replace(/&([a-zA-Z][a-zA-Z0-9]*);/g, (m, name) => {
       if (XML_ENTITIES.has(name)) return m;
-      return HTML_ENTITIES[name] ? `&#${HTML_ENTITIES[name]};` : `&amp;${name};`;
+      return NAMED_ENTITIES[name] ? `&#${NAMED_ENTITIES[name]};` : `&amp;${name};`;
     })
     // A bare "&" that doesn't start an entity.
     .replace(/&(?!(?:[a-zA-Z][a-zA-Z0-9]*|#\d+|#x[0-9a-fA-F]+);)/g, '&amp;');
@@ -178,12 +176,56 @@ function renderStep(step, ast, attachmentNames, tpl) {
   return out.join('\n');
 }
 
-function importGuide(ast, attachmentCount) {
+function importGuide(ast, wordFile, attachmentCount, apiFiles) {
   const title = ast.guide.title || 'Untitled guide';
-  return `How to add "${title}" to Confluence
+  const web = `How to add "${title}" to Confluence
 ${'='.repeat(title.length + 26)}
 
-This folder holds one Confluence page:
+Import this Word document from your browser:
+
+  ${wordFile}
+
+No admin rights or API access needed, just permission to create pages in
+the space. The screenshots come in with the document.
+
+
+Confluence Cloud (your-site.atlassian.net)
+------------------------------------------
+
+1. In the space, select + Create and choose Page to open a blank page.
+2. Next to Share, select More actions (...) > Templates and import.
+3. Open the Import tab and select Word document (.docx).
+4. Select "${wordFile}" and choose Open.
+5. When the import finishes, select Finish. The guide opens as a draft:
+   check the title and content, then Publish.
+
+
+Confluence Data Center / Server
+-------------------------------
+
+1. Go to the page the guide should sit under, in view mode (not editing).
+2. Select More options (...) > Import Word Document.
+3. Choose File, pick "${wordFile}", and select Next.
+4. Set the options:
+     Root page title:  ${title}
+     Where to import:  Import as a new page in the current space
+     Split by heading: Don't split
+5. Select Import.
+
+
+Tips
+----
+
+- Re-importing creates a new page. To update an existing guide, import it
+  again and delete the old page, or copy the new content across.
+`;
+  if (!apiFiles) return web;
+  return `${web}
+
+Optional: publish with the REST API
+-----------------------------------
+
+rest-api/ holds the same page for scripts and admins with API access:
 
   page.xhtml             The page body, in Confluence storage format.
   page-cloud.json        The page as a Confluence Cloud REST API request.
@@ -192,39 +234,27 @@ This folder holds one Confluence page:
 
 Create the page first, then upload the files in attachments/ to it. The page
 refers to its screenshots by file name, so they appear as soon as they are
-uploaded.
+uploaded. Run these from the rest-api folder in a bash shell with curl
+(macOS, Linux, or Git Bash / WSL on Windows).
 
-Run the commands below from this folder in a bash shell with curl (macOS,
-Linux, or Git Bash / WSL on Windows).
-
-
-Confluence Cloud (your-site.atlassian.net)
-------------------------------------------
-
-You need your Atlassian email and an API token. Create a token at
+Confluence Cloud: use your Atlassian email and an API token from
 https://id.atlassian.com/manage-profile/security/api-tokens
 
-1. Find the ID of the space the page goes in. Replace KEY with the space key
-   (shown in the space's URL, e.g. .../wiki/spaces/KEY/...):
+1. Find the ID of the space (KEY is the space key from its URL):
 
      curl -u you@example.com:API_TOKEN \\
        "https://YOUR-SITE.atlassian.net/wiki/api/v2/spaces?keys=KEY"
 
-   Copy the "id" value from the response.
+2. In page-cloud.json, replace SPACE_ID with the "id" from that response.
+   To nest the page, also add  "parentId": "PARENT_PAGE_ID",  next to it.
 
-2. Open page-cloud.json and replace SPACE_ID with that id. To put the page
-   under an existing page, also add  "parentId": "PARENT_PAGE_ID",  next to
-   "spaceId" (the parent page ID is the number in that page's URL).
-
-3. Create the page:
+3. Create the page, then note the "id" in the response:
 
      curl -u you@example.com:API_TOKEN -H "Content-Type: application/json" \\
        -X POST -d @page-cloud.json \\
        https://YOUR-SITE.atlassian.net/wiki/api/v2/pages
 
-   Copy the new page's "id" from the response.
-
-4. Upload the screenshots to it (replace PAGE_ID):
+4. Upload the screenshots (replace PAGE_ID):
 
      for f in attachments/*.png; do
        curl -u you@example.com:API_TOKEN -H "X-Atlassian-Token: nocheck" \\
@@ -232,49 +262,35 @@ https://id.atlassian.com/manage-profile/security/api-tokens
          https://YOUR-SITE.atlassian.net/wiki/rest/api/content/PAGE_ID/child/attachment
      done
 
+Confluence Data Center: use a personal access token (Profile > Personal
+Access Tokens).
 
-Confluence Data Center / Server
--------------------------------
+1. In page-datacenter.json, replace SPACEKEY with the space key. To nest the
+   page, add  "ancestors": [{"id": "PARENT_PAGE_ID"}],  next to "space".
 
-You need a personal access token (Profile > Personal Access Tokens).
-
-1. Open page-datacenter.json and replace SPACEKEY with the space key. To put
-   the page under an existing page, add  "ancestors": [{"id": "PARENT_PAGE_ID"}],
-   next to "space".
-
-2. Create the page:
+2. Create the page, then note the "id" in the response:
 
      curl -H "Authorization: Bearer TOKEN" -H "Content-Type: application/json" \\
        -X POST -d @page-datacenter.json \\
        https://YOUR-CONFLUENCE/rest/api/content
 
-   Copy the new page's "id" from the response.
-
-3. Upload the screenshots to it (replace PAGE_ID):
+3. Upload the screenshots (replace PAGE_ID):
 
      for f in attachments/*.png; do
        curl -H "Authorization: Bearer TOKEN" -H "X-Atlassian-Token: nocheck" \\
          -X POST -F "file=@$f" \\
          https://YOUR-CONFLUENCE/rest/api/content/PAGE_ID/child/attachment
      done
-
-If your Confluence has an app that edits a page's storage format (such as
-"Confluence Source Editor"), you can instead create the page, attach the
-screenshots, and paste page.xhtml into the source editor.
 `;
 }
 
-function exportConfluence(ast, outDir, template = {}) {
-  const tpl = { ...DEFAULT_TEMPLATE, ...template };
-  const folder = path.join(outDir, `${guideSlug(ast)}-confluence`);
-  const attachmentDir = path.join(folder, 'attachments');
-  fs.mkdirSync(folder, { recursive: true });
+function writeApiFiles(ast, dir, images, tpl) {
+  const attachmentDir = path.join(dir, 'attachments');
+  fs.mkdirSync(dir, { recursive: true });
   // Clear screenshots from an earlier export so renamed steps don't linger.
   if (fs.existsSync(attachmentDir)) {
     for (const f of fs.readdirSync(attachmentDir)) if (/^\d{3}-.*\.png$/.test(f)) fs.rmSync(path.join(attachmentDir, f));
   }
-
-  const images = tpl.includeImages ? renderAllImages(ast) : new Map();
   const attachmentNames = new Map();
   let n = 0;
   for (const step of ast.steps) {
@@ -287,35 +303,51 @@ function exportConfluence(ast, outDir, template = {}) {
     attachmentNames.set(step.stepId, fileName);
   }
 
-  const meta = guideMetaLines(ast);
   const count = ast.steps.length;
   const intro = [
     ast.guide.descriptionHtml ? toStorage(ast.guide.descriptionHtml, ast) : '',
-    `<p><em>${escapeXml([`${count} step${count === 1 ? '' : 's'}`, ...meta].join(' · '))}</em></p>`,
+    `<p><em>${escapeXml([`${count} step${count === 1 ? '' : 's'}`, ...guideMetaLines(ast)].join(' · '))}</em></p>`,
     tpl.toc && count > 1 ? macro('toc', { maxLevel: '3', style: 'none' }) : '',
   ].filter(Boolean);
-  const body = [
-    ...intro,
-    ...ast.steps.map((step) => renderStep(step, ast, attachmentNames, tpl)),
-  ].join('\n');
+  const body = [...intro, ...ast.steps.map((step) => renderStep(step, ast, attachmentNames, tpl))].join('\n');
 
-  const file = path.join(folder, 'page.xhtml');
-  fs.writeFileSync(file, `${body}\n`);
+  fs.writeFileSync(path.join(dir, 'page.xhtml'), `${body}\n`);
   const title = ast.guide.title || 'Untitled guide';
-  fs.writeFileSync(path.join(folder, 'page-cloud.json'), `${JSON.stringify({
+  fs.writeFileSync(path.join(dir, 'page-cloud.json'), `${JSON.stringify({
     spaceId: 'SPACE_ID',
     status: 'current',
     title,
     body: { representation: 'storage', value: body },
   }, null, 2)}\n`);
-  fs.writeFileSync(path.join(folder, 'page-datacenter.json'), `${JSON.stringify({
+  fs.writeFileSync(path.join(dir, 'page-datacenter.json'), `${JSON.stringify({
     type: 'page',
     title,
     space: { key: 'SPACEKEY' },
     body: { storage: { value: body, representation: 'storage' } },
   }, null, 2)}\n`);
-  fs.writeFileSync(path.join(folder, 'HOW-TO-IMPORT.txt'), importGuide(ast, attachmentNames.size));
-  return { file, folder, previewFile: folder, attachmentCount: attachmentNames.size };
+  return attachmentNames.size;
+}
+
+function exportConfluence(ast, outDir, template = {}) {
+  const tpl = { ...DEFAULT_TEMPLATE, ...template };
+  const folder = path.join(outDir, `${guideSlug(ast)}-confluence`);
+  fs.mkdirSync(folder, { recursive: true });
+  const images = tpl.includeImages ? renderAllImages(ast) : new Map();
+
+  const wordFile = wordFileName(ast);
+  const file = path.join(folder, wordFile);
+  fs.writeFileSync(file, buildConfluenceWord(ast, images, tpl));
+
+  const apiDir = path.join(folder, 'rest-api');
+  const attachmentCount = tpl.apiFiles ? writeApiFiles(ast, apiDir, images, tpl) : 0;
+  fs.writeFileSync(path.join(folder, 'HOW-TO-IMPORT.txt'), importGuide(ast, wordFile, attachmentCount, tpl.apiFiles));
+  return {
+    file,
+    folder,
+    previewFile: folder,
+    imageCount: [...images.keys()].length,
+    apiPage: tpl.apiFiles ? path.join(apiDir, 'page.xhtml') : null,
+  };
 }
 
 module.exports = { exportConfluence, DEFAULT_TEMPLATE, OPTION_INFO };

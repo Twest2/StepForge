@@ -14,6 +14,7 @@ const { exportConfluence } = require('../../exporters/confluence');
 const { htmlToMarkdown } = require('../../exporters/htmlmd');
 const { stepContentGroups } = require('../../exporters/common');
 const { decodePng } = require('../../core/png');
+const { unzipSync } = require('../../core/zip');
 const { buildFixtureGuide } = require('./fixture-guide');
 const { makeTmpDir, rmrf } = require('./helpers');
 
@@ -262,7 +263,60 @@ test('Wiki.js export: contents list, asset folder links and page metadata are op
   for (const ref of imgRefs) assert.match(ref, /^\/guides\/images\/\d{3}-[a-z0-9-]+\.png$/);
 });
 
-test('Confluence export: storage-format page, REST body, attachments and import guide', (t) => {
+test('Confluence export: a Word document for the website importer, plus instructions', (t) => {
+  const root = makeTmpDir('expconfword');
+  t.after(() => rmrf(root));
+  const { store, guide, s1, s2 } = buildFixtureGuide(path.join(root, 'data'));
+  const step = store.getStep(guide.guideId, s2.stepId);
+  step.descriptionHtml = `<p>See <a href="step:${s1.stepId}">step one</a>, caf&eacute;.</p><ol><li>First</li><li>Second</li></ol><ul><li>Dot</li></ul>`;
+  store.saveStep(guide.guideId, step);
+
+  const { file, folder, imageCount, apiPage } = exportConfluence(buildRenderAst(store, guide.guideId), path.join(root, 'out'));
+  assert.equal(path.basename(folder), 'configure-acmesync-backups-confluence');
+  assert.equal(path.basename(file), 'Configure AcmeSync backups.docx');
+  assert.equal(imageCount, 2);
+  assert.equal(apiPage, null);
+  assert.deepEqual(fs.readdirSync(folder).sort(), ['Configure AcmeSync backups.docx', 'HOW-TO-IMPORT.txt']);
+
+  const parts = new Map(unzipSync(fs.readFileSync(file)).map((e) => [e.name, e.data]));
+  for (const name of ['[Content_Types].xml', '_rels/.rels', 'word/document.xml', 'word/styles.xml', 'word/numbering.xml', 'word/_rels/document.xml.rels']) {
+    assert.ok(parts.has(name), `missing ${name}`);
+  }
+  const doc = parts.get('word/document.xml').toString('utf8');
+  const rels = parts.get('word/_rels/document.xml.rels').toString('utf8');
+  // What Confluence's Word importer turns into native content: heading styles,
+  // real lists, inline images, links, tables. Nothing it drops (TOC fields, page breaks).
+  assert.ok(doc.includes('<w:pStyle w:val="Heading2"/>') && doc.includes('<w:pStyle w:val="Heading3"/>'));
+  assert.ok(!/instrText|w:type="page"|pageBreakBefore|txbx/.test(doc));
+  assert.equal((doc.match(/<w:numId w:val="\d+"\/>/g) || []).length, 3, 'list items use Word numbering');
+  assert.ok(doc.includes('<w:hyperlink w:anchor="step_1">'));
+  assert.ok(doc.includes('café'));
+  for (const id of [...doc.matchAll(/r:(?:embed|id)="([^"]+)"/g)].map((m) => m[1])) {
+    const target = new RegExp(`Id="${id}"[^>]*Target="([^"]+)"`).exec(rels);
+    assert.ok(target, `relationship ${id} exists`);
+    if (!/TargetMode="External"/.test(new RegExp(`<Relationship Id="${id}"[^>]*>`).exec(rels)[0])) {
+      assert.ok(parts.has(`word/${target[1]}`), `part for ${id}`);
+    }
+  }
+  const media = [...parts.keys()].filter((k) => k.startsWith('word/media/'));
+  assert.equal(media.length, 2);
+  assert.equal(decodePng(parts.get(media[0])).width, 320);
+  // Well-formed: tags balance.
+  const stack = [];
+  for (const m of doc.replace(/<\?xml[^>]*>/, '').matchAll(/<(\/?)([\w:]+)[^>]*?(\/?)>/g)) {
+    if (m[3]) continue;
+    if (m[1]) assert.equal(stack.pop(), m[2]);
+    else stack.push(m[2]);
+  }
+  assert.deepEqual(stack, []);
+
+  const howTo = fs.readFileSync(path.join(folder, 'HOW-TO-IMPORT.txt'), 'utf8');
+  assert.ok(howTo.includes('Templates and import') && howTo.includes('Import Word Document'));
+  assert.ok(howTo.includes("Split by heading: Don't split"));
+  assert.ok(!howTo.includes('curl'), 'API steps only when asked for');
+});
+
+test('Confluence export: optional REST API files (storage-format page, request bodies, attachments)', (t) => {
   const root = makeTmpDir('expconf');
   t.after(() => rmrf(root));
   const { store, guide, s1, s2 } = buildFixtureGuide(path.join(root, 'data'));
@@ -272,11 +326,10 @@ test('Confluence export: storage-format page, REST body, attachments and import 
   const out = path.join(root, 'out');
 
   const ast = buildRenderAst(store, guide.guideId);
-  const { file, folder, attachmentCount } = exportConfluence(ast, out);
-  assert.equal(path.basename(folder), 'configure-acmesync-backups-confluence');
-  assert.equal(path.basename(file), 'page.xhtml');
-  assert.equal(attachmentCount, 2);
-  const xml = fs.readFileSync(file, 'utf8');
+  const { folder: exportDir, apiPage } = exportConfluence(ast, out, { apiFiles: true });
+  const folder = path.join(exportDir, 'rest-api');
+  assert.equal(apiPage, path.join(folder, 'page.xhtml'));
+  const xml = fs.readFileSync(apiPage, 'utf8');
 
   // Body only (no <html> wrapper), XML-safe markup.
   assert.ok(!xml.includes('<html') && !xml.includes('<?xml'));
@@ -318,7 +371,7 @@ test('Confluence export: storage-format page, REST body, attachments and import 
   assert.equal(dc.type, 'page');
   assert.equal(dc.space.key, 'SPACEKEY');
   assert.deepEqual(dc.body.storage, { value: xml.trim(), representation: 'storage' });
-  const howTo = fs.readFileSync(path.join(folder, 'HOW-TO-IMPORT.txt'), 'utf8');
+  const howTo = fs.readFileSync(path.join(exportDir, 'HOW-TO-IMPORT.txt'), 'utf8');
   assert.ok(howTo.includes('/wiki/api/v2/pages') && howTo.includes('X-Atlassian-Token: nocheck'));
   // Multi-line commands keep their shell line continuations.
   assert.ok(howTo.includes('-X POST -d @page-cloud.json \\\n'));
@@ -335,8 +388,8 @@ test('Confluence export stays well-formed with messy descriptions', (t) => {
   step.codeBlocks = [{ id: 'c', language: 'Python', code: 'print("]]>")' }];
   store.saveStep(guide.guideId, step);
 
-  const { file } = exportConfluence(buildRenderAst(store, guide.guideId), path.join(root, 'out'));
-  const xml = fs.readFileSync(file, 'utf8');
+  const { apiPage } = exportConfluence(buildRenderAst(store, guide.guideId), path.join(root, 'out'), { apiFiles: true });
+  const xml = fs.readFileSync(apiPage, 'utf8');
   assert.ok(xml.includes('caf&#233; &#8230; A &amp; B'));
   assert.ok(xml.includes('&amp;bogus;'));
   assert.ok(xml.includes('<ac:parameter ac:name="language">py</ac:parameter>'));

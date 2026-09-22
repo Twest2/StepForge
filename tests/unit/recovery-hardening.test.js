@@ -297,3 +297,19 @@ test('autoSnapshotIfDue is a no-op when automatic backups are off', async (t) =>
   const dir = path.join(store.guideDir(guide.guideId), 'history', 'snapshots');
   assert.equal(fs.existsSync(dir) ? fs.readdirSync(dir).length : 0, 0);
 });
+
+test('snapshots created in the same clock tick keep separate recovery files', (t) => {
+  const root = makeTmpDir('snapshot-clock');
+  t.after(() => rmrf(root));
+  const store = new GuideStore(root);
+  const guide = store.createGuide({ title: 'First' });
+  const fixedTime = Date.now();
+  t.mock.method(Date, 'now', () => fixedTime);
+  const first = createSnapshot(store, guide.guideId, { label: 'manual' });
+  guide.title = 'Second';
+  store.saveGuide(guide);
+  const second = createSnapshot(store, guide.guideId, { label: 'manual' });
+  assert.notEqual(first, second);
+  assert.equal(restoreSnapshot(store, guide.guideId, first).title, 'First');
+  assert.equal(restoreSnapshot(store, guide.guideId, second).title, 'Second');
+});

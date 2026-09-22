@@ -16,12 +16,12 @@ function snapshotsDir(store, guideId) {
   return path.join(store.guideDir(guideId), 'history', 'snapshots');
 }
 
+let lastSnapshotMs = 0;
 function snapshotName(label) {
-  // Keep milliseconds: stripping them made two snapshots taken within the same
-  // second collide on filename (the second silently overwrote the first, so
-  // rapid automatic backups produced only one file). ms keeps names unique and
-  // still chronologically sortable.
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  // Reserve a monotonically increasing timestamp even for multiple backups
+  // in one clock tick (or a backwards clock adjustment).
+  lastSnapshotMs = Math.max(Date.now(), lastSnapshotMs + 1);
+  const stamp = new Date(lastSnapshotMs).toISOString().replace(/[:.]/g, '-');
   return label ? `${stamp}-${label.replace(/[^A-Za-z0-9_-]+/g, '_')}.zip` : `${stamp}.zip`;
 }
 

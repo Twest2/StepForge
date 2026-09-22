@@ -748,6 +748,7 @@ function setupIpc() {
   }, { validate: (a) => typeof a.enabled === 'boolean' });
   h('cloud:sync', () => cloudSync.sync());
   h('cloud:storage', () => cloudSync.storage());
+  h('cloud:guides', () => cloudSync.guides());
   h('cloud:history', ({ guideId }) => cloudSync.history(guideId),
     { validate: (a) => c.id(a.guideId) });
   h('cloud:deletedGuides', () => cloudSync.deletedGuides());

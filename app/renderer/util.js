@@ -73,24 +73,40 @@ function toast(message, { error = false, ms = 2600 } = {}) {
   setTimeout(() => node.remove(), ms);
 }
 
+const modalStack = [];
+
 /** Modal helper. Returns { close, node }. Esc and ✕ close it. */
 function openModal({ title, body, footer, wide = false, onClose }) {
   const root = document.getElementById('modal-root');
-  clearNode(root);
+  const parent = modalStack.at(-1);
+  const previousFocus = document.activeElement;
+  if (parent) { parent.node.hidden = true; parent.node.inert = true; }
+  let closed = false;
   // `close` just tears down the modal. Buttons that already resolve the
   // dialog's promise themselves call this. `dismiss` additionally fires
   // `onClose`, for ways of leaving the dialog that didn't pick an option
   // (Esc, the ✕, or clicking the backdrop) and need a default resolution.
   const close = () => {
-    clearNode(root);
+    if (closed) return;
+    closed = true;
+    const index = modalStack.indexOf(entry);
+    // Closing a parent also resolves any child dialogs still open above it.
+    for (const child of modalStack.slice(index + 1).reverse()) child.dismiss();
+    modalStack.splice(index, 1);
+    modal.remove();
+    const active = modalStack.at(-1);
+    if (active) { active.node.hidden = false; active.node.inert = false; }
+    root.onclick = active?.dismiss || null;
+    if (previousFocus?.isConnected) previousFocus.focus();
     document.removeEventListener('keydown', escHandler, true);
   };
   const dismiss = () => {
+    if (closed) return;
     close();
     if (onClose) onClose();
   };
   const escHandler = (e) => {
-    if (e.key === 'Escape') { e.stopPropagation(); dismiss(); }
+    if (e.key === 'Escape' && modalStack.at(-1) === entry) { e.preventDefault(); e.stopImmediatePropagation(); dismiss(); }
   };
   document.addEventListener('keydown', escHandler, true);
   const modal = el('div.modal', { className: `modal${wide ? ' wide' : ''}` },
@@ -99,6 +115,8 @@ function openModal({ title, body, footer, wide = false, onClose }) {
     footer ? el('footer', {}, footer) : null,
   );
   modal.addEventListener('click', (e) => e.stopPropagation());
+  const entry = { node: modal, dismiss };
+  modalStack.push(entry);
   root.append(modal);
   root.onclick = dismiss;
   return { close, node: modal };

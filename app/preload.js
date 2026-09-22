@@ -68,6 +68,7 @@ const api = {
     sync: invoke('cloud:sync'),
     storage: invoke('cloud:storage'),
     history: invoke('cloud:history'),
+    guides: invoke('cloud:guides'),
     deletedGuides: invoke('cloud:deletedGuides'),
     restoreDeletedGuide: invoke('cloud:restoreDeletedGuide'),
     permanentlyDeleteRecovery: invoke('cloud:permanentlyDeleteRecovery'),

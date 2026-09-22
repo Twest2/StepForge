@@ -278,3 +278,74 @@ test('the main-process registration cannot be overridden by connect arguments', 
   await assert.rejects(drive.connect({ clientId: 'other.apps.googleusercontent.com' }), /denied/);
   assert.equal(requestedClient, 'test.apps.googleusercontent.com');
 });
+
+function memoryVault() {
+  const entries = new Map();
+  return { entries,
+    async read(clientId) { return entries.get(clientId) ?? null; },
+    async write(clientId, secret) { entries.set(clientId, secret); },
+    async clear(clientId) { entries.delete(clientId); } };
+}
+// A reinstall or keyring change: same data folder, but a different encryption key.
+function freshKeyring() {
+  const key = crypto.randomBytes(32);
+  return {
+    isEncryptionAvailable: () => true,
+    getSelectedStorageBackend: () => 'test-keyring',
+    encryptString(text) { const iv = crypto.randomBytes(16); const cipher = crypto.createCipheriv('aes-256-cbc', key, iv); return Buffer.concat([iv, cipher.update(text), cipher.final()]); },
+    decryptString(bytes) { const cipher = crypto.createDecipheriv('aes-256-cbc', key, bytes.subarray(0, 16)); return Buffer.concat([cipher.update(bytes.subarray(16)), cipher.final()]).toString(); },
+  };
+}
+const settleBackup = () => new Promise((resolve) => setImmediate(resolve));
+
+test('a sign-in whose primary file became unreadable is recovered from the OS backup', async (t) => {
+  const vault = memoryVault();
+  const { drive, directory } = setup(t, { vault });
+  authorize(drive); drive.credentials.email = 'user@example.com'; drive.save();
+  await settleBackup();
+  assert.ok(!vault.entries.get('test.apps.googleusercontent.com').includes('access-secret'));
+  const keyring = freshKeyring();
+  const reinstalled = new GoogleDrive({ directory, safeStorage: keyring, vault, clientId: 'test.apps.googleusercontent.com', clientSecret: 'test-client-secret' });
+  assert.equal(reinstalled.status().connected, false);
+  assert.equal(await reinstalled.recover(), true);
+  assert.deepEqual(reinstalled.status(), { connected: true, available: true, email: 'user@example.com', error: null });
+  // The primary file is rewritten with the new key, so the next launch needs no backup.
+  const nextLaunch = new GoogleDrive({ directory, safeStorage: keyring, clientId: 'test.apps.googleusercontent.com', clientSecret: 'test-client-secret' });
+  assert.equal(nextLaunch.credentials.refresh_token, 'refresh-secret');
+});
+
+test('a missing credential file is restored from the OS backup after a clean reinstall', async (t) => {
+  const vault = memoryVault();
+  const { drive, directory, safeStorage } = setup(t, { vault });
+  authorize(drive); drive.save(); await settleBackup();
+  fs.rmSync(drive.file);
+  const reinstalled = new GoogleDrive({ directory, safeStorage, vault, clientId: 'test.apps.googleusercontent.com', clientSecret: 'test-client-secret' });
+  assert.equal(await reinstalled.recover(), true);
+  assert.equal(reinstalled.status().connected, true);
+  assert.ok(fs.existsSync(reinstalled.file));
+});
+
+test('an existing sign-in is backed up at launch and disconnect removes the backup', async (t) => {
+  const vault = memoryVault();
+  const { drive, directory, safeStorage } = setup(t);
+  authorize(drive); drive.save();
+  const launched = new GoogleDrive({ directory, safeStorage, vault, clientId: 'test.apps.googleusercontent.com', clientSecret: 'test-client-secret' });
+  assert.equal(await launched.recover(), false);
+  assert.equal(JSON.parse(vault.entries.get('test.apps.googleusercontent.com')).refresh_token, 'refresh-secret');
+  await launched.disconnect();
+  assert.equal(vault.entries.size, 0);
+  assert.equal(fs.existsSync(launched.file), false);
+});
+
+test('backups from another registration or a failing OS store are ignored', async (t) => {
+  const vault = memoryVault();
+  vault.entries.set('test.apps.googleusercontent.com', JSON.stringify({ clientId: 'other.apps.googleusercontent.com', refresh_token: 'x' }));
+  const { drive } = setup(t, { vault });
+  assert.equal(await drive.recover(), false);
+  assert.equal(drive.status().connected, false);
+  const broken = { read: async () => { throw new Error('no keyring'); }, write: async () => { throw new Error('no keyring'); }, clear: async () => {} };
+  const { drive: other } = setup(t, { vault: broken });
+  assert.equal(await other.recover(), false);
+  authorize(other); other.save(); await settleBackup();
+  assert.equal(other.status().connected, true);
+});

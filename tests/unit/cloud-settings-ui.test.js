@@ -8,8 +8,9 @@ const vm = require('node:vm');
 function ui() {
   const nodes = [];
   function el(spec, props = {}, ...children) {
-    const node = { spec, ...props, children: [], hidden: false, inert: false, isConnected: true,
+    const node = { hidden: false, inert: false, spec, ...props, children: [], isConnected: true,
       classList: { add() {}, remove() {}, toggle() {} },
+      setAttribute(name, value) { this[name] = value; },
       append(...items) { for (const child of items.flat()) { if (child == null) continue; this.children.push(child); if (typeof child === 'object') child.parent = this; } },
       replaceChildren(...items) { this.children = []; this.textContent = ''; this.append(...items); },
       remove() { this.parent.children = this.parent.children.filter((n) => n !== this); this.isConnected = false; },
@@ -68,13 +69,16 @@ test('nested confirmation cancel, Escape, backdrop and accept all return to the 
 
 function cloud(u, overrides = {}) {
   const calls = [];
-  const guides = [{ guideId: 'guide-a', title: 'Setup guide', snapshotCount: 2, bytes: 200, local: true }];
+  const guides = [{ guideId: 'guide-a', title: 'Setup guide', snapshotCount: 2, bytes: 200, local: true, latestId: 'new' }];
   const api = { cloud: {
     status: async () => ({ connected: true, enabled: true }), onStatus: () => () => {},
     guides: async () => guides,
-    storage: async () => ({ bytes: 200, snapshotCount: 2, guideCount: 1 }), deletedGuides: async () => [],
+    storage: async () => ({ bytes: 200, latestBytes: 100, previousBytes: 100, recoveryBytes: 0, snapshotCount: 2, guideCount: 1, pruneCount: 1, reclaimableBytes: 100 }),
+    deletedGuides: async () => [],
     history: async () => [{ id: 'new', createdTime: '2026-09-22T12:00:00Z', size: 100 }, { id: 'old', createdTime: '2026-09-21T12:00:00Z', size: 100 }],
     restore: async (args) => calls.push(['restore', args.guideId, args.versionId]),
+    prune: async () => { calls.push(['prune']); return { pruned: 1, reclaimedBytes: 100 }; },
+    replaceCloudWithLocal: async () => { calls.push(['replace']); return { uploading: 1 }; },
     deleteGuideSnapshots: async (args) => { calls.push(['delete', args.guideId]); guides.length = 0; },
     ...overrides,
   } };
@@ -82,15 +86,19 @@ function cloud(u, overrides = {}) {
   const settings = u.context.openModal({ title: 'Settings', body: panel.node });
   return { calls, panel, settings };
 }
+const hasText = (u, text) => u.nodes.some((n) => n.textContent === text || n.children.includes(text));
+const versionRestore = (u, id) => {
+  const row = u.nodes.filter((n) => ['div.cloud-version', 'div.cloud-version.latest'].includes(n.spec))[id === 'new' ? 0 : 1];
+  return u.button('Restore', row);
+};
 
-test('Drive browser restores the chosen previous snapshot and returns to Settings', async () => {
+test('Drive browser restores the chosen previous version and returns to Settings', async () => {
   const u = ui(); const { calls, panel, settings } = cloud(u);
   await settle();
-  await u.button('Snapshots').onClick();
-  u.nodes.find((n) => n.spec === 'select').value = 'old';
-  const action = u.button('Restore snapshot').onClick();
+  await u.button('Versions').onClick();
+  const action = versionRestore(u, 'old').onClick();
   assert.equal(settings.node.hidden, true);
-  u.button('Restore snapshot').onClick();
+  u.button('Restore version').onClick();
   await action;
   assert.deepEqual(calls, [['restore', 'guide-a', 'old']]);
   assert.equal(settings.node.hidden, false);
@@ -101,24 +109,52 @@ test('Drive browser restores the chosen previous snapshot and returns to Setting
 test('Drive deletion requires confirmation, refreshes the list, and keeps Settings open', async () => {
   const u = ui(); const { calls, panel, settings } = cloud(u);
   await settle();
-  let action = u.button('Delete Drive copies').onClick();
+  let action = u.button('Delete from Drive').onClick();
   u.button('Cancel').onClick(); await action;
   assert.deepEqual(calls, []);
-  action = u.button('Delete Drive copies').onClick();
-  u.button('Delete Drive copies').onClick(); await action;
+  action = u.button('Delete from Drive').onClick();
+  u.button('Delete from Drive', u.root.children.at(-1)).onClick(); await action;
   assert.deepEqual(calls, [['delete', 'guide-a']]);
   assert.equal(settings.node.hidden, false);
-  assert.ok(u.nodes.some((n) => n.textContent === 'No active guides in Google Drive.'));
+  assert.ok(hasText(u, 'No guides in Google Drive yet.'));
   panel.dispose();
 });
 
 test('failed restore displays an error and preserves Settings for retry', async () => {
   const u = ui(); const { panel, settings } = cloud(u, { restore: async () => { throw new Error('Close the editor first.'); } });
-  await settle(); await u.button('Snapshots').onClick();
-  const action = u.button('Restore snapshot').onClick();
-  u.button('Restore snapshot').onClick(); await action;
-  assert.ok(u.nodes.some((n) => n.textContent === 'Close the editor first.'));
+  await settle(); await u.button('Versions').onClick();
+  const action = versionRestore(u, 'new').onClick();
+  u.button('Restore version').onClick(); await action;
+  assert.ok(hasText(u, 'Close the editor first.'));
   assert.equal(settings.node.hidden, false);
-  assert.ok(u.button('Restore snapshot'));
+  assert.ok(versionRestore(u, 'new'));
+  panel.dispose();
+});
+
+test('freeing up space is confirmed first and reports what was removed', async () => {
+  const u = ui(); const { calls, panel } = cloud(u);
+  await settle();
+  const prune = u.nodes.find((n) => n.spec === 'button' && n.textContent === 'Free up 100 B');
+  assert.ok(prune);
+  assert.equal(prune.disabled, false);
+  let action = prune.onClick();
+  u.button('Cancel').onClick(); await action;
+  assert.deepEqual(calls, []);
+  action = prune.onClick();
+  u.button('Free up space').onClick(); await action;
+  assert.deepEqual(calls, [['prune']]);
+  assert.ok(hasText(u, 'Removed 1 previous version and freed 100 B.'));
+  panel.dispose();
+});
+
+test('replacing Drive with this computer requires confirmation', async () => {
+  const u = ui(); const { calls, panel } = cloud(u);
+  await settle();
+  let action = u.button('Replace Drive with this computer').onClick();
+  u.button('Cancel').onClick(); await action;
+  assert.deepEqual(calls, []);
+  action = u.button('Replace Drive with this computer').onClick();
+  u.button('Replace Drive').onClick(); await action;
+  assert.deepEqual(calls, [['replace']]);
   panel.dispose();
 });

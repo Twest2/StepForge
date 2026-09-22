@@ -110,13 +110,13 @@ test(
 
     assert.ok(
       nodes.some((n) =>
-        n.textContent.includes('Connected as test@example.com')
+        n.textContent === 'test@example.com'
       )
     );
 
     assert.ok(
       nodes.some((n) =>
-        n.children.includes('Test Google Drive connection')
+        n.children.includes('Test connection')
       )
     );
 
@@ -144,7 +144,7 @@ test(
 
     assert.ok(
       nodes.some((n) =>
-        n.textContent.includes('unavailable in this build')
+        n.children.some((child) => typeof child === 'string' && child.includes('unavailable in this build'))
       )
     );
 

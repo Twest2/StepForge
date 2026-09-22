@@ -19,6 +19,7 @@ class GoogleDrive {
     clientId = GOOGLE_OAUTH.clientId,
     clientSecret = GOOGLE_OAUTH.clientSecret,
     fetchImpl = globalThis.fetch,
+    vault = null,
   }) {
     this.file = path.join(directory, 'google-drive.credentials');
   
@@ -32,22 +33,28 @@ class GoogleDrive {
     this.safeStorage = safeStorage;
     this.openExternal = openExternal;
     this.fetch = fetchImpl;
+    this.vault = vault;
   
     this.credentials = null;
     this.loadError = null;
     this.controllers = new Set();
     this.generation = 0;
   
+    this.loadFile();
+  }
+
+  loadFile() {
     try {
       if (fs.existsSync(this.file)) {
         this.requireEncryption();
   
         const stored = JSON.parse(
-          safeStorage.decryptString(fs.readFileSync(this.file))
+          this.safeStorage.decryptString(fs.readFileSync(this.file))
         );
   
         if (this.available && stored.clientId === this.clientId) {
           this.credentials = stored;
+          this.loadError = null;
   
           // Remove any old stored client secret from pre-release builds.
           if (Object.hasOwn(stored, 'clientSecret')) {
@@ -65,6 +72,39 @@ class GoogleDrive {
     }
   }
 
+  // Runs once after launch. Retries the primary file (the keyring can become
+  // available after startup), then falls back to the OS-user backup so an
+  // update or reinstall does not sign the user out. Also refreshes the backup.
+  recover() {
+    this.recovering ||= (async () => {
+      if (!this.available || !this.vault) return false;
+      if (!this.credentials) this.loadFile();
+      if (this.credentials) { await this.backup(); return false; }
+      let stored;
+      try { stored = JSON.parse(await this.vault.read(this.clientId) || 'null'); } catch { return false; }
+      if (this.credentials || this.cancelLogin || stored?.clientId !== this.clientId || !stored.refresh_token) return false;
+      this.credentials = { clientId: stored.clientId, refresh_token: stored.refresh_token,
+        ...(stored.email ? { email: stored.email } : {}), ...(stored.accountId ? { accountId: stored.accountId } : {}) };
+      this.loadError = null;
+      this.vaulted = stored.refresh_token;
+      // Rewrite the primary file with the current key. If the keyring is still
+      // unavailable, keep the recovered sign-in for this session.
+      try { this.save(); } catch { /* retry on the next token refresh */ }
+      return true;
+    })();
+    return this.recovering;
+  }
+
+  async backup() {
+    const credentials = this.credentials;
+    if (!this.vault || !credentials?.refresh_token || this.vaulted === credentials.refresh_token) return;
+    try {
+      await this.vault.write(this.clientId, JSON.stringify({ clientId: credentials.clientId, refresh_token: credentials.refresh_token,
+        email: credentials.email || '', accountId: credentials.accountId || '' }));
+      if (this.credentials === credentials) this.vaulted = credentials.refresh_token;
+    } catch { /* the encrypted primary file remains the source of credentials */ }
+  }
+
   requireEncryption() {
     if (!this.safeStorage.isEncryptionAvailable() || this.safeStorage.getSelectedStorageBackend?.() === 'basic_text') {
       throw new Error('Google sign-in requires an operating-system credential store. Unlock your keyring and restart StepForge.');
@@ -75,6 +115,7 @@ class GoogleDrive {
     this.requireEncryption();
     atomicWriteFileSync(this.file, this.safeStorage.encryptString(JSON.stringify(this.credentials)));
     this.loadError = null;
+    void this.backup();
   }
 
   status() {
@@ -91,7 +132,9 @@ class GoogleDrive {
     this.cancel();
     this.credentials = null;
     this.loadError = null;
+    this.vaulted = null;
     fs.rmSync(this.file, { force: true });
+    return this.vault?.clear(this.clientId).catch(() => {});
   }
 
   async request(url, options = {}) {
@@ -162,6 +205,7 @@ class GoogleDrive {
     if (!this.available) throw new Error('Google sign-in is unavailable in this build of StepForge. Please use a release with Google sign-in enabled.');
     const clientId = this.clientId;
     if (this.cancelLogin) throw new Error('Google sign-in is already in progress.');
+    await this.recovering;
     if (this.credentials) throw new Error('Disconnect the current Google account before signing in again.');
     this.requireEncryption();
     const generation = this.generation;
@@ -267,6 +311,15 @@ class GoogleDrive {
     credentials.email = info.user.emailAddress || '';
     this.save();
     return credentials.accountId;
+  }
+
+  // Account-wide Google storage. The app folder is hidden, so this gives its
+  // usage context. `limit` is absent for unlimited plans.
+  async quota() {
+    const info = await this.authorized(`${API}/about?fields=storageQuota(limit,usage)`);
+    const limit = Number(info.storageQuota?.limit);
+    const usage = Number(info.storageQuota?.usage);
+    return { limit: Number.isFinite(limit) ? limit : null, usage: Number.isFinite(usage) ? usage : null };
   }
 
   async listVersions() {

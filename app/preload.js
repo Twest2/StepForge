@@ -73,6 +73,7 @@ const api = {
     restoreDeletedGuide: invoke('cloud:restoreDeletedGuide'),
     permanentlyDeleteRecovery: invoke('cloud:permanentlyDeleteRecovery'),
     prune: invoke('cloud:prune'),
+    replaceCloudWithLocal: invoke('cloud:replaceCloudWithLocal'),
     restore: invoke('cloud:restore'),
     setGuideSharing: invoke('cloud:setGuideSharing'),
     deleteGuideSnapshots: invoke('cloud:deleteGuideSnapshots'),

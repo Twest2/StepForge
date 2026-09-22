@@ -53,21 +53,33 @@ function protectedVersions(versions, retain = RETAIN_PER_BRANCH) {
   return keep;
 }
 
-function storageSummary(files) {
+function storageSummary(files, recoveryIds = new Set()) {
   const groups = guideVersions(files);
-  let bytes = 0;
-  let reclaimableBytes = 0;
+  const size = (file) => { const n = Number(file.size || 0); return Number.isFinite(n) ? n : 0; };
+  let latestBytes = 0;
+  let previousBytes = 0;
+  let recoveryBytes = 0;
   let pruneCount = 0;
+  let guideCount = 0;
+  let snapshotCount = 0;
   for (const versions of groups.values()) {
-    const keep = protectedVersions(versions);
+    const latest = protectedVersions(versions, 1);
+    const live = versions.filter((file) => !recoveryIds.has(file.id));
+    if (live.length) guideCount += 1;
     for (const file of versions) {
-      const size = Number(file.size || 0);
-      bytes += Number.isFinite(size) ? size : 0;
-      if (!keep.has(file.id)) { pruneCount += 1; reclaimableBytes += Number.isFinite(size) ? size : 0; }
+      snapshotCount += 1;
+      if (recoveryIds.has(file.id)) recoveryBytes += size(file);
+      else if (latest.has(file.id)) latestBytes += size(file);
+      else { previousBytes += size(file); pruneCount += 1; }
     }
   }
-  return { guideCount: groups.size, snapshotCount: [...groups.values()].reduce((count, versions) => count + versions.length, 0), bytes, pruneCount, reclaimableBytes };
+  return { guideCount, snapshotCount, bytes: latestBytes + previousBytes + recoveryBytes,
+    latestBytes, previousBytes, recoveryBytes, pruneCount, reclaimableBytes: previousBytes };
 }
+
+// A missing baseline head can be Drive's listing lagging behind our own upload.
+// Past this age it was pruned or replaced remotely, so re-evaluate from the cloud.
+const STALE_HEAD_MS = 2 * 60 * 1000;
 
 /** Immutable Drive snapshots: concurrent writers create branches, never overwrite bytes. */
 class CloudSync {
@@ -121,7 +133,11 @@ class CloudSync {
 
   async storage() {
     if (!this.drive.status().connected) throw new Error('Sign in to Google Drive first.');
-    return storageSummary(await this.drive.listVersions());
+    const [files, markers, quota] = await Promise.all([this.drive.listVersions(), this.drive.listDeletions(),
+      this.drive.quota ? this.drive.quota().catch(() => null) : null]);
+    const recoveryIds = new Set([...this.deletionStates(markers).values()]
+      .filter((file) => file.appProperties?.state === 'deleted').map((file) => file.appProperties.recoveryId));
+    return { ...storageSummary(files, recoveryIds), quota };
   }
 
   async guides() {
@@ -135,7 +151,7 @@ class CloudSync {
       const latest = versions[0];
       return { guideId: id, title: latest.name?.replace(/\.sfgz$/, '') || 'Untitled guide',
         snapshotCount: versions.length, bytes: versions.reduce((n, f) => n + (Number(f.size) || 0), 0),
-        updatedAt: latest.createdTime || '', local: this.store.guideExists(id) };
+        updatedAt: latest.createdTime || '', latestId: latest.id, local: this.store.guideExists(id) };
     }).sort((a, b) => compareText(a.title, b.title) || compareText(a.guideId, b.guideId));
   }
 
@@ -159,17 +175,74 @@ class CloudSync {
       .map((file, index) => ({ id: file.id, createdTime: file.createdTime || '', size: Number(file.size || 0), current: index === 0 }));
   }
 
-  async prune() {
+  // Manual pruning keeps only the newest snapshot on every branch. Automatic
+  // pruning after a sync keeps two previous snapshots for restoring.
+  prune() { return this.mutate(() => this.pruneNow(1)); }
+
+  async pruneNow(retain = RETAIN_PER_BRANCH) {
     if (!this.drive.status().connected) throw new Error('Sign in to Google Drive first.');
     const files = await this.drive.listVersions();
-    const groups = guideVersions(files);
     const remove = [];
-    for (const versions of groups.values()) {
-      const keep = protectedVersions(versions);
+    for (const versions of guideVersions(files).values()) {
+      const keep = protectedVersions(versions, retain);
       remove.push(...versions.filter((file) => !keep.has(file.id)));
     }
     for (const file of remove) await this.drive.deleteFile(file.id);
-    return { ...storageSummary(files), pruned: remove.length };
+    return { pruned: remove.length, reclaimedBytes: remove.reduce((n, file) => n + (Number(file.size) || 0), 0) };
+  }
+
+  async loadAccountState() {
+    const account = await this.drive.account();
+    const stateFile = path.join(this.directory, `sync-${digest(`${this.drive.clientId}:${account}`)}.json`);
+    if (this.stateFile !== stateFile) {
+      this.stateFile = stateFile;
+      this.state = readJsonIfExists(stateFile, { records: {} });
+    }
+    this.state.records ||= {};
+  }
+
+  // Makes this computer's library the whole of Google Drive: every cloud
+  // snapshot and recovery copy is deleted, guides missing here are marked
+  // purged so other devices move them to trash, then local guides re-upload.
+  replaceCloudWithLocal() {
+    return this.mutate(() => this.replaceCloudWithLocalNow()).then(async (result) => {
+      await this.sync();
+      return result;
+    });
+  }
+
+  async replaceCloudWithLocalNow() {
+    if (!this.drive.status().connected) throw new Error('Sign in to Google Drive first.');
+    if (!this.enabled()) throw new Error('Turn on automatic sync before replacing Google Drive.');
+    await this.loadAccountState();
+    const [files, markers] = await Promise.all([this.drive.listVersions(), this.drive.listDeletions()]);
+    const local = new Set(this.store.listGuides().map((guide) => guide.guideId));
+    const groups = guideVersions(files);
+    const states = this.deletionStates(markers);
+    const titles = new Map();
+    for (const [id, versions] of groups) {
+      const latest = [...versions].sort((a, b) => compareText(b.createdTime || '', a.createdTime || ''))[0];
+      titles.set(id, latest.name?.replace(/( \(deleted\))?\.sfgz$/, '') || 'Guide');
+    }
+    for (const [id, marker] of states) {
+      if (['deleted', 'purged'].includes(marker.appProperties?.state)) titles.set(id, marker.appProperties.title || titles.get(id) || 'Guide');
+    }
+    const keepMarkers = new Set();
+    let purged = 0;
+    for (const [id, title] of titles) {
+      if (local.has(id)) continue;
+      const marker = await this.drive.upload({ data: Buffer.from('{}'), name: `Deleted ${title}`,
+        properties: { stepforge: 'deletion-v1', guideId: id, state: 'purged', title, deletedAt: new Date().toISOString() } });
+      keepMarkers.add(marker.id);
+      purged += 1;
+    }
+    for (const file of files) await this.drive.deleteFile(file.id);
+    for (const file of markers) if (!keepMarkers.has(file.id)) await this.drive.deleteFile(file.id);
+    for (const id of Object.keys(this.pending.records)) this.clearPendingDeletion(id);
+    this.state.records = {};
+    this.saveState();
+    this.fingerprints.clear();
+    return { removed: files.length, purged, uploading: [...local].filter((id) => this.isSharingEnabled(id)).length };
   }
 
   async setSharing(id, sharingEnabled) {
@@ -199,13 +272,7 @@ class CloudSync {
   async restoreNow(id, versionId) {
     if (!this.drive.status().connected) throw new Error('Sign in to Google Drive first.');
     if (!this.canReplace(id)) throw new Error('Close the editor or stop capture before restoring a cloud snapshot.');
-    const account = await this.drive.account();
-    const stateFile = path.join(this.directory, `sync-${digest(`${this.drive.clientId}:${account}`)}.json`);
-    if (this.stateFile !== stateFile) {
-      this.stateFile = stateFile;
-      this.state = readJsonIfExists(stateFile, { records: {} });
-    }
-    this.state.records ||= {};
+    await this.loadAccountState();
     const files = await this.drive.listVersions();
     const version = files.find((file) => file.id === versionId && file.appProperties?.guideId === id);
     if (!version) throw new Error('That cloud snapshot is no longer available.');
@@ -219,7 +286,7 @@ class CloudSync {
     // restored content as a new version instead of downloading those heads.
     const heads = headsOf(files.filter((file) => file.appProperties?.guideId === id));
     const latest = heads.at(-1);
-    this.state.records[id] = { head: latest?.id, heads: heads.map((file) => file.id), hash: latest?.appProperties.hash };
+    this.state.records[id] = { head: latest?.id, heads: heads.map((file) => file.id), hash: latest?.appProperties.hash, syncedAt: Date.now() };
 
     if (this.stateFile) this.saveState();
     this.markChanged(id);
@@ -408,14 +475,8 @@ class CloudSync {
       if (!this.enabled() || generation !== this.generation) throw new Error('Cloud synchronization stopped.');
     };
     this.publish('syncing', 'Syncing with Google Drive…');
-    const account = await this.drive.account();
+    await this.loadAccountState();
     check();
-    const stateFile = path.join(this.directory, `sync-${digest(`${this.drive.clientId}:${account}`)}.json`);
-    if (this.stateFile !== stateFile) {
-      this.stateFile = stateFile;
-      this.state = readJsonIfExists(stateFile, { records: {} });
-    }
-    this.state.records ||= {};
     const [files, deletionFiles] = await Promise.all([this.drive.listVersions(), this.drive.listDeletions()]);
     check();
     const deletions = this.deletionStates(deletionFiles);
@@ -478,6 +539,9 @@ class CloudSync {
             delete this.state.records[id];
             this.saveState();
             record = null;
+          } else if (Date.now() - (record.syncedAt || 0) > STALE_HEAD_MS) {
+            // Keep the content hash so local edits still become conflict copies.
+            record = { hash: record.hash };
           } else {
             pending = true;
             continue;
@@ -529,7 +593,7 @@ class CloudSync {
           if (!alreadyMarkedShared) this.markWasShared(id);
           local = this.localSnapshot(id);
           exists = true;
-          this.state.records[id] = { head: latest.id, heads: heads.map((h) => h.id), hash: alreadyMarkedShared ? local.hash : latest.appProperties.hash };
+          this.state.records[id] = { head: latest.id, heads: heads.map((h) => h.id), hash: alreadyMarkedShared ? local.hash : latest.appProperties.hash, syncedAt: Date.now() };
           this.saveState();
         }
         if (!exists) continue;
@@ -552,7 +616,7 @@ class CloudSync {
           const file = await this.drive.upload({ data, name,
             properties: { stepforge: 'guide-v1', guideId: id, hash: local.hash, ...(baseline?.head ? { parent: baseline.head } : {}) } });
           check();
-          this.state.records[id] = { head: file.id, heads: [...heads.filter((h) => h.id !== baseline?.head).map((h) => h.id), file.id], hash: local.hash };
+          this.state.records[id] = { head: file.id, heads: [...heads.filter((h) => h.id !== baseline?.head).map((h) => h.id), file.id], hash: local.hash, syncedAt: Date.now() };
           this.saveState();
           // If edits happened during upload, this baseline describes only uploaded bytes.
           if (this.store.guideExists(id) && this.localSnapshot(id).hash !== local.hash) pending = true;
@@ -568,7 +632,7 @@ class CloudSync {
     else this.publish('synced', 'Guides are synced with Google Drive.', { lastSync: new Date().toISOString() });
     // Snapshots are immutable. Retain the current version and two prior
     // versions on every live conflict branch after a successful sync.
-    if (!errors.length && !pending) await this.prune();
+    if (!errors.length && !pending) await this.pruneNow();
     return this.status;
   }
 

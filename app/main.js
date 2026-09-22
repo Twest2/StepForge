@@ -29,6 +29,9 @@ const { keepProcessesResponsive } = require('./win-power');
 const { zoomShortcutFromInputEvent } = require('./shortcut-utils');
 const security = require('./security');
 const PACKAGE_JSON = require(path.join(__dirname, '..', 'package.json'));
+// Linux packages launch the bundled Electron against /opt/stepforge, so
+// app.isPackaged is false there too. Only a source checkout is a dev build.
+const devBuild = !app.isPackaged && fs.existsSync(path.join(__dirname, '..', '.git'));
 
 const APP_ID = 'com.stepforge.app';
 
@@ -1103,9 +1106,6 @@ function setupIpc() {
     shell.openExternal(safe);
     return { ok: true };
   }, { validate: (a) => c.string(a.url, 2048) });
-  // Linux packages launch the bundled Electron against /opt/stepforge, so
-  // app.isPackaged is false there too. Only a source checkout is a dev build.
-  const devBuild = !app.isPackaged && fs.existsSync(path.join(__dirname, '..', '.git'));
   h('app:info', () => ({
     version: app.getVersion(),
     buildVersion: PACKAGE_JSON.buildVersion || app.getVersion(),
@@ -1157,7 +1157,10 @@ if (!gotLock) {
     const dataDir = libraryLocation.applyPending();
     store = new GuideStore(dataDir);
     settings = new Settings(store.settingsDir);
-    googleDrive = new GoogleDrive({ directory: store.settingsDir, safeStorage, vault: createCredentialVault(), openExternal: (url) => shell.openExternal(url) });
+    // Dev builds keep their sign-in to their own data folder instead of
+    // sharing (and possibly clearing) the release build's OS backup.
+    googleDrive = new GoogleDrive({ directory: store.settingsDir, safeStorage, vault: devBuild ? null : createCredentialVault(),
+      openExternal: (url) => shell.openExternal(url) });
     cloudSync = new CloudSync({
       store, drive: googleDrive,
       enabled: () => settings.get('cloud.enabled') === true && !cloudTesting,

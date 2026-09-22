@@ -1,7 +1,7 @@
 # StepForge
 
-StepForge is a **local-first**, open-source desktop app for Windows and
-Ubuntu 26.04 and Fedora 44 Workstation with GNOME 50 on Wayland. It captures step-by-step workflows as screenshots, lets
+StepForge is a **local-first**, open-source desktop app for Windows,
+Ubuntu 26.04, and Fedora 44 Workstation with GNOME 50 on Wayland. It captures step-by-step workflows as screenshots, lets
 you annotate and describe each step in a focused three-pane editor, and
 exports the result to Markdown, DOCX, PPTX, PDF, HTML (WIP), GIF (WIP),
 confluence (WIP), Wiki.js (WIP), and image bundles (WIP). The current

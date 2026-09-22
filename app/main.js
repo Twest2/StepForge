@@ -150,6 +150,7 @@ function handleZoomShortcut(kind) {
 
 function createWindow() {
   mainWindow = new BrowserWindow({
+    icon: path.join(__dirname, 'assets', process.platform === 'win32' ? 'stepforge.ico' : 'stepforge.png'),
     width: 1280,
     height: 820,
     minWidth: 880,

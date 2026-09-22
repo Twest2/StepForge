@@ -35,6 +35,7 @@ fail() { echo "package-deb FAILED: $1" >&2; exit 1; }
 listing="$(dpkg-deb -c "$DEB")"
 control="$(dpkg-deb -f "$DEB")"
 
+# Here-strings avoid SIGPIPE from echo | grep -q under pipefail on large payload listings.
 # Required install items.
 for needle in \
   './usr/bin/stepforge' \
@@ -43,8 +44,9 @@ for needle in \
   './usr/share/icons/hicolor/256x256/apps/stepforge.png' \
   './opt/stepforge/node_modules/electron/dist/electron' \
   './opt/stepforge/app/main.js' \
+  './opt/stepforge/app/assets/stepforge.png' \
   './usr/share/doc/stepforge/copyright'; do
-  echo "$listing" | grep -qF "$needle" || fail "missing packaged file: $needle"
+  grep -qF "$needle" <<< "$listing" || fail "missing packaged file: $needle"
 done
 
 # The development node_modules / build tooling must NOT be present.
@@ -52,7 +54,7 @@ for banned in \
   'node_modules/electron-builder' \
   'node_modules/app-builder-lib' \
   'node_modules/dmg-builder'; do
-  echo "$listing" | grep -qF "$banned" && fail "build-only dependency leaked: $banned" || true
+  grep -qF "$banned" <<< "$listing" && fail "build-only dependency leaked: $banned" || true
 done
 
 # The app's own docs/prompts/examples must not be shipped.
@@ -60,13 +62,13 @@ for banned in \
   './opt/stepforge/docs/' \
   './opt/stepforge/ai_prompts/' \
   './opt/stepforge/examples/'; do
-  echo "$listing" | grep -qF "$banned" && fail "app extra shipped: $banned" || true
+  grep -qF "$banned" <<< "$listing" && fail "app extra shipped: $banned" || true
 done
 
 # Control metadata sanity.
-echo "$control" | grep -q '^Package: stepforge' || fail "control missing Package"
-echo "$control" | grep -q '^Depends:.*libnss3' || fail "control missing runtime Depends"
-echo "$control" | grep -Eq '^Architecture: (amd64|arm64)' || fail "control has no concrete Architecture"
+grep -q '^Package: stepforge' <<< "$control" || fail "control missing Package"
+grep -q '^Depends:.*libnss3' <<< "$control" || fail "control missing runtime Depends"
+grep -Eq '^Architecture: (amd64|arm64)' <<< "$control" || fail "control has no concrete Architecture"
 
 # Sandbox is set up, not disabled: postinst makes chrome-sandbox setuid.
 dpkg-deb --info "$DEB" | grep -q 'postinst' || fail "no postinst maintainer script"

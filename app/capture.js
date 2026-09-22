@@ -2068,7 +2068,7 @@ public static class SFHook {
     // coordinates when a backend supplies the actual captured bounds.
     const cropBounds = frame.captureBounds || (mode === 'fullscreen' ? frame.display?.bounds : null);
     const automaticView = this.settings.get('capture.smartCropping') !== false
-      ? smartCrop(frame.size, cropBounds, clickPos) : null;
+      ? smartCrop(frame.size, cropBounds, clickPos, this.settings.get('capture.focusAmount') ?? 1.5) : null;
     const { title, captureMetadata } = await this.buildStepMeta(mode, frame, clickPos, clickMeta);
     const step = this.store.addStep(guideId, {
       title,

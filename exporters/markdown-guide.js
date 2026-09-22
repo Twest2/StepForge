@@ -73,6 +73,7 @@ function renderMarkdownGuide(ast, outDir, template = {}, {
   tocTitle = 'Contents',
   fileExt = '.md',
   accentBar = true,
+  titleHeading = true,
   frontMatter = null, // (ast) => lines, written before the body
   imageUrl = (relPath) => relPath,
 } = {}) {
@@ -82,7 +83,7 @@ function renderMarkdownGuide(ast, outDir, template = {}, {
   const lines = frontMatter ? frontMatter(ast) : [];
   const withToc = tpl.toc && ast.steps.length > 1;
 
-  lines.push(`# ${ast.guide.title}`, '');
+  if (titleHeading) lines.push(`# ${ast.guide.title}`, '');
   if (accentBar) lines.push('<div style="height:4px;background:#2563eb;border-radius:999px;margin:12px 0 18px;"></div>', '');
   const metaLines = guideMetaLines(ast);
   if (metaLines.length) lines.push(metaLines.join(' · '), '');

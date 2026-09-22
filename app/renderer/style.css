@@ -1140,8 +1140,9 @@ fieldset legend {
 }
 .cloud-avatar {
   flex: none; display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%;
-  font-weight: 700; font-size: 15px; color: var(--accent-fg); background: var(--accent);
+  font-weight: 700; font-size: 15px; color: var(--accent-fg); background: var(--accent); overflow: hidden;
 }
+.cloud-avatar img { width: 100%; height: 100%; object-fit: cover; }
 .cloud-account-info { flex: 1; min-width: 160px; display: flex; flex-direction: column; gap: 2px; }
 .cloud-email { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cloud-status-line { display: flex; align-items: center; gap: 6px; font-size: 12px; }

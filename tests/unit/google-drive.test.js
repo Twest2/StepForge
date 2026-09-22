@@ -308,7 +308,7 @@ test('a sign-in whose primary file became unreadable is recovered from the OS ba
   const reinstalled = new GoogleDrive({ directory, safeStorage: keyring, vault, clientId: 'test.apps.googleusercontent.com', clientSecret: 'test-client-secret' });
   assert.equal(reinstalled.status().connected, false);
   assert.equal(await reinstalled.recover(), true);
-  assert.deepEqual(reinstalled.status(), { connected: true, available: true, email: 'user@example.com', error: null });
+  assert.deepEqual(reinstalled.status(), { connected: true, available: true, email: 'user@example.com', photoLink: '', error: null });
   // The primary file is rewritten with the new key, so the next launch needs no backup.
   const nextLaunch = new GoogleDrive({ directory, safeStorage: keyring, clientId: 'test.apps.googleusercontent.com', clientSecret: 'test-client-secret' });
   assert.equal(nextLaunch.credentials.refresh_token, 'refresh-secret');
@@ -348,4 +348,60 @@ test('backups from another registration or a failing OS store are ignored', asyn
   assert.equal(await other.recover(), false);
   authorize(other); other.save(); await settleBackup();
   assert.equal(other.status().connected, true);
+});
+
+
+test('account photo refreshes legacy credentials once per session and persists across restarts', async (t) => {
+  let calls = 0;
+  const photoLink = 'https://lh3.googleusercontent.com/avatar';
+  const fetchImpl = async (url) => {
+    calls++;
+    assert.equal(new URL(url).searchParams.get('fields'), 'user(permissionId,emailAddress,photoLink)');
+    return json({ user: { permissionId: 'account', emailAddress: 'test@example.com', photoLink } });
+  };
+  const { drive, directory, safeStorage } = setup(t, { fetchImpl });
+  authorize(drive);
+  drive.credentials.accountId = 'account';
+  assert.deepEqual(await Promise.all([drive.account(), drive.account()]), ['account', 'account']);
+  assert.equal(drive.status().photoLink, photoLink);
+  await drive.account();
+  assert.equal(calls, 1);
+  const restarted = new GoogleDrive({ directory, safeStorage, fetchImpl,
+    clientId: drive.clientId, clientSecret: drive.clientSecret });
+  assert.equal(restarted.status().photoLink, photoLink);
+  await restarted.account();
+  assert.equal(calls, 2);
+  drive.disconnect();
+  assert.equal(drive.status().photoLink, '');
+});
+
+test('missing or untrusted photos leave the account usable with an empty avatar URL', async (t) => {
+  for (const photoLink of [undefined, 'http://lh3.googleusercontent.com/p', 'https://example.com/p',
+    'https://googleusercontent.com.evil.example/p', 'https://user:pass@lh3.googleusercontent.com/p']) {
+    const { drive } = setup(t, { fetchImpl: async () => json({ user: { permissionId: 'account', photoLink } }) });
+    authorize(drive);
+    assert.equal(await drive.account(), 'account');
+    assert.equal(drive.status().photoLink, '');
+  }
+});
+
+test('optional profile refresh failure preserves a cached account and photo', async (t) => {
+  const { drive } = setup(t, { fetchImpl: async () => { throw new Error('offline'); } });
+  authorize(drive);
+  Object.assign(drive.credentials, { accountId: 'account', photoLink: 'https://lh3.googleusercontent.com/cached' });
+  assert.equal(await drive.account(), 'account');
+  assert.equal(drive.status().photoLink, 'https://lh3.googleusercontent.com/cached');
+});
+
+test('a late account response cannot restore a disconnected profile', async (t) => {
+  let finish;
+  const { drive } = setup(t, { fetchImpl: () => new Promise((resolve) => { finish = resolve; }) });
+  authorize(drive);
+  const pending = drive.account();
+  await Promise.resolve();
+  drive.disconnect();
+  finish(json({ user: { permissionId: 'account', photoLink: 'https://lh3.googleusercontent.com/late' } }));
+  await assert.rejects(pending, /account changed/);
+  assert.equal(drive.status().photoLink, '');
+  assert.equal(fs.existsSync(drive.file), false);
 });

@@ -50,6 +50,14 @@ function createGuide(fields = {}) {
     updatedAt: now,
     stepsOrder: [],
     favorite: Boolean(fields.favorite),
+    // Guide-level opt-out for private Google Drive sharing. Existing guides
+    // retain the default of sharing when the account-level setting is enabled.
+    cloud: {
+      sharingEnabled: fields.cloud?.sharingEnabled !== false,
+      // Set only after a successful cloud sync. It lets an offline restart
+      // distinguish a formerly shared guide from a local-only guide.
+      wasShared: fields.cloud?.wasShared === true,
+    },
     linkedSource: fields.linkedSource || null,
     exportProfiles: { ...(fields.exportProfiles || {}) },
     // Monotonic revision for optimistic concurrency. Absent in v1 data (reads
@@ -164,6 +172,9 @@ function validateGuide(guide) {
   else if (new Set(guide.stepsOrder).size !== guide.stepsOrder.length) errors.push('stepsOrder has duplicates');
   if (guide.placeholders && typeof guide.placeholders !== 'object') errors.push('placeholders must be an object');
   if (guide.metadata && typeof guide.metadata !== 'object') errors.push('metadata must be an object');
+  if (guide.cloud && typeof guide.cloud !== 'object') errors.push('cloud must be an object');
+  if (guide.cloud && typeof guide.cloud.sharingEnabled !== 'boolean') errors.push('cloud.sharingEnabled must be a boolean');
+  if (guide.cloud && typeof guide.cloud.wasShared !== 'boolean') errors.push('cloud.wasShared must be a boolean');
   if (errors.length) throw new Error(`invalid guide: ${errors.join('; ')}`);
   return guide;
 }

@@ -1,7 +1,7 @@
 # StepForge
 
-StepForge is a **local-first**, open-source desktop app for Windows and
-Ubuntu 26.04 and Fedora 44 Workstation with GNOME 50 on Wayland. It captures step-by-step workflows as screenshots, lets
+StepForge is a **local-first**, open-source desktop app for Windows,
+Ubuntu 26.04, and Fedora 44 Workstation with GNOME 50 on Wayland. It captures step-by-step workflows as screenshots, lets
 you annotate and describe each step in a focused three-pane editor, and
 exports the result to Markdown, DOCX, PPTX, PDF, HTML (WIP), GIF (WIP),
 confluence (WIP), Wiki.js (WIP), and image bundles (WIP). The current
@@ -12,9 +12,10 @@ documented workflow patterns of commercial documentation tools like Folge. It
 contains no third-party branding, assets, or code from those tools.
 
 **Network and privacy contract.** StepForge has no telemetry, no update
-checks, no license checks, and no cloud. Guides never leave your machine on
-their own. The only outbound network feature is the **optional** AI
-integration: when *you* enable it and configure an [Ollama](https://ollama.com)
+checks, and no license checks. Optional Google Drive sharing is **off by
+default**; choosing Sign in with Google and granting access synchronizes your guides
+between computers. See [Google Drive setup and testing](docs/GOOGLE_DRIVE.md).
+The **optional** AI integration is also off by default: when *you* enable it and configure an [Ollama](https://ollama.com)
 endpoint, StepForge sends step screenshots and text to that endpoint to
 generate titles and descriptions. By default that endpoint must be **local
 (loopback)**; sending data to a remote host requires the explicit "Allow
@@ -22,83 +23,49 @@ remote AI host" opt-in. See [docs/PRIVACY.md](docs/PRIVACY.md) for exactly
 what is collected and sent. Note that OCR (Tesseract) and its English language
 data are bundled production dependencies — Electron is not the only one.
 
-## Overview
+## Installation
 
-The core workflow:
+For Windows, see the [Windows installation guide](docs/windows_installation.md). For a more detailed developer setup and source walkthrough, see [Getting Started](docs/GETTING_STARTED.md).
 
-1. **Capture** — take full-screen, active-window, or region screenshots with
-   configurable delay, pause/resume, and global hotkeys; or import images and
-   paste from the clipboard.
-2. **Annotate** — rectangles, ovals, lines, arrows, text, tooltips, numbered
-   markers, blur, highlight, magnify, and crop on a resolution-independent
-   annotation scene graph.
-3. **Describe** — rich-text titles and descriptions, informational text
-   blocks, code blocks, tables, step links, and placeholders.
-4. **Export** — every exporter renders from the same normalized Render AST,
-   so output is deterministic across formats.
+For Linux, StepForge currently provides native packages for **Ubuntu 26.04** and **Fedora 44 Workstation**, with GNOME 50 Wayland as the primary supported desktop environment.
+
+See the [Linux installation guide](docs/linux/linux_install.md) for:
+
+* Ubuntu installation through APT or a downloaded `.deb`
+* Fedora installation through DNF or a downloaded `.rpm`
+* Portable Linux builds
+* Running StepForge directly from source
+* Linux capture setup and GNOME Wayland notes
+
+The Ubuntu and Fedora packages include the required StepForge GNOME integration for click-based recording and marker placement.
 
 
-## What's Included
-
-- **Guide library** with folders, favorites, title search, full-text search,
-  duplicate/move/delete, and a quick-actions palette (`Ctrl+/`).
-- **Capture engine** — the editor's **Capture ▾** button offers full screen,
-  active window, and region capture (the app hides itself during the shot),
-  plus continuous capture sessions that grab a step on every click where the
-  OS allows it, or on a 3/5/10 s auto-interval everywhere else. The REC bar
-  shows the live count and the start/pause control. Delay, global
-  hotkeys, click markers, clipboard paste, and PNG/JPEG/GIF import included.
-  The full keyboard shortcut list lives under **More ▾ → Keyboard
-  shortcuts** in the editor.
-- **Three-pane editor** — step tree with substeps, statuses
-  (todo/in-progress/done), hidden/skipped steps, focused view (zoom/pan that
-  never mutates the original image), autosave, and command-stack undo/redo.
-- **Annotation canvas** — normalized JSON scene graph with
-  resolution-independent coordinates; annotations render identically in the
-  editor and in every exporter.
-- **Sharing & backups** — single-file `.sfgz` archives (zip-based, path-
-  traversal validated), linked guides with `.lock-sfgz` lock files and
-  explicit save, plus automated snapshot backups and restore.
-- **Exports** — JSON, Markdown, Simple HTML, Rich HTML (checkboxes + floating
-  TOC), PDF, animated GIF, image bundle, DOCX, and PPTX, with per-format
-  export templates shareable as `.sfglt` files.
-- **Settings & theming** — system/light/dark themes, capture options,
-  keyboard shortcuts, preview step count.
-
-Everything except the Electron shell is dependency-free Node.js: the ZIP,
-PNG, GIF, PDF, DOCX, and PPTX writers are all implemented in this repository
-using only Node built-ins.
-
-## Getting Started
-
-For a Windows installation, see [docs/windows_installation](docs/windows_installation.md) or for a developer/more in depth walkthrough, see [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md).
-
-On **Ubuntu 26.04 / GNOME 50 Wayland**, the Ubuntu package includes the required
-StepForge Capture extension for regular click recording with markers. See the
-[recommended apt installation and alternative `.deb` instructions](docs/linux/apt.md),
-then see the [GNOME setup and limitations](docs/linux/gnome-wayland.md).
-
-**Fedora 44 Workstation / GNOME 50 Wayland** has a separate RPM build and
-ProGet publishing workflow using the same GNOME capture architecture. See the
-[Fedora installation, repository setup, and validation guide](docs/linux/dnf.md).
-Ubuntu remains the release-tested desktop; Fedora has container build/install
-checks and a documented desktop validation checklist. See
-[Linux support](docs/GETTING_STARTED_WITH_LINUX.md) for other environments.
+**Manual**
 
 Requirements: Node.js 22.12+ and npm (pinned in `.nvmrc`; installs are
 refused on older Nodes because the packaging toolchain needs 22.12+).
 
 ```bash
 npm ci             # one-time, installs the locked dependency tree
+npm install
 npm start          # launch StepForge
 ```
 
-Dependencies are only ever installed by you, via `npm ci` — the app never
-downloads or repairs packages at runtime.
+## Overview
 
-First run creates the local data directory (`~/.local/share/stepforge` on
-Linux, `%APPDATA%/stepforge` on Windows; override with
-`STEPFORGE_DATA_DIR`).
+StepForge is a free and open-source alternative to documentation tools like Folge. It automatically creates step-by-step documentation as you work, reducing the need to manually write instructions and capture screenshots.
+
+Whether you're documenting a workflow, setting up a development environment, creating a tutorial, or recording a process, StepForge captures screenshots and generates organized steps as you go. This makes creating clear, visual documentation significantly faster and easier.
+
+## What problem does this app solve?
+
+Creating good documentation is often slow, tedious, and easy to neglect. People have to stop what they're doing to take screenshots, write instructions, organize steps, and format everything afterward.
+
+Because of that extra effort, documentation often contains too few screenshots or relies heavily on instructions like “click here” or “select this option.” Without a visual showing exactly where to click, those instructions can be confusing—especially for someone unfamiliar with the software or workflow.
+
+StepForge solves this by capturing screenshots and recording each step as the process happens. This makes it easier to create detailed, visual documentation where users can see exactly what to do, rather than having to interpret written instructions alone.
+
+By combining screenshots and written instructions in a single editor, StepForge helps you create polished, visual documentation that is easy to understand, easy to follow, and easy to work with.
 
 ## Testing
 
@@ -131,10 +98,13 @@ this machine and which packaging tools were unavailable.
 
 ## Offline Guarantee
 
-The shipping app makes **zero network calls**. There is no telemetry, no
-update check, no license validation, no cloud sync, no account system, and no
-remote AI. Exports embed no remote fonts or CDN references. See
-[docs/SECURITY.md](docs/SECURITY.md) for the threat model.
+Capture, editing, and export work offline. AI and Google Drive sharing make
+network requests only when explicitly used or enabled. There is no telemetry,
+update check, or license validation. Exports embed no remote fonts or CDN references. See
+[docs/SECURITY.md](docs/SECURITY.md) for the threat model. 
+
+> **Note:** Google Drive sharing is currently in testing and requires your
+> Google account to be added as an approved StepForge test user. Please contact git@twestbrook.com to be added.
 
 ## Contributing
 

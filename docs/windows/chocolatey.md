@@ -1,69 +1,71 @@
-# StepForge on Windows with Chocolatey
+# Install StepForge on Windows with Chocolatey
 
-StepForge provides a Chocolatey package for **Windows 10 and Windows 11 (64-bit)**.
+[Chocolatey](https://chocolatey.org) is the recommended way to install
+StepForge on **Windows 10 and Windows 11 (64-bit)**. After a one-time setup,
+one command keeps StepForge up to date, with no installers to download and no
+SmartScreen prompts.
 
-The recommended installation method is the StepForge Chocolatey feed. After a one-time setup, StepForge updates with a single `choco upgrade` command, with no installer to download and no SmartScreen prompts.
-
-You can also install StepForge manually by downloading the installer from [GitHub Releases](https://github.com/Twest2/StepForge/releases). See the [Windows installation guide](../windows_installation.md).
+Prefer a regular installer? See the [Windows installation guide](../windows_installation.md).
 
 ## Before you start
 
-Chocolatey must be installed. If `choco --version` does not work in PowerShell, follow the [Chocolatey installation instructions](https://chocolatey.org/install) first.
+- **Chocolatey must be installed.** If `choco --version` doesn't work in
+  PowerShell, follow the [Chocolatey install instructions](https://chocolatey.org/install)
+  first.
+- **Use an Administrator PowerShell** for every command on this page: right-click
+  **Terminal** or **Windows PowerShell** and choose **Run as administrator**.
 
-Run every command below in **PowerShell as Administrator** (right-click **Windows PowerShell** or **Terminal** and choose **Run as administrator**).
+## Install
 
-## Recommended: install from the StepForge Chocolatey feed
-
-Add the StepForge feed to Chocolatey:
+**1. Add the StepForge package feed.** You only need to do this once.
 
 ```powershell
 choco source add --name=stepforge --source=https://packages.twestbrook.com/nuget/stepforge-choco/
 ```
 
-Install StepForge from that feed:
+**2. Install StepForge.**
 
 ```powershell
 choco install stepforge --source=stepforge -y
 ```
 
-StepForge is installed for all users and appears in the Start menu.
+StepForge is installed for all users and appears in the Start menu. Head to
+[Getting Started](../GETTING_STARTED.md) to record your first guide.
 
-## Updating StepForge
+## Update
 
-To update only StepForge:
+Close StepForge, then run:
 
 ```powershell
 choco upgrade stepforge -y
 ```
 
-To update everything installed with Chocolatey, StepForge included:
+Or update everything installed through Chocolatey at once:
 
 ```powershell
 choco upgrade all -y
 ```
 
-Close StepForge before updating.
-
 Updates keep your guides, settings, and Google Drive sign-in.
 
-## Switching from a manual install
+## Switching from the regular installer
 
-If you installed StepForge with the setup wizard, you can switch to Chocolatey at any time by following the install steps above. You do not need to uninstall first:
+You don't need to uninstall first. Just follow the install steps above:
 
-- A copy installed **only for you** is removed automatically and replaced by the Chocolatey-managed copy.
+- A copy installed **only for you** is removed and replaced by the
+  Chocolatey-managed copy.
 - A copy installed **for all users** is upgraded in place.
 
-Your guides, settings, and Google Drive sign-in are kept either way.
+Your guides, settings, and Google Drive sign-in carry over either way.
 
-## Uninstalling StepForge
+## Uninstall
 
 ```powershell
 choco uninstall stepforge -y
 ```
 
-Uninstalling removes the application only. Your guides and settings stay in `%APPDATA%\stepforge`.
-
-To also remove the StepForge feed from Chocolatey:
+This removes the application only. Your guides and settings stay in
+`%APPDATA%\stepforge`. To also remove the StepForge feed:
 
 ```powershell
 choco source remove --name=stepforge
@@ -71,17 +73,13 @@ choco source remove --name=stepforge
 
 ## Troubleshooting
 
-**`choco` is not recognized.** Chocolatey is not installed, or the terminal was opened before installing it. Install Chocolatey, then open a new Administrator PowerShell.
+| Problem | Fix |
+| --- | --- |
+| `choco` is not recognized | Chocolatey isn't installed, or the terminal was opened before it was. Install Chocolatey, then open a new Administrator PowerShell. |
+| Access denied, or a request for elevation | Reopen PowerShell with **Run as administrator** and try again. |
+| `The package was not found with the source(s) listed` | The StepForge feed hasn't been added. Run the `choco source add` command above and confirm it appears in `choco source list`. |
 
-**Access denied, or the install asks for elevation.** Open PowerShell with **Run as administrator** and run the command again.
-
-**`stepforge not installed. The package was not found with the source(s) listed.`** The StepForge feed has not been added. Run the `choco source add` command above, then check it is listed with:
-
-```powershell
-choco source list
-```
-
-**Checking which version is installed:**
+To check which version you have installed:
 
 ```powershell
 choco list stepforge

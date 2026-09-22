@@ -1,135 +1,153 @@
-# Optional Google Drive sharing
+# Sync guides with Google Drive
 
-> **Google Drive is currently in testing.**
-> Google Drive sharing is currently available only to Google accounts that
-> have been added as approved test users for StepForge's Google OAuth app.
-> If your account is not an approved test user, Google will block sign-in.
-> This restriction is temporary while the Google integration is being tested.
-> To be added to the test list, please contact git@twestbrook.com. You will 
-> be added just Google requires a list of accounts.
+Google Drive sync keeps your StepForge library the same on every computer you
+use. Sign in once on each machine and your guides, including screenshots,
+annotations, and descriptions, follow you.
 
-Google Drive sharing is off until you choose **Sign in with Google**. Signing
-in and allowing access enables automatic sharing of your local guides,
-including screenshots, annotations, descriptions, and capture metadata.
-Local guides remain usable offline.
+Sync is **optional and off by default**. StepForge works fully offline without it.
+
+> [!IMPORTANT]
+> **Google Drive sync is in testing.** Until Google completes its review of
+> StepForge, sign-in only works for Google accounts on StepForge's approved
+> tester list; other accounts are blocked by Google. To be added, email
+> `git@twestbrook.com` with the Google account you want to use.
 
 ## Connect your Google account
 
-1. Open **Settings → Google Drive sharing** and choose **Sign in with Google**.
-2. Choose your Google account in the browser and allow StepForge to store its
-   app data in Drive. StepForge does not request access to your other Drive files.
-3. Return to StepForge. Settings shows **Connected as** your email address,
-   and guides begin synchronizing automatically.
-4. Sign in to the same Google account in StepForge on your other computer.
+1. Open **Settings → Google Drive** and choose **Sign in with Google**.
+2. Your browser opens. Pick your Google account and allow StepForge to store
+   its data in your Drive.
+3. Return to StepForge. You'll see **Connected as** with your email address,
+   and your guides start syncing.
+4. On your other computer, install StepForge and sign in with the **same**
+   Google account.
 
-You can cancel sign-in at any time. Turn off **Automatically sync guides** to
-pause sharing, or choose **Disconnect** to remove this device's connection.
+Changes in the Google Drive settings take effect immediately. You don't need
+to press **Save**.
 
-## Test your connection
+> [!NOTE]
+> **StepForge can only see its own files.** It uses a private, hidden area of
+> your Drive reserved for the app, and has no access to your documents,
+> photos, or anything else. For the same reason, StepForge's files don't appear
+> in the normal Drive file list.
 
-After connecting, open **Advanced** and choose **Test connection**. It checks sign-in,
-refreshes authorization, checks private storage access, uploads and downloads
-a small temporary file, verifies its bytes, and deletes it. Each result is
-shown separately. The test itself does not upload a guide; existing automatic
-synchronization resumes afterwards if enabled.
+## Everyday use
 
-These cloud controls apply immediately, independently of the Settings Save or
-Cancel buttons. **Sync now** requests a pass. While you are signed in with
-**Auto-sync** on, a Drive indicator in the top bar shows pending, syncing,
-synced, conflict, or error states and opens Settings. It is hidden otherwise.
+There's nothing to do. StepForge uploads a guide a few seconds after you save
+it and checks for changes from your other computers about every 30 seconds.
 
-## Sync behavior
+The **Drive indicator** in the top bar shows what's happening (waiting,
+syncing, up to date, or needs attention) and opens the Drive settings when
+clicked.
 
-- Local saves trigger an upload after approximately three seconds without new
-  saves. StepForge checks Drive approximately every 30 seconds while running.
-  Keep StepForge running until its status says synced before changing devices.
-- Updates are complete `.sfgz` archive snapshots stored in Google Drive's private
-  `appDataFolder`. They do not appear in the ordinary My Drive file list and
-  cannot be shared with other Google accounts through this feature.
-- Each upload creates an immutable version linked to its previous version.
-  Concurrent devices cannot overwrite each other's uploads. If edits diverge,
-  StepForge preserves conflict copies in the library. This is not live
-  collaboration or automatic merging of individual steps.
-- Incoming replacements wait until the editor is closed, pending edits are
-  saved, and recording is paused/stopped. Downloads are validated before
-  installation, and a change during download prevents replacement.
-- Replaced local guides are retained under `cloud/backups` in the app data
-  directory. A journal recovers an interrupted directory replacement.
-- Disconnecting disables sync and removes credentials on this device. It does
-  not delete local guides, cloud versions, or copies on another computer.
-  Revoke the app in your Google account to remove its authorization remotely.
-- Deleting a guide is local-only. A guide already synchronized and deleted
-  locally is not automatically restored by subsequent polls. Another device
-  still has its copy, and a fresh installation can download the cloud copy.
-- Each guide keeps its latest snapshot and up to two previous snapshots in
-  Drive; older ones are pruned automatically after a successful sync. Local
-  replacement backups are not pruned. Guides use complete snapshots rather
-  than incremental image transfers. Transfers
-  are limited to 256 MB per archive and have a 60-second request deadline;
-  unusually large guides or slow connections may need a later retry.
-- If another computer's pruning removes the version this computer last synced,
-  this computer re-evaluates the guide after two minutes, downloads the latest
-  version, and keeps any unsynced local edits as a conflict copy.
-- Network failures leave local edits intact. Background polling retries while
-  sharing is enabled; Settings reports authentication, permission, quota, and
-  connection errors.
+> [!TIP]
+> Before switching computers, wait until the indicator shows the guide is up
+> to date.
 
+- **Sync now** starts a sync immediately.
+- **Automatically sync guides** pauses and resumes syncing on this computer.
+- **Test connection** (under **Advanced**) checks sign-in and Drive access by
+  uploading, downloading, and deleting a small temporary file. It never
+  uploads a guide.
 
+## How changes are handled
 
+- **Nothing is overwritten silently.** If you edit the same guide on two
+  computers before they sync, StepForge keeps both: your version stays, and
+  the other appears in your library as a *conflict copy*. StepForge doesn't
+  merge individual steps; this isn't live co-editing.
+- **Your work isn't interrupted.** Updates from another computer wait until
+  you close the guide and stop recording.
+- **Downloads are checked** before they replace anything, and the replaced
+  local copy is kept as a backup in your data folder.
+- **Deleting a guide only deletes it on this computer.** The Drive copy
+  remains until you remove it from Drive (see below).
+- **Going offline is fine.** Local edits are kept and sync resumes when you're
+  back online.
 
+## Manage what's in Drive
 
+**Settings → Google Drive** also lets you see and tidy up your Drive storage.
 
+**Storage.** StepForge's Drive folder is hidden, so this is the only place to
+see how much space it uses. The bar splits usage into latest versions,
+previous versions, and recovery copies of deleted guides.
 
-Maintainers/contributers: see [Google sign-in release configuration](GOOGLE_DRIVE_RELEASE.md)
-for the one-time application registration and packaging requirements.
+**Free up space** deletes all previous versions after you confirm. The latest
+version of every guide is always kept. Deleted versions can't be recovered.
 
-Google references: [Desktop OAuth](https://developers.google.com/identity/protocols/oauth2/native-app),
-[app storage](https://developers.google.com/workspace/drive/api/guides/appdata),
-[uploads](https://developers.google.com/workspace/drive/api/guides/manage-uploads).
+**Guides in Drive** lists every guide stored in Drive, including ones that
+aren't on this computer.
 
-Archive compression for normal uploads runs in a background worker shared with
-linked archive writes and automatic backups. Jobs run one at a time to limit CPU
-and disk contention. Uploads recheck cancellation and sharing permissions after
-compression, and edits made during compression remain pending for the next sync.
-File discovery and content hashing still run on the main process. Backup history
-is excluded from cloud change detection because it is not part of uploaded guides.
+- **Versions** shows a guide's latest version and up to two previous ones.
+  **Restore** puts an earlier version back. Close the guide and stop any
+  recording first. Your current local copy is backed up before it's replaced.
+- **Download** installs a guide that's only in Drive onto this computer.
+- **Delete from Drive** permanently removes all of a guide's Drive versions
+  after confirmation. Your local copy is kept and stops syncing. Other computers
+  that still sync the guide may upload it again.
 
-## Browse and manage Drive guides
+**Recently deleted** holds recovery copies of deleted guides, which you can
+restore or delete permanently.
 
-**Settings → Google Drive sharing** shows the connected account, sync status,
-and an **Auto-sync** switch. Below it:
+### Make this computer the source of truth
 
-- **Storage** shows how much space StepForge uses in Drive. The app folder is
-  hidden, so this is the only place to see it. The bar splits the total into
-  latest versions, previous versions, and deleted-guide recovery copies, and
-  shows the share of your Google storage quota when Google reports one.
-  **Free up space** deletes every previous version after confirmation. The
-  latest version of every guide is always kept. Removed versions cannot be
-  restored.
-- **Guides in Drive** lists every active cloud guide, including ones not in
-  this computer's library. Choose **Versions** to see the latest version and
-  up to two previous versions, then **Restore** one. Close the guide editor
-  and stop capture first. Restoring replaces the local content and preserves
-  the previous local copy in the cloud backup directory. With sharing enabled,
-  the restored content becomes a new cloud version on the next sync. A guide
-  already excluded from sharing stays excluded. Guides only in Drive also offer
-  **Download**, which installs the latest version on this computer.
-- **Delete from Drive** removes all of that guide's cloud versions after
-  confirmation. This cannot be undone. Local copies are kept and this computer
-  stops sharing that guide. Other computers still sharing it may upload it again.
-- **Recently deleted** lists recovery copies of deleted guides, which can be
-  restored or permanently deleted.
+If your computers have drifted apart and you want one of them to win, use
+**Advanced → Replace Drive with this computer**. After confirmation, StepForge:
 
-### Use this computer as the source of truth
+1. Deletes everything StepForge has stored in Drive, including all versions
+   and recovery copies.
+2. Uploads the guides on this computer.
+3. Tells your other computers to move any guide that isn't on this computer
+   to their trash, and to update the rest to this computer's version.
+   Unsynced edits on those computers are kept as conflict copies.
 
-**Advanced → Replace Drive with this computer** makes this computer's library
-the only content in Drive. After confirmation it deletes every cloud version,
-previous version, and recovery copy, then uploads the guides on this computer.
-Guides that were in Drive but are not on this computer are marked deleted, so
-your other computers move them to their trash. Guides on other computers that
-are still in this library update to this computer's version; unsynced edits on
-those computers are kept as conflict copies. Auto-sync must be on. This cannot
-be undone.
+**Automatically sync guides** must be on to use this.
 
-These actions apply immediately; the Settings Save button is not required.
-Confirmations return to the same Settings panel, keeping unsaved fields intact.
+> [!WARNING]
+> Replacing Drive can't be undone. Make sure this computer has everything you
+> want to keep.
+
+## Disconnect
+
+Choose **Disconnect** to sign this computer out. Syncing stops and the saved
+sign-in is removed. Your guides stay on this computer and in Drive.
+
+To revoke StepForge's access completely, remove it from
+[your Google account's third-party connections](https://myaccount.google.com/connections).
+
+## Limits
+
+- Each guide keeps its **latest version plus up to two previous versions** in
+  Drive. Older versions are removed automatically after a successful sync.
+- A single guide can be up to **256 MB**. Very large guides on slow
+  connections may take more than one attempt.
+- Sync sends complete guides, not just the changed images, so large guides
+  use more bandwidth.
+
+## Privacy and security
+
+- Sign-in happens in your own browser on Google's website. StepForge never sees
+  your Google password.
+- The access token is stored encrypted using your operating system's
+  credential storage.
+- Guides are sent over HTTPS and stored in your Google account. They aren't
+  additionally encrypted by StepForge, so treat them like any other file in
+  your Drive.
+
+See the [privacy policy](PRIVACY.md#optional-google-drive-sync) and
+[security overview](SECURITY.md) for details.
+
+## Troubleshooting
+
+| Problem | What to do |
+| --- | --- |
+| Google says the app is blocked or unverified | Your account isn't on the tester list yet. Email `git@twestbrook.com`. |
+| "Google sign-in is unavailable in this build" | You're running a development build. Install an official release. |
+| The indicator shows *needs attention* | Open **Settings → Google Drive** to see the error. For sign-in problems, choose **Sign in again**. |
+| A guide from another computer hasn't arrived | Make sure that computer finished syncing, then choose **Sync now**. Close the guide if it's open here. |
+| Drive is full | Choose **Free up space**, or free up space elsewhere in your Google account. |
+
+---
+
+*Maintainers: see [Google sign-in release configuration](GOOGLE_DRIVE_RELEASE.md).*

@@ -1,22 +1,15 @@
-# StepForge on Fedora
+# Install StepForge on Fedora
 
-StepForge provides an RPM package for **Fedora 44 Workstation with GNOME 50 on x86_64**.
+StepForge provides an RPM package for **Fedora 44 Workstation (GNOME 50) on
+x86_64**.
 
-The recommended installation method is the StepForge DNF repository because future StepForge releases can then be installed through normal Fedora updates.
+The recommended way to install is the StepForge DNF repository, so StepForge
+updates with the rest of your system. On Ubuntu, see the [Ubuntu guide](apt.md).
 
-Ubuntu and other .apt based installation guides can be found at [apt.md](apt.md)
+## Install from the StepForge repository
 
-If you prefer not to add the repository, you can also download the RPM directly from the [StepForge GitHub Releases](https://github.com/Twest2/StepForge/releases) page.
-
-## Recommended: install from the StepForge DNF repository
-
-First, make sure Fedora is up to date:
-
-```bash
-sudo dnf upgrade --refresh
-```
-
-Add the StepForge repository, refresh DNF's repository metadata, and install StepForge:
+Open a terminal and run these commands. They add the StepForge repository and
+install the app.
 
 ```bash
 sudo tee /etc/yum.repos.d/stepforge-rpm.repo > /dev/null <<'EOF'
@@ -27,29 +20,29 @@ enabled=1
 gpgcheck=0
 EOF
 
-sudo dnf clean metadata
 sudo dnf makecache --refresh
-
 sudo dnf install stepforge
 ```
 
-You can verify the installed version with:
+> [!IMPORTANT]
+> **Log out and back in** before your first recording so GNOME loads the
+> StepForge extension. See [Recording on GNOME Wayland](linux_install.md#recording-on-gnome-wayland).
+
+Launch **StepForge** from Activities, then follow
+[Getting Started](../GETTING_STARTED.md) to record your first guide.
+
+To check the installed version:
 
 ```bash
 rpm -q stepforge
 ```
 
-After the first installation or after an update to the bundled GNOME extension, log out and back in before recording.
+## Update
 
-## Updating StepForge
-
-Because StepForge is installed through DNF, it can be updated alongside the rest of Fedora.
-
-To refresh repository metadata and install all available system updates:
+StepForge updates with your normal system updates:
 
 ```bash
-sudo dnf update
-sudo dnf upgrade -y
+sudo dnf upgrade --refresh
 ```
 
 To update only StepForge:
@@ -58,91 +51,45 @@ To update only StepForge:
 sudo dnf upgrade stepforge
 ```
 
-You do not need to manually download a new RPM when using the repository.
+## Alternative: install a downloaded RPM
 
-## Alternative: install the RPM from GitHub Releases
-
-You can install StepForge without adding the DNF repository.
-
-Download the Fedora RPM from the [StepForge GitHub Releases](https://github.com/Twest2/StepForge/releases) page.
-
-The filename will look similar to:
-
-```text
-stepforge-<version>-1.fc44.x86_64.rpm
-```
-
-Then open a terminal in the directory containing the downloaded file and install it with:
-
-```bash
-sudo dnf install ./stepforge-<version>-1.fc44.x86_64.rpm
-```
-
-For example:
-
-```bash
-sudo dnf install ./stepforge-0.5.0.0-1.fc44.x86_64.rpm
-```
-
-Using `dnf install` instead of `rpm -i` allows DNF to automatically install required dependencies.
-
-If you downloaded the accompanying checksum file, you can verify the package before installing it:
+If you'd rather not add a repository, download
+`stepforge-<version>-1.fc44.x86_64.rpm` and its `.sha256` file from the
+[latest release](https://github.com/Twest2/StepForge/releases/latest). From the
+folder you saved them to, verify the download and install it:
 
 ```bash
 sha256sum --check stepforge-<version>-1.fc44.x86_64.rpm.sha256
+sudo dnf install ./stepforge-<version>-1.fc44.x86_64.rpm
 ```
 
-The GitHub Release method is useful if you want a specific version or do not want to add the StepForge repository.
+Use `dnf install` rather than `rpm -i` so DNF installs the dependencies too.
 
-However, installations made this way **will not automatically receive new StepForge versions**. You will need to download and install each newer RPM yourself.
+> [!NOTE]
+> A downloaded RPM won't update automatically. To upgrade, download the newer
+> RPM and run the same command, or add the repository above.
 
 ## Uninstall
-
-Remove StepForge with:
 
 ```bash
 sudo dnf remove stepforge
 ```
 
-If you installed the DNF repository and also want to remove it:
+To also remove the StepForge repository:
 
 ```bash
 sudo rm /etc/yum.repos.d/stepforge-rpm.repo
 sudo dnf clean metadata
 ```
 
-Your StepForge guides and settings stored in your home directory are not automatically deleted when the package is removed.
+Your guides and settings in `~/.local/share/stepforge` are kept.
 
-## GNOME Wayland recording
+## Troubleshooting
 
-The Fedora package includes the StepForge GNOME Capture extension and required capture helper.
+**Clicks don't create steps.** Log out and back in, confirm you're on a
+Wayland session (`echo $XDG_SESSION_TYPE`), and accept the extension prompt
+when recording starts. More in [Recording on GNOME Wayland](linux_install.md#recording-on-gnome-wayland).
 
-On GNOME Wayland, StepForge uses the XDG Desktop Portal and PipeWire for screen capture while the bundled GNOME extension provides mouse-click information and coordinates.
-
-On the first recording:
-
-1. Start a recording from StepForge.
-2. Allow the StepForge GNOME extension if prompted.
-3. Select the monitors you want StepForge to capture.
-4. Use the **StepForge REC** indicator in the GNOME panel to control the recording.
-
-See [GNOME Wayland recording and testing](gnome-wayland.md) for more information about capture behavior and limitations.
-
-## Build the RPM yourself
-
-To build StepForge from source on Fedora:
-
-```bash
-bash scripts/linux/dnf/install-build-deps.sh
-bash scripts/linux/dnf/install-runtime-deps.sh
-nvm install && nvm use
-npm ci
-bash tests/run_test.sh
-npm run package:linux:rpm
-```
-
-The generated RPM and checksum are placed under:
-
-```text
-build/artifacts/x86_64/
-```
+**`dnf` can't find `stepforge`.** Check that the repository file exists at
+`/etc/yum.repos.d/stepforge-rpm.repo`, then run `sudo dnf makecache --refresh`
+and try again.

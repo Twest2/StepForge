@@ -72,20 +72,24 @@ function renderMarkdownGuide(ast, outDir, template = {}, {
   alertStyle = 'gfm',
   tocTitle = 'Contents',
   fileExt = '.md',
+  accentBar = true,
+  frontMatter = null, // (ast) => lines, written before the body
+  imageUrl = (relPath) => relPath,
 } = {}) {
   const tpl = { ...defaults, ...template };
   fs.mkdirSync(outDir, { recursive: true });
   const images = tpl.includeImages ? writeStepImages(ast, outDir) : new Map();
-  const lines = [];
+  const lines = frontMatter ? frontMatter(ast) : [];
+  const withToc = tpl.toc && ast.steps.length > 1;
 
   lines.push(`# ${ast.guide.title}`, '');
-  lines.push('<div style="height:4px;background:#2563eb;border-radius:999px;margin:12px 0 18px;"></div>', '');
+  if (accentBar) lines.push('<div style="height:4px;background:#2563eb;border-radius:999px;margin:12px 0 18px;"></div>', '');
   const metaLines = guideMetaLines(ast);
   if (metaLines.length) lines.push(metaLines.join(' · '), '');
   lines.push(`*${guideSummary(ast)}*`, '');
   if (ast.guide.descriptionHtml) lines.push(htmlToMarkdown(ast.guide.descriptionHtml), '');
 
-  if (tpl.toc && ast.steps.length > 1) {
+  if (withToc) {
     lines.push(`## ${tocTitle}`, '');
     for (const entry of tocEntries(ast)) {
       const indent = '  '.repeat(entry.depth);
@@ -105,7 +109,7 @@ function renderMarkdownGuide(ast, outDir, template = {}, {
       afterImage,
       rest,
     } = stepContentGroups(step);
-    lines.push(`<a id="${anchorFor(step)}"></a>`, '');
+    if (accentBar || withToc) lines.push(`<a id="${anchorFor(step)}"></a>`, '');
     for (const tb of beforeTitle) emitBlock(lines, tb, { alertStyle });
     lines.push(`${heading} ${step.number}. ${step.title || 'Untitled step'}`, '');
     if (step.skipped) lines.push('*(skipped)*', '');
@@ -118,9 +122,9 @@ function renderMarkdownGuide(ast, outDir, template = {}, {
     const img = images.get(step.stepId);
     if (img) {
       if (tpl.azureWiki && tpl.imageMaxWidth > 0) {
-        lines.push(`![Step ${step.number}](${img.relPath} =${tpl.imageMaxWidth}x)`, '');
+        lines.push(`![Step ${step.number}](${imageUrl(img.relPath)} =${tpl.imageMaxWidth}x)`, '');
       } else {
-        lines.push(`![Step ${step.number}](${img.relPath})`, '');
+        lines.push(`![Step ${step.number}](${imageUrl(img.relPath)})`, '');
       }
     }
     for (const tb of afterImage) emitBlock(lines, tb, { alertStyle });
@@ -143,7 +147,11 @@ function renderMarkdownGuide(ast, outDir, template = {}, {
   }
 
   const file = path.join(outDir, `${guideSlug(ast)}${fileExt}`);
-  fs.writeFileSync(file, lines.join('\n').replace(/\n{3,}/g, '\n\n') + '\n');
+  let text = lines.join('\n').replace(/\n{3,}/g, '\n\n');
+  // Step links in descriptions point at step ids; retarget them to the
+  // exported heading anchors.
+  for (const step of ast.steps) text = text.split(`(#step-${step.stepId})`).join(`(#${anchorFor(step)})`);
+  fs.writeFileSync(file, text + '\n');
   return { file, imageCount: images.size };
 }
 

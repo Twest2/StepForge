@@ -129,6 +129,7 @@ const api = {
     defaults: invoke('export:defaults'),
     run: invoke('export:run'),
     chooseDir: invoke('export:chooseDir'),
+    chooseImage: invoke('export:chooseImage'),
     preview: invoke('export:preview'),
     cleanupPreviews: invoke('preview:cleanup'),
   },

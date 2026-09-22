@@ -200,7 +200,7 @@ test('text block positions render around the title, description, and image', (t)
   const html = fs.readFileSync(exportHtmlSimple(ast, htmlOut).file, 'utf8');
   assertIncreasingOrder(html, [
     'Before title',
-    '<h2>1. Open AcmeSync settings</h2>',
+    '<span class="step-num">1</span>\n    <h2>Open AcmeSync settings</h2>',
     'After title',
     'Before description',
     'docs.example.com',
@@ -211,7 +211,7 @@ test('text block positions render around the title, description, and image', (t)
   ]);
 });
 
-test('Wiki.js export: TOC is included, wiki callouts render, images exist', (t) => {
+test('Wiki.js export: wiki callouts, no raw HTML decoration, images exist', (t) => {
   const root = makeTmpDir('expwikijs');
   t.after(() => rmrf(root));
   const { store, guide } = buildFixtureGuide(path.join(root, 'data'));
@@ -223,7 +223,9 @@ test('Wiki.js export: TOC is included, wiki callouts render, images exist', (t) 
 
   const lines = md.split('\n');
   assert.equal(lines[0], '# Configure AcmeSync backups');
-  assert.ok(lines.some((l) => l === '## Contents'));
+  // Wiki.js shows its own page TOC; no inline one or HTML anchors by default.
+  assert.ok(!lines.includes('## Contents'));
+  assert.ok(!md.includes('<div') && !md.includes('<a id='), 'no raw HTML');
   assert.ok(lines.some((l) => l.startsWith('## 1. Open AcmeSync settings')));
   assert.ok(lines.some((l) => l.startsWith('> **Access**')));
   assert.ok(lines.includes('> Admins only.'));
@@ -237,29 +239,76 @@ test('Wiki.js export: TOC is included, wiki callouts render, images exist', (t) 
   }
 });
 
-test('Confluence export writes storage-format XML and image attachments', (t) => {
-  const root = makeTmpDir('expconf');
+test('Wiki.js export: contents list, asset folder links and page metadata are opt-in', (t) => {
+  const root = makeTmpDir('expwikijsopts');
   t.after(() => rmrf(root));
   const { store, guide } = buildFixtureGuide(path.join(root, 'data'));
+  const ast = buildRenderAst(store, guide.guideId);
+  const { file } = exportWikiJs(ast, path.join(root, 'out'), { toc: true, assetFolder: 'guides/images/', frontMatter: true });
+  const md = fs.readFileSync(file, 'utf8');
+  const lines = md.split('\n');
+
+  assert.equal(lines[0], '---');
+  assert.ok(lines.includes('title: "Configure AcmeSync backups"'));
+  assert.ok(lines.includes('editor: markdown'));
+  assert.ok(lines.includes('## Contents'));
+  const tocAnchors = [...md.matchAll(/\]\(#(step-[^)]+)\)/g)].map((m) => m[1]);
+  assert.ok(tocAnchors.length >= 3);
+  for (const anchor of tocAnchors) assert.ok(md.includes(`<a id="${anchor}"></a>`), `anchor ${anchor} exists`);
+  const imgRefs = [...md.matchAll(/!\[[^\]]*\]\(([^)]+)\)/g)].map((m) => m[1]);
+  assert.equal(imgRefs.length, 2);
+  for (const ref of imgRefs) assert.match(ref, /^\/guides\/images\/\d{3}-[a-z0-9-]+\.png$/);
+});
+
+test('Confluence export: storage-format page, REST body, attachments and import guide', (t) => {
+  const root = makeTmpDir('expconf');
+  t.after(() => rmrf(root));
+  const { store, guide, s1, s2 } = buildFixtureGuide(path.join(root, 'data'));
+  const step = store.getStep(guide.guideId, s2.stepId);
+  step.descriptionHtml = `<p>Line one<br>line&nbsp;two, see <a href="step:${s1.stepId}">the first step</a>.</p>`;
+  store.saveStep(guide.guideId, step);
   const out = path.join(root, 'out');
 
   const ast = buildRenderAst(store, guide.guideId);
-  const { file, attachmentCount } = exportConfluence(ast, out);
+  const { file, folder, attachmentCount } = exportConfluence(ast, out);
+  assert.equal(path.basename(folder), 'configure-acmesync-backups-confluence');
+  assert.equal(path.basename(file), 'page.xhtml');
+  assert.equal(attachmentCount, 2);
   const xml = fs.readFileSync(file, 'utf8');
 
-  assert.equal(attachmentCount, 2);
-  assert.ok(xml.includes('<ac:structured-macro ac:name="code">'));
-  assert.ok(xml.includes('ri:attachment ri:filename='));
-  assert.ok(xml.includes('0 2 * * * /usr/local/bin/acmesync --backup'));
+  // Body only (no <html> wrapper), XML-safe markup.
+  assert.ok(!xml.includes('<html') && !xml.includes('<?xml'));
+  assert.ok(xml.includes('<br />') && !/<br>/.test(xml));
+  assert.ok(xml.includes('&#160;') && !xml.includes('&nbsp;'));
+  assert.ok(xml.includes('<ac:link ac:anchor="step-1"><ac:plain-text-link-body><![CDATA[the first step]]>'));
+  assert.ok(xml.includes('<ac:parameter ac:name="">step-1</ac:parameter>'), 'anchor macro per step');
+  assert.ok(xml.includes('ac:name="toc"'));
+  assert.ok(xml.includes('<ac:structured-macro ac:name="note"><ac:parameter ac:name="title">Access</ac:parameter>'));
+  assert.ok(xml.includes('<ac:structured-macro ac:name="code"><ac:parameter ac:name="language">cron</ac:parameter>'));
 
-  const attachmentsDir = path.join(out, 'configure-acmesync-backups-attachments');
-  const files = fs.readdirSync(attachmentsDir);
-  assert.equal(files.length, 2);
-  for (const name of files) {
-    const img = decodePng(fs.readFileSync(path.join(attachmentsDir, name)));
-    assert.equal(img.width, 320);
-    assert.equal(img.height, 200);
+  // Tags balance, so the fragment is well-formed once wrapped in a root.
+  const stack = [];
+  for (const m of xml.replace(/<!\[CDATA\[[\s\S]*?\]\]>/g, '').matchAll(/<(\/?)([\w:]+)[^>]*?(\/?)>/g)) {
+    if (m[3]) continue;
+    if (m[1]) assert.equal(stack.pop(), m[2]);
+    else stack.push(m[2]);
   }
+  assert.deepEqual(stack, []);
+
+  const refs = [...xml.matchAll(/ri:filename="([^"]+)"/g)].map((m) => m[1]);
+  assert.equal(refs.length, 2);
+  for (const name of refs) {
+    const img = decodePng(fs.readFileSync(path.join(folder, 'attachments', name)));
+    assert.equal(img.width, 320);
+  }
+
+  const body = JSON.parse(fs.readFileSync(path.join(folder, 'page.json'), 'utf8'));
+  assert.equal(body.type, 'page');
+  assert.equal(body.title, 'Configure AcmeSync backups');
+  assert.equal(body.space.key, 'SPACEKEY');
+  assert.equal(body.body.storage.representation, 'storage');
+  assert.equal(body.body.storage.value.trim(), xml.trim());
+  assert.ok(fs.readFileSync(path.join(folder, 'HOW-TO-IMPORT.txt'), 'utf8').includes('SPACEKEY'));
 });
 
 test('Simple HTML export is self-contained with valid embedded images', (t) => {
@@ -318,6 +367,29 @@ test('Rich HTML export: TOC matches sections, checkboxes per step, local-only pe
   for (const banned of ['fetch(', 'XMLHttpRequest', 'WebSocket', 'navigator.sendBeacon', 'http://']) {
     assert.ok(!html.includes(banned), `must not contain ${banned}`);
   }
+});
+
+test('Markdown export: links to other steps point at their heading anchors', (t) => {
+  const root = makeTmpDir('expmdlinks');
+  t.after(() => rmrf(root));
+  const { store, guide, s1, s2 } = buildFixtureGuide(path.join(root, 'data'));
+  const step = store.getStep(guide.guideId, s2.stepId);
+  step.descriptionHtml = `<p>Go back to <a href="step:${s1.stepId}">step one</a>.</p>`;
+  store.saveStep(guide.guideId, step);
+  const ast = buildRenderAst(store, guide.guideId);
+  const md = fs.readFileSync(exportMarkdown(ast, path.join(root, 'out')).file, 'utf8');
+  assert.ok(md.includes('[step one](#step-1)'));
+  assert.ok(md.includes('<a id="step-1"></a>'));
+});
+
+test('Rich HTML export: no authoring status chips; screenshots open in a lightbox', (t) => {
+  const root = makeTmpDir('exprichui');
+  t.after(() => rmrf(root));
+  const { store, guide } = buildFixtureGuide(path.join(root, 'data'));
+  const html = fs.readFileSync(exportHtmlRich(buildRenderAst(store, guide.guideId), path.join(root, 'out')).file, 'utf8');
+  assert.ok(!/status-chip|>Todo<|>In progress</.test(html));
+  assert.ok(html.includes('class="lightbox"'));
+  assert.ok(html.includes('@media print'));
 });
 
 test('htmlToMarkdown converts the sanitizer-allowed tag set', () => {

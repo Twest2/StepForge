@@ -18,7 +18,7 @@ const { createCredentialVault } = require('./credential-vault');
 const { SearchIndex } = require('../core/search');
 const { TemplateManager, FORMATS, FORMAT_LABELS } = require('../core/templates');
 const { buildRenderAst } = require('../core/renderast');
-const { runExport, EXPORTERS } = require('../exporters');
+const { runExport, EXPORTERS, FORMAT_INFO, FORMAT_ORDER } = require('../exporters');
 const { runExportInWorker } = require('./export-runner');
 const { exportGuideArchive, importGuideArchive, saveLinkedGuide } = require('../core/archive');
 const { createSnapshot, listSnapshots, restoreSnapshot, autoSnapshotIfDue } = require('../core/snapshots');
@@ -991,9 +991,11 @@ function setupIpc() {
   });
 
   // export + preview
-  h('export:formats', () => FORMATS.filter((f) => EXPORTERS[f]).map((format) => ({
+  h('export:formats', () => FORMAT_ORDER.filter((f) => FORMATS.includes(f) && EXPORTERS[f]).map((format) => ({
     id: format,
     label: FORMAT_LABELS[format] || format,
+    description: FORMAT_INFO[format]?.description || '',
+    options: FORMAT_INFO[format]?.options || {},
   })));
   h('export:defaults', ({ format }) => {
     // Exporter modules expose DEFAULT_TEMPLATE; the dialog renders editable
@@ -1049,6 +1051,13 @@ function setupIpc() {
       && (a.options === undefined || security.isPlainArgs(a.options))
       && c.optionalString(a.outDir, 1000),
   });
+  h('export:chooseImage', async () => {
+    const res = await dialog.showOpenDialog(mainWindow, {
+      title: 'Choose an image', properties: ['openFile'],
+      filters: [{ name: 'PNG image', extensions: ['png'] }],
+    });
+    return res.canceled ? null : res.filePaths[0];
+  });
   h('export:chooseDir', async ({ format }) => {
     const res = await dialog.showOpenDialog(mainWindow, {
       title: 'Choose output folder', properties: ['openDirectory', 'createDirectory'],
@@ -1066,8 +1075,10 @@ function setupIpc() {
       maxSteps: settings.get('exports.previewStepCount') || 3,
     });
     const result = runExport(format, ast, previewDir, options || {});
-    producedFiles.add(result.file);
-    return { ok: true, file: result.file, fileUrl: pathToFileURL(result.file).href };
+    // Folder-style exports (image bundle, Confluence) preview as their folder.
+    const target = result.previewFile || result.file;
+    producedFiles.add(target);
+    return { ok: true, file: target, fileUrl: pathToFileURL(target).href };
   }, {
     validate: (a) => c.id(a.guideId) && validFormat(a.format)
       && (a.options === undefined || security.isPlainArgs(a.options)),

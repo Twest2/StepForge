@@ -42,7 +42,7 @@ license, and you add a Developer Certificate of Origin sign-off to each commit
 ## Branching
 
 - Use a branch name that includes the issue number, such as
-  `issue-123-update-readme`.
+  `feat/123-add-awsome-feature`.
 - Keep unrelated cleanup in a separate branch, only have the fix in the
   branch.
 

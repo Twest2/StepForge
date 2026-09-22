@@ -154,12 +154,13 @@ test('apt setup scripts target apt and keep build vs runtime deps separate', () 
 
 test('shipped icons match the supplied artwork and are available inside the app', () => {
   const { renderIcon, SIZES } = require('../../scripts/make-icons');
-  const { encodePng, decodePng } = require('../../core/png');
+  const { decodePng } = require('../../core/png');
   const bytes = (rel) => fs.readFileSync(path.join(ROOT, rel));
   for (const size of SIZES) {
     const actual = bytes(`packaging/assets/icons/stepforge-${size}.png`);
-    assert.deepEqual(actual, encodePng(renderIcon(size)), `icon ${size} is stale; run npm run icons`);
     const image = decodePng(actual);
+    // zlib output can differ between Node releases; compare the actual artwork.
+    assert.deepEqual(image, renderIcon(size), `icon ${size} is stale; run npm run icons`);
     assert.equal(image.width, size);
     assert.equal(image.height, size);
   }

@@ -34,6 +34,28 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Verify Chocolatey packaging
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $packageRoot = Join-Path $env:RUNNER_TEMP 'chocolatey-smoke'
+          Copy-Item packaging/windows/chocolatey $packageRoot -Recurse
+          # A fixture verifies packing and payload inclusion without installing anything.
+          $installerName = 'StepForge Setup 0.0.0.1.exe'
+          Set-Content (Join-Path $packageRoot "tools/$installerName") 'packaging smoke test'
+          choco pack "$packageRoot/stepforge.nuspec" --version 0.0.0.1 --out-directory $packageRoot
+          if ($LASTEXITCODE -ne 0) { throw 'Chocolatey packaging failed' }
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $archive = [System.IO.Compression.ZipFile]::OpenRead("$packageRoot/stepforge.0.0.0.1.nupkg")
+          try {
+            foreach ($name in @("tools/$installerName", 'tools/chocolateyinstall.ps1', 'tools/chocolateyuninstall.ps1')) {
+              if (-not $archive.GetEntry($name)) { throw "Package is missing $name" }
+            }
+          } finally {
+            $archive.Dispose()
+          }
+
       - name: Run unit tests
         run: npm test
 

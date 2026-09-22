@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The release workflow sets the version with `choco pack --version` and
+<!-- The release workflow sets the version using the Chocolatey version option and
      copies the signed or unsigned NSIS installer into tools/ before packing. -->
 <package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
   <metadata>

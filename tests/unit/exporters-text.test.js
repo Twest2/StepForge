@@ -320,6 +320,8 @@ test('Confluence export: storage-format page, REST body, attachments and import 
   assert.deepEqual(dc.body.storage, { value: xml.trim(), representation: 'storage' });
   const howTo = fs.readFileSync(path.join(folder, 'HOW-TO-IMPORT.txt'), 'utf8');
   assert.ok(howTo.includes('/wiki/api/v2/pages') && howTo.includes('X-Atlassian-Token: nocheck'));
+  // Multi-line commands keep their shell line continuations.
+  assert.ok(howTo.includes('-X POST -d @page-cloud.json \\\n'));
 });
 
 test('Confluence export stays well-formed with messy descriptions', (t) => {

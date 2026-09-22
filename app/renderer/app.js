@@ -27,7 +27,7 @@ class StepForgeApp {
     };
     this.editorMeta = null;
     this.cloudStatus = document.getElementById('cloud-status');
-    this.cloudStatus.addEventListener('click', () => this.openSettings());
+    this.cloudStatus.addEventListener('click', () => this.openSettings('drive'));
     api.cloud.onStatus((status) => this.renderCloudStatus(status));
     api.cloud.onLibraryChanged(() => this.refreshLibrary().catch(console.error));
     api.cloud.status().then((status) => this.renderCloudStatus(status)).catch(console.error);
@@ -943,13 +943,14 @@ class StepForgeApp {
     await this.openGuide(result.guide.guideId);
   }
 
-  async openSettings() {
+  async openSettings(section) {
     const settings = await api.settings.all();
     const placeholders = await api.settings.globalPlaceholders();
     await dialogs.showSettingsDialog({
       api,
       settings,
       placeholders,
+      section,
       onSave: async (next) => {
         await api.settings.set({ keyPath: 'appearance', value: next.appearance });
         await api.settings.set({ keyPath: 'spellcheck', value: next.spellcheck });

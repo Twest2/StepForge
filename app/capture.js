@@ -306,8 +306,8 @@ class CaptureService {
   }
 
   fallbackCaptureTrigger() {
-    const raw = String(this.settings.get('capture.fallbackTrigger') || 'interval').toLowerCase();
-    return raw === 'hotkey' ? 'hotkey' : 'interval';
+    const raw = String(this.settings.get('capture.fallbackTrigger') || 'hotkey').toLowerCase();
+    return raw === 'interval' ? 'interval' : 'hotkey';
   }
 
   fallbackIntervalSec() {
@@ -2068,7 +2068,7 @@ public static class SFHook {
     // coordinates when a backend supplies the actual captured bounds.
     const cropBounds = frame.captureBounds || (mode === 'fullscreen' ? frame.display?.bounds : null);
     const automaticView = this.settings.get('capture.smartCropping') !== false
-      ? smartCrop(frame.size, cropBounds, clickPos, this.settings.get('capture.focusAmount') ?? 1.5) : null;
+      ? smartCrop(frame.size, cropBounds, clickPos, this.settings.get('capture.focusAmount') ?? 1.25) : null;
     const { title, captureMetadata } = await this.buildStepMeta(mode, frame, clickPos, clickMeta);
     const step = this.store.addStep(guideId, {
       title,

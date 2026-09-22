@@ -1120,7 +1120,7 @@ function setupIpc() {
   h('platform:capabilities', () => {
     const platform = require('./platform');
     const caps = platform.detectCapabilities();
-    const activeTrigger = platform.chooseCaptureTrigger(caps, settings.get('capture.fallbackTrigger') || 'interval');
+    const activeTrigger = platform.chooseCaptureTrigger(caps, settings.get('capture.fallbackTrigger') || 'hotkey');
     return { ...caps, activeTrigger };
   });
 }

@@ -1206,7 +1206,6 @@ fieldset legend {
 .setting-control { flex: none; display: flex; justify-content: flex-end; max-width: 55%; }
 .setting-control input[type="text"], .setting-control input:not([type]), .setting-control input[type="number"], .setting-control select { width: 220px; max-width: 100%; }
 .setting-control input[type="number"] { width: 110px; }
-.disabled > .setting-row { opacity: 0.5; }
 .settings-range input[type="range"] { width: 150px; }
 .settings-range output { min-width: 44px; font-variant-numeric: tabular-nums; color: var(--muted); }
 .settings-actions { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 0 12px; }

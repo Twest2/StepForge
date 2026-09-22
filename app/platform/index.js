@@ -68,7 +68,7 @@ function detectCapabilities({ platform = process.platform, env = process.env } =
  * this defers to the diagnostics helper (which never promises per-click
  * capture with coordinates on Wayland); other platforms have a fixed answer.
  */
-function chooseCaptureTrigger(capabilities, userTriggerPreference = 'interval') {
+function chooseCaptureTrigger(capabilities, userTriggerPreference = 'hotkey') {
   if (capabilities && capabilities.os === 'linux') {
     return require('./linux/diagnostics').chooseCaptureTrigger(capabilities, userTriggerPreference);
   }

@@ -14,7 +14,7 @@ test('smart crop centers clicks and clamps all edges on scaled secondary display
     [1, 0.5, 1, 0.5], [0.5, 0, 0.5, 1], [0.5, 1, 0.5, 0],
   ]) {
     const view = smartCrop(size, bounds, { x: bounds.x + x * bounds.width, y: bounds.y + y * bounds.height });
-    assert.deepEqual(view, { enabled: true, zoom: 1.5, panX, panY });
+    assert.deepEqual(view, { enabled: true, zoom: 1.25, panX, panY });
   }
 });
 
@@ -24,7 +24,7 @@ test('smart crop preserves minimum context and ignores invalid or absent clicks'
   assert.equal(smartCrop(size, bounds, { x: NaN, y: 200 }), null);
   assert.equal(smartCrop(size, { ...bounds, width: 0 }, { x: 0, y: 0 }), null);
   assert.equal(smartCrop({ width: 600, height: 300 }, { x: 0, y: 0, width: 600, height: 300 }, { x: 300, y: 150 }), null);
-  assert.equal(smartCrop(size, { x: 0, y: 0, width: 960, height: 540 }, { x: 480, y: 270 }).zoom, 1.5);
+  assert.equal(smartCrop(size, { x: 0, y: 0, width: 960, height: 540 }, { x: 480, y: 270 }).zoom, 1.25);
 });
 
 test('exported focus includes the bottom-right target without modifying the source', () => {
@@ -48,5 +48,5 @@ test('user focus amount supports full context, increments, and safe limits', () 
   assert.equal(smartCrop(size, bounds, point, 100).zoom, 2);
   assert.equal(smartCrop(size, { x: 0, y: 0, width: 960, height: 540 }, { x: 480, y: 270 }, 2).zoom, 1.5);
   assert.equal(smartCrop(size, bounds, point, -1), null);
-  for (const bad of [NaN, Infinity, 'bad', null]) assert.equal(smartCrop(size, bounds, point, bad).zoom, 1.5);
+  for (const bad of [NaN, Infinity, 'bad', null]) assert.equal(smartCrop(size, bounds, point, bad).zoom, 1.25);
 });

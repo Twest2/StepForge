@@ -14,7 +14,7 @@ const DEFAULT_SETTINGS = {
     mode: 'fullscreen', // fullscreen | window | region
     includeCursor: true,
     clickMarker: true,
-    focusAmount: 1.5, // Zoom for new automatically focused captures: 1–2 in 0.05 increments.
+    focusAmount: 1.25, // Zoom for new automatically focused captures: 1–2 in 0.05 increments.
     smartCropping: true, // Automatically focus recorded clicks; keep original pixels.
     clickMarkerColor: '#E5484D',
     hotkeyCapture: 'CommandOrControl+Shift+1',
@@ -23,7 +23,7 @@ const DEFAULT_SETTINGS = {
     confirmSimpleCapture: false,
     // Fallback trigger when click capture is unavailable: keep the old timer
     // fallback by default, but let users switch to hotkey-only recordings.
-    fallbackTrigger: 'interval', // interval | hotkey
+    fallbackTrigger: 'hotkey', // hotkey | interval
     // Leading-edge click debounce (ms): clicks of the same button closer
     // together than this collapse into one step, so accidental fast/double
     // clicks don't each become a step. Clicks spaced further apart always

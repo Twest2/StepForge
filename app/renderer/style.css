@@ -280,12 +280,6 @@ body.platform-linux #capture-status button {
 }
 .lib-title h2 { margin: 0 0 2px; font-size: 20px; font-weight: 700; }
 .lib-header-actions { display: flex; gap: 8px; align-items: center; }
-.lib-header-actions .active-toggle {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 12%, var(--panel-solid));
-  color: var(--accent-strong);
-  font-weight: 600;
-}
 .guide-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
@@ -356,7 +350,7 @@ body.platform-linux #capture-status button {
 .guide-card .fav.on { opacity: 1; color: #f5a524; }
 .guide-card.selecting .fav:not(.on) { display: none; }
 
-/* Round checkbox: shown on hover, and on every card while selecting. */
+/* Round checkbox on every card while Select is on. */
 .guide-card .select-check {
   position: absolute;
   top: -8px;
@@ -375,10 +369,7 @@ body.platform-linux #capture-status button {
   font-weight: 700;
   line-height: 1;
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.15);
-  opacity: 0;
-  transition: opacity 120ms ease;
 }
-.guide-card:hover .select-check, .guide-card.selecting .select-check, .guide-card .select-check:focus-visible { opacity: 1; }
 .guide-card .select-check:hover { border-color: var(--accent); }
 .guide-card .select-check.on { border-color: var(--accent); background: var(--accent); }
 

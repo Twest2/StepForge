@@ -7,7 +7,7 @@ all guides stay on your machine.
 
 For Windows, see [windows_installation](windows_installation.md). For the
 release-tested Linux target — Ubuntu 26.04/Fedora 44 with GNOME 50 on Wayland —
-see [GNOME Wayland installation](linux/gnome-wayland.md). Other Linux desktop
+see [Linux Installation](linux/linux_install.md). Other Linux desktop
 paths are documented as developer/legacy paths, not release-tested targets.
 
 # Developer install

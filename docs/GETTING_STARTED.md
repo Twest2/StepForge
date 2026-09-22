@@ -33,3 +33,9 @@ the app never installs or repairs dependencies at runtime.
 ```bash
 npm start
 ```
+
+In the guide editor, click **Select**, click a step, then **Shift-click** another
+step or checkbox to select the inclusive range, including substeps. Existing
+selections outside the range remain selected. An ordinary click toggles one step
+and sets the starting point for the next range. Clear or leave Select mode to
+reset the selection.

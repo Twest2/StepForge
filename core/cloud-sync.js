@@ -467,8 +467,22 @@ class CloudSync {
         // A guide can remain local while all of its private Drive snapshots
         // are removed. Never download or upload it while it is opted out.
         if (this.store.guideExists(id) && !this.isSharingEnabled(id)) continue;
-        const record = Object.hasOwn(this.state.records, id) ? this.state.records[id] : null;
-        if (record?.head && !versions.some((f) => f.id === record.head)) { pending = true; continue; }
+        let record = Object.hasOwn(this.state.records, id)
+          ? this.state.records[id]
+          : null;
+        
+        if (record?.head && !versions.some((f) => f.id === record.head)) {
+          if (versions.length === 0) {
+            // Cloud history was removed externally.
+            // Reset the baseline so the local guide can be uploaded again.
+            delete this.state.records[id];
+            this.saveState();
+            record = null;
+          } else {
+            pending = true;
+            continue;
+          }
+        }
         let exists = this.store.guideExists(id);
         // Local trash stays local: don't silently restore or delete on another device.
         if (!exists && record) continue;

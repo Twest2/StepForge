@@ -46,9 +46,12 @@ function createWindowsInstallerConfig(outputDir) {
     asar: true,
     compression: 'normal',
     win: {
+      icon: 'app/assets/stepforge.ico',
       target: ['nsis'],
     },
     nsis: {
+      installerIcon: 'app/assets/stepforge.ico',
+      uninstallerIcon: 'app/assets/stepforge.ico',
       oneClick: false,
       allowToChangeInstallationDirectory: true,
       createDesktopShortcut: true,

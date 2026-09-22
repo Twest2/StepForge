@@ -16,6 +16,12 @@ test('Windows packaging uses an assisted NSIS installer', (t) => {
   const config = createWindowsInstallerConfig('/tmp/stepforge-output');
 
   assert.deepEqual(config.win.target, ['nsis']);
+  assert.equal(config.win.icon, 'app/assets/stepforge.ico');
+  assert.equal(config.nsis.installerIcon, config.win.icon);
+  assert.equal(config.nsis.uninstallerIcon, config.win.icon);
+  const ico = fs.readFileSync(path.resolve(__dirname, '../..', config.win.icon));
+  assert.equal(ico.readUInt16LE(2), 1, 'Windows icon must be an ICO');
+  assert.ok(ico.readUInt16LE(4) > 0, 'Windows icon must contain an image');
   assert.equal(config.nsis.oneClick, false);
   assert.equal(config.nsis.allowToChangeInstallationDirectory, true);
   assert.equal(config.nsis.createDesktopShortcut, true);

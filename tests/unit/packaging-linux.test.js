@@ -152,17 +152,20 @@ test('apt setup scripts target apt and keep build vs runtime deps separate', () 
   assert.match(build, /fakeroot/);
 });
 
-test('an original icon set is generated (not a placeholder/third-party asset)', () => {
-  assert.ok(exists('packaging/assets/stepforge.svg'));
-  assert.ok(exists('scripts/make-icons.js'));
-  // The generated PNGs are committed for packaging.
-  for (const size of [16, 48, 256]) {
-    assert.ok(exists(`packaging/assets/icons/stepforge-${size}.png`), `icon ${size} missing`);
+test('shipped icons match the supplied artwork and are available inside the app', () => {
+  const { renderIcon, SIZES } = require('../../scripts/make-icons');
+  const { decodePng } = require('../../core/png');
+  const bytes = (rel) => fs.readFileSync(path.join(ROOT, rel));
+  for (const size of SIZES) {
+    const actual = bytes(`packaging/assets/icons/stepforge-${size}.png`);
+    const image = decodePng(actual);
+    // zlib output can differ between Node releases; compare the actual artwork.
+    assert.deepEqual(image, renderIcon(size), `icon ${size} is stale; run npm run icons`);
+    assert.equal(image.width, size);
+    assert.equal(image.height, size);
   }
-  // Regenerate the 256px icon and confirm the generator is deterministic and
-  // produces a valid PNG (starts with the PNG signature).
-  const { renderIcon } = require('../../scripts/make-icons');
-  const { encodePng } = require('../../core/png');
-  const png = encodePng(renderIcon(256));
-  assert.deepEqual([...png.subarray(0, 4)], [0x89, 0x50, 0x4e, 0x47]);
+  assert.deepEqual(bytes('app/assets/stepforge.png'), bytes('packaging/assets/icons/stepforge-512.png'));
+  assert.deepEqual(bytes('packaging/assets/icons/stepforge.png'), bytes('packaging/assets/icons/stepforge-256.png'));
+  assert.deepEqual(bytes('app/assets/stepforge.ico'), bytes('assets/images/StepForge_logo.ico'));
+  assert.deepEqual(bytes('packaging/assets/stepforge.svg'), bytes('assets/images/StepForge_logo.svg'));
 });

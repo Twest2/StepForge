@@ -10,6 +10,7 @@ const {
 } = require('electron');
 
 const { GuideStore } = require('../core/store');
+const { LibraryLocation } = require('../core/library-location');
 const { Settings } = require('../core/settings');
 const { GoogleDrive } = require('./google-drive');
 const { CloudSync } = require('../core/cloud-sync');
@@ -62,6 +63,7 @@ function resolveDataDir() {
 }
 
 let store;
+let libraryLocation;
 let settings;
 let searchIndex;
 let templates;
@@ -775,6 +777,18 @@ function setupIpc() {
 
   // settings + placeholders
   h('settings:all', () => settings.data);
+  h('storage:status', () => libraryLocation.status());
+  h('storage:choose', async () => {
+    if (libraryLocation.status().locked) throw new Error('STEPFORGE_DATA_DIR controls this session. Remove that override before changing storage.');
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Choose guide storage folder',
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    if (result.canceled || !result.filePaths[0]) return { cancelled: true, ...libraryLocation.status() };
+    return libraryLocation.schedule(result.filePaths[0]);
+  });
+  h('storage:reset', () => libraryLocation.schedule(libraryLocation.defaultPath));
+  h('storage:cancelMove', () => libraryLocation.cancel());
   h('settings:set', ({ keyPath, value }) => {
     if (keyPath === 'cloud' || keyPath.startsWith('cloud.')) throw new Error('Use the Google Drive sharing controls.');
     settings.set(keyPath, value);
@@ -1125,7 +1139,15 @@ if (!gotLock) {
   });
 
   app.whenReady().then(() => {
-    const dataDir = resolveDataDir();
+    const defaultDataDir = resolveDataDir();
+    libraryLocation = new LibraryLocation({
+      // Keep this bootstrap setting outside the movable library so a selected
+      // destination can be resolved before the store is opened.
+      file: path.join(app.getPath('userData'), 'library-location.json'),
+      defaultPath: defaultDataDir,
+      override: process.env.STEPFORGE_DATA_DIR || null,
+    });
+    const dataDir = libraryLocation.applyPending();
     store = new GuideStore(dataDir);
     settings = new Settings(store.settingsDir);
     googleDrive = new GoogleDrive({ directory: store.settingsDir, safeStorage, openExternal: (url) => shell.openExternal(url) });

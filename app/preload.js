@@ -52,6 +52,12 @@ const api = {
     globalPlaceholders: invoke('placeholders:globals:get'),
     setGlobalPlaceholders: invoke('placeholders:globals:set'),
   },
+  storage: {
+    status: invoke('storage:status'),
+    choose: invoke('storage:choose'),
+    reset: invoke('storage:reset'),
+    cancelMove: invoke('storage:cancelMove'),
+  },
   cloud: {
     setEditorDirty: (dirty) => ipcRenderer.send('cloud:editor-dirty', Boolean(dirty)),
     status: invoke('cloud:status'),

@@ -14,7 +14,7 @@ const DEFAULT_SETTINGS = {
     mode: 'fullscreen', // fullscreen | window | region
     includeCursor: true,
     clickMarker: true,
-    focusAmount: 1.5, // Zoom for new automatically focused captures: 1–1.5 in 0.05 increments.
+    focusAmount: 1.5, // Zoom for new automatically focused captures: 1–2 in 0.05 increments.
     smartCropping: true, // Automatically focus recorded clicks; keep original pixels.
     clickMarkerColor: '#E5484D',
     hotkeyCapture: 'CommandOrControl+Shift+1',

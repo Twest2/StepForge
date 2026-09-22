@@ -327,15 +327,15 @@ function showSettingsDialog({
     ]);
     const smartCropping = el('input', { type: 'checkbox', checked: settings.capture?.smartCropping !== false });
     const focusValue = Number(settings.capture?.focusAmount ?? 1.5);
-    const focusAmount = el('input', { type: 'range', min: 1, max: 1.5, step: 0.05,
-      'aria-label': 'Default focus amount', value: Number.isFinite(focusValue) ? Math.max(1, Math.min(1.5, focusValue)) : 1.5 });
+    const focusAmount = el('input', { type: 'range', min: 1, max: 2, step: 0.05,
+      'aria-label': 'Default focus amount', value: Number.isFinite(focusValue) ? Math.max(1, Math.min(2, focusValue)) : 1.5 });
     const focusLabel = el('output', {}, `${Number(focusAmount.value).toFixed(2)}×`);
     focusAmount.addEventListener('input', () => { focusLabel.textContent = `${Number(focusAmount.value).toFixed(2)}×`; });
     const focusControl = el('div', {},
       el('div.row', {}, focusAmount, focusLabel, el('button', { type: 'button', onClick: () => {
         focusAmount.value = '1.5'; focusLabel.textContent = '1.50×';
       } }, 'Reset')),
-      el('div.muted', {}, 'More context (1×) → closer focus (1.5×). Applies to new automatic captures only.'));
+      el('div.muted', {}, 'More context (1×) → closer focus (2×). Applies to new automatic captures only.'));
     const clickMarker = el('input', { type: 'checkbox', checked: Boolean(settings.capture?.clickMarker) });
     const captureHotkey = makeHotkeyInput(settings.capture?.hotkeyCapture || '');
     const pauseHotkey = makeHotkeyInput(settings.capture?.hotkeyPauseResume || '');

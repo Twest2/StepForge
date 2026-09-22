@@ -43,7 +43,10 @@ test('user focus amount supports full context, increments, and safe limits', () 
   assert.equal(smartCrop(size, bounds, point, 1), null);
   assert.equal(smartCrop(size, bounds, point, 1.25).zoom, 1.25);
   assert.equal(smartCrop(size, bounds, point, 1.26).zoom, 1.25);
-  assert.equal(smartCrop(size, bounds, point, 100).zoom, 1.5);
+  assert.equal(smartCrop(size, bounds, point, 1.75).zoom, 1.75);
+  assert.equal(smartCrop(size, bounds, point, 2).zoom, 2);
+  assert.equal(smartCrop(size, bounds, point, 100).zoom, 2);
+  assert.equal(smartCrop(size, { x: 0, y: 0, width: 960, height: 540 }, { x: 480, y: 270 }, 2).zoom, 1.5);
   assert.equal(smartCrop(size, bounds, point, -1), null);
   for (const bad of [NaN, Infinity, 'bad', null]) assert.equal(smartCrop(size, bounds, point, bad).zoom, 1.5);
 });

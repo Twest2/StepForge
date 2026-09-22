@@ -10,9 +10,9 @@ function smartCrop(size, bounds, point, focusAmount = 1.5) {
   const y = (point.y - bounds.y) / bounds.height;
   if (x < 0 || x > 1 || y < 0 || y > 1) return null;
 
-  // Keep at least 640 x 360 logical pixels of context and keep at least two-thirds of each image dimension.
+  // Keep at least 640 x 360 logical pixels of context and half of each image dimension.
   const amount = typeof focusAmount === 'number' && Number.isFinite(focusAmount)
-    ? Math.max(1, Math.min(1.5, Math.round(focusAmount * 20) / 20)) : 1.5;
+    ? Math.max(1, Math.min(2, Math.round(focusAmount * 20) / 20)) : 1.5;
   const zoom = Math.max(1, Math.min(amount, bounds.width / 640, bounds.height / 360));
   if (zoom === 1) return null;
   const span = 1 / zoom;

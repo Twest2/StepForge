@@ -12,6 +12,7 @@
   },
   "scripts": {
     "start": "node scripts/start-electron.js",
+    "setup:google-dev": "node scripts/setup-dev-google-oauth.js",
     "test": "node scripts/run-unit-tests.js",
     "sample": "node scripts/make-sample-guide.js",
     "icons": "node scripts/make-icons.js",

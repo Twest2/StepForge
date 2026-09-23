@@ -1312,10 +1312,14 @@ fieldset legend {
 .settings-pane .cloud-panel > legend { display: none; }
 
 .settings-about { display: flex; align-items: center; gap: 14px; padding: 6px 0 4px; }
-.settings-about-mark {
-  display: grid; place-items: center; width: 56px; height: 56px; border-radius: 16px; font-size: 20px; font-weight: 800;
-  color: #fff; background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 55%, #7c3aed));
-}
+.settings-about-mark { display: block; width: 56px; height: 56px; object-fit: contain; flex: none; }
+.update-status:empty { display: none; }
+.update-status { margin-top: 10px; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--border); }
+.update-status.available { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.update-status.current { border-color: color-mix(in srgb, #10b981 50%, var(--border)); }
+.update-status.error { border-color: color-mix(in srgb, #ef4444 50%, var(--border)); }
+.update-status-title { font-weight: 700; margin-bottom: 2px; }
+.update-status .settings-actions { margin-top: 10px; }
 .settings-about-name { font-size: 18px; font-weight: 700; }
 
 @media (max-width: 720px) {

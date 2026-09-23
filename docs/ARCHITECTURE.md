@@ -177,8 +177,15 @@ line per click decision.
 ## Network Boundary
 
 Core capture, editing, and export have no network code paths: no telemetry,
-no update or license checks, and no remote fonts or CDN references in exports.
-The only network features are opt-in and off by default:
+no license checks, no automatic update checks, and no remote fonts or CDN
+references in exports. The only network features are user-initiated or
+opt-in and off by default:
+
+- **Check for updates** (`app/update-check.js`) runs only when the user
+  presses the button in Settings → About: one GET to GitHub's latest-release
+  API with redirects refused, a 10-second deadline, and a 1 MB response cap.
+  Only a release URL under the StepForge releases page is ever offered to the
+  user.
 
 - **AI** (`app/text-intel.js`, `core/text-intel.js`) talks to a user-configured
   Ollama endpoint. Non-loopback hosts are refused unless
@@ -194,8 +201,8 @@ The only network features are opt-in and off by default:
   automatic backups. See [GOOGLE_DRIVE.md](GOOGLE_DRIVE.md) and
   [SECURITY.md](SECURITY.md).
 
-The sandboxed renderer never makes network requests or sees tokens; both
-integrations run in the main process.
+The sandboxed renderer never makes network requests or sees tokens; all of
+these run in the main process.
 
 ## Security Rules
 

@@ -13,9 +13,10 @@ way to stay protected.
 ## Security at a glance
 
 - **Offline by default.** Capture, editing, OCR, and export make no network
-  connections. There's no telemetry, update check, or license check.
+  connections. There's no telemetry, license check, or automatic update check.
 - **Opt-in networking only.** AI and Google Drive sync are off until you turn
-  them on, and are described in the [privacy policy](PRIVACY.md).
+  them on, and **Check for updates** runs only when you press it. All are
+  described in the [privacy policy](PRIVACY.md).
 - **Sandboxed interface.** The app's window runs in Chromium's sandbox with no
   direct access to your files, the network, or credentials.
 - **Untrusted files are validated.** Imported guides, templates, and images are

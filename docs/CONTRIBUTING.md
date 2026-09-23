@@ -30,8 +30,9 @@ CI runs the full test suite on every pull request.
 
 ### Offline first
 
-- Core features must work offline. No telemetry, update checks, license checks,
-  or remote fonts.
+- Core features must work offline. No telemetry, automatic update checks,
+  license checks, or remote fonts. The only update check is the one the user
+  starts from **Settings → About**.
 - Optional integrations (AI and Google Drive) stay **off by default**, require
   explicit opt-in, and follow the [privacy policy](PRIVACY.md). Discuss any new
   network feature with the maintainer before building it.

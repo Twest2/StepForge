@@ -142,6 +142,7 @@ const api = {
   },
   app: {
     info: invoke('app:info'),
+    checkForUpdates: invoke('app:checkForUpdates'),
     platformCapabilities: invoke('platform:capabilities'),
   },
 };

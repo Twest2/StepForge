@@ -1137,6 +1137,13 @@ function setupIpc() {
     platform: process.platform,
     license: PACKAGE_JSON.license || 'CC-BY-NC-4.0',
   }));
+  // Settings → About "Check for updates". Runs only when the user presses the
+  // button: one request to GitHub's latest-release endpoint, nothing else.
+  h('app:checkForUpdates', () => require('./update-check').checkForUpdates({
+    currentVersion: PACKAGE_JSON.buildVersion || app.getVersion(),
+    platform: process.platform,
+    hasCommand: (name) => ['/usr/bin', '/bin', '/usr/local/bin'].some((dir) => fs.existsSync(path.join(dir, name))),
+  }));
   // Platform capture-capability profile (session type, portal/PipeWire,
   // xinput, click source, actionable messages) for the diagnostics UI, plus
   // the honest active trigger for this machine and settings.

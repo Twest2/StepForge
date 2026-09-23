@@ -11,6 +11,7 @@ const DEFAULT_TEMPLATE = {
   toc: true,
   includeImages: true,
   azureWiki: false,
+  githubAlerts: false,
   imageMaxWidth: 0, // 0 = natural size
 };
 

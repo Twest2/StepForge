@@ -136,8 +136,7 @@ both up automatically.
 - Name and describe tests clearly so that whoever breaks one later understands
   what it protects.
 
-The same command runs in CI through `.github/workflows/ci.yml` and
-`.gitea/workflows/tests.yaml`.
+The same command runs in CI through `.github/workflows/ci.yml`.
 
 ## Build installable packages
 

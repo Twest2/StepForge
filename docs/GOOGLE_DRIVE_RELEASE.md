@@ -1,5 +1,10 @@
 # Google sign-in: maintainer guide
 
+# READ THIS
+If you are a user, you do not need to read any of this. This is for maintainers
+or AI agents to understand Google Drive integration with the app. Again, if you 
+are a user, please see [google_drive.md](GOOGLE_DRIVE.md)
+
 *For StepForge maintainers.* Users never need any of this: they click **Sign in
 with Google**, pick an account, and allow access. Never ask a user for a client
 ID, secret, API key, or Cloud project.

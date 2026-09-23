@@ -109,7 +109,9 @@ editing, and exporting in more detail.
 
 StepForge works entirely on your computer.
 
-- **No accounts, no telemetry, no analytics,** and no update or license checks.
+- **No accounts, no telemetry, no analytics,** no license checks, and no
+  automatic update checks (you can check for updates yourself in
+  **Settings → About**).
 - Capture, editing, OCR, and export all work offline.
 - Google Drive sync and AI are **off by default** and only connect when you
   turn them on. AI talks to a model on your own machine unless you explicitly

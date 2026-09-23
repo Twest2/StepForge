@@ -2,12 +2,13 @@
 
 **Short version:** StepForge keeps your guides on your computer. It has no
 accounts, collects no analytics, and doesn't contact the internet unless you
-turn on Google Drive sync or point AI at a remote server.
+turn on Google Drive sync, point AI at a remote server, or press
+**Check for updates**.
 
 ## What StepForge never does
 
 - No telemetry, analytics, or crash reporting.
-- No update checks, license checks, or "phoning home".
+- No automatic update checks, license checks, or "phoning home".
 - No uploads unless you sign in to Google Drive.
 - No downloading code or components while it runs.
 
@@ -36,6 +37,15 @@ characters are never read (on Windows they don't leave the keyboard hook).
 > [!TIP]
 > Screenshots show whatever was on screen. Use the **Blur** tool to hide
 > anything sensitive before you share a guide.
+
+## Checking for updates
+
+**Settings → About → Check for updates** asks GitHub whether a newer version
+of StepForge has been released. It only happens when you press the button,
+never automatically. StepForge sends a single request to GitHub containing
+only its version number (as the browser-style "User-Agent"); GitHub sees your
+IP address as with any website visit. See the
+[GitHub Privacy Statement](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement).
 
 ## Optional AI
 

@@ -5,7 +5,6 @@ use. Sign in once on each machine and your guides, including screenshots,
 annotations, and descriptions, follow you.
 
 Sync is **optional and off by default**. StepForge works fully offline without it.
-Any Google account can be used; there's nothing to sign up for.
 
 ## Connect your Google account
 

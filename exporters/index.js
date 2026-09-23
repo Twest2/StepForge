@@ -34,7 +34,7 @@ const EXPORTERS = {
  */
 const FORMAT_INFO = {
   pdf: { description: 'A print-ready document with a cover page and contents.' },
-  markdown: { description: 'A .md file plus a folder of screenshots, for GitHub, GitLab, Azure DevOps and other wikis.' },
+  markdown: { description: 'A .md file plus a folder of screenshots, for GitHub, GitLab, Azure DevOps and other wikis.', options: require('./markdown').OPTION_INFO },
   docx: { description: 'A Word document you can keep editing.' },
   pptx: { description: 'A PowerPoint deck with one slide per step.' },
   'html-simple': { description: 'A single web page with screenshots built in. Easy to email, share or print.', options: require('./html').OPTION_INFO },

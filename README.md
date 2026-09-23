@@ -30,7 +30,7 @@ and more.
 > [!NOTE]
 > The [Windows installation guide](docs/windows_installation.md) in this
 > repository was recorded with StepForge. It's a good example of what the app
-> produces.
+> produces. (It's still reconmended to install via Chocolatey so you get updates)
 
 ## Install
 

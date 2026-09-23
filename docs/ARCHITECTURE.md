@@ -28,7 +28,6 @@ examples/         sample guide + sample exports (npm run sample)
 assets/           source app artwork (npm run icons regenerates the rest)
 build/            installer includes; generated build reports (gitignored)
 docs/             user, install, and contributor documentation
-ai_prompts/       prompt handoffs used during development
 ```
 
 ## Data Model

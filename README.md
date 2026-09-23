@@ -36,7 +36,7 @@ and more.
 
 | Platform | Recommended | Guide |
 | --- | --- | --- |
-| **Windows 10 / 11** (64-bit) | Chocolatey (included in Windows) | [Windows](docs/windows_installation.md) · [Chocolatey](docs/windows/chocolatey.md) |
+| **Windows 10 / 11** (64-bit) | Chocolatey · .exe| · [Chocolatey](docs/windows/chocolatey.md) [Windows](docs/windows_installation.md)|
 | **Ubuntu 26.04** | APT repository | [Ubuntu](docs/linux/apt.md) |
 | **Fedora 44 Workstation** | DNF repository | [Fedora](docs/linux/dnf.md) |
 | **Other Linux** | Portable `.tar.gz` | [Linux overview](docs/linux/linux_install.md) |

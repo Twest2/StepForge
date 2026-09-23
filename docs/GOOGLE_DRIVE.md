@@ -5,12 +5,7 @@ use. Sign in once on each machine and your guides, including screenshots,
 annotations, and descriptions, follow you.
 
 Sync is **optional and off by default**. StepForge works fully offline without it.
-
-> [!IMPORTANT]
-> **Google Drive sync is in testing.** Until Google completes its review of
-> StepForge, sign-in only works for Google accounts on StepForge's approved
-> tester list; other accounts are blocked by Google. To be added, email
-> `git@twestbrook.com` with the Google account you want to use.
+Any Google account can be used; there's nothing to sign up for.
 
 ## Connect your Google account
 
@@ -142,7 +137,7 @@ See the [privacy policy](PRIVACY.md#optional-google-drive-sync) and
 
 | Problem | What to do |
 | --- | --- |
-| Google says the app is blocked or unverified | Your account isn't on the tester list yet. Email `git@twestbrook.com`. |
+| Sign-in finishes but StepForge says Drive access wasn't granted | Choose **Sign in with Google** again and leave the Google Drive permission ticked on Google's consent page. |
 | "Google sign-in is unavailable in this build" | You're running a development build. Install an official release. |
 | The indicator shows *needs attention* | Open **Settings → Google Drive** to see the error. For sign-in problems, choose **Sign in again**. |
 | A guide from another computer hasn't arrived | Make sure that computer finished syncing, then choose **Sync now**. Close the guide if it's open here. |

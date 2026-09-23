@@ -379,6 +379,38 @@ function showSettingsDialog({
       dataDirLabel.title = info.dataDir || '';
     }).catch(() => { versionLabel.textContent = 'Unavailable'; });
     const openLink = (url) => () => { void api.shell.openExternal({ url }).catch(() => {}); };
+    // "Check for updates" only contacts GitHub when pressed; see app/update-check.js.
+    const updateStatus = el('div.update-status', { role: 'status', 'aria-live': 'polite' });
+    const checkUpdatesBtn = el('button', { type: 'button' }, 'Check for updates');
+    checkUpdatesBtn.addEventListener('click', async () => {
+      setButtonLoading(checkUpdatesBtn, true, 'Checking…');
+      clearNode(updateStatus);
+      updateStatus.className = 'update-status';
+      let result;
+      try {
+        result = await api.app.checkForUpdates();
+      } catch {
+        result = { status: 'error', message: 'Couldn’t check for updates. Try again later.' };
+      } finally {
+        setButtonLoading(checkUpdatesBtn, false);
+      }
+      if (result.status === 'update-available') {
+        updateStatus.classList.add('available');
+        updateStatus.append(
+          el('div.update-status-title', {}, `Version ${result.latestVersion} is available`),
+          el('div.setting-desc', {}, `You have ${result.currentVersion}. ${result.hint || ''}`),
+          el('div.settings-actions', {},
+            el('button.primary', { type: 'button', onClick: openLink(result.releaseUrl) }, 'View release and download')));
+      } else if (result.status === 'up-to-date') {
+        updateStatus.classList.add('current');
+        updateStatus.append(el('div.update-status-title', {}, 'You’re up to date'),
+          el('div.setting-desc', {}, `Version ${result.currentVersion} is the latest release.`));
+      } else {
+        updateStatus.classList.add('error');
+        updateStatus.append(el('div.setting-desc', {}, result.message || 'Couldn’t check for updates.'));
+        checkUpdatesBtn.textContent = 'Try again';
+      }
+    });
 
     const appearance = makeSelect(settings.appearance || 'system', [
       { value: 'system', label: 'System' },
@@ -559,13 +591,16 @@ function showSettingsDialog({
       ] },
       { id: 'about', label: 'About', description: '', content: [
         el('div.settings-about', {},
-          el('div.settings-about-mark', { 'aria-hidden': 'true' }, 'SF'),
+          el('img.settings-about-mark', { src: '../assets/stepforge.png', alt: '', width: 56, height: 56 }),
           el('div', {}, el('div.settings-about-name', {}, 'StepForge'),
             el('div.setting-desc', {}, 'Local-first step-by-step guides.'))),
         settingsCard(null,
           settingRow('Version', null, el('div.row', {}, versionLabel, buildLabel)),
           settingRow('License', null, licenseLabel),
           settingRow('Data folder', null, dataDirLabel)),
+        settingsCard(null,
+          settingRow('Updates', 'Checks GitHub for a newer release. StepForge only connects when you press the button.', checkUpdatesBtn),
+          updateStatus),
         el('div.settings-actions', {},
           el('button', { type: 'button', onClick: openLink('https://github.com/Twest2/StepForge') }, 'Project on GitHub'),
           el('button', { type: 'button', onClick: openLink('https://github.com/Twest2/StepForge/releases') }, 'Release notes'),

@@ -1,32 +1,40 @@
 ---
 name: Bug report
-about: Create a report to help us improve StepForge
-title: "[BUG]"
+about: Something in StepForge isn't working as expected
+title: "[BUG] "
 labels: Feature, Potential bug
 assignees: Twest2
 
 ---
 
-**Describe the bug**
-A clear and concise description of what the bug is.
+<!-- Security issue? Please email git@twestbrook.com instead of opening a public issue. -->
 
-**To Reproduce**
-Steps to reproduce the behavior:
-1. 
-2. 
-3. 
-4. 
+## What happened?
 
-**Expected behavior**
-A clear and concise description of what you expected to happen.
+<!-- A clear description of the problem. -->
 
-**Screenshots**
-If applicable, add screenshots to help explain your problem.
+## Steps to reproduce
 
-**Desktop (please complete the following information):**
-[ ] - Windows
-[ ] - Linux/Ubuntu
+1.
+2.
+3.
 
+## What did you expect to happen?
 
-**Additional context**
-Add any other context about the problem here.
+## Screenshots or logs
+
+<!-- Drag images here. Please blur anything private. -->
+
+## Your setup
+
+- **StepForge version** (Settings → About):
+- **Operating system:**
+  - [ ] Windows 10
+  - [ ] Windows 11
+  - [ ] Ubuntu 26.04
+  - [ ] Fedora 44
+  - [ ] Other:
+- **Installed with:** <!-- Chocolatey, setup .exe, APT, DNF, .deb/.rpm, portable, source -->
+- **Linux only, desktop session:** <!-- e.g. GNOME 50 Wayland -->
+
+## Anything else?

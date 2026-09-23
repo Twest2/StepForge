@@ -1,84 +1,87 @@
-# Getting Started With AI
+# AI-written steps with Ollama
 
-StepForge keeps AI local. It talks to your own Ollama server on your machine and does not send guide content to the cloud.
+StepForge can write step titles and descriptions for you using an AI model
+that runs **on your own computer** through [Ollama](https://ollama.com). Your
+screenshots and text never go to a cloud AI service.
+
+AI is optional and **off by default**. StepForge already titles steps without
+it, using on-device text recognition. AI adds fuller, more natural
+descriptions on top.
+
+> [!NOTE]
+> AI support is in **beta**. Always read what it writes before you share a
+> guide.
 
 ## 1. Install Ollama
 
-Install Ollama from https://ollama.com and make sure the service is running.
-
-On most systems you can verify it with:
+Download and install Ollama from [ollama.com](https://ollama.com/download),
+then check that it's running:
 
 ```bash
 ollama --version
 ```
 
-## 2. Pull a lightweight model
+## 2. Download a model
 
-The recommended default is:
+Choose one to start with. You can switch at any time.
 
-```bash
-ollama pull llama3.2:1b
-```
+| Model | Download | Why pick it |
+| --- | --- | --- |
+| **Gemma 3** (recommended) | `ollama pull gemma3` | Can *see* screenshots, so it describes what's actually on screen |
+| **Llama 3.2 1B** | `ollama pull llama3.2:1b` | Small and quick on modest hardware; works from text only |
+| **Qwen 3 0.6B** | `ollama pull qwen3:0.6b` | Even lighter, with simpler writing |
 
-That model is small enough to feel responsive on modest hardware, but still good enough for human-sounding titles and short text blocks.
+Models that can read images (such as Gemma 3, LLaVA, and Llama 3.2 Vision)
+are detected automatically, and StepForge includes the screenshot in its
+request. Text-only models get the step's title, the text read around your
+click, and the window it happened in.
 
-If you want StepForge to send the screenshot itself to the model, pull a vision-capable model instead:
+## 3. Connect StepForge
 
-```bash
-ollama pull gemma3
-```
+1. Open **Settings → AI**.
+2. Turn on **Enable AI**.
+3. Leave **Host** as `http://127.0.0.1:11434` unless you changed Ollama's
+   address.
+4. Set **Model** to the model you downloaded, for example `gemma3`.
+5. Choose **Test connection**. StepForge confirms it can reach Ollama and that
+   the model is installed.
+6. **Save.**
 
-That model can inspect pictures as well as text, so it is better when you want the AI to read the UI directly from the screenshot.
+## 4. Generate text
 
-If you need something even smaller, try:
+**On demand.** Each step's title, description, and content blocks have an
+**AI** button. To fill in everything for the current step at once, choose
+**More → Generate all text fields with AI**.
 
-```bash
-ollama pull qwen3:0.6b
-```
+**Automatically.** Turn on **Settings → AI → Auto-document captures** and
+StepForge describes each new step in the background as you record.
 
-or:
+Requests can take a few seconds on slower hardware. Closing the guide cancels
+any that are still running.
 
-```bash
-ollama pull gemma3:270m
-```
+## Privacy
 
-Those are lighter, but they are usually weaker at writing polished step text.
+- StepForge only talks to Ollama on **this computer** (`127.0.0.1` or
+  `localhost`) and refuses any other address by default.
+- What's sent: the step screenshot (vision models only), the step text, and
+  the capture details StepForge recorded, such as the window title and the
+  text near your click.
 
-## 3. Open StepForge settings
+**Running Ollama on another machine?** Add `"allowRemoteHost": true` to the
+`ai` section of `settings/app-settings.json` in your
+[data folder](GETTING_STARTED.md#troubleshooting), then set **Host** to that
+machine's address. Only do this for a host you trust: your screenshots and
+text are sent to it, and StepForge can't control what it does with them. To
+keep requests text-only even with a vision model, set `"attachScreenshots": false`
+in the same section.
 
-In StepForge, open `Settings` and find the `AI` section.
+The [privacy policy](PRIVACY.md#optional-ai) has the full details.
 
-Set:
+## Troubleshooting
 
-* `Enable AI text filling` to on
-* `Ollama host` to your local Ollama server
-* `Ollama model` to `llama3.2:1b` for text-only mode, or `llama3.2-vision` if you want screenshot-aware AI
-
-The default host is:
-
-```text
-http://127.0.0.1:11434
-```
-
-## 4. Test the connection
-
-Use the `Test connection` button in the AI settings section.
-
-If the model is installed, StepForge should confirm the host and model.
-
-## 5. Use AI manually
-
-AI is never automatic. After capture, use the `AI` button next to:
-
-* the step title
-* the step description
-* each text, code, and table block
-
-You can also use `More -> Generate all text fields with AI` to fill the whole step in one pass.
-
-## Notes
-
-* Capture titles are still generated automatically without AI.
-* AI generation only works when `Enable AI text filling` is turned on.
-* The app always uses local OCR around the click area first, then local AI only when you ask for it.
-* When the selected Ollama model supports vision, StepForge also sends the screenshot to the model so it can cross-check OCR and visual context.
+| Problem | Fix |
+| --- | --- |
+| Test connection can't reach Ollama | Make sure Ollama is running (`ollama list` should respond) and the host is correct. |
+| Model not found | Run `ollama list` and copy the model name exactly, including any tag like `:1b`. |
+| No AI buttons in the editor | Turn on **Settings → AI → Enable AI** and save. |
+| Descriptions are vague | Try a vision model such as `gemma3`, or a larger model if your computer can handle it. |

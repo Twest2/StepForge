@@ -1,135 +1,162 @@
-# StepForge
+<p align="center">
+  <img src="assets/images/StepForge_logo.png" alt="StepForge" width="128">
+</p>
 
-StepForge is a **local-first**, open-source desktop app for Windows,
-Ubuntu 26.04, and Fedora 44 Workstation with GNOME 50 on Wayland. It captures step-by-step workflows as screenshots, lets
-you annotate and describe each step in a focused three-pane editor, and
-exports the result to PDF, Markdown, DOCX, PPTX, HTML, animated GIF,
-Confluence, Wiki.js, or a bundle of annotated images.
+<h1 align="center">StepForge</h1>
 
-It is an independent desktop guide-capture tool inspired by publicly
-documented workflow patterns of commercial documentation tools like Folge. It
-contains no third-party branding, assets, or code from those tools.
+<p align="center">
+  <strong>Turn what you click into a step-by-step guide.</strong><br>
+  Free, open-source documentation capture for Windows and Linux.
+</p>
 
-**Network and privacy contract.** StepForge has no telemetry, no update
-checks, and no license checks. Optional Google Drive sharing is **off by
-default**; choosing Sign in with Google and granting access synchronizes your guides
-between computers. See [Google Drive setup and testing](docs/GOOGLE_DRIVE.md).
-The **optional** AI integration is also off by default: when *you* enable it and configure an [Ollama](https://ollama.com)
-endpoint, StepForge sends step screenshots and text to that endpoint to
-generate titles and descriptions. By default that endpoint must be **local
-(loopback)**; sending data to a remote host requires the explicit "Allow
-remote AI host" opt-in. See [docs/PRIVACY.md](docs/PRIVACY.md) for exactly
-what is collected and sent. Note that OCR (Tesseract) and its English language
-data are bundled production dependencies — Electron is not the only one.
+<p align="center">
+  <a href="https://github.com/Twest2/StepForge/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/Twest2/StepForge?label=release"></a>
+  <a href="LICENSE"><img alt="License: CC BY-NC 4.0" src="https://img.shields.io/badge/license-CC%20BY--NC%204.0-blue"></a>
+  <img alt="Platforms" src="https://img.shields.io/badge/platforms-Windows%20%7C%20Ubuntu%20%7C%20Fedora-informational">
+</p>
 
-## Installation
+---
 
-For Windows, install and update StepForge with Chocolatey:
+Writing a how-to guide usually means doing the task, stopping to take a
+screenshot, cropping it, pasting it into a document, writing "click here",
+and repeating that twenty times. StepForge does the tedious part for you.
+
+Start a recording and work normally. **Every click becomes a step**: a
+screenshot of the screen at the moment you clicked, a marker on exactly where
+you clicked, and a suggested title. When you're done, polish the steps in the
+editor and export a finished guide to PDF, Word, PowerPoint, Markdown, HTML,
+and more.
+
+> [!NOTE]
+> The [Windows installation guide](docs/windows_installation.md) in this
+> repository was recorded with StepForge. It's a good example of what the app
+> produces.
+
+## Install
+
+| Platform | Recommended | Guide |
+| --- | --- | --- |
+| **Windows 10 / 11** (64-bit) | Chocolatey · .exe| · [Chocolatey](docs/windows/chocolatey.md) [Windows](docs/windows_installation.md)|
+| **Ubuntu 26.04** | APT repository | [Ubuntu](docs/linux/apt.md) |
+| **Fedora 44 Workstation** | DNF repository | [Fedora](docs/linux/dnf.md) |
+| **Other Linux** | Portable `.tar.gz` | [Linux overview](docs/linux/linux_install.md) |
+
+Every build is also on the [Releases page](https://github.com/Twest2/StepForge/releases/latest).
+
+**Windows (Chocolatey)**, from an Administrator PowerShell:
 
 ```powershell
 choco source add --name=stepforge --source=https://packages.twestbrook.com/nuget/stepforge-choco/
 choco install stepforge --source=stepforge -y
 ```
 
-See [StepForge on Windows with Chocolatey](docs/windows/chocolatey.md) for updating and uninstalling, or the [Windows installation guide](docs/windows_installation.md) to install manually from GitHub Releases. For a more detailed developer setup and source walkthrough, see [Getting Started](docs/GETTING_STARTED.md).
-
-For Linux, StepForge currently provides native packages for **Ubuntu 26.04** and **Fedora 44 Workstation**, with GNOME 50 Wayland as the primary supported desktop environment.
-
-See the [Linux installation guide](docs/linux/linux_install.md) for:
-
-* Ubuntu installation through APT or a downloaded `.deb`
-* Fedora installation through DNF or a downloaded `.rpm`
-* Portable Linux builds
-* Running StepForge directly from source
-* Linux capture setup and GNOME Wayland notes
-
-The Ubuntu and Fedora packages include the required StepForge GNOME integration for click-based recording and marker placement.
-
-
-**Manual**
-
-Requirements: Node.js 22.12+ and npm (pinned in `.nvmrc`; installs are
-refused on older Nodes because the packaging toolchain needs 22.12+).
+**Ubuntu 26.04:**
 
 ```bash
-npm ci             # one-time, installs the locked dependency tree
-npm install
-npm start          # launch StepForge
+sudo mkdir -p /etc/apt/keyrings
+sudo curl -fsSL -o /etc/apt/keyrings/stepforge.gpg \
+  https://packages.twestbrook.com/debian/stepforge/keys/stepforge.gpg
+echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/stepforge.gpg] https://packages.twestbrook.com/debian/stepforge/ resolute main" \
+  | sudo tee /etc/apt/sources.list.d/stepforge.list
+sudo apt update && sudo apt install stepforge
 ```
 
-## Overview
-
-StepForge is a free and open-source alternative to documentation tools like Folge. It automatically creates step-by-step documentation as you work, reducing the need to manually write instructions and capture screenshots.
-
-Whether you're documenting a workflow, setting up a development environment, creating a tutorial, or recording a process, StepForge captures screenshots and generates organized steps as you go. This makes creating clear, visual documentation significantly faster and easier.
-
-## What problem does this app solve?
-
-Creating good documentation is often slow, tedious, and easy to neglect. People have to stop what they're doing to take screenshots, write instructions, organize steps, and format everything afterward.
-
-Because of that extra effort, documentation often contains too few screenshots or relies heavily on instructions like “click here” or “select this option.” Without a visual showing exactly where to click, those instructions can be confusing—especially for someone unfamiliar with the software or workflow.
-
-StepForge solves this by capturing screenshots and recording each step as the process happens. This makes it easier to create detailed, visual documentation where users can see exactly what to do, rather than having to interpret written instructions alone.
-
-By combining screenshots and written instructions in a single editor, StepForge helps you create polished, visual documentation that is easy to understand, easy to follow, and easy to work with.
-
-## Testing
-
-Please create your tests so that when the following is ran it automatically
-tests your test.
-
+**Fedora 44:** 
 ```bash
-bash tests/run_test.sh
+sudo tee /etc/yum.repos.d/stepforge-rpm.repo > /dev/null <<'EOF'
+[stepforge-rpm]
+name=StepForge RPM Repository
+baseurl=https://packages.twestbrook.com/rpm/stepforge-rpm/
+enabled=1
+gpgcheck=0
+EOF
+
+sudo dnf makecache --refresh
+sudo dnf install stepforge
 ```
 
-The runner executes every `tests/checks/test_*.sh` script; those scripts run
-the workflow test suites under `tests/unit/` with `node --test`. The tests
-exercise real workflows like creating guides, round-tripping archives, exporting
-documents, and validating the bytes of the output, not string matching.
+> [!TIP]
+> Installing from Chocolatey, APT, or DNF means StepForge updates along with
+> the rest of your system. A manually downloaded installer does not update
+> itself.
 
-## Building & Packaging
+## Features
 
-```bash
-bash scripts/bootstrap-offline.sh   # verify toolchain availability
-bash scripts/verify.sh              # full test suite + smoke checks
-bash scripts/build-release.sh       # assemble runnable app directory
-npm run package:linux:deb           # Ubuntu 26.04 / GNOME 50 package
-npm run package:linux:rpm           # Fedora 44 / GNOME 50 RPM (separate workflow)
-npm run package:windows             # Windows installer .exe in releases/
-pwsh scripts/package-windows.ps1    # same Windows installer build via PowerShell
-```
+| | |
+| --- | --- |
+| **Click-to-step recording** | Each click captures the screen *as it was when you clicked* and marks the spot. Fast clicks are never dropped. |
+| **Three-pane editor** | Steps on the left, the screenshot in the middle, the words on the right. Reorder, nest substeps, and mark steps as done. |
+| **Annotation tools** | Rectangles, ovals, arrows, text, tooltips, numbered badges, highlights, magnifiers, and **blur** for hiding passwords and personal data. |
+| **Export anywhere** | PDF, DOCX, PPTX, Markdown, HTML, animated GIF, Confluence, Wiki.js, JSON, or a folder of annotated images. |
+| **Smart titles** | Local OCR reads the button or menu you clicked so steps arrive already titled, like "Click Save". |
+| **Organized library** | Folders, favorites, full-text search across every guide, snapshots, and a trash you can restore from. |
+| **Reusable content** | Placeholders (`[[Product]]`) and export templates keep a whole set of guides consistent. |
+| **Optional extras** | Google Drive sync between computers, and AI-written descriptions through a local [Ollama](https://ollama.com) model. Both are off until you turn them on. |
 
-See [build/build_report.md](build/build_report.md) for what was produced on
-this machine and which packaging tools were unavailable.
+## Your first guide in one minute
 
-## Offline Guarantee
+1. Open StepForge and choose **New guide**.
+2. Choose **Capture → Start capture session**. StepForge steps out of the way.
+3. Do the task you want to document, clicking as you normally would.
+4. Stop the recording from the tray icon (Windows) or **StepForge REC** in the
+   GNOME top panel (Linux).
+5. Tidy up titles, add annotations, then choose **Export**.
 
-Capture, editing, and export work offline. AI and Google Drive sharing make
-network requests only when explicitly used or enabled. There is no telemetry,
-update check, or license validation. Exports embed no remote fonts or CDN references. See
-[docs/SECURITY.md](docs/SECURITY.md) for the threat model. 
+The [Getting Started guide](docs/GETTING_STARTED.md) walks through recording,
+editing, and exporting in more detail.
 
-> **Note:** Google Drive sharing is currently in testing and requires your
-> Google account to be added as an approved StepForge test user. Please contact git@twestbrook.com to be added.
+## Privacy
+
+StepForge works entirely on your computer.
+
+- **No accounts, no telemetry, no analytics,** and no update or license checks.
+- Capture, editing, OCR, and export all work offline.
+- Google Drive sync and AI are **off by default** and only connect when you
+  turn them on. AI talks to a model on your own machine unless you explicitly
+  allow a remote host.
+
+The [privacy policy](docs/PRIVACY.md) lists exactly what is stored and what
+each optional feature sends.
+
+## Documentation
+
+**Using StepForge**
+
+- [Getting started](docs/GETTING_STARTED.md): recording, editing, and exporting
+- [AI descriptions with Ollama](docs/getting_started_with_ai.md)
+- [Google Drive sync](docs/GOOGLE_DRIVE.md)
+- [Privacy](docs/PRIVACY.md) and [security](docs/SECURITY.md)
+
+**Installing**
+
+- [Windows installer](docs/windows_installation.md) · [Chocolatey](docs/windows/chocolatey.md)
+- [Linux overview](docs/linux/linux_install.md) · [Ubuntu](docs/linux/apt.md) · [Fedora](docs/linux/dnf.md)
+
+**Contributing**
+
+- [Contributing guide](docs/CONTRIBUTING.md) · [Architecture](docs/ARCHITECTURE.md) · [Code of conduct](docs/CODE_OF_CONDUCT.md)
+
+## Getting help
+
+- **Found a bug or have an idea?** [Open an issue](https://github.com/Twest2/StepForge/issues/new/choose).
+- **Security problem?** Email `git@twestbrook.com` privately rather than
+  opening a public issue. See [SECURITY.md](docs/SECURITY.md).
 
 ## Contributing
 
-See [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for the full contribution flow,
-including the issue-number requirement for every pull request and the
-clean-room rules.
-
-## Repository Layout
-
-Project docs live in `docs/` and prompt handoffs live in `ai_prompts/`.
-
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the repo layout.
+Contributions are welcome. Every pull request is linked to an issue and comes
+with tests; the [contributing guide](docs/CONTRIBUTING.md) covers the workflow,
+how to run StepForge from source, and the test suite (`bash tests/run_test.sh`).
 
 ## License
 
-StepForge is licensed under the **Creative Commons Attribution-NonCommercial
-4.0 International License (CC BY-NC 4.0)**. See the root [LICENSE](LICENSE) for
-the full terms.
+StepForge is released under the
+[Creative Commons Attribution-NonCommercial 4.0 International License](LICENSE)
+(CC BY-NC 4.0).
 
-In plain terms: you're free to use, modify, and share it for **non-commercial**
-purposes, with attribution — but you may not sell it or use it commercially
-without written permission from the copyright holder.
+You can use, modify, and share StepForge for free for any non-commercial
+purpose, as long as you give credit. Selling StepForge or using it
+commercially requires written permission from the copyright holder.
+
+StepForge is an independent project. It contains no code, branding, or assets
+from any commercial documentation tool.

@@ -1,23 +1,26 @@
-# Code of Conduct
+# Code of conduct
 
-## Our Standard
+StepForge aims to be a welcoming project for everyone who uses it or
+contributes to it. This applies in issues, pull requests, discussions, and any
+other project space.
 
-Everyone participating in this project — contributors, reviewers, and users
-filing issues — is expected to:
+## What we expect
 
-- be respectful and constructive; critique code, not people;
-- assume good faith and ask before escalating;
-- keep discussions on-topic and free of harassment, discrimination, or
-  personal attacks;
-- respect the clean-room rules in CONTRIBUTING.md when discussing other
-  products.
+- **Be respectful and constructive.** Critique code and ideas, not people.
+- **Assume good intent.** Ask questions before assuming the worst.
+- **Stay on topic.** Keep discussions focused on the project.
+- **No harassment, discrimination, or personal attacks** of any kind.
+- **Respect the [clean-room rules](CONTRIBUTING.md#clean-room-rules)** when
+  discussing other products.
 
 ## Enforcement
 
-Maintainers may edit, hide, or remove comments, commits, issues, and PRs that
-violate this standard, and may temporarily or permanently ban contributors
-for egregious behavior. We may do this at any time without warning and without chance for appeal.
+Maintainers may edit, hide, or remove comments, commits, issues, and pull
+requests that break this code of conduct. Serious or repeated violations may
+lead to a temporary or permanent ban from the project. Maintainers' decisions
+on enforcement are final.
 
 ## Reporting
 
-Report unacceptable behavior privately to the maintainers via `git@twestbrook.com`. Reports are handled confidentially. 
+If you experience or witness unacceptable behavior, email
+`git@twestbrook.com`. Reports are handled confidentially.

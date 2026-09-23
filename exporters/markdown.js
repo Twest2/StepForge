@@ -10,7 +10,7 @@ const { DEFAULT_TEMPLATE, anchorFor, renderMarkdownGuide } = require('./markdown
  */
 
 const OPTION_INFO = {
-  githubAlerts: { label: 'GitHub Markdown', hint: 'Write callouts as GitHub alerts (> [!TIP]) instead of styled HTML.' },
+  githubAlerts: { label: 'GitHub Markdown', hint: 'Write callouts as GitHub alerts instead of styled HTML.' },
 };
 
 function exportMarkdown(ast, outDir, template = {}) {

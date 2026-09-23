@@ -1,5 +1,10 @@
 # Google sign-in: maintainer guide
 
+# READ THIS
+If you are a user, you do not need to read any of this. This is for maintainers
+or AI agents to understand Google Drive integration with the app. Again, if you 
+are a user, please see [google_drive.md](GOOGLE_DRIVE.md)
+
 *For StepForge maintainers.* Users never need any of this: they click **Sign in
 with Google**, pick an account, and allow access. Never ask a user for a client
 ID, secret, API key, or Cloud project.
@@ -25,9 +30,12 @@ Each user gets their own tokens for their own account.
    Search Console.
 3. Create an OAuth client of type **Desktop app**, restricted to the
    `drive.appdata` scope.
-4. Move the app to **production** and complete any branding or verification
-   Google requires. Testing mode limits sign-in to listed test users and
-   shortens token lifetimes, so it isn't suitable for general release.
+4. Publish the app to **production** (Google Auth Platform → Audience). This
+   is the current state. Because `drive.appdata` is a non-sensitive scope,
+   Google doesn't require verification and users see no "unverified app"
+   warning. Uploading a logo would trigger brand verification, so the consent
+   screen deliberately has none. Don't move the app back to testing: that
+   limits sign-in to listed test users and shortens token lifetimes.
 5. Set the GitHub Actions variable **`STEPFORGE_GOOGLE_CLIENT_ID`** to the
    client ID. It's a public application identifier, not a secret.
 
@@ -84,8 +92,7 @@ builds always use their stamped client and ignore them.
 > STEPFORGE_DATA_DIR="$HOME/.local/share/stepforge-dev" npm start
 > ```
 >
-> For completely separate Drive data, use a second Google account (added as a
-> test user while the app is in testing).
+> For completely separate Drive data, sign in with a second Google account.
 
 Development builds keep their sign-in with their own library folder and never
 touch the release build's saved credentials. Tokens from an earlier build with

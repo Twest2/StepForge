@@ -1,76 +1,84 @@
 # Security
 
-## Security issues in the app
+## Reporting a vulnerability
 
-Please report all security issues via email directly to `git@twestbrook.com`. Please do NOT create a public issue or PR supporting this.
+Please email **`git@twestbrook.com`** with a description of the issue and
+steps to reproduce it. **Don't open a public issue or pull request** for
+security problems, so users aren't exposed before a fix is available.
 
+Fixes are released as a new version on every distribution channel (GitHub
+Releases, Chocolatey, APT, and DNF), so keeping StepForge updated is the best
+way to stay protected.
 
-## Network boundary
+## Security at a glance
 
-Core capture, editing, and exports work offline. There is no telemetry,
-analytics, update checking, or license validation. Optional AI and Google Drive
-sharing are explicitly configured and off by default; see [PRIVACY.md](PRIVACY.md).
-The sandboxed renderer has no direct network or token access.
+- **Offline by default.** Capture, editing, OCR, and export make no network
+  connections. There's no telemetry, update check, or license check.
+- **Opt-in networking only.** AI and Google Drive sync are off until you turn
+  them on, and are described in the [privacy policy](PRIVACY.md).
+- **Sandboxed interface.** The app's window runs in Chromium's sandbox with no
+  direct access to your files, the network, or credentials.
+- **Untrusted files are validated.** Imported guides, templates, and images are
+  checked before anything is written to disk.
 
-Google Drive uses browser-based OAuth with PKCE and state validation, a
-short-lived listener bound to 127.0.0.1, and the limited `drive.appdata` scope.
-Tokens are stored through OS-backed Electron safeStorage; plaintext Linux
-fallback is refused. Google requests use fixed HTTPS endpoints, reject
-redirects, and have time and transfer-size limits. Turning sync off cancels
-in-flight requests; it cannot undo a request already accepted by Google.
+The rest of this page describes those protections in more detail.
 
-## Threat Model
+## Application hardening
 
-The app accepts user-imported files and, when sharing is enabled, archives from
-Google Drive app storage. Downloaded archives are untrusted and must pass the
-same archive validation before installation. Immutable cloud versions preserve
-concurrent writes. Incoming replacements are deferred while editing or recording,
-and staged installation retains local backups. See [GOOGLE_DRIVE.md](GOOGLE_DRIVE.md).
+The Electron renderer runs with `contextIsolation`, `sandbox`, and
+`nodeIntegration: false`. Its only access to the rest of the app is an
+explicit, allowlisted IPC API defined in `app/preload.js`. The main window may
+only display StepForge's own page; navigation and pop-ups are blocked.
 
-### Archive imports (`.sfgz`, `.sfglt`)
+Rich text in guides is sanitized against an allowlist of tags and attributes
+(no scripts, event handlers, or external URLs) both when it's saved and again
+when it's displayed or exported. Exports contain no remote fonts, scripts, or
+CDN references.
 
-Both formats are zip files. The reader in `core/zip.js` validates every entry
-before extraction:
+On Linux, StepForge refuses to start without the Chromium sandbox rather than
+silently running unprotected.
 
-- entry names must be relative, must not contain `..` segments, drive
-  letters, or absolute paths;
-- entries are extracted only beneath the destination directory (resolved
-  path is verified to stay inside it);
-- file sizes are taken from actual inflated data, not trusted headers;
-- unknown entries outside the documented layout are ignored.
+## Imported files
 
-### Image imports (PNG/JPEG/GIF)
+**Guide archives (`.sfgz`) and templates (`.sfglt`)** are zip files. Every entry
+is validated before extraction (`core/zip.js`):
 
-Imported images are decoded by the platform image codecs in the Electron
-shell and re-encoded to PNG before storage. The pure-JS PNG decoder in
-`core/png.js` (used by exporters) rejects malformed dimensions, oversized
-allocations, and bad CRCs.
+- names must be relative, with no `..` segments, drive letters, or absolute paths;
+- each resolved path must stay inside the destination folder;
+- sizes come from the actual decompressed data, never from trusted headers;
+- entries outside the documented layout are ignored.
 
-### Linked guides and lock files
+**Images (PNG, JPEG, GIF)** are decoded by the platform codecs and re-encoded
+as PNG before they're stored. StepForge's own PNG decoder (`core/png.js`,
+used by exporters) rejects malformed dimensions, oversized allocations, and bad
+checksums.
 
-Shared `.sfgz` files opened in *linked mode* use a sidecar lock file
-(`<name>.lock-sfgz`) containing the holder's machine name and timestamp.
-This is an advisory lock for coordination on shared folders, **not** a
-security boundary: a hostile or crashed peer can delete it. Conflicts are
-surfaced to the user with keep-editing / discard options; the format is
-last-write-wins and that risk is documented in the UI.
+## Google Drive sync
 
-### Local data at rest
+- Sign-in uses the system browser with OAuth PKCE, `state` validation, and a
+  short-lived callback listener bound to `127.0.0.1`.
+- Only the `drive.appdata` scope is requested, which limits StepForge to its
+  own private app folder.
+- Tokens are stored with Electron `safeStorage` (the OS credential store). On
+  Linux, StepForge refuses to fall back to plaintext storage.
+- Requests go only to fixed Google HTTPS endpoints, reject redirects, and have
+  time and size limits.
+- **Downloaded guides are treated as untrusted** and pass the same archive
+  validation as imports. Uploads create immutable versions, so two computers
+  can't overwrite each other. Incoming updates wait while you're editing or
+  recording, and the replaced local copy is backed up.
+- Turning sync off cancels requests in flight, though it can't undo one Google
+  has already accepted.
 
-The guide store is **not encrypted at rest** — it inherits the user account's
-filesystem protections, like any document folder. If you need encrypted
-sharing, encrypt the `.sfgz` with external tooling; native encrypted archives
-are a tracked enhancement, not a current feature.
+## Known limitations
 
-## Renderer Hardening
-
-The Electron renderer runs with `contextIsolation: true` and
-`nodeIntegration: false`; the only privileged surface is the explicit
-allowlisted IPC API in `app/preload.js`. Guide description HTML is sanitized
-(allowlisted tags/attributes, no scripts, no event handlers, no external
-URLs) before storage and again before rendering or export.
-
-## Reporting
-
-Report vulnerabilities by sending an email to `git@twestbrook.com`
-
+- **Guides aren't encrypted at rest.** They're protected by your user account's
+  file permissions, like any other documents. If you need to send a guide
+  securely, encrypt the `.sfgz` with a separate tool.
+- **Linked-guide locks are advisory.** When several people open the same
+  `.sfgz` on a shared folder, a `<name>.lock-sfgz` file records who has it
+  open. It helps people coordinate but isn't a security boundary; a crashed or
+  hostile client can remove it. Conflicting saves are shown to the user, and
+  the last save wins.
+- **Screenshots contain what was on screen.** Review and blur sensitive
+  information before sharing.

@@ -1,234 +1,85 @@
 # StepForge on Linux
 
-StepForge supports Linux through native packages for **Ubuntu 26.04** and **Fedora 44 Workstation**, with GNOME 50 and Wayland as the primary supported desktop environment.
+StepForge ships native packages for **Ubuntu 26.04** and **Fedora 44
+Workstation** on 64-bit Intel/AMD (x86_64). Both are tested on **GNOME 50
+with Wayland**, the default desktop on each.
 
-There are several ways to install StepForge:
+## Choose how to install
 
-* **Ubuntu / Debian package repository** — recommended for Ubuntu
-* **Fedora / DNF repository** — recommended for Fedora
-* **GitHub Releases** — manually install a `.deb` or `.rpm`
-* **Portable Linux archive** — extract and run without installing a package
-* **Source installation** — clone the repository and run StepForge with Node.js/npm
+| Method | Best for | Updates | Guide |
+| --- | --- | --- | --- |
+| **APT repository** | Ubuntu | With `apt upgrade` | [Ubuntu](apt.md) |
+| **DNF repository** | Fedora | With `dnf upgrade` | [Fedora](dnf.md) |
+| `.deb` / `.rpm` from Releases | A specific version, or offline machines | Manual | [Ubuntu](apt.md#alternative-install-a-downloaded-deb) · [Fedora](dnf.md#alternative-install-a-downloaded-rpm) |
+| Portable `.tar.gz` | Trying StepForge without installing | Manual | [Below](#portable-archive) |
+| From source | Contributors | `git pull` | [Contributing](../CONTRIBUTING.md#run-stepforge-from-source) |
 
-Using the package repositories is recommended because StepForge will receive updates through your normal system update commands.
+The package repositories are recommended: StepForge then updates alongside
+the rest of your system, and the packages install the GNOME integration that
+click recording needs.
 
----
+## Recording on GNOME Wayland
 
-## Ubuntu 26.04
+Wayland deliberately stops apps from watching the screen or the mouse without
+permission. StepForge works within those rules using three pieces, all
+installed by the `.deb` and `.rpm` packages:
 
-For installation instructions, please see [apt.md](apt.md)
+- **XDG Desktop Portal** asks you which screens StepForge may capture.
+- **PipeWire** delivers the screen images.
+- **The StepForge GNOME extension** reports where you clicked so each click
+  becomes a step with an accurate marker.
 
-## Fedora 44 Workstation
+**Before your first recording, log out and back in** so GNOME loads the
+extension. This is also needed after an update that changes the extension.
 
-For installation instructions, please see [dnf.md](dnf.md)
+Then, to record:
 
+1. Open or create a guide and start a capture session.
+2. If GNOME asks, allow the StepForge extension.
+3. Choose the monitors to share. Pick every monitor you'll click on.
+4. StepForge minimizes and **StepForge REC** appears in the top panel.
+5. Click through your task. Each click becomes a step.
+6. Stop from **StepForge REC** or from the StepForge window.
 
-## Portable Linux archive
+**Good to know**
 
-StepForge Linux releases may also include a portable archive:
+- Clicks on a monitor you didn't share are reported as an error rather than
+  captured from the wrong screen.
+- GNOME reports button state every few milliseconds, so an extremely quick tap
+  or a moment when GNOME Shell is frozen can occasionally be missed.
+- If your desktop can't report clicks at all, open
+  **Settings → Capture → When clicks can't be detected** and capture with the
+  hotkey (**Ctrl+Shift+1**) or on a timer instead.
+- On an **X11** session StepForge detects clicks with `xinput`, which the
+  packages install as a recommended dependency.
 
-```text
-stepforge_<version>_linux-x64.tar.gz
-```
+## Portable archive
 
-Download it from
-[GitHub Releases](https://github.com/Twest2/StepForge/releases), then extract
-it:
+Every release includes a portable build for trying StepForge without
+installing anything:
 
 ```bash
 tar -xzf stepforge_<version>_linux-x64.tar.gz
-```
-
-Run StepForge with:
-
-```bash
 ./usr/bin/stepforge
 ```
 
-The portable archive contains StepForge and its bundled Electron runtime, but
-required Linux system libraries must already be installed.
-
-For most users, the `.deb` or `.rpm` package is preferable because the system
-package manager handles dependencies and upgrades.
-
----
-
-## Run StepForge from source
-
-Developers can also clone and run StepForge directly from the source
-repository.
-
-### 1. Clone the repository
-
-```bash
-git clone https://github.com/Twest2/StepForge.git
-cd StepForge
-```
-
-### 2. Install Node.js
-
-StepForge uses the Node.js version specified in `.nvmrc`.
-
-If you use NVM:
-
-```bash
-nvm install
-nvm use
-```
-
-### 3. Install Linux dependencies
-
-On Ubuntu / Debian:
-
-```bash
-bash scripts/linux/apt/install-runtime-deps.sh
-```
-
-On Fedora:
-
-```bash
-bash scripts/linux/dnf/install-runtime-deps.sh
-```
-
-### 4. Install StepForge's Node dependencies
-
-Use the repository's locked dependency versions:
-
-```bash
-npm ci
-```
-
-`npm ci` is recommended instead of `npm install` because it installs exactly
-the dependency versions recorded in `package-lock.json`.
-
-### 5. Install the GNOME integration
-
-On supported GNOME Wayland systems:
-
-```bash
-bash scripts/linux/install-gnome-extension.sh
-```
-
-You may need to log out and back in after installing or updating the GNOME
-extension.
-
-### 6. Start StepForge
-
-```bash
-npm start
-```
-
-This runs StepForge directly from the source checkout instead of installing a
-system package.
-
----
-
-## Build packages from source
-
-### Ubuntu / Debian
-
-Install the build dependencies:
-
-```bash
-bash scripts/linux/apt/install-build-deps.sh
-nvm install
-nvm use
-npm ci
-```
-
-Build the Debian package and Linux archive:
-
-```bash
-npm run package:linux:deb
-```
-
-Generated files are placed under:
-
-```text
-build/artifacts/
-```
-
-### Fedora
-
-Install the Fedora build dependencies:
-
-```bash
-bash scripts/linux/dnf/install-build-deps.sh
-nvm install
-nvm use
-npm ci
-```
-
-Build the RPM:
-
-```bash
-npm run package:linux:rpm
-```
-
-Generated RPM files are placed under:
-
-```text
-build/artifacts/x86_64/
-```
-
----
-
-## GNOME Wayland support
-
-The Ubuntu and Fedora packages include StepForge's GNOME recording integration.
-
-On GNOME Wayland, StepForge uses:
-
-* XDG Desktop Portal for screen-sharing permission
-* PipeWire for screen capture
-* the StepForge GNOME extension for mouse-click detection and marker placement
-
-After the first package installation or after an extension update, log out and
-back in so GNOME can load the installed extension.
-
-When starting a recording:
-
-1. Open or create a guide.
-2. Press **Start recording**.
-3. Enable the StepForge extension if prompted.
-4. Select the monitors you want to share.
-5. StepForge minimizes and **StepForge REC** appears in the GNOME panel.
-6. Click normally to create recorded steps.
-7. Stop recording from the GNOME panel or from StepForge.
-
-For detailed Linux capture behavior and limitations, see
-[GNOME Wayland recording](gnome-wayland.md).
-
----
+Download it from the [latest release](https://github.com/Twest2/StepForge/releases/latest).
+The archive bundles StepForge and its runtime, but not the system libraries or
+the GNOME extension, so click recording on Wayland needs the full package. On
+Ubuntu or Fedora the `.deb` or `.rpm` is the better choice for everyday use.
 
 ## Uninstall
 
-### Ubuntu
+| | Remove StepForge | Also remove the repository |
+| --- | --- | --- |
+| **Ubuntu** | `sudo apt remove stepforge` | [See the Ubuntu guide](apt.md#uninstall) |
+| **Fedora** | `sudo dnf remove stepforge` | [See the Fedora guide](dnf.md#uninstall) |
 
-```bash
-sudo apt remove stepforge
-```
+Uninstalling leaves your guides and settings in `~/.local/share/stepforge`,
+so reinstalling picks up where you left off. Delete that folder to remove them
+too.
 
-To also remove the StepForge repository:
+## Building packages yourself
 
-```bash
-sudo rm /etc/apt/sources.list.d/stepforge.list
-sudo rm /etc/apt/keyrings/stepforge.gpg
-sudo apt update
-```
-
-### Fedora
-
-```bash
-sudo dnf remove stepforge
-```
-
-To also remove the StepForge repository:
-
-```bash
-sudo rm /etc/yum.repos.d/stepforge-rpm.repo
-sudo dnf clean metadata
-```
-
-Removing the application does not automatically remove guides and settings
-stored in your home directory.
+Building `.deb` and `.rpm` packages from source is covered in the
+[contributing guide](../CONTRIBUTING.md#build-installable-packages).

@@ -1,105 +1,85 @@
-# Windows_installation
+# Install StepForge on Windows
 
-<div style="height:4px;background:#2563eb;border-radius:999px;margin:12px 0 18px;"></div>
+StepForge runs on **Windows 10 and Windows 11 (64-bit)**. Installing takes
+about two minutes.
 
-Author: Tyler Westbrook
+> [!TIP]
+> **Prefer automatic updates?** Install with [Chocolatey](windows/chocolatey.md)
+> instead. After a one-time setup, `choco upgrade stepforge` keeps you on the
+> latest version and skips the SmartScreen prompt below.
 
-*10 steps · generated 2026-06-23*
+*These instructions were recorded and exported with StepForge itself. The
+red circles mark where to click.*
 
-<div class="sf-callout sf-callout-tip" style="border-left: 4px solid #10b981; padding: 14px 16px; margin: 14px 0; border-radius: 0 16px 16px 0;">
-<div style="font-weight: 700; color: #047857; margin-bottom: 6px;">Tip: Easier updates with Chocolatey</div>
-<div style="color: inherit;"><p>If you use <a href="https://chocolatey.org">Chocolatey</a>, you can install StepForge with <code>choco install stepforge</code> and update it later with <code>choco upgrade stepforge</code>. See <a href="windows/chocolatey.md">StepForge on Windows with Chocolatey</a>. The steps below install StepForge manually from GitHub Releases.</p></div>
-</div>
+## 1. Download the installer
 
-Welcome to StepForge the easy documentation writer! This guide shows you how to setup StepForge on your windows computer step by step. As a demo of this project, this guide was 100% made with StepForge with no outside editing. Enjoy!
+**1.1** Open the [StepForge repository on GitHub](https://github.com/Twest2/StepForge).
 
-## Contents
+![The StepForge repository on GitHub](steps-windows_installation/001-navigate-to-the-git-repo..png)
 
-- [1. Navigate to the git repo.](#step-1)
-  - [1.1. Click on releases](#step-1-1)
-    - [1.1.1. Select the latest release for StepForge](#step-1-1-1)
-- [2. Run the installer.](#step-2)
-  - [2.1. Click More Info](#step-2-1)
-    - [2.1.1. Select Run anyway](#step-2-1-1)
-  - [2.2. Select install for me or install for all users](#step-2-2)
-  - [2.3. Select next](#step-2-3)
-  - [2.4. Select install](#step-2-4)
-  - [2.5. Select Finish](#step-2-5)
+**1.2** In the right-hand sidebar, click **Releases**.
 
-<a id="step-1"></a>
+![The Releases link in the repository sidebar](steps-windows_installation/002-click-on-releases.png)
 
-## 1. Navigate to the git repo.
+**1.3** Open the release marked **Latest** and, under **Assets**, download
+the file named `StepForge.Setup.<version>.exe`.
 
-Navigate to the [Github Repository](https://github.com/Twest2/StepForge) located in the link.
+![The installer in the release's assets list](steps-windows_installation/003-select-the-latest-release-for-stepforge.png)
 
-![Step 1](steps-windows_installation/001-navigate-to-the-git-repo..png)
+> [!NOTE]
+> Or skip straight to the [latest release](https://github.com/Twest2/StepForge/releases/latest).
 
-<a id="step-1-1"></a>
+## 2. Run the installer
 
-### 1.1. Click on releases
+**2.1** Open the file you downloaded.
 
-![Step 1.1](steps-windows_installation/002-click-on-releases.png)
+![Opening the downloaded installer](steps-windows_installation/004-run-the-installer..png)
 
-<a id="step-1-1-1"></a>
+**2.2** If Windows shows **Windows protected your PC**, click **More info**.
 
-### 1.1.1. Select the latest release for StepForge
+![The SmartScreen warning with More info highlighted](steps-windows_installation/005-click-more-info.png)
 
-![Step 1.1.1](steps-windows_installation/003-select-the-latest-release-for-stepforge.png)
+> [!IMPORTANT]
+> Microsoft Defender SmartScreen shows this warning for new applications that
+> haven't yet built up download reputation. It doesn't mean a problem was found
+> with StepForge. Only continue if you downloaded the installer from the
+> official GitHub Releases page.
 
-<div class="sf-callout sf-callout-note" style="border-left: 4px solid #2563eb; padding: 14px 16px; margin: 14px 0; border-radius: 0 16px 16px 0;">
-<div style="font-weight: 700; color: #1d4ed8; margin-bottom: 6px;">Note: Newest version</div>
-<div style="color: inherit;"><p>Please make sure you select the newest version of StepForge, not v0.2.0. The .exe is an installer that will install the program for you.</p></div>
-</div>
+**2.3** Click **Run anyway**.
 
-<a id="step-2"></a>
+![The Run anyway button](steps-windows_installation/006-select-run-anyway.png)
 
-## 2. Run the installer.
+**2.4** Choose whether to install StepForge **only for you** or **for all
+users** of this computer. Installing for all users needs administrator rights.
 
-![Step 2](steps-windows_installation/004-run-the-installer..png)
+![Choosing who StepForge is installed for](steps-windows_installation/007-select-install-for-me-or-install-for-all-users.png)
 
-<a id="step-2-1"></a>
+**2.5** Click **Next** to keep the default install location.
 
-### 2.1. Click More Info
+![The install location page](steps-windows_installation/008-select-next.png)
 
-![Step 2.1](steps-windows_installation/005-click-more-info.png)
+**2.6** Click **Install**.
 
-<div class="sf-callout sf-callout-important" style="border-left: 4px solid #ef4444; padding: 14px 16px; margin: 14px 0; border-radius: 0 16px 16px 0;">
-<div style="font-weight: 700; color: #b91c1c; margin-bottom: 6px;">Important: Select More Info</div>
-<div style="color: inherit;"><p>Windows is warning you because this installer is new and hasn’t built up enough Microsoft SmartScreen reputation yet.</p></div>
-</div>
+![The Install button](steps-windows_installation/009-select-install.png)
 
-<a id="step-2-1-1"></a>
+**2.7** Click **Finish**. StepForge opens and is ready to use.
 
-### 2.1.1. Select Run anyway
+![The final page of the installer](steps-windows_installation/010-select-finish.png)
 
-![Step 2.1.1](steps-windows_installation/006-select-run-anyway.png)
+## Next steps
 
-<a id="step-2-2"></a>
+- Record your first guide with the [Getting Started guide](GETTING_STARTED.md).
+- StepForge appears in the Start menu as **StepForge**.
 
-### 2.2. Select install for me or install for all users
+## Updating and uninstalling
 
-![Step 2.2](steps-windows_installation/007-select-install-for-me-or-install-for-all-users.png)
+**To update,** download the newest installer from
+[Releases](https://github.com/Twest2/StepForge/releases/latest) and run it.
+Your guides and settings are kept. A manual install does not update itself,
+so consider switching to [Chocolatey](windows/chocolatey.md), which you can do
+at any time without uninstalling first.
 
-<a id="step-2-3"></a>
-
-### 2.3. Select next
-
-![Step 2.3](steps-windows_installation/008-select-next.png)
-
-<a id="step-2-4"></a>
-
-### 2.4. Select install
-
-![Step 2.4](steps-windows_installation/009-select-install.png)
-
-<a id="step-2-5"></a>
-
-### 2.5. Select Finish
-
-![Step 2.5](steps-windows_installation/010-select-finish.png)
-
-<div class="sf-callout sf-callout-tip" style="border-left: 4px solid #10b981; padding: 14px 16px; margin: 14px 0; border-radius: 0 16px 16px 0;">
-<div style="font-weight: 700; color: #047857; margin-bottom: 6px;">Tip: You're finished!</div>
-<div style="color: inherit;"><p>Go ahead and play around with StepForge and make some docs!</p></div>
-</div>
-
+**To uninstall,** open **Settings → Apps → Installed apps**, find
+**StepForge**, and choose **Uninstall**. Your guides stay in
+`%APPDATA%\stepforge` in case you reinstall. Delete that folder if you want
+them gone too.

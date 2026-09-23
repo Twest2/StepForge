@@ -1,50 +1,37 @@
 ---
-name: Improvement template
-about: 'This is for a PR where an issue/feature isn''t appropriate. '
+name: Improvement
+about: Documentation, tests, tooling, or other work that isn't a bug or new feature
 title: ''
 labels: enhancement
 assignees: Twest2
 
 ---
 
-## Improvement Type
+## Type
 
 - [ ] Improvement
-- [ ] Bug
 - [ ] Documentation
 - [ ] Tests
 - [ ] Git / workflow
 - [ ] Other
 
-
 ## Summary
 
-<!-- Describe the request or problem in one short paragraph. -->
+<!-- One short paragraph describing the change and why it's worth doing. -->
 
-## Current Behavior
+## Current behavior
 
-<!-- What is happening now? -->
+## Desired behavior
 
-## Expected Behavior
+## Acceptance criteria
 
-<!-- What should happen instead? -->
+- [ ]
+- [ ]
 
-## Steps To Reproduce
+## Testing notes
 
-1.
-2.
-3.
+<!-- Tests to add, or how the change should be verified. -->
 
-## Proposed Changes or Acceptance Criteria
+## Extra context
 
-- 
-- 
-- 
-
-## Testing Notes
-
-<!-- Include failing tests, suggested test coverage, or manual verification steps. -->
-
-## Screenshots, Logs, or Extra Context
-
-<!-- Paste errors, screenshots, device details, or links here. -->
+<!-- Errors, screenshots, device details, or links. -->

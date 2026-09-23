@@ -1,64 +1,70 @@
-# Google sign-in: maintainer release configuration
+# Google sign-in: maintainer guide
 
-End users only click **Sign in with Google**, choose their account, and allow
-access. Never ask them for a key, client ID, client secret, or Cloud project.
-Every official StepForge installation uses StepForge's public Desktop OAuth
-application ID; each user receives their own account tokens.
+*For StepForge maintainers.* Users never need any of this: they click **Sign in
+with Google**, pick an account, and allow access. Never ask a user for a client
+ID, secret, API key, or Cloud project.
 
-## One-time registration for StepForge
+Every official build uses StepForge's single public **Desktop OAuth client**.
+Each user gets their own tokens for their own account.
 
-The maintainer must register StepForge with Google before shipping sign-in:
+## How sign-in works
 
-1. Create StepForge's Google Cloud project and enable Google Drive access.
-2. Configure the consent screen with the StepForge app name and the project's
-   required contact, homepage, and privacy information.
-3. Create a **Desktop app** OAuth client. Use only the narrow
-   `https://www.googleapis.com/auth/drive.appdata` permission.
-4. Configure the OAuth app for production distribution. Test-mode accounts and
-   token lifetimes are not suitable for a general release. Complete any Google
-   branding/verification requirements applicable to the registration.
-5. Set the repository Actions variable **STEPFORGE_GOOGLE_CLIENT_ID** to the
-   public client ID. This is an application identifier, not a secret or API key.
-   Alternatively, commit that public ID into `app/google-oauth-config.json`.
+- The system browser opens Google's consent page (OAuth 2.0 for installed apps).
+- StepForge uses **PKCE** and a random `state`, and receives the callback on a
+  short-lived listener bound to `127.0.0.1`.
+- The only scope requested is `https://www.googleapis.com/auth/drive.appdata`.
+- There is no StepForge authentication server.
 
-There is no StepForge authentication server to deploy. The desktop client uses
-PKCE, random state, the system browser, and a short-lived loopback callback.
-Google's installed-app documentation lists `client_secret` as optional; this
-flow sends no client secret in either code exchange or token refresh. Verify
-both against the actual registered Desktop client before release.
+## One-time registration
 
-## Build configuration
+1. Create the StepForge Google Cloud project and enable the Google Drive API.
+2. Configure the OAuth consent screen with the StepForge name, contact
+   address, homepage, privacy policy, and terms of service. The StepForge
+   website provides all three (`/`, `/privacy/`, `/terms/`) and its README has
+   a field-by-field checklist. The website's domain must be verified in Google
+   Search Console.
+3. Create an OAuth client of type **Desktop app**, restricted to the
+   `drive.appdata` scope.
+4. Move the app to **production** and complete any branding or verification
+   Google requires. Testing mode limits sign-in to listed test users and
+   shortens token lifetimes, so it isn't suitable for general release.
+5. Set the GitHub Actions variable **`STEPFORGE_GOOGLE_CLIENT_ID`** to the
+   client ID. It's a public application identifier, not a secret.
+
+> [!CAUTION]
+> Keep the production registration stable between releases. Changing the
+> Google project changes the app-storage space, so existing users would no
+> longer see their synced guides.
+
+## Release builds
 
 The Windows, Ubuntu, Fedora, and Launchpad release jobs run
-`node scripts/configure-google-oauth.js` before packaging. The script embeds
-the same public registration in `app/google-oauth-config.json` in each package.
-Release jobs fail if no valid application ID is configured, instead of shipping
-an apparently working sign-in button that cannot authenticate.
+`node scripts/configure-google-oauth.js` before packaging. It writes the
+client into `app/google-oauth-config.json` inside each package. **A release job
+fails if no valid client is configured**, so a build can't ship a sign-in
+button that doesn't work.
 
-For a local maintainer build that you package, set `STEPFORGE_GOOGLE_CLIENT_ID`
-and `STEPFORGE_GOOGLE_CLIENT_SECRET` in the build shell and run the same script
-before packaging. This is build-time configuration only; users do not set
-environment variables or edit files. Do not use another application's Google
-client ID or a fabricated placeholder.
+To produce a signed-in build locally, set `STEPFORGE_GOOGLE_CLIENT_ID` (and
+`STEPFORGE_GOOGLE_CLIENT_SECRET` if the registered client has one) in the build
+shell and run the same script before packaging. Never use another
+application's client ID or a placeholder.
 
-The source checkout deliberately has an empty ID, and it must never be
-committed with the real client. Development builds without a client keep local
-features working and display “Google sign-in is unavailable in this build of
-StepForge.”
+The source tree deliberately ships an empty client ID; never commit the real
+one. Builds without a client show *"Google sign-in is unavailable in this build
+of StepForge"* and every local feature keeps working.
 
-## Signing in from a development build
+## Signing in from a development checkout
 
-To test Drive features before a release, give your source checkout the client
-without touching `app/google-oauth-config.json`:
+Copy the client from an installed Linux release into a gitignored,
+owner-only file at the repository root:
 
 ```bash
 npm run setup:google-dev
 ```
 
-This copies the client from the installed Linux release
-(`/opt/stepforge/app/google-oauth-config.json`) into `google-oauth.local.json`
-at the repository root. The file is gitignored, readable only by you, and
-outside `app/`, so packaging never includes it. Other sources:
+This reads `/opt/stepforge/app/google-oauth-config.json` and writes
+`google-oauth.local.json`, which sits outside `app/` so packaging never picks
+it up. Other options:
 
 ```bash
 npm run setup:google-dev -- --from path/to/google-oauth-config.json
@@ -66,38 +72,42 @@ STEPFORGE_GOOGLE_CLIENT_ID=… STEPFORGE_GOOGLE_CLIENT_SECRET=… npm run setup:
 npm run setup:google-dev -- --remove
 ```
 
-A development build can also read `STEPFORGE_GOOGLE_CLIENT_ID` and
-`STEPFORGE_GOOGLE_CLIENT_SECRET` directly from its environment. A release build
-always uses its stamped client and ignores both.
+A development build also reads both environment variables directly. Release
+builds always use their stamped client and ignore them.
 
-Development and release builds share the same library folder by default, and
-Drive actions such as **Free up space** and **Replace Drive with this computer**
-affect everything stored for that Google account. Test against a separate
-library:
+> [!WARNING]
+> Development and release builds share the same library by default, and
+> **Free up space** and **Replace Drive with this computer** affect everything
+> stored for the Google account. Test against a separate library:
+>
+> ```bash
+> STEPFORGE_DATA_DIR="$HOME/.local/share/stepforge-dev" npm start
+> ```
+>
+> For completely separate Drive data, use a second Google account (added as a
+> test user while the app is in testing).
 
-```bash
-STEPFORGE_DATA_DIR="$HOME/.local/share/stepforge-dev" npm start
-```
+Development builds keep their sign-in with their own library folder and never
+touch the release build's saved credentials. Tokens from an earlier build with
+a different client aren't reused; the user signs in again and their guides are
+preserved.
 
-For fully separate Drive data, sign in with a second Google account. While the
-OAuth app is in testing, add that account as a test user in the Google Cloud
-console first. Development builds do not use the operating-system sign-in
-backup, so their sign-in stays with their own library folder and never
-replaces or clears the release build's backup.
+## Release checklist
 
-Tokens stored by an earlier build with a different user-supplied registration
-are not reused by the official client. The user signs in again; guides are
-preserved. Changing Google projects also changes the associated app-storage
-space, so keep StepForge's production registration stable between releases.
+Automated tests mock Google, so check these by hand against the real
+registration before each release that touches sync:
 
-## Release verification
+- [ ] **Sign in with Google** opens a consent page branded as StepForge, with
+      no setup or credential fields in the app.
+- [ ] Successful sign-in starts syncing; cancelling leaves sync off.
+- [ ] **Test connection** passes, including the token refresh.
+- [ ] With two computers on the same account: a new guide on one appears on
+      the other, edits flow both ways, and editing on both before syncing
+      produces a conflict copy.
+- [ ] **Versions → Restore**, **Free up space**, and **Delete from Drive**
+      behave as described in [GOOGLE_DRIVE.md](GOOGLE_DRIVE.md).
+- [ ] **Disconnect** stops syncing and keeps local and Drive guides.
 
-Follow the two-device checklist in [GOOGLE_DRIVE.md](GOOGLE_DRIVE.md). Also
-check that the shipped sign-in button opens Google's consent page branded as
-StepForge, no credential/setup fields appear, successful sign-in starts sync,
-cancellation leaves sharing off, and the connection test refreshes tokens
-successfully. Automated tests mock Google; they cannot validate the project's
-production configuration or consent screen.
-
-References: [Google Desktop OAuth](https://developers.google.com/identity/protocols/oauth2/native-app),
-[Drive app storage](https://developers.google.com/workspace/drive/api/guides/appdata).
+References: [OAuth for desktop apps](https://developers.google.com/identity/protocols/oauth2/native-app),
+[Drive app data folder](https://developers.google.com/workspace/drive/api/guides/appdata),
+[Drive uploads](https://developers.google.com/workspace/drive/api/guides/manage-uploads).

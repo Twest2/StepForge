@@ -1,24 +1,25 @@
 ---
 name: Feature request
-about: Suggest an idea for StepForge
-title: "[FEAT]"
+about: Suggest an idea or improvement for StepForge
+title: "[FEAT] "
 labels: Feature
 assignees: Twest2
 
 ---
 
-**Is your feature request related to a problem? Please describe.**
-A clear and concise description of what the problem is. Ex. I'm always frustrated when [...]
+## What problem would this solve?
 
-**Describe the solution you'd like**
-A clear and concise description of what you want to happen.
+<!-- e.g. "When I document X, I always have to..." -->
 
-**Describe alternatives you've considered**
-A clear and concise description of any alternative solutions or features you've considered.
+## What would you like to happen?
 
-**Would you be willing to create a PR for this?**
-[ ] - Yes
-[ ] - No
+## Alternatives you've considered
 
-**Additional context**
-Add any other context or screenshots about the feature request here.
+## Would you be willing to open a pull request for this?
+
+- [ ] Yes
+- [ ] No
+
+## Anything else?
+
+<!-- Mock-ups, screenshots, or examples from your workflow. -->

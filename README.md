@@ -32,24 +32,11 @@ and more.
 > repository was recorded with StepForge. It's a good example of what the app
 > produces.
 
-## Features
-
-| | |
-| --- | --- |
-| **Click-to-step recording** | Each click captures the screen *as it was when you clicked* and marks the spot. Fast clicks are never dropped. |
-| **Three-pane editor** | Steps on the left, the screenshot in the middle, the words on the right. Reorder, nest substeps, and mark steps as done. |
-| **Annotation tools** | Rectangles, ovals, arrows, text, tooltips, numbered badges, highlights, magnifiers, and **blur** for hiding passwords and personal data. |
-| **Export anywhere** | PDF, DOCX, PPTX, Markdown, HTML, animated GIF, Confluence, Wiki.js, JSON, or a folder of annotated images. |
-| **Smart titles** | Local OCR reads the button or menu you clicked so steps arrive already titled, like "Click Save". |
-| **Organized library** | Folders, favorites, full-text search across every guide, snapshots, and a trash you can restore from. |
-| **Reusable content** | Placeholders (`[[Product]]`) and export templates keep a whole set of guides consistent. |
-| **Optional extras** | Google Drive sync between computers, and AI-written descriptions through a local [Ollama](https://ollama.com) model. Both are off until you turn them on. |
-
 ## Install
 
 | Platform | Recommended | Guide |
 | --- | --- | --- |
-| **Windows 10 / 11** (64-bit) | Chocolatey, or the setup `.exe` | [Windows](docs/windows_installation.md) · [Chocolatey](docs/windows/chocolatey.md) |
+| **Windows 10 / 11** (64-bit) | Chocolatey (included in Windows) | [Windows](docs/windows_installation.md) · [Chocolatey](docs/windows/chocolatey.md) |
 | **Ubuntu 26.04** | APT repository | [Ubuntu](docs/linux/apt.md) |
 | **Fedora 44 Workstation** | DNF repository | [Fedora](docs/linux/dnf.md) |
 | **Other Linux** | Portable `.tar.gz` | [Linux overview](docs/linux/linux_install.md) |
@@ -74,13 +61,37 @@ echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/stepforge.gpg] https://package
 sudo apt update && sudo apt install stepforge
 ```
 
-**Fedora 44:** see the [Fedora guide](docs/linux/dnf.md) for the one-time
-repository setup, then `sudo dnf install stepforge`.
+**Fedora 44:** 
+```bash
+sudo tee /etc/yum.repos.d/stepforge-rpm.repo > /dev/null <<'EOF'
+[stepforge-rpm]
+name=StepForge RPM Repository
+baseurl=https://packages.twestbrook.com/rpm/stepforge-rpm/
+enabled=1
+gpgcheck=0
+EOF
+
+sudo dnf makecache --refresh
+sudo dnf install stepforge
+```
 
 > [!TIP]
 > Installing from Chocolatey, APT, or DNF means StepForge updates along with
 > the rest of your system. A manually downloaded installer does not update
 > itself.
+
+## Features
+
+| | |
+| --- | --- |
+| **Click-to-step recording** | Each click captures the screen *as it was when you clicked* and marks the spot. Fast clicks are never dropped. |
+| **Three-pane editor** | Steps on the left, the screenshot in the middle, the words on the right. Reorder, nest substeps, and mark steps as done. |
+| **Annotation tools** | Rectangles, ovals, arrows, text, tooltips, numbered badges, highlights, magnifiers, and **blur** for hiding passwords and personal data. |
+| **Export anywhere** | PDF, DOCX, PPTX, Markdown, HTML, animated GIF, Confluence, Wiki.js, JSON, or a folder of annotated images. |
+| **Smart titles** | Local OCR reads the button or menu you clicked so steps arrive already titled, like "Click Save". |
+| **Organized library** | Folders, favorites, full-text search across every guide, snapshots, and a trash you can restore from. |
+| **Reusable content** | Placeholders (`[[Product]]`) and export templates keep a whole set of guides consistent. |
+| **Optional extras** | Google Drive sync between computers, and AI-written descriptions through a local [Ollama](https://ollama.com) model. Both are off until you turn them on. |
 
 ## Your first guide in one minute
 

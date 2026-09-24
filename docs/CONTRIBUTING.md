@@ -18,9 +18,7 @@ code are all welcome.
    `feat/123-export-page-numbers` or `fix/123-missing-marker`.
 3. **Keep it focused.** One issue per branch. Put unrelated clean-up in its own
    branch.
-4. **Sign off each commit** with `git commit -s` (the
-   [Developer Certificate of Origin](https://developercertificate.org/)).
-5. **Open a pull request** using the template. Include `Closes #123` (or
+4. **Open a pull request** using the template. Include `Closes #123` (or
    `Fixes` / `Relates to`), a summary of what changed, and anything a reviewer
    should check by hand.
 

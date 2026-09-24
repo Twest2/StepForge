@@ -15,6 +15,11 @@
   <img alt="Platforms" src="https://img.shields.io/badge/platforms-Windows%20%7C%20Ubuntu%20%7C%20Fedora-informational">
 </p>
 
+<p align="center">
+  <a href="docs/media/stepforge-demo.mp4"><img src="docs/media/stepforge-demo.gif" alt="StepForge demo: four clicks in a web app become steps in the StepForge editor, get annotated with callouts, and export to a PDF guide" width="800"></a><br>
+  <sub><a href="docs/media/stepforge-demo.mp4">Watch the full-quality video (MP4)</a></sub>
+</p>
+
 ---
 
 Writing a how-to guide usually means doing the task, stopping to take a

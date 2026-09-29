@@ -88,10 +88,17 @@ settings under your own account and use a throwaway repository.
 
 | Where | What | When |
 | --- | --- | --- |
-| Default branch | `README.md` (only if the repository has none) | Setup |
+| Default branch | `README.md` (only if the repository is empty) | Setup |
 | Default branch | `.github/workflows/stepforge-expire.yml` | Setup, and when a newer StepForge ships a changed workflow |
 | `gh-pages` | `index.html`, `_stepforge.json`, `g/<slug>/index.html` | Every publish and removal, as one parentless commit, force-updated |
 | Repository settings | GitHub Pages source `gh-pages` / `/` | Setup and first publish |
+
+Before using a repository, `inspectRepository()` in `app/github-pages.js`
+refuses one whose Pages site StepForge would replace: Pages already on from
+another branch or from Actions, or a `gh-pages` branch without
+`_stepforge.json`. A repository holding more than GitHub's starter files
+(README, LICENSE, `.gitignore`) is used only after the user confirms the
+changes listed in the panel.
 
 The layout, manifest rules, workflow text, and expiry logic are in
 `core/pages-site.js`. The workflow's clean-up uses the same rules as

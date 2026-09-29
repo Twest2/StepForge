@@ -803,8 +803,8 @@ function setupIpc() {
   h('github:cancel', () => { githubPages.cancel(); return { ok: true }; });
   h('github:disconnect', () => { githubPages.disconnect(); return githubPages.status(); });
   h('github:repositories', () => githubPages.repositories());
-  h('github:selectRepository', ({ fullName }) => githubPages.selectRepository({ fullName }),
-    { validate: (a) => c.string(a.fullName, 200) });
+  h('github:selectRepository', ({ fullName, useExisting }) => githubPages.selectRepository({ fullName, useExisting: useExisting === true }),
+    { validate: (a) => c.string(a.fullName, 200) && (a.useExisting === undefined || c.bool(a.useExisting)) });
   h('github:changeRepository', () => githubPages.clearRepository());
   h('github:setup', () => githubPages.setup());
   h('github:published', () => githubPages.published());

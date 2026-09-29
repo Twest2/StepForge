@@ -364,8 +364,7 @@ class GitHubPages {
     return repos.sort((a, b) => a.fullName.localeCompare(b.fullName));
   }
 
-  repoPath(suffix = '') {
-    const repo = this.credentials?.repo;
+  repoPath(suffix = '', repo = this.credentials?.repo) {
     if (!repo) throw new Error('Choose a GitHub repository for shared guides first.');
     return `/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}${suffix}`;
   }
@@ -377,16 +376,84 @@ class GitHubPages {
     return err;
   }
 
-  async selectRepository({ fullName }) {
+  /**
+   * Choose the repository for shared guides. A new (or nearly empty)
+   * repository is used straight away. A repository with other work in it
+   * needs `useExisting` after the user has seen what StepForge will change,
+   * and is refused outright if StepForge would overwrite its Pages site.
+   */
+  async selectRepository({ fullName, useExisting = false }) {
     const parsed = parseFullName(fullName);
     if (!parsed) throw new Error('Choose a repository from the list.');
     const allowed = await this.repositories();
     const match = allowed.find((repo) => repo.fullName.toLowerCase() === fullName.toLowerCase());
     if (!match) throw new Error(`StepForge isn't installed on ${fullName}. Install the StepForge GitHub App on it first.`);
     const [owner, name] = match.fullName.split('/');
-    this.credentials.repo = { owner, name, private: match.private };
+    const candidate = { owner, name, private: match.private };
+    let inspection;
+    try { inspection = await this.inspectRepository(candidate); } catch (err) {
+      if (err.status === 403 || err.status === 404) {
+        throw new GitHubError(`StepForge can't read ${match.fullName}. Check that the StepForge GitHub App is installed on it with every permission it asks for.`, err.status);
+      }
+      throw err;
+    }
+    if (inspection.conflict) throw new Error(inspection.conflict);
+    if (!inspection.fresh && !inspection.ownSite && !useExisting) {
+      return {
+        needsConfirmation: true,
+        repo: match.fullName,
+        changes: [
+          `Add ${site.WORKFLOW_PATH} to the ${inspection.defaultBranch} branch. It removes shared guides when they expire.`,
+          `Create a ${site.PAGES_BRANCH} branch for the shared guides and turn on GitHub Pages for it.`,
+        ],
+      };
+    }
+    this.credentials.repo = candidate;
     this.save();
     return this.setup();
+  }
+
+  /**
+   * Look at a repository before using it. `fresh` means empty or holding only
+   * the files GitHub offers when creating a repository; `ownSite` means its
+   * Pages branch was made by StepForge; `conflict` explains why StepForge
+   * must not use it (it would replace someone's existing Pages site).
+   */
+  async inspectRepository(repo) {
+    const fullName = `${repo.owner}/${repo.name}`;
+    const info = await this.api('GET', this.repoPath('', repo));
+    const defaultBranch = String(info?.default_branch || 'main');
+    const result = { defaultBranch, fresh: true, ownSite: false, conflict: '' };
+
+    const pagesRef = await this.optional('GET', this.repoPath(`/git/ref/heads/${site.PAGES_BRANCH}`, repo));
+    if (pagesRef?.object?.sha) {
+      const commit = await this.api('GET', this.repoPath(`/git/commits/${objectId(pagesRef.object.sha)}`, repo));
+      const tree = await this.api('GET', this.repoPath(`/git/trees/${objectId(commit?.tree?.sha)}`, repo));
+      result.ownSite = (tree?.tree || []).some((entry) => entry.path === site.MANIFEST_PATH);
+      if (!result.ownSite) {
+        result.conflict = `${fullName} already has a ${site.PAGES_BRANCH} branch that StepForge didn't create. StepForge replaces that branch every time it publishes, so it won't use this repository. Choose another repository or create a new one.`;
+        return result;
+      }
+    }
+
+    let pages = null;
+    try { pages = await this.optional('GET', this.repoPath('/pages', repo)); } catch (err) {
+      // Without the Pages permission setup explains how to turn Pages on.
+      if (err.status !== 403) throw err;
+    }
+    const servesPagesBranch = pages?.source?.branch === site.PAGES_BRANCH && pages.build_type !== 'workflow';
+    if (pages && !servesPagesBranch && !result.ownSite) {
+      const from = pages.build_type === 'workflow' ? 'with GitHub Actions' : `from the ${pages.source?.branch || 'another'} branch`;
+      result.conflict = `${fullName} already publishes a GitHub Pages site ${from}. StepForge would replace that site, so it won't use this repository. Choose another repository or create a new one.`;
+      return result;
+    }
+
+    if (await this.optional('GET', this.repoPath(`/branches/${encodeURIComponent(defaultBranch)}`, repo))) {
+      const root = await this.optional('GET', this.repoPath('/contents', repo));
+      const starter = /^(readme(\.md)?|license(\.md|\.txt)?|\.gitignore)$/i;
+      result.fresh = (Array.isArray(root) ? root : []).every((entry) => starter.test(String(entry.name || '')));
+    }
+    return result;
   }
 
   clearRepository() {
@@ -412,8 +479,9 @@ class GitHubPages {
         const defaultBranch = String(info?.default_branch || 'main');
         const branchPath = `/branches/${encodeURIComponent(defaultBranch)}`;
         const empty = !(await this.optional('GET', this.repoPath(branchPath)));
-        if (empty || !(await this.optional('GET', this.repoPath(`/contents/${site.README_PATH}`)))) {
-          // The Contents API also works on an empty repository and creates its first commit.
+        if (empty) {
+          // An empty repository has no branch to hold the workflow yet. The
+          // Contents API works on empty repositories and makes the first commit.
           await this.api('PUT', this.repoPath(`/contents/${site.README_PATH}`), {
             message: 'Add a README for shared StepForge guides',
             content: Buffer.from(site.README).toString('base64'),

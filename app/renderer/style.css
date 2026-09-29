@@ -1293,6 +1293,8 @@ fieldset legend {
 .gh-note { margin: 0; padding: 8px 10px; border-radius: 8px; font-size: 12px; background: var(--panel-2); }
 .gh-note.error { color: var(--danger); background: color-mix(in srgb, var(--danger) 9%, var(--panel-solid)); }
 .gh-repo-row select { flex: 1; min-width: 0; }
+.gh-changes { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
+.gh-changes li { overflow-wrap: anywhere; }
 .gh-publish { display: flex; flex-direction: column; gap: 12px; max-width: 520px; }
 .gh-publish p { margin: 0; }
 .gh-field { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-weight: 550; }

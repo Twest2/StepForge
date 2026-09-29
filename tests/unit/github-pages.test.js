@@ -19,7 +19,8 @@ const DAY = 24 * 60 * 60 * 1000;
  * and Git Data APIs, backed by real blob/tree/commit/ref objects so tests
  * can inspect the branch GitHub would serve.
  */
-function fakeGitHub({ empty = true, allowWorkflows = true, allowPages = true, privateRepo = false, tokenExpiresIn = null } = {}) {
+function fakeGitHub({ empty = true, allowWorkflows = true, allowPages = true, privateRepo = false, tokenExpiresIn = null,
+  files = {}, existingPages = null, foreignPagesBranch = false } = {}) {
   const hash = (value) => crypto.createHash('sha1').update(value).digest('hex');
   const gh = {
     token: null,
@@ -82,6 +83,11 @@ function fakeGitHub({ empty = true, allowWorkflows = true, allowPages = true, pr
     const rest = repo[1] || '';
     if (!rest) return json({ full_name: 'octo/stepforge-guides', private: privateRepo, default_branch: 'main' });
     if (rest === '/branches/main') return gh.empty ? notFound() : json({ name: 'main' });
+    if (rest === '/contents' && method === 'GET') {
+      if (gh.empty) return notFound();
+      const names = [...new Set([...gh.contents.keys()].map((file) => file.split('/')[0]))];
+      return json(names.map((name) => ({ name, type: gh.contents.has(name) ? 'file' : 'dir' })));
+    }
     const content = /^\/contents\/(.+)$/.exec(rest);
     if (content) {
       const file = decodeURIComponent(content[1]);
@@ -145,6 +151,22 @@ function fakeGitHub({ empty = true, allowWorkflows = true, allowPages = true, pr
     }
     return notFound();
   };
+
+  // Start from an existing repository instead of a brand-new one.
+  for (const [file, text] of Object.entries(files)) {
+    const encoded = Buffer.from(text).toString('base64');
+    gh.contents.set(file, { content: encoded, sha: hash(encoded) });
+    gh.empty = false;
+  }
+  if (existingPages) gh.pages = existingPages;
+  if (foreignPagesBranch) {
+    const bytes = Buffer.from('<h1>My project site</h1>');
+    const blobSha = hash(bytes);
+    gh.blobs.set(blobSha, bytes);
+    gh.trees.set('f'.repeat(40), [{ path: 'index.html', type: 'blob', sha: blobSha }]);
+    gh.commits.set('e'.repeat(40), { tree: 'f'.repeat(40), parents: [] });
+    gh.refs.set('gh-pages', 'e'.repeat(40));
+  }
 
   /** The files on the Pages branch, as GitHub Pages would build them. */
   gh.branch = () => {
@@ -247,6 +269,62 @@ test('a new empty repository gets a README, the clean-up workflow, a Pages branc
   const commitsBefore = gh.commits.size;
   await pages.setup();
   assert.equal(gh.commits.size, commitsBefore);
+});
+
+const repoWrites = (gh) => gh.requests.filter((request) => !request.startsWith('GET ') && request.includes('/repos/'));
+const fileText = (gh, file) => Buffer.from(gh.contents.get(file).content, 'base64').toString();
+
+test('a new repository GitHub created with a README is used without asking, and its README is kept', async (t) => {
+  const { pages, gh } = await connected(t, { gh: fakeGitHub({ files: { 'README.md': '# My guides\n', LICENSE: 'MIT' } }) });
+  const status = await pages.selectRepository({ fullName: 'octo/stepforge-guides' });
+  assert.equal(status.repo, 'octo/stepforge-guides');
+  assert.equal(fileText(gh, 'README.md'), '# My guides\n');
+  assert.equal(fileText(gh, site.WORKFLOW_PATH), site.WORKFLOW);
+});
+
+test('an existing repository is used only after confirmation, and only gains the workflow and a Pages branch', async (t) => {
+  const files = { 'README.md': '# Widget\n', 'src/app.js': 'console.log(1);\n' };
+  const { pages, gh } = await connected(t, { gh: fakeGitHub({ files }) });
+
+  const asked = await pages.selectRepository({ fullName: 'octo/stepforge-guides' });
+  assert.equal(asked.needsConfirmation, true);
+  assert.equal(asked.repo, 'octo/stepforge-guides');
+  assert.match(asked.changes.join('\n'), /stepforge-expire\.yml to the main branch/);
+  assert.match(asked.changes.join('\n'), /gh-pages branch/);
+  assert.equal(pages.status().repo, '', 'nothing is chosen until the user confirms');
+  assert.deepEqual(repoWrites(gh), [], 'nothing is written before the user confirms');
+
+  const status = await pages.selectRepository({ fullName: 'octo/stepforge-guides', useExisting: true });
+  assert.equal(status.repo, 'octo/stepforge-guides');
+  assert.equal(status.pagesReady, true);
+  assert.equal(fileText(gh, 'README.md'), '# Widget\n', 'the project README is not replaced');
+  assert.equal(fileText(gh, 'src/app.js'), 'console.log(1);\n');
+  assert.deepEqual([...gh.contents.keys()].sort(), ['README.md', site.WORKFLOW_PATH, 'src/app.js'].sort());
+  assert.deepEqual(Object.keys(gh.branch().manifest.guides), []);
+
+  // Coming back to a repository StepForge already set up needs no confirmation.
+  pages.clearRepository();
+  assert.equal((await pages.selectRepository({ fullName: 'octo/stepforge-guides' })).repo, 'octo/stepforge-guides');
+});
+
+test('a repository that already publishes a GitHub Pages site is refused before anything is written', async (t) => {
+  const files = { 'README.md': '# Docs\n', 'docs/index.md': 'hi' };
+  for (const [existingPages, reason] of [
+    [{ source: { branch: 'main', path: '/docs' }, build_type: 'legacy', html_url: 'https://octo.github.io/stepforge-guides/' }, /already publishes a GitHub Pages site from the main branch/],
+    [{ source: { branch: 'gh-pages', path: '/' }, build_type: 'workflow', html_url: 'https://octo.github.io/stepforge-guides/' }, /already publishes a GitHub Pages site with GitHub Actions/],
+  ]) {
+    const { pages, gh } = await connected(t, { gh: fakeGitHub({ files, existingPages }) });
+    await assert.rejects(pages.selectRepository({ fullName: 'octo/stepforge-guides', useExisting: true }), reason);
+    assert.equal(pages.status().repo, '');
+    assert.deepEqual(repoWrites(gh), []);
+  }
+});
+
+test('a gh-pages branch StepForge did not create is never replaced', async (t) => {
+  const { pages, gh } = await connected(t, { gh: fakeGitHub({ files: { 'README.md': '# Site\n' }, foreignPagesBranch: true }) });
+  await assert.rejects(pages.selectRepository({ fullName: 'octo/stepforge-guides', useExisting: true }), /gh-pages branch that StepForge didn't create/);
+  assert.deepEqual(repoWrites(gh), []);
+  assert.equal(gh.refs.get('gh-pages'), 'e'.repeat(40));
 });
 
 test('a repository the App is not installed on is refused', async (t) => {

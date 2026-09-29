@@ -141,15 +141,63 @@ test('the GitHub panel explains setup step by step and warns that guides are pub
   await settle();
   const text = panel.node.textContent;
   assert.match(text, /Shared guides are public\./);
-  assert.match(text, /Create a public repository for shared guides/);
+  assert.match(text, /Choose a repository for shared guides/);
+  assert.match(text, /use a repository you already have/);
   assert.match(text, /Install StepForge on only that repository/);
   assert.match(text, /Only select repositories/);
   assert.match(text, /Sign in/);
   u.click(u.find(panel.node, 'Install StepForge on GitHub'));
-  u.click(u.find(panel.node, 'Create repository on GitHub'));
+  u.click(u.find(panel.node, 'Create a new repository'));
   assert.deepEqual(api.calls, [
     ['open', 'https://github.com/apps/stepforge/installations/new'],
     ['open', 'https://github.com/new?name=stepforge-guides'],
+  ]);
+  panel.dispose();
+});
+
+test('without a GitHub App the panel says why Install and Sign in are off', async () => {
+  const u = ui();
+  const panel = u.context.makeGitHubSettings(fakeApi({ available: false, links: { install: '', newRepository: 'https://github.com/new' } }));
+  await settle();
+  const note = u.all(panel.node).find((n) => n.role === 'note' && n.textContent.includes('isn’t connected to a StepForge GitHub App'));
+  assert.ok(note && u.visible(note), 'the explanation is visible');
+  assert.equal(u.find(panel.node, 'Install StepForge on GitHub').disabled, true);
+  assert.equal(u.find(panel.node, 'Sign in with GitHub').disabled, true);
+  assert.equal(u.find(panel.node, 'Create a new repository').disabled, false, 'creating a repository still works');
+  panel.dispose();
+
+  const ready = u.context.makeGitHubSettings(fakeApi());
+  await settle();
+  assert.equal(u.visible(u.all(ready.node).find((n) => n.role === 'note' && n.textContent.includes('isn’t connected'))), false);
+  ready.dispose();
+});
+
+test('choosing an existing repository shows what StepForge will add and waits for confirmation', async () => {
+  const u = ui();
+  const api = fakeApi({ connected: true, login: 'octo' });
+  api.github.repositories = async () => [{ fullName: 'octo/widget', private: false }];
+  api.github.selectRepository = async (args) => {
+    api.calls.push(['select', JSON.parse(JSON.stringify(args))]);
+    return args.useExisting ? { connected: true, repo: 'octo/widget', setupNote: '' }
+      : { needsConfirmation: true, repo: 'octo/widget', changes: ['Add .github/workflows/stepforge-expire.yml to the main branch.', 'Create a gh-pages branch.'] };
+  };
+  const panel = u.context.makeGitHubSettings(api);
+  await settle();
+  await settle();
+  // The stand-in <select> does not track options added later; pick the one shown.
+  u.all(panel.node).find((n) => n.tag === 'select').value = 'octo/widget';
+  const choosing = u.find(panel.node, 'Use this repository').listeners.click();
+  await settle();
+  const confirm = u.root.children.at(-1);
+  assert.match(confirm.textContent, /Use octo\/widget for shared guides\?/);
+  assert.match(confirm.textContent, /stepforge-expire\.yml to the main branch/);
+  assert.match(confirm.textContent, /Nothing else in the repository changes/);
+  assert.deepEqual(JSON.parse(JSON.stringify(api.calls)), [['select', { fullName: 'octo/widget' }]], 'waits for the user');
+  u.click(u.find(confirm, 'Use this repository'));
+  await choosing;
+  assert.deepEqual(JSON.parse(JSON.stringify(api.calls)), [
+    ['select', { fullName: 'octo/widget' }],
+    ['select', { fullName: 'octo/widget', useExisting: true }],
   ]);
   panel.dispose();
 });

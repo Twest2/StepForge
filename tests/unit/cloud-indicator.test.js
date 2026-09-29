@@ -6,16 +6,18 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 function indicator() {
-  const context = { window: {}, document: { addEventListener() {} } };
+  const context = vm.createContext({ window: {}, document: { addEventListener() {} } });
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/util.js'), 'utf8'), context);
   const source = fs.readFileSync(path.join(__dirname, '../../app/renderer/app.js'), 'utf8');
-  vm.runInNewContext(source.replace('\nboot();', '\n'), context);
+  vm.runInContext(source.replace('\nboot();', '\n'), context);
   const app = Object.create(context.window.StepForgeApp.prototype);
   const hidden = new Set(['hidden']);
   app.cloudStatus = {
     classList: { toggle(name, on) { if (on) hidden.add(name); else hidden.delete(name); } },
     setAttribute(name, value) { this[name] = value; },
+    style: { setProperty(name, value) { this[name] = value; } },
   };
-  return { render: (status) => { app.renderCloudStatus(status); return { visible: !hidden.has('hidden'), label: app.cloudStatus.textContent }; } };
+  return { app, render: (status) => { app.renderCloudStatus(status); return { visible: !hidden.has('hidden'), label: app.cloudStatus.textContent }; } };
 }
 
 test('the Drive indicator stays out of the top bar unless the user is signed in with sync on', () => {
@@ -26,4 +28,15 @@ test('the Drive indicator stays out of the top bar unless the user is signed in 
   assert.equal(render({ connected: true, enabled: false, phase: 'off' }).visible, false);
   assert.deepEqual(render({ connected: true, enabled: true, phase: 'synced' }), { visible: true, label: 'Drive: synced' });
   assert.deepEqual(render({ connected: true, enabled: true, phase: 'error', message: 'Quota exceeded' }), { visible: true, label: 'Drive: needs attention' });
+});
+
+test('the Drive indicator shows a live counter while a guide transfers', () => {
+  const { app, render } = indicator();
+  const transfer = { direction: 'download', name: 'Onboarding', loaded: 3 * 1024 * 1024, total: 12 * 1024 * 1024, bytesPerSecond: 1024 * 1024 };
+  assert.deepEqual(render({ connected: true, enabled: true, phase: 'syncing', transfer }), { visible: true, label: 'Drive: ↓ 3.0 MB / 12.0 MB' });
+  assert.equal(app.cloudStatus.title, 'Downloading “Onboarding” — 3.0 MB of 12.0 MB · 1.0 MB/s');
+  assert.equal(app.cloudStatus.style['--transfer-progress'], '25%');
+  assert.equal(render({ connected: true, enabled: true, phase: 'syncing', transfer: { ...transfer, direction: 'upload' } }).label, 'Drive: ↑ 3.0 MB / 12.0 MB');
+  assert.deepEqual(render({ connected: true, enabled: true, phase: 'synced', transfer: null }), { visible: true, label: 'Drive: synced' });
+  assert.equal(app.cloudStatus.style['--transfer-progress'], '0%');
 });

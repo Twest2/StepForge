@@ -32,7 +32,9 @@ it and checks for changes from your other computers about every 30 seconds.
 
 The **Drive indicator** in the top bar shows what's happening (waiting,
 syncing, up to date, or needs attention) and opens the Drive settings when
-clicked.
+clicked. While a guide is uploading (↑) or downloading (↓), it shows a live
+counter such as **Drive: ↓ 3.2 MB / 12.0 MB** with a progress line; hover it,
+or open the Drive settings, to see the guide's name and the transfer speed.
 
 > [!TIP]
 > Before switching computers, wait until the indicator shows the guide is up

@@ -31,6 +31,22 @@ const SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
 const API = 'https://www.googleapis.com/drive/v3';
 const MAX_ARCHIVE_BYTES = 256 * 1024 * 1024;
 
+// Streams a request body in slices so an upload can report how much of it
+// has been handed to the network. Called once per attempt, so a retry restarts at 0.
+const PROGRESS_SLICE = 256 * 1024;
+function progressBody(data, onProgress) {
+  let sent = 0;
+  return new ReadableStream({
+    pull(controller) {
+      if (sent >= data.length) { controller.close(); return; }
+      const slice = data.subarray(sent, sent + PROGRESS_SLICE);
+      sent += slice.length;
+      controller.enqueue(slice);
+      onProgress(sent);
+    },
+  });
+}
+
 function googlePhotoLink(value) {
   try {
     const url = new URL(value);
@@ -171,7 +187,14 @@ class GoogleDrive {
     this.controllers.add(controller);
     const timer = setTimeout(() => controller.abort(), 60000);
     try {
-      const response = await this.fetch(url, { ...options, signal: controller.signal, redirect: 'error' });
+      const { onProgress, ...fetchOptions } = options;
+      const init = { ...fetchOptions, signal: controller.signal, redirect: 'error' };
+      if (onProgress && Buffer.isBuffer(options.body)) {
+        init.body = progressBody(options.body, onProgress);
+        init.duplex = 'half';
+        init.headers = { ...options.headers, 'Content-Length': String(options.body.length) };
+      }
+      const response = await this.fetch(url, init);
       if (!response.ok) {
         let reason = '';
         let description = '';
@@ -211,6 +234,7 @@ class GoogleDrive {
           length += chunk.length;
           if (length > MAX_ARCHIVE_BYTES) { controller.abort(); throw new Error('Cloud archive exceeds the 256 MB transfer limit.'); }
           chunks.push(Buffer.from(chunk));
+          onProgress?.(length);
         }
         return Buffer.concat(chunks);
       }
@@ -392,7 +416,8 @@ class GoogleDrive {
     return files;
   }
 
-  async upload({ data, name, properties }) {
+  // `onProgress(bytes)` reports how many of the archive's bytes have been sent.
+  async upload({ data, name, properties, onProgress }) {
     const generation = this.generation;
     if (data.length > MAX_ARCHIVE_BYTES) throw new Error('Cloud archive exceeds the 256 MB transfer limit.');
     if (data.length > 5 * 1024 * 1024) {
@@ -402,20 +427,20 @@ class GoogleDrive {
         body: JSON.stringify({ name, parents: ['appDataFolder'], appProperties: properties }),
       });
       if (generation !== this.generation) throw new Error('Google Drive upload cancelled.');
-      return this.authorized(session, { method: 'PUT', headers: { 'Content-Type': 'application/octet-stream' }, body: data });
+      return this.authorized(session, { method: 'PUT', headers: { 'Content-Type': 'application/octet-stream' }, body: data, onProgress });
     }
     const boundary = `stepforge_${crypto.randomBytes(16).toString('hex')}`;
     const metadata = { name, parents: ['appDataFolder'], appProperties: properties };
-    const body = Buffer.concat([
-      Buffer.from(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n--${boundary}\r\nContent-Type: application/octet-stream\r\n\r\n`),
-      data, Buffer.from(`\r\n--${boundary}--\r\n`),
-    ]);
+    const head = Buffer.from(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n--${boundary}\r\nContent-Type: application/octet-stream\r\n\r\n`);
+    const body = Buffer.concat([head, data, Buffer.from(`\r\n--${boundary}--\r\n`)]);
     return this.authorized('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,createdTime,appProperties', {
       method: 'POST', headers: { 'Content-Type': `multipart/related; boundary=${boundary}` }, body,
+      onProgress: onProgress && ((sent) => onProgress(Math.min(data.length, Math.max(0, sent - head.length)))),
     });
   }
 
-  download(id) { return this.authorized(`${API}/files/${encodeURIComponent(id)}?alt=media`, { binary: true }); }
+  // `onProgress(bytes)` reports how many bytes have been received.
+  download(id, { onProgress } = {}) { return this.authorized(`${API}/files/${encodeURIComponent(id)}?alt=media`, { binary: true, onProgress }); }
 
   deleteFile(id) {
     return this.authorized(`${API}/files/${encodeURIComponent(id)}`, { method: 'DELETE' });

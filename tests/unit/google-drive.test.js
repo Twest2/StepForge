@@ -213,6 +213,52 @@ test('large archives use a resumable upload session at a trusted Google endpoint
   assert.equal(requests.length, 2);
 });
 
+test('uploads stream their body with a fixed length and report archive bytes sent', async (t) => {
+  const data = Buffer.alloc(6 * 1024 * 1024, 1);
+  let received;
+  const { drive } = setup(t, { fetchImpl: async (url, options) => {
+    if (options.method === 'POST') return new Response(null, { status: 200, headers: { location: 'https://www.googleapis.com/upload/drive/v3/files?upload_id=test' } });
+    assert.equal(options.headers['Content-Length'], String(data.length));
+    assert.equal(options.duplex, 'half');
+    received = Buffer.from(await new Response(options.body).arrayBuffer());
+    return json({ id: 'large-file' });
+  } });
+  authorize(drive);
+  const progress = [];
+  await drive.upload({ data, name: 'large.sfgz', properties: {}, onProgress: (sent) => progress.push(sent) });
+  assert.ok(received.equals(data));
+  assert.ok(progress.length > 2);
+  assert.equal(progress.at(-1), data.length);
+  assert.deepEqual([...progress].sort((a, b) => a - b), progress);
+});
+
+test('small multipart uploads report only the archive bytes, not the metadata envelope', async (t) => {
+  const data = Buffer.alloc(600 * 1024, 2);
+  const { drive } = setup(t, { fetchImpl: async (url, options) => {
+    await new Response(options.body).arrayBuffer();
+    return json({ id: 'small-file' });
+  } });
+  authorize(drive);
+  const progress = [];
+  await drive.upload({ data, name: 'small.sfgz', properties: {}, onProgress: (sent) => progress.push(sent) });
+  // The first 256 KB slice includes the JSON metadata part, which is not archive data.
+  assert.ok(progress[0] < 256 * 1024);
+  assert.ok(progress.every((sent) => sent >= 0 && sent <= data.length));
+  assert.equal(progress.at(-1), data.length);
+});
+
+test('downloads report bytes received as the body streams in', async (t) => {
+  const chunks = [Buffer.alloc(1000, 1), Buffer.alloc(500, 2)];
+  const { drive } = setup(t, { fetchImpl: async () => new Response(new ReadableStream({
+    pull(controller) { const next = chunks.shift(); if (next) controller.enqueue(next); else controller.close(); },
+  })) });
+  authorize(drive);
+  const progress = [];
+  const bytes = await drive.download('file', { onProgress: (loaded) => progress.push(loaded) });
+  assert.equal(bytes.length, 1500);
+  assert.deepEqual(progress, [1000, 1500]);
+});
+
 test('upload sessions cannot redirect credentials to another host', async (t) => {
   const { drive } = setup(t, { fetchImpl: async () => new Response(null, { headers: { location: 'https://unexpected.example/upload' } }) });
   authorize(drive);

@@ -324,8 +324,11 @@ class StepForgeApp {
     // Google Drive is opt-in: only users who are signed in with sync on see it.
     this.cloudStatus.classList.toggle('hidden', !(status.connected && status.enabled));
     const labels = { synced: 'Drive: synced', syncing: 'Drive: syncing…', pending: 'Drive: pending', conflict: 'Drive: conflict copies', error: 'Drive: needs attention' };
-    this.cloudStatus.textContent = labels[status.phase] || 'Google Drive';
-    this.cloudStatus.title = status.error || status.message || 'Google Drive settings';
+    const transfer = status.transfer ? describeTransfer(status.transfer) : null;
+    this.cloudStatus.textContent = transfer ? `Drive: ${transfer.arrow} ${transfer.compact}` : labels[status.phase] || 'Google Drive';
+    this.cloudStatus.title = transfer?.detail || status.error || status.message || 'Google Drive settings';
+    this.cloudStatus.classList.toggle('transferring', Boolean(transfer));
+    this.cloudStatus.style.setProperty('--transfer-progress', `${transfer?.percent || 0}%`);
     this.cloudStatus.setAttribute('aria-label', this.cloudStatus.title);
   }
 

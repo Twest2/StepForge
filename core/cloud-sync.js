@@ -8,10 +8,12 @@ const { buildArchiveEntries, readArchive, importGuideArchive } = require('./arch
 const { zipSync } = require('./zip');
 const { encodeArchive } = require('./background-archive');
 const { atomicWriteFileSync, writeJsonSync, readJsonIfExists } = require('./util');
+const { TransferMeter } = require('./transfer-meter');
 
 const validId = (id) => typeof id === 'string' && /^[A-Za-z0-9_-]{1,100}$/.test(id) && !['__proto__', 'constructor', 'prototype'].includes(id);
 const compareText = (a, b) => a < b ? -1 : a > b ? 1 : 0;
 const digest = (data) => crypto.createHash('sha256').update(data).digest('hex');
+const archiveTitle = (file) => file.name?.replace(/( \(deleted\))?\.sfgz$/, '') || 'Guide';
 function snapshot(store, id) {
   const entries = buildArchiveEntries(store, id);
   const hash = crypto.createHash('sha256');
@@ -102,6 +104,26 @@ class CloudSync {
     this.status = { ...this.status, phase, message, ...extra };
     this.onStatus(this.status);
     return this.status;
+  }
+
+  // Publishes live progress for one archive transfer. Tiny deletion markers
+  // are not worth showing, so only guide archives go through here.
+  async transfer(direction, name, total, action) {
+    const meter = new TransferMeter({ direction, name, total,
+      onUpdate: (transfer) => this.publish(this.status.phase, this.status.message, { transfer }) });
+    meter.report();
+    try { return await action((loaded) => meter.update(loaded)); }
+    finally { this.publish(this.status.phase, this.status.message, { transfer: null }); }
+  }
+
+  downloadArchive(file) {
+    return this.transfer('download', archiveTitle(file), file.size,
+      (onProgress) => this.drive.download(file.id, { onProgress }));
+  }
+
+  uploadArchive({ data, name, properties }) {
+    return this.transfer('upload', name.replace(/\.sfgz$/, ''), data.length,
+      (onProgress) => this.drive.upload({ data, name, properties, onProgress }));
   }
 
   start() {
@@ -222,7 +244,7 @@ class CloudSync {
     const titles = new Map();
     for (const [id, versions] of groups) {
       const latest = [...versions].sort((a, b) => compareText(b.createdTime || '', a.createdTime || ''))[0];
-      titles.set(id, latest.name?.replace(/( \(deleted\))?\.sfgz$/, '') || 'Guide');
+      titles.set(id, archiveTitle(latest));
     }
     for (const [id, marker] of states) {
       if (['deleted', 'purged'].includes(marker.appProperties?.state)) titles.set(id, marker.appProperties.title || titles.get(id) || 'Guide');
@@ -276,7 +298,7 @@ class CloudSync {
     const files = await this.drive.listVersions();
     const version = files.find((file) => file.id === versionId && file.appProperties?.guideId === id);
     if (!version) throw new Error('That cloud snapshot is no longer available.');
-    const bytes = await this.drive.download(version.id);
+    const bytes = await this.downloadArchive(version);
     this.validateDownload(bytes, id, version.appProperties.hash);
     if (!this.canReplace(id)) throw new Error('The guide became active while restoring. No changes were made.');
     const sharing = this.store.guideExists(id) ? this.store.getGuide(id).cloud?.sharingEnabled : undefined;
@@ -376,7 +398,7 @@ class CloudSync {
     const marker = this.deletionStates(deletionFiles).get(id);
     const recovery = files.find((file) => file.id === marker?.appProperties?.recoveryId);
     if (!marker || marker.appProperties.state !== 'deleted' || !recovery) throw new Error('No recoverable cloud snapshot is available for this guide.');
-    const bytes = await this.drive.download(recovery.id);
+    const bytes = await this.downloadArchive(recovery);
     this.validateDownload(bytes, id, recovery.appProperties.hash);
     if (!this.canReplace(id)) throw new Error('The guide became active while restoring. No changes were made.');
     this.install(bytes, id, id);
@@ -501,7 +523,7 @@ class CloudSync {
       }
       const archive = this.pendingArchive(id);
       if (!fs.existsSync(archive)) throw new Error(`Pending cloud deletion for ${id} is missing its recovery archive.`);
-      const recovery = await this.drive.upload({ data: fs.readFileSync(archive), name: `${pendingDelete.title} (deleted).sfgz`,
+      const recovery = await this.uploadArchive({ data: fs.readFileSync(archive), name: `${pendingDelete.title} (deleted).sfgz`,
         properties: { stepforge: 'guide-v1', guideId: id, hash: pendingDelete.hash } });
       check();
       const marker = await this.drive.upload({ data: Buffer.from('{}'), name: `Deleted ${pendingDelete.title}`,
@@ -559,7 +581,7 @@ class CloudSync {
         if (remoteChanged) {
           // Never replace a live editor's guide, including unsaved input or capture.
           if (!this.canReplace(id)) { pending = true; continue; }
-          const incoming = await this.drive.download(latest.id);
+          const incoming = await this.downloadArchive(latest);
           check();
           if (!this.canReplace(id) || this.store.guideExists(id) !== exists
               || (exists && this.localSnapshot(id).hash !== local.hash)) { pending = true; continue; }
@@ -579,7 +601,7 @@ class CloudSync {
           for (const other of heads.filter((h) => h.id !== latest.id && h.appProperties.hash !== latest.appProperties.hash)) {
             const copyId = `guide-conflict-${digest(`${id}:${other.id}`).slice(0, 32)}`;
             if (this.store.guideExists(copyId)) continue;
-            const bytes = await this.drive.download(other.id);
+            const bytes = await this.downloadArchive(other);
             check();
             this.validateDownload(bytes, id, other.appProperties.hash);
             this.install(bytes, id, copyId, `${other.name.replace(/\.sfgz$/, '')} (conflict — another device)`);
@@ -613,7 +635,7 @@ class CloudSync {
             pending = true;
             continue;
           }
-          const file = await this.drive.upload({ data, name,
+          const file = await this.uploadArchive({ data, name,
             properties: { stepforge: 'guide-v1', guideId: id, hash: local.hash, ...(baseline?.head ? { parent: baseline.head } : {}) } });
           check();
           this.state.records[id] = { head: file.id, heads: [...heads.filter((h) => h.id !== baseline?.head).map((h) => h.id), file.id], hash: local.hash, syncedAt: Date.now() };

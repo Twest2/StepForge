@@ -503,3 +503,33 @@ test('manual deletion waits for an in-flight upload and prevents a racing sync',
   assert.equal((await a.sync.guides()).length, 0);
   assert.equal(a.store.getGuide(id).cloud.sharingEnabled, false);
 });
+
+test('guide uploads and downloads publish live transfer progress, then clear it', async (t) => {
+  const { device, drive } = setup(t);
+  const upload = drive.upload.bind(drive);
+  const download = drive.download.bind(drive);
+  drive.upload = async (args) => {
+    args.onProgress?.(Math.floor(args.data.length / 2)); args.onProgress?.(args.data.length);
+    return Object.assign(await upload(args), { size: String(args.data.length) });
+  };
+  drive.download = async (id, { onProgress } = {}) => { const bytes = await download(id); onProgress?.(bytes.length); return bytes; };
+  const seen = [];
+  const a = device('a', { onStatus: (status) => seen.push(status) });
+  const b = device('b', { onStatus: (status) => seen.push(status) });
+  const id = addGuide(a.store);
+  edit(a.store, id, 'Transfer me');
+  await synced(a.sync);
+  const uploads = seen.filter((status) => status.transfer?.direction === 'upload');
+  assert.equal(uploads[0].phase, 'syncing');
+  assert.deepEqual({ ...uploads.at(-1).transfer, bytesPerSecond: 0 },
+    { direction: 'upload', name: 'Transfer me', loaded: uploads.at(-1).transfer.total, total: uploads.at(-1).transfer.total, bytesPerSecond: 0 });
+  assert.ok(uploads.at(-1).transfer.total > 0);
+  seen.length = 0;
+  await synced(b.sync);
+  const downloads = seen.filter((status) => status.transfer?.direction === 'download');
+  assert.equal(downloads[0].transfer.name, 'Transfer me');
+  assert.equal(downloads.at(-1).transfer.loaded, downloads.at(-1).transfer.total);
+  assert.equal(a.sync.status.transfer, null);
+  assert.equal(b.sync.status.transfer, null);
+  assert.equal(seen.at(-1).phase, 'synced');
+});

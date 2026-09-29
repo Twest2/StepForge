@@ -29,6 +29,7 @@ function panel(initial) {
           contains(name) { return classes.has(name); },
           toggle(name, enabled) { if (enabled) classes.add(name); else classes.delete(name); },
         },
+        setAttribute(name, value) { this[name] = value; },
         removeAttribute(name) { delete this[name]; },
         addEventListener(type, action) {
           this[type] = action;
@@ -66,6 +67,11 @@ function panel(initial) {
       async cancel() {},
     },
   };
+
+  // Borrow the shared formatters without util.js replacing the fake el().
+  const util = vm.createContext({});
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/util.js'), 'utf8'), util);
+  Object.assign(context, { formatBytes: util.formatBytes, describeTransfer: util.describeTransfer });
 
   vm.createContext(context);
 
@@ -307,5 +313,24 @@ test('account avatar shows the photo, falls back on failure, and clears on disco
   update({ ...initial, photoLink: '' });
   assert.equal(letter.textContent, 'T');
   assert.equal(letter.classList.contains('hidden'), false);
+  result.dispose();
+});
+
+test('Drive settings show a progress bar and live counter while a guide transfers', async () => {
+  const signedIn = { available: true, connected: true, enabled: true, email: 'test@example.com', phase: 'syncing' };
+  const { nodes, result, update } = panel(signedIn);
+  await Promise.resolve();
+  const row = nodes.find((n) => n.spec === 'div.cloud-transfer.hidden');
+  const bar = nodes.find((n) => n.role === 'progressbar');
+  assert.equal(row.classList.contains('hidden'), true);
+
+  update({ ...signedIn, transfer: { direction: 'upload', name: 'Onboarding', loaded: 512 * 1024, total: 2 * 1024 * 1024, bytesPerSecond: 256 * 1024 } });
+  assert.equal(row.classList.contains('hidden'), false);
+  assert.equal(bar.children[0].style.width, '25%');
+  assert.equal(bar['aria-valuenow'], '25');
+  assert.ok(nodes.some((n) => n.textContent === 'Uploading “Onboarding” — 512.0 KB of 2.0 MB · 256.0 KB/s'));
+
+  update({ ...signedIn, phase: 'synced', transfer: null });
+  assert.equal(row.classList.contains('hidden'), true);
   result.dispose();
 });

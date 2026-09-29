@@ -244,3 +244,24 @@ function textToHtml(text) {
     .map((para) => `<p>${escapeHtml(para).replace(/\n/g, '<br>')}</p>`)
     .join('');
 }
+
+function formatBytes(bytes) {
+  if (!bytes) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const unit = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
+  return `${(bytes / (1024 ** unit)).toFixed(unit ? 1 : 0)} ${units[unit]}`;
+}
+
+/** Wording for a live Google Drive transfer ({ direction, name, loaded, total, bytesPerSecond }). */
+function describeTransfer(transfer) {
+  const percent = transfer.total ? Math.min(100, Math.floor((transfer.loaded / transfer.total) * 100)) : 0;
+  const amount = `${formatBytes(transfer.loaded)} of ${formatBytes(transfer.total)}`;
+  const rate = transfer.bytesPerSecond ? `${formatBytes(transfer.bytesPerSecond)}/s` : '';
+  const verb = transfer.direction === 'upload' ? 'Uploading' : 'Downloading';
+  return {
+    percent,
+    arrow: transfer.direction === 'upload' ? '↑' : '↓',
+    compact: `${formatBytes(transfer.loaded)} / ${formatBytes(transfer.total)}`,
+    detail: `${verb} “${transfer.name || 'guide'}” — ${amount}${rate ? ` · ${rate}` : ''}`,
+  };
+}

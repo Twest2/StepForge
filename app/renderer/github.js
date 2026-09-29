@@ -352,14 +352,15 @@ function makeAccountsSettings(api, { view = null } = {}) {
 
   const driveState = el('span.account-state', {}, 'Checking…');
   const githubState = el('span.account-state', {}, 'Checking…');
+  // Service logos ship with the app (app/assets/icons); nothing is fetched.
   const row = (id, icon, name, description, state) => el('button.account-row', { type: 'button', onClick: () => show(id) },
-    el('span.account-icon', { 'aria-hidden': 'true' }, icon),
+    el(`span.account-icon.${id}`, { 'aria-hidden': 'true' }, el('img', { src: `../assets/icons/${icon}`, alt: '' })),
     el('span.account-text', {}, el('strong', {}, name), el('span.muted', {}, description)),
     state,
     el('span.account-chevron', { 'aria-hidden': 'true' }, '›'));
   const list = el('div.account-list', {},
-    row('drive', '☁', 'Google Drive', 'Back up and sync guides between your computers.', driveState),
-    row('github', '↗', 'GitHub', 'Share guides on the web for a limited time with GitHub Pages.', githubState));
+    row('drive', 'google-drive.svg', 'Google Drive', 'Back up and sync guides between your computers.', driveState),
+    row('github', 'github.svg', 'GitHub', 'Share guides on the web for a limited time with GitHub Pages.', githubState));
 
   const back = el('button.account-back', { type: 'button', onClick: () => show(null) }, '‹ All accounts');
   const detail = el('div.account-detail.hidden', {}, back, drive.node, github.node);

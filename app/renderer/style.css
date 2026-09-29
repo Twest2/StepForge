@@ -1248,8 +1248,13 @@ fieldset legend {
 }
 .account-row:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
 .account-icon {
-  flex: none; display: grid; place-items: center; width: 38px; height: 38px; border-radius: 11px; font-size: 19px;
-  color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--panel-solid));
+  flex: none; display: grid; place-items: center; width: 38px; height: 38px; border-radius: 11px;
+  background: var(--panel-2);
+}
+.account-icon img { display: block; width: 22px; height: 22px; object-fit: contain; }
+/* The GitHub mark is one dark colour; show it light on the dark theme. */
+@media (prefers-color-scheme: dark) {
+  .account-icon.github img { filter: invert(1); }
 }
 .account-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .account-text .muted { font-size: 12px; }

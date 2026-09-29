@@ -1239,6 +1239,71 @@ fieldset legend {
 .cloud-confirm p { margin: 0; }
 
 
+/* Settings → Accounts: a list of services, each opening its own panel. */
+.accounts { display: flex; flex-direction: column; gap: 12px; }
+.account-list { display: flex; flex-direction: column; gap: 8px; }
+.account-row {
+  display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 14px; text-align: left;
+  border: 1px solid var(--border); border-radius: 12px; background: var(--panel-solid); color: var(--text);
+}
+.account-row:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.account-icon {
+  flex: none; display: grid; place-items: center; width: 38px; height: 38px; border-radius: 11px;
+  background: var(--panel-2);
+}
+.account-icon img { display: block; width: 22px; height: 22px; object-fit: contain; }
+.gh-hero-icon { background: var(--panel-2); }
+.gh-hero-icon img { display: block; width: 30px; height: 30px; }
+/* The GitHub mark is one dark colour; show it light on the dark theme. */
+@media (prefers-color-scheme: dark) {
+  .account-icon.github img, .gh-hero-icon img { filter: invert(1); }
+}
+.account-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.account-text .muted { font-size: 12px; }
+.account-state { flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--muted); }
+.account-state.on { color: var(--accent-strong); }
+.account-chevron { flex: none; font-size: 20px; color: var(--muted); }
+.account-detail { display: flex; flex-direction: column; gap: 12px; }
+.account-back { align-self: flex-start; }
+
+/* GitHub Pages sharing panel and the Publish to the web dialog. */
+.gh-warning {
+  display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 10px; font-size: 12px;
+  border: 1px solid color-mix(in srgb, var(--caution) 55%, var(--border));
+  background: color-mix(in srgb, var(--caution) 12%, var(--panel-solid));
+}
+.gh-warning p { margin: 6px 0 0; }
+.gh-warning-icon {
+  flex: none; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%;
+  font-weight: 800; font-size: 12px; color: #fff; background: var(--caution);
+}
+.gh-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+.gh-step { display: flex; gap: 12px; align-items: flex-start; }
+.gh-step-number {
+  flex: none; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%;
+  font-weight: 700; font-size: 13px; color: var(--accent-fg); background: var(--accent);
+}
+.gh-step-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.gh-step-body .row { margin-top: 4px; flex-wrap: wrap; }
+.gh-code-box {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 12px; border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border)); background: color-mix(in srgb, var(--accent) 7%, var(--panel-solid));
+}
+.gh-code { font-size: 24px; font-weight: 700; letter-spacing: 0.14em; user-select: all; }
+.gh-site { display: flex; flex-direction: column; gap: 6px; }
+.gh-link { font-weight: 600; overflow-wrap: anywhere; color: var(--accent-strong); }
+.gh-note { margin: 0; padding: 8px 10px; border-radius: 8px; font-size: 12px; background: var(--panel-2); }
+.gh-note.error { color: var(--danger); background: color-mix(in srgb, var(--danger) 9%, var(--panel-solid)); }
+.gh-repo-row select { flex: 1; min-width: 0; }
+.gh-changes { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
+.gh-changes li { overflow-wrap: anywhere; }
+.gh-publish { display: flex; flex-direction: column; gap: 12px; max-width: 520px; }
+.gh-publish p { margin: 0; }
+.gh-field { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-weight: 550; }
+.gh-consent { display: flex; align-items: flex-start; gap: 8px; font-weight: 550; cursor: pointer; }
+.gh-consent input { margin-top: 3px; }
+.gh-url { white-space: normal; overflow-wrap: anywhere; user-select: all; }
+
 /* On/off switch wrapping a real checkbox (Settings and the Drive panel). */
 .switch { position: relative; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
 .switch input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }
@@ -1311,7 +1376,7 @@ fieldset legend {
 .settings-chip.dev { color: var(--text); background: color-mix(in srgb, var(--caution) 25%, var(--panel-solid)); }
 .settings-card .placeholder-rows { padding-top: 12px; }
 
-.settings-pane .cloud-panel { border: 0; padding: 0; background: none; }
+.settings-pane .cloud-panel { border: 0; padding: 0; margin: 0; background: none; }
 .settings-pane .cloud-panel > legend { display: none; }
 
 .settings-about { display: flex; align-items: center; gap: 14px; padding: 6px 0 4px; }

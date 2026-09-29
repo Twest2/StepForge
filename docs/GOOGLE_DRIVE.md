@@ -8,7 +8,7 @@ Sync is **optional and off by default**. StepForge works fully offline without i
 
 ## Connect your Google account
 
-1. Open **Settings → Google Drive** and choose **Sign in with Google**.
+1. Open **Settings → Accounts → Google Drive** and choose **Sign in with Google**.
 2. Your browser opens. Pick your Google account and allow StepForge to store
    its data in your Drive.
 3. Return to StepForge. You'll see **Connected as** with your email address,
@@ -61,7 +61,7 @@ clicked.
 
 ## Manage what's in Drive
 
-**Settings → Google Drive** also lets you see and tidy up your Drive storage.
+**Settings → Accounts → Google Drive** also lets you see and tidy up your Drive storage.
 
 **Storage.** StepForge's Drive folder is hidden, so this is the only place to
 see how much space it uses. The bar splits usage into latest versions,
@@ -138,7 +138,7 @@ See the [privacy policy](PRIVACY.md#optional-google-drive-sync) and
 | --- | --- |
 | Sign-in finishes but StepForge says Drive access wasn't granted | Choose **Sign in with Google** again and leave the Google Drive permission ticked on Google's consent page. |
 | "Google sign-in is unavailable in this build" | You're running a development build. Install an official release. |
-| The indicator shows *needs attention* | Open **Settings → Google Drive** to see the error. For sign-in problems, choose **Sign in again**. |
+| The indicator shows *needs attention* | Open **Settings → Accounts → Google Drive** to see the error. For sign-in problems, choose **Sign in again**. |
 | A guide from another computer hasn't arrived | Make sure that computer finished syncing, then choose **Sync now**. Close the guide if it's open here. |
 | Drive is full | Choose **Free up space**, or free up space elsewhere in your Google account. |
 

@@ -2,14 +2,14 @@
 
 **Short version:** StepForge keeps your guides on your computer. It has no
 accounts, collects no analytics, and doesn't contact the internet unless you
-turn on Google Drive sync, point AI at a remote server, or press
-**Check for updates**.
+turn on Google Drive sync, connect GitHub to share guides, point AI at a remote
+server, or press **Check for updates**.
 
 ## What StepForge never does
 
 - No telemetry, analytics, or crash reporting.
 - No automatic update checks, license checks, or "phoning home".
-- No uploads unless you sign in to Google Drive.
+- No uploads unless you sign in to Google Drive or publish a guide to GitHub.
 - No downloading code or components while it runs.
 
 ## What StepForge stores on your computer
@@ -94,6 +94,43 @@ Drive sync is **off by default**. When you sign in
 - StepForge's use of information received from Google APIs adheres to the
   [Google API Services User Data Policy](https://developers.google.com/terms/api-services-user-data-policy),
   including the Limited Use requirements.
+
+## Optional GitHub Pages sharing
+
+Sharing is **off by default**. When you connect GitHub
+([how it works](GITHUB_PAGES.md)):
+
+- Sign-in happens on GitHub's website with a short code. StepForge never sees
+  your GitHub password.
+- StepForge acts through its GitHub App, which can only reach the
+  repositories **you install it on**, with access to their contents, Pages
+  settings, and workflows. It can't see or change your other repositories.
+- StepForge reads your GitHub username and the list of repositories the App is
+  installed on.
+- **Only guides you publish are uploaded**, one at a time, when you choose
+  **Publish**. A published guide contains its visible steps, screenshots with
+  annotations, and text, the same as an Interactive HTML export. It's stored
+  in *your* repository, not with StepForge.
+- **A published guide is public.** Anyone with its link can open it, and
+  anyone who browses a public repository can find it. Published pages ask
+  search engines not to index them, but that isn't access control.
+- The repository also holds a list of shared guides (titles, StepForge guide
+  IDs, and publish and expiry times), a placeholder page, a clean-up
+  workflow, and, in a new empty repository, a README. If you use an existing
+  repository, nothing else in it is changed.
+- Guides are removed when they expire by that workflow, which runs on GitHub,
+  or by StepForge. Removing a guide rewrites the site branch so the guide
+  doesn't stay in its history, but copies may remain in caches, archives, or
+  with anyone who saved the page.
+- While connected, StepForge contacts GitHub shortly after it starts to remove
+  expired guides.
+- Data travels over HTTPS. Your GitHub token is stored encrypted with your
+  operating system's credential storage.
+- **Disconnect** removes the saved sign-in but leaves shared guides online
+  until they expire. To revoke access fully, revoke StepForge under
+  [GitHub → Settings → Applications](https://github.com/settings/apps/authorizations),
+  and uninstall it from your repository. See the
+  [GitHub Privacy Statement](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement).
 
 ## Bundled components
 

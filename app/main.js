@@ -13,6 +13,8 @@ const { GuideStore } = require('../core/store');
 const { LibraryLocation } = require('../core/library-location');
 const { Settings } = require('../core/settings');
 const { GoogleDrive } = require('./google-drive');
+const { GitHubPages } = require('./github-pages');
+const { EXPIRY_DAYS, titleFromHtml } = require('../core/pages-site');
 const { CloudSync } = require('../core/cloud-sync');
 const { createCredentialVault } = require('./credential-vault');
 const { SearchIndex } = require('../core/search');
@@ -74,6 +76,7 @@ let templates;
 let capture;
 let textIntel;
 let googleDrive;
+let githubPages;
 let cloudSync;
 let cloudConnecting = false;
 let cloudTesting = false;
@@ -793,6 +796,56 @@ function setupIpc() {
     }
   });
 
+  // GitHub Pages sharing. Like Drive, the network and the token stay in the
+  // main process; the renderer only sees status and public guide links.
+  h('github:status', () => githubPages.status());
+  h('github:connect', () => githubPages.connect(), { validate: (a) => Object.keys(a).length === 0 });
+  h('github:cancel', () => { githubPages.cancel(); return { ok: true }; });
+  h('github:disconnect', () => { githubPages.disconnect(); return githubPages.status(); });
+  h('github:repositories', () => githubPages.repositories());
+  h('github:selectRepository', ({ fullName, useExisting }) => githubPages.selectRepository({ fullName, useExisting: useExisting === true }),
+    { validate: (a) => c.string(a.fullName, 200) && (a.useExisting === undefined || c.bool(a.useExisting)) });
+  h('github:changeRepository', () => githubPages.clearRepository());
+  h('github:setup', () => githubPages.setup());
+  h('github:published', () => githubPages.published());
+  // Publishes one of the HTML exports: the interactive one with default
+  // options from Share, or whichever HTML format and options Export chose.
+  h('github:publish', async ({ guideId, days, format = 'html-rich', options = {} }) => {
+    const guide = store.getGuide(guideId);
+    if (!guide) throw new Error('Guide not found.');
+    const outDir = path.join(store.tempDir, `publish-${guideId}`);
+    fs.rmSync(outDir, { recursive: true, force: true });
+    try {
+      const result = await runExportInWorker({
+        dataDir: store.root,
+        guideId,
+        format,
+        options,
+        outDir,
+        globals: settings.getGlobalPlaceholders(),
+      });
+      const html = fs.readFileSync(result.file, 'utf8');
+      // The exported title has placeholders filled in, matching the page.
+      const title = titleFromHtml(html) || guide.title;
+      return await githubPages.publish({ guideId, title, html, days });
+    } finally {
+      fs.rmSync(outDir, { recursive: true, force: true });
+    }
+  }, {
+    validate: (a) => c.id(a.guideId) && c.oneOf(a.days, EXPIRY_DAYS)
+      && (a.format === undefined || c.oneOf(a.format, ['html-rich', 'html-simple']))
+      && (a.options === undefined || security.isPlainArgs(a.options)),
+  });
+  h('github:unpublish', ({ slug }) => githubPages.unpublish({ slug }),
+    { validate: (a) => c.string(a.slug, 40) });
+  // Copies only the sign-in code or a published guide's link, never arbitrary text.
+  h('github:copy', async ({ kind, slug }) => {
+    const text = kind === 'code' ? githubPages.status().pending?.userCode : await githubPages.publishedLink(slug);
+    if (!text) return { ok: false };
+    clipboard.writeText(text);
+    return { ok: true, text };
+  }, { validate: (a) => c.oneOf(a.kind, ['code', 'link']) && c.optionalString(a.slug, 40) });
+
   // settings + placeholders
   h('settings:all', () => settings.data);
   h('storage:status', () => libraryLocation.status());
@@ -1191,6 +1244,9 @@ if (!gotLock) {
     // sharing (and possibly clearing) the release build's OS backup.
     googleDrive = new GoogleDrive({ directory: store.settingsDir, safeStorage, vault: devBuild ? null : createCredentialVault(),
       openExternal: (url) => shell.openExternal(url) });
+    githubPages = new GitHubPages({ directory: store.settingsDir, safeStorage,
+      openExternal: (url) => shell.openExternal(url),
+      onStatus: (status) => sendToRenderer('github:status', status) });
     cloudSync = new CloudSync({
       store, drive: googleDrive,
       enabled: () => settings.get('cloud.enabled') === true && !cloudTesting,
@@ -1344,6 +1400,9 @@ if (!gotLock) {
       if (recovered && settings.get('cloud.enabled') === true) void cloudSync.sync();
     });
     if (settings.get('cloud.enabled') === true) cloudSync.start();
+    // Shared guides past their expiry come down even if GitHub's scheduled
+    // clean-up has not run yet. Only runs for users who connected GitHub.
+    setTimeout(() => { void githubPages.sweep().catch(() => {}); }, 15000);
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -1373,6 +1432,7 @@ if (!gotLock) {
 
   app.on('will-quit', () => {
     cloudSync?.stop();
+    githubPages?.cancel();
     globalShortcut.unregisterAll();
     if (capture) {
       // Targeted cleanup (not finishSession — that re-shows the window).

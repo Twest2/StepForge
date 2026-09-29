@@ -585,7 +585,7 @@ function showSettingsDialog({
           settingRow('Model', 'Any installed model. Vision models can read screenshots.', ollamaModel),
           el('div.settings-test', {}, aiStatus, testAiBtn)),
       ] },
-      { id: 'drive', label: 'Google Drive', description: 'Back up and sync guides with your Google account. Changes here apply immediately.', content: [cloudPanel.node] },
+      { id: 'drive', label: 'Google Drive', description: 'Back up and sync guides with your Google account.', content: [cloudPanel.node] },
       { id: 'placeholders', label: 'Placeholders', description: 'Reusable text for every guide. Type [[name]] in a guide to insert it.', content: [
         settingsCard(null, placeholderRows, el('div.settings-actions', {}, addPlaceholderBtn)),
       ] },

@@ -11,12 +11,6 @@ function makeCloudSettings(api) {
     error: ['error', 'Needs attention'],
     disconnected: ['error', 'Sign in again'],
   };
-  const formatBytes = (bytes) => {
-    if (!bytes) return '0 B';
-    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-    const unit = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
-    return `${(bytes / (1024 ** unit)).toFixed(unit ? 1 : 0)} ${units[unit]}`;
-  };
   const formatWhen = (iso) => {
     const date = iso ? new Date(iso) : null;
     return date && !Number.isNaN(date.getTime())
@@ -103,6 +97,10 @@ function makeCloudSettings(api) {
   const dot = el('span.cloud-dot', { 'aria-hidden': 'true' });
   const phaseText = el('span', {}, '');
   const lastSync = el('span.muted', {}, '');
+  const transferFill = el('span.cloud-meter-seg.latest', { style: {} });
+  const transferText = el('span.muted', {}, '');
+  const transferBar = el('div.cloud-meter', { role: 'progressbar', 'aria-label': 'Google Drive transfer', 'aria-valuemin': '0', 'aria-valuemax': '100' }, transferFill);
+  const transferRow = el('div.cloud-transfer.hidden', {}, transferBar, transferText);
   const enabled = el('input', { type: 'checkbox', 'aria-label': 'Automatically sync guides' });
   const sync = el('button', { type: 'button', onClick: () => run(sync, 'Syncing…', async () => {
     const result = await api.cloud.sync();
@@ -115,7 +113,7 @@ function makeCloudSettings(api) {
   }) }, 'Disconnect');
   const account = el('div.cloud-account.hidden', {},
     avatar,
-    el('div.cloud-account-info', {}, email, el('div.cloud-status-line', {}, dot, phaseText, lastSync)),
+    el('div.cloud-account-info', {}, email, el('div.cloud-status-line', {}, dot, phaseText, lastSync), transferRow),
     el('div.cloud-account-actions', {},
       el('label.switch', { title: 'Automatically sync guides' }, enabled, el('span.switch-track', { 'aria-hidden': 'true' }), 'Auto-sync'),
       sync, disconnect),
@@ -252,7 +250,15 @@ function makeCloudSettings(api) {
     phaseText.textContent = label;
     phaseText.title = next.error || next.message || '';
     lastSync.textContent = next.lastSync && tone !== 'busy' ? ` · Last synced ${timeAgo(next.lastSync)}` : '';
-    if ((phase === 'error' || phase === 'disconnected') && (next.error || next.message)) say(next.error || next.message, 'error');
+    transferRow.classList.toggle('hidden', !next.transfer);
+    if (next.transfer) {
+      const { percent, detail } = describeTransfer(next.transfer);
+      transferFill.style.width = `${percent}%`;
+      transferBar.setAttribute('aria-valuenow', String(percent));
+      transferText.textContent = detail;
+    }
+    // Transfer progress arrives several times a second; don't keep rewriting the banner.
+    if ((phase === 'error' || phase === 'disconnected') && (next.error || next.message) && !next.transfer) say(next.error || next.message, 'error');
     // Refresh the Drive lists when a background sync finishes.
     if (connected && previous === 'syncing' && ['synced', 'conflict'].includes(next.phase) && !busy) void refreshLists();
   }

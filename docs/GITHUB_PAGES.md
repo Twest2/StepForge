@@ -1,0 +1,152 @@
+# Share guides on the web with GitHub Pages
+
+StepForge can publish a guide as a web page for **1, 7, or 30 days**, so you
+can send someone a link instead of a file. The page is hosted by
+[GitHub Pages](https://pages.github.com) in a GitHub repository **you own**.
+StepForge doesn't run a server and never hosts your guides.
+
+Sharing is **optional and off by default**. You need a free GitHub account.
+
+> [!WARNING]
+> **Shared guides are public.** Anyone with the link can open a shared guide,
+> and anyone who looks at your repository on GitHub can find it. Before you
+> publish, check every screenshot for passwords, email addresses, customer
+> details, and anything else private, and hide it with the **Blur** tool.
+> Removing a guide takes it off the site, but someone may already have saved a
+> copy.
+
+## Set up sharing (one time)
+
+Open **Settings → Accounts → GitHub**. The panel walks you through these
+steps and has a button for each one.
+
+1. **Create a public repository for shared guides.** Choose **Create
+   repository on GitHub**. GitHub opens with the name `stepforge-guides`
+   filled in. Keep it **Public** and select **Create repository**. Use a new
+   repository just for this: StepForge manages everything in it.
+2. **Install StepForge on only that repository.** Choose **Install StepForge
+   on GitHub**. On GitHub, select **Only select repositories**, pick the
+   repository from step 1, and select **Install**. StepForge asks for access
+   to that repository's contents, Pages, and workflows, and nothing else.
+3. **Sign in.** Choose **Sign in with GitHub**. StepForge shows a short code
+   and opens `github.com/login/device`. Enter the code there and approve
+   StepForge. You never type your GitHub password into StepForge.
+4. **Choose the repository.** Back in StepForge, pick the repository from the
+   list and choose **Use this repository**.
+
+StepForge then sets up the repository for you:
+
+- adds a short `README.md` explaining what the repository is for,
+- adds a workflow, `.github/workflows/stepforge-expire.yml`, that removes
+  guides when they expire, even when StepForge is closed,
+- creates a `gh-pages` branch for the site, and
+- turns on GitHub Pages for that branch.
+
+The **Your site** card shows the site's address, whether GitHub Pages is on,
+and whether automatic removal is on. If a step couldn't be finished, the card
+says what to do and has a **Check again** button.
+
+## Publish a guide
+
+1. Open the guide and choose **Share → Publish to the web…** (or right-click
+   the guide in the library).
+2. Choose how long to keep it online: **1 day**, **7 days**, or **30 days**.
+3. Read the warning, tick **I understand this guide will be public on the
+   internet**, and choose **Publish**.
+4. Choose **Copy link** and send it to whoever needs it.
+
+GitHub can take a minute or two to put a new page online. If the link shows
+**404**, wait a moment and reload.
+
+Each shared guide is one page, the same as an **Interactive HTML** export: all
+visible steps, screenshots with annotations, descriptions, and a checklist
+readers can tick off in their own browser. Hidden steps are left out, as in
+every export.
+
+### Update or remove a shared guide
+
+- **Publish again** to update the page with your latest changes. The link
+  stays the same, and the time you choose starts again.
+- **Remove from the web** (in the publish dialog, or **Remove** in
+  **Settings → Accounts → GitHub → Shared guides**) takes the page down. The
+  link stops working within a few minutes. The guide stays in your library.
+
+**Shared guides** in the GitHub settings lists everything that's online and
+when each guide will be removed, with **Copy link**, **Open**, and **Remove**
+buttons.
+
+## How long guides stay online
+
+When a guide's time is up, it's removed by whichever happens first:
+
+- the clean-up workflow in your repository, which runs about every six hours,
+  or
+- StepForge, which checks shortly after it starts and whenever you open the
+  shared-guides list.
+
+So a guide can stay online for up to a few hours after it expires.
+
+> [!NOTE]
+> GitHub pauses scheduled workflows in public repositories that have had no
+> activity for 60 days. The longest you can share a guide is 30 days, and
+> every publish counts as activity, so this doesn't affect guides StepForge
+> publishes. If you ever see the workflow disabled in the repository's
+> **Actions** tab, select **Enable workflow**.
+
+## What's in the repository
+
+StepForge keeps the `gh-pages` branch to exactly what the site needs, and
+replaces the whole branch with a **single new commit** every time it publishes
+or removes a guide. Removed guides don't stay in the branch history.
+
+| Path on `gh-pages` | What it is |
+| --- | --- |
+| `index.html` | A placeholder page. It never lists your guides. |
+| `g/<random id>/index.html` | One shared guide. The random id makes the link hard to guess. |
+| `_stepforge.json` | The list of shared guides and when they expire. GitHub Pages doesn't publish it. |
+
+Shared pages ask search engines not to index or archive them, and don't send
+their address to other sites through links. That keeps them out of search
+results, but it isn't access control: **anyone with the link can open the
+page.**
+
+Don't put your own files on the `gh-pages` branch; StepForge replaces it.
+
+## Private repositories
+
+GitHub Pages sites are public even when the repository is private, and a
+free GitHub plan can't publish Pages from a private repository. StepForge
+shows a note if you choose a private repository. Use a public repository
+unless you have a paid plan and know you want a private one.
+
+## Disconnect
+
+**Disconnect** signs this computer out of GitHub. **Shared guides stay online
+until they expire.** To take them down now, remove them before you disconnect.
+
+To fully revoke StepForge's access, open
+[GitHub → Settings → Applications](https://github.com/settings/apps/authorizations)
+and revoke StepForge. You can also uninstall the app from the repository, or
+delete the repository to remove everything at once.
+
+To use a different repository, choose **Advanced → Change repository**. Guides
+already shared from the old repository stay there until they expire.
+
+## Troubleshooting
+
+| Problem | What to do |
+| --- | --- |
+| "GitHub sign-in is unavailable in this build" | You're running a development build without a GitHub App configured. Install an official release. |
+| The repository list is empty | Install StepForge on the repository (step 2), then choose **Refresh**. |
+| "StepForge can't change *owner/repo*" | Open the repository's **Settings → GitHub Apps**, choose **Configure** next to StepForge, and make sure the repository is selected and every requested permission is accepted. |
+| **GitHub Pages off** | Open **Settings → Pages** in the repository, choose **Deploy from a branch**, pick `gh-pages` and `/ (root)`, and save. Then choose **Check again**. |
+| **Removed only while StepForge is open** | StepForge couldn't add the clean-up workflow. Accept the **Workflows** permission for StepForge on GitHub, then choose **Check again**. |
+| The link shows 404 | GitHub is still publishing. Wait a minute or two and reload. |
+| The sign-in code expired | Choose **Sign in with GitHub** again. Codes last 15 minutes. |
+
+See the [privacy policy](PRIVACY.md#optional-github-pages-sharing) for exactly
+what is sent to GitHub.
+
+---
+
+*Maintainers: see [GitHub App release configuration](GITHUB_PAGES_RELEASE.md).*

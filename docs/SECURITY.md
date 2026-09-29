@@ -14,9 +14,9 @@ way to stay protected.
 
 - **Offline by default.** Capture, editing, OCR, and export make no network
   connections. There's no telemetry, license check, or automatic update check.
-- **Opt-in networking only.** AI and Google Drive sync are off until you turn
-  them on, and **Check for updates** runs only when you press it. All are
-  described in the [privacy policy](PRIVACY.md).
+- **Opt-in networking only.** AI, Google Drive sync, and GitHub sharing are
+  off until you turn them on, and **Check for updates** runs only when you
+  press it. All are described in the [privacy policy](PRIVACY.md).
 - **Sandboxed interface.** The app's window runs in Chromium's sandbox with no
   direct access to your files, the network, or credentials.
 - **Untrusted files are validated.** Imported guides, templates, and images are
@@ -70,6 +70,24 @@ checksums.
   recording, and the replaced local copy is backed up.
 - Turning sync off cancels requests in flight, though it can't undo one Google
   has already accepted.
+
+## GitHub Pages sharing
+
+- Sign-in uses the GitHub App device flow: no client secret, no local listener,
+  and the user approves on github.com.
+- The token only reaches repositories the user installed the StepForge App on,
+  with Contents, Pages, and Workflows access. It's stored with Electron
+  `safeStorage`, like the Google token, and never crosses into the renderer.
+- Requests go only to fixed `github.com` and `api.github.com` HTTPS endpoints,
+  reject redirects, and have time and size limits. The renderer can only ask to
+  copy the sign-in code or a published guide's link, not arbitrary text.
+- The shared-guide list read back from the repository is **treated as
+  untrusted**: entries with unexpected ids, dates, or fields are dropped.
+- **Published guides are public web pages.** Unguessable links and `noindex`
+  keep them out of search results but aren't access control. The site branch
+  is replaced with a single commit on every change, so removed guides don't
+  remain in its history, but GitHub may keep unreferenced commits reachable by
+  their id for a while.
 
 ## Known limitations
 

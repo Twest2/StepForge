@@ -42,7 +42,13 @@ jobs:
           STEPFORGE_GOOGLE_CLIENT_SECRET: ${{ secrets.STEPFORGE_GOOGLE_CLIENT_SECRET }}
         run: node scripts/configure-google-oauth.js
 
-      # Version and Google registration are stamped only into this build.
+      - name: Configure StepForge GitHub sign-in
+        env:
+          STEPFORGE_GITHUB_CLIENT_ID: ${{ vars.STEPFORGE_GITHUB_CLIENT_ID }}
+          STEPFORGE_GITHUB_APP_SLUG: ${{ vars.STEPFORGE_GITHUB_APP_SLUG }}
+        run: node scripts/configure-github-app.js
+
+      # Version and the Google and GitHub registrations are stamped only into this build.
       - name: Set version from input
         shell: bash
         env:
@@ -95,6 +101,12 @@ jobs:
           STEPFORGE_GOOGLE_CLIENT_SECRET: ${{ secrets.STEPFORGE_GOOGLE_CLIENT_SECRET }}
         run: node scripts/configure-google-oauth.js
 
+      - name: Configure StepForge GitHub sign-in
+        env:
+          STEPFORGE_GITHUB_CLIENT_ID: ${{ vars.STEPFORGE_GITHUB_CLIENT_ID }}
+          STEPFORGE_GITHUB_APP_SLUG: ${{ vars.STEPFORGE_GITHUB_APP_SLUG }}
+        run: node scripts/configure-github-app.js
+
       - name: Set version from input
         env:
           VERSION: ${{ inputs.version }}
@@ -141,6 +153,12 @@ jobs:
           STEPFORGE_GOOGLE_CLIENT_ID: ${{ vars.STEPFORGE_GOOGLE_CLIENT_ID }}
           STEPFORGE_GOOGLE_CLIENT_SECRET: ${{ secrets.STEPFORGE_GOOGLE_CLIENT_SECRET }}
         run: node scripts/configure-google-oauth.js
+
+      - name: Configure StepForge GitHub sign-in
+        env:
+          STEPFORGE_GITHUB_CLIENT_ID: ${{ vars.STEPFORGE_GITHUB_CLIENT_ID }}
+          STEPFORGE_GITHUB_APP_SLUG: ${{ vars.STEPFORGE_GITHUB_APP_SLUG }}
+        run: node scripts/configure-github-app.js
 
       - name: Stamp release version
         env:

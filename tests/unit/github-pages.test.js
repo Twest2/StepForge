@@ -3,7 +3,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
-const { GitHubPages } = require('../../app/github-pages');
+const path = require('node:path');
+const { GitHubPages, resolveAppConfig } = require('../../app/github-pages');
+const { configureGitHubApp } = require('../../scripts/configure-github-app');
 const site = require('../../core/pages-site');
 const { buildRenderAst } = require('../../core/renderast');
 const { runExport } = require('../../exporters');
@@ -446,4 +448,26 @@ test('without a GitHub App configured, sign-in is unavailable', async (t) => {
   const { pages } = setup(t, { clientId: '', appSlug: '' });
   assert.equal(pages.status().available, false);
   await assert.rejects(pages.connect(), /unavailable in this build/);
+});
+
+test('release builds refuse to ship without the StepForge GitHub App, and stamp it when configured', (t) => {
+  const dir = makeTmpDir('github-app-config');
+  t.after(() => rmrf(dir));
+  const file = path.join(dir, 'github-app-config.json');
+  fs.writeFileSync(file, JSON.stringify({ clientId: '', appSlug: '' }));
+
+  assert.throws(() => configureGitHubApp({ file }), /missing StepForge's GitHub App client ID/);
+  assert.throws(() => configureGitHubApp({ file, clientId: 'not-a-client', appSlug: APP_SLUG }), /client ID/);
+  assert.throws(() => configureGitHubApp({ file, clientId: CLIENT_ID }), /missing StepForge's GitHub App slug/);
+  assert.deepEqual(JSON.parse(fs.readFileSync(file)), { clientId: '', appSlug: '' });
+
+  configureGitHubApp({ file, clientId: ` ${CLIENT_ID} `, appSlug: APP_SLUG });
+  assert.deepEqual(JSON.parse(fs.readFileSync(file)), { clientId: CLIENT_ID, appSlug: APP_SLUG });
+  // A registration already committed to the config also satisfies a release.
+  configureGitHubApp({ file });
+
+  const app = resolveAppConfig({ committed: JSON.parse(fs.readFileSync(file)), env: {}, localFile: path.join(dir, 'none.json') });
+  assert.deepEqual(app, { clientId: CLIENT_ID, appSlug: APP_SLUG, source: 'release' });
+  const { pages } = setup(t, { clientId: app.clientId, appSlug: app.appSlug });
+  assert.equal(pages.status().available, true);
 });

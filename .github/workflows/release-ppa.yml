@@ -80,6 +80,12 @@ jobs:
           STEPFORGE_GOOGLE_CLIENT_ID: ${{ vars.STEPFORGE_GOOGLE_CLIENT_ID }}
         run: node scripts/configure-google-oauth.js
 
+      - name: Configure StepForge GitHub sign-in
+        env:
+          STEPFORGE_GITHUB_CLIENT_ID: ${{ vars.STEPFORGE_GITHUB_CLIENT_ID }}
+          STEPFORGE_GITHUB_APP_SLUG: ${{ vars.STEPFORGE_GITHUB_APP_SLUG }}
+        run: node scripts/configure-github-app.js
+
       - name: Build signed source package
         shell: bash
         run: |

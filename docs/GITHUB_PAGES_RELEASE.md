@@ -50,25 +50,40 @@ Create the App under the StepForge account at
 No account or organization permissions are needed. Don't generate a client
 secret or private key; StepForge uses neither.
 
-Then put the App's **Client ID** (it starts with `Iv`) and **slug** (the last
-part of `https://github.com/apps/<slug>`) in `app/github-app-config.json`:
+Then give releases the App's **Client ID** (it starts with `Iv`) and **slug**
+(the last part of `https://github.com/apps/<slug>`) as repository variables,
+under **Settings → Secrets and variables → Actions → Variables**:
 
-```json
-{
-  "clientId": "Iv23li…",
-  "appSlug": "stepforge"
-}
+| Variable | Value |
+| --- | --- |
+| `STEPFORGE_GITHUB_CLIENT_ID` | `Iv23li…` |
+| `STEPFORGE_GITHUB_APP_SLUG` | `stepforge` |
+
+```bash
+gh variable set STEPFORGE_GITHUB_CLIENT_ID --body 'Iv23li…'
+gh variable set STEPFORGE_GITHUB_APP_SLUG --body 'stepforge'
 ```
 
-Both are public identifiers, not secrets, so they're committed and ship in
-every build. Builds with an empty client ID show *"GitHub sign-in is
-unavailable in this build of StepForge"* and every other feature keeps
-working.
+Both are public identifiers, not secrets. Committing them to
+`app/github-app-config.json` works too; the repository variables win when both
+are set.
 
 > [!CAUTION]
 > Keep the registration stable between releases. A new App means a new client
 > ID: every user has to install it and sign in again, and saved sign-ins from
 > the old App are ignored.
+
+## Release builds
+
+The Windows, Ubuntu, Fedora, and Launchpad release jobs run
+`node scripts/configure-github-app.js` before packaging. It writes the App
+into `app/github-app-config.json` inside each package. **A release job fails
+if no valid App is configured**, so a build can't ship with the Install and
+Sign in buttons turned off.
+
+Builds without an App, such as a source checkout with no local App, say in the
+GitHub panel that they aren't connected to a StepForge GitHub App, and every
+other feature keeps working.
 
 ## Signing in from a development checkout
 

@@ -588,7 +588,7 @@ function showSettingsDialog({
           settingRow('Model', 'Any installed model. Vision models can read screenshots.', ollamaModel),
           el('div.settings-test', {}, aiStatus, testAiBtn)),
       ] },
-      { id: 'accounts', label: 'Accounts', description: 'Connect Google Drive to sync guides, or GitHub to share guides on the web. Changes here apply immediately.', content: [accountsPanel.node] },
+      { id: 'accounts', label: 'Accounts', description: 'Connect Google Drive to sync guides, or GitHub to share guides on the web.', content: [accountsPanel.node] },
       { id: 'placeholders', label: 'Placeholders', description: 'Reusable text for every guide. Type [[name]] in a guide to insert it.', content: [
         settingsCard(null, placeholderRows, el('div.settings-actions', {}, addPlaceholderBtn)),
       ] },

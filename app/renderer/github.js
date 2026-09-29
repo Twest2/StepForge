@@ -110,7 +110,7 @@ function makeGitHubSettings(api) {
     + 'Official releases include it. If you run StepForge from source, see “GitHub Pages sharing: maintainer guide” in the docs.');
   const signedOut = el('div.cloud-stack', {},
     el('div.cloud-hero', {},
-      el('div.cloud-hero-icon', { 'aria-hidden': 'true' }, '↗'),
+      el('div.cloud-hero-icon.gh-hero-icon', { 'aria-hidden': 'true' }, el('img', { src: '../assets/icons/github.svg', alt: '' })),
       el('div.cloud-hero-text', {},
         el('strong', {}, 'Share guides on the web'),
         el('p.muted', {}, 'Publish a guide as a web page for 1, 7, or 30 days using GitHub Pages. The page lives in a GitHub repository you own; StepForge doesn’t host anything. When the time is up, the guide is removed automatically.'))),

@@ -141,6 +141,8 @@ test('the GitHub panel explains setup step by step and warns that guides are pub
   await settle();
   const text = panel.node.textContent;
   assert.match(text, /Shared guides are public\./);
+  const heroIcon = u.all(panel.node).find((n) => n.classList?.contains('cloud-hero-icon'));
+  assert.equal(heroIcon.children[0].src, '../assets/icons/github.svg', 'the panel shows the GitHub mark');
   assert.match(text, /Choose a repository for shared guides/);
   assert.match(text, /use a repository you already have/);
   assert.match(text, /Install StepForge on only that repository/);

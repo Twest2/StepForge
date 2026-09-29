@@ -104,6 +104,12 @@ test('Accounts lists Google Drive then GitHub and opens each one’s panel', asy
   await settle();
   const rows = u.all(accounts.node).filter((n) => n.tag === 'button' && n.classList.contains('account-row'));
   assert.deepEqual(rows.map((row) => row.children[1].children[0].textContent), ['Google Drive', 'GitHub']);
+  const logos = rows.map((row) => row.children[0].children[0].src);
+  assert.deepEqual(logos, ['../assets/icons/google-drive.svg', '../assets/icons/github.svg']);
+  for (const logo of logos) {
+    const file = path.join(__dirname, '../../app/renderer', logo);
+    assert.match(fs.readFileSync(file, 'utf8'), /^<svg /, `${logo} ships with the app as a local SVG`);
+  }
   assert.equal(rows[0].textContent.includes('casey@example.com'), true, 'Drive row shows who is signed in');
   assert.equal(rows[1].textContent.includes('Not connected'), true);
   const panels = u.all(accounts.node).filter((n) => n.tag === 'fieldset');

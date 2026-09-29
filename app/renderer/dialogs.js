@@ -332,7 +332,10 @@ function showSettingsDialog({
 } = {}) {
   return new Promise((resolve) => {
     const form = el('form', { className: 'settings-form' });
-    const cloudPanel = makeCloudSettings(api);
+    // "drive" and "github" open Accounts with that service's panel showing.
+    const accountView = ['drive', 'github'].includes(initialSection) ? initialSection : null;
+    if (accountView) initialSection = 'accounts';
+    const accountsPanel = makeAccountsSettings(api, { view: accountView });
     const storagePath = el('code.settings-path', {}, 'Checking guide storage location…');
     const storageNote = el('div.setting-desc', {}, '');
     const showStorageError = (message) => { storageNote.textContent = message; storageNote.classList.add('error'); };
@@ -585,7 +588,7 @@ function showSettingsDialog({
           settingRow('Model', 'Any installed model. Vision models can read screenshots.', ollamaModel),
           el('div.settings-test', {}, aiStatus, testAiBtn)),
       ] },
-      { id: 'drive', label: 'Google Drive', description: 'Back up and sync guides with your Google account. Changes here apply immediately.', content: [cloudPanel.node] },
+      { id: 'accounts', label: 'Accounts', description: 'Connect Google Drive to sync guides, or GitHub to share guides on the web. Changes here apply immediately.', content: [accountsPanel.node] },
       { id: 'placeholders', label: 'Placeholders', description: 'Reusable text for every guide. Type [[name]] in a guide to insert it.', content: [
         settingsCard(null, placeholderRows, el('div.settings-actions', {}, addPlaceholderBtn)),
       ] },
@@ -620,7 +623,11 @@ function showSettingsDialog({
     const nav = el('nav.settings-nav', { role: 'tablist', 'aria-label': 'Settings sections' });
     const content = el('div.settings-content');
     for (const item of sections) {
-      const button = el('button.settings-nav-item', { type: 'button', role: 'tab', onClick: () => showSection(item.id) },
+      const button = el('button.settings-nav-item', { type: 'button', role: 'tab', onClick: () => {
+        // Choosing Accounts always starts from the list of services.
+        if (item.id === 'accounts') accountsPanel.show(null);
+        showSection(item.id);
+      } },
         item.label, item.badge ? el('span.settings-chip', {}, item.badge) : null);
       navButtons.set(item.id, button);
       nav.append(button);
@@ -640,7 +647,7 @@ function showSettingsDialog({
       body: form,
       wide: true,
       footer: [
-        el('button', { type: 'button', onClick: () => { cloudPanel.dispose(); close(); resolve(false); } }, 'Cancel'),
+        el('button', { type: 'button', onClick: () => { accountsPanel.dispose(); close(); resolve(false); } }, 'Cancel'),
         el('button.primary', {
           type: 'submit',
           onClick: async (e) => {
@@ -693,13 +700,13 @@ function showSettingsDialog({
               }, {}),
             };
             await onSave(next);
-            cloudPanel.dispose();
+            accountsPanel.dispose();
             close();
             resolve(true);
           },
         }, 'Save'),
       ],
-      onClose: () => { cloudPanel.dispose(); resolve(false); },
+      onClose: () => { accountsPanel.dispose(); resolve(false); },
     });
 
     form.addEventListener('submit', (e) => e.preventDefault());

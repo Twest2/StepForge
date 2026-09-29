@@ -407,7 +407,17 @@ class StepForgeApp {
       }, 'Capture ▾'),
       el('button', { type: 'button', onClick: () => this.editor.saveAll() }, 'Save'),
       el('button', { type: 'button', onClick: () => this.editor.openExportDialog() }, 'Export'),
-      el('button', { type: 'button', title: 'Share this guide as a .sfgz file', onClick: () => this.editor.shareAsFile() }, 'Share'),
+      el('button', {
+        type: 'button',
+        title: 'Share this guide as a file or on the web',
+        onClick: (e) => {
+          const rect = e.currentTarget.getBoundingClientRect();
+          contextMenu(rect.left, rect.bottom + 4, [
+            { label: 'Save as a .sfgz file…', action: () => this.editor.shareAsFile() },
+            { label: 'Publish to the web…', action: () => this.publishToWeb(guide?.guideId || this.editor.guideId, guide?.title) },
+          ]);
+        },
+      }, 'Share ▾'),
       el('button', {
         type: 'button',
         onClick: (e) => {
@@ -747,6 +757,7 @@ class StepForgeApp {
       { label: guide.favorite ? 'Unfavorite' : 'Favorite', action: () => this.toggleFavorite(guide) },
       { label: 'Duplicate guide', action: () => this.duplicateGuide(guide.guideId) },
       { label: 'Export', action: () => this.openGuideExport(guide.guideId) },
+      { label: 'Publish to the web…', action: () => this.publishToWeb(guide.guideId, guide.title) },
       ...moveItems,
       'sep',
       { label: 'Delete guide', danger: true, action: () => this.deleteGuide(guide.guideId) },
@@ -976,6 +987,19 @@ class StepForgeApp {
     if (!ok) return;
     await api.library.trashPurge();
     await this.refreshLibrary();
+  }
+
+  /** Publish a guide to the user's GitHub Pages site (Settings → Accounts → GitHub). */
+  async publishToWeb(guideId, title) {
+    if (!guideId) return;
+    // Publish what the user sees, including edits still waiting to be saved.
+    if (this.state.view === 'editor' && this.editor.guideId === guideId) await this.editor.saveAll();
+    await showPublishToWebDialog({
+      api,
+      guideId,
+      guideTitle: title || 'Untitled guide',
+      onOpenAccounts: () => this.openSettings('github'),
+    });
   }
 
   async openGuideExport(guideId) {

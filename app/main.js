@@ -808,7 +808,9 @@ function setupIpc() {
   h('github:changeRepository', () => githubPages.clearRepository());
   h('github:setup', () => githubPages.setup());
   h('github:published', () => githubPages.published());
-  h('github:publish', async ({ guideId, days }) => {
+  // Publishes one of the HTML exports: the interactive one with default
+  // options from Share, or whichever HTML format and options Export chose.
+  h('github:publish', async ({ guideId, days, format = 'html-rich', options = {} }) => {
     const guide = store.getGuide(guideId);
     if (!guide) throw new Error('Guide not found.');
     const outDir = path.join(store.tempDir, `publish-${guideId}`);
@@ -817,8 +819,8 @@ function setupIpc() {
       const result = await runExportInWorker({
         dataDir: store.root,
         guideId,
-        format: 'html-rich',
-        options: {},
+        format,
+        options,
         outDir,
         globals: settings.getGlobalPlaceholders(),
       });
@@ -829,7 +831,11 @@ function setupIpc() {
     } finally {
       fs.rmSync(outDir, { recursive: true, force: true });
     }
-  }, { validate: (a) => c.id(a.guideId) && c.oneOf(a.days, EXPIRY_DAYS) });
+  }, {
+    validate: (a) => c.id(a.guideId) && c.oneOf(a.days, EXPIRY_DAYS)
+      && (a.format === undefined || c.oneOf(a.format, ['html-rich', 'html-simple']))
+      && (a.options === undefined || security.isPlainArgs(a.options)),
+  });
   h('github:unpublish', ({ slug }) => githubPages.unpublish({ slug }),
     { validate: (a) => c.string(a.slug, 40) });
   // Copies only the sign-in code or a published guide's link, never arbitrary text.

@@ -115,8 +115,9 @@ Sharing is **off by default**. When you connect GitHub
   anyone who browses a public repository can find it. Published pages ask
   search engines not to index them, but that isn't access control.
 - The repository also holds a list of shared guides (titles, StepForge guide
-  IDs, and publish and expiry times), a placeholder page, a README, and a
-  clean-up workflow.
+  IDs, and publish and expiry times), a placeholder page, a clean-up
+  workflow, and, in a new empty repository, a README. If you use an existing
+  repository, nothing else in it is changed.
 - Guides are removed when they expire by that workflow, which runs on GitHub,
   or by StepForge. Removing a guide rewrites the site branch so the guide
   doesn't stay in its history, but copies may remain in caches, archives, or

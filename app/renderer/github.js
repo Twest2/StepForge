@@ -72,7 +72,7 @@ function makeGitHubSettings(api) {
   };
 
   /* Signed out: what this is, the warning, and the setup steps. */
-  const createRepo = el('button', { type: 'button', onClick: () => open(current.links?.newRepository)() }, 'Create repository on GitHub');
+  const createRepo = el('button', { type: 'button', onClick: () => open(current.links?.newRepository)() }, 'Create a new repository');
   const install = el('button', { type: 'button', onClick: () => open(current.links?.install)() }, 'Install StepForge on GitHub');
   const signIn = el('button.primary', { type: 'button', onClick: () => run(signIn, 'Waiting for GitHub…', async () => {
     signingIn = true;
@@ -103,7 +103,11 @@ function makeGitHubSettings(api) {
     el('span.gh-step-number', { 'aria-hidden': 'true' }, String(number)),
     el('div.gh-step-body', {}, el('strong', {}, title), el('p.muted', {}, text),
       actions.length ? el('div.row', {}, ...actions) : null));
-  const unavailable = el('p.muted.hidden', {}, 'GitHub sign-in is unavailable in this build of StepForge.');
+  // Builds without a registered StepForge GitHub App have nothing to install
+  // or sign in to, so say so where the disabled buttons are.
+  const unavailable = el('p.gh-note.error.hidden', { role: 'note' },
+    'This copy of StepForge isn’t connected to a StepForge GitHub App yet, so the Install and Sign in buttons are turned off. '
+    + 'Official releases include it. If you run StepForge from source, see “GitHub Pages sharing: maintainer guide” in the docs.');
   const signedOut = el('div.cloud-stack', {},
     el('div.cloud-hero', {},
       el('div.cloud-hero-icon', { 'aria-hidden': 'true' }, '↗'),
@@ -113,9 +117,10 @@ function makeGitHubSettings(api) {
     githubPublicWarning(),
     el('section.cloud-card', {},
       el('header.cloud-card-head', {}, el('h4', {}, 'Set up sharing (one time)')),
+      unavailable,
       el('ol.gh-steps', {},
-        step(1, 'Create a public repository for shared guides',
-          'Make a new, empty repository just for this, such as “stepforge-guides”. StepForge manages everything in it, so don’t use a repository that has other work in it.',
+        step(1, 'Choose a repository for shared guides',
+          'The simplest choice is a new public repository just for this, such as “stepforge-guides”. You can also use a repository you already have, as long as it doesn’t already publish a GitHub Pages site. StepForge adds a gh-pages branch and one workflow file to it and leaves everything else alone.',
           createRepo),
         step(2, 'Install StepForge on only that repository',
           'On the GitHub page that opens, choose “Only select repositories”, pick the repository from step 1, and select Install. StepForge asks for access to that repository’s contents, Pages, and workflows, and to nothing else.',
@@ -124,7 +129,6 @@ function makeGitHubSettings(api) {
           'StepForge shows a short code and opens GitHub. Enter the code there and approve StepForge.',
           signIn, cancel)),
       codeBox,
-      unavailable,
       el('p.muted', {}, 'Then choose your repository here. StepForge turns on GitHub Pages and adds a small workflow to the repository that removes guides when they expire, even when StepForge is closed.')),
   );
 
@@ -157,7 +161,20 @@ function makeGitHubSettings(api) {
   const useRepo = el('button.primary', { type: 'button', onClick: () => run(useRepo, 'Setting up…', async () => {
     const fullName = repoSelect.value;
     if (!fullName) throw new Error('Choose a repository first.');
-    const status = await api.github.selectRepository({ fullName });
+    let status = await api.github.selectRepository({ fullName });
+    // A repository with other work in it is used only after the user sees
+    // exactly what StepForge will add to it.
+    if (status.needsConfirmation) {
+      const ok = await confirmDialog(el('div.cloud-confirm', {},
+        el('strong', {}, `Use ${status.repo} for shared guides?`),
+        el('p', {}, 'This repository already has other files in it. StepForge will:'),
+        el('ul.gh-changes', {}, ...status.changes.map((change) => el('li', {}, change))),
+        el('p', {}, 'Nothing else in the repository changes.'),
+        el('p.muted', {}, 'StepForge’s GitHub App can change any file in a repository it’s installed on, so a separate repository just for shared guides is still the safer choice.')),
+      { okLabel: 'Use this repository' });
+      if (!ok) return;
+      status = await api.github.selectRepository({ fullName, useExisting: true });
+    }
     say(status.setupNote ? 'The repository is almost ready. See the steps below.' : `Ready. Guides you share are published from ${fullName}.`,
       status.setupNote ? 'info' : 'success');
     await refreshPublished();
@@ -228,7 +245,7 @@ function makeGitHubSettings(api) {
     repoHint.textContent = repos === null
       ? 'Loading the repositories StepForge is installed on…'
       : list.length
-        ? 'These are the repositories StepForge is installed on. Pick the one you made for shared guides.'
+        ? 'These are the repositories StepForge is installed on. Pick the one for shared guides.'
         : 'StepForge isn’t installed on any of your repositories yet. Install it on the repository you made for shared guides, then select Refresh.';
   };
 

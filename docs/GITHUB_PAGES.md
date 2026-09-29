@@ -20,10 +20,11 @@ Sharing is **optional and off by default**. You need a free GitHub account.
 Open **Settings → Accounts → GitHub**. The panel walks you through these
 steps and has a button for each one.
 
-1. **Create a public repository for shared guides.** Choose **Create
-   repository on GitHub**. GitHub opens with the name `stepforge-guides`
-   filled in. Keep it **Public** and select **Create repository**. Use a new
-   repository just for this: StepForge manages everything in it.
+1. **Choose a repository for shared guides.** The simplest choice is a new
+   one: choose **Create a new repository**, and GitHub opens with the name
+   `stepforge-guides` filled in. Keep it **Public** and select **Create
+   repository**. You can also
+   [use a repository you already have](#use-an-existing-repository).
 2. **Install StepForge on only that repository.** Choose **Install StepForge
    on GitHub**. On GitHub, select **Only select repositories**, pick the
    repository from step 1, and select **Install**. StepForge asks for access
@@ -36,7 +37,8 @@ steps and has a button for each one.
 
 StepForge then sets up the repository for you:
 
-- adds a short `README.md` explaining what the repository is for,
+- adds a short `README.md` explaining what the repository is for, if the
+  repository is empty,
 - adds a workflow, `.github/workflows/stepforge-expire.yml`, that removes
   guides when they expire, even when StepForge is closed,
 - creates a `gh-pages` branch for the site, and
@@ -45,6 +47,30 @@ StepForge then sets up the repository for you:
 The **Your site** card shows the site's address, whether GitHub Pages is on,
 and whether automatic removal is on. If a step couldn't be finished, the card
 says what to do and has a **Check again** button.
+
+### Use an existing repository
+
+You can share guides from a repository that already has other work in it,
+such as a project's own repository. When you choose it, StepForge shows what
+it will add and waits for you to confirm:
+
+- `.github/workflows/stepforge-expire.yml` on the repository's default
+  branch, and
+- a `gh-pages` branch for the shared guides, with GitHub Pages turned on for
+  it.
+
+Nothing else in the repository changes. Your README and other files are left
+alone.
+
+StepForge won't use a repository that **already publishes a GitHub Pages
+site** (from any branch or from GitHub Actions), or that has a `gh-pages`
+branch it didn't create, because it would replace that site. Use a new
+repository instead.
+
+> [!NOTE]
+> StepForge's GitHub App can change any file in a repository it's installed
+> on. It only ever touches the two things above, but a separate repository
+> just for shared guides keeps your other work out of its reach.
 
 ## Publish a guide
 
@@ -136,7 +162,8 @@ already shared from the old repository stay there until they expire.
 
 | Problem | What to do |
 | --- | --- |
-| "GitHub sign-in is unavailable in this build" | You're running a development build without a GitHub App configured. Install an official release. |
+| **Install StepForge on GitHub** and **Sign in with GitHub** do nothing, and the panel says StepForge "isn't connected to a StepForge GitHub App" | This copy of StepForge was built without the StepForge GitHub App, which happens when you run it from source. Install an official release, or see the [maintainer guide](GITHUB_PAGES_RELEASE.md#signing-in-from-a-development-checkout). |
+| "already publishes a GitHub Pages site" or "has a gh-pages branch that StepForge didn't create" | StepForge won't replace an existing site. Create a new repository for shared guides and install StepForge on it. |
 | The repository list is empty | Install StepForge on the repository (step 2), then choose **Refresh**. |
 | "StepForge can't change *owner/repo*" | Open the repository's **Settings → GitHub Apps**, choose **Configure** next to StepForge, and make sure the repository is selected and every requested permission is accepted. |
 | **GitHub Pages off** | Open **Settings → Pages** in the repository, choose **Deploy from a branch**, pick `gh-pages` and `/ (root)`, and save. Then choose **Check again**. |

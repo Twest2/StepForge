@@ -24,6 +24,8 @@ const API = 'https://api.github.com';
 const LOGIN = 'https://github.com/login';
 const DEVICE_GRANT = 'urn:ietf:params:oauth:grant-type:device_code';
 const MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
+const CLIENT_ID_PATTERN = /^Iv[A-Za-z0-9._-]{6,}$/;
+const APP_SLUG_PATTERN = /^[a-z0-9-]{1,100}$/;
 
 function resolveAppConfig({ committed = require('./github-app-config.json'), env = process.env, localFile = LOCAL_APP_FILE } = {}) {
   const pick = (value) => String(value || '').trim();
@@ -77,7 +79,7 @@ class GitHubPages {
     this.file = path.join(directory, 'github.credentials');
     this.clientId = clientId;
     this.appSlug = appSlug;
-    this.available = /^Iv[A-Za-z0-9._-]{6,}$/.test(clientId || '') && /^[a-z0-9-]{1,100}$/.test(appSlug || '');
+    this.available = CLIENT_ID_PATTERN.test(clientId || '') && APP_SLUG_PATTERN.test(appSlug || '');
     this.safeStorage = safeStorage;
     this.openExternal = openExternal;
     this.fetch = fetchImpl;
@@ -677,4 +679,4 @@ class GitHubPages {
   }
 }
 
-module.exports = { GitHubPages, GitHubError, resolveAppConfig, parseFullName, LOCAL_APP_FILE };
+module.exports = { GitHubPages, GitHubError, resolveAppConfig, parseFullName, LOCAL_APP_FILE, CLIENT_ID_PATTERN, APP_SLUG_PATTERN };

@@ -148,6 +148,24 @@ test('Markdown export: TOC anchors resolve, images exist, blocks rendered', (t) 
   assert.ok(md.includes('<p>Admins only.</p>'));
 });
 
+test('Markdown export: GitHub mode writes GitHub alerts instead of styled HTML', (t) => {
+  const root = makeTmpDir('expmdgh');
+  t.after(() => rmrf(root));
+  const { store, guide } = buildFixtureGuide(path.join(root, 'data'));
+
+  const ast = buildRenderAst(store, guide.guideId);
+  const { file } = exportMarkdown(ast, path.join(root, 'out'), { githubAlerts: true });
+  const md = fs.readFileSync(file, 'utf8');
+
+  const lines = md.split('\n');
+  assert.equal(lines[0], '# Configure AcmeSync backups');
+  assert.ok(!md.includes('<div'), 'no styled HTML');
+  const alert = lines.indexOf('> [!WARNING]');
+  assert.ok(alert > 0, 'warning alert present');
+  assert.equal(lines[alert + 1], '> **Access**');
+  assert.equal(lines[alert + 2], '> Admins only.');
+});
+
 test('text block positions render around the title, description, and image', (t) => {
   const root = makeTmpDir('exppositions');
   t.after(() => rmrf(root));

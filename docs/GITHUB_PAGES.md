@@ -84,10 +84,25 @@ repository instead.
 GitHub can take a minute or two to put a new page online. If the link shows
 **404**, wait a moment and reload.
 
-Each shared guide is one page, the same as an **Interactive HTML** export: all
-visible steps, screenshots with annotations, descriptions, and a checklist
-readers can tick off in their own browser. Hidden steps are left out, as in
-every export.
+Each shared guide is one page, the same as an **Interactive HTML** export with
+the default options: all visible steps, screenshots with annotations,
+descriptions, and a checklist readers can tick off in their own browser.
+Hidden steps are left out, as in every export.
+
+### Publish from Export
+
+To choose the page's look, publish from **Export** instead:
+
+1. Choose **Export** and pick **HTML** or **Interactive HTML**, with any
+   template and options you like.
+2. Turn on **Publish on the web**, choose how long to keep it online, and read
+   the warning.
+3. Choose **Export and publish**. StepForge saves the file as usual, puts the
+   same page on your site, and shows the link.
+
+**Publish on the web** only appears for the two HTML formats. If GitHub isn't
+set up yet, it's turned off and says where to set it up. If publishing fails,
+the exported file is still saved.
 
 ### Update or remove a shared guide
 

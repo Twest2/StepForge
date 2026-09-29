@@ -734,6 +734,7 @@ function showExportDialog({
   onSaveTemplate,      // async (format, name, options)
   onManageTemplates,   // async (format) => refreshed template name list
   onChooseImage,       // async () => picked image path or null
+  webPublish = null,   // { ready, formats, expiryDays, defaultExpiryDays }: offer publishing HTML exports
 } = {}) {
   return new Promise((resolve) => {
     const formatOptions = (formats || []).map((f) => {
@@ -840,7 +841,36 @@ function showExportDialog({
     }
 
     const refreshFormatDesc = () => { formatDesc.textContent = formatInfo(formatSelect.value).description || ''; };
-    formatSelect.addEventListener('change', () => { refreshFormatDesc(); refreshTemplates(); refreshOptions(); });
+
+    // Publish on the web: HTML exports can also go to the user's GitHub Pages
+    // site (Settings → Accounts → GitHub), using the options chosen here.
+    const publishInput = el('input', { type: 'checkbox', disabled: !webPublish?.ready });
+    const publishDays = makeSelect(String(webPublish?.defaultExpiryDays || 7),
+      (webPublish?.expiryDays || []).map((days) => ({ value: String(days), label: days === 1 ? '1 day' : `${days} days` })));
+    const publishDaysRow = settingRow('Keep it online for', 'The guide is removed from the web after this.', publishDays);
+    const publishWarning = el('p.gh-note', { role: 'note' },
+      el('strong', {}, 'Published guides are public. '),
+      'Anyone with the link can open it, and anyone who looks at your GitHub repository can find it. Blur passwords and other private details before you export.');
+    const publishBox = el('fieldset.export-publish', {},
+      el('legend', {}, 'Publish on the web'),
+      settingRow('Publish on the web',
+        webPublish?.ready
+          ? 'Also put this guide on your GitHub Pages site and get a link to share.'
+          : 'Connect GitHub in Settings → Accounts → GitHub to publish guides on the web.',
+        makeSwitch(publishInput, 'Publish on the web')),
+      publishDaysRow,
+      publishWarning);
+    const publishing = () => Boolean(webPublish?.ready && publishInput.checked && (webPublish.formats || []).includes(formatSelect.value));
+    function refreshPublish() {
+      publishBox.hidden = !webPublish || !(webPublish.formats || []).includes(formatSelect.value);
+      publishDaysRow.hidden = !publishing();
+      publishWarning.hidden = !publishing();
+      // Runs only after the footer buttons exist; leaves a busy button alone.
+      if (!exportBtn.disabled) exportBtn.textContent = publishing() ? 'Export and publish' : 'Export';
+    }
+    publishInput.addEventListener('change', () => refreshPublish());
+
+    formatSelect.addEventListener('change', () => { refreshFormatDesc(); refreshTemplates(); refreshOptions(); refreshPublish(); });
     refreshFormatDesc();
     templateSelect.addEventListener('change', () => refreshOptions());
     refreshTemplates();
@@ -889,6 +919,7 @@ function showExportDialog({
         },
       }, 'Choose…'))),
       el('fieldset', {}, el('legend', {}, 'Options'), optionsHost),
+      publishBox,
     );
 
     const payload = () => ({
@@ -896,6 +927,7 @@ function showExportDialog({
       templateName: templateSelect.value || null,
       options: effectiveOptions(),
       outDir: outDirInput.value.trim() || null,
+      publish: publishing() ? { days: Number(publishDays.value) } : null,
     });
 
     const cancelBtn = el('button', { onClick: () => { close(); resolve(false); } }, 'Cancel');
@@ -915,7 +947,7 @@ function showExportDialog({
         if (typeof onExport !== 'function') return;
         cancelBtn.disabled = true;
         previewBtn.disabled = true;
-        setButtonLoading(exportBtn, true, 'Exporting…');
+        setButtonLoading(exportBtn, true, publishing() ? 'Exporting and publishing…' : 'Exporting…');
         try {
           const ok = await onExport(payload());
           if (ok !== false) {
@@ -927,9 +959,11 @@ function showExportDialog({
           cancelBtn.disabled = false;
           previewBtn.disabled = false;
           setButtonLoading(exportBtn, false);
+          refreshPublish();
         }
       },
     }, 'Export');
+    refreshPublish();
 
     const { close } = openModal({
       title: 'Export',

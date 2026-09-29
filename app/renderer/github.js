@@ -418,6 +418,34 @@ function makeAccountsSettings(api, { view = null } = {}) {
   };
 }
 
+/** The link to a just-published guide, with Copy and Open buttons. */
+function githubPublishedView(api, entry, guideTitle) {
+  const copy = el('button.primary', { type: 'button', onClick: async () => {
+    try { const result = await api.github.copy({ kind: 'link', slug: entry.slug }); if (result.ok) toast('Link copied.'); }
+    catch (err) { toast(err.message, { error: true }); }
+  } }, 'Copy link');
+  return [
+    el('p', {}, el('strong', {}, `“${guideTitle}” is shared until ${githubWhen(entry.expiresAt)}.`)),
+    el('code.settings-path.gh-url', { title: entry.url }, entry.url),
+    el('div.row', {}, copy, el('button', { type: 'button', onClick: () => { void api.shell.openExternal({ url: entry.url }).catch(() => {}); } }, 'Open in browser')),
+    el('p.muted', {}, entry.pagesReady
+      ? 'GitHub can take a minute or two to put the page online. If the link shows “404”, wait a moment and reload.'
+      : 'GitHub Pages isn’t turned on for this repository yet, so the link won’t work until it is. See Settings → Accounts → GitHub.'),
+  ];
+}
+
+/** Show the link after publishing from the Export dialog. */
+function showPublishedLinkDialog({ api, entry, guideTitle }) {
+  return new Promise((resolve) => {
+    const { close } = openModal({
+      title: 'Published on the web',
+      body: el('div.gh-publish', {}, ...githubPublishedView(api, entry, guideTitle)),
+      footer: [el('button', { type: 'button', onClick: () => { close(); resolve(); } }, 'Done')],
+      onClose: () => resolve(),
+    });
+  });
+}
+
 /**
  * Publish one guide to the user's GitHub Pages site. Resolves when the dialog
  * closes. `onOpenAccounts` opens Settings → Accounts → GitHub.
@@ -462,17 +490,7 @@ async function showPublishToWebDialog({ api, guideId, guideTitle, onOpenAccounts
     understood.addEventListener('change', () => { publishBtn.disabled = !understood.checked; });
 
     const showDone = (entry) => {
-      const copy = el('button.primary', { type: 'button', onClick: async () => {
-        try { const result = await api.github.copy({ kind: 'link', slug: entry.slug }); if (result.ok) toast('Link copied.'); }
-        catch (err) { toast(err.message, { error: true }); }
-      } }, 'Copy link');
-      body.replaceChildren(
-        el('p', {}, el('strong', {}, `“${guideTitle}” is shared until ${githubWhen(entry.expiresAt)}.`)),
-        el('code.settings-path.gh-url', { title: entry.url }, entry.url),
-        el('div.row', {}, copy, el('button', { type: 'button', onClick: () => { void api.shell.openExternal({ url: entry.url }).catch(() => {}); } }, 'Open in browser')),
-        el('p.muted', {}, entry.pagesReady
-          ? 'GitHub can take a minute or two to put the page online. If the link shows “404”, wait a moment and reload.'
-          : 'GitHub Pages isn’t turned on for this repository yet, so the link won’t work until it is. See Settings → Accounts → GitHub.'));
+      body.replaceChildren(...githubPublishedView(api, entry, guideTitle));
       cancelBtn.textContent = 'Done';
       publishBtn.classList.add('hidden');
       removeBtn.classList.add('hidden');

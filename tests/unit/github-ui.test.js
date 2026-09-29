@@ -59,6 +59,7 @@ function ui() {
   context.toast = () => {};
   load('cloud.js');
   load('github.js');
+  load('dialogs.js');
 
   const visible = (node) => {
     for (let n = node; n; n = n.parent) if (n.hidden || n.classList?.contains('hidden')) return false;
@@ -250,4 +251,66 @@ test('publishing before GitHub is set up points to Settings → Accounts', async
   u.click(u.find(modal, 'Set up GitHub'));
   assert.equal(opened, 1);
   assert.equal(await done, false);
+});
+
+function openExport(u, webPublish) {
+  const exported = [];
+  const done = u.context.window.StepForgeDialogs.showExportDialog({
+    formats: [{ id: 'pdf', label: 'PDF' }, { id: 'html-rich', label: 'Interactive HTML' }, { id: 'html-simple', label: 'HTML' }],
+    defaultFormat: 'pdf',
+    onLoadDefaults: async () => ({}),
+    onExport: async (payload) => { exported.push(JSON.parse(JSON.stringify(payload))); return true; },
+    webPublish,
+  });
+  const modal = u.root.children.at(-1);
+  const box = u.all(modal).find((n) => n.tag === 'fieldset' && n.classList.contains('export-publish'));
+  const format = u.all(modal).find((n) => n.tag === 'select');
+  const choose = (value) => { format.value = value; format.listeners.change(); };
+  const toggle = u.all(box).find((n) => n.tag === 'input' && n.type === 'checkbox');
+  return { done, modal, box, choose, toggle, exported };
+}
+
+test('Export offers Publish on the web for HTML formats and passes the choice to the export', async () => {
+  const u = ui();
+  const { done, modal, box, choose, toggle, exported } = openExport(u, { ready: true, formats: ['html-simple', 'html-rich'], expiryDays: [1, 7, 30], defaultExpiryDays: 7 });
+  await settle();
+  assert.equal(u.visible(box), false, 'not offered for PDF');
+  choose('html-simple');
+  assert.equal(u.visible(box), true, 'offered for HTML');
+  const warning = u.all(box).find((n) => n.role === 'note');
+  assert.equal(u.visible(warning), false);
+
+  toggle.checked = true;
+  toggle.listeners.change();
+  assert.equal(u.visible(warning), true);
+  assert.match(warning.textContent, /Published guides are public\./);
+  const days = u.all(box).find((n) => n.tag === 'select');
+  days.value = '30';
+
+  // Switching to a format that can't be published drops the request.
+  choose('pdf');
+  assert.equal(u.find(modal, 'Export and publish'), undefined);
+  choose('html-rich');
+  await u.find(modal, 'Export and publish').listeners.click();
+  assert.equal(exported.length, 1);
+  assert.equal(exported[0].format, 'html-rich');
+  assert.deepEqual(exported[0].publish, { days: 30 });
+  assert.equal(await done, true);
+});
+
+test('Export without publishing sends no publish request, and says how to set up GitHub when it is not', async () => {
+  const u = ui();
+  const plain = openExport(u, { ready: true, formats: ['html-simple', 'html-rich'], expiryDays: [1, 7, 30], defaultExpiryDays: 7 });
+  plain.choose('html-rich');
+  await u.find(plain.modal, 'Export').listeners.click();
+  assert.equal(plain.exported[0].publish, null);
+
+  const notSetUp = openExport(u, { ready: false, formats: ['html-simple', 'html-rich'], expiryDays: [1, 7, 30], defaultExpiryDays: 7 });
+  notSetUp.choose('html-rich');
+  assert.equal(notSetUp.toggle.disabled, true);
+  assert.match(notSetUp.box.textContent, /Connect GitHub in Settings → Accounts → GitHub/);
+
+  const noApp = openExport(u, null);
+  noApp.choose('html-rich');
+  assert.equal(u.visible(noApp.box), false, 'hidden when this build has no GitHub App');
 });

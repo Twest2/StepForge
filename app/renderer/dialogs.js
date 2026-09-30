@@ -855,7 +855,7 @@ function showExportDialog({
       el('legend', {}, 'Publish on the web'),
       settingRow('Publish on the web',
         webPublish?.ready
-          ? 'Also put this guide on your GitHub Pages site and get a link to share.'
+          ? 'After exporting, also put this guide on your GitHub Pages site and get a link to share.'
           : 'Connect GitHub in Settings → Accounts → GitHub to publish guides on the web.',
         makeSwitch(publishInput, 'Publish on the web')),
       publishDaysRow,
@@ -947,7 +947,7 @@ function showExportDialog({
         if (typeof onExport !== 'function') return;
         cancelBtn.disabled = true;
         previewBtn.disabled = true;
-        setButtonLoading(exportBtn, true, publishing() ? 'Exporting and publishing…' : 'Exporting…');
+        setButtonLoading(exportBtn, true, 'Exporting…');
         try {
           const ok = await onExport(payload());
           if (ok !== false) {

@@ -41,9 +41,10 @@ function makeGitHubSettings(api) {
   let current = {};
   let busy = false;
   let disposed = false;
-  let signingIn = false;
   let repos = null;
   let listRequest = 0;
+  let signInCancelled = false;
+  let setupButton = null;
 
   const open = (url) => () => { if (url) void api.shell.openExternal({ url }).catch(() => {}); };
   const banner = el('div.cloud-banner.hidden', { role: 'status', 'aria-live': 'polite' });
@@ -64,73 +65,150 @@ function makeGitHubSettings(api) {
     } finally {
       busy = false;
       if (!disposed) {
-        try { current = await api.github.status(); } catch { /* keep the last status */ }
+        // update() compares against `current`, so don't overwrite it first.
+        let next = current;
+        try { next = await api.github.status(); } catch { /* keep the last status */ }
         if (button) setButtonLoading(button, false);
-        update(current);
+        update(next);
       }
     }
   };
 
-  /* Signed out: what this is, the warning, and the setup steps. */
-  const createRepo = el('button', { type: 'button', onClick: () => open(current.links?.newRepository)() }, 'Create a new repository');
+  /* Sign-in. It keeps going in the background if Settings is closed, and
+     starting again replaces a sign-in that is still waiting. */
+  const signIn = (button) => run(button, 'Waiting for GitHub…', async () => {
+    signInCancelled = false;
+    say('');
+    const reconnecting = Boolean(current.needsSignIn);
+    let status;
+    try {
+      status = await api.github.connect();
+    } catch (err) {
+      if (signInCancelled) { say('Sign-in cancelled.'); return; }
+      throw err;
+    }
+    if (reconnecting && status.repo) say('Signed in again. You can keep sharing guides.', 'success');
+    else say('Signed in.', 'success');
+    if (!status.repo) await loadRepositories();
+  });
+  const cancelSignIn = () => {
+    signInCancelled = true;
+    void api.github.cancel().catch((err) => say(err.message, 'error'));
+  };
+
+  // The one-time code, shown until GitHub approves the sign-in.
+  const makeCodeBox = () => {
+    const code = el('code.gh-code', {}, '');
+    const hint = el('p', {}, '');
+    const copy = el('button', { type: 'button', onClick: async () => {
+      try {
+        const result = await api.github.copy({ kind: 'code' });
+        if (result.ok) say('Code copied. Paste it on the GitHub page.', 'success');
+      } catch (err) { say(err.message, 'error'); }
+    } }, 'Copy code');
+    const reopen = el('button', { type: 'button', onClick: () => open(current.pending?.verificationUri)() }, 'Open GitHub again');
+    const cancel = el('button', { type: 'button', onClick: cancelSignIn }, 'Cancel');
+    const node = el('div.gh-code-box.hidden', { role: 'status', 'aria-live': 'polite' },
+      el('span.muted', {}, 'Your one-time code'), code, hint,
+      el('div.row', {}, copy, reopen, cancel),
+      el('p.gh-waiting.muted', {}, el('span.spinner', { 'aria-hidden': 'true' }), 'Waiting for you to approve StepForge on GitHub…'));
+    return {
+      node,
+      set(pending) {
+        node.classList.toggle('hidden', !pending);
+        code.textContent = pending?.userCode || '';
+        hint.textContent = pending?.copied
+          ? 'It’s copied. Paste it on the GitHub page that just opened, then approve StepForge.'
+          : 'Enter it on the GitHub page that just opened, then approve StepForge.';
+      },
+    };
+  };
+
+  /* Setup: three steps that tick off as they are done. */
+  // `later` is shown in place of the step's content until it can be done.
+  const setupStep = (number, title, { later = '' } = {}, ...content) => {
+    const badge = el('span.gh-step-number', { 'aria-hidden': 'true' }, String(number));
+    const heading = el('strong', {}, title);
+    const summary = el('span.gh-step-summary.muted', {}, '');
+    const details = el('div.gh-step-content', {}, ...content);
+    const node = el('li.gh-step', {}, badge, el('div.gh-step-body', {}, heading, summary, details));
+    return {
+      node,
+      set(state, text = '') {
+        const waiting = state === 'upcoming' && later;
+        node.className = `gh-step ${state}`;
+        badge.textContent = state === 'done' ? '✓' : String(number);
+        summary.textContent = waiting ? later : text;
+        summary.classList.toggle('hidden', !(waiting || text));
+        details.classList.toggle('hidden', state === 'done' || Boolean(waiting));
+      },
+    };
+  };
+
+  const signInButton = el('button.primary', { type: 'button', onClick: () => signIn(signInButton) }, 'Sign in with GitHub');
+  const setupCode = makeCodeBox();
+  const stepSignIn = setupStep(1, 'Sign in to GitHub', {},
+    el('p.muted', {}, 'StepForge opens GitHub and copies a one-time code for you to paste there. You never type your GitHub password into StepForge.'),
+    el('div.row', {}, signInButton),
+    setupCode.node);
+
+  const createRepo = el('button', { type: 'button', onClick: () => open(current.links?.newRepository)() }, 'Create a repository');
   const install = el('button', { type: 'button', onClick: () => open(current.links?.install)() }, 'Install StepForge on GitHub');
-  const signIn = el('button.primary', { type: 'button', onClick: () => run(signIn, 'Waiting for GitHub…', async () => {
-    signingIn = true;
-    cancel.classList.remove('hidden');
-    say('Enter the code below on the GitHub page that just opened, then approve StepForge.');
-    try {
-      await api.github.connect();
-      say('Signed in. Now choose the repository for shared guides.', 'success');
-      await loadRepositories();
-    } finally { signingIn = false; cancel.classList.add('hidden'); }
-  }) }, 'Sign in with GitHub');
-  const cancel = el('button.hidden', { type: 'button', onClick: () => api.github.cancel().catch((err) => say(err.message, 'error')) }, 'Cancel sign-in');
+  const checkInstall = el('button', { type: 'button', onClick: () => run(checkInstall, 'Checking…', loadRepositories) }, 'Check again');
+  const installWaiting = el('p.gh-waiting.muted.hidden', {}, el('span.spinner', { 'aria-hidden': 'true' }),
+    'Waiting for StepForge to be installed. This updates by itself when you come back from GitHub.');
+  const stepInstall = setupStep(2, 'Give StepForge one repository', {},
+    el('p.muted', {}, 'Create a public repository just for shared guides, such as “stepforge-guides”. Then install StepForge on only that repository: on GitHub, choose “Only select repositories”, pick it, and select Install.'),
+    el('p.muted', {}, 'StepForge asks for access to that repository’s contents, Pages, and workflows, and nothing else. You can also use a repository you already have, as long as it doesn’t already publish a GitHub Pages site.'),
+    el('div.row', {}, createRepo, install, checkInstall),
+    installWaiting);
 
-  const codeText = el('code.gh-code', {}, '');
-  const copyCode = el('button', { type: 'button', onClick: async () => {
+  const repoSelect = el('select', { 'aria-label': 'Repository for shared guides' });
+  const useRepo = el('button.primary', { type: 'button', onClick: () => run(useRepo, 'Setting up…', async () => {
+    const fullName = repoSelect.value;
+    if (!fullName) throw new Error('Choose a repository first.');
+    setupButton = useRepo;
+    let status;
     try {
-      const result = await api.github.copy({ kind: 'code' });
-      if (result.ok) say('Code copied. Paste it on the GitHub page.', 'success');
-    } catch (err) { say(err.message, 'error'); }
-  } }, 'Copy code');
-  const reopen = el('button', { type: 'button', onClick: () => open(current.pending?.verificationUri)() }, 'Open GitHub again');
-  const codeBox = el('div.gh-code-box.hidden', { role: 'status' },
-    el('span.muted', {}, 'Your sign-in code'), codeText,
-    el('div.row', {}, copyCode, reopen),
-    el('p.muted', {}, 'Waiting for you to approve StepForge on github.com…'));
+      status = await api.github.selectRepository({ fullName });
+      // A repository with other work in it is used only after the user sees
+      // exactly what StepForge will add to it.
+      if (status.needsConfirmation) {
+        const ok = await confirmDialog(el('div.cloud-confirm', {},
+          el('strong', {}, `Use ${status.repo} for shared guides?`),
+          el('p', {}, 'This repository already has other files in it. StepForge will:'),
+          el('ul.gh-changes', {}, ...status.changes.map((change) => el('li', {}, change))),
+          el('p', {}, 'Nothing else in the repository changes.'),
+          el('p.muted', {}, 'StepForge’s GitHub App can change any file in a repository it’s installed on, so a separate repository just for shared guides is still the safer choice.')),
+        { okLabel: 'Use this repository' });
+        if (!ok) return;
+        status = await api.github.selectRepository({ fullName, useExisting: true });
+      }
+    } finally { setupButton = null; }
+    say(status.setupNote ? 'The repository is almost ready. See Your site below.' : `All set. Guides you share are published from ${fullName}.`,
+      status.setupNote ? 'info' : 'success');
+  }) }, 'Use this repository');
+  const repoHint = el('p.muted', {}, '');
+  const stepRepo = setupStep(3, 'Choose the repository', { later: 'Pick the repository from step 2 once StepForge is installed on it.' },
+    repoHint,
+    el('div.row.gh-repo-row', {}, repoSelect, useRepo));
 
-  const step = (number, title, text, ...actions) => el('li.gh-step', {},
-    el('span.gh-step-number', { 'aria-hidden': 'true' }, String(number)),
-    el('div.gh-step-body', {}, el('strong', {}, title), el('p.muted', {}, text),
-      actions.length ? el('div.row', {}, ...actions) : null));
   // Builds without a registered StepForge GitHub App have nothing to install
   // or sign in to, so say so where the disabled buttons are.
   const unavailable = el('p.gh-note.error.hidden', { role: 'note' },
     'This copy of StepForge isn’t connected to a StepForge GitHub App yet, so the Install and Sign in buttons are turned off. '
     + 'Official releases include it. If you run StepForge from source, see “GitHub Pages sharing: maintainer guide” in the docs.');
-  const signedOut = el('div.cloud-stack', {},
-    el('div.cloud-hero', {},
-      el('div.cloud-hero-icon.gh-hero-icon', { 'aria-hidden': 'true' }, el('img', { src: '../assets/icons/github.svg', alt: '' })),
-      el('div.cloud-hero-text', {},
-        el('strong', {}, 'Share guides on the web'),
-        el('p.muted', {}, 'Publish a guide as a web page for 1, 7, or 30 days using GitHub Pages. The page lives in a GitHub repository you own; StepForge doesn’t host anything. When the time is up, the guide is removed automatically.'))),
-    githubPublicWarning(),
-    el('section.cloud-card', {},
-      el('header.cloud-card-head', {}, el('h4', {}, 'Set up sharing (one time)')),
-      unavailable,
-      el('ol.gh-steps', {},
-        step(1, 'Choose a repository for shared guides',
-          'The simplest choice is a new public repository just for this, such as “stepforge-guides”. You can also use a repository you already have, as long as it doesn’t already publish a GitHub Pages site. StepForge adds a gh-pages branch and one workflow file to it and leaves everything else alone.',
-          createRepo),
-        step(2, 'Install StepForge on only that repository',
-          'On the GitHub page that opens, choose “Only select repositories”, pick the repository from step 1, and select Install. StepForge asks for access to that repository’s contents, Pages, and workflows, and to nothing else.',
-          install),
-        step(3, 'Sign in',
-          'StepForge shows a short code and opens GitHub. Enter the code there and approve StepForge.',
-          signIn, cancel)),
-      codeBox,
-      el('p.muted', {}, 'Then choose your repository here. StepForge turns on GitHub Pages and adds a small workflow to the repository that removes guides when they expire, even when StepForge is closed.')),
-  );
+  const setupCard = el('section.cloud-card', {},
+    el('header.cloud-card-head', {}, el('h4', {}, 'Set up sharing (one time)')),
+    unavailable,
+    el('ol.gh-steps', {}, stepSignIn.node, stepInstall.node, stepRepo.node),
+    el('p.muted', {}, 'When you choose the repository, StepForge turns on GitHub Pages and adds a small workflow that removes guides when they expire, even when StepForge is closed.'));
+  const intro = el('div.cloud-hero', {},
+    el('div.cloud-hero-icon.gh-hero-icon', { 'aria-hidden': 'true' }, el('img', { src: '../assets/icons/github.svg', alt: '' })),
+    el('div.cloud-hero-text', {},
+      el('strong', {}, 'Share guides on the web'),
+      el('p.muted', {}, 'Publish a guide as a web page for 1, 7, or 30 days using GitHub Pages. The page lives in a GitHub repository you own; StepForge doesn’t host anything. When the time is up, the guide is removed automatically.')));
+  const setupView = el('div.cloud-stack', {}, intro, githubPublicWarning(), setupCard);
 
   /* Account header */
   const avatar = el('div.cloud-avatar.gh-avatar', { 'aria-hidden': 'true' }, '?');
@@ -156,37 +234,14 @@ function makeGitHubSettings(api) {
     el('div.cloud-account-info', {}, login, el('div.cloud-status-line', {}, dot, repoLine)),
     el('div.cloud-account-actions', {}, disconnect));
 
-  /* Repository picker */
-  const repoSelect = el('select', { 'aria-label': 'Repository for shared guides' });
-  const useRepo = el('button.primary', { type: 'button', onClick: () => run(useRepo, 'Setting up…', async () => {
-    const fullName = repoSelect.value;
-    if (!fullName) throw new Error('Choose a repository first.');
-    let status = await api.github.selectRepository({ fullName });
-    // A repository with other work in it is used only after the user sees
-    // exactly what StepForge will add to it.
-    if (status.needsConfirmation) {
-      const ok = await confirmDialog(el('div.cloud-confirm', {},
-        el('strong', {}, `Use ${status.repo} for shared guides?`),
-        el('p', {}, 'This repository already has other files in it. StepForge will:'),
-        el('ul.gh-changes', {}, ...status.changes.map((change) => el('li', {}, change))),
-        el('p', {}, 'Nothing else in the repository changes.'),
-        el('p.muted', {}, 'StepForge’s GitHub App can change any file in a repository it’s installed on, so a separate repository just for shared guides is still the safer choice.')),
-      { okLabel: 'Use this repository' });
-      if (!ok) return;
-      status = await api.github.selectRepository({ fullName, useExisting: true });
-    }
-    say(status.setupNote ? 'The repository is almost ready. See the steps below.' : `Ready. Guides you share are published from ${fullName}.`,
-      status.setupNote ? 'info' : 'success');
-    await refreshPublished();
-  }) }, 'Use this repository');
-  const reloadRepos = el('button', { type: 'button', onClick: () => run(reloadRepos, 'Checking…', loadRepositories) }, 'Refresh');
-  const installMore = el('button', { type: 'button', onClick: () => open(current.links?.install)() }, 'Install StepForge on GitHub');
-  const repoHint = el('p.muted', {}, '');
-  const repoPicker = el('section.cloud-card.hidden', {},
-    el('header.cloud-card-head', {}, el('h4', {}, 'Choose the repository for shared guides')),
-    repoHint,
-    el('div.row.gh-repo-row', {}, repoSelect, useRepo),
-    el('div.row', {}, installMore, reloadRepos));
+  /* Sign in again, when the saved sign-in stopped working */
+  const reconnectButton = el('button.primary', { type: 'button', onClick: () => signIn(reconnectButton) }, 'Sign in again');
+  const reconnectCode = makeCodeBox();
+  const reconnectCard = el('section.cloud-card.hidden', {},
+    el('header.cloud-card-head', {}, el('h4', {}, 'Sign in again')),
+    el('p.muted', {}, 'Your GitHub sign-in has expired or was revoked. Sign in again to keep sharing; your repository and shared guides stay as they are.'),
+    el('div.row', {}, reconnectButton),
+    reconnectCode.node);
 
   /* Site card */
   const siteLink = el('a.gh-link', { href: '#', onClick: (e) => { e.preventDefault(); open(current.siteUrl)(); } }, '');
@@ -196,7 +251,9 @@ function makeGitHubSettings(api) {
   const setupNote = el('p.gh-note.hidden', {}, '');
   const openPagesSettings = el('button', { type: 'button', onClick: () => open(current.links?.pagesSettings)() }, 'Open Pages settings');
   const checkAgain = el('button', { type: 'button', onClick: () => run(checkAgain, 'Checking…', async () => {
-    const status = await api.github.setup();
+    setupButton = checkAgain;
+    let status;
+    try { status = await api.github.setup(); } finally { setupButton = null; }
     say(status.setupNote ? 'Still not ready. See the note above.' : 'Everything is set up.', status.setupNote ? 'error' : 'success');
   }) }, 'Check again');
   const setupActions = el('div.row.hidden', {}, openPagesSettings, checkAgain);
@@ -234,31 +291,40 @@ function makeGitHubSettings(api) {
         el('p.muted', {}, 'Publish future guides from another repository that StepForge is installed on.')),
       changeRepo));
 
-  const ready = el('div.cloud-stack.hidden', {}, githubPublicWarning(), siteCard, sharedCard, advancedCard);
+  const ready = el('div.cloud-stack.hidden', {}, reconnectCard, githubPublicWarning(), siteCard, sharedCard, advancedCard);
 
   const renderRepos = () => {
+    const chosen = repoSelect.value;
     repoSelect.replaceChildren();
     const list = repos || [];
-    for (const repo of list) repoSelect.append(el('option', { value: repo.fullName }, `${repo.fullName}${repo.private ? ' (private)' : ''}`));
+    for (const repo of list) repoSelect.append(el('option', { value: repo.fullName, selected: repo.fullName === chosen }, `${repo.fullName}${repo.private ? ' (private)' : ''}`));
     repoSelect.disabled = busy || !list.length;
     useRepo.disabled = busy || !list.length;
-    repoHint.textContent = repos === null
-      ? 'Loading the repositories StepForge is installed on…'
-      : list.length
-        ? 'These are the repositories StepForge is installed on. Pick the one for shared guides.'
-        : 'StepForge isn’t installed on any of your repositories yet. Install it on the repository you made for shared guides, then select Refresh.';
+    repoHint.textContent = list.length
+      ? 'These are the repositories StepForge is installed on. Pick the one for shared guides.'
+      : 'Once StepForge is installed on a repository, choose it here.';
   };
 
   let loadingRepos = null;
-  function loadRepositories() {
-    loadingRepos ||= (async () => {
-      repos = null;
-      renderRepos();
-      try { repos = await api.github.repositories(); } catch (err) { repos = []; if (!disposed) say(err.message, 'error'); }
-      if (!disposed) renderRepos();
-    })().finally(() => { loadingRepos = null; });
+  // `quiet` keeps the current list on screen while checking again. The work
+  // starts on the next tick so `loadingRepos` is set before update() runs.
+  function loadRepositories({ quiet = false } = {}) {
+    loadingRepos ||= Promise.resolve().then(async () => {
+      if (!quiet) { repos = null; update(current); }
+      try { repos = await api.github.repositories(); } catch (err) {
+        if (!quiet) { repos = []; if (!disposed) say(err.message, 'error'); }
+      }
+      if (!disposed) update(current);
+    }).finally(() => { loadingRepos = null; });
     return loadingRepos;
   }
+
+  // Coming back from GitHub after installing the App updates the list.
+  const onFocus = () => {
+    if (disposed || busy || loadingRepos || !current.connected || current.repo) return;
+    void loadRepositories({ quiet: true });
+  };
+  window.addEventListener?.('focus', onFocus);
 
   async function refreshPublished() {
     if (!current.repo) return;
@@ -305,32 +371,50 @@ function makeGitHubSettings(api) {
 
   function update(next) {
     const wasRepo = current.repo;
+    const wasBlocked = Boolean(current.needsSignIn);
     current = next || {};
     const connected = Boolean(current.connected);
+    const needsSignIn = Boolean(current.needsSignIn);
     const hasRepo = connected && Boolean(current.repo);
-    signedOut.classList.toggle('hidden', connected);
+    setupView.classList.toggle('hidden', hasRepo);
     account.classList.toggle('hidden', !connected);
-    repoPicker.classList.toggle('hidden', !connected || hasRepo);
     ready.classList.toggle('hidden', !hasRepo);
+    reconnectCard.classList.toggle('hidden', !needsSignIn);
     unavailable.classList.toggle('hidden', current.available !== false);
-    signIn.disabled = busy || connected || current.available === false;
+
+    // Step 1: sign in. Step 2: install on a repository. Step 3: choose it.
+    const signedIn = connected && !needsSignIn;
+    const installed = signedIn && Boolean(repos?.length);
+    stepSignIn.set(signedIn ? 'done' : 'current', signedIn ? `Signed in as @${current.login}.` : '');
+    stepInstall.set(installed ? 'done' : signedIn ? 'current' : 'upcoming',
+      installed ? `StepForge is installed on ${repos.length === 1 ? repos[0].fullName : `${repos.length} repositories`}.` : '');
+    stepRepo.set(installed ? 'current' : 'upcoming');
+    installWaiting.classList.toggle('hidden', !(signedIn && repos && !repos.length));
+
+    // A loading button shows its spinner label until the sign-in finishes.
+    if (!signInButton.classList.contains('loading')) {
+      signInButton.textContent = current.pending ? 'Get a new code' : needsSignIn ? 'Sign in again' : 'Sign in with GitHub';
+      signInButton.disabled = busy || current.available === false;
+    }
+    if (!reconnectButton.classList.contains('loading')) reconnectButton.disabled = busy;
     install.disabled = !current.links?.install;
-    installMore.disabled = !current.links?.install;
+    checkInstall.disabled = busy || !signedIn;
     disconnect.disabled = busy;
     changeRepo.disabled = busy;
     checkAgain.disabled = busy;
     refresh.disabled = busy;
     renderRepos();
 
-    codeBox.classList.toggle('hidden', !current.pending);
-    codeText.textContent = current.pending?.userCode || '';
+    setupCode.set(hasRepo ? null : current.pending);
+    reconnectCode.set(hasRepo ? current.pending : null);
 
     login.textContent = current.login ? `@${current.login}` : 'GitHub account';
     avatar.textContent = (current.login || '?').slice(0, 1).toUpperCase();
     const problem = current.error || current.setupNote;
     dot.className = `cloud-dot ${current.error ? 'error' : !hasRepo || problem ? 'warn' : 'ok'}`;
-    repoLine.textContent = hasRepo ? `Sharing from ${current.repo}` : 'Choose a repository to finish setting up';
-    if (current.error) say(current.error, 'error');
+    repoLine.textContent = needsSignIn ? 'Sign in again to keep sharing'
+      : hasRepo ? `Sharing from ${current.repo}` : 'Finish setting up below';
+    if (current.error && !needsSignIn) say(current.error, 'error');
 
     siteLink.textContent = current.siteUrl || '';
     siteLink.title = current.siteUrl || '';
@@ -343,18 +427,32 @@ function makeGitHubSettings(api) {
     setupNote.classList.toggle('hidden', !current.setupNote);
     setupActions.classList.toggle('hidden', !current.setupNote);
 
-    if (hasRepo && wasRepo !== current.repo) void refreshPublished();
-    if (connected && !hasRepo && repos === null && !busy && !loadingRepos) void loadRepositories();
+    if (hasRepo && needsSignIn) {
+      listRequest += 1;
+      sharedCount.textContent = '';
+      sharedList.replaceChildren(el('p.cloud-empty.muted', {}, 'Sign in again to see and manage your shared guides.'));
+    }
+    if (hasRepo && !needsSignIn && (wasRepo !== current.repo || wasBlocked)) void refreshPublished();
+    if (signedIn && !hasRepo && repos === null && !busy && !loadingRepos) void loadRepositories();
   }
 
   const node = el('fieldset.cloud-panel.gh-panel', {},
     el('legend', {}, 'GitHub Pages sharing'),
-    signedOut, account, banner, repoPicker, ready);
+    account, banner, setupView, ready);
   const unsubscribe = api.github.onStatus((next) => { if (!disposed) update(next); });
+  // Setting up a repository takes a few seconds; show which step is running.
+  const stopProgress = api.github.onProgress((progress) => {
+    if (!disposed && progress?.task === 'setup' && setupButton) setButtonLoading(setupButton, true, progress.message);
+  });
   api.github.status().then((next) => { if (!disposed) update(next); }).catch((err) => say(err.message, 'error'));
   return {
     node,
-    dispose() { disposed = true; unsubscribe(); if (signingIn) void api.github.cancel().catch(() => {}); },
+    dispose() {
+      disposed = true;
+      unsubscribe();
+      stopProgress();
+      window.removeEventListener?.('focus', onFocus);
+    },
   };
 }
 
@@ -396,8 +494,9 @@ function makeAccountsSettings(api, { view = null } = {}) {
   };
   const setGitHub = (status) => {
     if (disposed || !status) return;
-    githubState.textContent = status.connected ? (status.repo || `@${status.login}`) : 'Not connected';
-    githubState.classList.toggle('on', Boolean(status.connected && status.repo));
+    githubState.textContent = status.needsSignIn ? 'Sign in again'
+      : status.connected ? (status.repo || `@${status.login}`) : 'Not connected';
+    githubState.classList.toggle('on', Boolean(status.connected && status.repo && !status.needsSignIn));
   };
   const stopDrive = api.cloud.onStatus(setDrive);
   const stopGitHub = api.github.onStatus(setGitHub);
@@ -418,31 +517,129 @@ function makeAccountsSettings(api, { view = null } = {}) {
   };
 }
 
-/** The link to a just-published guide, with Copy and Open buttons. */
+const GITHUB_PUBLISH_STAGES = [
+  ['export', 'Prepare the page'],
+  ['upload', 'Upload to GitHub'],
+  ['commit', 'Update your site'],
+];
+
+/** What publishing is doing: each stage, and a progress bar while the page uploads. */
+function githubPublishProgress(guideTitle) {
+  const fill = el('span.gh-progress-fill', { style: {} });
+  const bar = el('div.gh-progress.indeterminate', { role: 'progressbar', 'aria-label': 'Publishing progress', 'aria-valuemin': '0', 'aria-valuemax': '100' }, fill);
+  const detail = el('span.gh-progress-detail.muted', {}, '');
+  const stages = GITHUB_PUBLISH_STAGES.map(([id, label]) => {
+    const icon = el('span.gh-stage-icon', { 'aria-hidden': 'true' });
+    const note = el('span.gh-stage-note.muted', {}, '');
+    return { id, icon, note, node: el('li.gh-stage', {}, icon, el('span.gh-stage-label', {}, label), note) };
+  });
+  const node = el('div.gh-publishing', { role: 'status', 'aria-live': 'polite' },
+    el('p', {}, el('strong', {}, `Publishing “${guideTitle}”`)),
+    el('ol.gh-stages', {}, ...stages.map((stage) => stage.node)),
+    el('div.gh-upload', {}, bar, detail),
+    el('p.muted', {}, 'You can close this window. StepForge keeps publishing and lets you know when it’s done.'));
+
+  const set = (progress) => {
+    const at = Math.max(0, GITHUB_PUBLISH_STAGES.findIndex(([id]) => id === progress?.stage));
+    stages.forEach((stage, index) => {
+      const state = index < at ? 'done' : index === at ? 'active' : 'upcoming';
+      stage.node.className = `gh-stage ${state}`;
+      stage.icon.replaceChildren(state === 'done' ? '✓' : state === 'active' ? el('span.spinner') : '');
+      stage.note.textContent = '';
+    });
+    if (progress?.stage === 'upload' && progress.total) {
+      const percent = Math.min(100, Math.floor((progress.loaded / progress.total) * 100));
+      const rate = progress.bytesPerSecond ? ` · ${formatBytes(progress.bytesPerSecond)}/s` : '';
+      bar.classList.remove('indeterminate');
+      fill.style.width = `${percent}%`;
+      bar.setAttribute('aria-valuenow', String(percent));
+      stages[1].note.textContent = `${percent}%`;
+      detail.textContent = `${formatBytes(progress.loaded)} of ${formatBytes(progress.total)}${rate}`;
+    } else if (progress?.stage === 'commit') {
+      bar.classList.remove('indeterminate');
+      fill.style.width = '100%';
+      bar.setAttribute('aria-valuenow', '100');
+      detail.textContent = 'Uploaded. Saving it to your GitHub Pages site…';
+    } else {
+      bar.classList.add('indeterminate');
+      bar.removeAttribute('aria-valuenow');
+      detail.textContent = 'Building the web page from your guide…';
+    }
+  };
+  set({ stage: 'export' });
+  return { node, set };
+}
+
+/** Publish one guide while `progress` shows how it's going. Resolves with the entry. */
+async function githubRunPublish(api, { guideId, request, progress }) {
+  const stop = api.github.onProgress((update) => {
+    if (update?.task === 'publish' && update.guideId === guideId) progress.set(update);
+  });
+  try {
+    return await api.github.publish({ guideId, ...request });
+  } finally {
+    stop();
+  }
+}
+
+/** The link to a just-published guide, with Copy and Open, and whether it's live yet. */
 function githubPublishedView(api, entry, guideTitle) {
   const copy = el('button.primary', { type: 'button', onClick: async () => {
     try { const result = await api.github.copy({ kind: 'link', slug: entry.slug }); if (result.ok) toast('Link copied.'); }
     catch (err) { toast(err.message, { error: true }); }
   } }, 'Copy link');
+  const live = el('p.gh-live', { role: 'status', 'aria-live': 'polite' });
+  const setLive = (state, text) => {
+    live.className = `gh-live ${state}`;
+    live.replaceChildren(state === 'waiting' ? el('span.spinner', { 'aria-hidden': 'true' }) : el('span.gh-live-dot', { 'aria-hidden': 'true' }), text);
+  };
+  if (entry.pagesReady) {
+    setLive('waiting', 'Going live on GitHub Pages. This usually takes under a minute, and you can copy the link now.');
+    api.github.waitUntilLive({ slug: entry.slug })
+      .then((result) => {
+        if (result?.live) setLive('ok', 'Live. Anyone with the link can open it now.');
+        else setLive('slow', 'GitHub is taking longer than usual. The link will work as soon as GitHub finishes publishing it.');
+      })
+      .catch(() => setLive('slow', 'StepForge couldn’t check the link. It will work as soon as GitHub finishes publishing it.'));
+  } else {
+    setLive('slow', 'GitHub Pages isn’t turned on for this repository yet, so the link won’t work until it is. See Settings → Accounts → GitHub.');
+  }
   return [
-    el('p', {}, el('strong', {}, `“${guideTitle}” is shared until ${githubWhen(entry.expiresAt)}.`)),
+    el('p.gh-published-title', {}, el('span.gh-published-icon', { 'aria-hidden': 'true' }, '✓'),
+      el('strong', {}, `“${guideTitle}” is shared until ${githubWhen(entry.expiresAt)}.`)),
     el('code.settings-path.gh-url', { title: entry.url }, entry.url),
     el('div.row', {}, copy, el('button', { type: 'button', onClick: () => { void api.shell.openExternal({ url: entry.url }).catch(() => {}); } }, 'Open in browser')),
-    el('p.muted', {}, entry.pagesReady
-      ? 'GitHub can take a minute or two to put the page online. If the link shows “404”, wait a moment and reload.'
-      : 'GitHub Pages isn’t turned on for this repository yet, so the link won’t work until it is. See Settings → Accounts → GitHub.'),
+    live,
   ];
 }
 
-/** Show the link after publishing from the Export dialog. */
-function showPublishedLinkDialog({ api, entry, guideTitle }) {
+/**
+ * Publish straight away with progress, for Export → "Export and publish".
+ * `request` is { days, format, options }. Resolves when the dialog closes.
+ */
+function showPublishProgressDialog({ api, guideId, guideTitle, request }) {
   return new Promise((resolve) => {
+    const progress = githubPublishProgress(guideTitle);
+    const body = el('div.gh-publish', {}, progress.node);
+    let open = true;
+    const closeBtn = el('button', { type: 'button', onClick: () => { open = false; close(); resolve(); } }, 'Close');
     const { close } = openModal({
-      title: 'Published on the web',
-      body: el('div.gh-publish', {}, ...githubPublishedView(api, entry, guideTitle)),
-      footer: [el('button', { type: 'button', onClick: () => { close(); resolve(); } }, 'Done')],
-      onClose: () => resolve(),
+      title: 'Publish on the web',
+      body,
+      footer: [closeBtn],
+      onClose: () => { open = false; resolve(); },
     });
+    githubRunPublish(api, { guideId, request, progress })
+      .then((entry) => {
+        if (!open) { toast(`“${guideTitle}” is on the web. Copy its link in Settings → Accounts → GitHub.`); return; }
+        body.replaceChildren(...githubPublishedView(api, entry, guideTitle));
+        closeBtn.textContent = 'Done';
+      })
+      .catch((err) => {
+        const message = `The guide was exported, but publishing it on the web failed: ${err.message}`;
+        if (!open) { toast(message, { error: true }); return; }
+        body.replaceChildren(el('p.gh-note.error', { role: 'alert' }, message));
+      });
   });
 }
 
@@ -452,18 +649,21 @@ function showPublishedLinkDialog({ api, entry, guideTitle }) {
  */
 async function showPublishToWebDialog({ api, guideId, guideTitle, onOpenAccounts }) {
   const status = await api.github.status();
-  if (!status.connected || !status.repo) {
+  if (!status.connected || !status.repo || status.needsSignIn) {
     return new Promise((resolve) => {
       const { close } = openModal({
         title: 'Publish to the web',
         body: el('div.gh-publish', {},
           el('p', {}, 'Publishing puts a guide on a GitHub Pages site in a GitHub repository you own, for a limited time.'),
-          el('p.muted', {}, status.connected
-            ? 'Finish setting up in Settings → Accounts → GitHub by choosing the repository for shared guides.'
-            : 'To start, connect GitHub in Settings → Accounts → GitHub. It takes a few minutes and walks you through each step.')),
+          el('p.muted', {}, status.needsSignIn
+            ? 'Your GitHub sign-in has expired. Sign in again in Settings → Accounts → GitHub; your repository and shared guides stay as they are.'
+            : status.connected
+              ? 'Finish setting up in Settings → Accounts → GitHub by choosing the repository for shared guides.'
+              : 'To start, connect GitHub in Settings → Accounts → GitHub. It takes a few minutes and walks you through each step.')),
         footer: [
           el('button', { type: 'button', onClick: () => { close(); resolve(false); } }, 'Cancel'),
-          el('button.primary', { type: 'button', onClick: () => { close(); resolve(false); onOpenAccounts?.(); } }, 'Set up GitHub'),
+          el('button.primary', { type: 'button', onClick: () => { close(); resolve(false); onOpenAccounts?.(); } },
+            status.needsSignIn ? 'Sign in again' : 'Set up GitHub'),
         ],
         onClose: () => resolve(false),
       });
@@ -472,14 +672,16 @@ async function showPublishToWebDialog({ api, guideId, guideTitle, onOpenAccounts
 
   return new Promise((resolve) => {
     const body = el('div.gh-publish', {}, el('p.muted', {}, 'Checking what’s already shared…'));
-    const cancelBtn = el('button', { type: 'button', onClick: () => { close(); resolve(false); } }, 'Cancel');
+    let open = true;
+    let publishing = false;
+    const cancelBtn = el('button', { type: 'button', onClick: () => { open = false; close(); resolve(publishing); } }, 'Cancel');
     const removeBtn = el('button.danger.hidden', { type: 'button' }, 'Remove from the web');
     const publishBtn = el('button.primary', { type: 'button', disabled: true }, 'Publish');
     const { close } = openModal({
       title: 'Publish to the web',
       body,
       footer: [cancelBtn, removeBtn, publishBtn],
-      onClose: () => resolve(false),
+      onClose: () => { open = false; resolve(publishing); },
     });
 
     const days = el('select', { 'aria-label': 'How long to keep the guide online' },
@@ -488,36 +690,41 @@ async function showPublishToWebDialog({ api, guideId, guideTitle, onOpenAccounts
     const error = el('p.gh-note.error.hidden', { role: 'alert' }, '');
     const showError = (message) => { error.textContent = message; error.classList.remove('hidden'); };
     understood.addEventListener('change', () => { publishBtn.disabled = !understood.checked; });
-
-    const showDone = (entry) => {
-      body.replaceChildren(...githubPublishedView(api, entry, guideTitle));
-      cancelBtn.textContent = 'Done';
-      publishBtn.classList.add('hidden');
-      removeBtn.classList.add('hidden');
-    };
+    let form = null;
 
     publishBtn.addEventListener('click', async () => {
-      if (!understood.checked) return;
+      if (!understood.checked || publishing) return;
+      publishing = true;
       error.classList.add('hidden');
-      setButtonLoading(publishBtn, true, 'Publishing…');
-      removeBtn.disabled = true;
+      const progress = githubPublishProgress(guideTitle);
+      body.replaceChildren(progress.node);
+      publishBtn.classList.add('hidden');
+      removeBtn.classList.add('hidden');
+      cancelBtn.textContent = 'Close';
       try {
-        const entry = await api.github.publish({ guideId, days: Number(days.value) });
-        setButtonLoading(publishBtn, false);
-        showDone(entry);
+        const entry = await githubRunPublish(api, { guideId, request: { days: Number(days.value) }, progress });
+        if (!open) { toast(`“${guideTitle}” is on the web. Copy its link in Settings → Accounts → GitHub.`); return; }
+        body.replaceChildren(...githubPublishedView(api, entry, guideTitle));
+        cancelBtn.textContent = 'Done';
         resolve(true);
       } catch (err) {
-        setButtonLoading(publishBtn, false);
+        publishing = false;
+        if (!open) { toast(`Publishing “${guideTitle}” failed: ${err.message}`, { error: true }); return; }
+        // Back to the form, with what went wrong.
+        body.replaceChildren(form);
+        publishBtn.classList.remove('hidden');
         publishBtn.disabled = !understood.checked;
-        removeBtn.disabled = false;
+        removeBtn.classList.toggle('hidden', !removeBtn.onclick);
+        cancelBtn.textContent = 'Cancel';
         showError(err.message);
       }
     });
 
     api.github.published().then((guides) => {
+      if (!open || publishing) return;
       const existing = guides.find((entry) => entry.guideId === guideId) || null;
       // replaceChildren() would print a skipped (null) item as "null".
-      body.replaceChildren(...[
+      form = el('div.gh-publish', {}, ...[
         el('p', {}, `Publish “${guideTitle}” as a web page on your GitHub Pages site. Screenshots, text, and annotations are included, the same as an interactive HTML export.`),
         existing ? el('div.cloud-banner', {},
           'This guide is already shared until ', githubWhen(existing.expiresAt), '. Publishing again updates the page with your latest changes and keeps the same link.') : null,
@@ -528,25 +735,29 @@ async function showPublishToWebDialog({ api, guideId, guideTitle, onOpenAccounts
         el('label.gh-consent', {}, understood, el('span', {}, 'I understand this guide will be public on the internet.')),
         error,
       ].filter(Boolean));
+      body.replaceChildren(form);
       if (existing) {
         removeBtn.classList.remove('hidden');
         removeBtn.onclick = async () => {
           const ok = await confirmDialog(`Stop sharing “${guideTitle}”? Its link stops working within a few minutes.`, { danger: true, okLabel: 'Remove from the web' });
           if (!ok) return;
           setButtonLoading(removeBtn, true, 'Removing…');
+          publishBtn.disabled = true;
           try {
             await api.github.unpublish({ slug: existing.slug });
             toast(`“${guideTitle}” is no longer shared.`);
+            open = false;
             close();
             resolve(true);
           } catch (err) {
             setButtonLoading(removeBtn, false);
+            publishBtn.disabled = !understood.checked;
             showError(err.message);
           }
         };
       }
     }).catch((err) => {
-      body.replaceChildren(el('p.gh-note.error', { role: 'alert' }, err.message));
+      if (open && !publishing) body.replaceChildren(el('p.gh-note.error', { role: 'alert' }, err.message));
     });
   });
 }

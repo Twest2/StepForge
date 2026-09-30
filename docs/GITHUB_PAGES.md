@@ -17,23 +17,27 @@ Sharing is **optional and off by default**. You need a free GitHub account.
 
 ## Set up sharing (one time)
 
-Open **Settings → Accounts → GitHub**. The panel walks you through these
-steps and has a button for each one.
+Open **Settings → Accounts → GitHub**. The panel walks you through three
+steps, with a button for each, and ticks each one off when it's done.
 
-1. **Choose a repository for shared guides.** The simplest choice is a new
-   one: choose **Create a new repository**, and GitHub opens with the name
-   `stepforge-guides` filled in. Keep it **Public** and select **Create
-   repository**. You can also
-   [use a repository you already have](#use-an-existing-repository).
-2. **Install StepForge on only that repository.** Choose **Install StepForge
-   on GitHub**. On GitHub, select **Only select repositories**, pick the
-   repository from step 1, and select **Install**. StepForge asks for access
-   to that repository's contents, Pages, and workflows, and nothing else.
-3. **Sign in.** Choose **Sign in with GitHub**. StepForge shows a short code
-   and opens `github.com/login/device`. Enter the code there and approve
+1. **Sign in to GitHub.** Choose **Sign in with GitHub**. StepForge copies a
+   one-time code to your clipboard and opens `github.com/login/device`. Paste
+   the code there and approve StepForge. The code also stays on screen in
    StepForge. You never type your GitHub password into StepForge.
-4. **Choose the repository.** Back in StepForge, pick the repository from the
-   list and choose **Use this repository**.
+2. **Give StepForge one repository.** The simplest choice is a new
+   repository just for shared guides: choose **Create a repository**, and
+   GitHub opens with the name `stepforge-guides` filled in. Keep it
+   **Public** and select **Create repository**. Then choose **Install
+   StepForge on GitHub**, select **Only select repositories**, pick that
+   repository, and select **Install**. StepForge asks for access to that
+   repository's contents, Pages, and workflows, and nothing else. You can also
+   [use a repository you already have](#use-an-existing-repository).
+3. **Choose the repository.** When you come back to StepForge, the panel
+   already knows StepForge is installed. Pick the repository and choose **Use
+   this repository**. The button shows each setup step as it runs.
+
+You can do step 2 before step 1 if you like. A brand-new, empty repository
+works too.
 
 StepForge then sets up the repository for you:
 
@@ -79,10 +83,14 @@ repository instead.
 2. Choose how long to keep it online: **1 day**, **7 days**, or **30 days**.
 3. Read the warning, tick **I understand this guide will be public on the
    internet**, and choose **Publish**.
-4. Choose **Copy link** and send it to whoever needs it.
+4. StepForge shows what it's doing: preparing the page, uploading it to
+   GitHub (with a progress bar, size, and speed), and updating your site. You
+   can close the window; StepForge keeps going and tells you when it's done.
+5. Choose **Copy link** and send it to whoever needs it.
 
-GitHub can take a minute or two to put a new page online. If the link shows
-**404**, wait a moment and reload.
+GitHub usually takes under a minute to put a new page online. StepForge
+checks the link for you: the dialog says **Going live** until GitHub serves
+the page, then **Live**. You can copy the link straight away.
 
 Each shared guide is one page, the same as an **Interactive HTML** export with
 the default options: all visible steps, screenshots with annotations,
@@ -97,8 +105,9 @@ To choose the page's look, publish from **Export** instead:
    template and options you like.
 2. Turn on **Publish on the web**, choose how long to keep it online, and read
    the warning.
-3. Choose **Export and publish**. StepForge saves the file as usual, puts the
-   same page on your site, and shows the link.
+3. Choose **Export and publish**. StepForge saves the file as usual, then
+   publishes the same page with the same progress as above and shows the
+   link.
 
 **Publish on the web** only appears for the two HTML formats. If GitHub isn't
 set up yet, it's turned off and says where to set it up. If publishing fails,
@@ -177,13 +186,15 @@ already shared from the old repository stay there until they expire.
 
 | Problem | What to do |
 | --- | --- |
+| The sign-in code is lost, or you closed the GitHub page | Choose **Copy code** or **Open GitHub again** under the code, or **Get a new code** to start over. Closing Settings doesn't cancel a sign-in. |
+| "Your GitHub sign-in has expired or was revoked" | Choose **Sign in again**. Your repository and shared guides stay as they are. |
 | **Install StepForge on GitHub** and **Sign in with GitHub** do nothing, and the panel says StepForge "isn't connected to a StepForge GitHub App" | This copy of StepForge was built without the StepForge GitHub App, which happens when you run it from source. Install an official release, or see the [maintainer guide](GITHUB_PAGES_RELEASE.md#signing-in-from-a-development-checkout). |
 | "already publishes a GitHub Pages site" or "has a gh-pages branch that StepForge didn't create" | StepForge won't replace an existing site. Create a new repository for shared guides and install StepForge on it. |
-| The repository list is empty | Install StepForge on the repository (step 2), then choose **Refresh**. |
+| Step 2 keeps waiting for StepForge to be installed | Install StepForge on the repository on GitHub, then come back to StepForge or choose **Check again**. |
 | "StepForge can't change *owner/repo*" | Open the repository's **Settings → GitHub Apps**, choose **Configure** next to StepForge, and make sure the repository is selected and every requested permission is accepted. |
 | **GitHub Pages off** | Open **Settings → Pages** in the repository, choose **Deploy from a branch**, pick `gh-pages` and `/ (root)`, and save. Then choose **Check again**. |
 | **Removed only while StepForge is open** | StepForge couldn't add the clean-up workflow. Accept the **Workflows** permission for StepForge on GitHub, then choose **Check again**. |
-| The link shows 404 | GitHub is still publishing. Wait a minute or two and reload. |
+| The dialog says GitHub is taking longer than usual, or the link shows 404 | GitHub is still publishing. Wait a few minutes and reload. If it never appears, check the **Actions** tab in the repository for a failed "pages build and deployment" run. |
 | The sign-in code expired | Choose **Sign in with GitHub** again. Codes last 15 minutes. |
 
 See the [privacy policy](PRIVACY.md#optional-github-pages-sharing) for exactly

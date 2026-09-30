@@ -101,7 +101,8 @@ Sharing is **off by default**. When you connect GitHub
 ([how it works](GITHUB_PAGES.md)):
 
 - Sign-in happens on GitHub's website with a short code. StepForge never sees
-  your GitHub password.
+  your GitHub password. To save typing, StepForge copies that one-time code
+  to your clipboard when you choose **Sign in with GitHub**.
 - StepForge acts through its GitHub App, which can only reach the
   repositories **you install it on**, with access to their contents, Pages
   settings, and workflows. It can't see or change your other repositories.
@@ -124,6 +125,9 @@ Sharing is **off by default**. When you connect GitHub
   with anyone who saved the page.
 - While connected, StepForge contacts GitHub shortly after it starts to remove
   expired guides.
+- After you publish, StepForge checks the new link on your GitHub Pages site
+  (a request for the page's headers, not its content) every few seconds for up
+  to a few minutes, so it can tell you when the link works.
 - Data travels over HTTPS. Your GitHub token is stored encrypted with your
   operating system's credential storage.
 - **Disconnect** removes the saved sign-in but leaves shared guides online

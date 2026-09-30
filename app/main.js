@@ -15,6 +15,7 @@ const { Settings } = require('../core/settings');
 const { GoogleDrive } = require('./google-drive');
 const { GitHubPages } = require('./github-pages');
 const { EXPIRY_DAYS, titleFromHtml } = require('../core/pages-site');
+const { TransferMeter } = require('../core/transfer-meter');
 const { CloudSync } = require('../core/cloud-sync');
 const { createCredentialVault } = require('./credential-vault');
 const { SearchIndex } = require('../core/search');
@@ -800,22 +801,27 @@ function setupIpc() {
   // main process; the renderer only sees status and public guide links.
   h('github:status', () => githubPages.status());
   h('github:connect', () => githubPages.connect(), { validate: (a) => Object.keys(a).length === 0 });
-  h('github:cancel', () => { githubPages.cancel(); return { ok: true }; });
+  h('github:cancel', () => { githubPages.cancelSignIn(); return { ok: true }; });
   h('github:disconnect', () => { githubPages.disconnect(); return githubPages.status(); });
   h('github:repositories', () => githubPages.repositories());
-  h('github:selectRepository', ({ fullName, useExisting }) => githubPages.selectRepository({ fullName, useExisting: useExisting === true }),
+  // Setting up a repository takes several requests; say which one is running.
+  const setupProgress = (progress) => sendToRenderer('github:progress', progress);
+  h('github:selectRepository', ({ fullName, useExisting }) => githubPages.selectRepository({ fullName, useExisting: useExisting === true, onProgress: setupProgress }),
     { validate: (a) => c.string(a.fullName, 200) && (a.useExisting === undefined || c.bool(a.useExisting)) });
   h('github:changeRepository', () => githubPages.clearRepository());
-  h('github:setup', () => githubPages.setup());
+  h('github:setup', () => githubPages.setup({ onProgress: setupProgress }));
   h('github:published', () => githubPages.published());
   // Publishes one of the HTML exports: the interactive one with default
   // options from Share, or whichever HTML format and options Export chose.
+  // Progress goes out on github:progress: export, upload (bytes), commit.
   h('github:publish', async ({ guideId, days, format = 'html-rich', options = {} }) => {
     const guide = store.getGuide(guideId);
     if (!guide) throw new Error('Guide not found.');
+    const progress = (update) => sendToRenderer('github:progress', { task: 'publish', guideId, ...update });
     const outDir = path.join(store.tempDir, `publish-${guideId}`);
     fs.rmSync(outDir, { recursive: true, force: true });
     try {
+      progress({ stage: 'export' });
       const result = await runExportInWorker({
         dataDir: store.root,
         guideId,
@@ -827,7 +833,14 @@ function setupIpc() {
       const html = fs.readFileSync(result.file, 'utf8');
       // The exported title has placeholders filled in, matching the page.
       const title = titleFromHtml(html) || guide.title;
-      return await githubPages.publish({ guideId, title, html, days });
+      let meter = null;
+      return await githubPages.publish({ guideId, title, html, days, onProgress: (update) => {
+        if (update.stage !== 'upload') { progress(update); return; }
+        // The meter adds a transfer rate and keeps updates to a few a second.
+        meter ||= new TransferMeter({ direction: 'upload', name: title, total: update.total,
+          onUpdate: ({ loaded, total, bytesPerSecond }) => progress({ stage: 'upload', loaded, total, bytesPerSecond }) });
+        meter.update(update.loaded);
+      } });
     } finally {
       fs.rmSync(outDir, { recursive: true, force: true });
     }
@@ -838,9 +851,12 @@ function setupIpc() {
   });
   h('github:unpublish', ({ slug }) => githubPages.unpublish({ slug }),
     { validate: (a) => c.string(a.slug, 40) });
+  // Checks a just-published link until GitHub Pages serves it.
+  h('github:waitUntilLive', async ({ slug }) => ({ live: await githubPages.waitUntilLive(slug) }),
+    { validate: (a) => c.string(a.slug, 40) });
   // Copies only the sign-in code or a published guide's link, never arbitrary text.
   h('github:copy', async ({ kind, slug }) => {
-    const text = kind === 'code' ? githubPages.status().pending?.userCode : await githubPages.publishedLink(slug);
+    const text = kind === 'code' ? githubPages.status().pending?.userCode : githubPages.linkFor(slug);
     if (!text) return { ok: false };
     clipboard.writeText(text);
     return { ok: true, text };
@@ -1246,6 +1262,8 @@ if (!gotLock) {
       openExternal: (url) => shell.openExternal(url) });
     githubPages = new GitHubPages({ directory: store.settingsDir, safeStorage,
       openExternal: (url) => shell.openExternal(url),
+      // The sign-in code is copied so it can be pasted on github.com.
+      copyText: (text) => clipboard.writeText(text),
       onStatus: (status) => sendToRenderer('github:status', status) });
     cloudSync = new CloudSync({
       store, drive: googleDrive,

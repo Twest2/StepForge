@@ -42,4 +42,20 @@ class TransferMeter {
   }
 }
 
-module.exports = { TransferMeter, RATE_WINDOW_MS };
+// Streams a request body in slices so an upload can report how much of it
+// has been handed to the network. Called once per attempt, so a retry restarts at 0.
+const PROGRESS_SLICE = 256 * 1024;
+function progressBody(data, onProgress) {
+  let sent = 0;
+  return new ReadableStream({
+    pull(controller) {
+      if (sent >= data.length) { controller.close(); return; }
+      const slice = data.subarray(sent, sent + PROGRESS_SLICE);
+      sent += slice.length;
+      controller.enqueue(slice);
+      onProgress(sent);
+    },
+  });
+}
+
+module.exports = { TransferMeter, RATE_WINDOW_MS, progressBody };

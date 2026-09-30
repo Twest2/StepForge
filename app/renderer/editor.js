@@ -1033,6 +1033,7 @@ class GuideEditor {
               },
             },
             { label: 'Duplicate step', action: () => this.duplicateSelectedStep() },
+            { label: 'Choose screenshot…', action: () => this.chooseScreenshot(step.stepId) },
             'sep',
             { label: 'Move up', action: () => this.moveSelectedStep(-1) },
             { label: 'Move down', action: () => this.moveSelectedStep(1) },
@@ -1454,6 +1455,9 @@ class GuideEditor {
     if (includeImage && this.currentStep.image) {
       const image = await this.currentStepImageToBase64(this.currentStep);
       if (image) record.image = image;
+      // Choose screenshot… replaces the original too, so undo needs it.
+      const original = await this.stepImageToBase64(this.currentStep, 'original');
+      if (original) record.original = original;
     }
     return record;
   }
@@ -1466,13 +1470,21 @@ class GuideEditor {
     this.saveStepDebounced.cancel();
     this.pendingSave = false;
     if (record.image && step.image) {
-      const saved = await api.step.setWorkingImage({
-        guideId: this.guideId,
-        stepId: step.stepId,
-        pngBase64: record.image.base64,
-        size: record.image.size,
-        step,
-      });
+      const saved = record.original
+        ? await api.step.setImages({
+          guideId: this.guideId,
+          step,
+          originalBase64: record.original.base64,
+          workingBase64: record.image.base64,
+          size: record.image.size,
+        })
+        : await api.step.setWorkingImage({
+          guideId: this.guideId,
+          stepId: step.stepId,
+          pngBase64: record.image.base64,
+          size: record.image.size,
+          step,
+        });
       this.commitSavedStep(saved);
     } else {
       await this.flushStep(step);
@@ -1764,6 +1776,34 @@ class GuideEditor {
     });
     await this.reload(newStep.stepId);
     this.onToast('Step duplicated.');
+  }
+
+  /**
+   * Step menu → Choose screenshot…: use an image file as the step's
+   * screenshot. Its title, description and annotations stay; Ctrl+Z puts
+   * the old screenshot back.
+   */
+  async chooseScreenshot(stepId) {
+    if (stepId && stepId !== this.selectedStepId) await this.selectStep(stepId);
+    const step = this.currentStep;
+    if (!step) return;
+    if (this.pendingSave) await this.flushStep();
+    const before = await this.snapshotCurrentStep(true);
+    let result;
+    try {
+      result = await api.step.chooseImage({ guideId: this.guideId, stepId: step.stepId });
+    } catch (err) {
+      this.onToast(err.message, { error: true });
+      return;
+    }
+    if (!result || !result.ok) return;
+    if (before) this.pushCanvasHistory(before);
+    await this.reload(step.stepId);
+    const kept = (result.step.annotations || []).length;
+    const blurs = result.removedBlurs ? ' Private details will be checked again before publishing.' : '';
+    this.onToast(kept
+      ? `Screenshot replaced. Its annotations were kept, so check they still line up.${blurs} Press Ctrl+Z to undo.`
+      : `Screenshot replaced.${blurs} Press Ctrl+Z to undo.`);
   }
 
   async deleteSelectedStep() {

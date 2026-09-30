@@ -59,6 +59,12 @@ function fakeGitHub({ empty = true, allowWorkflows = true, allowPages = true, pr
     gh.requests.push(`${method} ${u.pathname}`);
     if (gh.offline) { gh.offline -= 1; throw new TypeError('fetch failed'); }
     // The published site itself: 404 until GitHub Pages has built it.
+    // A custom domain: `customHttps` says whether it answers over https.
+    if (u.hostname === 'guides.example.com') {
+      assert.equal(method, 'HEAD');
+      if (u.protocol === 'https:' && !gh.customHttps) throw new TypeError('fetch failed');
+      return new Response(null, { status: 200 });
+    }
     if (u.origin === 'https://octo.github.io') {
       assert.equal(method, 'HEAD');
       gh.liveChecks += 1;
@@ -638,4 +644,48 @@ test('release builds refuse to ship without the StepForge GitHub App, and stamp 
   assert.deepEqual(app, { clientId: CLIENT_ID, appSlug: APP_SLUG, source: 'release' });
   const { pages } = setup(t, { clientId: app.clientId, appSlug: app.appSlug });
   assert.equal(pages.status().available, true);
+});
+
+test('links follow a custom domain added after setup, over https when the domain supports it', async (t) => {
+  const { pages, gh } = await connected(t);
+  await pages.selectRepository({ fullName: 'octo/stepforge-guides' });
+  const first = await pages.publish({ guideId: 'g', title: 'Guide', html: '<head></head>page', days: 7 });
+  assert.equal(first.url, `https://octo.github.io/stepforge-guides/g/${first.slug}/`);
+
+  // The user adds guides.example.com in the repository's Pages settings.
+  // GitHub has no certificate for it, but it answers over https (e.g. behind Cloudflare).
+  Object.assign(gh.pages, { cname: 'guides.example.com', html_url: 'http://guides.example.com/', https_enforced: false, https_certificate: null });
+  gh.customHttps = true;
+  const statuses = [];
+  pages.onStatus = (status) => statuses.push(status.siteUrl);
+  const [listed] = await pages.published();
+  assert.equal(listed.url, `https://guides.example.com/g/${first.slug}/`, 'the list of shared guides uses the custom domain');
+  assert.equal(pages.linkFor(first.slug), `https://guides.example.com/g/${first.slug}/`, 'Copy link does too');
+  assert.equal(pages.status().siteUrl, 'https://guides.example.com/');
+  assert.deepEqual(statuses, ['https://guides.example.com/'], 'the GitHub panel hears about the new address once');
+  assert.equal(await pages.waitUntilLive(first.slug, { attempts: 1 }), true, 'the live check uses the custom domain');
+
+  // Without https on the domain, the link uses http rather than one that fails.
+  gh.customHttps = false;
+  const again = await pages.publish({ guideId: 'g2', title: 'Second', html: '<head></head>page', days: 1 });
+  assert.equal(again.url, `http://guides.example.com/g/${again.slug}/`);
+
+  // Once GitHub enforces https, trust it without checking.
+  Object.assign(gh.pages, { https_enforced: true });
+  assert.equal((await pages.published())[0].url.startsWith('https://guides.example.com/'), true);
+
+  // Removing the custom domain goes back to the github.io address.
+  Object.assign(gh.pages, { cname: null, html_url: 'https://octo.github.io/stepforge-guides/', https_enforced: true });
+  assert.equal((await pages.published())[0].url.startsWith('https://octo.github.io/stepforge-guides/g/'), true);
+});
+
+test('a failed Pages lookup keeps the last known address', async (t) => {
+  const { pages, gh } = await connected(t);
+  await pages.selectRepository({ fullName: 'octo/stepforge-guides' });
+  Object.assign(gh.pages, { cname: 'guides.example.com', html_url: 'https://guides.example.com/', https_enforced: true });
+  await pages.published();
+  assert.equal(pages.status().siteUrl, 'https://guides.example.com/');
+  gh.pages = null; // GitHub answers 404, e.g. the App lost the Pages permission
+  await pages.published();
+  assert.equal(pages.status().siteUrl, 'https://guides.example.com/');
 });

@@ -168,6 +168,25 @@ Sharing is **off by default**. When you connect GitHub
   and uninstall it from your repository. See the
   [GitHub Privacy Statement](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement).
 
+## Optional Confluence publishing
+
+Confluence publishing is **off until you connect a site** ([how it works](CONFLUENCE.md)).
+
+- StepForge only talks to the Confluence site you enter. Requests never follow
+  redirects, so a token can't be sent anywhere else.
+- Your API token or personal access token is stored encrypted with your
+  operating system's credential storage. With **Sign in with your browser**,
+  the site's cookies are kept in a StepForge browser session used only for
+  Confluence.
+- When you publish, the guide's text and its screenshots (with private details
+  blurred, see above) are sent to the space you choose. Nothing is sent until
+  you choose **Publish**.
+- A smart card is used through your operating system; StepForge never sees
+  your PIN or private key. It remembers which certificate you chose for each
+  site.
+- **Disconnect** removes the saved sign-in and the Confluence cookies. Pages
+  you published stay in Confluence.
+
 ## Bundled components
 
 Besides the Electron desktop runtime, StepForge includes the Tesseract OCR

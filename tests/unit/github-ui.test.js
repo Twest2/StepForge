@@ -65,6 +65,7 @@ function ui() {
   context.toast = (message, options) => { toasts.push([message, options?.error === true]); };
   load('cloud.js');
   load('privacy.js');
+  load('confluence.js');
   load('github.js');
   load('dialogs.js');
 
@@ -90,6 +91,10 @@ function fakeApi(github = {}) {
     calls,
     progress: (update) => { for (const fn of progressListeners) fn(update); },
     shell: { openExternal: async ({ url }) => { calls.push(['open', url]); return { ok: true }; } },
+    confluence: {
+      status: async () => ({ connected: false }),
+      onStatus: () => () => {},
+    },
     redact: {
       check: async (args) => { calls.push(['redact:check', args]); return { checked: 1, added: 0, blurs: [], text: [], steps: 0 }; },
       onProgress: () => () => {},
@@ -122,9 +127,9 @@ test('Accounts lists every sync service, then GitHub, and opens each one’s pan
   await settle();
   const rows = u.all(accounts.node).filter((n) => n.tag === 'button' && n.classList.contains('account-row'));
   assert.deepEqual(rows.map((row) => row.children[1].children[0].textContent),
-    ['Google Drive', 'OneDrive', 'Dropbox', 'Nextcloud or WebDAV', 'GitHub']);
+    ['Google Drive', 'OneDrive', 'Dropbox', 'Nextcloud or WebDAV', 'GitHub', 'Confluence']);
   const logos = rows.map((row) => row.children[0].children[0].src);
-  assert.deepEqual(logos, ['google-drive', 'onedrive', 'dropbox', 'nextcloud', 'github'].map((name) => `../assets/icons/${name}.svg`));
+  assert.deepEqual(logos, ['google-drive', 'onedrive', 'dropbox', 'nextcloud', 'github', 'confluence'].map((name) => `../assets/icons/${name}.svg`));
   for (const logo of logos) {
     const file = path.join(__dirname, '../../app/renderer', logo);
     assert.match(fs.readFileSync(file, 'utf8'), /^<svg /, `${logo} ships with the app as a local SVG`);
@@ -132,8 +137,8 @@ test('Accounts lists every sync service, then GitHub, and opens each one’s pan
   assert.equal(rows[0].textContent.includes('casey@example.com'), true, 'Drive row shows who is signed in');
   for (const row of rows.slice(1)) assert.equal(row.textContent.includes('Not connected'), true);
   const panels = u.all(accounts.node).filter((n) => n.tag === 'fieldset');
-  assert.equal(panels.length, 5);
-  const [drivePanel, oneDrivePanel, , , githubPanel] = panels;
+  assert.equal(panels.length, 6);
+  const [drivePanel, oneDrivePanel, , , githubPanel, confluencePanel] = panels;
   assert.equal(u.visible(drivePanel), false, 'no service panel until one is chosen');
 
   u.click(rows[4]);
@@ -147,6 +152,10 @@ test('Accounts lists every sync service, then GitHub, and opens each one’s pan
   u.click(rows[0]);
   assert.equal(u.visible(drivePanel), true);
   assert.equal(u.visible(oneDrivePanel), false);
+  u.click(u.find(accounts.node, 'All accounts'));
+  u.click(rows[5]);
+  assert.equal(u.visible(confluencePanel), true);
+  assert.match(confluencePanel.textContent, /Publish guides as Confluence pages/);
   accounts.dispose();
 
   const direct = u.context.makeAccountsSettings(fakeApi(), { view: 'github' });
@@ -439,7 +448,7 @@ test('an expired sign-in offers Sign in again and keeps the site on screen', asy
 
   const accounts = u.context.makeAccountsSettings(fakeApi({ connected: true, needsSignIn: true, login: 'octo', repo: 'octo/guides' }));
   await settle();
-  const row = u.all(accounts.node).filter((n) => n.tag === 'button' && n.classList.contains('account-row')).at(-1);
+  const row = u.all(accounts.node).filter((n) => n.tag === 'button' && n.classList.contains('account-row')).find((n) => n.textContent.includes('GitHub'));
   assert.match(row.textContent, /Sign in again/);
   accounts.dispose();
 });

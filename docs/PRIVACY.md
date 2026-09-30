@@ -97,6 +97,26 @@ Drive sync is **off by default**. When you sign in
   [Google API Services User Data Policy](https://developers.google.com/terms/api-services-user-data-policy),
   including the Limited Use requirements.
 
+## Optional OneDrive, Dropbox and Nextcloud sync
+
+These work like Google Drive sync above: off by default, your whole library
+is uploaded to *your* account and nowhere else, screenshots are stored once
+by SHA-256 fingerprint, and sign-in details are stored encrypted with your
+operating system's credential storage. StepForge syncs with one service at a
+time. [How it works](CLOUD_ACCOUNTS.md).
+
+- **OneDrive:** you sign in on Microsoft's site. StepForge asks for
+  `Files.ReadWrite.AppFolder`, which only covers its own `Apps/StepForge`
+  folder, plus your name and email address (`User.Read`) to show which account
+  is connected, and storage usage.
+- **Dropbox:** you sign in on Dropbox's site. StepForge is an "App folder" app,
+  so it can only use `Apps/StepForge`. It reads your name, email address and
+  storage usage.
+- **Nextcloud:** you log in on your own server's page and it gives StepForge an
+  app password. **Other WebDAV servers:** you enter a user name and password,
+  which StepForge only sends over HTTPS unless the server is on your own
+  network. Everything goes to the server you entered and nowhere else.
+
 ## Optional GitHub Pages sharing
 
 Sharing is **off by default**. When you connect GitHub

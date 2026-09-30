@@ -13,6 +13,9 @@ const { GuideStore } = require('../core/store');
 const { LibraryLocation } = require('../core/library-location');
 const { Settings } = require('../core/settings');
 const { GoogleDrive } = require('./google-drive');
+const { OneDrive } = require('./onedrive');
+const { Dropbox } = require('./dropbox');
+const { WebDAV } = require('./webdav');
 const { GitHubPages } = require('./github-pages');
 const { EXPIRY_DAYS, titleFromHtml } = require('../core/pages-site');
 const { TransferMeter } = require('../core/transfer-meter');
@@ -77,11 +80,42 @@ let templates;
 let capture;
 let textIntel;
 let googleDrive;
+// Every sync service by id. One of them, settings cloud.provider, syncs.
+let cloudProviders = {};
+let cloudConnectingTo = null;
 let githubPages;
 let cloudSync;
 let cloudConnecting = false;
 let cloudTesting = false;
 let cloudEditorDirty = false;
+
+// The sync services, in the order Settings → Accounts lists them.
+const CLOUD_LABELS = { google: 'Google Drive', onedrive: 'OneDrive', dropbox: 'Dropbox', webdav: 'Nextcloud' };
+const activeCloud = () => cloudProviders[settings.get('cloud.provider')] || googleDrive;
+
+function cloudStatus() {
+  const drive = activeCloud();
+  return {
+    ...drive.status(), ...cloudSync.status, enabled: settings.get('cloud.enabled') === true,
+    provider: drive.id, providerLabel: drive.label, providerShort: drive.short,
+    providers: Object.fromEntries(Object.values(cloudProviders).map((p) => [p.id, { available: p.available, connected: p.status().connected }])),
+  };
+}
+
+// StepForge syncs with one account at a time. Switching keeps every guide on
+// this computer and everything already stored with the previous service.
+async function useCloud(target) {
+  if (activeCloud() !== target) {
+    cloudSync.stop();
+    await cloudSync.running;
+    cloudSync.setDrive(target);
+    settings.set('cloud.provider', target.id);
+    cloudSync.publish('off', `${target.label} sharing is off.`, { lastSync: null, transfer: null });
+  }
+  for (const other of Object.values(cloudProviders)) {
+    if (other !== target && other.status().connected) await other.disconnect();
+  }
+}
 let mainWindow;
 let lastZoomShortcut = null;
 let canvasZoomActive = false;
@@ -725,45 +759,54 @@ function setupIpc() {
     { validate: (a) => c.optionalString(a.q, 1000) });
 
   // Cloud access is confined to the main process; tokens never enter IPC.
-  const cloudStatus = () => ({ ...googleDrive.status(), ...cloudSync.status, enabled: settings.get('cloud.enabled') === true });
   h('cloud:status', () => {
-    if (googleDrive.status().connected) {
+    const drive = activeCloud();
+    if (drive.status().connected) {
       // Show cached identity immediately, then refresh the optional profile.
-      const previous = googleDrive.status();
-      void googleDrive.account().then(() => {
-        const next = googleDrive.status();
+      const previous = drive.status();
+      void drive.account().then(() => {
+        const next = drive.status();
         if (next.photoLink !== previous.photoLink || next.email !== previous.email) sendToRenderer('cloud:status', cloudStatus());
       }).catch(() => {});
     }
     return cloudStatus();
   });
-  h('cloud:connect', async () => {
-    if (cloudTesting || cloudConnecting) throw new Error('Wait for Google sign-in or testing to finish.');
+  h('cloud:connect', async ({ provider = activeCloud().id, server, username, password } = {}) => {
+    if (cloudTesting || cloudConnecting) throw new Error('Wait for sign-in or testing to finish.');
+    const target = cloudProviders[provider];
     cloudConnecting = true;
+    cloudConnectingTo = target;
     try {
-      await googleDrive.connect();
-      await googleDrive.account();
+      const result = await target.connect(provider === 'webdav' ? { server, username, password } : undefined);
+      // A WebDAV server that isn't Nextcloud asks for a user name and password.
+      if (result?.needsPassword) return { ...cloudStatus(), needsPassword: true, server: result.server };
+      await target.account();
+      await useCloud(target);
       // The sign-in control explicitly explains that connecting enables sharing.
       settings.set('cloud.enabled', true);
       cloudSync.start();
       return cloudStatus();
-    } finally { cloudConnecting = false; }
-  }, { validate: (a) => Object.keys(a).length === 0 });
-  h('cloud:cancel', () => { googleDrive.cancel(); return { ok: true }; });
+    } finally { cloudConnecting = false; cloudConnectingTo = null; }
+  }, { validate: (a) => Object.keys(a).every((key) => ['provider', 'server', 'username', 'password'].includes(key))
+    && (a.provider === undefined || Object.hasOwn(CLOUD_LABELS, a.provider))
+    && c.optionalString(a.server, 2000) && c.optionalString(a.username, 500) && c.optionalString(a.password, 1000) });
+  h('cloud:cancel', () => { (cloudConnectingTo || activeCloud()).cancel(); return { ok: true }; });
   h('cloud:disconnect', async () => {
+    const drive = activeCloud();
     settings.set('cloud.enabled', false);
     cloudSync.stop();
-    googleDrive.disconnect();
+    drive.disconnect();
     await cloudSync.running;
-    cloudSync.publish('off', 'Google Drive disconnected. Local guides and cloud copies are kept.');
+    cloudSync.publish('off', `${drive.label} disconnected. Local guides and cloud copies are kept.`, { lastSync: null, transfer: null });
     return cloudStatus();
   });
   h('cloud:enable', async ({ enabled }) => {
-    if (cloudConnecting || cloudTesting) throw new Error('Wait for Google sign-in or connection testing to finish.');
-    if (enabled && !googleDrive.status().connected) throw new Error('Sign in to Google Drive first.');
+    if (cloudConnecting || cloudTesting) throw new Error('Wait for sign-in or connection testing to finish.');
+    const drive = activeCloud();
+    if (enabled && !drive.status().connected) throw new Error(`Sign in to ${drive.label} first.`);
     settings.set('cloud.enabled', enabled);
     if (enabled) cloudSync.start();
-    else { cloudSync.stop(); await cloudSync.running; cloudSync.publish('off', 'Google Drive sharing is off.'); }
+    else { cloudSync.stop(); await cloudSync.running; cloudSync.publish('off', `${drive.label} sharing is off.`); }
     return cloudStatus();
   }, { validate: (a) => typeof a.enabled === 'boolean' });
   h('cloud:sync', () => cloudSync.sync());
@@ -785,12 +828,12 @@ function setupIpc() {
   h('cloud:deleteGuideSnapshots', ({ guideId }) => cloudSync.removeGuideSnapshots(guideId),
     { validate: (a) => c.id(a.guideId) });
   h('cloud:test', async () => {
-    if (cloudConnecting || cloudTesting) throw new Error('Google sign-in or testing is already in progress.');
+    if (cloudConnecting || cloudTesting) throw new Error('Sign-in or testing is already in progress.');
     cloudTesting = true;
     cloudSync.stop();
     try {
       await cloudSync.running;
-      return await googleDrive.test();
+      return await activeCloud().test();
     } finally {
       cloudTesting = false;
       if (settings.get('cloud.enabled') === true) cloudSync.start();
@@ -877,7 +920,7 @@ function setupIpc() {
   h('storage:reset', () => libraryLocation.schedule(libraryLocation.defaultPath));
   h('storage:cancelMove', () => libraryLocation.cancel());
   h('settings:set', ({ keyPath, value }) => {
-    if (keyPath === 'cloud' || keyPath.startsWith('cloud.')) throw new Error('Use the Google Drive sharing controls.');
+    if (keyPath === 'cloud' || keyPath.startsWith('cloud.')) throw new Error('Use the cloud sync controls in Settings → Accounts.');
     settings.set(keyPath, value);
     if (keyPath === 'appearance') applyTheme();
     if (keyPath.startsWith('capture.hotkey')) registerHotkeys();
@@ -1258,15 +1301,22 @@ if (!gotLock) {
     settings = new Settings(store.settingsDir);
     // Dev builds keep their sign-in to their own data folder instead of
     // sharing (and possibly clearing) the release build's OS backup.
-    googleDrive = new GoogleDrive({ directory: store.settingsDir, safeStorage, vault: devBuild ? null : createCredentialVault(),
-      openExternal: (url) => shell.openExternal(url) });
+    const cloudVault = (slot) => (devBuild ? null : createCredentialVault({ slot }));
+    const cloudOptions = { directory: store.settingsDir, safeStorage, openExternal: (url) => shell.openExternal(url) };
+    googleDrive = new GoogleDrive({ ...cloudOptions, vault: cloudVault('google') });
+    cloudProviders = {
+      google: googleDrive,
+      onedrive: new OneDrive({ ...cloudOptions, vault: cloudVault('onedrive') }),
+      dropbox: new Dropbox({ ...cloudOptions, vault: cloudVault('dropbox') }),
+      webdav: new WebDAV({ ...cloudOptions, vault: cloudVault('webdav') }),
+    };
     githubPages = new GitHubPages({ directory: store.settingsDir, safeStorage,
       openExternal: (url) => shell.openExternal(url),
       // The sign-in code is copied so it can be pasted on github.com.
       copyText: (text) => clipboard.writeText(text),
       onStatus: (status) => sendToRenderer('github:status', status) });
     cloudSync = new CloudSync({
-      store, drive: googleDrive,
+      store, drive: activeCloud(),
       enabled: () => settings.get('cloud.enabled') === true && !cloudTesting,
       // Conservatively defer incoming replacements while any editor is active.
       // This also covers pending debounced input and background capture work.
@@ -1280,7 +1330,7 @@ if (!gotLock) {
         searchIndex.removeGuide(guideId);
         sendToRenderer('cloud:library-changed', { guideId });
       },
-      onStatus: (status) => sendToRenderer('cloud:status', { ...googleDrive.status(), ...status, enabled: settings.get('cloud.enabled') === true }),
+      onStatus: () => sendToRenderer('cloud:status', cloudStatus()),
     });
     searchIndex = new SearchIndex(store.indexDir);
     // Rebuild/reconcile the index against the library at startup so a missing,
@@ -1413,7 +1463,7 @@ if (!gotLock) {
     createWindow();
     registerHotkeys();
     // A restored sign-in (after an update or reinstall) resumes sync on its own.
-    void googleDrive.recover().then((recovered) => {
+    void activeCloud().recover().then((recovered) => {
       if (recovered) cloudSync.publish(cloudSync.status.phase, cloudSync.status.message);
       if (recovered && settings.get('cloud.enabled') === true) void cloudSync.sync();
     });

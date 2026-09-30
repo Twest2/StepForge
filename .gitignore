@@ -15,5 +15,6 @@ brag-output/
 google-oauth.local.json
 # GitHub App client for development builds (see docs/GITHUB_PAGES_RELEASE.md)
 github-app.local.json
+cloud-apps.local.json
 TODO.md
 AGENTS.md

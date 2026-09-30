@@ -461,11 +461,15 @@ function makeGitHubSettings(api) {
  * its panel with a way back to the list.
  */
 function makeAccountsSettings(api, { view = null } = {}) {
-  const drive = makeCloudSettings(api);
+  // Sync services first (see CLOUD_SERVICES in cloud.js), then GitHub. Each
+  // row's id is also its Settings view; Google Drive's is "drive".
+  const rowId = (provider) => (provider === 'google' ? 'drive' : provider);
+  const services = Object.keys(CLOUD_SERVICES);
+  const clouds = services.map((provider) => ({ provider, id: rowId(provider), panel: makeCloudSettings(api, { provider }),
+    state: el('span.account-state', {}, 'Checking…') }));
   const github = makeGitHubSettings(api);
   let disposed = false;
 
-  const driveState = el('span.account-state', {}, 'Checking…');
   const githubState = el('span.account-state', {}, 'Checking…');
   // Service logos ship with the app (app/assets/icons); nothing is fetched.
   const row = (id, icon, name, description, state) => el('button.account-row', { type: 'button', onClick: () => show(id) },
@@ -474,23 +478,32 @@ function makeAccountsSettings(api, { view = null } = {}) {
     state,
     el('span.account-chevron', { 'aria-hidden': 'true' }, '›'));
   const list = el('div.account-list', {},
-    row('drive', 'google-drive.svg', 'Google Drive', 'Back up and sync guides between your computers.', driveState),
+    ...clouds.map(({ provider, id, state }) => {
+      const service = CLOUD_SERVICES[provider];
+      return row(id, service.icon, provider === 'webdav' ? 'Nextcloud or WebDAV' : service.name, service.description, state);
+    }),
     row('github', 'github.svg', 'GitHub', 'Share guides on the web for a limited time with GitHub Pages.', githubState));
 
   const back = el('button.account-back', { type: 'button', onClick: () => show(null) }, '‹ All accounts');
-  const detail = el('div.account-detail.hidden', {}, back, drive.node, github.node);
+  const detail = el('div.account-detail.hidden', {}, back, ...clouds.map(({ panel }) => panel.node), github.node);
 
   function show(id) {
     list.classList.toggle('hidden', Boolean(id));
     detail.classList.toggle('hidden', !id);
-    drive.node.classList.toggle('hidden', id !== 'drive');
+    for (const cloud of clouds) cloud.panel.node.classList.toggle('hidden', id !== cloud.id);
     github.node.classList.toggle('hidden', id !== 'github');
   }
 
-  const setDrive = (status) => {
+  // One service syncs at a time; its row shows who is signed in.
+  const setCloud = (status) => {
     if (disposed || !status) return;
-    driveState.textContent = status.connected ? status.email || 'Connected' : 'Not connected';
-    driveState.classList.toggle('on', Boolean(status.connected));
+    const active = status.provider || 'google';
+    for (const { provider, state } of clouds) {
+      const connected = provider === active && Boolean(status.connected);
+      const available = status.providers?.[provider]?.available ?? (provider === active ? status.available !== false : true);
+      state.textContent = connected ? status.email || 'Connected' : available ? 'Not connected' : 'Unavailable';
+      state.classList.toggle('on', connected);
+    }
   };
   const setGitHub = (status) => {
     if (disposed || !status) return;
@@ -498,20 +511,20 @@ function makeAccountsSettings(api, { view = null } = {}) {
       : status.connected ? (status.repo || `@${status.login}`) : 'Not connected';
     githubState.classList.toggle('on', Boolean(status.connected && status.repo && !status.needsSignIn));
   };
-  const stopDrive = api.cloud.onStatus(setDrive);
+  const stopCloud = api.cloud.onStatus(setCloud);
   const stopGitHub = api.github.onStatus(setGitHub);
-  api.cloud.status().then(setDrive).catch(() => { driveState.textContent = ''; });
+  api.cloud.status().then(setCloud).catch(() => { for (const { state } of clouds) state.textContent = ''; });
   api.github.status().then(setGitHub).catch(() => { githubState.textContent = ''; });
-  show(view === 'drive' || view === 'github' ? view : null);
+  show([...clouds.map(({ id }) => id), 'github'].includes(view) ? view : null);
 
   return {
     node: el('div.accounts', {}, list, detail),
     show,
     dispose() {
       disposed = true;
-      stopDrive();
+      stopCloud();
       stopGitHub();
-      drive.dispose();
+      for (const { panel } of clouds) panel.dispose();
       github.dispose();
     },
   };

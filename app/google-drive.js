@@ -50,6 +50,9 @@ class GoogleDrive {
     fetchImpl = globalThis.fetch,
     vault = null,
   }) {
+    this.id = 'google';
+    this.label = 'Google Drive';
+    this.short = 'Drive';
     this.file = path.join(directory, 'google-drive.credentials');
   
     this.clientId = clientId;

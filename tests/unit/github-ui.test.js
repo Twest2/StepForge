@@ -111,25 +111,27 @@ function fakeApi(github = {}) {
   return api;
 }
 
-test('Accounts lists Google Drive then GitHub and opens each one’s panel', async () => {
+test('Accounts lists every sync service, then GitHub, and opens each one’s panel', async () => {
   const u = ui();
   const accounts = u.context.makeAccountsSettings(fakeApi());
   await settle();
   const rows = u.all(accounts.node).filter((n) => n.tag === 'button' && n.classList.contains('account-row'));
-  assert.deepEqual(rows.map((row) => row.children[1].children[0].textContent), ['Google Drive', 'GitHub']);
+  assert.deepEqual(rows.map((row) => row.children[1].children[0].textContent),
+    ['Google Drive', 'OneDrive', 'Dropbox', 'Nextcloud or WebDAV', 'GitHub']);
   const logos = rows.map((row) => row.children[0].children[0].src);
-  assert.deepEqual(logos, ['../assets/icons/google-drive.svg', '../assets/icons/github.svg']);
+  assert.deepEqual(logos, ['google-drive', 'onedrive', 'dropbox', 'nextcloud', 'github'].map((name) => `../assets/icons/${name}.svg`));
   for (const logo of logos) {
     const file = path.join(__dirname, '../../app/renderer', logo);
     assert.match(fs.readFileSync(file, 'utf8'), /^<svg /, `${logo} ships with the app as a local SVG`);
   }
   assert.equal(rows[0].textContent.includes('casey@example.com'), true, 'Drive row shows who is signed in');
-  assert.equal(rows[1].textContent.includes('Not connected'), true);
+  for (const row of rows.slice(1)) assert.equal(row.textContent.includes('Not connected'), true);
   const panels = u.all(accounts.node).filter((n) => n.tag === 'fieldset');
-  const [drivePanel, githubPanel] = panels;
+  assert.equal(panels.length, 5);
+  const [drivePanel, oneDrivePanel, , , githubPanel] = panels;
   assert.equal(u.visible(drivePanel), false, 'no service panel until one is chosen');
 
-  u.click(rows[1]);
+  u.click(rows[4]);
   assert.equal(u.visible(githubPanel), true);
   assert.equal(u.visible(drivePanel), false);
   assert.equal(u.visible(rows[0]), false);
@@ -139,12 +141,16 @@ test('Accounts lists Google Drive then GitHub and opens each one’s panel', asy
 
   u.click(rows[0]);
   assert.equal(u.visible(drivePanel), true);
+  assert.equal(u.visible(oneDrivePanel), false);
   accounts.dispose();
 
   const direct = u.context.makeAccountsSettings(fakeApi(), { view: 'github' });
   const directPanels = u.all(direct.node).filter((n) => n.tag === 'fieldset');
-  assert.equal(u.visible(directPanels[1]), true, 'Settings can open straight to a service');
+  assert.equal(u.visible(directPanels[4]), true, 'Settings can open straight to a service');
   direct.dispose();
+  const dropbox = u.context.makeAccountsSettings(fakeApi(), { view: 'dropbox' });
+  assert.equal(u.visible(u.all(dropbox.node).filter((n) => n.tag === 'fieldset')[2]), true);
+  dropbox.dispose();
 });
 
 test('the GitHub panel explains setup step by step and warns that guides are public', async () => {
@@ -427,7 +433,7 @@ test('an expired sign-in offers Sign in again and keeps the site on screen', asy
 
   const accounts = u.context.makeAccountsSettings(fakeApi({ connected: true, needsSignIn: true, login: 'octo', repo: 'octo/guides' }));
   await settle();
-  const row = u.all(accounts.node).filter((n) => n.tag === 'button' && n.classList.contains('account-row'))[1];
+  const row = u.all(accounts.node).filter((n) => n.tag === 'button' && n.classList.contains('account-row')).at(-1);
   assert.match(row.textContent, /Sign in again/);
   accounts.dispose();
 });

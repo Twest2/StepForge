@@ -6,6 +6,10 @@ annotations, and descriptions, follow you.
 
 Sync is **optional and off by default**. StepForge works fully offline without it.
 
+Prefer another service? StepForge also syncs with OneDrive, Dropbox, and
+Nextcloud or any WebDAV server; see [CLOUD_ACCOUNTS.md](CLOUD_ACCOUNTS.md). Everything
+below about versions, conflicts, and freeing up space applies to all of them.
+
 ## Connect your Google account
 
 1. Open **Settings → Accounts → Google Drive** and choose **Sign in with Google**.

@@ -237,6 +237,16 @@ class AnnotationCanvas {
           ctx.imageSmoothingEnabled = true;
           ctx.drawImage(off, 0, 0, tw, th, x, y, w, h);
         } catch { /* region may be degenerate while dragging */ }
+        // Blurs added by Find private details get a dashed outline here (never
+        // in exports), so they're easy to spot and check.
+        if (ann.redact) {
+          ctx.save();
+          ctx.setLineDash([6, 4]);
+          ctx.strokeStyle = '#F59E0B';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(x, y, w, h);
+          ctx.restore();
+        }
         break;
       }
       case 'highlight':

@@ -576,7 +576,7 @@ function githubPublishProgress(guideTitle) {
     } else {
       bar.classList.add('indeterminate');
       bar.removeAttribute('aria-valuenow');
-      detail.textContent = 'Building the web page from your guide…';
+      detail.textContent = progress?.detail || 'Building the web page from your guide…';
     }
   };
   set({ stage: 'export' });
@@ -702,11 +702,44 @@ async function showPublishToWebDialog({ api, guideId, guideTitle, onOpenAccounts
     const understood = el('input', { type: 'checkbox' });
     const error = el('p.gh-note.error.hidden', { role: 'alert' }, '');
     const showError = (message) => { error.textContent = message; error.classList.remove('hidden'); };
-    understood.addEventListener('change', () => { publishBtn.disabled = !understood.checked; });
+    // Screenshots are checked for private details before Publish is available.
+    let checking = true;
+    const canPublish = () => understood.checked && !checking;
+    understood.addEventListener('change', () => { publishBtn.disabled = !canPublish(); });
+    const privacyText = el('span', {}, 'Checking screenshots for private details…');
+    const privacyReview = el('button.hidden', { type: 'button' }, 'Review');
+    const privacySpinner = el('span.spinner', { 'aria-hidden': 'true' });
+    const privacyBox = el('div.gh-privacy', { role: 'status', 'aria-live': 'polite' }, privacySpinner, privacyText, privacyReview);
+    let review = null;
+    const showReview = (next) => {
+      review = next;
+      privacyText.textContent = privacySummary(next);
+      privacySpinner.classList.add('hidden');
+      privacyBox.classList.toggle('found', Boolean(next.blurs.length || next.text.length));
+      privacyReview.classList.toggle('hidden', !next.blurs.length && !next.text.length);
+    };
+    privacyReview.addEventListener('click', () => {
+      if (!review) return;
+      const { close } = openModal({
+        title: 'Private details',
+        body: el('div.privacy-dialog', {},
+          el('p.muted', {}, 'These are blurred on the published page. Remove any blur that isn’t needed, or open the guide in the editor to adjust one.'),
+          privacyReviewList(api, guideId, review, { onChange: showReview })),
+        footer: [el('button.primary', { type: 'button', onClick: () => close() }, 'Done')],
+      });
+    });
+    runPrivacyCheck(api, guideId, (text) => { privacyText.textContent = text; })
+      .then(showReview)
+      .catch((err) => {
+        privacySpinner.classList.add('hidden');
+        privacyText.textContent = `StepForge couldn’t check the screenshots for private details (${err.message}). Check them yourself before publishing.`;
+        privacyBox.classList.add('found');
+      })
+      .finally(() => { checking = false; publishBtn.disabled = !canPublish(); });
     let form = null;
 
     publishBtn.addEventListener('click', async () => {
-      if (!understood.checked || publishing) return;
+      if (!canPublish() || publishing) return;
       publishing = true;
       error.classList.add('hidden');
       const progress = githubPublishProgress(guideTitle);
@@ -726,7 +759,7 @@ async function showPublishToWebDialog({ api, guideId, guideTitle, onOpenAccounts
         // Back to the form, with what went wrong.
         body.replaceChildren(form);
         publishBtn.classList.remove('hidden');
-        publishBtn.disabled = !understood.checked;
+        publishBtn.disabled = !canPublish();
         removeBtn.classList.toggle('hidden', !removeBtn.onclick);
         cancelBtn.textContent = 'Cancel';
         showError(err.message);
@@ -742,7 +775,8 @@ async function showPublishToWebDialog({ api, guideId, guideTitle, onOpenAccounts
         existing ? el('div.cloud-banner', {},
           'This guide is already shared until ', githubWhen(existing.expiresAt), '. Publishing again updates the page with your latest changes and keeps the same link.') : null,
         el('label.gh-field', {}, el('span', {}, 'Keep it online for'), days),
-        githubPublicWarning('Before you publish, check every screenshot for passwords, email addresses, customer details, and anything else private. Use the Blur tool to hide it.'),
+        privacyBox,
+        githubPublicWarning('StepForge blurs the private details it finds, but it can miss some, such as names or text that’s hard to read. Check every screenshot before you publish, and use the Blur tool for anything else.'),
         status.repoPrivate ? el('p.gh-note', {}, 'Your repository is private, but the published page is still public.') : null,
         status.pagesReady ? null : el('p.gh-note', {}, 'GitHub Pages isn’t turned on for your repository yet. StepForge will try again when you publish; if it still can’t, Settings → Accounts → GitHub explains how to turn it on.'),
         el('label.gh-consent', {}, understood, el('span', {}, 'I understand this guide will be public on the internet.')),
@@ -764,7 +798,7 @@ async function showPublishToWebDialog({ api, guideId, guideTitle, onOpenAccounts
             resolve(true);
           } catch (err) {
             setButtonLoading(removeBtn, false);
-            publishBtn.disabled = !understood.checked;
+            publishBtn.disabled = !canPublish();
             showError(err.message);
           }
         };

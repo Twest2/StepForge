@@ -26,6 +26,12 @@ const ANNOTATION_FIELDS = {
 };
 
 // Display names for annotation types in the "Type" dropdown.
+// What a blur added by Find private details hides (core/redaction.js KINDS).
+const PRIVATE_DETAIL_LABELS = {
+  email: 'email address', phone: 'phone number', card: 'card number', ssn: 'Social Security number',
+  ip: 'IP address', secret: 'password or key', url: 'link with a private token', custom: 'word you asked to hide',
+};
+
 const ANNOTATION_TYPE_LABELS = {
   rect: 'Rectangle',
   oval: 'Oval',
@@ -1223,7 +1229,9 @@ class GuideEditor {
           dataset: { annId: ann.id },
           style: { cursor: 'pointer', borderColor: selected ? 'var(--accent)' : '' },
         },
-        el('div.row', {}, el('strong', {}, ANNOTATION_TYPE_LABELS[ann.type] || ann.type), el('span.muted', {}, ann.text || ann.value || '')),
+        el('div.row', {}, el('strong', {}, ANNOTATION_TYPE_LABELS[ann.type] || ann.type),
+          // Blurs StepForge added for a private detail say what they hide.
+          el('span.muted', {}, ann.redact ? `Private detail: ${PRIVATE_DETAIL_LABELS[ann.redact.kind] || 'added by StepForge'}` : ann.text || ann.value || '')),
         el('div.muted', {}, `${ann.x.toFixed(3)}, ${ann.y.toFixed(3)} · ${ann.w.toFixed(3)} × ${ann.h.toFixed(3)}`)));
       }
     }
@@ -1583,6 +1591,15 @@ class GuideEditor {
     this.pendingGuideSave = false;
     this.saveError = null;
     this.emitMeta();
+  }
+
+  /** More → Find private details…: check the screenshots, then review what was blurred. */
+  async findPrivateDetails() {
+    if (!this.guideId) return;
+    await this.saveAll();
+    const { changed, show } = await showPrivacyDialog({ api, guideId: this.guideId, canShow: true });
+    if (changed || show) await this.reload(show?.stepId || this.selectedStepId);
+    if (show) this.canvas.select(show.annotationId);
   }
 
   async saveAll() {
@@ -2068,6 +2085,8 @@ class GuideEditor {
     });
     if (publishRequest) {
       await showPublishProgressDialog({ api, guideId: this.guideId, guideTitle: this.guide?.title || 'This guide', request: publishRequest });
+      // Publishing blurs private details in screenshots that weren't checked yet.
+      await this.reload();
     }
   }
 

@@ -196,6 +196,9 @@ class TextIntelService {
       const langPath = this.ensureLangData();
       const worker = await workerFactory('eng', 1, {
         langPath,
+        // Keep the unpacked language cache with the language data, not in
+        // whatever folder StepForge was started from.
+        cachePath: langPath,
       });
       await worker.setParameters({
         preserve_interword_spaces: '1',
@@ -220,6 +223,19 @@ class TextIntelService {
       confidence: Number.isFinite(result?.data?.confidence) ? result.data.confidence : null,
       raw: result,
     };
+  }
+
+  /**
+   * Every line of text in a PNG, with each word's box in the image's pixels:
+   * [{ words: [{ text, bbox: { x0, y0, x1, y1 } }] }]. Used to find private
+   * details (app/redaction.js).
+   */
+  async readLines(png) {
+    const worker = await this.getWorker();
+    const result = await worker.recognize(png, {}, { blocks: true, text: false });
+    return (result?.data?.blocks || [])
+      .flatMap((block) => (block.paragraphs || []).flatMap((paragraph) => paragraph.lines || []))
+      .map((line) => ({ words: (line.words || []).map((word) => ({ text: String(word.text || ''), bbox: word.bbox })) }));
   }
 
   cropRectForPoint(frame, clickPos, { width = OCR_CROP.width, height = OCR_CROP.height } = {}) {

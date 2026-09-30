@@ -162,6 +162,21 @@ page.**
 
 Don't put your own files on the `gh-pages` branch; StepForge replaces it.
 
+## Use your own domain
+
+To share links on your own domain, such as `guides.example.com`, set it up in
+the repository's **Settings → Pages → Custom domain** as GitHub describes in
+[Configuring a custom domain](https://docs.github.com/en/pages/configuring-a-custom-domain-for-your-github-pages-site).
+You can do this at any time, including after you've shared guides. StepForge
+notices the next time you publish or open **Settings → Accounts → GitHub**,
+and every link it shows or copies uses your domain from then on, including
+links to guides you've already shared. The old `github.io` links keep
+working, because GitHub redirects them.
+
+Links use `https://` when your domain supports it. Turn on **Enforce HTTPS**
+in the Pages settings once GitHub offers it. Until then, a domain without a
+certificate gets `http://` links.
+
 ## Private repositories
 
 GitHub Pages sites are public even when the repository is private, and a

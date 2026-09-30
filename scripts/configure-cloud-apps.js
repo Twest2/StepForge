@@ -6,7 +6,7 @@ const { atomicWriteFileSync } = require('../core/util');
 const { ONEDRIVE_CLIENT_PATTERN, DROPBOX_KEY_PATTERN } = require('../app/cloud-apps');
 
 const SETUP_HINT = ' Set the STEPFORGE_ONEDRIVE_CLIENT_ID and STEPFORGE_DROPBOX_APP_KEY repository variables'
-  + ' (see docs/CLOUD_ACCOUNTS_RELEASE.md).';
+  + ' (see docs/cloud_accounts_init_setup/CLOUD_ACCOUNTS_RELEASE.md).';
 
 // Stamps StepForge's OneDrive and Dropbox app registrations into a release
 // build. Both are public identifiers; neither service needs a secret.

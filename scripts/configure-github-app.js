@@ -6,7 +6,7 @@ const { atomicWriteFileSync } = require('../core/util');
 const { CLIENT_ID_PATTERN, APP_SLUG_PATTERN } = require('../app/github-pages');
 
 const SETUP_HINT = ' Set the STEPFORGE_GITHUB_CLIENT_ID and STEPFORGE_GITHUB_APP_SLUG repository variables'
-  + ' (see docs/GITHUB_PAGES_RELEASE.md).';
+  + ' (see docs/cloud_accounts_init_setup/GITHUB_PAGES_RELEASE.md).';
 
 function configureGitHubApp({
   clientId,

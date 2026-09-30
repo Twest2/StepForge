@@ -5,6 +5,7 @@ const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 const { atomicWriteFileSync } = require('../core/util');
+const { progressBody } = require('../core/transfer-meter');
 
 // Release builds get the client stamped into google-oauth-config.json. A source
 // checkout leaves it empty; developers can supply the client through the
@@ -30,22 +31,6 @@ const GOOGLE_OAUTH = resolveOAuthConfig();
 const SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
 const API = 'https://www.googleapis.com/drive/v3';
 const MAX_ARCHIVE_BYTES = 256 * 1024 * 1024;
-
-// Streams a request body in slices so an upload can report how much of it
-// has been handed to the network. Called once per attempt, so a retry restarts at 0.
-const PROGRESS_SLICE = 256 * 1024;
-function progressBody(data, onProgress) {
-  let sent = 0;
-  return new ReadableStream({
-    pull(controller) {
-      if (sent >= data.length) { controller.close(); return; }
-      const slice = data.subarray(sent, sent + PROGRESS_SLICE);
-      sent += slice.length;
-      controller.enqueue(slice);
-      onProgress(sent);
-    },
-  });
-}
 
 function googlePhotoLink(value) {
   try {

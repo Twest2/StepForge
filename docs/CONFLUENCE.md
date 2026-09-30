@@ -15,16 +15,55 @@ for Confluence's importer.
    `yourcompany.atlassian.net`, and choose **Continue**. You can also paste
    the address of any page on the site.
 3. Sign in:
-   - **Confluence Cloud:** enter your Atlassian email address and an API token.
-     **Create an API token** opens Atlassian's token page.
+   - **Confluence Cloud:** enter your Atlassian email address and an
+     [API token](#create-an-api-token-confluence-cloud).
    - **Data Center or Server:** use one of these.
-     - **Personal access token.** Create one on your site (**Create a token on
-       your site** opens the page) and paste it in.
+     - **[Personal access token](#create-a-personal-access-token-data-center).**
+       Paste it in.
      - **Sign in with your browser**, for single sign-on or a smart card.
        Your site's own login page opens in a StepForge window. Sign in as
        usual; the window closes by itself when you're done.
 4. Choose the space for new pages and, if you like, a parent page to put them
    under.
+
+## Tokens
+
+A token is like a password made only for an app. StepForge uses it to create
+and update pages as you, so your real password (or your smart card) never goes
+into StepForge. It can only do what you can do in Confluence. You can delete
+it at any time, which cuts off StepForge without affecting your own sign-in.
+StepForge stores it encrypted on your computer.
+
+### Create a personal access token (Data Center)
+
+Personal access tokens need Confluence Data Center or Server 7.9 or later.
+
+1. Open your Confluence site in your browser and sign in as usual.
+2. Select your profile picture at the top right, then **Settings**.
+3. Select **Personal Access Tokens**, then **Create token**.
+4. Name it `StepForge` and choose when it expires, for example in 90 days.
+5. Select **Create** and copy the token. Confluence only shows it once.
+6. Paste it into **Settings → Accounts → Confluence** in StepForge.
+
+StepForge's **Create a token on your site** link opens the token page
+directly. When the token expires, publishing says Confluence didn’t accept the
+sign-in: make a new token, then **Disconnect** and connect again with it.
+
+If there's no **Personal Access Tokens** option, your administrators have
+turned tokens off. Use **Sign in with your browser** instead.
+
+On a site that asks for your smart card, you need both: the card gets you to
+the site, and the token tells Confluence who you are once you're there.
+
+### Create an API token (Confluence Cloud)
+
+1. Open [your Atlassian account's API tokens](https://id.atlassian.com/manage-profile/security/api-tokens)
+   (StepForge's **Create an API token** link goes there).
+2. Select **Create API token**, name it `StepForge`, and choose when it
+   expires.
+3. Copy the token. Atlassian only shows it once.
+4. Paste it into StepForge along with the email address you sign in to
+   Atlassian with.
 
 ## Publish a guide
 

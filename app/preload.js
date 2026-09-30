@@ -94,8 +94,10 @@ const api = {
     published: invoke('github:published'),
     publish: invoke('github:publish'),
     unpublish: invoke('github:unpublish'),
+    waitUntilLive: invoke('github:waitUntilLive'),
     copy: invoke('github:copy'),
     onStatus: (fn) => { const listener = (e, payload) => fn(payload); ipcRenderer.on('github:status', listener); return () => ipcRenderer.removeListener('github:status', listener); },
+    onProgress: (fn) => { const listener = (e, payload) => fn(payload); ipcRenderer.on('github:progress', listener); return () => ipcRenderer.removeListener('github:progress', listener); },
   },
   ai: {
     test: invoke('ai:test'),

@@ -1998,12 +1998,12 @@ class GuideEditor {
     const settings = await api.settings.all();
     // HTML exports can also be published to GitHub Pages (Settings → Accounts).
     const github = await api.github.status().catch(() => null);
-    let published = null;
+    let publishRequest = null;
     await dialogs.showExportDialog({
       formats,
       templatesByFormat,
       webPublish: github?.available ? {
-        ready: Boolean(github.connected && github.repo),
+        ready: Boolean(github.connected && github.repo && !github.needsSignIn),
         formats: ['html-simple', 'html-rich'],
         expiryDays: github.expiryDays,
         defaultExpiryDays: github.defaultExpiryDays,
@@ -2060,19 +2060,15 @@ class GuideEditor {
         const result = await api.export.run({ guideId: this.guideId, format, options, outDir });
         if (result && result.ok === false) return false;
         if (result && result.file) this.onToast(`Exported ${format}.`);
-        if (publish) {
-          // The local export is done either way; a failed publish only reports.
-          try {
-            published = await api.github.publish({ guideId: this.guideId, days: publish.days, format, options });
-          } catch (err) {
-            this.onToast(`Exported, but publishing on the web failed: ${err.message}`, { error: true });
-          }
-        }
+        // Published after the Export dialog closes, in a dialog that shows
+        // progress. The local export is done either way.
+        if (publish) publishRequest = { days: publish.days, format, options };
         return true;
       },
     });
-    // Shown after the Export dialog closes, so closing it doesn't close this.
-    if (published) await showPublishedLinkDialog({ api, entry: published, guideTitle: this.guide?.title || 'This guide' });
+    if (publishRequest) {
+      await showPublishProgressDialog({ api, guideId: this.guideId, guideTitle: this.guide?.title || 'This guide', request: publishRequest });
+    }
   }
 
   async openLinkedGuide() {

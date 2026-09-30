@@ -2,7 +2,7 @@
 
 *For StepForge maintainers.* Users never need any of this: they choose
 **Sign in with Microsoft** or **Sign in with Dropbox** and allow access. See
-[CLOUD_ACCOUNTS.md](CLOUD_ACCOUNTS.md) for the user guide.
+[CLOUD_ACCOUNTS.md](../CLOUD_ACCOUNTS.md) for the user guide.
 
 Nextcloud and WebDAV need no registration; they work in every build.
 

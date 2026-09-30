@@ -3,7 +3,7 @@
 # READ THIS
 If you are a user, you do not need to read any of this. This is for maintainers
 or AI agents to understand Google Drive integration with the app. Again, if you 
-are a user, please see [google_drive.md](GOOGLE_DRIVE.md)
+are a user, please see [google_drive.md](../GOOGLE_DRIVE.md)
 
 *For StepForge maintainers.* Users never need any of this: they click **Sign in
 with Google**, pick an account, and allow access. Never ask a user for a client
@@ -112,7 +112,7 @@ registration before each release that touches sync:
       the other, edits flow both ways, and editing on both before syncing
       produces a conflict copy.
 - [ ] **Versions → Restore**, **Free up space**, and **Delete from Drive**
-      behave as described in [GOOGLE_DRIVE.md](GOOGLE_DRIVE.md).
+      behave as described in [GOOGLE_DRIVE.md](../GOOGLE_DRIVE.md).
 - [ ] **Disconnect** stops syncing and keeps local and Drive guides.
 
 References: [OAuth for desktop apps](https://developers.google.com/identity/protocols/oauth2/native-app),

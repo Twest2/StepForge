@@ -175,4 +175,4 @@ See the [privacy policy](PRIVACY.md#optional-google-drive-sync) and
 
 ---
 
-*Maintainers: see [Google sign-in release configuration](GOOGLE_DRIVE_RELEASE.md).*
+*Maintainers: see [Google sign-in release configuration](cloud_accounts_init_setup/GOOGLE_DRIVE_RELEASE.md).*

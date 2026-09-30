@@ -188,7 +188,7 @@ already shared from the old repository stay there until they expire.
 | --- | --- |
 | The sign-in code is lost, or you closed the GitHub page | Choose **Copy code** or **Open GitHub again** under the code, or **Get a new code** to start over. Closing Settings doesn't cancel a sign-in. |
 | "Your GitHub sign-in has expired or was revoked" | Choose **Sign in again**. Your repository and shared guides stay as they are. |
-| **Install StepForge on GitHub** and **Sign in with GitHub** do nothing, and the panel says StepForge "isn't connected to a StepForge GitHub App" | This copy of StepForge was built without the StepForge GitHub App, which happens when you run it from source. Install an official release, or see the [maintainer guide](GITHUB_PAGES_RELEASE.md#signing-in-from-a-development-checkout). |
+| **Install StepForge on GitHub** and **Sign in with GitHub** do nothing, and the panel says StepForge "isn't connected to a StepForge GitHub App" | This copy of StepForge was built without the StepForge GitHub App, which happens when you run it from source. Install an official release, or see the [maintainer guide](cloud_accounts_init_setup/GITHUB_PAGES_RELEASE.md#signing-in-from-a-development-checkout). |
 | "already publishes a GitHub Pages site" or "has a gh-pages branch that StepForge didn't create" | StepForge won't replace an existing site. Create a new repository for shared guides and install StepForge on it. |
 | Step 2 keeps waiting for StepForge to be installed | Install StepForge on the repository on GitHub, then come back to StepForge or choose **Check again**. |
 | "StepForge can't change *owner/repo*" | Open the repository's **Settings → GitHub Apps**, choose **Configure** next to StepForge, and make sure the repository is selected and every requested permission is accepted. |
@@ -202,4 +202,4 @@ what is sent to GitHub.
 
 ---
 
-*Maintainers: see [GitHub App release configuration](GITHUB_PAGES_RELEASE.md).*
+*Maintainers: see [GitHub App release configuration](cloud_accounts_init_setup/GITHUB_PAGES_RELEASE.md).*

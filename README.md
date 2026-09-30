@@ -97,6 +97,8 @@ sudo dnf install stepforge
 | **Organized library** | Folders, favorites, full-text search across every guide, snapshots, and a trash you can restore from. |
 | **Reusable content** | Placeholders (`[[Product]]`) and export templates keep a whole set of guides consistent. |
 | **Share on the web** | Publish a guide to GitHub Pages in your own repository for 1, 7, or 30 days and send a link. Shared guides are public and are removed automatically when their time is up. |
+| **Publish to Confluence** | Create or update a Confluence page for a guide, on Confluence Cloud or your organization's Data Center site, including sites that need a smart card (CAC). |
+| **Private details** | Screenshots are checked for email addresses, card numbers, passwords, keys and more, which are blurred before a guide is published. |
 | **Optional extras** | Sync between computers with Google Drive, OneDrive, Dropbox or Nextcloud, and AI-written descriptions through a local [Ollama](https://ollama.com) model. Both are off until you turn them on. |
 
 ## Your first guide in one minute
@@ -135,6 +137,7 @@ each optional feature sends.
 - [Google Drive sync](docs/GOOGLE_DRIVE.md)
 - [Sync with OneDrive, Dropbox or Nextcloud](docs/CLOUD_ACCOUNTS.md)
 - [Share guides on the web with GitHub Pages](docs/GITHUB_PAGES.md)
+- [Publish guides to Confluence](docs/CONFLUENCE.md)
 - [Privacy](docs/PRIVACY.md) and [security](docs/SECURITY.md)
 
 **Installing**

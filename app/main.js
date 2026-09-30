@@ -16,6 +16,7 @@ const { GoogleDrive } = require('./google-drive');
 const { OneDrive } = require('./onedrive');
 const { Dropbox } = require('./dropbox');
 const { WebDAV } = require('./webdav');
+const { RedactionService } = require('./redaction');
 const { GitHubPages } = require('./github-pages');
 const { EXPIRY_DAYS, titleFromHtml } = require('../core/pages-site');
 const { TransferMeter } = require('../core/transfer-meter');
@@ -79,6 +80,8 @@ let searchIndex;
 let templates;
 let capture;
 let textIntel;
+// Finds and blurs private details in screenshots (app/redaction.js).
+let redactor;
 let googleDrive;
 // Every sync service by id. One of them, settings cloud.provider, syncs.
 let cloudProviders = {};
@@ -100,6 +103,20 @@ function cloudStatus() {
     provider: drive.id, providerLabel: drive.label, providerShort: drive.short,
     providers: Object.fromEntries(Object.values(cloudProviders).map((p) => [p.id, { available: p.available, connected: p.status().connected }])),
   };
+}
+
+// Blur private details in a new capture when Settings asks for it. Resolves
+// with how many blurs were added; errors never interrupt capturing.
+async function blurNewCapture(guideId, stepId, { notify = true } = {}) {
+  if (settings.get('redaction')?.onCapture !== true || !redactor) return 0;
+  try {
+    const added = await redactor.checkStep(guideId, stepId);
+    if (added && notify) sendToRenderer('step:updated', { guideId, step: store.getStep(guideId, stepId), reason: 'redaction', added });
+    return added;
+  } catch (err) {
+    console.error(`[stepforge] private-detail check failed: ${err && err.message}`);
+    return 0;
+  }
 }
 
 // StepForge syncs with one account at a time. Switching keeps every guide on
@@ -857,6 +874,18 @@ function setupIpc() {
   // Publishes one of the HTML exports: the interactive one with default
   // options from Share, or whichever HTML format and options Export chose.
   // Progress goes out on github:progress: export, upload (bytes), commit.
+  // Private details: check screenshots, then review what was blurred.
+  h('redact:check', ({ guideId, force = false }) => redactor.checkGuide(guideId, { force,
+    onProgress: (update) => sendToRenderer('redact:progress', { guideId, ...update }) }),
+  { validate: (a) => c.id(a.guideId) && (a.force === undefined || typeof a.force === 'boolean') });
+  h('redact:review', ({ guideId }) => redactor.review(guideId), { validate: (a) => c.id(a.guideId) });
+  h('redact:keepVisible', ({ guideId, stepId, annotationId }) => { redactor.keepVisible({ guideId, stepId, annotationId }); return redactor.review(guideId); },
+    { validate: (a) => c.id(a.guideId) && c.id(a.stepId) && c.id(a.annotationId) });
+  h('redact:keepText', ({ guideId, stepId, key }) => { redactor.keepText({ guideId, stepId, key }); return redactor.review(guideId); },
+    { validate: (a) => c.id(a.guideId) && c.id(a.stepId) && c.string(a.key, 100) });
+  h('redact:hideText', ({ guideId, stepId }) => { redactor.hideText({ guideId, stepId }); reindex(guideId); return redactor.review(guideId); },
+    { validate: (a) => c.id(a.guideId) && c.id(a.stepId) });
+
   h('github:publish', async ({ guideId, days, format = 'html-rich', options = {} }) => {
     const guide = store.getGuide(guideId);
     if (!guide) throw new Error('Guide not found.');
@@ -864,6 +893,13 @@ function setupIpc() {
     const outDir = path.join(store.tempDir, `publish-${guideId}`);
     fs.rmSync(outDir, { recursive: true, force: true });
     try {
+      // Nothing goes on the web unchecked: blur private details in any
+      // screenshot not checked since it last changed. Usually already done
+      // by the publish dialog, so this is instant.
+      progress({ stage: 'export', detail: 'Checking screenshots for private details…' });
+      await redactor.checkGuide(guideId, { onProgress: ({ done, total }) => {
+        if (total) progress({ stage: 'export', detail: `Checking screenshots for private details (${done} of ${total})…` });
+      } });
       progress({ stage: 'export' });
       const result = await runExportInWorker({
         dataDir: store.root,
@@ -965,6 +1001,7 @@ function setupIpc() {
     const result = await capture.shoot({ guideId, mode, delayMs });
     if (result.ok) {
       reindex(guideId);
+      if (result.step && await blurNewCapture(guideId, result.step.stepId, { notify: false })) result.step = store.getStep(guideId, result.step.stepId);
       const aiConf = settings.get('ai') || {};
       if (aiConf.enabled && aiConf.autoDoc && result.step) {
         const aiResult = await textIntel.generateStepPatch({
@@ -988,6 +1025,7 @@ function setupIpc() {
     const result = await capture.regionCapture(guideId);
     if (result.ok) {
       reindex(guideId);
+      if (result.step && await blurNewCapture(guideId, result.step.stepId, { notify: false })) result.step = store.getStep(guideId, result.step.stepId);
       const aiConf = settings.get('ai') || {};
       if (aiConf.enabled && aiConf.autoDoc && result.step) {
         const aiResult = await textIntel.generateStepPatch({
@@ -1352,6 +1390,16 @@ if (!gotLock) {
       dataDir,
       screenApi: screen,
     });
+    redactor = new RedactionService({
+      store, settings,
+      readLines: (png) => textIntel.readLines(png),
+      loadImage: async (file) => {
+        const image = nativeImage.createFromPath(file);
+        if (image.isEmpty()) throw new Error('A screenshot in this guide couldn’t be read.');
+        const { width, height } = image.getSize();
+        return { width, height, png: (scale) => (scale === 1 ? image : image.resize({ width: Math.round(width * scale), height: Math.round(height * scale), quality: 'best' })).toPNG() };
+      },
+    });
     // Bringing up the desktop-capture stream spawns/upgrades Chromium's GPU
     // and screen-capture utility processes — which can be born after a session
     // already started, so the start-time EcoQoS opt-out misses them. Re-apply
@@ -1370,6 +1418,7 @@ if (!gotLock) {
       // Single-shot captures (capture:shoot) are handled synchronously in the IPC handler.
       if (channel === 'capture:added' && payload?.step && payload?.guideId) {
         reindex(payload.guideId);
+        void blurNewCapture(payload.guideId, payload.step.stepId);
         const aiConf = settings.get('ai') || {};
         if (aiConf.enabled && aiConf.autoDoc) {
           textIntel.generateStepPatch({

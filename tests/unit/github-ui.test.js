@@ -64,6 +64,7 @@ function ui() {
   context.setButtonLoading = (button, loading, label) => { button.loadingLabel = loading ? label : undefined; };
   context.toast = (message, options) => { toasts.push([message, options?.error === true]); };
   load('cloud.js');
+  load('privacy.js');
   load('github.js');
   load('dialogs.js');
 
@@ -89,6 +90,10 @@ function fakeApi(github = {}) {
     calls,
     progress: (update) => { for (const fn of progressListeners) fn(update); },
     shell: { openExternal: async ({ url }) => { calls.push(['open', url]); return { ok: true }; } },
+    redact: {
+      check: async (args) => { calls.push(['redact:check', args]); return { checked: 1, added: 0, blurs: [], text: [], steps: 0 }; },
+      onProgress: () => () => {},
+    },
     cloud: {
       status: async () => ({ connected: true, enabled: true, email: 'casey@example.com', phase: 'synced' }),
       onStatus: () => () => {},
@@ -249,6 +254,7 @@ test('publishing needs the public-page acknowledgement and then shows the link',
   await settle();
   // Arguments come from the sandboxed renderer realm, so compare by value.
   assert.deepEqual(JSON.parse(JSON.stringify(api.calls)), [
+    ['redact:check', { guideId: 'guide-1' }],
     ['publish', { guideId: 'guide-1', days: 7 }],
     ['waitUntilLive', { slug: 'a'.repeat(24) }],
   ]);
@@ -529,4 +535,37 @@ test('closing the dialog while publishing still reports the result', async () =>
   fail(new Error('GitHub request failed (500).'));
   await settle();
   assert.deepEqual(u.toasts, [['The guide was exported, but publishing it on the web failed: GitHub request failed (500).', true]]);
+});
+
+test('the publish dialog checks screenshots for private details first and lets you review the blurs', async () => {
+  const u = ui();
+  const api = fakeApi({ connected: true, login: 'octo', repo: 'octo/guides', pagesReady: true });
+  let finish;
+  const found = { checked: 2, added: 2, steps: 2,
+    blurs: [{ stepId: 's1', stepNumber: 1, annotationId: 'a1', kind: 'email', label: 'Email address' },
+      { stepId: 's2', stepNumber: 2, annotationId: 'a2', kind: 'ip', label: 'IP address' }],
+    text: [{ stepId: 's2', stepNumber: 2, field: 'title', kind: 'email', key: 'email:abc', label: 'Email address', preview: 'c•••@contoso.com' }] };
+  api.redact.check = () => new Promise((resolve) => { finish = resolve; });
+  api.redact.keepVisible = async (args) => { api.calls.push(['keepVisible', args]); return { ...found, blurs: found.blurs.slice(1), steps: 1 }; };
+  u.context.showPublishToWebDialog({ api, guideId: 'guide-1', guideTitle: 'Reset a password' });
+  await settle(); await settle();
+  const modal = u.root.children.at(-1);
+  const consent = u.all(modal).find((n) => n.tag === 'input' && n.type === 'checkbox');
+  consent.checked = true;
+  consent.listeners.change();
+  const publish = u.find(modal, 'Publish');
+  assert.equal(publish.disabled, true, 'Publish waits for the check');
+  assert.match(modal.textContent, /Checking screenshots for private details/);
+  finish(found);
+  await settle();
+  assert.equal(publish.disabled, false);
+  assert.match(modal.textContent, /Blurred 2 possible private details and found 1 more in step text in 2 steps\./);
+  u.click(u.find(modal, 'Review'));
+  const review = u.root.children.at(-1);
+  assert.match(review.textContent, /Step 1.*Email address/);
+  assert.match(review.textContent, /c•••@contoso\.com/, 'text findings are masked');
+  u.click(u.all(review).find((n) => n.tag === 'button' && n.textContent === 'Not private'));
+  await settle();
+  assert.deepEqual(JSON.parse(JSON.stringify(api.calls.at(-1))), ['keepVisible', { guideId: 'guide-1', stepId: 's1', annotationId: 'a1' }]);
+  assert.doesNotMatch(review.textContent, /Step 1/);
 });

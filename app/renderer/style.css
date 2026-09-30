@@ -1319,6 +1319,20 @@ fieldset legend {
 .gh-changes { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
 .gh-changes li { overflow-wrap: anywhere; }
 .gh-publish { display: flex; flex-direction: column; gap: 12px; max-width: 520px; }
+.gh-privacy { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; font-size: 12px; background: var(--panel-2); }
+.gh-privacy > span:not(.spinner) { flex: 1; }
+.gh-privacy.found { background: color-mix(in srgb, #F59E0B 14%, var(--panel-solid)); }
+/* Private details review (privacy.js) */
+.privacy-dialog { display: flex; flex-direction: column; gap: 10px; min-width: min(560px, 80vw); }
+.privacy-dialog p { margin: 0; }
+.privacy-status { font-weight: 600; }
+.privacy-status.error { color: var(--danger, #d1242f); }
+.privacy-review { display: flex; flex-direction: column; gap: 6px; max-height: 50vh; overflow: auto; }
+.privacy-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; }
+.privacy-kind { flex: none; min-width: 56px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.privacy-label { flex: 1; min-width: 0; font-size: 13px; }
+.privacy-actions { flex: none; display: flex; gap: 6px; }
+.redact-terms { width: 100%; min-width: 260px; font-family: inherit; }
 .gh-publish p { margin: 0; }
 .gh-field { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-weight: 550; }
 .gh-consent { display: flex; align-items: flex-start; gap: 8px; font-weight: 550; cursor: pointer; }

@@ -3,6 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { atomicWriteFileSync } = require('../core/util');
+const { progressBody } = require('../core/transfer-meter');
 const site = require('../core/pages-site');
 
 /*
@@ -26,6 +27,11 @@ const DEVICE_GRANT = 'urn:ietf:params:oauth:grant-type:device_code';
 const MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
 const CLIENT_ID_PATTERN = /^Iv[A-Za-z0-9._-]{6,}$/;
 const APP_SLUG_PATTERN = /^[a-z0-9-]{1,100}$/;
+const SIGN_IN_EXPIRED = 'Your GitHub sign-in has expired or was revoked. Sign in again to keep sharing guides.';
+const SIGN_IN_CANCELLED = 'GitHub sign-in cancelled.';
+// Uploads get at least this long, and more for big guides on slow links.
+const MIN_UPLOAD_TIMEOUT_MS = 5 * 60 * 1000;
+const MIN_UPLOAD_BYTES_PER_SECOND = 64 * 1024;
 
 function resolveAppConfig({ committed = require('./github-app-config.json'), env = process.env, localFile = LOCAL_APP_FILE } = {}) {
   const pick = (value) => String(value || '').trim();
@@ -51,6 +57,11 @@ function parseFullName(fullName) {
   return extra === undefined && OWNER_NAME.test(owner || '') && REPO_NAME.test(name || '') ? { owner, name } : null;
 }
 
+// GitHub answers 409 for Git data requests in a repository with no commits.
+function isEmptyRepository(err) {
+  return err?.status === 409;
+}
+
 // Git object ids from API responses end up in request paths; accept only hex.
 function objectId(value) {
   if (typeof value !== 'string' || !/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(value)) throw new Error('GitHub returned an unexpected object id.');
@@ -58,9 +69,12 @@ function objectId(value) {
 }
 
 class GitHubError extends Error {
-  constructor(message, status = 0) {
+  // `transient` marks failures worth trying again: no connection, a timeout,
+  // or GitHub having a bad moment (5xx).
+  constructor(message, status = 0, { transient = false } = {}) {
     super(message);
     this.status = status;
+    this.transient = transient;
   }
 }
 
@@ -75,6 +89,7 @@ class GitHubPages {
     now = Date.now,
     wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     onStatus = () => {},
+    copyText = null,
   }) {
     this.file = path.join(directory, 'github.credentials');
     this.clientId = clientId;
@@ -86,10 +101,12 @@ class GitHubPages {
     this.now = now;
     this.wait = wait;
     this.onStatus = onStatus;
+    this.copyText = copyText;
 
     this.credentials = null;
     this.loadError = null;
     this.pending = null;
+    this.signIn = null;
     this.controllers = new Set();
     this.generation = 0;
     this.queue = Promise.resolve();
@@ -107,10 +124,10 @@ class GitHubPages {
         this.credentials = stored;
         this.loadError = null;
       } else {
-        this.loadError = 'Please sign in to GitHub again to connect this version of StepForge.';
+        this.loadError = 'Sign in to GitHub again to connect this version of StepForge.';
       }
     } catch {
-      this.loadError = 'Stored GitHub credentials could not be unlocked. Disconnect and sign in again.';
+      this.loadError = 'StepForge couldn’t unlock your saved GitHub sign-in. Sign in to GitHub again.';
     }
   }
 
@@ -142,6 +159,7 @@ class GitHubPages {
     return {
       available: this.available,
       connected: Boolean(credentials?.access_token),
+      needsSignIn: Boolean(credentials?.reauth),
       login: credentials?.login || '',
       repo: repo ? `${repo.owner}/${repo.name}` : '',
       repoPrivate: Boolean(repo?.private),
@@ -149,8 +167,8 @@ class GitHubPages {
       pagesReady: Boolean(repo?.pagesReady),
       autoExpire: Boolean(repo?.autoExpire),
       setupNote: repo?.setupNote || '',
-      pending: this.pending ? { userCode: this.pending.userCode, verificationUri: this.pending.verificationUri } : null,
-      error: this.loadError,
+      pending: this.pending ? { ...this.pending } : null,
+      error: this.loadError || (credentials?.reauth ? SIGN_IN_EXPIRED : null),
       links: this.links(),
       expiryDays: [...site.EXPIRY_DAYS],
       defaultExpiryDays: site.DEFAULT_EXPIRY_DAYS,
@@ -161,10 +179,16 @@ class GitHubPages {
     this.onStatus(this.status());
   }
 
+  /** Stop everything: the sign-in and any request in flight. */
   cancel() {
     this.generation += 1;
-    this.cancelLogin?.();
+    this.cancelSignIn();
     for (const controller of this.controllers) controller.abort();
+  }
+
+  /** Stop only a sign-in that is waiting for approval. Publishing carries on. */
+  cancelSignIn() {
+    this.signIn?.cancel();
   }
 
   disconnect() {
@@ -178,18 +202,35 @@ class GitHubPages {
 
   // ---- HTTP -----------------------------------------------------------------
 
-  async request(url, { method = 'GET', headers = {}, body, timeoutMs = 60000, raw = false } = {}) {
+  /**
+   * One HTTPS request. `signal` cancels it from outside; `onProgress(sent)`
+   * streams a Buffer body and reports how much of it has been sent.
+   */
+  async request(url, { method = 'GET', headers = {}, body, timeoutMs = 60000, raw = false, signal = null, onProgress = null } = {}) {
     const controller = new AbortController();
     this.controllers.add(controller);
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
+    const stop = () => controller.abort();
+    signal?.addEventListener('abort', stop);
+    if (signal?.aborted) controller.abort();
     try {
-      const response = await this.fetch(url, {
-        method,
-        headers: { 'User-Agent': 'StepForge', ...headers },
-        body,
-        signal: controller.signal,
-        redirect: 'error',
-      });
+      const init = { method, headers: { 'User-Agent': 'StepForge', ...headers }, body, signal: controller.signal, redirect: 'error' };
+      if (onProgress && Buffer.isBuffer(body)) {
+        init.body = progressBody(body, onProgress);
+        init.duplex = 'half';
+        init.headers['Content-Length'] = String(body.length);
+      }
+      let response;
+      try {
+        response = await this.fetch(url, init);
+      } catch (err) {
+        // fetch() rejects with a TypeError when there is no connection at all.
+        if (err?.name === 'TypeError' && !controller.signal.aborted) {
+          throw new GitHubError('StepForge couldn’t reach GitHub. Check your internet connection and try again.', 0, { transient: true });
+        }
+        throw err;
+      }
       const declared = Number(response.headers?.get?.('content-length'));
       if (Number.isFinite(declared) && declared > MAX_RESPONSE_BYTES) throw new GitHubError('GitHub sent an unexpectedly large response.');
       const text = response.status === 204 ? '' : await response.text();
@@ -198,24 +239,30 @@ class GitHubPages {
       if (text && !raw) { try { data = JSON.parse(text); } catch { data = null; } }
       if (!response.ok) {
         const detail = typeof data?.message === 'string' ? data.message.slice(0, 200) : '';
-        throw new GitHubError(`GitHub request failed (${response.status}${detail ? `: ${detail}` : ''}).`, response.status);
+        throw new GitHubError(`GitHub request failed (${response.status}${detail ? `: ${detail}` : ''}).`, response.status,
+          { transient: response.status >= 500 });
       }
       return raw ? text : data;
     } catch (err) {
-      if (controller.signal.aborted && err.name === 'AbortError') throw new GitHubError('GitHub request was cancelled or timed out. Nothing on this computer changed.');
+      if (controller.signal.aborted && err.name === 'AbortError') {
+        if (timedOut) throw new GitHubError('GitHub took too long to answer. Try again.', 0, { transient: true });
+        throw new GitHubError('GitHub request was cancelled. Nothing on this computer changed.');
+      }
       throw err;
     } finally {
       clearTimeout(timer);
+      signal?.removeEventListener('abort', stop);
       this.controllers.delete(controller);
     }
   }
 
   // github.com's OAuth endpoints answer 200 with an `error` field.
-  async loginRequest(pathname, params) {
+  async loginRequest(pathname, params, signal = null) {
     return this.request(`${LOGIN}/${pathname}`, {
       method: 'POST',
       headers: { Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams(params).toString(),
+      signal,
     });
   }
 
@@ -232,71 +279,111 @@ class GitHubPages {
     };
   }
 
+  /**
+   * Sign in with the device flow. Starting again replaces a sign-in that is
+   * still waiting, and an expired sign-in can be renewed without losing the
+   * chosen repository.
+   */
   async connect() {
     if (!this.available) throw new Error('GitHub sign-in is unavailable in this build of StepForge.');
-    if (this.cancelLogin) throw new Error('GitHub sign-in is already in progress.');
-    if (this.credentials) throw new Error('Disconnect the current GitHub account before signing in again.');
+    if (this.credentials?.access_token && !this.credentials.reauth) throw new Error('Disconnect the current GitHub account before signing in with another one.');
     this.requireEncryption();
+    this.cancelSignIn();
     const generation = this.generation;
-    let cancelled = false;
+    const controller = new AbortController();
     let wake;
     const woken = new Promise((resolve) => { wake = resolve; });
-    this.cancelLogin = () => { cancelled = true; wake(); };
-    const stopped = () => cancelled || generation !== this.generation;
+    const attempt = { cancel: () => { controller.abort(); wake(); } };
+    this.signIn = attempt;
+    const { signal } = controller;
+    const stopped = () => signal.aborted || generation !== this.generation;
     try {
-      const device = await this.loginRequest('device/code', { client_id: this.clientId });
-      if (!device?.device_code || !device.user_code) throw new Error('GitHub did not start the sign-in. Try again.');
+      const device = await this.loginRequest('device/code', { client_id: this.clientId }, signal);
+      if (device?.error === 'device_flow_disabled') throw new Error('GitHub sign-in isn’t turned on for this StepForge GitHub App. Its maintainer needs to enable Device Flow.');
+      if (!device?.device_code || !device.user_code) throw new Error('GitHub didn’t start the sign-in. Try again.');
       const verificationUri = device.verification_uri === 'https://github.com/login/device' ? device.verification_uri : 'https://github.com/login/device';
-      this.pending = { userCode: String(device.user_code).slice(0, 20), verificationUri };
+      const userCode = String(device.user_code).slice(0, 20);
+      let copied = false;
+      try { if (this.copyText) { this.copyText(userCode); copied = true; } } catch { /* the code is still shown */ }
+      if (stopped()) throw new Error(SIGN_IN_CANCELLED);
+      this.pending = { userCode, verificationUri, copied };
       this.publishStatus();
-      await this.openExternal(verificationUri);
+      // Never wait for the browser. On some systems opening a URL only
+      // returns once the browser closes, which held up the whole sign-in.
+      Promise.resolve().then(() => this.openExternal(verificationUri)).catch(() => {});
       const deadline = this.now() + Math.min(Number(device.expires_in) || 900, 900) * 1000;
       let interval = Math.max(Number(device.interval) || 5, 5) * 1000;
+      let tokens;
       for (;;) {
         await Promise.race([this.wait(interval), woken]);
-        if (stopped()) throw new Error('GitHub sign-in cancelled.');
-        if (this.now() > deadline) throw new Error('The GitHub sign-in code expired. Try again.');
-        const tokens = await this.loginRequest('oauth/access_token', { client_id: this.clientId, device_code: device.device_code, grant_type: DEVICE_GRANT });
-        if (stopped()) throw new Error('GitHub sign-in cancelled.');
-        if (tokens?.access_token) {
-          this.credentials = this.storeTokens(tokens);
-          break;
+        if (stopped()) throw new Error(SIGN_IN_CANCELLED);
+        if (this.now() > deadline) throw new Error('The GitHub sign-in code expired. Choose Sign in with GitHub to get a new one.');
+        try {
+          tokens = await this.loginRequest('oauth/access_token', { client_id: this.clientId, device_code: device.device_code, grant_type: DEVICE_GRANT }, signal);
+        } catch (err) {
+          if (stopped()) throw new Error(SIGN_IN_CANCELLED);
+          // A dropped connection or a GitHub hiccup shouldn't end the sign-in.
+          if (err.transient) continue;
+          throw err;
         }
+        if (stopped()) throw new Error(SIGN_IN_CANCELLED);
+        if (tokens?.access_token) break;
         if (tokens?.error === 'authorization_pending') continue;
-        if (tokens?.error === 'slow_down') { interval += 5000; continue; }
+        if (tokens?.error === 'slow_down') { interval = Math.max(interval + 5000, (Number(tokens.interval) || 0) * 1000); continue; }
         if (tokens?.error === 'access_denied') throw new Error('GitHub sign-in was cancelled on github.com.');
-        if (tokens?.error === 'expired_token') throw new Error('The GitHub sign-in code expired. Try again.');
+        if (tokens?.error === 'expired_token') throw new Error('The GitHub sign-in code expired. Choose Sign in with GitHub to get a new one.');
         throw new Error(`GitHub sign-in failed${tokens?.error ? ` (${String(tokens.error).slice(0, 60)})` : ''}.`);
       }
-      try {
-        const user = await this.api('GET', '/user');
-        this.credentials.login = String(user?.login || '').slice(0, 39);
-        this.save();
-      } catch (err) { this.credentials = null; throw err; }
+      const next = this.storeTokens(tokens);
+      const user = await this.request(`${API}/user`, {
+        headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${next.access_token}`, 'X-GitHub-Api-Version': '2022-11-28' },
+        signal,
+      });
+      if (stopped()) throw new Error(SIGN_IN_CANCELLED);
+      next.login = String(user?.login || '').slice(0, 39);
+      // Signing in again as the same person keeps the repository they chose.
+      const previous = this.credentials;
+      if (previous?.repo && previous.login && previous.login.toLowerCase() === next.login.toLowerCase()) next.repo = previous.repo;
+      this.credentials = next;
+      this.save();
       this.pending = null;
       return this.status();
+    } catch (err) {
+      if (signal.aborted && !(err instanceof GitHubError && err.status)) throw new Error(SIGN_IN_CANCELLED);
+      throw err;
     } finally {
-      this.cancelLogin = null;
-      this.pending = null;
-      this.publishStatus();
+      if (this.signIn === attempt) {
+        this.signIn = null;
+        this.pending = null;
+        this.publishStatus();
+      }
     }
+  }
+
+  /** The stored token stopped working and couldn't be renewed. */
+  signInExpired() {
+    if (!this.credentials || this.credentials.reauth) return;
+    this.credentials.reauth = true;
+    try { this.save(); } catch { /* still flagged for this session */ }
+    this.publishStatus();
   }
 
   async accessToken(force = false) {
     const credentials = this.credentials;
     if (!credentials?.access_token) throw new Error(this.loadError || 'Sign in to GitHub first.');
+    if (credentials.reauth) throw new GitHubError(SIGN_IN_EXPIRED, 401);
     const fresh = !credentials.expiresAt || credentials.expiresAt > this.now() + 60000;
     if (!force && fresh) return credentials.access_token;
     if (!credentials.refresh_token) {
       if (!force) return credentials.access_token;
-      throw new GitHubError('GitHub sign-in expired. Disconnect and sign in again.', 401);
+      throw new GitHubError(SIGN_IN_EXPIRED, 401);
     }
     this.refreshing ||= (async () => {
       // Device-flow tokens refresh without a client secret.
       const tokens = await this.loginRequest('oauth/access_token', {
         client_id: this.clientId, grant_type: 'refresh_token', refresh_token: credentials.refresh_token,
       });
-      if (!tokens?.access_token) throw new GitHubError('GitHub sign-in expired. Disconnect and sign in again.', 401);
+      if (!tokens?.access_token) throw new GitHubError(SIGN_IN_EXPIRED, 401);
       if (this.credentials !== credentials) throw new Error('GitHub account changed during sign-in.');
       this.credentials = this.storeTokens(tokens, credentials);
       this.save();
@@ -305,8 +392,10 @@ class GitHubPages {
     return this.refreshing;
   }
 
-  async api(method, pathname, body, { raw = false, accept = 'application/vnd.github+json', timeoutMs } = {}) {
+  async api(method, pathname, body, { raw = false, accept = 'application/vnd.github+json', timeoutMs, onProgress = null } = {}) {
     const generation = this.generation;
+    let payload;
+    if (body !== undefined) payload = onProgress ? Buffer.from(JSON.stringify(body)) : JSON.stringify(body);
     const send = async (token) => {
       if (generation !== this.generation) throw new Error('GitHub request cancelled.');
       return this.request(`${API}${pathname}`, {
@@ -319,7 +408,8 @@ class GitHubPages {
           'X-GitHub-Api-Version': '2022-11-28',
           ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
         },
-        body: body === undefined ? undefined : JSON.stringify(body),
+        body: payload,
+        onProgress: onProgress && ((sent) => onProgress(sent, payload.length)),
       });
     };
     try {
@@ -329,7 +419,10 @@ class GitHubPages {
       try {
         return await send(await this.accessToken(true));
       } catch (retry) {
-        if (retry.status === 401) throw new GitHubError('GitHub sign-in expired or was revoked. Disconnect and sign in again.', 401);
+        if (retry.status === 401) {
+          this.signInExpired();
+          throw new GitHubError(SIGN_IN_EXPIRED, 401);
+        }
         throw retry;
       }
     }
@@ -384,7 +477,7 @@ class GitHubPages {
    * needs `useExisting` after the user has seen what StepForge will change,
    * and is refused outright if StepForge would overwrite its Pages site.
    */
-  async selectRepository({ fullName, useExisting = false }) {
+  async selectRepository({ fullName, useExisting = false, onProgress = null }) {
     const parsed = parseFullName(fullName);
     if (!parsed) throw new Error('Choose a repository from the list.');
     const allowed = await this.repositories();
@@ -392,6 +485,7 @@ class GitHubPages {
     if (!match) throw new Error(`StepForge isn't installed on ${fullName}. Install the StepForge GitHub App on it first.`);
     const [owner, name] = match.fullName.split('/');
     const candidate = { owner, name, private: match.private };
+    onProgress?.({ task: 'setup', message: `Checking ${match.fullName}…` });
     let inspection;
     try { inspection = await this.inspectRepository(candidate); } catch (err) {
       if (err.status === 403 || err.status === 404) {
@@ -412,7 +506,7 @@ class GitHubPages {
     }
     this.credentials.repo = candidate;
     this.save();
-    return this.setup();
+    return this.setup({ onProgress });
   }
 
   /**
@@ -427,7 +521,14 @@ class GitHubPages {
     const defaultBranch = String(info?.default_branch || 'main');
     const result = { defaultBranch, fresh: true, ownSite: false, conflict: '' };
 
-    const pagesRef = await this.optional('GET', this.repoPath(`/git/ref/heads/${site.PAGES_BRANCH}`, repo));
+    let pagesRef;
+    try {
+      pagesRef = await this.optional('GET', this.repoPath(`/git/ref/heads/${site.PAGES_BRANCH}`, repo));
+    } catch (err) {
+      // An empty repository has no Git data yet, and GitHub answers 409.
+      if (isEmptyRepository(err)) return result;
+      throw err;
+    }
     if (pagesRef?.object?.sha) {
       const commit = await this.api('GET', this.repoPath(`/git/commits/${objectId(pagesRef.object.sha)}`, repo));
       const tree = await this.api('GET', this.repoPath(`/git/trees/${objectId(commit?.tree?.sha)}`, repo));
@@ -471,11 +572,13 @@ class GitHubPages {
    * default branch, a Pages branch, and Pages serving that branch. Each step
    * that fails leaves a note the settings panel shows with instructions.
    */
-  setup() {
+  setup({ onProgress = null } = {}) {
     const repo = this.requireSite();
+    const step = (message) => onProgress?.({ task: 'setup', message });
     return this.exclusive(async () => {
       const notes = [];
       try {
+        step('Checking the repository…');
         const info = await this.api('GET', this.repoPath());
         repo.private = Boolean(info?.private);
         const defaultBranch = String(info?.default_branch || 'main');
@@ -484,14 +587,18 @@ class GitHubPages {
         if (empty) {
           // An empty repository has no branch to hold the workflow yet. The
           // Contents API works on empty repositories and makes the first commit.
+          step('Adding a README…');
           await this.api('PUT', this.repoPath(`/contents/${site.README_PATH}`), {
             message: 'Add a README for shared StepForge guides',
             content: Buffer.from(site.README).toString('base64'),
           });
         }
+        step('Adding the clean-up workflow…');
         repo.autoExpire = await this.ensureWorkflow();
         if (!repo.autoExpire) notes.push('StepForge could not add the clean-up workflow, so guides are only removed after they expire while StepForge is open. Check that the App has the Workflows permission.');
-        await this.writeSite(await this.readSite(), { now: this.now() });
+        step('Creating the site…');
+        await this.untilNotEmpty(async () => this.writeSite(await this.readSite(), { now: this.now() }));
+        step('Turning on GitHub Pages…');
         const pages = await this.ensurePages();
         repo.pagesReady = Boolean(pages);
         repo.siteUrl = site.siteBaseUrl({ owner: repo.owner, repo: repo.name, htmlUrl: pages?.html_url || '' });
@@ -523,12 +630,32 @@ class GitHubPages {
     }
   }
 
+  /**
+   * Right after the first commit in a new repository, GitHub can keep
+   * answering 409 ("Git Repository is empty") for a few seconds.
+   */
+  async untilNotEmpty(fn, attempts = 5) {
+    for (let attempt = 1; ; attempt += 1) {
+      try { return await fn(); } catch (err) {
+        if (!isEmptyRepository(err) || attempt >= attempts) throw err;
+        await this.wait(attempt * 1000);
+      }
+    }
+  }
+
   async ensurePages() {
     const source = { branch: site.PAGES_BRANCH, path: '/' };
     try {
       const current = await this.optional('GET', this.repoPath('/pages'));
       if (!current) {
-        return await this.api('POST', this.repoPath('/pages'), { source });
+        try {
+          return await this.api('POST', this.repoPath('/pages'), { source });
+        } catch (err) {
+          // GitHub sometimes turns Pages on by itself when a gh-pages branch
+          // appears, and then refuses to create it again.
+          if (err.status === 409) return await this.optional('GET', this.repoPath('/pages'));
+          throw err;
+        }
       }
       if (current.source?.branch !== source.branch || current.source?.path !== source.path) {
         await this.api('PUT', this.repoPath('/pages'), { source, build_type: 'legacy' });
@@ -544,7 +671,12 @@ class GitHubPages {
   // ---- the Pages branch -----------------------------------------------------
 
   async readSite() {
-    const ref = await this.optional('GET', this.repoPath(`/git/ref/heads/${site.PAGES_BRANCH}`));
+    let ref;
+    try {
+      ref = await this.optional('GET', this.repoPath(`/git/ref/heads/${site.PAGES_BRANCH}`));
+    } catch (err) {
+      if (!isEmptyRepository(err)) throw err;
+    }
     if (!ref?.object?.sha) return { head: null, entries: new Map(), manifest: site.emptyManifest() };
     const commit = await this.api('GET', this.repoPath(`/git/commits/${objectId(ref.object.sha)}`));
     const tree = await this.api('GET', this.repoPath(`/git/trees/${objectId(commit?.tree?.sha)}?recursive=1`));
@@ -559,9 +691,14 @@ class GitHubPages {
     return { head: ref.object.sha, entries, manifest };
   }
 
-  async blob(content) {
-    const created = await this.api('POST', this.repoPath('/git/blobs'), { content: content.toString('base64'), encoding: 'base64' },
-      { timeoutMs: 300000 });
+  /** Upload one file. `onProgress(loaded, total)` counts the file's own bytes. */
+  async blob(content, onProgress = null) {
+    const timeoutMs = Math.max(MIN_UPLOAD_TIMEOUT_MS, Math.ceil((content.length * 4) / 3 / MIN_UPLOAD_BYTES_PER_SECOND) * 1000);
+    const created = await this.api('POST', this.repoPath('/git/blobs'), { content: content.toString('base64'), encoding: 'base64' }, {
+      timeoutMs,
+      // The request is JSON with the file in base64; report it as file bytes.
+      onProgress: onProgress && ((sent, total) => onProgress(Math.min(content.length, Math.round((sent / total) * content.length)), content.length)),
+    });
     return created.sha;
   }
 
@@ -570,12 +707,19 @@ class GitHubPages {
    * Guides that are kept reuse their existing blobs; nothing old stays in the
    * branch history.
    */
-  async writeSite(current, { now, publish = null, remove = null, html = null }) {
+  async writeSite(current, { now, publish = null, remove = null, html = null, onProgress = null }) {
     const plan = site.planSite(current.manifest, { now, publish, remove });
     const tree = [];
     for (const slug of Object.keys(plan.manifest.guides)) {
       const file = site.guidePath(slug);
-      let sha = slug === plan.slug && html ? await this.blob(html) : current.entries.get(file);
+      let sha;
+      if (slug === plan.slug && html) {
+        onProgress?.({ stage: 'upload', loaded: 0, total: html.length });
+        sha = await this.blob(html, onProgress && ((loaded, total) => onProgress({ stage: 'upload', loaded, total })));
+        onProgress?.({ stage: 'commit' });
+      } else {
+        sha = current.entries.get(file);
+      }
       if (!sha) { delete plan.manifest.guides[slug]; continue; }
       tree.push({ path: file, mode: '100644', type: 'blob', sha });
     }
@@ -601,19 +745,34 @@ class GitHubPages {
   requireSite() {
     const repo = this.credentials?.repo;
     if (!this.credentials?.access_token) throw new Error(this.loadError || 'Sign in to GitHub in Settings → Accounts first.');
+    if (this.credentials.reauth) throw new Error(SIGN_IN_EXPIRED);
     if (!repo) throw new Error('Choose a repository for shared guides in Settings → Accounts → GitHub first.');
     return repo;
   }
 
+  siteBase(repo = this.credentials?.repo) {
+    return repo.siteUrl || site.siteBaseUrl({ owner: repo.owner, repo: repo.name });
+  }
+
   listFrom(manifest) {
-    const base = this.credentials.repo.siteUrl || site.siteBaseUrl({ owner: this.credentials.repo.owner, repo: this.credentials.repo.name });
+    const base = this.siteBase();
     return Object.entries(manifest.guides)
       .map(([slug, entry]) => ({ slug, ...entry, url: site.guideUrl(base, slug) }))
       .sort((a, b) => a.expiresAt.localeCompare(b.expiresAt));
   }
 
-  /** Publish (or republish, keeping the link) one guide's HTML. */
-  publish({ guideId, title, html, days }) {
+  /** A shared guide's link, worked out locally so copying it is instant. */
+  linkFor(slug) {
+    const repo = this.credentials?.repo;
+    return repo && site.isSlug(slug) ? site.guideUrl(this.siteBase(repo), slug) : null;
+  }
+
+  /**
+   * Publish (or republish, keeping the link) one guide's HTML.
+   * `onProgress` gets { stage: 'upload', loaded, total } while the page
+   * uploads, then { stage: 'commit' } while the site is updated.
+   */
+  publish({ guideId, title, html, days, onProgress = null }) {
     const repo = this.requireSite();
     site.expiresAtFor(days);
     const page = Buffer.from(site.prepareGuideHtml(html));
@@ -623,7 +782,7 @@ class GitHubPages {
     return this.exclusive(async () => {
       try {
         const now = this.now();
-        const plan = await this.writeSite(await this.readSite(), { now, publish: { guideId, title, days }, html: page });
+        const plan = await this.writeSite(await this.readSite(), { now, publish: { guideId, title, days }, html: page, onProgress });
         if (!repo.pagesReady) {
           const pages = await this.ensurePages();
           if (pages) {
@@ -663,10 +822,26 @@ class GitHubPages {
     });
   }
 
-  async publishedLink(slug) {
-    if (!site.isSlug(slug)) return null;
-    const list = await this.published();
-    return list.find((entry) => entry.slug === slug)?.url || null;
+  /**
+   * After publishing, check the public link until GitHub Pages serves it, so
+   * StepForge can say when it works. Resolves false if it takes too long.
+   */
+  async waitUntilLive(slug, { attempts = 45 } = {}) {
+    const url = this.linkFor(slug);
+    if (!url || !this.credentials?.repo?.pagesReady) return false;
+    const generation = this.generation;
+    for (let attempt = 0; attempt < attempts && generation === this.generation; attempt += 1) {
+      if (attempt) await this.wait(Math.min(2000 + attempt * 500, 10000));
+      if (generation !== this.generation) break;
+      try {
+        // A fresh query string skips any "404" GitHub's CDN cached a moment ago.
+        const response = await this.fetch(`${url}?stepforge=${this.now()}-${attempt}`, {
+          method: 'HEAD', redirect: 'manual', headers: { 'User-Agent': 'StepForge' }, signal: AbortSignal.timeout(15000),
+        });
+        if (response.status >= 200 && response.status < 400) return true;
+      } catch { /* not reachable yet */ }
+    }
+    return false;
   }
 
   /** Remove expired guides; used after launch while StepForge is connected. */

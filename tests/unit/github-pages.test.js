@@ -37,6 +37,13 @@ function fakeGitHub({ empty = true, allowWorkflows = true, allowPages = true, pr
     empty,
     requests: [],
     installed: ['octo/stepforge-guides'],
+    // How many more times Git data requests answer 409 after the first commit.
+    emptyLag: 0,
+    liveChecks: 0,
+    liveAfter: 0,
+    offline: 0,
+    streamed: 0,
+    revoked: false,
   };
   const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
   const notFound = () => json({ message: 'Not Found' }, 404);
@@ -50,9 +57,23 @@ function fakeGitHub({ empty = true, allowWorkflows = true, allowPages = true, pr
     const u = new URL(url);
     const method = options.method || 'GET';
     gh.requests.push(`${method} ${u.pathname}`);
+    if (gh.offline) { gh.offline -= 1; throw new TypeError('fetch failed'); }
+    // The published site itself: 404 until GitHub Pages has built it.
+    if (u.origin === 'https://octo.github.io') {
+      assert.equal(method, 'HEAD');
+      gh.liveChecks += 1;
+      return new Response(null, { status: gh.liveChecks > gh.liveAfter ? 200 : 404 });
+    }
     assert.equal(options.redirect, 'error');
+    let bodyText = options.body;
+    if (options.body instanceof ReadableStream) {
+      // A streamed upload must say how big it is up front.
+      bodyText = await new Response(options.body).text();
+      assert.equal(options.headers['Content-Length'], String(Buffer.byteLength(bodyText)));
+      gh.streamed += 1;
+    }
     if (u.origin === 'https://github.com') {
-      const params = new URLSearchParams(options.body);
+      const params = new URLSearchParams(bodyText);
       assert.equal(params.get('client_id'), CLIENT_ID);
       assert.equal(params.get('client_secret'), null, 'the device flow never sends a client secret');
       if (u.pathname === '/login/device/code') {
@@ -72,8 +93,8 @@ function fakeGitHub({ empty = true, allowWorkflows = true, allowPages = true, pr
       return notFound();
     }
     assert.equal(u.origin, 'https://api.github.com');
-    if (options.headers?.Authorization !== `Bearer ${gh.token}`) return json({ message: 'Bad credentials' }, 401);
-    const body = options.body ? JSON.parse(options.body) : null;
+    if (gh.revoked || options.headers?.Authorization !== `Bearer ${gh.token}`) return json({ message: 'Bad credentials' }, 401);
+    const body = bodyText ? JSON.parse(bodyText) : null;
     const p = u.pathname;
     if (p === '/user') return json({ login: 'octo' });
     if (p === '/user/installations') return json({ installations: [{ id: 7, app_slug: APP_SLUG }, { id: 8, app_slug: 'someone-else' }] });
@@ -84,6 +105,9 @@ function fakeGitHub({ empty = true, allowWorkflows = true, allowPages = true, pr
     if (!repo || !gh.installed.includes('octo/stepforge-guides')) return notFound();
     const rest = repo[1] || '';
     if (!rest) return json({ full_name: 'octo/stepforge-guides', private: privateRepo, default_branch: 'main' });
+    // Like GitHub: Git data in a repository with no commits is a 409, and it
+    // can stay that way for a moment after the first commit.
+    if (rest.startsWith('/git/') && (gh.empty || (gh.emptyLag > 0 && gh.emptyLag--))) return json({ message: 'Git Repository is empty.' }, 409);
     if (rest === '/branches/main') return gh.empty ? notFound() : json({ name: 'main' });
     if (rest === '/contents' && method === 'GET') {
       if (gh.empty) return notFound();
@@ -110,6 +134,8 @@ function fakeGitHub({ empty = true, allowWorkflows = true, allowPages = true, pr
       if (method === 'POST') {
         if (!gh.refs.has('gh-pages')) return json({ message: 'branch does not exist' }, 422);
         gh.pages = { source: body.source, html_url: 'https://octo.github.io/stepforge-guides/' };
+        // GitHub can switch Pages on by itself when a gh-pages branch appears.
+        if (gh.autoPages) return json({ message: 'GitHub Pages is already enabled.' }, 409);
         return json(gh.pages, 201);
       }
       gh.pages.source = body.source;
@@ -248,6 +274,148 @@ test('declined or cancelled sign-in leaves nothing stored', async (t) => {
   await assert.rejects(signingIn, /cancelled/);
   assert.equal(ctx.pages.status().connected, false);
   release();
+});
+
+test('sign-in never waits for the browser, and the code is copied for pasting', async (t) => {
+  const copied = [];
+  // On some systems opening a URL only returns once the browser closes.
+  const { pages } = setup(t, { openExternal: () => new Promise(() => {}), copyText: (text) => copied.push(text) });
+  const statuses = [];
+  pages.onStatus = (status) => statuses.push(status);
+  const status = await pages.connect();
+  assert.equal(status.connected, true, 'signs in although the browser call never returned');
+  assert.deepEqual(copied, ['WDJB-MJHT']);
+  assert.equal(statuses.find((s) => s.pending)?.pending.copied, true);
+});
+
+test('starting sign-in again replaces a sign-in that is still waiting', async (t) => {
+  const waits = [];
+  const { pages, statuses } = setup(t, { wait: () => new Promise((resolve) => { waits.push(resolve); }) });
+  const first = pages.connect();
+  first.catch(() => {});
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(pages.status().pending?.userCode, 'WDJB-MJHT');
+
+  pages.wait = async () => {};
+  const second = await pages.connect();
+  assert.equal(second.connected, true);
+  await assert.rejects(first, /cancelled/);
+  assert.equal(pages.status().connected, true, 'the replaced sign-in does not undo the new one');
+  assert.equal(statuses.at(-1).connected, true);
+  for (const resolve of waits) resolve();
+});
+
+test('cancelling sign-in leaves a publish that is running alone', async (t) => {
+  const { pages } = await connected(t);
+  await pages.selectRepository({ fullName: 'octo/stepforge-guides' });
+  const publishing = pages.publish({ guideId: 'g', title: 'Guide', html: '<head></head>page', days: 7 });
+  pages.cancelSignIn();
+  assert.match((await publishing).url, /\/g\/[a-f0-9]{24}\/$/);
+});
+
+test('a dropped connection while waiting for approval does not end the sign-in', async (t) => {
+  const gh = fakeGitHub();
+  const { pages } = setup(t, { gh });
+  const polling = pages.connect();
+  gh.offline = 1;
+  gh.polls = 0;
+  const status = await polling;
+  assert.equal(status.connected, true);
+});
+
+test('no connection at all gives a plain explanation', async (t) => {
+  const gh = fakeGitHub();
+  gh.offline = 1;
+  const { pages } = setup(t, { gh });
+  await assert.rejects(pages.connect(), /couldn’t reach GitHub\. Check your internet connection/);
+  assert.equal(pages.status().pending, null);
+});
+
+test('a revoked sign-in asks to sign in again and keeps the chosen repository', async (t) => {
+  const { pages, gh } = await connected(t);
+  await pages.selectRepository({ fullName: 'octo/stepforge-guides' });
+  gh.revoked = true;
+  await assert.rejects(pages.published(), /Sign in again to keep sharing guides/);
+  let status = pages.status();
+  assert.equal(status.connected, true);
+  assert.equal(status.needsSignIn, true);
+  assert.match(status.error, /Sign in again/);
+  assert.throws(() => pages.publish({ guideId: 'g', title: 't', html: '<head></head>', days: 7 }), /Sign in again/, 'fails before exporting or uploading');
+
+  gh.revoked = false;
+  gh.polls = 0;
+  status = await pages.connect();
+  assert.equal(status.needsSignIn, false);
+  assert.equal(status.error, null);
+  assert.equal(status.repo, 'octo/stepforge-guides', 'no need to choose the repository again');
+  assert.deepEqual(await pages.published(), []);
+});
+
+test('an empty repository that GitHub still reports as empty after the first commit is set up once it catches up', async (t) => {
+  const gh = fakeGitHub();
+  const { pages } = await connected(t, { gh });
+  gh.emptyLag = 2;
+  const status = await pages.selectRepository({ fullName: 'octo/stepforge-guides' });
+  assert.equal(status.pagesReady, true);
+  assert.deepEqual(Object.keys(gh.branch().manifest.guides), []);
+});
+
+test('Pages that GitHub already turned on for the new branch is picked up', async (t) => {
+  const gh = fakeGitHub();
+  gh.autoPages = true;
+  const { pages } = await connected(t, { gh });
+  const status = await pages.selectRepository({ fullName: 'octo/stepforge-guides' });
+  assert.equal(status.pagesReady, true);
+  assert.equal(status.setupNote, '');
+});
+
+test('setting up a repository says what it is doing', async (t) => {
+  const { pages } = await connected(t);
+  const steps = [];
+  await pages.selectRepository({ fullName: 'octo/stepforge-guides', onProgress: (p) => steps.push(p.message) });
+  assert.deepEqual(steps, [
+    'Checking octo/stepforge-guides…', 'Checking the repository…', 'Adding a README…',
+    'Adding the clean-up workflow…', 'Creating the site…', 'Turning on GitHub Pages…',
+  ]);
+});
+
+test('publishing reports upload progress in the guide’s own bytes, then the commit', async (t) => {
+  const { pages, gh } = await connected(t);
+  await pages.selectRepository({ fullName: 'octo/stepforge-guides' });
+  const html = `<html><head></head><body>${'x'.repeat(900 * 1024)}</body></html>`;
+  const events = [];
+  const entry = await pages.publish({ guideId: 'big', title: 'Big', html, days: 7, onProgress: (p) => events.push(p) });
+  assert.equal(gh.streamed, 1, 'only the guide itself is streamed');
+  const uploads = events.filter((p) => p.stage === 'upload');
+  const size = Buffer.byteLength(site.prepareGuideHtml(html));
+  assert.ok(uploads.length > 2, 'reports several times while uploading');
+  assert.deepEqual(uploads.map((p) => p.total), uploads.map(() => size));
+  assert.equal(uploads[0].loaded, 0);
+  assert.equal(uploads.at(-1).loaded, size);
+  assert.ok(uploads.every((p, i) => !i || p.loaded >= uploads[i - 1].loaded), 'never goes backwards');
+  assert.deepEqual(events.at(-1), { stage: 'commit' });
+  assert.equal(gh.branch().files.get(site.guidePath(entry.slug)), site.prepareGuideHtml(html));
+});
+
+test('the link is worked out without contacting GitHub, and StepForge can tell when it is live', async (t) => {
+  const { pages, gh } = await connected(t);
+  await pages.selectRepository({ fullName: 'octo/stepforge-guides' });
+  const entry = await pages.publish({ guideId: 'g', title: 'Guide', html: '<head></head>page', days: 7 });
+  const before = gh.requests.length;
+  assert.equal(pages.linkFor(entry.slug), entry.url);
+  assert.equal(pages.linkFor('../../x'), null);
+  assert.equal(gh.requests.length, before);
+
+  gh.liveAfter = 3;
+  assert.equal(await pages.waitUntilLive(entry.slug), true);
+  assert.equal(gh.liveChecks, 4);
+  const checked = gh.requests.slice(before).filter((r) => r.startsWith('HEAD '));
+  assert.ok(checked.every((r) => r === `HEAD /stepforge-guides/g/${entry.slug}/`));
+
+  gh.liveChecks = 0;
+  gh.liveAfter = Infinity;
+  assert.equal(await pages.waitUntilLive(entry.slug, { attempts: 5 }), false, 'gives up instead of waiting forever');
+  assert.equal(gh.liveChecks, 5);
 });
 
 test('a new empty repository gets a README, the clean-up workflow, a Pages branch and Pages turned on', async (t) => {

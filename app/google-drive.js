@@ -401,6 +401,11 @@ class GoogleDrive {
     return this.listAppData("trashed = false and appProperties has { key='stepforge' and value='deletion-v1' }");
   }
 
+  // Files shared between versions (see core/cloud-parts.js).
+  async listParts() {
+    return this.listAppData("trashed = false and appProperties has { key='stepforge' and value='part-v1' }");
+  }
+
   async listAppData(queryText) {
     const generation = this.generation;
     const files = [];

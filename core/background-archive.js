@@ -43,4 +43,4 @@ async function drainArchives() {
   let pending;
   do { pending = tail; await pending; } while (pending !== tail);
 }
-module.exports = { writeArchive, encodeArchive: (entries) => writeArchive(entries), drainArchives };
+module.exports = { writeArchive, drainArchives };

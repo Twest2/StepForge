@@ -76,6 +76,8 @@ Drive sync is **off by default**. When you sign in
 - **Your whole library is uploaded**: screenshots, text, annotations,
   placeholders, and the capture details listed above. It goes to that private
   folder in *your* Google Drive, not to StepForge or anyone else.
+  Screenshots are stored once and shared between versions, labelled with a
+  fingerprint (SHA-256 hash) of their contents so each is only uploaded once.
 - StepForge also reads your Google account's email address, profile photo, and
   Drive storage usage to show which account is connected and how much space
   it's using.

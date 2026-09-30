@@ -21,10 +21,13 @@ function setup(t) {
     status: () => ({ connected: true }),
     account: async () => 'account-a',
     cancel() {},
-    async listVersions() { this.calls++; return [...files]; },
+    async listVersions() { this.calls++; return files.filter((file) => file.appProperties?.stepforge === 'guide-v1'); },
     async listDeletions() { return files.filter((file) => file.appProperties?.stepforge === 'deletion-v1'); },
+    async listParts() { return files.filter((file) => file.appProperties?.stepforge === 'part-v1'); },
     async upload({ data, name, properties }) {
-      const file = { id: `file-${++nextFileId}`, name, appProperties: properties, createdTime: String(nextFileId).padStart(6, '0') };
+      // Like Drive: ordered creation times, and the size shows up in listings.
+      const file = { id: `file-${++nextFileId}`, name, appProperties: properties, size: String(data.length),
+        createdTime: new Date(Date.UTC(2026, 0, 1) + nextFileId * 1000).toISOString() };
       files.push(file); bytes.set(file.id, data); return file;
     },
     async download(id) { return bytes.get(id); },
@@ -417,7 +420,7 @@ test('stopping sync while the archive worker runs prevents upload', async (t) =>
 });
 
 test('edits during archive encoding remain pending and the uploaded hash matches its bytes', async (t) => {
-  const { device, files, bytes } = setup(t);
+  const { device, files } = setup(t);
   let a, id, scheduled = false;
   a = device('a', { canUpload: () => {
     if (!scheduled) {
@@ -429,7 +432,7 @@ test('edits during archive encoding remain pending and the uploaded hash matches
   id = addGuide(a.store);
   await synced(a.sync);
   assert.equal(files.length, 1);
-  a.sync.validateDownload(bytes.get(files[0].id), id, files[0].appProperties.hash);
+  a.sync.validateDownload(await a.sync.downloadVersion(files[0]), id, files[0].appProperties.hash);
   assert.notEqual(snapshot(a.store, id).hash, files[0].appProperties.hash);
   await synced(a.sync);
   assert.equal(files.length, 2);
@@ -532,4 +535,197 @@ test('guide uploads and downloads publish live transfer progress, then clear it'
   assert.equal(a.sync.status.transfer, null);
   assert.equal(b.sync.status.transfer, null);
   assert.equal(seen.at(-1).phase, 'synced');
+});
+
+// ---- space-saving parts snapshots (core/cloud-parts.js) ---------------------
+
+const { zipSync } = require('../../core/zip');
+const { buildArchiveEntries } = require('../../core/archive');
+// Small limits so the test screenshots become shared parts.
+const PARTS = { inlineLimit: 1024, partGraceMs: 0 };
+const shot = (seed) => Buffer.concat([TINY_PNG, Buffer.alloc(4000, seed)]);
+const versionFiles = (files) => files.filter((file) => file.appProperties?.stepforge === 'guide-v1');
+const partFiles = (files) => files.filter((file) => file.appProperties?.stepforge === 'part-v1');
+function addShotGuide(store) {
+  const guide = store.createGuide({ title: 'Original' });
+  const step = store.addStep(guide.guideId, { title: 'Screenshot' }, shot(1), { width: 1, height: 1 });
+  return { id: guide.guideId, stepId: step.stepId };
+}
+const setShot = (store, id, stepId, seed) => store.setWorkingImage(id, stepId, shot(seed), { width: 1, height: 1 });
+// Logs what moves: 'part' for a shared screenshot, else the version's format.
+function recordTransfers(drive, files) {
+  const log = { uploads: [], downloads: [] };
+  const kind = (properties) => (properties?.stepforge === 'part-v1' ? 'part' : properties?.format || 'full');
+  const upload = drive.upload.bind(drive);
+  const download = drive.download.bind(drive);
+  drive.upload = async (args) => { log.uploads.push(kind(args.properties)); return upload(args); };
+  drive.download = async (id, options) => { log.downloads.push(kind(files.find((file) => file.id === id)?.appProperties)); return download(id, options); };
+  return log;
+}
+const partDownloads = (log) => log.downloads.filter((kind) => kind === 'part').length;
+
+test('versions share unchanged screenshots, and each sync only moves what changed', async (t) => {
+  const { device, drive, files } = setup(t);
+  const log = recordTransfers(drive, files);
+  const a = device('a', PARTS);
+  const { id, stepId } = addShotGuide(a.store);
+  await synced(a.sync);
+  assert.equal(versionFiles(files).length, 1);
+  assert.equal(versionFiles(files)[0].appProperties.format, 'parts-v1', 'new versions store changes only, by default');
+  assert.equal(partFiles(files).length, 1, 'original.png and working.png are the same screenshot, stored once');
+
+  log.uploads.length = 0;
+  edit(a.store, id, 'Renamed');
+  await synced(a.sync);
+  assert.deepEqual(log.uploads, ['parts-v1'], 'a text edit uploads no screenshots');
+  setShot(a.store, id, stepId, 2);
+  log.uploads.length = 0;
+  await synced(a.sync);
+  assert.deepEqual(log.uploads, ['part', 'parts-v1'], 'a changed screenshot uploads just that screenshot');
+  assert.equal(partFiles(files).length, 2);
+
+  const b = device('b', PARTS);
+  log.downloads.length = 0;
+  await synced(b.sync);
+  assert.equal(snapshot(b.store, id).hash, snapshot(a.store, id).hash);
+  assert.equal(partDownloads(log), 2, 'the two screenshots, once each');
+
+  edit(a.store, id, 'Renamed again');
+  await synced(a.sync);
+  log.downloads.length = 0;
+  await synced(b.sync);
+  assert.equal(b.store.getGuide(id).title, 'Renamed again');
+  assert.equal(partDownloads(log), 0, 'screenshots this computer already has are not downloaded again');
+
+  const history = await b.sync.history(id);
+  assert.equal(history[0].size, buildArchiveEntries(b.store, id).reduce((n, e) => n + Buffer.byteLength(e.data), 0),
+    'history shows each version’s full size');
+});
+
+test('an earlier version can be restored after its screenshot changed', async (t) => {
+  const { device, files } = setup(t);
+  const a = device('a', PARTS);
+  const { id, stepId } = addShotGuide(a.store);
+  await synced(a.sync);
+  const first = versionFiles(files)[0];
+  setShot(a.store, id, stepId, 2);
+  await synced(a.sync);
+
+  const b = device('b', PARTS);
+  await b.sync.restore(id, first.id);
+  assert.deepEqual(fs.readFileSync(b.store.stepImagePath(id, stepId)), shot(1));
+  assert.equal(snapshot(b.store, id).hash, first.appProperties.hash);
+});
+
+test('files no version uses are removed, but shared and just-uploaded files are kept', async (t) => {
+  const { device, drive, files } = setup(t);
+  const a = device('a', PARTS);
+  const { id, stepId } = addShotGuide(a.store);
+  await synced(a.sync);
+  for (const seed of [2, 3, 4]) { setShot(a.store, id, stepId, seed); await synced(a.sync); }
+  assert.equal(versionFiles(files).length, 3, 'automatic pruning still keeps three versions');
+  assert.equal(partFiles(files).length, 4, 'the first screenshot is still used by original.png');
+
+  const result = await a.sync.prune();
+  assert.equal(versionFiles(files).length, 1);
+  const kept = new Set(partFiles(files).map((file) => file.appProperties.sha));
+  const { sha256 } = require('../../core/cloud-parts');
+  assert.deepEqual(kept, new Set([sha256(shot(1)), sha256(shot(4))]), 'screenshots only earlier versions used are gone');
+  assert.ok(result.reclaimedBytes >= 2 * shot(2).length);
+
+  // Another computer's upload in progress: a part with no version yet.
+  const fresh = await drive.upload({ data: shot(9), name: 'part-fresh', properties: { stepforge: 'part-v1', sha: sha256(shot(9)) } });
+  fresh.createdTime = new Date().toISOString();
+  const stale = await drive.upload({ data: shot(8), name: 'part-stale', properties: { stepforge: 'part-v1', sha: sha256(shot(8)) } });
+  const c = device('c', { inlineLimit: 1024 });
+  await c.sync.prune();
+  assert.ok(files.includes(fresh), 'a part younger than the grace period is kept');
+  assert.ok(!files.includes(stale), 'an old unused part is removed');
+});
+
+test('Free up space converts full-copy versions, and other computers just move their baseline', async (t) => {
+  const { device, drive, files } = setup(t);
+  const log = recordTransfers(drive, files);
+  const a = device('a', PARTS);
+  const b = device('b', PARTS);
+  const { id } = addShotGuide(a.store);
+  a.sync.markWasShared(id);
+  // A version saved by an older StepForge: one full .sfgz archive.
+  const legacy = await drive.upload({ data: zipSync(buildArchiveEntries(a.store, id)), name: 'Original.sfgz',
+    properties: { stepforge: 'guide-v1', guideId: id, hash: snapshot(a.store, id).hash } });
+  await synced(a.sync);
+  await synced(b.sync);
+  assert.deepEqual(versionFiles(files), [legacy], 'nothing re-uploads unchanged content');
+  const before = (await a.sync.storage()).fullCount;
+  assert.equal(before, 1, 'storage reports the version that can be converted');
+
+  edit(b.store, id, 'Edited on B before it heard about the conversion');
+  const result = await a.sync.prune();
+  assert.equal(result.converted, 1);
+  const [converted] = versionFiles(files);
+  assert.equal(converted.appProperties.format, 'parts-v1');
+  assert.equal(converted.appProperties.hash, legacy.appProperties.hash);
+  assert.equal(converted.appProperties.parent, legacy.id);
+  assert.ok(!files.includes(legacy));
+  assert.equal((await a.sync.storage()).fullCount, 0);
+
+  log.downloads.length = 0;
+  await synced(a.sync);
+  assert.deepEqual(log.downloads, [], 'this computer already knows the converted version');
+  log.downloads.length = 0;
+  await synced(b.sync);
+  assert.equal(b.store.listGuides().length, 1, 'no conflict copy for a conversion');
+  assert.equal(versionFiles(files).at(-1).appProperties.parent, converted.id, 'B’s edit continues from the converted version');
+  await synced(a.sync);
+  assert.equal(a.store.getGuide(id).title, 'Edited on B before it heard about the conversion');
+});
+
+test('storage counts shared screenshots once and knows what Free up space can reclaim', async (t) => {
+  const { device, files } = setup(t);
+  const a = device('a', PARTS);
+  const { id, stepId } = addShotGuide(a.store);
+  await synced(a.sync);
+  const first = versionFiles(files)[0];
+  setShot(a.store, id, stepId, 2);
+  await synced(a.sync);
+  const storage = await a.sync.storage();
+  const total = [...versionFiles(files), ...partFiles(files)].reduce((n, file) => n + Number(file.size), 0);
+  assert.equal(storage.bytes, total);
+  assert.equal(storage.pruneCount, 1);
+  assert.equal(storage.previousBytes, Number(first.size), 'the first screenshot is shared with the latest version, so only its manifest is reclaimable');
+  assert.equal(storage.fullCount, 0);
+  const [guide] = await a.sync.guides();
+  assert.equal(guide.bytes, total, 'a guide’s shared screenshots count once');
+});
+
+test('a version missing one of its files fails clearly and leaves this computer alone', async (t) => {
+  const { device, drive, files } = setup(t);
+  const a = device('a', PARTS);
+  addShotGuide(a.store);
+  await synced(a.sync);
+  await drive.deleteFile(partFiles(files)[0].id);
+  const b = device('b', PARTS);
+  const status = await b.sync.sync();
+  assert.equal(status.phase, 'error');
+  assert.match(status.message, /missing some of its files/);
+  assert.equal(b.store.listGuides().length, 0);
+});
+
+test('a shared file another computer removed during an upload is put back', async (t) => {
+  const { device, drive, files } = setup(t);
+  const a = device('a', PARTS);
+  const { id } = addShotGuide(a.store);
+  await synced(a.sync);
+  const upload = drive.upload.bind(drive);
+  drive.upload = async (args) => {
+    // Just before the manifest lands, the part it reuses disappears.
+    if (args.properties?.format === 'parts-v1') for (const part of partFiles(files)) await drive.deleteFile(part.id);
+    return upload(args);
+  };
+  edit(a.store, id, 'Reuses the screenshot');
+  await synced(a.sync);
+  assert.equal(partFiles(files).length, 1);
+  const b = device('b', PARTS);
+  await synced(b.sync);
+  assert.equal(snapshot(b.store, id).hash, snapshot(a.store, id).hash);
 });

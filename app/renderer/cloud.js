@@ -26,6 +26,8 @@ function makeCloudSettings(api) {
     return formatWhen(iso);
   };
   const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
+  // Previous versions or unused files to remove, or full copies to convert.
+  const canFreeUp = (summary) => Boolean(summary && (summary.pruneCount || summary.fullCount || summary.reclaimableBytes));
 
   let current = {};
   let busy = false;
@@ -134,15 +136,20 @@ function makeCloudSettings(api) {
   const quotaNote = el('p.muted', {}, 'Stored in a hidden app folder, so it won’t appear in your Drive file list.');
   const prune = el('button', { type: 'button', disabled: true, onClick: async () => {
     if (busy || disposed || !lastStorage) return;
-    const ok = await confirmDialog(el('div.cloud-confirm', {},
-      el('strong', {}, `Free up ${formatBytes(lastStorage.reclaimableBytes)}?`),
-      el('p', {}, `This removes ${plural(lastStorage.pruneCount, 'previous version')} from Google Drive. The latest version of every guide is always kept.`),
-      el('p.muted', {}, 'Removed versions can no longer be restored. This cannot be undone.')),
-    { danger: true, okLabel: 'Free up space' });
+    const { pruneCount = 0, fullCount = 0, reclaimableBytes = 0 } = lastStorage;
+    // replaceChildren() would print a skipped (null) item as "null".
+    const ok = await confirmDialog(el('div.cloud-confirm', {}, ...[
+      el('strong', {}, reclaimableBytes ? `Free up ${formatBytes(reclaimableBytes)}?` : 'Free up space in Google Drive?'),
+      pruneCount ? el('p', {}, `This removes ${plural(pruneCount, 'previous version')} from Google Drive. The latest version of every guide is always kept.`) : null,
+      fullCount ? el('p', {}, `It also switches ${plural(fullCount, 'guide version')} saved as full copies to space-saving versions, so later versions only store what changed. Each one is downloaded and uploaded once.`) : null,
+      pruneCount ? el('p.muted', {}, 'Removed versions can no longer be restored. This cannot be undone.') : null,
+    ].filter(Boolean)),
+    { danger: pruneCount > 0, okLabel: 'Free up space' });
     if (!ok) return;
     await run(prune, 'Freeing up space…', async () => {
       const result = await api.cloud.prune();
-      say(`Removed ${plural(result.pruned, 'previous version')} and freed ${formatBytes(result.reclaimedBytes)}.`, 'success');
+      const converted = result.converted ? ` ${plural(result.converted, 'guide version')} now ${result.converted === 1 ? 'stores' : 'store'} only what changes.` : '';
+      say(`Removed ${plural(result.pruned, 'previous version')} and freed ${formatBytes(result.reclaimedBytes)}.${converted}`, 'success');
       await refreshLists();
     });
   } }, 'Free up space');
@@ -232,7 +239,7 @@ function makeCloudSettings(api) {
     disconnect.disabled = busy;
     test.disabled = busy || !connected;
     replace.disabled = busy || !connected;
-    prune.disabled = busy || !lastStorage?.pruneCount;
+    prune.disabled = busy || !canFreeUp(lastStorage);
 
     email.textContent = next.email || 'Google account';
     avatarInitial.textContent = (next.email || '?').slice(0, 1).toUpperCase();
@@ -278,8 +285,9 @@ function makeCloudSettings(api) {
     quotaNote.textContent = quota?.limit
       ? `Uses ${((total / quota.limit) * 100).toFixed(total / quota.limit < 0.001 ? 2 : 1)}% of your ${formatBytes(quota.limit)} Google storage. Stored in a hidden app folder, so it won’t appear in your Drive file list.`
       : 'Stored in a hidden app folder, so it won’t appear in your Drive file list.';
-    prune.textContent = summary.pruneCount ? `Free up ${formatBytes(summary.reclaimableBytes)}` : 'Nothing to free up';
-    prune.disabled = busy || !summary.pruneCount;
+    prune.textContent = summary.reclaimableBytes ? `Free up ${formatBytes(summary.reclaimableBytes)}`
+      : summary.fullCount ? 'Free up space' : 'Nothing to free up';
+    prune.disabled = busy || !canFreeUp(summary);
   };
 
   const renderVersions = async (guide, host) => {

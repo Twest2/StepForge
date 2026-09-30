@@ -122,8 +122,25 @@ class CloudSync {
     this.pendingFile = path.join(this.directory, 'pending-deletions.json');
     this.pending = readJsonIfExists(this.pendingFile, { records: {} });
     this.pending.records ||= {};
-    this.status = { phase: 'off', message: 'Google Drive sharing is off.' };
+    this.status = { phase: 'off', message: `${this.label} sharing is off.` };
     this.recover();
+  }
+
+  /** The service's name for messages, such as "Google Drive" or "OneDrive". */
+  get label() { return this.drive.label || 'Google Drive'; }
+
+  /**
+   * Sync with another service or account. The caller stops sync first; each
+   * account keeps its own sync records, so nothing carries over by mistake.
+   */
+  setDrive(drive) {
+    this.stop();
+    this.drive = drive;
+    this.stateFile = null;
+    this.state = { records: {} };
+    this.partIndexCache = null;
+    this.lastPartCleanup = 0;
+    this.partCleanupNeeded = false;
   }
 
   publish(phase, message, extra = {}) {
@@ -174,7 +191,7 @@ class CloudSync {
    * disk. `progress` shows the download like any other guide transfer.
    */
   async manifestFor(file, { progress = false } = {}) {
-    if (!validId(file.id)) throw new Error('A Google Drive version is damaged and can’t be read.');
+    if (!validId(file.id)) throw new Error(`A ${this.label} version is damaged and can’t be read.`);
     const cached = this.manifestPath(file.id);
     try { return parts.decodeSnapshot(fs.readFileSync(cached)); } catch { /* not cached yet, or unreadable */ }
     const bytes = progress ? await this.downloadArchive(file) : await this.drive.download(file.id);
@@ -264,9 +281,9 @@ class CloudSync {
         let done = 0;
         for (const sha of needed) {
           const part = index.get(sha);
-          if (!part) throw new Error('A Google Drive version is missing some of its files. Sync the computer that saved it, then try again.');
+          if (!part) throw new Error(`A ${this.label} version is missing some of its files. Sync the computer that saved it, then try again.`);
           const data = await this.drive.download(part.id, { onProgress: (n) => onProgress(done + n) });
-          if (parts.sha256(data) !== sha) throw new Error('A Google Drive file failed its integrity check. Local guides are unchanged.');
+          if (parts.sha256(data) !== sha) throw new Error(`A ${this.label} file failed its integrity check. Local guides are unchanged.`);
           have.set(sha, data);
           done += data.length;
         }
@@ -297,6 +314,8 @@ class CloudSync {
       if (old(part) && validId(part.id)) remove.push(part);
     }
     for (const part of remove) await this.drive.deleteFile(part.id);
+    // Folder-based services can be left with half-finished uploads.
+    if (this.drive.removeOrphans) { try { await this.drive.removeOrphans(); } catch { /* try again next time */ } }
     this.lastPartCleanup = now;
     this.partCleanupNeeded = false;
     // Forget cached manifests of versions that are gone.
@@ -381,7 +400,7 @@ class CloudSync {
   }
 
   async storage() {
-    if (!this.drive.status().connected) throw new Error('Sign in to Google Drive first.');
+    if (!this.drive.status().connected) throw new Error(`Sign in to ${this.label} first.`);
     const [files, markers, partFiles, quota] = await Promise.all([this.drive.listVersions(), this.drive.listDeletions(), this.drive.listParts(),
       this.drive.quota ? this.drive.quota().catch(() => null) : null]);
     const recoveryIds = new Set([...this.deletionStates(markers).values()]
@@ -390,7 +409,7 @@ class CloudSync {
   }
 
   async guides() {
-    if (!this.drive.status().connected) throw new Error('Sign in to Google Drive first.');
+    if (!this.drive.status().connected) throw new Error(`Sign in to ${this.label} first.`);
     const [files, markers, partFiles] = await Promise.all([this.drive.listVersions(), this.drive.listDeletions(), this.drive.listParts()]);
     const deleted = this.deletionStates(markers);
     const refs = await this.partRefs(files);
@@ -423,7 +442,7 @@ class CloudSync {
   }
 
   async history(id) {
-    if (!this.drive.status().connected) throw new Error('Sign in to Google Drive first.');
+    if (!this.drive.status().connected) throw new Error(`Sign in to ${this.label} first.`);
     return (await this.drive.listVersions())
       .filter((file) => file.appProperties?.guideId === id)
       .sort((a, b) => compareText(b.createdTime || '', a.createdTime || '') || compareText(b.id, a.id))
@@ -438,7 +457,7 @@ class CloudSync {
   prune() { return this.mutate(() => this.pruneNow(1, { convert: true })); }
 
   async pruneNow(retain = RETAIN_PER_BRANCH, { convert = false } = {}) {
-    if (!this.drive.status().connected) throw new Error('Sign in to Google Drive first.');
+    if (!this.drive.status().connected) throw new Error(`Sign in to ${this.label} first.`);
     const files = await this.drive.listVersions();
     const remove = [];
     for (const versions of guideVersions(files).values()) {
@@ -481,8 +500,8 @@ class CloudSync {
   }
 
   async replaceCloudWithLocalNow() {
-    if (!this.drive.status().connected) throw new Error('Sign in to Google Drive first.');
-    if (!this.enabled()) throw new Error('Turn on automatic sync before replacing Google Drive.');
+    if (!this.drive.status().connected) throw new Error(`Sign in to ${this.label} first.`);
+    if (!this.enabled()) throw new Error(`Turn on automatic sync before replacing ${this.label}.`);
     await this.loadAccountState();
     const [files, markers] = await Promise.all([this.drive.listVersions(), this.drive.listDeletions()]);
     const local = new Set(this.store.listGuides().map((guide) => guide.guideId));
@@ -529,7 +548,7 @@ class CloudSync {
   removeGuideSnapshots(id) { return this.mutate(() => this.removeGuideSnapshotsNow(id)); }
 
   async removeGuideSnapshotsNow(id) {
-    if (!this.drive.status().connected) throw new Error('Sign in to Google Drive first.');
+    if (!this.drive.status().connected) throw new Error(`Sign in to ${this.label} first.`);
     if (this.store.guideExists(id)) await this.setSharing(id, false);
     const files = (await this.drive.listVersions()).filter((file) => file.appProperties?.guideId === id);
     for (const file of files) await this.drive.deleteFile(file.id);
@@ -542,7 +561,7 @@ class CloudSync {
   restore(id, versionId) { return this.mutate(() => this.restoreNow(id, versionId)); }
 
   async restoreNow(id, versionId) {
-    if (!this.drive.status().connected) throw new Error('Sign in to Google Drive first.');
+    if (!this.drive.status().connected) throw new Error(`Sign in to ${this.label} first.`);
     if (!this.canReplace(id)) throw new Error('Close the editor or stop capture before restoring a cloud snapshot.');
     await this.loadAccountState();
     const files = await this.drive.listVersions();
@@ -632,7 +651,7 @@ class CloudSync {
   }
 
   async deletedGuides() {
-    if (!this.drive.status().connected) throw new Error('Sign in to Google Drive first.');
+    if (!this.drive.status().connected) throw new Error(`Sign in to ${this.label} first.`);
     const [files, deletionFiles] = await Promise.all([this.drive.listVersions(), this.drive.listDeletions()]);
     const states = this.deletionStates(deletionFiles);
     return [...states.values()].filter((file) => ['deleted', 'purged'].includes(file.appProperties?.state)).map((file) => {
@@ -733,20 +752,20 @@ class CloudSync {
     if (this.running) return this.running;
     this.running = this.run().catch((err) => {
       if (this.enabled()) this.publish('error', err.message);
-      else this.publish('off', 'Google Drive sharing is off.');
+      else this.publish('off', `${this.label} sharing is off.`);
       return this.status;
     }).finally(() => { this.running = null; });
     return this.running;
   }
 
   async run() {
-    if (!this.enabled()) return this.publish('off', 'Google Drive sharing is off.');
-    if (!this.drive.status().connected) return this.publish('disconnected', this.drive.status().error || 'Sign in to Google Drive in Settings.');
+    if (!this.enabled()) return this.publish('off', `${this.label} sharing is off.`);
+    if (!this.drive.status().connected) return this.publish('disconnected', this.drive.status().error || `Sign in to ${this.label} in Settings.`);
     const generation = this.generation;
     const check = () => {
       if (!this.enabled() || generation !== this.generation) throw new Error('Cloud synchronization stopped.');
     };
-    this.publish('syncing', 'Syncing with Google Drive…');
+    this.publish('syncing', `Syncing with ${this.label}…`);
     this.partIndexCache = null;
     await this.loadAccountState();
     check();
@@ -921,7 +940,7 @@ class CloudSync {
     if (errors.length) this.publish('error', `${errors.length} guide(s) could not sync: ${errors[0]}`);
     else if (conflicts) this.publish('conflict', `${conflicts} conflict ${conflicts === 1 ? 'copy preserved' : 'copies preserved'} in your library.`, { lastSync: new Date().toISOString() });
     else if (pending) this.publish('pending', 'Changes pending. Incoming updates wait until the guide is closed.');
-    else this.publish('synced', 'Guides are synced with Google Drive.', { lastSync: new Date().toISOString() });
+    else this.publish('synced', `Guides are synced with ${this.label}.`, { lastSync: new Date().toISOString() });
     // Snapshots are immutable. Retain the current version and two prior
     // versions on every live conflict branch after a successful sync.
     if (!errors.length && !pending) await this.pruneNow();

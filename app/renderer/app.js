@@ -42,7 +42,8 @@ class StepForgeApp {
     };
     this.editorMeta = null;
     this.cloudStatus = document.getElementById('cloud-status');
-    this.cloudStatus.addEventListener('click', () => this.openSettings('drive'));
+    // Opens the settings of whichever service is syncing.
+    this.cloudStatus.addEventListener('click', () => this.openSettings(!this.cloudProvider || this.cloudProvider === 'google' ? 'drive' : this.cloudProvider));
     api.cloud.onStatus((status) => this.renderCloudStatus(status));
     api.cloud.onLibraryChanged(() => this.refreshLibrary().catch(console.error));
     api.cloud.status().then((status) => this.renderCloudStatus(status)).catch(console.error);
@@ -321,12 +322,15 @@ class StepForgeApp {
   }
 
   renderCloudStatus(status) {
-    // Google Drive is opt-in: only users who are signed in with sync on see it.
+    // Cloud sync is opt-in: only users who are signed in with sync on see it.
     this.cloudStatus.classList.toggle('hidden', !(status.connected && status.enabled));
-    const labels = { synced: 'Drive: synced', syncing: 'Drive: syncing…', pending: 'Drive: pending', conflict: 'Drive: conflict copies', error: 'Drive: needs attention' };
+    this.cloudProvider = status.provider || 'google';
+    const short = status.providerShort || 'Drive';
+    const name = status.providerLabel || 'Google Drive';
+    const labels = { synced: 'synced', syncing: 'syncing…', pending: 'pending', conflict: 'conflict copies', error: 'needs attention' };
     const transfer = status.transfer ? describeTransfer(status.transfer) : null;
-    this.cloudStatus.textContent = transfer ? `Drive: ${transfer.arrow} ${transfer.compact}` : labels[status.phase] || 'Google Drive';
-    this.cloudStatus.title = transfer?.detail || status.error || status.message || 'Google Drive settings';
+    this.cloudStatus.textContent = transfer ? `${short}: ${transfer.arrow} ${transfer.compact}` : labels[status.phase] ? `${short}: ${labels[status.phase]}` : name;
+    this.cloudStatus.title = transfer?.detail || status.error || status.message || `${name} settings`;
     this.cloudStatus.classList.toggle('transferring', Boolean(transfer));
     this.cloudStatus.style.setProperty('--transfer-progress', `${transfer?.percent || 0}%`);
     this.cloudStatus.setAttribute('aria-label', this.cloudStatus.title);
@@ -907,7 +911,7 @@ class StepForgeApp {
   async bulkDelete() {
     const ids = [...this.state.selectedGuides];
     if (!ids.length) return;
-    const ok = await confirmDialog(`Delete ${ids.length} guide${ids.length === 1 ? '' : 's'}? They'll move to Trash. Google Drive-shared guides are also removed from your other devices, with one cloud recovery snapshot retained.`, { danger: true, okLabel: 'Delete' });
+    const ok = await confirmDialog(`Delete ${ids.length} guide${ids.length === 1 ? '' : 's'}? They'll move to Trash. Guides that sync to the cloud are also removed from your other devices, with one cloud recovery snapshot retained.`, { danger: true, okLabel: 'Delete' });
     if (!ok) return;
     await Promise.all(ids.map((guideId) => api.library.delete({ guideId })));
     this.state.selectedGuides = new Set();
@@ -974,7 +978,7 @@ class StepForgeApp {
   async deleteGuide(guideId) {
     const guide = this.state.library.guides.find((g) => g.guideId === guideId);
     if (!guide) return;
-    const ok = await confirmDialog(`Delete “${guide.title}”? It moves to Trash. If it is shared with Google Drive, it is also removed from your other devices and one cloud recovery snapshot is retained.`, { danger: true, okLabel: 'Delete' });
+    const ok = await confirmDialog(`Delete “${guide.title}”? It moves to Trash. If it syncs to the cloud, it is also removed from your other devices and one cloud recovery snapshot is retained.`, { danger: true, okLabel: 'Delete' });
     if (!ok) return;
     await api.library.delete({ guideId });
     await this.refreshLibrary();

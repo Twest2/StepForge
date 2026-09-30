@@ -252,7 +252,7 @@ function formatBytes(bytes) {
   return `${(bytes / (1024 ** unit)).toFixed(unit ? 1 : 0)} ${units[unit]}`;
 }
 
-/** Wording for a live Google Drive transfer ({ direction, name, loaded, total, bytesPerSecond }). */
+/** Wording for a live cloud transfer ({ direction, name, loaded, total, bytesPerSecond }). */
 function describeTransfer(transfer) {
   const percent = transfer.total ? Math.min(100, Math.floor((transfer.loaded / transfer.total) * 100)) : 0;
   const amount = `${formatBytes(transfer.loaded)} of ${formatBytes(transfer.total)}`;

@@ -97,7 +97,7 @@ sudo dnf install stepforge
 | **Organized library** | Folders, favorites, full-text search across every guide, snapshots, and a trash you can restore from. |
 | **Reusable content** | Placeholders (`[[Product]]`) and export templates keep a whole set of guides consistent. |
 | **Share on the web** | Publish a guide to GitHub Pages in your own repository for 1, 7, or 30 days and send a link. Shared guides are public and are removed automatically when their time is up. |
-| **Optional extras** | Google Drive sync between computers, and AI-written descriptions through a local [Ollama](https://ollama.com) model. Both are off until you turn them on. |
+| **Optional extras** | Sync between computers with Google Drive, OneDrive, Dropbox or Nextcloud, and AI-written descriptions through a local [Ollama](https://ollama.com) model. Both are off until you turn them on. |
 
 ## Your first guide in one minute
 
@@ -119,7 +119,7 @@ StepForge works entirely on your computer.
   automatic update checks (you can check for updates yourself in
   **Settings → About**).
 - Capture, editing, OCR, and export all work offline.
-- Google Drive sync, GitHub sharing, and AI are **off by default** and only
+- Cloud sync, GitHub sharing, and AI are **off by default** and only
   connect when you turn them on. AI talks to a model on your own machine unless
   you explicitly allow a remote host.
 
@@ -133,6 +133,7 @@ each optional feature sends.
 - [Getting started](docs/GETTING_STARTED.md): recording, editing, and exporting
 - [AI descriptions with Ollama](docs/getting_started_with_ai.md)
 - [Google Drive sync](docs/GOOGLE_DRIVE.md)
+- [Sync with OneDrive, Dropbox or Nextcloud](docs/CLOUD_ACCOUNTS.md)
 - [Share guides on the web with GitHub Pages](docs/GITHUB_PAGES.md)
 - [Privacy](docs/PRIVACY.md) and [security](docs/SECURITY.md)
 

@@ -9,9 +9,12 @@ Sharing is **optional and off by default**. You need a free GitHub account.
 
 > [!WARNING]
 > **Shared guides are public.** Anyone with the link can open a shared guide,
-> and anyone who looks at your repository on GitHub can find it. Before you
-> publish, check every screenshot for passwords, email addresses, customer
-> details, and anything else private, and hide it with the **Blur** tool.
+> and anyone who looks at your repository on GitHub can find it. StepForge
+> checks your screenshots and blurs the private details it finds before
+> publishing ([how](GETTING_STARTED.md#find-private-details)), but it can
+> miss some. Check every screenshot for passwords, email addresses, customer
+> details, and anything else private, and hide what it missed with the
+> **Blur** tool.
 > Removing a guide takes it off the site, but someone may already have saved a
 > copy.
 

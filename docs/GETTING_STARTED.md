@@ -95,9 +95,31 @@ Pick a tool from the toolbar above the screenshot and drag on the image.
 Annotations stay editable. The original screenshot is never modified, so you
 can always change or remove them later.
 
+### Find private details
+
+**More → Find private details…** reads every screenshot and blurs what looks
+private:
+- email addresses, and phone and card numbers;
+- Social Security numbers and IP addresses;
+- passwords, API keys and tokens;
+- links that contain a private token.
+
+It also points out private details in step titles and descriptions. The
+reading happens on your computer; nothing is sent anywhere.
+
+Each blur StepForge adds has a dashed outline in the editor, and in the list
+you can **Show** it or mark it **Not private**. A blur you mark **Not
+private** isn't added again. To blur names or project codes too, add them
+under **Settings → Privacy → Always hide these words**. Turn on **Blur while
+recording** there to check each capture as soon as it's taken.
+
+Publishing a guide on the web always runs this check first.
+
 > [!IMPORTANT]
-> Check every screenshot for personal or confidential information before you
-> share a guide, and cover it with the **Blur** tool.
+> StepForge can miss things, such as names it wasn't told about or text
+> that's hard to read. Check every screenshot for personal or confidential
+> information before you share a guide, and cover anything it missed with
+> the **Blur** tool.
 
 ## 4. Export
 

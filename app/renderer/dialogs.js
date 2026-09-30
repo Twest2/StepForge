@@ -429,6 +429,10 @@ function showSettingsDialog({
       { value: 'region', label: 'Region' },
     ]);
     const smartCropping = el('input', { type: 'checkbox', checked: settings.capture?.smartCropping !== false });
+    const redactOnCapture = el('input', { type: 'checkbox', checked: settings.redaction?.onCapture === true });
+    const redactTerms = el('textarea.redact-terms', { rows: 4, spellcheck: false, placeholder: 'One per line, for example a name or project code',
+      'aria-label': 'Words to always hide' });
+    redactTerms.value = (settings.redaction?.terms || []).join('\n');
     const focusValue = Number(settings.capture?.focusAmount ?? 1.25);
     const focusAmount = el('input', { type: 'range', min: 1, max: 2, step: 0.05,
       'aria-label': 'Default focus amount', value: Number.isFinite(focusValue) ? Math.max(1, Math.min(2, focusValue)) : 1.25 });
@@ -580,6 +584,12 @@ function showSettingsDialog({
         settingsCard('Backups',
           settingRow('Snapshots to keep', 'Older backup snapshots of each guide are removed. 0 keeps all of them.', keepLast)),
       ] },
+      { id: 'privacy', label: 'Privacy', description: 'Blur private details in screenshots. Everything is checked on this computer.', content: [
+        settingsCard('Private details',
+          el('div.setting-desc', {}, 'Before a guide goes on the web, StepForge reads its screenshots and blurs email addresses, phone and card numbers, Social Security numbers, IP addresses, passwords, keys, and links with private tokens. You can review every blur and undo any that aren’t needed.'),
+          settingRow('Blur while recording', 'Check each new capture as soon as it’s taken, instead of waiting until you publish.', makeSwitch(redactOnCapture, 'Blur while recording')),
+          settingRow('Always hide these words', 'Names, project codes, or anything else to blur wherever it appears. One per line.', redactTerms)),
+      ] },
       { id: 'ai', label: 'AI', badge: 'Beta', description: 'Optional titles and descriptions from a local Ollama model. Nothing is sent anywhere else.', content: [
         settingsCard(null,
           settingRow('Enable AI', 'Show AI actions in the editor.', makeSwitch(aiEnabled, 'Enable AI')),
@@ -681,6 +691,11 @@ function showSettingsDialog({
               backups: {
                 ...settings.backups,
                 keepLast: Number(keepLast.value || 0),
+              },
+              redaction: {
+                ...settings.redaction,
+                onCapture: redactOnCapture.checked,
+                terms: [...new Set(redactTerms.value.split('\n').map((t) => t.trim()).filter(Boolean))].slice(0, 200),
               },
               ai: {
                 ...settings.ai,

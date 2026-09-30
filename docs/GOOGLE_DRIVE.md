@@ -71,6 +71,31 @@ previous versions, and recovery copies of deleted guides.
 
 **Free up space** deletes all previous versions after you confirm. The latest
 version of every guide is always kept. Deleted versions can't be recovered.
+It also switches versions saved as full copies by older StepForge releases to
+space-saving versions (see [How versions are stored](#how-versions-are-stored)),
+and removes files no version uses any more.
+
+### How versions are stored
+
+Each version stores **only what changed**. A screenshot is uploaded once and
+shared by every version (and every guide) that contains it, so fixing a typo
+uploads a few kilobytes instead of the whole guide. Downloads work the same
+way: a computer only fetches the screenshots it doesn't already have.
+
+- This is how StepForge saves every new version. There's nothing to turn on.
+- Every version you can see under **Versions** can still be restored in full.
+- Versions saved as full copies by an older StepForge keep working. Choose
+  **Free up space** to switch them over; each one is downloaded and uploaded
+  once.
+- Files that no version uses any more are removed automatically after a
+  sync, and right away by **Free up space**. A file uploaded in the last hour
+  is left alone, in case another computer is still saving the version that
+  uses it.
+
+> [!IMPORTANT]
+> Update StepForge on **every** computer that syncs with the same Google
+> account. Older releases can't read space-saving versions: they show a sync
+> error for those guides instead of changing them.
 
 **Guides in Drive** lists every guide stored in Drive, including ones that
 aren't on this computer.
@@ -118,8 +143,8 @@ To revoke StepForge's access completely, remove it from
   Drive. Older versions are removed automatically after a successful sync.
 - A single guide can be up to **256 MB**. Very large guides on slow
   connections may take more than one attempt.
-- Sync sends complete guides, not just the changed images, so large guides
-  use more bandwidth.
+- The first sync of a guide sends all of it. After that, only new or changed
+  files are sent.
 
 ## Privacy and security
 

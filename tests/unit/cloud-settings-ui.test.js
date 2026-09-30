@@ -147,6 +147,28 @@ test('freeing up space is confirmed first and reports what was removed', async (
   panel.dispose();
 });
 
+test('Free up space also converts full-copy versions, even with nothing to remove', async () => {
+  const u = ui();
+  const { calls, panel } = cloud(u, {
+    storage: async () => ({ bytes: 200, latestBytes: 200, previousBytes: 0, recoveryBytes: 0, snapshotCount: 2, guideCount: 2, pruneCount: 0, fullCount: 2, reclaimableBytes: 0 }),
+    prune: async () => { calls.push(['prune']); return { pruned: 0, reclaimedBytes: 0, converted: 2 }; },
+  });
+  await settle();
+  const prune = u.nodes.find((n) => n.spec === 'button' && n.textContent === 'Free up space');
+  assert.ok(prune, 'offered although no previous versions exist');
+  assert.equal(prune.disabled, false);
+  const action = prune.onClick();
+  const text = (n) => (typeof n === 'object' ? (n.textContent || '') + n.children.map(text).join('') : String(n));
+  const dialog = text(u.root.children.at(-1));
+  assert.match(dialog, /switches 2 guide versions saved as full copies to space-saving versions/);
+  assert.doesNotMatch(dialog, /cannot be undone|null/, 'nothing is removed, so no warning');
+  u.button('Free up space').onClick();
+  await action;
+  assert.deepEqual(calls, [['prune']]);
+  assert.ok(hasText(u, 'Removed 0 previous versions and freed 0 B. 2 guide versions now store only what changes.'));
+  panel.dispose();
+});
+
 test('replacing Drive with this computer requires confirmation', async () => {
   const u = ui(); const { calls, panel } = cloud(u);
   await settle();

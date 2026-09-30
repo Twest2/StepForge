@@ -42,6 +42,8 @@ const api = {
     resetWorkingImage: invoke('step:resetWorkingImage'),
     fromClipboard: invoke('step:fromClipboard'),
     importImage: invoke('step:importImage'),
+    chooseImage: invoke('step:chooseImage'),
+    setImages: invoke('step:setImages'),
   },
   search: {
     query: invoke('search:query'),

@@ -406,6 +406,27 @@ class GuideStore {
     return this.saveStep(guideId, step);
   }
 
+  /**
+   * Replace a step's screenshot (Choose screenshot…, and undoing it).
+   * `images.original` becomes original.png; `images.working` (or the
+   * original) becomes working.png. A step without a screenshot gets one.
+   * `stepPatch` is saved with it, so text and annotations go in one write.
+   */
+  replaceImages(guideId, stepId, images, size, stepPatch = null) {
+    const step = stepPatch ? deepClone(stepPatch) : this.getStep(guideId, stepId);
+    if (!images?.original && !images?.working) throw new Error('No screenshot to use.');
+    if (!step.image) {
+      step.image = { originalPath: 'original.png', workingPath: 'working.png', size };
+    }
+    step.kind = 'image';
+    const dir = this.stepDir(guideId, stepId);
+    fs.mkdirSync(dir, { recursive: true });
+    if (images.original) atomicWriteFileSync(path.join(dir, step.image.originalPath), images.original);
+    atomicWriteFileSync(path.join(dir, step.image.workingPath), images.working || images.original);
+    step.image.size = size;
+    return this.saveStep(guideId, step);
+  }
+
   /** Restore working.png from original.png (un-crop). */
   resetWorkingImage(guideId, stepId, size) {
     const step = this.getStep(guideId, stepId);

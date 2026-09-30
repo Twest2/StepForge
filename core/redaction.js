@@ -242,7 +242,19 @@ function hideInStepText(step, options = {}) {
   return { title: hide(step.title || ''), descriptionHtml: wrapped.slice(1, -1) };
 }
 
+/**
+ * For a step getting a new screenshot: blurs StepForge added matched the old
+ * screenshot's text, so remove them and mark the step as not yet checked.
+ * Blurs the user drew stay. Returns how many were removed.
+ */
+function forgetScreenshotChecks(step) {
+  const before = (step.annotations || []).length;
+  step.annotations = (step.annotations || []).filter((ann) => !ann.redact);
+  if (step.redaction) step.redaction = { ...step.redaction, checked: '' };
+  return before - step.annotations.length;
+}
+
 module.exports = {
   RULES_VERSION, KINDS, findInText, findInLines, findingKey, maskText, blurFor, newBlurs, coverage,
-  findInStepText, hideInStepText, luhn, looksLikeKey,
+  findInStepText, hideInStepText, luhn, looksLikeKey, forgetScreenshotChecks,
 };

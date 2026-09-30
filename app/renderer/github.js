@@ -468,9 +468,11 @@ function makeAccountsSettings(api, { view = null } = {}) {
   const clouds = services.map((provider) => ({ provider, id: rowId(provider), panel: makeCloudSettings(api, { provider }),
     state: el('span.account-state', {}, 'Checking…') }));
   const github = makeGitHubSettings(api);
+  const confluence = makeConfluenceSettings(api);
   let disposed = false;
 
   const githubState = el('span.account-state', {}, 'Checking…');
+  const confluenceState = el('span.account-state', {}, 'Checking…');
   // Service logos ship with the app (app/assets/icons); nothing is fetched.
   const row = (id, icon, name, description, state) => el('button.account-row', { type: 'button', onClick: () => show(id) },
     el(`span.account-icon.${id}`, { 'aria-hidden': 'true' }, el('img', { src: `../assets/icons/${icon}`, alt: '' })),
@@ -482,16 +484,18 @@ function makeAccountsSettings(api, { view = null } = {}) {
       const service = CLOUD_SERVICES[provider];
       return row(id, service.icon, provider === 'webdav' ? 'Nextcloud or WebDAV' : service.name, service.description, state);
     }),
-    row('github', 'github.svg', 'GitHub', 'Share guides on the web for a limited time with GitHub Pages.', githubState));
+    row('github', 'github.svg', 'GitHub', 'Share guides on the web for a limited time with GitHub Pages.', githubState),
+    row('confluence', 'confluence.svg', 'Confluence', 'Publish guides as pages on your Confluence site.', confluenceState));
 
   const back = el('button.account-back', { type: 'button', onClick: () => show(null) }, '‹ All accounts');
-  const detail = el('div.account-detail.hidden', {}, back, ...clouds.map(({ panel }) => panel.node), github.node);
+  const detail = el('div.account-detail.hidden', {}, back, ...clouds.map(({ panel }) => panel.node), github.node, confluence.node);
 
   function show(id) {
     list.classList.toggle('hidden', Boolean(id));
     detail.classList.toggle('hidden', !id);
     for (const cloud of clouds) cloud.panel.node.classList.toggle('hidden', id !== cloud.id);
     github.node.classList.toggle('hidden', id !== 'github');
+    confluence.node.classList.toggle('hidden', id !== 'confluence');
   }
 
   // One service syncs at a time; its row shows who is signed in.
@@ -513,9 +517,16 @@ function makeAccountsSettings(api, { view = null } = {}) {
   };
   const stopCloud = api.cloud.onStatus(setCloud);
   const stopGitHub = api.github.onStatus(setGitHub);
+  const setConfluence = (status) => {
+    if (disposed || !status) return;
+    confluenceState.textContent = status.connected ? status.host : 'Not connected';
+    confluenceState.classList.toggle('on', Boolean(status.connected));
+  };
+  const stopConfluence = api.confluence.onStatus(setConfluence);
+  api.confluence.status().then(setConfluence).catch(() => { confluenceState.textContent = ''; });
   api.cloud.status().then(setCloud).catch(() => { for (const { state } of clouds) state.textContent = ''; });
   api.github.status().then(setGitHub).catch(() => { githubState.textContent = ''; });
-  show([...clouds.map(({ id }) => id), 'github'].includes(view) ? view : null);
+  show([...clouds.map(({ id }) => id), 'github', 'confluence'].includes(view) ? view : null);
 
   return {
     node: el('div.accounts', {}, list, detail),
@@ -524,6 +535,8 @@ function makeAccountsSettings(api, { view = null } = {}) {
       disposed = true;
       stopCloud();
       stopGitHub();
+      stopConfluence();
+      confluence.dispose();
       for (const { panel } of clouds) panel.dispose();
       github.dispose();
     },

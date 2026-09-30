@@ -1152,6 +1152,7 @@ fieldset legend {
 .cloud-login { display: flex; flex-direction: column; gap: 6px; }
 .cloud-hero button.link { border: 0; background: transparent; color: var(--accent-strong); padding: 4px 6px; }
 .cloud-hero button.link:hover { text-decoration: underline; background: transparent; }
+.cloud-banner button.link { border: 0; background: transparent; color: var(--accent-strong); padding: 0; font: inherit; text-decoration: underline; }
 .cloud-note { margin: 0; padding: 8px 10px; border-radius: 8px; font-size: 12px; background: var(--panel-2); }
 
 .cloud-account {
@@ -1322,6 +1323,14 @@ fieldset legend {
 .gh-privacy { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; font-size: 12px; background: var(--panel-2); }
 .gh-privacy > span:not(.spinner) { flex: 1; }
 .gh-privacy.found { background: color-mix(in srgb, #F59E0B 14%, var(--panel-solid)); }
+/* Confluence (confluence.js) */
+.confluence-method { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+.confluence-or { margin: 4px 0 0; font-size: 12px; color: var(--muted); }
+.confluence-browser { display: flex; flex-direction: column; gap: 6px; }
+.confluence-parent { font-size: 13px; }
+.confluence-results { display: flex; flex-direction: column; gap: 4px; max-height: 180px; overflow: auto; }
+.confluence-result { text-align: left; }
+.cloud-avatar img { width: 22px; height: 22px; object-fit: contain; }
 /* Private details review (privacy.js) */
 .privacy-dialog { display: flex; flex-direction: column; gap: 10px; min-width: min(560px, 80vw); }
 .privacy-dialog p { margin: 0; }

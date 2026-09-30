@@ -17,6 +17,8 @@ const { OneDrive } = require('./onedrive');
 const { Dropbox } = require('./dropbox');
 const { WebDAV } = require('./webdav');
 const { RedactionService } = require('./redaction');
+const { Confluence, pageFromExport } = require('./confluence');
+const { createConfluenceSession } = require('./confluence-session');
 const { GitHubPages } = require('./github-pages');
 const { EXPIRY_DAYS, titleFromHtml } = require('../core/pages-site');
 const { TransferMeter } = require('../core/transfer-meter');
@@ -87,6 +89,10 @@ let googleDrive;
 let cloudProviders = {};
 let cloudConnectingTo = null;
 let githubPages;
+// Publishing to Confluence, in its own browser session (cookies, smart cards).
+let confluence;
+let confluenceSession;
+let confluenceCertificates;
 let cloudSync;
 let cloudConnecting = false;
 let cloudTesting = false;
@@ -874,6 +880,45 @@ function setupIpc() {
   // Publishes one of the HTML exports: the interactive one with default
   // options from Share, or whichever HTML format and options Export chose.
   // Progress goes out on github:progress: export, upload (bytes), commit.
+  // Confluence: tokens and cookies stay in the main process.
+  const withSite = (a) => c.string(a.address, 2000);
+  const spaceArg = (v) => v === null || v === undefined || (security.isPlainArgs(v) && c.string(v.key, 255) && c.optionalString(v.name, 500) && c.optionalString(v.id, 100));
+  const parentArg = (v) => v === null || v === undefined || (security.isPlainArgs(v) && c.string(v.id, 100) && c.optionalString(v.title, 500));
+  h('confluence:status', () => confluence.status());
+  h('confluence:probe', ({ address }) => confluence.probe(address), { validate: withSite });
+  h('confluence:connect', ({ address, token, email }) => confluence.connect({ address, token, email }),
+    { validate: (a) => withSite(a) && c.string(a.token, 2000) && c.optionalString(a.email, 320) });
+  h('confluence:connectWithBrowser', ({ address }) => confluence.connectWithBrowser({ address }), { validate: withSite });
+  h('confluence:cancel', () => { confluence.cancel(); return { ok: true }; });
+  h('confluence:disconnect', async () => {
+    await confluenceSession.clearStorageData();
+    return confluence.disconnect();
+  });
+  h('confluence:spaces', () => confluence.spaces());
+  h('confluence:findPages', ({ spaceKey, query = '' }) => confluence.findPages({ spaceKey, query }),
+    { validate: (a) => c.string(a.spaceKey, 255) && c.optionalString(a.query, 200) });
+  h('confluence:setDefaults', ({ space = null, parent = null }) => confluence.setDefaults({ space, parent }),
+    { validate: (a) => spaceArg(a.space) && parentArg(a.parent) });
+  h('confluence:published', ({ guideId }) => confluence.publishedFor(guideId), { validate: (a) => c.id(a.guideId) });
+  h('confluence:publish', async ({ guideId, space, parent = null, replace = false }) => {
+    if (!store.guideExists(guideId)) throw new Error('Guide not found.');
+    const progress = (update) => sendToRenderer('confluence:progress', { guideId, ...update });
+    const outDir = path.join(store.tempDir, `confluence-${guideId}`);
+    fs.rmSync(outDir, { recursive: true, force: true });
+    try {
+      // Like publishing on the web: nothing leaves unchecked.
+      progress({ stage: 'check' });
+      await redactor.checkGuide(guideId, { onProgress: ({ done, total }) => progress({ stage: 'check', done, total }) });
+      progress({ stage: 'export' });
+      const result = await runExportInWorker({ dataDir: store.root, guideId, format: 'confluence',
+        options: { apiFiles: true, includeImages: true, toc: true }, outDir, globals: settings.getGlobalPlaceholders() });
+      return await confluence.publish({ guideId, space, parent, replace, onProgress: progress,
+        page: pageFromExport(path.dirname(result.apiPage)) });
+    } finally {
+      fs.rmSync(outDir, { recursive: true, force: true });
+    }
+  }, { validate: (a) => c.id(a.guideId) && spaceArg(a.space) && a.space && parentArg(a.parent) && (a.replace === undefined || typeof a.replace === 'boolean') });
+
   // Private details: check screenshots, then review what was blurred.
   h('redact:check', ({ guideId, force = false }) => redactor.checkGuide(guideId, { force,
     onProgress: (update) => sendToRenderer('redact:progress', { guideId, ...update }) }),
@@ -1325,6 +1370,10 @@ if (!gotLock) {
     mainWindow.focus();
   });
 
+  // Only the Confluence session is handled here; everything else keeps
+  // Electron's default.
+  app.on('select-client-certificate', (...args) => confluenceCertificates?.(...args));
+
   app.whenReady().then(() => {
     const defaultDataDir = resolveDataDir();
     libraryLocation = new LibraryLocation({
@@ -1348,6 +1397,32 @@ if (!gotLock) {
       dropbox: new Dropbox({ ...cloudOptions, vault: cloudVault('dropbox') }),
       webdav: new WebDAV({ ...cloudOptions, vault: cloudVault('webdav') }),
     };
+    const confluenceParts = createConfluenceSession({
+      session, BrowserWindow,
+      getParent: () => mainWindow,
+      remembered: (host) => settings.get('confluence')?.certificates?.[host] || null,
+      remember: (host, fingerprint) => settings.set('confluence', { ...(settings.get('confluence') || {}),
+        certificates: { ...(settings.get('confluence')?.certificates || {}), [host]: fingerprint } }),
+      ask: async (host, certificates) => {
+        const { response } = await dialog.showMessageBox(mainWindow, {
+          type: 'question', title: 'Choose a certificate',
+          message: `${host} asks for a certificate to sign you in.`,
+          detail: 'Choose the one from your smart card that you use to sign in to websites. StepForge remembers your choice for this site.',
+          buttons: [...certificates.map((cert) => `${cert.subjectName} (issued by ${cert.issuerName})`.slice(0, 120)), 'Cancel'],
+          cancelId: certificates.length, noLink: true,
+        });
+        return response >= certificates.length ? -1 : response;
+      },
+    });
+    confluenceSession = confluenceParts.session;
+    confluenceCertificates = confluenceParts.onSelectCertificate;
+    confluence = new Confluence({
+      directory: store.settingsDir, safeStorage,
+      fetchImpl: confluenceParts.fetch,
+      openHiddenPage: confluenceParts.openHiddenPage,
+      openLoginWindow: confluenceParts.openLoginWindow,
+      onStatus: (status) => sendToRenderer('confluence:status', status),
+    });
     githubPages = new GitHubPages({ directory: store.settingsDir, safeStorage,
       openExternal: (url) => shell.openExternal(url),
       // The sign-in code is copied so it can be pasted on github.com.

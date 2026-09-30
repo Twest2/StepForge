@@ -334,7 +334,7 @@ function showSettingsDialog({
     const form = el('form', { className: 'settings-form' });
     // A service's id ("drive", "onedrive", "dropbox", "webdav", "github")
     // opens Accounts with that service's panel showing.
-    const accountView = ['drive', 'onedrive', 'dropbox', 'webdav', 'github'].includes(initialSection) ? initialSection : null;
+    const accountView = ['drive', 'onedrive', 'dropbox', 'webdav', 'github', 'confluence'].includes(initialSection) ? initialSection : null;
     if (accountView) initialSection = 'accounts';
     const accountsPanel = makeAccountsSettings(api, { view: accountView });
     const storagePath = el('code.settings-path', {}, 'Checking guide storage location…');
@@ -599,7 +599,7 @@ function showSettingsDialog({
           settingRow('Model', 'Any installed model. Vision models can read screenshots.', ollamaModel),
           el('div.settings-test', {}, aiStatus, testAiBtn)),
       ] },
-      { id: 'accounts', label: 'Accounts', description: 'Sync guides with Google Drive, OneDrive, Dropbox or Nextcloud, or share them on the web with GitHub.', content: [accountsPanel.node] },
+      { id: 'accounts', label: 'Accounts', description: 'Sync guides with Google Drive, OneDrive, Dropbox or Nextcloud, share them on the web with GitHub, or publish them to Confluence.', content: [accountsPanel.node] },
       { id: 'placeholders', label: 'Placeholders', description: 'Reusable text for every guide. Type [[name]] in a guide to insert it.', content: [
         settingsCard(null, placeholderRows, el('div.settings-actions', {}, addPlaceholderBtn)),
       ] },

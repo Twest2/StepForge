@@ -33,6 +33,8 @@ and gets their own tokens.
 7. Copy the **Application (client) ID** from **Overview** and set the GitHub
    Actions variable **`STEPFORGE_ONEDRIVE_CLIENT_ID`** to it.
 
+   ad10fd58-96f9-41b7-bd2a-7366cfd73cbe
+
 ## Dropbox
 
 1. Open the [Dropbox App Console](https://www.dropbox.com/developers/apps) and

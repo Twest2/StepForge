@@ -97,6 +97,8 @@ function createStep(fields = {}) {
     codeBlocks: (fields.codeBlocks || []).map((cb) => normalizeCodeBlock(cb, takeOrder(cb))),
     tableBlocks: (fields.tableBlocks || []).map((tb) => normalizeTableBlock(tb, takeOrder(tb))),
     links: fields.links || [], // { id, label, targetStepId }
+    // Private-detail check: when it last ran, and what the user said isn't private.
+    redaction: normalizeRedaction(fields.redaction),
     captureMetadata: (fields.captureMetadata && typeof fields.captureMetadata === 'object' && !Array.isArray(fields.captureMetadata))
       ? { ...fields.captureMetadata }
       : null,
@@ -119,8 +121,19 @@ function normalizeAnnotation(a) {
   if (ann.type === 'number') ann.value = Number.isFinite(a.value) ? a.value : null;
   if (ann.type === 'magnify') ann.zoom = num(a.zoom, 2);
   if (ann.type === 'blur') ann.radius = num(a.radius, 8);
+  // A blur StepForge added for a private detail (see core/redaction.js).
+  if (ann.type === 'blur' && a.redact && typeof a.redact.kind === 'string' && typeof a.redact.key === 'string') {
+    ann.redact = { kind: a.redact.kind.slice(0, 20), key: a.redact.key.slice(0, 80) };
+  }
   if (ann.type === 'tooltip') ann.style.tail = a.style && a.style.tail ? a.style.tail : 'bottom';
   return ann;
+}
+
+function normalizeRedaction(r) {
+  if (!r || typeof r !== 'object') return null;
+  const dismissed = Array.isArray(r.dismissed) ? r.dismissed.filter((k) => typeof k === 'string').slice(-500) : [];
+  const checked = typeof r.checked === 'string' ? r.checked : '';
+  return checked || dismissed.length ? { checked, dismissed } : null;
 }
 
 function normalizeTextBlock(tb, order = null) {

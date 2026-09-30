@@ -110,7 +110,9 @@ class StepForgeApp {
       const currentStep = this.editor.currentStep;
       if (currentStep && currentStep.stepId === payload.step.stepId) {
         await this.editor.reload(payload.step.stepId);
-        toast('Documentation generated.');
+        toast(payload.reason === 'redaction'
+          ? `Blurred ${payload.added} possible private detail${payload.added === 1 ? '' : 's'} in this step.`
+          : 'Documentation generated.');
       }
     }
   }
@@ -434,6 +436,7 @@ class StepForgeApp {
             { label: 'Guide information…', action: () => this.editor.openGuideInfo() },
             { label: 'Guide placeholders…', action: () => this.editor.openGuidePlaceholders() },
             { label: 'Backups & snapshots…', action: () => this.editor.openBackupsDialog() },
+            { label: 'Find private details…', action: () => this.editor.findPrivateDetails() },
             ...(this.editor.isAiEnabled() ? [
               { label: 'Generate all text fields with AI (experimental)', action: () => this.editor.generateAllTextFieldsWithAi() },
             ] : []),
@@ -1007,6 +1010,8 @@ class StepForgeApp {
       guideTitle: title || 'Untitled guide',
       onOpenAccounts: () => this.openSettings('github'),
     });
+    // Checking for private details may have added blurs to the open guide.
+    if (this.state.view === 'editor' && this.editor.guideId === guideId) await this.editor.reload();
   }
 
   async openGuideExport(guideId) {
@@ -1053,6 +1058,7 @@ class StepForgeApp {
         await api.settings.set({ keyPath: 'capture', value: next.capture });
         await api.settings.set({ keyPath: 'editor', value: next.editor });
         await api.settings.set({ keyPath: 'ai', value: next.ai });
+        await api.settings.set({ keyPath: 'redaction', value: next.redaction });
         await api.settings.set({ keyPath: 'exports', value: next.exports });
         await api.settings.set({ keyPath: 'backups', value: next.backups });
         await api.settings.setGlobalPlaceholders(next.placeholders || {});

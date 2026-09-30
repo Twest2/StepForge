@@ -101,6 +101,14 @@ const api = {
     onStatus: (fn) => { const listener = (e, payload) => fn(payload); ipcRenderer.on('github:status', listener); return () => ipcRenderer.removeListener('github:status', listener); },
     onProgress: (fn) => { const listener = (e, payload) => fn(payload); ipcRenderer.on('github:progress', listener); return () => ipcRenderer.removeListener('github:progress', listener); },
   },
+  redact: {
+    check: invoke('redact:check'),
+    review: invoke('redact:review'),
+    keepVisible: invoke('redact:keepVisible'),
+    keepText: invoke('redact:keepText'),
+    hideText: invoke('redact:hideText'),
+    onProgress: (fn) => { const listener = (e, payload) => fn(payload); ipcRenderer.on('redact:progress', listener); return () => ipcRenderer.removeListener('redact:progress', listener); },
+  },
   ai: {
     test: invoke('ai:test'),
     fillStep: invoke('ai:fillStep'),

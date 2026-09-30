@@ -11,6 +11,10 @@ const DEFAULT_SETTINGS = {
   // service that syncs: google | onedrive | dropbox | webdav.
   cloud: { enabled: false, provider: 'google' },
   spellcheck: true,
+  // Private details in screenshots (app/redaction.js). Guides are always
+  // checked before publishing; `onCapture` also checks each new capture.
+  // `terms` are extra words to always hide, such as names.
+  redaction: { onCapture: false, terms: [] },
   capture: {
     delayMs: 0,
     mode: 'fullscreen', // fullscreen | window | region

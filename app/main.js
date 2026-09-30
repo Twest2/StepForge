@@ -17,6 +17,7 @@ const { OneDrive } = require('./onedrive');
 const { Dropbox } = require('./dropbox');
 const { WebDAV } = require('./webdav');
 const { RedactionService } = require('./redaction');
+const { forgetScreenshotChecks } = require('../core/redaction');
 const { Confluence, pageFromExport } = require('./confluence');
 const { createConfluenceSession } = require('./confluence-session');
 const { GitHubPages } = require('./github-pages');
@@ -774,6 +775,42 @@ function setupIpc() {
     reindex(guideId);
     return { ok: true, steps };
   }, { validate: (a) => c.id(a.guideId) });
+
+  // Right-click a step → Choose screenshot…: swap in an image file, keeping
+  // the step's title, description and annotations.
+  h('step:chooseImage', async ({ guideId, stepId }) => {
+    const step = store.getStep(guideId, stepId);
+    const res = await dialog.showOpenDialog(mainWindow, {
+      title: 'Choose a screenshot for this step',
+      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'] }],
+      properties: ['openFile'],
+    });
+    if (res.canceled || !res.filePaths[0]) return { ok: false };
+    const img = nativeImage.createFromPath(res.filePaths[0]);
+    if (img.isEmpty()) throw new Error('StepForge couldn’t open that file as an image. Choose a PNG, JPEG, GIF, WebP or BMP file.');
+    const png = img.toPNG();
+    const size = img.getSize();
+    // Private-detail blurs matched the old screenshot; the new one is checked again.
+    const removedBlurs = forgetScreenshotChecks(step);
+    let saved = store.replaceImages(guideId, stepId, { original: png }, size, step);
+    if (await blurNewCapture(guideId, stepId, { notify: false })) saved = store.getStep(guideId, stepId);
+    reindex(guideId);
+    return { ok: true, step: saved, removedBlurs };
+  }, { validate: (a) => c.id(a.guideId) && c.id(a.stepId) });
+  // Undo and redo of Choose screenshot… put both images back.
+  h('step:setImages', ({ guideId, step, originalBase64, workingBase64, size }) => {
+    const saved = store.replaceImages(guideId, step.stepId, {
+      original: originalBase64 ? Buffer.from(originalBase64, 'base64') : null,
+      working: workingBase64 ? Buffer.from(workingBase64, 'base64') : null,
+    }, size, step);
+    reindex(guideId);
+    return saved;
+  }, {
+    maxChars: IMAGE_BUDGET,
+    validate: (a) => c.id(a.guideId) && security.isPlainArgs(a.step) && a.step && c.id(a.step.stepId)
+      && c.optionalBase64(a.originalBase64) && c.optionalBase64(a.workingBase64) && (a.originalBase64 || a.workingBase64)
+      && security.isPlainArgs(a.size) && c.number(a.size.width, 1, 100000) && c.number(a.size.height, 1, 100000),
+  });
 
   // search
   h('search:query', ({ q, guideId }) => searchIndex.search(q, { guideId: guideId || null }),

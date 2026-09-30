@@ -117,7 +117,8 @@ test(
 
     await connect.onClick();
 
-    assert.deepEqual(args(), []);
+    // Only which service; never a client ID or secret.
+    assert.deepEqual(JSON.parse(JSON.stringify(args())), [{ provider: 'google' }]);
     assert.equal(inputs[0].checked, true);
 
     assert.ok(
@@ -276,13 +277,15 @@ test(
     );
 
     exposed.cloud.connect({
+      provider: 'onedrive',
       clientId: 'should-not-cross-ipc',
       clientSecret: 'should-not-cross-ipc',
     });
 
+    // Only the service (and a WebDAV login) crosses IPC.
     assert.deepEqual(
-      calls,
-      [['cloud:connect']]
+      JSON.parse(JSON.stringify(calls)),
+      [['cloud:connect', { provider: 'onedrive' }]]
     );
   }
 );

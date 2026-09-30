@@ -200,6 +200,12 @@ opt-in and off by default:
   time in a background worker shared with linked-archive writes and
   automatic backups. See [GOOGLE_DRIVE.md](GOOGLE_DRIVE.md) and
   [SECURITY.md](SECURITY.md).
+- **OneDrive, Dropbox and Nextcloud/WebDAV** (`app/onedrive.js`,
+  `app/dropbox.js`, `app/webdav.js` on `app/cloud-account.js`) plug into the
+  same `CloudSync`. These services have no per-file properties, so
+  `core/folder-storage.js` keeps each version's details in a small
+  `objects/<id>.json` beside its data and names shared parts by their hash.
+  `settings.cloud.provider` picks the one service that syncs.
 
 The sandboxed renderer never makes network requests or sees tokens; all of
 these run in the main process.

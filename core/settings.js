@@ -7,7 +7,9 @@ const DEFAULT_SETTINGS = {
   schemaVersion: 1,
   appearance: 'system', // system | light | dark
   language: 'en',
-  cloud: { enabled: false }, // Explicit opt-in; credentials live in OS-encrypted storage.
+  // Explicit opt-in; credentials live in OS-encrypted storage. `provider` is the
+  // service that syncs: google | onedrive | dropbox | webdav.
+  cloud: { enabled: false, provider: 'google' },
   spellcheck: true,
   capture: {
     delayMs: 0,

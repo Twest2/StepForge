@@ -12,6 +12,9 @@ const { execFile } = require('node:child_process');
 
 const SERVICE = 'stepforge-google-drive';
 const ENTROPY = 'StepForge Google Drive';
+// Each cloud service has its own slot. Google keeps the original names so
+// existing backups are still found.
+const LABELS = { google: 'Google Drive', onedrive: 'OneDrive', dropbox: 'Dropbox', webdav: 'Nextcloud' };
 
 function run(file, args, input, timeout = 15000) {
   return new Promise((resolve, reject) => {
@@ -25,15 +28,16 @@ function run(file, args, input, timeout = 15000) {
 }
 
 // GNOME Keyring / KWallet through the Secret Service CLI (libsecret-tools).
-function secretServiceVault() {
-  const attrs = (clientId) => ['service', SERVICE, 'client', clientId];
+function secretServiceVault(slot) {
+  const service = slot === 'google' ? SERVICE : `stepforge-${slot}`;
+  const attrs = (clientId) => ['service', service, 'client', clientId];
   return {
     async read(clientId) {
       const out = await run('secret-tool', ['lookup', ...attrs(clientId)], '');
       return out.trim() || null;
     },
     async write(clientId, secret) {
-      await run('secret-tool', ['store', '--label=StepForge Google Drive sign-in', ...attrs(clientId)], secret);
+      await run('secret-tool', ['store', `--label=StepForge ${LABELS[slot] || slot} sign-in`, ...attrs(clientId)], secret);
     },
     async clear(clientId) {
       await run('secret-tool', ['clear', ...attrs(clientId)], '').catch(() => {});
@@ -43,8 +47,8 @@ function secretServiceVault() {
 
 // DPAPI with the CurrentUser scope, kept in the per-user registry. Only this
 // Windows account can decrypt it, and uninstallers leave it in place.
-function dpapiVault() {
-  const key = "'HKCU:\\Software\\StepForge\\GoogleDrive'";
+function dpapiVault(slot) {
+  const key = slot === 'google' ? "'HKCU:\\Software\\StepForge\\GoogleDrive'" : `'HKCU:\\Software\\StepForge\\Cloud-${slot}'`;
   const entropy = `[Text.Encoding]::UTF8.GetBytes('${ENTROPY}')`;
   const powershell = (lines, input = '') => run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
     ['$ErrorActionPreference = "Stop"', 'Add-Type -AssemblyName System.Security', ...lines].join('; ')], input);
@@ -70,9 +74,10 @@ function dpapiVault() {
   };
 }
 
-function createCredentialVault({ platform = process.platform } = {}) {
-  if (platform === 'linux') return secretServiceVault();
-  if (platform === 'win32') return dpapiVault();
+function createCredentialVault({ platform = process.platform, slot = 'google' } = {}) {
+  if (!/^[a-z]+$/.test(slot)) throw new Error('Invalid credential slot.');
+  if (platform === 'linux') return secretServiceVault(slot);
+  if (platform === 'win32') return dpapiVault(slot);
   return null;
 }
 

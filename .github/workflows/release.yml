@@ -48,7 +48,13 @@ jobs:
           STEPFORGE_GITHUB_APP_SLUG: ${{ vars.STEPFORGE_GITHUB_APP_SLUG }}
         run: node scripts/configure-github-app.js
 
-      # Version and the Google and GitHub registrations are stamped only into this build.
+      - name: Configure StepForge OneDrive and Dropbox sign-in
+        env:
+          STEPFORGE_ONEDRIVE_CLIENT_ID: ${{ vars.STEPFORGE_ONEDRIVE_CLIENT_ID }}
+          STEPFORGE_DROPBOX_APP_KEY: ${{ vars.STEPFORGE_DROPBOX_APP_KEY }}
+        run: node scripts/configure-cloud-apps.js
+
+      # Version and the Google, GitHub, OneDrive and Dropbox registrations are stamped only into this build.
       - name: Set version from input
         shell: bash
         env:
@@ -107,6 +113,12 @@ jobs:
           STEPFORGE_GITHUB_APP_SLUG: ${{ vars.STEPFORGE_GITHUB_APP_SLUG }}
         run: node scripts/configure-github-app.js
 
+      - name: Configure StepForge OneDrive and Dropbox sign-in
+        env:
+          STEPFORGE_ONEDRIVE_CLIENT_ID: ${{ vars.STEPFORGE_ONEDRIVE_CLIENT_ID }}
+          STEPFORGE_DROPBOX_APP_KEY: ${{ vars.STEPFORGE_DROPBOX_APP_KEY }}
+        run: node scripts/configure-cloud-apps.js
+
       - name: Set version from input
         env:
           VERSION: ${{ inputs.version }}
@@ -159,6 +171,12 @@ jobs:
           STEPFORGE_GITHUB_CLIENT_ID: ${{ vars.STEPFORGE_GITHUB_CLIENT_ID }}
           STEPFORGE_GITHUB_APP_SLUG: ${{ vars.STEPFORGE_GITHUB_APP_SLUG }}
         run: node scripts/configure-github-app.js
+
+      - name: Configure StepForge OneDrive and Dropbox sign-in
+        env:
+          STEPFORGE_ONEDRIVE_CLIENT_ID: ${{ vars.STEPFORGE_ONEDRIVE_CLIENT_ID }}
+          STEPFORGE_DROPBOX_APP_KEY: ${{ vars.STEPFORGE_DROPBOX_APP_KEY }}
+        run: node scripts/configure-cloud-apps.js
 
       - name: Stamp release version
         env:

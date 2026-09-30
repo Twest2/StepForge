@@ -332,8 +332,9 @@ function showSettingsDialog({
 } = {}) {
   return new Promise((resolve) => {
     const form = el('form', { className: 'settings-form' });
-    // "drive" and "github" open Accounts with that service's panel showing.
-    const accountView = ['drive', 'github'].includes(initialSection) ? initialSection : null;
+    // A service's id ("drive", "onedrive", "dropbox", "webdav", "github")
+    // opens Accounts with that service's panel showing.
+    const accountView = ['drive', 'onedrive', 'dropbox', 'webdav', 'github'].includes(initialSection) ? initialSection : null;
     if (accountView) initialSection = 'accounts';
     const accountsPanel = makeAccountsSettings(api, { view: accountView });
     const storagePath = el('code.settings-path', {}, 'Checking guide storage location…');
@@ -588,7 +589,7 @@ function showSettingsDialog({
           settingRow('Model', 'Any installed model. Vision models can read screenshots.', ollamaModel),
           el('div.settings-test', {}, aiStatus, testAiBtn)),
       ] },
-      { id: 'accounts', label: 'Accounts', description: 'Connect Google Drive to sync guides, or GitHub to share guides on the web.', content: [accountsPanel.node] },
+      { id: 'accounts', label: 'Accounts', description: 'Sync guides with Google Drive, OneDrive, Dropbox or Nextcloud, or share them on the web with GitHub.', content: [accountsPanel.node] },
       { id: 'placeholders', label: 'Placeholders', description: 'Reusable text for every guide. Type [[name]] in a guide to insert it.', content: [
         settingsCard(null, placeholderRows, el('div.settings-actions', {}, addPlaceholderBtn)),
       ] },
@@ -1200,7 +1201,7 @@ function showGuideInfoDialog({ values = {}, onSave, onCloudSnapshots, onDeleteCl
         labeledRow('Description', descriptionInput, { stacked: true }),
         el('div.muted', { style: { marginTop: '-4px' } },
           'Shown on the first page of the PDF and at the top of other export formats.'),
-        el('label.cloud-enable', {}, shareInput, ' Include this guide in Google Drive sharing'),
+        el('label.cloud-enable', {}, shareInput, ' Include this guide in cloud sync'),
         el('div.muted', { style: { marginTop: '-4px' } },
           'When off, this guide stays only on this device.'),
       ),

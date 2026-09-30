@@ -1140,11 +1140,19 @@ fieldset legend {
 .cloud-hero-icon {
   flex: none; display: grid; place-items: center;
   width: 52px; height: 52px; border-radius: 16px; font-size: 26px;
-  color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--panel-solid));
+  color: var(--accent); background: var(--panel-2);
 }
 .cloud-hero-text { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .cloud-hero-text strong { font-size: 14px; }
 .cloud-hero-text .row { margin-top: 4px; }
+.cloud-hero-icon img { display: block; width: 30px; height: 30px; object-fit: contain; }
+/* Nextcloud / WebDAV sign-in */
+.cloud-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 550; }
+.cloud-field input { width: 100%; max-width: 360px; }
+.cloud-login { display: flex; flex-direction: column; gap: 6px; }
+.cloud-hero button.link { border: 0; background: transparent; color: var(--accent-strong); padding: 4px 6px; }
+.cloud-hero button.link:hover { text-decoration: underline; background: transparent; }
+.cloud-note { margin: 0; padding: 8px 10px; border-radius: 8px; font-size: 12px; background: var(--panel-2); }
 
 .cloud-account {
   display: flex; align-items: center; gap: 12px; flex-wrap: wrap;

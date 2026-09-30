@@ -1891,7 +1891,7 @@ class GuideEditor {
           await dialogs.showCloudSnapshotsDialog({
             snapshots,
             onRestore: async (snapshot) => {
-              const ok = await confirmDialog('Restore this cloud snapshot? Your current local guide is kept as a Drive snapshot first.', { okLabel: 'Restore' });
+              const ok = await confirmDialog('Restore this cloud snapshot? Your current local guide is kept as a cloud snapshot first.', { okLabel: 'Restore' });
               if (!ok) return;
               await api.cloud.restore({ guideId: this.guideId, versionId: snapshot.id });
               await this.reload();
@@ -1901,12 +1901,12 @@ class GuideEditor {
         } catch (err) { this.onToast(err.message); }
       },
       onDeleteCloudSnapshots: async () => {
-        const ok = await confirmDialog('Remove every Google Drive snapshot for this guide? This also turns off Google Drive sharing for the guide. The local guide is kept.', { danger: true, okLabel: 'Remove cloud copies' });
+        const ok = await confirmDialog('Remove every cloud snapshot for this guide? This also turns off cloud sync for the guide. The local guide is kept.', { danger: true, okLabel: 'Remove cloud copies' });
         if (!ok) return;
         try {
           await api.cloud.deleteGuideSnapshots({ guideId: this.guideId });
           this.guide.cloud = { ...(this.guide.cloud || {}), sharingEnabled: false };
-          this.onToast('Google Drive copies removed.');
+          this.onToast('Cloud copies removed.');
         } catch (err) { this.onToast(err.message); }
       },
     });

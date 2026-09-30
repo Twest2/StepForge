@@ -62,7 +62,9 @@ const api = {
   cloud: {
     setEditorDirty: (dirty) => ipcRenderer.send('cloud:editor-dirty', Boolean(dirty)),
     status: invoke('cloud:status'),
-    connect: () => ipcRenderer.invoke('cloud:connect'),
+    // Only the service and, for WebDAV, the server and login cross IPC. App
+    // registrations stay in the main process.
+    connect: ({ provider, server, username, password } = {}) => ipcRenderer.invoke('cloud:connect', { provider, server, username, password }),
     cancel: invoke('cloud:cancel'),
     disconnect: invoke('cloud:disconnect'),
     enable: invoke('cloud:enable'),

@@ -5,10 +5,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { GuideStore } = require('./store');
 const { buildArchiveEntries, readArchive, importGuideArchive } = require('./archive');
-const { zipSync } = require('./zip');
-const { encodeArchive } = require('./background-archive');
+const { zipSync, unzipSync } = require('./zip');
 const { atomicWriteFileSync, writeJsonSync, readJsonIfExists } = require('./util');
 const { TransferMeter } = require('./transfer-meter');
+const parts = require('./cloud-parts');
 
 const validId = (id) => typeof id === 'string' && /^[A-Za-z0-9_-]{1,100}$/.test(id) && !['__proto__', 'constructor', 'prototype'].includes(id);
 const compareText = (a, b) => a < b ? -1 : a > b ? 1 : 0;
@@ -16,12 +16,7 @@ const digest = (data) => crypto.createHash('sha256').update(data).digest('hex');
 const archiveTitle = (file) => file.name?.replace(/( \(deleted\))?\.sfgz$/, '') || 'Guide';
 function snapshot(store, id) {
   const entries = buildArchiveEntries(store, id);
-  const hash = crypto.createHash('sha256');
-  for (const entry of entries.filter((e) => e.name !== 'manifest.json').sort((a, b) => compareText(a.name, b.name))) {
-    const bytes = Buffer.from(entry.data);
-    hash.update(`${entry.name}:${bytes.length}:`).update(bytes);
-  }
-  return { hash: hash.digest('hex'), entries };
+  return { hash: parts.contentHash(entries), entries };
 }
 function headsOf(files) {
   const parents = new Set(files.map((f) => f.appProperties.parent).filter(Boolean));
@@ -55,39 +50,70 @@ function protectedVersions(versions, retain = RETAIN_PER_BRANCH) {
   return keep;
 }
 
-function storageSummary(files, recoveryIds = new Set()) {
+const sizeOf = (file) => { const n = Number(file?.size || 0); return Number.isFinite(n) && n > 0 ? n : 0; };
+
+/**
+ * Where Drive space goes. `partFiles` are the shared files of parts
+ * snapshots and `refs` maps each parts snapshot to the part hashes it uses.
+ * A part counts once, as "latest" if any latest version uses it, so
+ * "previous" is exactly what Free up space can reclaim.
+ */
+function storageSummary(files, recoveryIds = new Set(), { partFiles = [], refs = new Map() } = {}) {
   const groups = guideVersions(files);
-  const size = (file) => { const n = Number(file.size || 0); return Number.isFinite(n) ? n : 0; };
   let latestBytes = 0;
   let previousBytes = 0;
   let recoveryBytes = 0;
   let pruneCount = 0;
   let guideCount = 0;
   let snapshotCount = 0;
+  let fullCount = 0;
+  const latestShas = new Set();
+  const recoveryShas = new Set();
   for (const versions of groups.values()) {
     const latest = protectedVersions(versions, 1);
     const live = versions.filter((file) => !recoveryIds.has(file.id));
     if (live.length) guideCount += 1;
     for (const file of versions) {
       snapshotCount += 1;
-      if (recoveryIds.has(file.id)) recoveryBytes += size(file);
-      else if (latest.has(file.id)) latestBytes += size(file);
-      else { previousBytes += size(file); pruneCount += 1; }
+      const shas = refs.get(file.id) || [];
+      if (recoveryIds.has(file.id)) { recoveryBytes += sizeOf(file); shas.forEach((sha) => recoveryShas.add(sha)); }
+      else if (latest.has(file.id)) {
+        latestBytes += sizeOf(file);
+        shas.forEach((sha) => latestShas.add(sha));
+        if (!parts.isPartsSnapshot(file)) fullCount += 1;
+      } else { previousBytes += sizeOf(file); pruneCount += 1; }
     }
   }
+  const counted = new Set();
+  for (const part of partFiles) {
+    const sha = part.appProperties?.sha;
+    if (counted.has(sha)) { previousBytes += sizeOf(part); continue; } // a duplicate copy
+    counted.add(sha);
+    if (latestShas.has(sha)) latestBytes += sizeOf(part);
+    else if (recoveryShas.has(sha)) recoveryBytes += sizeOf(part);
+    else previousBytes += sizeOf(part);
+  }
   return { guideCount, snapshotCount, bytes: latestBytes + previousBytes + recoveryBytes,
-    latestBytes, previousBytes, recoveryBytes, pruneCount, reclaimableBytes: previousBytes };
+    latestBytes, previousBytes, recoveryBytes, pruneCount, fullCount, reclaimableBytes: previousBytes };
 }
 
 // A missing baseline head can be Drive's listing lagging behind our own upload.
 // Past this age it was pruned or replaced remotely, so re-evaluate from the cloud.
 const STALE_HEAD_MS = 2 * 60 * 1000;
+// A part nothing uses is only removed once it is this old, so a part another
+// computer has just uploaded for a version it hasn't finished saving is safe.
+const PART_GRACE_MS = 60 * 60 * 1000;
+// Clean up unused parts at least this often, even when nothing was pruned.
+const PART_CLEANUP_MS = 6 * 60 * 60 * 1000;
 
 /** Immutable Drive snapshots: concurrent writers create branches, never overwrite bytes. */
 class CloudSync {
-  constructor({ store, drive, enabled, canReplace = () => true, canUpload = () => true, onChange = () => {}, onDelete = () => {}, onStatus = () => {}, settleMs = 3000 }) {
-    Object.assign(this, { store, drive, enabled, canReplace, canUpload, onChange, onDelete, onStatus, settleMs });
+  constructor({ store, drive, enabled, canReplace = () => true, canUpload = () => true, onChange = () => {}, onDelete = () => {}, onStatus = () => {}, settleMs = 3000,
+    inlineLimit = parts.INLINE_LIMIT, partGraceMs = PART_GRACE_MS }) {
+    Object.assign(this, { store, drive, enabled, canReplace, canUpload, onChange, onDelete, onStatus, settleMs, inlineLimit, partGraceMs });
     this.directory = path.join(store.root, 'cloud');
+    this.partIndexCache = null;
+    this.lastPartCleanup = 0;
     fs.mkdirSync(this.directory, { recursive: true });
     this.changedAt = new Map();
     this.fingerprints = new Map();
@@ -126,6 +152,207 @@ class CloudSync {
       (onProgress) => this.drive.upload({ data, name, properties, onProgress }));
   }
 
+  // ---- parts snapshots (core/cloud-parts.js) ------------------------------
+
+  /** Part files in Drive by hash. The oldest copy of a hash wins. */
+  async partIndex(refresh = false) {
+    if (refresh || !this.partIndexCache) {
+      const index = new Map();
+      const files = (await this.drive.listParts())
+        .filter((file) => validId(file.id) && parts.SHA_PATTERN.test(file.appProperties?.sha || ''))
+        .sort((a, b) => compareText(a.createdTime || '', b.createdTime || '') || compareText(a.id, b.id));
+      for (const file of files) if (!index.has(file.appProperties.sha)) index.set(file.appProperties.sha, file);
+      this.partIndexCache = index;
+    }
+    return this.partIndexCache;
+  }
+
+  manifestPath(id) { return path.join(this.directory, 'manifests', `${id}.gz`); }
+
+  /**
+   * A parts snapshot's manifest. Snapshots never change, so it is cached on
+   * disk. `progress` shows the download like any other guide transfer.
+   */
+  async manifestFor(file, { progress = false } = {}) {
+    if (!validId(file.id)) throw new Error('A Google Drive version is damaged and can’t be read.');
+    const cached = this.manifestPath(file.id);
+    try { return parts.decodeSnapshot(fs.readFileSync(cached)); } catch { /* not cached yet, or unreadable */ }
+    const bytes = progress ? await this.downloadArchive(file) : await this.drive.download(file.id);
+    const manifest = parts.decodeSnapshot(bytes);
+    this.cacheManifest(file.id, bytes);
+    return manifest;
+  }
+
+  cacheManifest(id, bytes) {
+    try {
+      fs.mkdirSync(path.dirname(this.manifestPath(id)), { recursive: true });
+      atomicWriteFileSync(this.manifestPath(id), bytes);
+    } catch { /* only a cache */ }
+  }
+
+  /**
+   * Part hashes used by each parts snapshot in `files`. With `strict` a
+   * manifest that can't be read is an error; otherwise it's skipped.
+   */
+  async partRefs(files, { strict = false } = {}) {
+    const refs = new Map();
+    const queue = files.filter((file) => parts.isPartsSnapshot(file));
+    const worker = async () => {
+      for (let file = queue.shift(); file; file = queue.shift()) {
+        try { refs.set(file.id, parts.partShas(await this.manifestFor(file))); } catch (err) { if (strict) throw err; }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(4, queue.length) }, worker));
+    return refs;
+  }
+
+  /**
+   * Save a version as a parts snapshot: upload the parts Drive doesn't have
+   * yet, then the manifest. Returns { file, uploaded } (bytes sent).
+   */
+  async uploadVersion({ encoded, name, properties, check = () => {} }) {
+    const index = await this.partIndex();
+    check();
+    const missing = [...encoded.parts].filter(([sha]) => !index.has(sha));
+    const total = missing.reduce((n, [, data]) => n + data.length, 0) + encoded.manifest.length;
+    const file = await this.transfer('upload', name.replace(/\.sfgz$/, ''), total, async (onProgress) => {
+      let done = 0;
+      for (const [sha, data] of missing) {
+        const part = await this.drive.upload({ data, name: `part-${sha}`, properties: { stepforge: parts.PART_KIND, sha },
+          onProgress: (n) => onProgress(done + n) });
+        check();
+        index.set(sha, { ...part, size: String(data.length) });
+        done += data.length;
+      }
+      return this.drive.upload({ data: encoded.manifest, name,
+        properties: { ...properties, format: parts.PARTS_FORMAT, bytes: String(encoded.bytes) },
+        onProgress: (n) => onProgress(done + n) });
+    });
+    this.cacheManifest(file.id, encoded.manifest);
+    let uploaded = total;
+    // Another computer may have cleaned up a part this version reuses while
+    // it was uploading. Put back anything that's gone.
+    const reused = [...encoded.parts.keys()].filter((sha) => !missing.some(([m]) => m === sha));
+    if (reused.length) {
+      const fresh = await this.partIndex(true);
+      for (const sha of reused.filter((hash) => !fresh.has(hash))) {
+        const data = encoded.parts.get(sha);
+        const part = await this.drive.upload({ data, name: `part-${sha}`, properties: { stepforge: parts.PART_KIND, sha } });
+        fresh.set(sha, { ...part, size: String(data.length) });
+        uploaded += data.length;
+      }
+    }
+    return { file, uploaded };
+  }
+
+  /**
+   * The archive bytes of any version, full or parts. For a parts snapshot
+   * only files this computer doesn't already have are downloaded.
+   */
+  async downloadVersion(file) {
+    if (!parts.isPartsSnapshot(file)) return this.downloadArchive(file);
+    const manifest = await this.manifestFor(file, { progress: true });
+    const id = file.appProperties?.guideId;
+    const have = validId(id) && this.store.guideExists(id) ? parts.entriesBySha(buildArchiveEntries(this.store, id)) : new Map();
+    const needed = parts.partShas(manifest).filter((sha) => !have.has(sha));
+    if (needed.length) {
+      let index = await this.partIndex();
+      // Parts saved by another computer since this one last looked.
+      if (needed.some((sha) => !index.has(sha))) index = await this.partIndex(true);
+      const sizes = new Map(manifest.entries.map((entry) => [entry.sha, entry.size]));
+      await this.transfer('download', archiveTitle(file), needed.reduce((n, sha) => n + sizes.get(sha), 0), async (onProgress) => {
+        let done = 0;
+        for (const sha of needed) {
+          const part = index.get(sha);
+          if (!part) throw new Error('A Google Drive version is missing some of its files. Sync the computer that saved it, then try again.');
+          const data = await this.drive.download(part.id, { onProgress: (n) => onProgress(done + n) });
+          if (parts.sha256(data) !== sha) throw new Error('A Google Drive file failed its integrity check. Local guides are unchanged.');
+          have.set(sha, data);
+          done += data.length;
+        }
+      });
+    }
+    return zipSync(parts.assembleEntries(manifest, (sha) => have.get(sha)));
+  }
+
+  /**
+   * Remove parts no version uses, and extra copies of the same part. Parts
+   * younger than the grace period are left for a later run.
+   */
+  async removeUnusedParts() {
+    const [files, partFiles] = await Promise.all([this.drive.listVersions(), this.drive.listParts()]);
+    this.partIndexCache = null;
+    const versions = files.filter((file) => file.appProperties?.stepforge === 'guide-v1');
+    // If any manifest can't be read, it's unknown what it uses: keep everything.
+    let refs;
+    try { refs = await this.partRefs(versions, { strict: true }); } catch { return { removed: 0, bytes: 0 }; }
+    const used = new Set([...refs.values()].flat());
+    const now = Date.now();
+    const old = (file) => now - Date.parse(file.createdTime || '') > this.partGraceMs;
+    const kept = new Set();
+    const remove = [];
+    for (const part of [...partFiles].sort((a, b) => compareText(a.createdTime || '', b.createdTime || '') || compareText(a.id, b.id))) {
+      const sha = part.appProperties?.sha;
+      if (used.has(sha) && !kept.has(sha)) { kept.add(sha); continue; }
+      if (old(part) && validId(part.id)) remove.push(part);
+    }
+    for (const part of remove) await this.drive.deleteFile(part.id);
+    this.lastPartCleanup = now;
+    this.partCleanupNeeded = false;
+    // Forget cached manifests of versions that are gone.
+    const live = new Set(versions.map((file) => file.id));
+    const cacheDir = path.join(this.directory, 'manifests');
+    for (const name of fs.existsSync(cacheDir) ? fs.readdirSync(cacheDir) : []) {
+      if (!live.has(name.replace(/\.gz$/, ''))) fs.rmSync(path.join(cacheDir, name), { force: true });
+    }
+    return { removed: remove.length, bytes: remove.reduce((n, part) => n + sizeOf(part), 0) };
+  }
+
+  /**
+   * Free up space turns full-copy versions into parts snapshots. The new
+   * version is a child of the old one with the same content, so other
+   * computers simply move their baseline to it.
+   */
+  async convertToParts(files) {
+    await this.loadAccountState();
+    const markers = await this.drive.listDeletions();
+    const recovery = new Set([...this.deletionStates(markers).values()]
+      .filter((file) => file.appProperties?.state === 'deleted').map((file) => file.appProperties.recoveryId));
+    let converted = 0;
+    let uploaded = 0;
+    let removed = 0;
+    for (const versions of guideVersions(files).values()) {
+      for (const file of versions) {
+        if (parts.isPartsSnapshot(file) || recovery.has(file.id)) continue;
+        let entries;
+        try {
+          entries = unzipSync(await this.downloadArchive(file));
+          if (parts.contentHash(entries) !== file.appProperties.hash) continue;
+        } catch (err) {
+          if (!err.message?.startsWith('zip:')) throw err;
+          continue; // a damaged old version is left exactly as it is
+        }
+        const { stepforge, guideId, hash } = file.appProperties;
+        const result = await this.uploadVersion({ encoded: parts.encodeSnapshot(entries, { inlineLimit: this.inlineLimit }), name: file.name,
+          properties: { stepforge, guideId, hash, parent: file.id } });
+        await this.drive.deleteFile(file.id);
+        this.renameVersion(file.id, result.file.id);
+        uploaded += result.uploaded;
+        removed += sizeOf(file);
+        converted += 1;
+      }
+    }
+    return { converted, uploaded, removed };
+  }
+
+  renameVersion(from, to) {
+    for (const record of Object.values(this.state.records)) {
+      if (record.head === from) record.head = to;
+      if (Array.isArray(record.heads)) record.heads = record.heads.map((id) => (id === from ? to : id));
+    }
+    if (this.stateFile) this.saveState();
+  }
+
   start() {
     if (!this.interval) { this.interval = setInterval(() => { void this.sync(); }, 30000); this.interval.unref?.(); }
     void this.sync();
@@ -155,24 +382,30 @@ class CloudSync {
 
   async storage() {
     if (!this.drive.status().connected) throw new Error('Sign in to Google Drive first.');
-    const [files, markers, quota] = await Promise.all([this.drive.listVersions(), this.drive.listDeletions(),
+    const [files, markers, partFiles, quota] = await Promise.all([this.drive.listVersions(), this.drive.listDeletions(), this.drive.listParts(),
       this.drive.quota ? this.drive.quota().catch(() => null) : null]);
     const recoveryIds = new Set([...this.deletionStates(markers).values()]
       .filter((file) => file.appProperties?.state === 'deleted').map((file) => file.appProperties.recoveryId));
-    return { ...storageSummary(files, recoveryIds), quota };
+    return { ...storageSummary(files, recoveryIds, { partFiles, refs: await this.partRefs(files) }), quota };
   }
 
   async guides() {
     if (!this.drive.status().connected) throw new Error('Sign in to Google Drive first.');
-    const [files, markers] = await Promise.all([this.drive.listVersions(), this.drive.listDeletions()]);
+    const [files, markers, partFiles] = await Promise.all([this.drive.listVersions(), this.drive.listDeletions(), this.drive.listParts()]);
     const deleted = this.deletionStates(markers);
+    const refs = await this.partRefs(files);
+    const partSizes = new Map();
+    for (const part of partFiles) if (!partSizes.has(part.appProperties?.sha)) partSizes.set(part.appProperties?.sha, sizeOf(part));
     return [...guideVersions(files)].filter(([id]) =>
       !['deleted', 'purged'].includes(deleted.get(id)?.appProperties.state)
     ).map(([id, versions]) => {
       versions.sort((a, b) => compareText(b.createdTime || '', a.createdTime || '') || compareText(b.id, a.id));
       const latest = versions[0];
+      // Files shared between this guide's versions count once.
+      const shas = new Set(versions.flatMap((file) => refs.get(file.id) || []));
+      const shared = [...shas].reduce((n, sha) => n + (partSizes.get(sha) || 0), 0);
       return { guideId: id, title: latest.name?.replace(/\.sfgz$/, '') || 'Untitled guide',
-        snapshotCount: versions.length, bytes: versions.reduce((n, f) => n + (Number(f.size) || 0), 0),
+        snapshotCount: versions.length, bytes: versions.reduce((n, f) => n + sizeOf(f), 0) + shared,
         updatedAt: latest.createdTime || '', latestId: latest.id, local: this.store.guideExists(id) };
     }).sort((a, b) => compareText(a.title, b.title) || compareText(a.guideId, b.guideId));
   }
@@ -194,14 +427,17 @@ class CloudSync {
     return (await this.drive.listVersions())
       .filter((file) => file.appProperties?.guideId === id)
       .sort((a, b) => compareText(b.createdTime || '', a.createdTime || '') || compareText(b.id, a.id))
-      .map((file, index) => ({ id: file.id, createdTime: file.createdTime || '', size: Number(file.size || 0), current: index === 0 }));
+      // A parts snapshot's own file is small; report the version's full size.
+      .map((file, index) => ({ id: file.id, createdTime: file.createdTime || '',
+        size: parts.isPartsSnapshot(file) ? Number(file.appProperties.bytes) || 0 : sizeOf(file), current: index === 0 }));
   }
 
-  // Manual pruning keeps only the newest snapshot on every branch. Automatic
-  // pruning after a sync keeps two previous snapshots for restoring.
-  prune() { return this.mutate(() => this.pruneNow(1)); }
+  // Manual pruning keeps only the newest snapshot on every branch, and
+  // switches full-copy versions to parts snapshots. Automatic pruning after a
+  // sync keeps two previous snapshots for restoring.
+  prune() { return this.mutate(() => this.pruneNow(1, { convert: true })); }
 
-  async pruneNow(retain = RETAIN_PER_BRANCH) {
+  async pruneNow(retain = RETAIN_PER_BRANCH, { convert = false } = {}) {
     if (!this.drive.status().connected) throw new Error('Sign in to Google Drive first.');
     const files = await this.drive.listVersions();
     const remove = [];
@@ -210,7 +446,18 @@ class CloudSync {
       remove.push(...versions.filter((file) => !keep.has(file.id)));
     }
     for (const file of remove) await this.drive.deleteFile(file.id);
-    return { pruned: remove.length, reclaimedBytes: remove.reduce((n, file) => n + (Number(file.size) || 0), 0) };
+    let reclaimedBytes = remove.reduce((n, file) => n + sizeOf(file), 0);
+    let converted = 0;
+    if (convert) {
+      const gone = new Set(remove.map((file) => file.id));
+      const result = await this.convertToParts(files.filter((file) => !gone.has(file.id)));
+      converted = result.converted;
+      reclaimedBytes += result.removed - result.uploaded;
+    }
+    if (convert || remove.length || this.partCleanupNeeded || Date.now() - this.lastPartCleanup > PART_CLEANUP_MS) {
+      reclaimedBytes += (await this.removeUnusedParts()).bytes;
+    }
+    return { pruned: remove.length, reclaimedBytes: Math.max(0, reclaimedBytes), converted };
   }
 
   async loadAccountState() {
@@ -259,6 +506,8 @@ class CloudSync {
       purged += 1;
     }
     for (const file of files) await this.drive.deleteFile(file.id);
+    for (const file of await this.drive.listParts()) await this.drive.deleteFile(file.id);
+    this.partIndexCache = null;
     for (const file of markers) if (!keepMarkers.has(file.id)) await this.drive.deleteFile(file.id);
     for (const id of Object.keys(this.pending.records)) this.clearPendingDeletion(id);
     this.state.records = {};
@@ -286,6 +535,7 @@ class CloudSync {
     for (const file of files) await this.drive.deleteFile(file.id);
     delete this.state.records[id];
     if (this.stateFile) this.saveState();
+    await this.removeUnusedParts();
     return { removed: files.length };
   }
 
@@ -298,7 +548,7 @@ class CloudSync {
     const files = await this.drive.listVersions();
     const version = files.find((file) => file.id === versionId && file.appProperties?.guideId === id);
     if (!version) throw new Error('That cloud snapshot is no longer available.');
-    const bytes = await this.downloadArchive(version);
+    const bytes = await this.downloadVersion(version);
     this.validateDownload(bytes, id, version.appProperties.hash);
     if (!this.canReplace(id)) throw new Error('The guide became active while restoring. No changes were made.');
     const sharing = this.store.guideExists(id) ? this.store.getGuide(id).cloud?.sharingEnabled : undefined;
@@ -398,7 +648,7 @@ class CloudSync {
     const marker = this.deletionStates(deletionFiles).get(id);
     const recovery = files.find((file) => file.id === marker?.appProperties?.recoveryId);
     if (!marker || marker.appProperties.state !== 'deleted' || !recovery) throw new Error('No recoverable cloud snapshot is available for this guide.');
-    const bytes = await this.downloadArchive(recovery);
+    const bytes = await this.downloadVersion(recovery);
     this.validateDownload(bytes, id, recovery.appProperties.hash);
     if (!this.canReplace(id)) throw new Error('The guide became active while restoring. No changes were made.');
     this.install(bytes, id, id);
@@ -497,6 +747,7 @@ class CloudSync {
       if (!this.enabled() || generation !== this.generation) throw new Error('Cloud synchronization stopped.');
     };
     this.publish('syncing', 'Syncing with Google Drive…');
+    this.partIndexCache = null;
     await this.loadAccountState();
     check();
     const [files, deletionFiles] = await Promise.all([this.drive.listVersions(), this.drive.listDeletions()]);
@@ -531,6 +782,8 @@ class CloudSync {
       check();
       await Promise.all(files.filter((file) => file.appProperties?.guideId === id && file.id !== recovery.id).map((file) => this.drive.deleteFile(file.id)));
       await Promise.all(deletionFiles.filter((file) => file.appProperties?.guideId === id && file.id !== marker.id).map((file) => this.drive.deleteFile(file.id)));
+      // The deleted guide's parts are now unused.
+      this.partCleanupNeeded = true;
       deletions.set(id, marker);
       delete this.state.records[id];
       this.clearPendingDeletion(id);
@@ -554,7 +807,15 @@ class CloudSync {
           ? this.state.records[id]
           : null;
         
-        if (record?.head && !versions.some((f) => f.id === record.head)) {
+        const successor = record?.head && !versions.some((f) => f.id === record.head)
+          && versions.find((f) => f.appProperties.parent === record.head && f.appProperties.hash === record.hash);
+        if (successor) {
+          // Free up space replaced this computer's baseline with the same
+          // content in the parts format; nothing is lagging, so don't wait.
+          record = { ...record, head: successor.id, heads: (record.heads || []).map((h) => (h === record.head ? successor.id : h)) };
+          this.state.records[id] = record;
+          this.saveState();
+        } else if (record?.head && !versions.some((f) => f.id === record.head)) {
           if (versions.length === 0) {
             // Cloud history was removed externally.
             // Reset the baseline so the local guide can be uploaded again.
@@ -578,10 +839,15 @@ class CloudSync {
         const latest = heads.at(-1);
         const newHeads = heads.filter((h) => !record?.heads?.includes(h.id));
         const remoteChanged = latest && newHeads.length > 0;
-        if (remoteChanged) {
+        if (remoteChanged && record?.hash && heads.every((h) => h.appProperties.hash === record.hash)) {
+          // Same content as this computer's baseline, e.g. a version Free up
+          // space converted to parts: move the baseline, download nothing.
+          this.state.records[id] = { ...record, head: latest.id, heads: heads.map((h) => h.id), syncedAt: Date.now() };
+          this.saveState();
+        } else if (remoteChanged) {
           // Never replace a live editor's guide, including unsaved input or capture.
           if (!this.canReplace(id)) { pending = true; continue; }
-          const incoming = await this.downloadArchive(latest);
+          const incoming = await this.downloadVersion(latest);
           check();
           if (!this.canReplace(id) || this.store.guideExists(id) !== exists
               || (exists && this.localSnapshot(id).hash !== local.hash)) { pending = true; continue; }
@@ -601,7 +867,7 @@ class CloudSync {
           for (const other of heads.filter((h) => h.id !== latest.id && h.appProperties.hash !== latest.appProperties.hash)) {
             const copyId = `guide-conflict-${digest(`${id}:${other.id}`).slice(0, 32)}`;
             if (this.store.guideExists(copyId)) continue;
-            const bytes = await this.downloadArchive(other);
+            const bytes = await this.downloadVersion(other);
             check();
             this.validateDownload(bytes, id, other.appProperties.hash);
             this.install(bytes, id, copyId, `${other.name.replace(/\.sfgz$/, '')} (conflict — another device)`);
@@ -629,13 +895,17 @@ class CloudSync {
             local = this.localSnapshot(id);
           }
           const name = `${this.store.getGuide(id).title}.sfgz`;
-          const data = await encodeArchive(local.entries);
+          // Only files Drive doesn't have yet are uploaded (core/cloud-parts.js).
+          const encoded = parts.encodeSnapshot(local.entries, { inlineLimit: this.inlineLimit });
+          // Hashing a big guide takes a moment; let a Stop or an edit land first.
+          await new Promise((resolve) => setImmediate(resolve));
+          await this.partIndex();
           check();
           if (!this.store.guideExists(id) || !this.isSharingEnabled(id) || !this.canUpload(id)) {
             pending = true;
             continue;
           }
-          const file = await this.uploadArchive({ data, name,
+          const { file } = await this.uploadVersion({ encoded, name, check,
             properties: { stepforge: 'guide-v1', guideId: id, hash: local.hash, ...(baseline?.head ? { parent: baseline.head } : {}) } });
           check();
           this.state.records[id] = { head: file.id, heads: [...heads.filter((h) => h.id !== baseline?.head).map((h) => h.id), file.id], hash: local.hash, syncedAt: Date.now() };
@@ -669,4 +939,4 @@ class CloudSync {
   }
 }
 
-module.exports = { CloudSync, snapshot, headsOf, guideVersions, protectedVersions, storageSummary, RETAIN_PER_BRANCH };
+module.exports = { CloudSync, snapshot, headsOf, guideVersions, protectedVersions, storageSummary, RETAIN_PER_BRANCH, PART_GRACE_MS };

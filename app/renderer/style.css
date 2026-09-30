@@ -1292,6 +1292,12 @@ fieldset legend {
 }
 .gh-step-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .gh-step-body .row { margin-top: 4px; flex-wrap: wrap; }
+.gh-step-content { display: flex; flex-direction: column; gap: 6px; }
+.gh-step-content p { margin: 0; }
+.gh-step.done .gh-step-number { background: var(--ok); color: #fff; }
+.gh-step.upcoming .gh-step-number { background: var(--panel-2); color: var(--muted); }
+.gh-step.upcoming > .gh-step-body > strong { color: var(--muted); }
+.gh-waiting { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 12px; }
 .gh-code-box {
   display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 12px; border-radius: 10px;
   border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border)); background: color-mix(in srgb, var(--accent) 7%, var(--panel-solid));
@@ -1310,6 +1316,38 @@ fieldset legend {
 .gh-consent { display: flex; align-items: flex-start; gap: 8px; font-weight: 550; cursor: pointer; }
 .gh-consent input { margin-top: 3px; }
 .gh-url { white-space: normal; overflow-wrap: anywhere; user-select: all; }
+
+/* Publishing: stages, the upload bar, and whether the link is live yet. */
+.gh-publishing { display: flex; flex-direction: column; gap: 12px; }
+.gh-stages { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.gh-stage { display: flex; align-items: center; gap: 10px; }
+.gh-stage.upcoming { color: var(--muted); }
+.gh-stage.active .gh-stage-label { font-weight: 600; }
+.gh-stage-icon {
+  flex: none; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%;
+  font-size: 12px; font-weight: 800; border: 2px solid var(--border);
+}
+.gh-stage.active .gh-stage-icon { border: none; color: var(--accent); }
+.gh-stage.done .gh-stage-icon { border: none; color: #fff; background: var(--ok); }
+.gh-stage-note { margin-left: auto; font-variant-numeric: tabular-nums; }
+.gh-upload { display: flex; flex-direction: column; gap: 6px; }
+.gh-progress { position: relative; height: 8px; border-radius: 999px; overflow: hidden; background: var(--panel-2); }
+.gh-progress-fill { display: block; height: 100%; width: 0; border-radius: inherit; background: var(--accent); transition: width 240ms ease; }
+.gh-progress.indeterminate .gh-progress-fill { position: absolute; width: 35% !important; animation: gh-slide 1.3s ease-in-out infinite; }
+@keyframes gh-slide { from { left: -35%; } to { left: 100%; } }
+.gh-progress-detail { font-size: 12px; font-variant-numeric: tabular-nums; }
+.gh-published-title { display: flex; align-items: flex-start; gap: 8px; }
+.gh-published-icon {
+  flex: none; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%;
+  font-size: 12px; font-weight: 800; color: #fff; background: var(--ok);
+}
+.gh-live { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.gh-live-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--caution); }
+.gh-live.ok { color: var(--text); }
+.gh-live.ok .gh-live-dot { background: var(--ok); }
+@media (prefers-reduced-motion: reduce) {
+  .gh-progress.indeterminate .gh-progress-fill { animation: none; left: 0; width: 100% !important; opacity: 0.45; }
+}
 
 /* On/off switch wrapping a real checkbox (Settings and the Drive panel). */
 .switch { position: relative; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }

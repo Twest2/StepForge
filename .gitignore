@@ -13,7 +13,7 @@ brag-output/
 
 # Google OAuth client for development builds (npm run setup:google-dev)
 google-oauth.local.json
-# GitHub App client for development builds (see docs/GITHUB_PAGES_RELEASE.md)
+# GitHub App client for development builds (see docs/cloud_accounts_init_setup/GITHUB_PAGES_RELEASE.md)
 github-app.local.json
 cloud-apps.local.json
 TODO.md

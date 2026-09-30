@@ -7,7 +7,7 @@ const path = require('node:path');
 // (an app key). Both are public identifiers, not secrets: sign-in uses PKCE.
 // Release builds get them stamped into cloud-apps-config.json; a source
 // checkout can supply them through the environment or a gitignored
-// cloud-apps.local.json at the repository root. See docs/CLOUD_ACCOUNTS_RELEASE.md.
+// cloud-apps.local.json at the repository root. See docs/cloud_accounts_init_setup/CLOUD_ACCOUNTS_RELEASE.md.
 const LOCAL_FILE = path.join(__dirname, '..', 'cloud-apps.local.json');
 const ONEDRIVE_CLIENT_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DROPBOX_KEY_PATTERN = /^[a-z0-9]{8,32}$/;

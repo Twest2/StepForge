@@ -99,7 +99,7 @@ runs.
 > ```
 
 To try Google Drive features from a source checkout, see
-[Signing in from a development checkout](GOOGLE_DRIVE_RELEASE.md#signing-in-from-a-development-checkout).
+[Signing in from a development checkout](cloud_accounts_init_setup/GOOGLE_DRIVE_RELEASE.md#signing-in-from-a-development-checkout).
 
 **Useful scripts**
 

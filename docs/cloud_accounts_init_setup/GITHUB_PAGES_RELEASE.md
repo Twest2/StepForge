@@ -1,7 +1,7 @@
 # GitHub Pages sharing: maintainer guide
 
 *For StepForge maintainers.* Users never need any of this. They follow the
-steps in **Settings → Accounts → GitHub** ([user guide](GITHUB_PAGES.md)).
+steps in **Settings → Accounts → GitHub** ([user guide](../GITHUB_PAGES.md)).
 Never ask a user for a client ID, token, or App settings.
 
 Every official build uses StepForge's single public **GitHub App**. Each user

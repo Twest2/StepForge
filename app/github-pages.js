@@ -601,7 +601,7 @@ class GitHubPages {
         step('Turning on GitHub Pages…');
         const pages = await this.ensurePages();
         repo.pagesReady = Boolean(pages);
-        repo.siteUrl = site.siteBaseUrl({ owner: repo.owner, repo: repo.name, htmlUrl: pages?.html_url || '' });
+        repo.siteUrl = await this.siteUrlFrom(repo, pages);
         if (!pages) notes.push(`Turn on GitHub Pages for ${repo.owner}/${repo.name}: in the repository's Settings → Pages, choose “Deploy from a branch”, then the ${site.PAGES_BRANCH} branch and the / (root) folder.`);
       } catch (err) {
         throw this.accessHint(err);
@@ -750,6 +750,38 @@ class GitHubPages {
     return repo;
   }
 
+  /**
+   * The site's address from its GitHub Pages settings, including a custom
+   * domain. GitHub only reports a certificate it issued itself; a domain
+   * behind a proxy such as Cloudflare can serve https without one, so check.
+   */
+  async siteUrlFrom(repo, pages) {
+    const base = site.siteBaseUrl({ owner: repo.owner, repo: repo.name, htmlUrl: pages?.html_url || '' });
+    if (!pages?.cname || pages.https_enforced || ['approved', 'issued'].includes(pages.https_certificate?.state)) return base;
+    try {
+      const response = await this.fetch(base, { method: 'HEAD', redirect: 'manual', headers: { 'User-Agent': 'StepForge' }, signal: AbortSignal.timeout(10000) });
+      if (response.status < 500) return base;
+    } catch { /* no https on this domain */ }
+    return base.replace(/^https:/, 'http:');
+  }
+
+  /**
+   * Pick up changes to the site's address, such as a custom domain added
+   * after setup. Links are built from it, so every link follows. On a
+   * network error the last known address stays.
+   */
+  async refreshSiteUrl(repo = this.credentials?.repo) {
+    if (!repo?.pagesReady) return;
+    let pages;
+    try { pages = await this.optional('GET', this.repoPath('/pages', repo)); } catch { return; }
+    if (!pages) return;
+    const url = await this.siteUrlFrom(repo, pages);
+    if (url === repo.siteUrl || this.credentials?.repo !== repo) return;
+    repo.siteUrl = url;
+    this.save();
+    this.publishStatus();
+  }
+
   siteBase(repo = this.credentials?.repo) {
     return repo.siteUrl || site.siteBaseUrl({ owner: repo.owner, repo: repo.name });
   }
@@ -787,11 +819,14 @@ class GitHubPages {
           const pages = await this.ensurePages();
           if (pages) {
             repo.pagesReady = true;
-            repo.siteUrl = site.siteBaseUrl({ owner: repo.owner, repo: repo.name, htmlUrl: pages.html_url || '' });
+            repo.siteUrl = await this.siteUrlFrom(repo, pages);
             repo.setupNote = '';
             this.save();
             this.publishStatus();
           }
+        } else {
+          // A custom domain may have been added since setup.
+          await this.refreshSiteUrl(repo);
         }
         const published = this.listFrom(plan.manifest).find((entry) => entry.slug === plan.slug);
         return { ...published, pagesReady: Boolean(repo.pagesReady) };
@@ -815,7 +850,7 @@ class GitHubPages {
     this.requireSite();
     return this.exclusive(async () => {
       try {
-        const current = await this.readSite();
+        const [current] = await Promise.all([this.readSite(), this.refreshSiteUrl()]);
         const plan = current.head ? await this.writeSite(current, { now: this.now() }) : site.planSite(current.manifest, { now: this.now() });
         return this.listFrom(plan.manifest);
       } catch (err) { throw this.accessHint(err); }

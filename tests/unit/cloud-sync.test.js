@@ -4,7 +4,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { GuideStore } = require('../../core/store');
-const { CloudSync, snapshot } = require('../../core/cloud-sync');
+const { CloudSync, snapshot, headsOf } = require('../../core/cloud-sync');
+const { createSnapshot, listSnapshots, restoreSnapshot } = require('../../core/snapshots');
 const { Settings } = require('../../core/settings');
 const { writeJsonSync } = require('../../core/util');
 const { makeTmpDir, rmrf, TINY_PNG } = require('./helpers');
@@ -46,11 +47,17 @@ function setup(t) {
   return { root, drive, files, bytes, device };
 }
 function edit(store, id, title) { const guide = store.getGuide(id); guide.title = title; store.saveGuide(guide); }
-function addGuide(store) {
+function addGuide(store, steps = 0) {
   const guide = store.createGuide({ title: 'Original' });
-  store.addStep(guide.guideId, { title: 'Screenshot' }, TINY_PNG, { width: 1, height: 1 });
+  if (!steps) store.addStep(guide.guideId, { title: 'Screenshot' }, TINY_PNG, { width: 1, height: 1 });
+  for (let i = 1; i <= steps; i++) store.addStep(guide.guideId, { title: `Step ${i}` }, TINY_PNG, { width: 1, height: 1 });
   return guide.guideId;
 }
+function editStep(store, id, stepId, patch) { store.saveStep(id, { ...store.getStep(id, stepId), ...patch }); }
+const versionFiles = (files) => files.filter((file) => file.appProperties?.stepforge === 'guide-v1');
+// Merges let the most recent save win. Saves are timed to the second, so
+// tests date a guide's last save explicitly.
+function savedAt(store, id, iso) { writeJsonSync(path.join(store.guideDir(id), 'guide.json'), { ...store.getGuide(id), updatedAt: iso }); }
 async function synced(sync) { const status = await sync.sync(); assert.notEqual(status.phase, 'error', status.message); return status; }
 
 test('cloud sharing is off by default and makes no network requests while disabled', async (t) => {
@@ -85,40 +92,172 @@ test('remote changes safely replace a clean guide and preserve a disk backup', a
   assert.equal(fs.readdirSync(path.join(b.sync.directory, 'backups')).length, 1);
 });
 
-test('diverging local and remote edits keep both versions and do not duplicate conflicts on later polls', async (t) => {
+test('edits to different steps on two computers end up in the one guide on both', async (t) => {
+  const { device, files } = setup(t);
+  const a = device('a'); const b = device('b');
+  const id = addGuide(a.store, 3);
+  await synced(a.sync); await synced(b.sync);
+  const [first, , third] = a.store.getGuide(id).stepsOrder;
+  editStep(a.store, id, first, { title: 'Edited on A' });
+  editStep(b.store, id, third, { title: 'Edited on B' });
+  await synced(a.sync);
+  const status = await synced(b.sync);
+  assert.equal(status.phase, 'synced');
+  assert.match(status.message, /Combined changes from more than one computer in 1 guide\./);
+  await synced(a.sync);
+  for (const { store } of [a, b]) {
+    assert.equal(store.listGuides().length, 1, 'no conflict copies');
+    assert.equal(store.getStep(id, first).title, 'Edited on A');
+    assert.equal(store.getStep(id, third).title, 'Edited on B');
+  }
+  assert.equal(snapshot(a.store, id).hash, snapshot(b.store, id).hash);
+  assert.equal(headsOf(versionFiles(files)).length, 1, 'the cloud is back to one version');
+  const count = files.length;
+  for (let i = 0; i < 3; i++) { await synced(a.sync); await synced(b.sync); }
+  assert.equal(files.length, count, 'later polls upload nothing');
+});
+
+test('when both computers change the same thing, the newest change wins and the other is kept under Backups', async (t) => {
+  const { device } = setup(t);
+  const a = device('a'); const b = device('b');
+  const id = addGuide(a.store, 2);
+  await synced(a.sync); await synced(b.sync);
+  const [first, second] = a.store.getGuide(id).stepsOrder;
+  edit(b.store, id, 'Older title from B');
+  editStep(b.store, id, second, { status: 'done' });
+  savedAt(b.store, id, '2030-01-01T10:00:00Z');
+  edit(a.store, id, 'Newer title from A');
+  savedAt(a.store, id, '2030-01-01T11:00:00Z');
+  await synced(a.sync);
+  const status = await synced(b.sync);
+  assert.match(status.message, /newest change was kept/);
+  await synced(a.sync);
+  for (const { store } of [a, b]) {
+    assert.equal(store.listGuides().length, 1);
+    assert.equal(store.getGuide(id).title, 'Newer title from A');
+    assert.equal(store.getStep(id, second).status, 'done', 'a change only B made is kept');
+    assert.equal(store.getStep(id, first).title, 'Step 1');
+  }
+  const [backup] = listSnapshots(b.store, id).filter((name) => name.includes('before-sync-merge'));
+  assert.ok(backup, 'B keeps its version from before the merge');
+  restoreSnapshot(b.store, id, backup);
+  assert.equal(b.store.getGuide(id).title, 'Older title from B');
+});
+
+test('concurrent uploads based on the same version are merged back into one version', async (t) => {
+  const { device, drive, files } = setup(t);
+  const a = device('a'); const b = device('b');
+  const id = addGuide(a.store, 2);
+  await synced(a.sync); await synced(b.sync);
+  const [first, second] = a.store.getGuide(id).stepsOrder;
+  const staleListing = [...files];
+  edit(a.store, id, 'A concurrent');
+  editStep(a.store, id, first, { title: 'Step edited on A' });
+  savedAt(a.store, id, '2030-01-01T10:00:00Z');
+  edit(b.store, id, 'B concurrent');
+  editStep(b.store, id, second, { title: 'Step edited on B' });
+  savedAt(b.store, id, '2030-01-01T11:00:00Z');
+  await synced(a.sync);
+  const list = drive.listVersions;
+  drive.listVersions = async () => staleListing.filter((file) => file.appProperties?.stepforge === 'guide-v1');
+  await synced(b.sync);
+  drive.listVersions = list;
+  assert.equal(headsOf(versionFiles(files)).length, 2, 'two branches in the cloud');
+  await synced(a.sync); await synced(b.sync);
+  for (const { store } of [a, b]) {
+    assert.equal(store.listGuides().length, 1, 'no conflict copies');
+    assert.equal(store.getGuide(id).title, 'B concurrent', 'the newer title');
+    assert.equal(store.getStep(id, first).title, 'Step edited on A');
+    assert.equal(store.getStep(id, second).title, 'Step edited on B');
+  }
+  assert.equal(snapshot(a.store, id).hash, snapshot(b.store, id).hash);
+  assert.equal(headsOf(versionFiles(files)).length, 1, 'the merge closes the branch');
+  const count = files.length;
+  for (let i = 0; i < 3; i++) { await synced(a.sync); await synced(b.sync); }
+  assert.equal(files.length, count);
+});
+
+test('added, deleted and reordered steps merge, and a step edited on one computer survives deletion on the other', async (t) => {
+  const { device } = setup(t);
+  const a = device('a'); const b = device('b');
+  const id = addGuide(a.store, 4);
+  await synced(a.sync); await synced(b.sync);
+  const [s1, s2, s3, s4] = a.store.getGuide(id).stepsOrder;
+  // A: add a step after s1, delete s3, edit s4.
+  const added = a.store.addStep(id, { title: 'Added on A' }, TINY_PNG, { width: 1, height: 1 }, { position: 1 }).stepId;
+  a.store.deleteStep(id, s3);
+  editStep(a.store, id, s4, { title: 'Step 4 kept' });
+  // B: delete s4 (edited on A), move s2 to the end.
+  b.store.deleteStep(id, s4);
+  b.store.reorderSteps(id, [s1, s3, s2]);
+  await synced(a.sync); await synced(b.sync); await synced(a.sync);
+  for (const { store } of [a, b]) {
+    // B's order wins (only B reordered); A's new step and kept step slot in after their neighbours on A.
+    assert.deepEqual(store.getGuide(id).stepsOrder, [s1, added, s2, s4]);
+    assert.equal(store.listSteps(id).size, 4);
+    assert.equal(store.getStep(id, s4).title, 'Step 4 kept');
+    assert.ok(!store.listSteps(id).has(s3), 'deleted on A and untouched on B');
+  }
+  assert.equal(snapshot(a.store, id).hash, snapshot(b.store, id).hash);
+});
+
+test('annotations added on both computers, and a new screenshot with new text, are all kept', async (t) => {
+  const { device } = setup(t);
+  const a = device('a'); const b = device('b');
+  const id = addGuide(a.store, 1);
+  await synced(a.sync); await synced(b.sync);
+  const [stepId] = a.store.getGuide(id).stepsOrder;
+  const screenshot = Buffer.concat([TINY_PNG, Buffer.from('new screenshot')]);
+  const stepA = a.store.getStep(id, stepId);
+  stepA.annotations.push({ id: 'ann-a', type: 'rect', x: 0.1, y: 0.1, w: 0.2, h: 0.2 });
+  a.store.replaceImages(id, stepId, { original: screenshot }, { width: 2, height: 2 }, stepA);
+  const stepB = b.store.getStep(id, stepId);
+  stepB.annotations.push({ id: 'ann-b', type: 'arrow', x: 0.5, y: 0.5, w: 0.1, h: 0.1 });
+  stepB.descriptionHtml = '<p>Written on B</p>';
+  b.store.saveStep(id, stepB);
+  await synced(a.sync); await synced(b.sync); await synced(a.sync);
+  for (const { store } of [a, b]) {
+    const step = store.getStep(id, stepId);
+    assert.deepEqual(step.annotations.map((ann) => ann.id).sort(), ['ann-a', 'ann-b']);
+    assert.equal(step.descriptionHtml, '<p>Written on B</p>');
+    assert.deepEqual(step.image.size, { width: 2, height: 2 });
+    assert.deepEqual(fs.readFileSync(store.stepImagePath(id, stepId, 'original')), screenshot);
+    assert.deepEqual(fs.readFileSync(store.stepImagePath(id, stepId, 'working')), screenshot);
+  }
+});
+
+test('local edits merge against the remembered version when the cloud no longer has it', async (t) => {
+  const { device, files } = setup(t);
+  const a = device('a'); const b = device('b');
+  const id = addGuide(a.store, 3);
+  await synced(a.sync); await synced(b.sync);
+  const [, second, third] = a.store.getGuide(id).stepsOrder;
+  a.store.deleteStep(id, third);
+  await synced(a.sync);
+  // More versions than are kept, so the one B last saw is removed.
+  for (let i = 1; i <= 4; i++) { edit(a.store, id, `A edit ${i}`); await synced(a.sync); }
+  assert.ok(!versionFiles(files).some((file) => file.id === b.sync.state.records[id].head));
+  b.sync.state.records[id].syncedAt = 0; // long enough ago that it isn't Drive lagging
+  editStep(b.store, id, second, { title: 'Edited on B' });
+  await synced(b.sync); await synced(a.sync);
+  for (const { store } of [a, b]) {
+    assert.equal(store.listGuides().length, 1);
+    assert.equal(store.getGuide(id).title, 'A edit 4');
+    assert.equal(store.getStep(id, second).title, 'Edited on B');
+    assert.ok(!store.listSteps(id).has(third), 'the step A deleted stays deleted');
+  }
+});
+
+test('updates from another computer keep this computer\'s backups', async (t) => {
   const { device } = setup(t);
   const a = device('a'); const b = device('b');
   const id = addGuide(a.store);
   await synced(a.sync); await synced(b.sync);
-  edit(a.store, id, 'A edit'); edit(b.store, id, 'B edit');
-  await synced(a.sync);
-  assert.equal((await synced(b.sync)).phase, 'conflict');
-  assert.equal(b.store.getGuide(id).title, 'A edit');
-  assert.ok(b.store.listGuides().some((g) => g.title.startsWith('B edit (conflict')));
-  for (let i = 0; i < 3; i++) { await synced(a.sync); await synced(b.sync); }
-  assert.equal(b.store.listGuides().length, 2);
-  assert.equal(a.store.listGuides().length, 2);
-});
-
-test('concurrent uploads remain separate immutable versions and preserve the losing branch', async (t) => {
-  const { device, drive, files } = setup(t);
-  const a = device('a'); const b = device('b');
-  const id = addGuide(a.store);
+  const backup = createSnapshot(b.store, id, { label: 'manual' });
+  edit(a.store, id, 'Updated on A');
   await synced(a.sync); await synced(b.sync);
-  const staleListing = [...files];
-  edit(a.store, id, 'A concurrent'); edit(b.store, id, 'B concurrent');
-  await synced(a.sync);
-  const list = drive.listVersions;
-  drive.listVersions = async () => staleListing;
-  await synced(b.sync);
-  drive.listVersions = list;
-  assert.equal(files.length, 3);
-  await synced(a.sync); await synced(b.sync);
-  assert.equal(a.store.getGuide(id).title, 'B concurrent');
-  assert.ok(a.store.listGuides().some((g) => g.title.startsWith('A concurrent (conflict')));
-  for (let i = 0; i < 3; i++) { await synced(a.sync); await synced(b.sync); }
-  assert.equal(a.store.listGuides().length, 2);
-  assert.equal(b.store.listGuides().length, 2);
+  assert.equal(b.store.getGuide(id).title, 'Updated on A');
+  assert.deepEqual(listSnapshots(b.store, id), [backup]);
 });
 
 test('incoming changes wait while editor is active, then load after it closes', async (t) => {
@@ -544,7 +683,6 @@ const { buildArchiveEntries } = require('../../core/archive');
 // Small limits so the test screenshots become shared parts.
 const PARTS = { inlineLimit: 1024, partGraceMs: 0 };
 const shot = (seed) => Buffer.concat([TINY_PNG, Buffer.alloc(4000, seed)]);
-const versionFiles = (files) => files.filter((file) => file.appProperties?.stepforge === 'guide-v1');
 const partFiles = (files) => files.filter((file) => file.appProperties?.stepforge === 'part-v1');
 function addShotGuide(store) {
   const guide = store.createGuide({ title: 'Original' });

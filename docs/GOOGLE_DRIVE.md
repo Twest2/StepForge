@@ -52,10 +52,19 @@ or open the Drive settings, to see the guide's name and the transfer speed.
 
 ## How changes are handled
 
-- **Nothing is overwritten silently.** If you edit the same guide on two
-  computers before they sync, StepForge keeps both: your version stays, and
-  the other appears in your library as a *conflict copy*. StepForge doesn't
-  merge individual steps; this isn't live co-editing.
+- **Edits from different computers are combined.** If you edit the same
+  guide on two computers before they sync, StepForge puts both sets of changes
+  into the one guide. Changes to different steps, to different parts of a step,
+  or to different annotations all survive. Steps added on either computer are
+  kept, and a step deleted on one computer is removed unless it was edited on
+  the other. This isn't live co-editing.
+- **When both computers changed the same thing**, such as the same step
+  title, the change saved most recently is kept. If this computer had edits
+  that hadn't synced yet, its version from before the update is saved as a
+  *before-sync-merge* snapshot under **More → Backups & snapshots…** in the
+  editor, so nothing is lost.
+  Editing one description on both computers keeps the newer description; the
+  two texts aren't blended.
 - **Your work isn't interrupted.** Updates from another computer wait until
   you close the guide and stop recording.
 - **Downloads are checked** before they replace anything, and the replaced
@@ -99,7 +108,8 @@ way: a computer only fetches the screenshots it doesn't already have.
 > [!IMPORTANT]
 > Update StepForge on **every** computer that syncs with the same Google
 > account. Older releases can't read space-saving versions: they show a sync
-> error for those guides instead of changing them.
+> error for those guides instead of changing them. They also don't combine
+> edits, and may still save separate *conflict copy* guides.
 
 **Guides in Drive** lists every guide stored in Drive, including ones that
 aren't on this computer.
@@ -125,7 +135,7 @@ If your computers have drifted apart and you want one of them to win, use
 2. Uploads the guides on this computer.
 3. Tells your other computers to move any guide that isn't on this computer
    to their trash, and to update the rest to this computer's version.
-   Unsynced edits on those computers are kept as conflict copies.
+   Unsynced edits on those computers are combined with this computer's version.
 
 **Automatically sync guides** must be on to use this.
 

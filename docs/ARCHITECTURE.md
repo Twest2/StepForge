@@ -194,7 +194,15 @@ opt-in and off by default:
 - **Google Drive sync** (`app/google-drive.js`, `core/cloud-sync.js`) stores
   complete `.sfgz` snapshots in the `appDataFolder`. Each upload is an
   immutable version linked to its parent, so concurrent devices never
-  overwrite each other; divergent edits become conflict copies. Downloads are
+  overwrite each other. Divergent edits and concurrent branches are combined
+  by a three-way merge (`core/guide-merge.js`) against the newest common
+  version, or the content this computer last synced (`cloud/bases/`). Guide
+  fields, steps, and id-keyed lists (annotations, blocks, links) merge
+  separately; a step's screenshots move as one unit; and a value changed on
+  both sides goes to the side with the later `updatedAt`. The merge is
+  deterministic, and the merged version names the branches it absorbed in a
+  `merged` property, so the cloud returns to one head. Unsynced local edits
+  are saved as a `before-sync-merge` backup before they're merged. Downloads are
   untrusted and pass archive validation before a journaled, staged
   replacement that keeps a local backup. Archive compression runs one job at a
   time in a background worker shared with linked-archive writes and

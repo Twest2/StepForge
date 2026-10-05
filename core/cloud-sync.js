@@ -8,6 +8,8 @@ const { buildArchiveEntries, readArchive, importGuideArchive } = require('./arch
 const { zipSync, unzipSync } = require('./zip');
 const { atomicWriteFileSync, writeJsonSync, readJsonIfExists } = require('./util');
 const { TransferMeter } = require('./transfer-meter');
+const { mergeGuideEntries } = require('./guide-merge');
+const { createSnapshot } = require('./snapshots');
 const parts = require('./cloud-parts');
 
 const validId = (id) => typeof id === 'string' && /^[A-Za-z0-9_-]{1,100}$/.test(id) && !['__proto__', 'constructor', 'prototype'].includes(id);
@@ -18,10 +20,37 @@ function snapshot(store, id) {
   const entries = buildArchiveEntries(store, id);
   return { hash: parts.contentHash(entries), entries };
 }
+/**
+ * The versions a version was made from: its parent, plus any other branches
+ * a merge folded in (`merged`, comma-separated ids).
+ */
+function parentsOf(file) {
+  const props = file.appProperties || {};
+  return [props.parent, ...String(props.merged || '').split(',')].filter(validId);
+}
 function headsOf(files) {
-  const parents = new Set(files.map((f) => f.appProperties.parent).filter(Boolean));
+  const parents = new Set(files.flatMap(parentsOf));
   return files.filter((f) => !parents.has(f.id)).sort((a, b) =>
     compareText(a.createdTime || '', b.createdTime || '') || compareText(a.id, b.id));
+}
+// Drive limits a property to 124 bytes, key included.
+const MERGED_LIMIT = 110;
+function mergedProperty(ids) {
+  let value = '';
+  for (const id of ids) {
+    const next = value ? `${value},${id}` : id;
+    if (next.length > MERGED_LIMIT) break;
+    value = next;
+  }
+  return value;
+}
+
+function mergeMessage(label, merged, conflicts) {
+  const synced = `Guides are synced with ${label}.`;
+  if (!merged) return synced;
+  const guides = merged === 1 ? '1 guide' : `${merged} guides`;
+  const newest = conflicts ? ' Where both computers changed the same thing, the newest change was kept.' : '';
+  return `${synced} Combined changes from more than one computer in ${guides}.${newest}`;
 }
 
 const RETAIN_PER_BRANCH = 3; // current snapshot plus the two prior snapshots
@@ -290,6 +319,80 @@ class CloudSync {
       });
     }
     return zipSync(parts.assembleEntries(manifest, (sha) => have.get(sha)));
+  }
+
+  // ---- merging (core/guide-merge.js) --------------------------------------
+
+  basePath(id) { return path.join(this.directory, 'bases', `${id}.json`); }
+
+  /**
+   * Remember the content this computer last agreed on with the cloud, so a
+   * later merge has a base even when that version is gone from the cloud.
+   * Screenshots are kept as hashes only.
+   */
+  rememberBase(id, entries) {
+    try {
+      const list = entries.filter((entry) => entry.name !== 'manifest.json').map((entry) => {
+        const data = Buffer.isBuffer(entry.data) ? entry.data : Buffer.from(String(entry.data), 'utf8');
+        return entry.name.endsWith('.json') ? { name: entry.name, data: data.toString('base64') } : { name: entry.name, sha: parts.sha256(data) };
+      });
+      fs.mkdirSync(path.dirname(this.basePath(id)), { recursive: true });
+      writeJsonSync(this.basePath(id), { hash: parts.contentHash(entries), entries: list });
+    } catch { /* only a cache */ }
+  }
+
+  /** The remembered base entries, if they are the content with this hash. */
+  rememberedBase(id, hash) {
+    const saved = readJsonIfExists(this.basePath(id), null);
+    if (!hash || saved?.hash !== hash || !Array.isArray(saved.entries)) return null;
+    return saved.entries.map((entry) => ({ name: entry.name, sha: entry.sha, data: entry.data === undefined ? null : Buffer.from(entry.data, 'base64') }));
+  }
+
+  /**
+   * Base entries for merging `tips` (and the local guide, when `record` is
+   * given): the newest version every side descends from. Without one, the
+   * remembered base for the local guide, or null to merge without a base.
+   */
+  async mergeBase(id, versions, tips, record) {
+    const byId = new Map(versions.map((file) => [file.id, file]));
+    const ancestry = (start) => {
+      const seen = new Set();
+      for (const queue = [start]; queue.length;) {
+        const current = queue.shift();
+        if (!byId.has(current) || seen.has(current)) continue;
+        seen.add(current);
+        queue.push(...parentsOf(byId.get(current)));
+      }
+      return seen;
+    };
+    const starts = [...tips.map((tip) => tip.id), ...(record ? [record.head] : [])];
+    const lines = starts.map(ancestry);
+    const common = [...lines[0]].filter((vid) => lines.every((line) => line.has(vid))).map((vid) => byId.get(vid))
+      .sort((a, b) => compareText(a.createdTime || '', b.createdTime || '') || compareText(a.id, b.id)).at(-1);
+    if (!common) return record ? this.rememberedBase(id, record.hash) : null;
+    return this.rememberedBase(id, common.appProperties.hash) || this.versionEntries(common);
+  }
+
+  /** A version's entries for use as a merge base; screenshots may be hashes only. */
+  async versionEntries(file) {
+    if (!parts.isPartsSnapshot(file)) {
+      const entries = unzipSync(await this.downloadArchive(file));
+      return parts.contentHash(entries) === file.appProperties.hash ? entries : null;
+    }
+    const manifest = await this.manifestFor(file);
+    const entries = [];
+    for (const entry of manifest.entries) {
+      let data = entry.data;
+      if (!data && entry.name.endsWith('.json')) {
+        // A step too big to sit inside the manifest.
+        const part = (await this.partIndex()).get(entry.sha) || (await this.partIndex(true)).get(entry.sha);
+        if (!part) return null;
+        data = await this.drive.download(part.id);
+        if (parts.sha256(data) !== entry.sha) throw new Error(`A ${this.label} file failed its integrity check. Local guides are unchanged.`);
+      }
+      entries.push({ name: entry.name, sha: entry.sha, data });
+    }
+    return entries;
   }
 
   /**
@@ -733,6 +836,9 @@ class CloudSync {
       if (title) guide.title = title;
       writeJsonSync(path.join(staged.guideDir(sourceId), 'guide.json'), guide);
       const target = this.store.guideDir(targetId);
+      // Local backups aren't synced; keep them with the updated guide.
+      const history = path.join(target, 'history');
+      if (sourceId === targetId && fs.existsSync(history)) fs.cpSync(history, path.join(staged.guideDir(sourceId), 'history'), { recursive: true });
       const backup = crypto.randomUUID();
       const backupPath = path.join(this.directory, 'backups', backup);
       fs.mkdirSync(path.dirname(backupPath), { recursive: true });
@@ -814,7 +920,8 @@ class CloudSync {
     }
     for (const guide of this.store.listGuides()) if (!groups.has(guide.guideId)) groups.set(guide.guideId, []);
     let pending = false;
-    let conflicts = 0;
+    let merged = 0;
+    let mergeConflicts = 0;
     const errors = [];
     for (const [id, versions] of groups) {
       try {
@@ -841,8 +948,10 @@ class CloudSync {
             delete this.state.records[id];
             this.saveState();
             record = null;
-          } else if (Date.now() - (record.syncedAt || 0) > STALE_HEAD_MS) {
-            // Keep the content hash so local edits still become conflict copies.
+          } else if (Date.now() - (record.syncedAt || 0) > STALE_HEAD_MS
+              || versions.some((f) => parentsOf(f).includes(record.head))) {
+            // Pruned or replaced, not lagging: a newer version names it. Keep
+            // the content hash so local edits merge against the remembered base.
             record = { hash: record.hash };
           } else {
             pending = true;
@@ -866,46 +975,53 @@ class CloudSync {
         } else if (remoteChanged) {
           // Never replace a live editor's guide, including unsaved input or capture.
           if (!this.canReplace(id)) { pending = true; continue; }
-          const incoming = await this.downloadVersion(latest);
+          const localChanged = local && (!record || local.hash !== record.hash);
+          // The newest head of each distinct content. Branches with different
+          // content, and unsynced local edits, are merged into one guide.
+          const tips = [...new Map(heads.map((h) => [h.appProperties.hash, h])).values()];
+          const withLocal = localChanged && !tips.some((h) => h.appProperties.hash === local.hash);
+          const merging = tips.length > 1 || withLocal;
+          const downloads = [];
+          for (const tip of merging ? tips : [latest]) {
+            downloads.push({ tip, bytes: await this.downloadVersion(tip) });
+            check();
+          }
+          const base = merging ? await this.mergeBase(id, versions, tips, withLocal ? record : null) : null;
           check();
           if (!this.canReplace(id) || this.store.guideExists(id) !== exists
               || (exists && this.localSnapshot(id).hash !== local.hash)) { pending = true; continue; }
           // Validate fully in an isolated store, including the advertised content hash,
-          // before preserving conflicts or touching the real guide.
-          this.validateDownload(incoming, id, latest.appProperties.hash);
-          const localChanged = local && (!record || local.hash !== record.hash);
-          if (localChanged && local.hash !== latest.appProperties.hash) {
-            const copyId = `guide-conflict-${digest(`${id}:${local.hash}`).slice(0, 32)}`;
-            if (!this.store.guideExists(copyId)) {
-              this.install(zipSync(local.entries), id, copyId, `${this.store.getGuide(id).title} (conflict — this device)`);
-              conflicts += 1;
-            }
+          // before merging or touching the real guide.
+          for (const { tip, bytes } of downloads) this.validateDownload(bytes, id, tip.appProperties.hash);
+          let incoming = downloads[0].bytes;
+          if (merging) {
+            const sides = downloads.map(({ tip, bytes }) => ({ entries: unzipSync(bytes), hash: tip.appProperties.hash }));
+            if (withLocal) sides.push({ entries: local.entries, hash: local.hash });
+            const result = mergeGuideEntries({ base, sides });
+            incoming = zipSync(result.entries);
+            // Unsynced local edits that lost a conflict stay recoverable under Backups.
+            if (withLocal) createSnapshot(this.store, id, { label: 'before-sync-merge' });
+            merged += 1;
+            mergeConflicts += result.conflicts;
           }
-          // Other concurrent tips are durable conflict copies, with stable identities
-          // so repeated polls and separate devices do not manufacture duplicates.
-          for (const other of heads.filter((h) => h.id !== latest.id && h.appProperties.hash !== latest.appProperties.hash)) {
-            const copyId = `guide-conflict-${digest(`${id}:${other.id}`).slice(0, 32)}`;
-            if (this.store.guideExists(copyId)) continue;
-            const bytes = await this.downloadVersion(other);
-            check();
-            this.validateDownload(bytes, id, other.appProperties.hash);
-            this.install(bytes, id, copyId, `${other.name.replace(/\.sfgz$/, '')} (conflict — another device)`);
-            conflicts += 1;
-          }
-          // A user can edit/open the guide while the other conflict branches download.
-          if (!this.canReplace(id) || this.store.guideExists(id) !== exists
-              || (exists && this.localSnapshot(id).hash !== local.hash)) { pending = true; continue; }
-          if (!local || local.hash !== latest.appProperties.hash) this.install(incoming, id, id);
+          if (!local || local.hash !== parts.contentHash(unzipSync(incoming))) this.install(incoming, id, id);
           const alreadyMarkedShared = this.store.getGuide(id).cloud?.wasShared === true;
           if (!alreadyMarkedShared) this.markWasShared(id);
           local = this.localSnapshot(id);
           exists = true;
-          this.state.records[id] = { head: latest.id, heads: heads.map((h) => h.id), hash: alreadyMarkedShared ? local.hash : latest.appProperties.hash, syncedAt: Date.now() };
+          // A merge is uploaded next as a child of the newest head that also
+          // names the other heads, so the cloud is back to one head.
+          this.state.records[id] = { head: latest.id, heads: heads.map((h) => h.id), hash: latest.appProperties.hash, syncedAt: Date.now(),
+            ...(merging ? { merged: heads.filter((h) => h.id !== latest.id).map((h) => h.id) } : {}) };
           this.saveState();
+          if (!merging) this.rememberBase(id, unzipSync(incoming));
         }
         if (!exists) continue;
         const baseline = Object.hasOwn(this.state.records, id) ? this.state.records[id] : null;
-        if (!baseline || local.hash !== baseline.hash) {
+        // Heads a merge absorbed must be named by an upload even when the
+        // merged guide equals the newest head, or the cloud keeps both heads.
+        const absorbed = mergedProperty((baseline?.merged || []).filter((vid) => vid !== baseline.head && validId(vid)));
+        if (!baseline || local.hash !== baseline.hash || absorbed) {
           if (!this.canUpload(id)) { pending = true; continue; }
           // Persist the shared marker in the first archive so a later offline
           // deletion can safely tell a shared guide from a local-only guide.
@@ -915,7 +1031,8 @@ class CloudSync {
           }
           const name = `${this.store.getGuide(id).title}.sfgz`;
           // Only files Drive doesn't have yet are uploaded (core/cloud-parts.js).
-          const encoded = parts.encodeSnapshot(local.entries, { inlineLimit: this.inlineLimit });
+          const uploaded = local.entries;
+          const encoded = parts.encodeSnapshot(uploaded, { inlineLimit: this.inlineLimit });
           // Hashing a big guide takes a moment; let a Stop or an edit land first.
           await new Promise((resolve) => setImmediate(resolve));
           await this.partIndex();
@@ -925,10 +1042,12 @@ class CloudSync {
             continue;
           }
           const { file } = await this.uploadVersion({ encoded, name, check,
-            properties: { stepforge: 'guide-v1', guideId: id, hash: local.hash, ...(baseline?.head ? { parent: baseline.head } : {}) } });
+            properties: { stepforge: 'guide-v1', guideId: id, hash: local.hash, ...(baseline?.head ? { parent: baseline.head } : {}),
+              ...(absorbed ? { merged: absorbed } : {}) } });
           check();
           this.state.records[id] = { head: file.id, heads: [...heads.filter((h) => h.id !== baseline?.head).map((h) => h.id), file.id], hash: local.hash, syncedAt: Date.now() };
           this.saveState();
+          this.rememberBase(id, uploaded);
           // If edits happened during upload, this baseline describes only uploaded bytes.
           if (this.store.guideExists(id) && this.localSnapshot(id).hash !== local.hash) pending = true;
         }
@@ -938,9 +1057,8 @@ class CloudSync {
       }
     }
     if (errors.length) this.publish('error', `${errors.length} guide(s) could not sync: ${errors[0]}`);
-    else if (conflicts) this.publish('conflict', `${conflicts} conflict ${conflicts === 1 ? 'copy preserved' : 'copies preserved'} in your library.`, { lastSync: new Date().toISOString() });
     else if (pending) this.publish('pending', 'Changes pending. Incoming updates wait until the guide is closed.');
-    else this.publish('synced', `Guides are synced with ${this.label}.`, { lastSync: new Date().toISOString() });
+    else this.publish('synced', mergeMessage(this.label, merged, mergeConflicts), { lastSync: new Date().toISOString() });
     // Snapshots are immutable. Retain the current version and two prior
     // versions on every live conflict branch after a successful sync.
     if (!errors.length && !pending) await this.pruneNow();

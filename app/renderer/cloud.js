@@ -67,7 +67,6 @@ function makeCloudSettings(api, { provider = 'google' } = {}) {
     synced: ['ok', 'Up to date'],
     syncing: ['busy', 'Syncing…'],
     pending: ['warn', 'Changes waiting to sync'],
-    conflict: ['warn', 'Conflict copies saved to your library'],
     error: ['error', 'Needs attention'],
     disconnected: ['error', 'Sign in again'],
   };
@@ -385,7 +384,7 @@ function makeCloudSettings(api, { provider = 'google' } = {}) {
     // Transfer progress arrives several times a second; don't keep rewriting the banner.
     if ((phase === 'error' || phase === 'disconnected') && (next.error || next.message) && !next.transfer) say(next.error || next.message, 'error');
     // Refresh the lists when a background sync finishes.
-    if (connected && previous === 'syncing' && ['synced', 'conflict'].includes(next.phase) && !busy) void refreshLists();
+    if (connected && previous === 'syncing' && next.phase === 'synced' && !busy) void refreshLists();
   }
 
   const renderStorage = (summary) => {

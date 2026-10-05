@@ -92,6 +92,11 @@ Drive sync is **off by default**. When you sign in
   Drive storage usage to show which account is connected and how much space
   it's using.
 - Data travels over HTTPS. It isn't additionally encrypted by StepForge.
+- To combine edits made on different computers, StepForge keeps the text of
+  each synced guide as it was last synced, with screenshot fingerprints but no
+  screenshots, in the `cloud` folder of your [data folder](#where-your-data-lives).
+  Before it combines unsynced edits, it saves your version as one of the
+  guide's local backups.
 - Your Google token is stored encrypted with your operating system's
   credential storage.
 - **Test connection** uploads, downloads, and deletes a small random file; it

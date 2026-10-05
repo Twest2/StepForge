@@ -16,8 +16,9 @@ Open **Settings → Accounts** and choose a service.
 StepForge only gets access to its own folder. It can't see or change anything
 else in your OneDrive, Dropbox, or Nextcloud.
 
-Sync works the same way on every service: versions, restoring, conflict
-copies, recently deleted guides, and **Free up space** are all described in
+Sync works the same way on every service: versions, restoring, combining
+edits from different computers, recently deleted guides, and **Free up space**
+are all described in
 [Google Drive sync](GOOGLE_DRIVE.md). Every service stores only what changed
 between versions, so a screenshot that appears in many versions is stored once.
 

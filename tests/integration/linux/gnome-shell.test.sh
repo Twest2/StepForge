@@ -8,7 +8,7 @@ if [[ "${STEPFORGE_ISOLATED_GNOME:-}" != 1 ]]; then
   trap 'sleep 1; rm -rf "$TEST_DIR"' EXIT
   mkdir -p "$TEST_DIR/data/gnome-shell/extensions" "$TEST_DIR/runtime" "$TEST_DIR/config" "$TEST_DIR/cache"
   chmod 700 "$TEST_DIR/runtime"
-  cp -a "$ROOT_DIR/gnome-extension/stepforge@twestbrook.com" "$TEST_DIR/data/gnome-shell/extensions/"
+  cp -a "$ROOT_DIR/gnome-extension/com.twestbrook.stepforge" "$TEST_DIR/data/gnome-shell/extensions/"
   cp -a "$ROOT_DIR/tests/integration/linux/gnome-driver" "$TEST_DIR/data/gnome-shell/extensions/stepforge-test@example.invalid"
   env -u DISPLAY -u WAYLAND_DISPLAY \
     XDG_DATA_HOME="$TEST_DIR/data" XDG_CONFIG_HOME="$TEST_DIR/config" \
@@ -18,7 +18,7 @@ if [[ "${STEPFORGE_ISOLATED_GNOME:-}" != 1 ]]; then
     dbus-run-session -- bash "$0"
   exit
 fi
-gsettings set org.gnome.shell enabled-extensions "['stepforge@twestbrook.com', 'stepforge-test@example.invalid']"
+gsettings set org.gnome.shell enabled-extensions "['com.twestbrook.stepforge', 'stepforge-test@example.invalid']"
 pipewire > "$XDG_CACHE_HOME/pipewire.log" 2>&1 &
 PIPEWIRE_PID=$!
 wireplumber > "$XDG_CACHE_HOME/wireplumber.log" 2>&1 &

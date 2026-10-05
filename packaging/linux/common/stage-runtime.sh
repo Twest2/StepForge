@@ -59,7 +59,7 @@ install -m 0755 "$ROOT_DIR/packaging/linux/common/launcher.sh" "$STAGE_ROOT/usr/
 # GNOME 50 companion, installed with the app and enabled per user on first run.
 # GNOME Shell refuses to load an extension whose metadata uuid differs from its
 # directory name, so a mismatch must fail the build rather than ship silently.
-EXT_UUID=stepforge@twestbrook.com
+EXT_UUID=com.twestbrook.stepforge
 meta_uuid="$(node -p "require(process.argv[1]).uuid" "$ROOT_DIR/gnome-extension/$EXT_UUID/metadata.json")"
 if [ "$meta_uuid" != "$EXT_UUID" ]; then
   echo "error: GNOME extension metadata uuid '$meta_uuid' does not match its directory '$EXT_UUID'." >&2

@@ -13,8 +13,8 @@
 #   arm:      warmup click ignored, first armed click captured
 #   debounce: 4 of 4  (40ms burst collapses to 1, three 300ms clicks kept)
 #
-# Skip policy (kept honest on purpose): the ONLY allowed skip is the upfront
-# absence of a display server, detected BEFORE launching. Once the app is
+# Skip policy (kept honest on purpose): the ONLY allowed skip is missing
+# headless tooling, detected BEFORE launching. Once the app is
 # launched, failing to reach the scenarios is a real failure — a startup
 # crash (missing shared library, launcher bug) must never be reported as
 # "no capture environment".
@@ -32,8 +32,10 @@ if [[ "$(uname -s)" == Linux && "${XDG_SESSION_TYPE:-}" == wayland \
   exec bash tests/integration/linux/gnome-shell.test.sh
 fi
 
-if [[ "$(uname -s)" == "Linux" && -z "${DISPLAY:-}" && -z "${WAYLAND_DISPLAY:-}" ]]; then
-  echo "click capture selftest SKIPPED: no display server (set DISPLAY or run under xvfb-run)"
+# shellcheck source=../lib/headless.sh
+source tests/lib/headless.sh
+if ! headless_ready; then
+  echo "click capture selftest SKIPPED: $HEADLESS_MISSING"
   exit 0
 fi
 
@@ -42,7 +44,7 @@ trap 'rm -rf "$TMP_ROOT"' EXIT
 
 LOG_FILE="$TMP_ROOT/selftest.log"
 set +e
-STEPFORGE_DATA_DIR="$TMP_ROOT/data" STEPFORGE_CLICK_SELFTEST=1 \
+run_headless env STEPFORGE_DATA_DIR="$TMP_ROOT/data" STEPFORGE_CLICK_SELFTEST=1 \
   timeout 120s npm start >"$LOG_FILE" 2>&1
 set -e
 

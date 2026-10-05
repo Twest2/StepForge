@@ -100,7 +100,7 @@ jobs:
       - name: Verify package payload
         run: |
           dpkg-deb --contents build/artifacts/*.deb > /tmp/stepforge-payload.txt
-          grep 'gnome-shell/extensions/stepforge@twestbrook.com/extension.js' /tmp/stepforge-payload.txt
+          grep 'gnome-shell/extensions/com.twestbrook.stepforge/extension.js' /tmp/stepforge-payload.txt
           grep 'app/platform/linux/portal_capture.py' /tmp/stepforge-payload.txt
       - uses: actions/upload-artifact@v4
         with:

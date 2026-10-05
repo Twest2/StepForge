@@ -7,10 +7,13 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
-# The only allowed skip is the upfront absence of a display server. Any
-# failure after launch (missing shared library, crash) must fail the check.
-if [[ "$(uname -s)" == "Linux" && -z "${DISPLAY:-}" && -z "${WAYLAND_DISPLAY:-}" ]]; then
-  echo "startup smoke SKIPPED: no display server (set DISPLAY or run under xvfb-run)"
+# shellcheck source=../lib/headless.sh
+source tests/lib/headless.sh
+
+# The only allowed skip is missing headless tooling, detected before launch.
+# Any failure after launch (missing shared library, crash) must fail the check.
+if ! headless_ready; then
+  echo "startup smoke SKIPPED: $HEADLESS_MISSING"
   exit 0
 fi
 
@@ -19,7 +22,7 @@ trap 'rm -rf "$TMP_ROOT"' EXIT
 
 LOG_FILE="$TMP_ROOT/start.log"
 set +e
-STEPFORGE_DATA_DIR="$TMP_ROOT/data" timeout 8s npm start >"$LOG_FILE" 2>&1
+run_headless env STEPFORGE_DATA_DIR="$TMP_ROOT/data" timeout 8s npm start >"$LOG_FILE" 2>&1
 status=$?
 set -e
 

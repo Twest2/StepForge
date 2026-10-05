@@ -125,6 +125,12 @@ The runner executes every `tests/checks/test_*.sh`, which in turn run the
 `tests/unit/` and any new shell check in `tests/checks/`; the runner picks
 both up automatically.
 
+The suite is headless. On Linux, checks that launch the app run it on a
+private Xvfb display with its own D-Bus session, so no windows or
+notifications appear on your desktop and a logged-in session isn't needed.
+They need `xvfb-run`, `xauth`, and `dbus-run-session`, which the build-deps
+scripts in `scripts/linux/` install; without them those checks are skipped.
+
 **What good tests look like here:**
 
 - **Exercise real workflows and check real output.** Create a guide, export
@@ -246,14 +252,8 @@ PipeWire, and WirePlumber.
 ### Clean up afterwards
 
 ```bash
-gnome-extensions disable stepforge@twestbrook.com 2>/dev/null || true
+gnome-extensions disable com.twestbrook.stepforge 2>/dev/null || true
 sudo apt remove stepforge
-```
-
-If you installed the extension from a source checkout, remove that copy too:
-
-```bash
-rm -rf ~/.local/share/gnome-shell/extensions/stepforge@twestbrook.com
 ```
 
 Check the list before accepting any `apt autoremove` suggestion. Don't remove

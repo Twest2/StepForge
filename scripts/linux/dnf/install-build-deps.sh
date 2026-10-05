@@ -29,6 +29,9 @@ PACKAGES=(
   xorg-x11-xauth dbus-daemon
   xorg-x11-server-Xvfb    # headless smoke test under Xvfb
   # Electron libraries for repository checks, independent of RPM installation.
+  # GTK's tmpfiles dependency must use the systemd variant: the standalone
+  # package conflicts with systemd when the installed-RPM test adds PipeWire.
+  systemd
   nss nspr atk at-spi2-atk at-spi2-core cups-libs libdrm
   gtk3 mesa-libgbm alsa-lib libxkbcommon
   libXcomposite libXdamage libXfixes libXrandr libxshmfence

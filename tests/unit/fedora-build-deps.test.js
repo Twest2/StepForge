@@ -34,7 +34,7 @@ test('Fedora contributor setup supplies Debian tools and Electron test libraries
   assert.equal(result.status, 0, result.stderr);
   const args = f.packages();
   assert.deepEqual(args.slice(0, 2), ['install', '-y']);
-  for (const dep of ['dpkg', 'rpm-build', 'nss', 'nspr', 'gtk3', 'alsa-lib', 'mesa-libgbm', 'libXrandr']) {
+  for (const dep of ['dpkg', 'rpm-build', 'systemd', 'nss', 'nspr', 'gtk3', 'alsa-lib', 'mesa-libgbm', 'libXrandr']) {
     assert.ok(args.includes(dep), `missing ${dep}`);
   }
 });

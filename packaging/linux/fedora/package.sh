@@ -51,7 +51,14 @@ SPEC="$BUILD_ROOT/stepforge.spec"
 sed -e "s/@VERSION@/$VERSION/" -e "s#@MAINTAINER@#$MAINTAINER#" \
   "$ROOT_DIR/packaging/linux/fedora/stepforge.spec" > "$SPEC"
 
-rpmbuild -bb \
+# Keep the distro's compression defaults for release builds. CI can opt into
+# level-3 Zstandard on two threads; the packaged files match, but the RPM may be larger.
+rpm_payload_args=()
+if [[ "${STEPFORGE_RPM_FAST:-0}" == 1 ]]; then
+  rpm_payload_args=(--define '_binary_payload w3T2.zstdio')
+fi
+
+rpmbuild -bb "${rpm_payload_args[@]}" \
   --define "_topdir $BUILD_ROOT/rpmbuild" \
   --define "_rpmdir $OUT_DIR" \
   --define "_build_id_links none" \

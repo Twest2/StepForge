@@ -106,6 +106,7 @@ test('refuses an unsandboxed Linux launch unless explicitly allowed', () => {
         statSync: () => ({ uid: 1000, mode: 0o100755 }),
         env: {},
         userNamespaces: () => false,
+        uid: 1000,
       }),
     /refuses to silently launch unsandboxed[\s\S]*STEPFORGE_ALLOW_NO_SANDBOX/
   );
@@ -122,6 +123,7 @@ test('allows --no-sandbox only with an explicit dev/CI opt-in', () => {
       statSync: () => ({ uid: 1000, mode: 0o100755 }),
       env,
       userNamespaces: () => false,
+      uid: 1000,
     });
     assert.deepEqual(args, ['--no-sandbox']);
   }
@@ -135,8 +137,23 @@ test('keeps the sandbox enabled when the Linux helper is root-owned and setuid',
     platform: 'linux',
     statSync: () => ({ uid: 0, mode: 0o104755 }),
     env: {},
+    uid: 1000,
   });
   assert.deepEqual(args, []);
+});
+
+test('root needs the explicit opt-in even when a sandbox is otherwise available', () => {
+  const options = {
+    electronPath: '/tmp/stepforge/node_modules/electron/dist/electron',
+    platform: 'linux',
+    statSync: () => ({ uid: 0, mode: 0o104755 }),
+    userNamespaces: () => true,
+    uid: 0,
+  };
+  assert.throws(() => linuxSandboxLaunchArgs({ ...options, env: {} }),
+    /running as root[\s\S]*STEPFORGE_ALLOW_NO_SANDBOX/);
+  assert.deepEqual(linuxSandboxLaunchArgs({ ...options, env: { STEPFORGE_ALLOW_NO_SANDBOX: '1' } }),
+    ['--no-sandbox']);
 });
 
 test('non-Linux platforms never receive sandbox launch flags', () => {

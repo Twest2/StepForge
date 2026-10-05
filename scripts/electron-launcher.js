@@ -97,8 +97,24 @@ function linuxSandboxLaunchArgs({
   statSync = fs.statSync,
   env = process.env,
   userNamespaces = userNamespacesAvailable,
+  uid = typeof process.getuid === 'function' ? process.getuid() : -1,
 } = {}) {
   if (platform !== 'linux') return [];
+
+  // Chromium will not start as root with its sandbox enabled (for example in
+  // a CI container), so root always needs the explicit opt-in.
+  if (uid === 0) {
+    if (noSandboxExplicitlyAllowed(env)) return ['--no-sandbox'];
+    throw new Error(
+      [
+        'StepForge is running as root, where the Chromium sandbox cannot be',
+        'used. Run it as a regular user.',
+        '',
+        'For development or CI only, you may explicitly opt in to an',
+        'unsandboxed launch with STEPFORGE_ALLOW_NO_SANDBOX=1.',
+      ].join('\n')
+    );
+  }
 
   // Modern kernels with unprivileged user namespaces do not need the setuid
   // helper; Chromium falls back to the namespace sandbox on its own. The

@@ -6,7 +6,7 @@ const { dialog, nativeImage } = require('electron');
 const CaptureService = require('../../capture');
 const { PortalBackend } = require('./portal-backend');
 const run = promisify(execFile);
-const UUID = 'stepforge@twestbrook.com';
+const UUID = 'com.twestbrook.stepforge';
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function cropGeometry(bounds, rect, size) {

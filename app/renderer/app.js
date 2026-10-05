@@ -329,7 +329,7 @@ class StepForgeApp {
     this.cloudProvider = status.provider || 'google';
     const short = status.providerShort || 'Drive';
     const name = status.providerLabel || 'Google Drive';
-    const labels = { synced: 'synced', syncing: 'syncing…', pending: 'pending', conflict: 'conflict copies', error: 'needs attention' };
+    const labels = { synced: 'synced', syncing: 'syncing…', pending: 'pending', error: 'needs attention' };
     const transfer = status.transfer ? describeTransfer(status.transfer) : null;
     this.cloudStatus.textContent = transfer ? `${short}: ${transfer.arrow} ${transfer.compact}` : labels[status.phase] ? `${short}: ${labels[status.phase]}` : name;
     this.cloudStatus.title = transfer?.detail || status.error || status.message || `${name} settings`;

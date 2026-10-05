@@ -42,9 +42,9 @@ for needle in \
   '/opt/stepforge/app/main.js' \
   '/opt/stepforge/app/assets/stepforge.png' \
   '/opt/stepforge/app/platform/linux/portal_capture.py' \
-  '/usr/share/gnome-shell/extensions/stepforge@twestbrook.com/metadata.json' \
-  '/usr/share/gnome-shell/extensions/stepforge@twestbrook.com/extension.js' \
-  '/usr/share/gnome-shell/extensions/stepforge@twestbrook.com/buttons.js'; do
+  '/usr/share/gnome-shell/extensions/com.twestbrook.stepforge/metadata.json' \
+  '/usr/share/gnome-shell/extensions/com.twestbrook.stepforge/extension.js' \
+  '/usr/share/gnome-shell/extensions/com.twestbrook.stepforge/buttons.js'; do
   grep -qFx "$needle" <<< "$listing" || fail "missing packaged file: $needle"
 done
 grep -q '/usr/share/icons/hicolor/256x256/apps/stepforge.png' <<< "$listing" || fail "missing 256px icon"

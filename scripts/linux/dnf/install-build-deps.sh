@@ -4,6 +4,16 @@
 # the end-user package.
 set -euo pipefail
 
+# Contributors get the complete suite's Debian tools by default; RPM-only
+# CI/release jobs can omit them without changing their system libraries.
+rpm_only=false
+if [[ $# == 1 && "$1" == --rpm-only ]]; then
+  rpm_only=true
+elif [[ $# != 0 ]]; then
+  echo 'Usage: install-build-deps.sh [--rpm-only]' >&2
+  exit 1
+fi
+
 if ! command -v dnf >/dev/null 2>&1; then
   echo "This script is for dnf-based systems (Fedora 44)." >&2
   exit 1
@@ -14,12 +24,19 @@ if [ "$(id -u)" -ne 0 ]; then SUDO="sudo"; fi
 
 PACKAGES=(
   rpm-build rpmdevtools findutils tar gzip diffutils file   # build the .rpm
-  dpkg                    # shared build-release test also exercises the .deb/tar builder
   desktop-file-utils      # validate the .desktop entry
   ca-certificates         # npm ci over https
   xorg-x11-xauth dbus-daemon
   xorg-x11-server-Xvfb    # headless smoke test under Xvfb
+  # Electron libraries for repository checks, independent of RPM installation.
+  nss nspr atk at-spi2-atk at-spi2-core cups-libs libdrm
+  gtk3 mesa-libgbm alsa-lib libxkbcommon
+  libXcomposite libXdamage libXfixes libXrandr libxshmfence
 )
+
+if [[ "$rpm_only" == false ]]; then
+  PACKAGES+=(dpkg) # full contributor suite also builds Debian release artifacts
+fi
 
 echo "Installing StepForge build dependencies via dnf..."
 $SUDO dnf install -y "${PACKAGES[@]}"

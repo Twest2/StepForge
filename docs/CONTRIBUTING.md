@@ -135,15 +135,23 @@ both up automatically.
 - Name and describe tests clearly so that whoever breaks one later understands
   what it protects.
 
-CI is configured in `.github/workflows/ci.yml`. The Fedora package job uses
-`bash tests/run_test.sh --fedora`: it runs every check except the Debian
-release build, which runs in the Ubuntu unit-test job in parallel. The default
+CI is configured in `.github/workflows/ci.yml`. The runner accepts repeatable
+`--skip test_name.sh` options for checks delegated to other jobs; an unknown
+name fails before any check runs. Fedora CI delegates the Debian release
+build to the pinned Ubuntu package job and units to the Linux/Windows unit
+jobs. Ubuntu builds the Debian package once while verifying the release
+report and sample manifest, then uploads those same artifacts. The default
 command above still runs the complete suite locally.
+
+The Fedora build-deps installer includes Electron's system libraries for
+repository checks. Its optional `--rpm-only` argument omits `dpkg` for jobs
+that do not build Debian artifacts; contributor setup includes it by default.
 
 Fedora CI builds test RPMs with `STEPFORGE_RPM_FAST=1`, selecting level-3
 Zstandard compression with two threads. These packages contain the same
 runtime files but can be larger. Normal RPM builds retain the distro's
-compression defaults.
+compression defaults. A small real-RPM fixture checks both compression paths
+on every Fedora PR run.
 
 ## Build installable packages
 

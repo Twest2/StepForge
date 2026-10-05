@@ -177,6 +177,33 @@ test('concurrent uploads based on the same version are merged back into one vers
   assert.equal(files.length, count);
 });
 
+test('concurrent uploads merge back into one version even when the merge equals the newest one', async (t) => {
+  const { device, drive, files } = setup(t);
+  const a = device('a'); const b = device('b');
+  const id = addGuide(a.store, 1);
+  await synced(a.sync); await synced(b.sync);
+  const staleListing = [...files];
+  // Only the title changes on both, so the merged guide is exactly B's newer version.
+  edit(a.store, id, 'Older title from A');
+  savedAt(a.store, id, '2030-01-01T10:00:00Z');
+  edit(b.store, id, 'Newer title from B');
+  savedAt(b.store, id, '2030-01-01T11:00:00Z');
+  await synced(a.sync);
+  const list = drive.listVersions;
+  drive.listVersions = async () => staleListing.filter((file) => file.appProperties?.stepforge === 'guide-v1');
+  await synced(b.sync);
+  drive.listVersions = list;
+  assert.equal(headsOf(versionFiles(files)).length, 2, 'two branches in the cloud');
+  await synced(a.sync); await synced(b.sync); await synced(a.sync);
+  for (const { store } of [a, b]) assert.equal(store.getGuide(id).title, 'Newer title from B');
+  assert.equal(snapshot(a.store, id).hash, snapshot(b.store, id).hash);
+  assert.equal(headsOf(versionFiles(files)).length, 1, 'the merge closes the branch');
+  const count = files.length;
+  for (let i = 0; i < 3; i++) { await synced(a.sync); await synced(b.sync); }
+  assert.equal(files.length, count, 'later polls upload nothing');
+  assert.equal(headsOf(versionFiles(files)).length, 1);
+});
+
 test('added, deleted and reordered steps merge, and a step edited on one computer survives deletion on the other', async (t) => {
   const { device } = setup(t);
   const a = device('a'); const b = device('b');
@@ -224,6 +251,35 @@ test('annotations added on both computers, and a new screenshot with new text, a
     assert.deepEqual(fs.readFileSync(store.stepImagePath(id, stepId, 'original')), screenshot);
     assert.deepEqual(fs.readFileSync(store.stepImagePath(id, stepId, 'working')), screenshot);
   }
+});
+
+test('when both computers replace the same screenshot, the newest one is kept whole', async (t) => {
+  const { device } = setup(t);
+  const a = device('a'); const b = device('b');
+  const id = addGuide(a.store, 1);
+  await synced(a.sync); await synced(b.sync);
+  const [stepId] = a.store.getGuide(id).stepsOrder;
+  const original = fs.readFileSync(a.store.stepImagePath(id, stepId, 'original'));
+  // B crops (new working image only) and changes the height; A, saved later,
+  // replaces the whole screenshot and changes the width.
+  const cropped = Buffer.concat([TINY_PNG, Buffer.from('cropped on B')]);
+  b.store.setWorkingImage(id, stepId, cropped, { width: 1, height: 3 });
+  savedAt(b.store, id, '2030-01-01T10:00:00Z');
+  const replaced = Buffer.concat([TINY_PNG, Buffer.from('replaced on A')]);
+  a.store.replaceImages(id, stepId, { original: replaced }, { width: 2, height: 1 });
+  savedAt(a.store, id, '2030-01-01T11:00:00Z');
+  await synced(a.sync);
+  const status = await synced(b.sync);
+  assert.match(status.message, /newest change was kept/);
+  await synced(a.sync);
+  for (const { store } of [a, b]) {
+    const step = store.getStep(id, stepId);
+    assert.deepEqual(step.image.size, { width: 2, height: 1 }, 'size of the kept screenshot, not a mix');
+    assert.deepEqual(fs.readFileSync(store.stepImagePath(id, stepId, 'original')), replaced);
+    assert.deepEqual(fs.readFileSync(store.stepImagePath(id, stepId, 'working')), replaced);
+    assert.notDeepEqual(fs.readFileSync(store.stepImagePath(id, stepId, 'original')), original);
+  }
+  assert.equal(snapshot(a.store, id).hash, snapshot(b.store, id).hash);
 });
 
 test('local edits merge against the remembered version when the cloud no longer has it', async (t) => {

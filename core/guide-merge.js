@@ -101,6 +101,17 @@ function mergeValue(base, values, stats) {
   return changed[0];
 }
 
+/**
+ * Pick one value whole, never combining its parts: the highest-priority side
+ * that changed it. Used for a step's screenshot unit (metadata and files).
+ */
+function pickWhole(base, values, stats) {
+  const changed = values.filter((value) => !same(value, base));
+  if (!changed.length) return base;
+  if (!changed.every((value) => same(value, changed[0]))) stats.conflicts += 1;
+  return changed[0];
+}
+
 function parseJson(entry) {
   return JSON.parse(bytesOf(entry).toString('utf8'));
 }
@@ -175,7 +186,7 @@ function mergeGuideEntries({ base, sides }) {
       const edited = present.some((step) => !same(step.json, was.json) || !same(media(step), media(was)));
       if (!edited) continue;
     }
-    const pickedMedia = mergeValue(media(was), present.map(media), stats);
+    const pickedMedia = pickWhole(media(was), present.map(media), stats);
     const json = mergeValue(withoutKeys(was?.json, [...MEDIA_FIELDS, 'revision']),
       present.map((step) => withoutKeys(step.json, [...MEDIA_FIELDS, 'revision'])), stats);
     // Screenshot bytes come from any side holding the chosen files.

@@ -1018,7 +1018,10 @@ class CloudSync {
         }
         if (!exists) continue;
         const baseline = Object.hasOwn(this.state.records, id) ? this.state.records[id] : null;
-        if (!baseline || local.hash !== baseline.hash) {
+        // Heads a merge absorbed must be named by an upload even when the
+        // merged guide equals the newest head, or the cloud keeps both heads.
+        const absorbed = mergedProperty((baseline?.merged || []).filter((vid) => vid !== baseline.head && validId(vid)));
+        if (!baseline || local.hash !== baseline.hash || absorbed) {
           if (!this.canUpload(id)) { pending = true; continue; }
           // Persist the shared marker in the first archive so a later offline
           // deletion can safely tell a shared guide from a local-only guide.
@@ -1038,7 +1041,6 @@ class CloudSync {
             pending = true;
             continue;
           }
-          const absorbed = mergedProperty((baseline?.merged || []).filter((vid) => vid !== baseline.head && validId(vid)));
           const { file } = await this.uploadVersion({ encoded, name, check,
             properties: { stepforge: 'guide-v1', guideId: id, hash: local.hash, ...(baseline?.head ? { parent: baseline.head } : {}),
               ...(absorbed ? { merged: absorbed } : {}) } });

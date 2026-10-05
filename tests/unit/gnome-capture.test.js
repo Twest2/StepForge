@@ -22,7 +22,7 @@ test('Fedora GNOME Wayland selects the shared companion without changing other d
 });
 
 test('Shell button transitions produce one step per press, including simultaneous and held buttons', async () => {
-  const source = fs.readFileSync(path.join(__dirname, '../../gnome-extension/stepforge@twestbrook.com/buttons.js'), 'utf8');
+  const source = fs.readFileSync(path.join(__dirname, '../../gnome-extension/com.twestbrook.stepforge/buttons.js'), 'utf8');
   const { Buttons } = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
   const buttons = new Buttons();
   assert.deepEqual(buttons.update(256), [1]);

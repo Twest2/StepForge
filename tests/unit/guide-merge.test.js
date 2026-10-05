@@ -67,6 +67,26 @@ test('a cloud manifest without screenshot bytes works as the base', async (t) =>
   assert.equal(result.conflicts, 0);
 });
 
+test('a crop and a replaced screenshot never mix: the newest side keeps its files and size together', async (t) => {
+  const { a, b, id, base } = twoCopies(t, 1);
+  const [stepId] = a.getGuide(id).stepsOrder;
+  // A (newer) crops only the working image; B (older) replaces both files.
+  const crop = Buffer.concat([TINY_PNG, Buffer.from('crop on A')]);
+  a.setWorkingImage(id, stepId, crop, { width: 1, height: 4 });
+  savedAt(a, id, '2030-01-01T10:00:00Z');
+  const shot = Buffer.concat([TINY_PNG, Buffer.from('new on B')]);
+  b.replaceImages(id, stepId, { original: shot }, { width: 5, height: 1 });
+  savedAt(b, id, '2030-01-01T09:00:00Z');
+  for (const sides of [[side(a, id), side(b, id)], [side(b, id), side(a, id)]]) {
+    const { entries, conflicts } = mergeGuideEntries({ base, sides });
+    const file = (name) => entries.find((e) => e.name === `steps/${stepId}/${name}`).data;
+    assert.deepEqual(stepOf(entries, stepId).image.size, { width: 1, height: 4 });
+    assert.deepEqual(file('original.png'), SHOT, "A's unchanged original, not B's new one");
+    assert.deepEqual(file('working.png'), crop);
+    assert.equal(conflicts, 1);
+  }
+});
+
 test('without a base nothing is deleted and differing values go to the newest save', async (t) => {
   const { a, b, id } = twoCopies(t, 2);
   const [s1, s2] = a.getGuide(id).stepsOrder;

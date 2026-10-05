@@ -234,15 +234,6 @@ gnome-extensions disable com.twestbrook.stepforge 2>/dev/null || true
 sudo apt remove stepforge
 ```
 
-If you installed the extension from a source checkout, remove that copy too.
-Copies installed before the extension was renamed use the older
-`stepforge@twestbrook.com` folder:
-
-```bash
-rm -rf ~/.local/share/gnome-shell/extensions/com.twestbrook.stepforge
-rm -rf ~/.local/share/gnome-shell/extensions/stepforge@twestbrook.com
-```
-
 Check the list before accepting any `apt autoremove` suggestion. Don't remove
 shared GNOME, PipeWire, or portal packages other apps rely on. Log out and back
 in if the recording indicator is still visible.

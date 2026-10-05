@@ -230,13 +230,16 @@ PipeWire, and WirePlumber.
 ### Clean up afterwards
 
 ```bash
-gnome-extensions disable stepforge@twestbrook.com 2>/dev/null || true
+gnome-extensions disable com.twestbrook.stepforge 2>/dev/null || true
 sudo apt remove stepforge
 ```
 
-If you installed the extension from a source checkout, remove that copy too:
+If you installed the extension from a source checkout, remove that copy too.
+Copies installed before the extension was renamed use the older
+`stepforge@twestbrook.com` folder:
 
 ```bash
+rm -rf ~/.local/share/gnome-shell/extensions/com.twestbrook.stepforge
 rm -rf ~/.local/share/gnome-shell/extensions/stepforge@twestbrook.com
 ```
 

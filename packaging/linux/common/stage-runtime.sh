@@ -57,10 +57,18 @@ fi
 install -m 0755 "$ROOT_DIR/packaging/linux/common/launcher.sh" "$STAGE_ROOT/usr/bin/stepforge"
 
 # GNOME 50 companion, installed with the app and enabled per user on first run.
-EXT_DIR="$STAGE_ROOT/usr/share/gnome-shell/extensions/stepforge@twestbrook.com"
+# GNOME Shell refuses to load an extension whose metadata uuid differs from its
+# directory name, so a mismatch must fail the build rather than ship silently.
+EXT_UUID=stepforge@twestbrook.com
+meta_uuid="$(node -p "require(process.argv[1]).uuid" "$ROOT_DIR/gnome-extension/$EXT_UUID/metadata.json")"
+if [ "$meta_uuid" != "$EXT_UUID" ]; then
+  echo "error: GNOME extension metadata uuid '$meta_uuid' does not match its directory '$EXT_UUID'." >&2
+  exit 1
+fi
+EXT_DIR="$STAGE_ROOT/usr/share/gnome-shell/extensions/$EXT_UUID"
 mkdir -p "$EXT_DIR"
 for file in metadata.json extension.js buttons.js; do
-  install -m 0644 "$ROOT_DIR/gnome-extension/stepforge@twestbrook.com/$file" "$EXT_DIR/$file"
+  install -m 0644 "$ROOT_DIR/gnome-extension/$EXT_UUID/$file" "$EXT_DIR/$file"
 done
 
 # --- desktop entry, icons, MIME ---------------------------------------------

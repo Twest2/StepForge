@@ -59,6 +59,12 @@ jobs:
       - name: Run unit tests
         run: npm test
 
+      # Debian release artifacts are checked once, on Ubuntu, in parallel
+      # with package jobs rather than rebuilt inside the Fedora container.
+      - name: Verify Debian release workflow
+        if: runner.os == 'Linux'
+        run: bash tests/checks/test_workflow_build_release.sh
+
   audit:
     name: Dependency audit
     runs-on: ubuntu-latest
@@ -124,7 +130,16 @@ jobs:
       - run: bash scripts/linux/dnf/install-build-deps.sh
       - run: npm ci
       - name: Build Fedora package
-        run: npm run package:linux:rpm
+        env:
+          # CI artifacts favor build speed over the smallest download.
+          STEPFORGE_RPM_FAST: '1'
+        run: |
+          npm run package:linux:rpm
+          rpm -qp --qf 'Payload compression: %{PAYLOADCOMPRESSOR} %{PAYLOADFLAGS}\n' build/artifacts/x86_64/*.rpm
+      # Installing the package also supplies the runtime libraries needed
+      # by the repository's Electron checks.
+      - name: Install and smoke-test the actual RPM
+        run: bash tests/integration/linux/fedora-installed.test.sh build/artifacts/x86_64/*.rpm
       - name: Run repository checks and RPM integration tests
         run: |
           packages=(build/artifacts/x86_64/*.rpm)
@@ -132,9 +147,7 @@ jobs:
             echo 'Expected exactly one Fedora RPM' >&2
             exit 1
           }
-          STEPFORGE_TEST_RPM="${packages[0]}" bash tests/run_test.sh
-      - name: Install and smoke-test the actual RPM
-        run: bash tests/integration/linux/fedora-installed.test.sh build/artifacts/x86_64/*.rpm
+          STEPFORGE_TEST_RPM="${packages[0]}" bash tests/run_test.sh --fedora
       - uses: actions/upload-artifact@v4
         with:
           name: fedora-44-gnome-test-package

@@ -135,7 +135,15 @@ both up automatically.
 - Name and describe tests clearly so that whoever breaks one later understands
   what it protects.
 
-The same command runs in CI through `.github/workflows/ci.yml`.
+CI is configured in `.github/workflows/ci.yml`. The Fedora package job uses
+`bash tests/run_test.sh --fedora`: it runs every check except the Debian
+release build, which runs in the Ubuntu unit-test job in parallel. The default
+command above still runs the complete suite locally.
+
+Fedora CI builds test RPMs with `STEPFORGE_RPM_FAST=1`, selecting level-3
+Zstandard compression with two threads. These packages contain the same
+runtime files but can be larger. Normal RPM builds retain the distro's
+compression defaults.
 
 ## Build installable packages
 

@@ -33,28 +33,46 @@ test('default shell runner executes the complete suite', shellOptions, (t) => {
   assert.deepEqual(f.executed(), ['rpm', 'units', 'debian', 'samples']);
 });
 
-test('Fedora profile delegates only the Debian release build', shellOptions, (t) => {
+test('explicit skips delegate only the named checks', shellOptions, (t) => {
   const f = fixture(t);
-  const result = f.run('--fedora');
+  const result = f.run('--skip', 'test_workflow_build_release.sh', '--skip', 'test_unit_workflows.sh');
   assert.equal(result.status, 0, result.stderr);
-  assert.deepEqual(f.executed(), ['rpm', 'units', 'samples']);
-  assert.match(result.stdout, /delegated to the Ubuntu CI job/);
+  assert.deepEqual(f.executed(), ['rpm', 'samples']);
+  assert.match(result.stdout, /explicit --skip/);
 });
 
-test('Fedora profile propagates check failures', shellOptions, (t) => {
+test('runner propagates failures with explicit skips', shellOptions, (t) => {
   const f = fixture(t, true);
-  const result = f.run('--fedora');
+  const result = f.run('--skip', 'test_workflow_build_release.sh');
   assert.equal(result.status, 7);
   assert.deepEqual(f.executed(), ['rpm', 'units']);
   assert.doesNotMatch(result.stdout, /All tests passed/);
 });
 
-test('shell runner rejects unknown profiles and extra arguments before running checks', shellOptions, (t) => {
+test('shell runner rejects unknown options and extra arguments before running checks', shellOptions, (t) => {
   const f = fixture(t);
-  for (const args of [['--fedor'], ['--fedora', 'extra']]) {
+  for (const args of [['--fedora'], ['--skip'], ['--skip', 'test_unit_workflows.sh', 'extra']]) {
     const result = f.run(...args);
     assert.equal(result.status, 1);
     assert.match(result.stderr, /Usage:/);
   }
   assert.deepEqual(f.executed(), []);
+});
+
+
+test('runner rejects missing or unsafe skip names before any check runs', shellOptions, (t) => {
+  const f = fixture(t);
+  for (const name of ['test_renamed.sh', '../test_unit_workflows.sh', '/test_unit_workflows.sh']) {
+    const result = f.run('--skip', 'test_workflow_build_release.sh', '--skip', name);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Unknown check:/);
+  }
+  assert.deepEqual(f.executed(), []);
+});
+
+test('duplicate skip arguments remain harmless', shellOptions, (t) => {
+  const f = fixture(t);
+  const result = f.run('--skip', 'test_workflow_build_release.sh', '--skip', 'test_workflow_build_release.sh');
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(f.executed(), ['rpm', 'units', 'samples']);
 });

@@ -59,12 +59,6 @@ jobs:
       - name: Run unit tests
         run: npm test
 
-      # Debian release artifacts are checked once, on Ubuntu, in parallel
-      # with package jobs rather than rebuilt inside the Fedora container.
-      - name: Verify Debian release workflow
-        if: runner.os == 'Linux'
-        run: bash tests/checks/test_workflow_build_release.sh
-
   audit:
     name: Dependency audit
     runs-on: ubuntu-latest
@@ -96,8 +90,13 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - name: Build Ubuntu GNOME package
-        run: npm run package:linux:deb
+      # This workflow check builds and validates the package, tarball, report,
+      # and sample manifest once; the same package is uploaded below.
+      - name: Build Ubuntu package and verify release workflow
+        run: |
+          STEPFORGE_BUILD_DIR="$PWD/build" \
+          STEPFORGE_EXAMPLES_DIR="$RUNNER_TEMP/stepforge-release-examples" \
+            bash tests/checks/test_workflow_build_release.sh
       - name: Verify package payload
         run: |
           dpkg-deb --contents build/artifacts/*.deb > /tmp/stepforge-payload.txt
@@ -127,7 +126,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: bash scripts/linux/dnf/install-build-deps.sh
+      - run: bash scripts/linux/dnf/install-build-deps.sh --rpm-only
       - run: npm ci
       - name: Build Fedora package
         env:
@@ -136,18 +135,21 @@ jobs:
         run: |
           npm run package:linux:rpm
           rpm -qp --qf 'Payload compression: %{PAYLOADCOMPRESSOR} %{PAYLOADFLAGS}\n' build/artifacts/x86_64/*.rpm
-      # Installing the package also supplies the runtime libraries needed
-      # by the repository's Electron checks.
-      - name: Install and smoke-test the actual RPM
-        run: bash tests/integration/linux/fedora-installed.test.sh build/artifacts/x86_64/*.rpm
       - name: Run repository checks and RPM integration tests
+        # The container runs as root, where Chromium needs --no-sandbox for the
+        # Electron checks. This opt-in applies to this test step only.
+        env:
+          STEPFORGE_ALLOW_NO_SANDBOX: '1'
         run: |
           packages=(build/artifacts/x86_64/*.rpm)
           [[ ${#packages[@]} == 1 && -f "${packages[0]}" ]] || {
             echo 'Expected exactly one Fedora RPM' >&2
             exit 1
           }
-          STEPFORGE_TEST_RPM="${packages[0]}" bash tests/run_test.sh --fedora
+          STEPFORGE_TEST_RPM="${packages[0]}" bash tests/run_test.sh \
+            --skip test_workflow_build_release.sh --skip test_unit_workflows.sh
+      - name: Install and smoke-test the actual RPM
+        run: bash tests/integration/linux/fedora-installed.test.sh build/artifacts/x86_64/*.rpm
       - uses: actions/upload-artifact@v4
         with:
           name: fedora-44-gnome-test-package

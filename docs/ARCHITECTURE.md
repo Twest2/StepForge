@@ -19,7 +19,7 @@ gnome-extension/  GNOME Shell extension used for click capture on Wayland
 packaging/        Windows (NSIS, Chocolatey) and Linux (deb, rpm, Launchpad)
 scripts/          bootstrap / verify / build / package scripts (sh + ps1)
 tests/
-  run_test.sh     entrypoint — runs every tests/checks/test_*.sh
+  run_test.sh     entrypoint — runs every tests/checks/test_*.sh by default; --skip delegates named checks
   checks/         shell wrappers that invoke the node test suites
   unit/           node:test workflow suites
   integration/    packaging and headless GNOME Shell tests

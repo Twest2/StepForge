@@ -123,17 +123,26 @@ function planSite(manifest, { now = Date.now(), publish = null, remove = null } 
 
 const ROBOTS_META = '<meta name="robots" content="noindex, nofollow, noarchive">';
 const REFERRER_META = '<meta name="referrer" content="no-referrer">';
+const PROJECT_URL = 'https://github.com/Twest2/StepForge';
+const FOOTER_CREDIT = '<footer class="doc-footer">Made with StepForge';
+const FOOTER_LINK = ` · <a href="${PROJECT_URL}" rel="noopener noreferrer">GitHub</a>`;
 
 /**
  * Prepare an exported HTML guide for the public site: ask search engines not
- * to index or archive it, and keep the unlisted URL out of Referer headers.
+ * to index or archive it, keep the unlisted URL out of Referer headers, and
+ * link the "Made with StepForge" footer to the project. Local exports keep no
+ * external links; only the published copy gets one.
  */
 function prepareGuideHtml(html) {
   const text = String(html);
   const match = /<head[^>]*>/i.exec(text);
   if (!match) throw new Error('The exported guide has no <head> element.');
   const at = match.index + match[0].length;
-  return `${text.slice(0, at)}\n${ROBOTS_META}\n${REFERRER_META}${text.slice(at)}`;
+  const withMeta = `${text.slice(0, at)}\n${ROBOTS_META}\n${REFERRER_META}${text.slice(at)}`;
+  const credit = withMeta.lastIndexOf(FOOTER_CREDIT);
+  if (credit < 0) return withMeta;
+  const end = credit + FOOTER_CREDIT.length;
+  return `${withMeta.slice(0, end)}${FOOTER_LINK}${withMeta.slice(end)}`;
 }
 
 /** The page title of an exported guide, with placeholders already filled in. */
@@ -300,6 +309,7 @@ module.exports = {
   slugForGuide,
   planSite,
   prepareGuideHtml,
+  PROJECT_URL,
   titleFromHtml,
   siteBaseUrl,
   guideUrl,

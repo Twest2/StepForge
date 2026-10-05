@@ -122,6 +122,9 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: bash scripts/linux/dnf/install-build-deps.sh
+      # The repository checks launch Electron under Xvfb, so the container
+      # needs the same runtime libraries the RPM requires.
+      - run: bash scripts/linux/dnf/install-runtime-deps.sh
       - run: npm ci
       - name: Build Fedora package
         run: npm run package:linux:rpm

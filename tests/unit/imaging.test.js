@@ -74,14 +74,41 @@ test('annotations are burned into pixels: rect, highlight, blur, number', () => 
   const hl = px(out, 5, 90);
   assert.ok(hl[2] < 200 && hl[0] > 240, `highlight should yellow the pixel, got ${hl}`);
 
-  // Blur: the hard black/white edge inside the blur region is now grey.
-  const edge = px(out, 99, 50);
-  assert.ok(edge[0] > 30 && edge[0] < 225, `blur should smear edge, got ${edge}`);
+  // Blur: the black stripe under it is gone, replaced by the white around it.
+  assert.deepEqual(px(out, 101, 50), [255, 255, 255, 255]);
 
   // Number badge: just inside the left edge of the disc is the badge color
   // (blue); dead center would hit the white glyph.
   const badge = px(out, Math.round(0.815 * 200), Math.round(0.65 * 100));
   assert.ok(badge[2] > 200 && badge[0] < 80, `badge center should be blue, got ${badge}`);
+});
+
+test('a blur blends the colours around it into its area', () => {
+  // Red left half, blue right half, with a blur straddling the boundary.
+  const base = raster.createImage(200, 60, [220, 30, 30, 255]);
+  raster.fillRect(base, 100, 0, 100, 60, [30, 30, 220, 255]);
+  const out = raster.renderAnnotations(base, [{ id: 'b', type: 'blur', x: 0.3, y: 0.25, w: 0.4, h: 0.5, radius: 4 }]);
+
+  // Next to each side the fill matches what's beside it, and it changes
+  // gradually from red to blue in between, with no hard edge.
+  const near = (a, b) => a.every((v, i) => Math.abs(v - b[i]) <= 4);
+  assert.ok(near(px(out, 60, 30), [220, 30, 30, 255]), `left of the fill is red, got ${px(out, 60, 30)}`);
+  assert.ok(near(px(out, 139, 30), [30, 30, 220, 255]), `right of the fill is blue, got ${px(out, 139, 30)}`);
+  let prev = px(out, 60, 30)[0];
+  for (let x = 61; x < 140; x++) {
+    const red = px(out, x, 30)[0];
+    assert.ok(red <= prev && prev - red < 30, `fill should fade gradually, jumped at x=${x}`);
+    prev = red;
+  }
+  // Outside the blur nothing changes.
+  assert.deepEqual(px(out, 59, 30), [220, 30, 30, 255]);
+});
+
+test('a blur covering the whole image fills it with grey', () => {
+  const base = raster.createImage(20, 10, [0, 0, 0, 255]);
+  raster.fillRect(base, 5, 2, 4, 4, [255, 255, 255, 255]);
+  const out = raster.renderAnnotations(base, [{ id: 'b', type: 'blur', x: 0, y: 0, w: 1, h: 1 }]);
+  for (let i = 0; i < out.data.length; i += 4) assert.deepEqual([...out.data.subarray(i, i + 4)], [128, 128, 128, 255]);
 });
 
 test('text rendering puts glyph pixels where text is drawn', () => {

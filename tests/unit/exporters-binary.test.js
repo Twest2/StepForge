@@ -266,6 +266,41 @@ test('image bundle: numbered PNGs in one folder + index.json that references the
   }
 });
 
+test('image bundle: nothing under a blur can be recovered from the exported image', (t) => {
+  const root = makeTmpDir('blur-export');
+  t.after(() => rmrf(root));
+
+  // The same screen showing different card numbers. One blur hides the
+  // number; a second overlaps it from below, so its top edge runs through
+  // the first blur's area.
+  function exportScreen(card, note) {
+    const store = new GuideStore(path.join(root, card));
+    const guide = store.createGuide({ title: 'Billing' });
+    const shot = raster.createImage(320, 120, [245, 246, 248, 255]);
+    raster.fillRect(shot, 0, 0, 320, 20, [40, 60, 200, 255]);
+    raster.drawText(shot, 20, 30, 'Card', 16, [30, 30, 30, 255]);
+    raster.drawText(shot, 80, 30, card, 16, [30, 30, 30, 255]);
+    raster.drawText(shot, 80, 70, note, 16, [30, 30, 30, 255]);
+    store.addStep(guide.guideId, {
+      title: 'Check the card',
+      annotations: [
+        { type: 'blur', x: 70 / 320, y: 24 / 120, w: 180 / 320, h: 34 / 120, radius: 17 },
+        { type: 'blur', x: 70 / 320, y: 50 / 120, w: 180 / 320, h: 40 / 120, radius: 8 },
+      ],
+    }, encodePng(shot), { width: 320, height: 120 });
+    const { folder } = exportImageBundle(buildRenderAst(store, guide.guideId), path.join(root, card, 'out'));
+    const [file] = fs.readdirSync(folder).filter((name) => name.endsWith('.png'));
+    return { shot, exported: decodePng(fs.readFileSync(path.join(folder, file))) };
+  }
+
+  const a = exportScreen('4111 1111 1111 1111', 'Expires 01/29');
+  const b = exportScreen('5500 0000 0000 0004', 'Expires 12/31');
+  assert.notDeepEqual(a.shot.data, b.shot.data, 'the screenshots differ under the blurs');
+  assert.deepEqual(a.exported.data, b.exported.data, 'the exported images are identical');
+  // The label beside the blur is still there.
+  assert.deepEqual(a.exported.data.subarray(0, 4 * 320 * 20), a.shot.data.subarray(0, 4 * 320 * 20));
+});
+
 test('image bundle: captions add a bar under each image; zip packages the folder', (t) => {
   const { ast, root } = fixtureAst(t, 'bundlecap');
   const out = path.join(root, 'out');

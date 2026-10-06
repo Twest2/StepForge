@@ -100,6 +100,10 @@ Pick a tool from the toolbar above the screenshot and drag on the image.
 Annotations stay editable. The original screenshot is never modified, so you
 can always change or remove them later.
 
+A blur replaces what's under it with the colours around it, rather than
+softening it. Nothing it covers is kept in exported or published images, so
+it can't be recovered from them.
+
 ### Find private details
 
 **More → Find private details…** reads every screenshot and blurs what looks

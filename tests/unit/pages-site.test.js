@@ -88,6 +88,22 @@ test('an exported interactive HTML guide is marked noindex and no-referrer for t
   assert.throws(() => site.prepareGuideHtml('<p>no head</p>'), /no <head>/);
 });
 
+test('a published guide links its footer to the StepForge repository; local exports do not', (t) => {
+  const dir = makeTmpDir('pages-site');
+  t.after(() => rmrf(dir));
+  const { store, guide } = buildFixtureGuide(dir);
+  const ast = buildRenderAst(store, guide.guideId);
+  for (const format of ['html-simple', 'html-rich']) {
+    const exported = fs.readFileSync(runExport(format, ast, `${dir}/${format}`).file, 'utf8');
+    assert.doesNotMatch(exported, /github\.com/, `${format} exports stay free of external links`);
+    const html = site.prepareGuideHtml(exported);
+    const footer = html.slice(html.indexOf('<footer class="doc-footer">'), html.indexOf('</footer>'));
+    assert.match(footer, /^<footer class="doc-footer">Made with StepForge · <a href="https:\/\/github\.com\/Twest2\/StepForge" rel="noopener noreferrer">GitHub<\/a> · \d{4}-\d{2}-\d{2}$/, format);
+    assert.equal(html.split(site.PROJECT_URL).length, 2, `${format} gets exactly one link`);
+  }
+  assert.equal(site.prepareGuideHtml('<head></head><p>no footer</p>').includes(site.PROJECT_URL), false);
+});
+
 test('the root page and manifest never reveal published guide links', () => {
   const plan = site.planSite(site.emptyManifest(), { now: NOW, publish: { guideId: 'g', title: 'Secret steps', days: 7 } });
   assert.doesNotMatch(site.ROOT_INDEX, /g\//);

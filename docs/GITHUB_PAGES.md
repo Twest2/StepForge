@@ -98,7 +98,9 @@ the page, then **Live**. You can copy the link straight away.
 Each shared guide is one page, the same as an **Interactive HTML** export with
 the default options: all visible steps, screenshots with annotations,
 descriptions, and a checklist readers can tick off in their own browser.
-Hidden steps are left out, as in every export.
+Hidden steps are left out, as in every export. The **Made with StepForge**
+footer also links to StepForge on GitHub; files you export locally don't
+include that link.
 
 ### Publish from Export
 

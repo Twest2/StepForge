@@ -1,6 +1,7 @@
 'use strict';
 
 const text = require('./text-raster');
+const { pixelRect, fillFromSurroundings } = require('./blur-fill');
 
 /**
  * Software rasterizer for annotation rendering in exports. Operates on
@@ -166,34 +167,6 @@ function drawArrow(img, x0, y0, x1, y1, color, t) {
     [bx - uy * wing, by + ux * wing],
     [bx + uy * wing, by - ux * wing],
   ], color);
-}
-
-function boxBlur(img, x, y, w, h, radius) {
-  const x0 = Math.max(0, Math.round(x)), y0 = Math.max(0, Math.round(y));
-  const x1 = Math.min(img.width, Math.round(x + w)), y1 = Math.min(img.height, Math.round(y + h));
-  if (x1 <= x0 || y1 <= y0) return;
-  const r = Math.max(1, Math.round(radius));
-  // Two passes of box blur approximates gaussian well enough for redaction.
-  for (let pass = 0; pass < 2; pass++) {
-    const src = Buffer.from(img.data);
-    for (let yy = y0; yy < y1; yy++) {
-      for (let xx = x0; xx < x1; xx++) {
-        let rs = 0, gs = 0, bs = 0, n = 0;
-        for (let oy = -r; oy <= r; oy += Math.max(1, Math.floor(r / 3))) {
-          for (let ox = -r; ox <= r; ox += Math.max(1, Math.floor(r / 3))) {
-            const sx = Math.min(x1 - 1, Math.max(x0, xx + ox));
-            const sy = Math.min(y1 - 1, Math.max(y0, yy + oy));
-            const p = (sy * img.width + sx) * 4;
-            rs += src[p]; gs += src[p + 1]; bs += src[p + 2]; n++;
-          }
-        }
-        const p = (yy * img.width + xx) * 4;
-        img.data[p] = Math.round(rs / n);
-        img.data[p + 1] = Math.round(gs / n);
-        img.data[p + 2] = Math.round(bs / n);
-      }
-    }
-  }
 }
 
 /** Nearest-neighbour scaled copy of a region (used by magnify). */
@@ -365,6 +338,9 @@ function renderAnnotations(baseImg, annotations = []) {
   const semibold = { weight: 'bold' };
 
   const ordered = [...annotations].sort((a, b) => (DRAW_ORDER[a.type] ?? 3) - (DRAW_ORDER[b.type] ?? 3));
+  // No blur may read pixels under any blur, so overlapping blurs can't leak.
+  const hidden = annotations.filter((a) => a.type === 'blur')
+    .map((a) => pixelRect(img, px(a.x, W), px(a.y, H), px(a.w, W), px(a.h, H))).filter(Boolean);
 
   for (const ann of ordered) {
     const x = px(ann.x, W), y = px(ann.y, H), w = px(ann.w, W), h = px(ann.h, H);
@@ -389,9 +365,11 @@ function renderAnnotations(baseImg, annotations = []) {
       case 'arrow':
         drawArrow(img, x, y, x + w, y + h, stroke, t);
         break;
-      case 'blur':
-        boxBlur(img, x, y, w, h, ann.radius || 8);
+      case 'blur': {
+        const r = pixelRect(img, x, y, w, h);
+        if (r) fillFromSurroundings(img, r, { radius: ann.radius || 8, hidden });
         break;
+      }
       case 'highlight':
         fillRect(img, x, y, w, h, [255, 235, 59, 105]);
         break;
@@ -450,7 +428,7 @@ function applyFocusedView(img, fv) {
 module.exports = {
   createImage, cloneImage, parseColor, blendPixel,
   fillRect, strokeRect, fillOval, strokeOval, drawLine, drawArrow,
-  fillRoundRect, fillPolygon, boxBlur, magnifyRegion,
+  fillRoundRect, fillPolygon, magnifyRegion,
   measureText, drawText, drawTextCentered, drawCursorIcon,
   crop, resize, drawImage,
   renderAnnotations, applyFocusedView,

@@ -41,6 +41,7 @@ class AnnotationCanvas {
     this.imgW = w || 0;
     this.imgH = h || 0;
     this.cropRect = null;
+    this.sourceCtx = null;
     if (!image || !this.imgW || !this.imgH) {
       this.canvas.width = 1;
       this.canvas.height = 1;
@@ -187,6 +188,32 @@ class AnnotationCanvas {
     return Math.max(9, ((ann.style && ann.style.fontSize) || 0.022) * this.canvas.height / r.h);
   }
 
+  // Fill a blur exactly as exports do (core/blur-fill.js): at the
+  // screenshot's full resolution, from only the pixels around it.
+  drawBlur(ann) {
+    const fill = window.StepForgeBlurFill;
+    const size = { width: this.imgW, height: this.imgH };
+    const rectOf = (a) => fill.pixelRect(size, a.x * this.imgW, a.y * this.imgH, a.w * this.imgW, a.h * this.imgH);
+    const r = rectOf(ann);
+    if (!r) return;
+    if (!this.sourceCtx) {
+      const src = document.createElement('canvas');
+      src.width = this.imgW; src.height = this.imgH;
+      this.sourceCtx = src.getContext('2d', { willReadFrequently: true });
+      this.sourceCtx.drawImage(this.image, 0, 0, this.imgW, this.imgH);
+    }
+    const ox = Math.max(0, r.x0 - 1), oy = Math.max(0, r.y0 - 1);
+    const pixels = this.sourceCtx.getImageData(ox, oy, Math.min(this.imgW, r.x1 + 1) - ox, Math.min(this.imgH, r.y1 + 1) - oy);
+    const shift = (q) => ({ x0: q.x0 - ox, y0: q.y0 - oy, x1: q.x1 - ox, y1: q.y1 - oy });
+    const hidden = this.annotations.filter((a) => a.type === 'blur').map(rectOf).filter(Boolean).map(shift);
+    fill.fillFromSurroundings(pixels, shift(r), { radius: ann.radius || 8, hidden });
+    const off = document.createElement('canvas');
+    off.width = r.x1 - r.x0; off.height = r.y1 - r.y0;
+    off.getContext('2d').putImageData(pixels, ox - r.x0, oy - r.y0);
+    const d = this.px({ x: r.x0 / this.imgW, y: r.y0 / this.imgH, w: off.width / this.imgW, h: off.height / this.imgH });
+    this.ctx.drawImage(off, d.x, d.y, d.w, d.h);
+  }
+
   drawAnnotation(ann) {
     const { ctx } = this;
     const { x, y, w, h } = this.px(ann);
@@ -226,17 +253,7 @@ class AnnotationCanvas {
         break;
       }
       case 'blur': {
-        // preview: pixelate the region by down/up-scaling
-        const f = Math.max(6, (ann.radius || 8));
-        try {
-          ctx.imageSmoothingEnabled = true;
-          const tw = Math.max(1, Math.round(w / f)), th = Math.max(1, Math.round(h / f));
-          const off = document.createElement('canvas');
-          off.width = tw; off.height = th;
-          off.getContext('2d').drawImage(this.canvas, x, y, w, h, 0, 0, tw, th);
-          ctx.imageSmoothingEnabled = true;
-          ctx.drawImage(off, 0, 0, tw, th, x, y, w, h);
-        } catch { /* region may be degenerate while dragging */ }
+        try { this.drawBlur(ann); } catch { /* region may be degenerate while dragging */ }
         // Blurs added by Find private details get a dashed outline here (never
         // in exports), so they're easy to spot and check.
         if (ann.redact) {

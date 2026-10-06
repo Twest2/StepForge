@@ -101,3 +101,6 @@ checksums.
   the last save wins.
 - **Screenshots contain what was on screen.** Review and blur sensitive
   information before sharing.
+  A blur's area is filled only from the pixels around it, so exported and
+  published images keep nothing of what it covers. Unlike a real blur or
+  pixelation, it can't be reversed by blurring guesses until one matches.

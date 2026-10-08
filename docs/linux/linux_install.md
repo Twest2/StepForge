@@ -10,7 +10,7 @@ with Wayland**, the default desktop on each.
 | --- | --- | --- | --- |
 | **APT repository** | Ubuntu | With `apt upgrade` | [Ubuntu](apt.md) |
 | **DNF repository** | Fedora | With `dnf upgrade` | [Fedora](dnf.md) |
-| `.deb` / `.rpm` from Releases | A specific version, or offline machines | `.deb`: with `apt upgrade` (adds the repository); `.rpm`: manual | [Ubuntu](apt.md#alternative-install-a-downloaded-deb) · [Fedora](dnf.md#alternative-install-a-downloaded-rpm) |
+| `.deb` / `.rpm` from Releases | A specific version, or offline machines | With `apt upgrade` / `dnf upgrade` (adds the repository) | [Ubuntu](apt.md#alternative-install-a-downloaded-deb) · [Fedora](dnf.md#alternative-install-a-downloaded-rpm) |
 | Portable `.tar.gz` | Trying StepForge without installing | Manual | [Below](#portable-archive) |
 | From source | Contributors | `git pull` | [Contributing](../CONTRIBUTING.md#run-stepforge-from-source) |
 

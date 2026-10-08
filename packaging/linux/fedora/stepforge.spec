@@ -78,6 +78,25 @@ production dependencies; it does not install anything at runtime.
 %license /usr/share/licenses/stepforge/LICENSE
 
 %post
+# Add the StepForge DNF repository so an RPM downloaded from GitHub updates
+# with dnf upgrade. Skip it when a repo file already points there (set up by
+# hand, or disabled by the user). The file name and repo id match the manual
+# instructions, which overwrite it. The repository only publishes x86_64.
+if [ "$(uname -m)" = x86_64 ] &&
+   ! grep -qs 'packages\.twestbrook\.com/rpm/stepforge-rpm' /etc/yum.repos.d/*.repo; then
+  mkdir -p /etc/yum.repos.d
+  cat > /etc/yum.repos.d/stepforge-rpm.repo <<'REPO'
+# Added by the stepforge package so StepForge updates with dnf upgrade.
+# Removed with the package. Set enabled=0 to stop updates.
+[stepforge-rpm]
+name=StepForge RPM Repository
+baseurl=https://packages.twestbrook.com/rpm/stepforge-rpm/
+enabled=1
+gpgcheck=0
+REPO
+  chmod 0644 /etc/yum.repos.d/stepforge-rpm.repo
+fi
+
 # Make the Chromium setuid sandbox helper usable so the app launches sandboxed.
 HELPER=/opt/stepforge/node_modules/electron/dist/chrome-sandbox
 if [ -e "$HELPER" ]; then
@@ -90,6 +109,10 @@ if command -v gtk-update-icon-cache >/dev/null 2>&1; then gtk-update-icon-cache 
 
 %postun
 if [ "$1" = 0 ]; then
+  # Drop the repository the %%post added; leave a repo file written by hand.
+  if grep -qs '^# Added by the stepforge package' /etc/yum.repos.d/stepforge-rpm.repo; then
+    rm -f /etc/yum.repos.d/stepforge-rpm.repo
+  fi
   if command -v update-desktop-database >/dev/null 2>&1; then update-desktop-database -q /usr/share/applications || true; fi
   if command -v update-mime-database >/dev/null 2>&1; then update-mime-database /usr/share/mime || true; fi
   if command -v gtk-update-icon-cache >/dev/null 2>&1; then gtk-update-icon-cache -q /usr/share/icons/hicolor || true; fi

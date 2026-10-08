@@ -57,6 +57,15 @@ only its version number (as the browser-style "User-Agent"); GitHub sees your
 IP address as with any website visit. See the
 [GitHub Privacy Statement](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement).
 
+The Ubuntu `.deb` adds the StepForge APT repository
+(`packages.twestbrook.com`) to your system's software sources, as installing
+from the repository does. That traffic comes from APT, not StepForge: your
+system downloads the repository's package list whenever it refreshes
+software sources (`apt update`, or Ubuntu's Software Updater on its usual
+schedule), and the server sees your IP address and APT's version. See
+[Install StepForge on Ubuntu](linux/apt.md#alternative-install-a-downloaded-deb)
+to turn it off.
+
 ## Optional AI
 
 AI descriptions are **off by default**. When you enable them

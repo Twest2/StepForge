@@ -45,6 +45,7 @@ for needle in \
   './opt/stepforge/node_modules/electron/dist/electron' \
   './opt/stepforge/app/main.js' \
   './opt/stepforge/app/assets/stepforge.png' \
+  './usr/share/keyrings/stepforge-archive-keyring.gpg' \
   './usr/share/doc/stepforge/copyright'; do
   grep -qF "$needle" <<< "$listing" || fail "missing packaged file: $needle"
 done
@@ -72,6 +73,50 @@ grep -Eq '^Architecture: (amd64|arm64)' <<< "$control" || fail "control has no c
 
 # Sandbox is set up, not disabled: postinst makes chrome-sandbox setuid.
 dpkg-deb --info "$DEB" | grep -q 'postinst' || fail "no postinst maintainer script"
+
+# A downloaded .deb adds the StepForge APT repository so it updates with
+# apt upgrade. Run the packaged maintainer scripts against throwaway roots
+# (DPKG_ROOT, as dpkg --root sets it).
+if [ "$(dpkg --print-architecture)" = "amd64" ]; then
+  SCRIPTS="$OUT_DIR/control"
+  dpkg-deb -e "$DEB" "$SCRIPTS"
+  LIST=etc/apt/sources.list.d/stepforge.list
+
+  # Fresh system: the source is added, signed by the packaged keyring, and an
+  # upgrade leaves it as it is. Removing the package removes it.
+  root="$OUT_DIR/root-fresh"; mkdir -p "$root/etc/apt"
+  DPKG_ROOT="$root" sh "$SCRIPTS/postinst" configure >/dev/null 2>&1
+  [ -f "$root/$LIST" ] || fail "postinst did not add the APT repository"
+  grep -qF 'deb [arch=amd64 signed-by=/usr/share/keyrings/stepforge-archive-keyring.gpg] https://packages.twestbrook.com/debian/stepforge/ resolute main' \
+    "$root/$LIST" || fail "postinst wrote an unexpected APT source: $(cat "$root/$LIST")"
+  first="$(cat "$root/$LIST")"
+  DPKG_ROOT="$root" sh "$SCRIPTS/postinst" configure 0.0.0 >/dev/null 2>&1
+  [ "$(cat "$root/$LIST")" = "$first" ] || fail "upgrade rewrote the APT source"
+  DPKG_ROOT="$root" sh "$SCRIPTS/postrm" remove >/dev/null 2>&1
+  [ ! -e "$root/$LIST" ] || fail "postrm left the APT source the package added"
+
+  # Repository already set up by hand (README instructions): untouched by
+  # install and by removal.
+  root="$OUT_DIR/root-manual"; mkdir -p "$root/etc/apt/sources.list.d"
+  manual='deb [arch=amd64 signed-by=/etc/apt/keyrings/stepforge.gpg] https://packages.twestbrook.com/debian/stepforge/ resolute main'
+  printf '%s\n' "$manual" > "$root/$LIST"
+  DPKG_ROOT="$root" sh "$SCRIPTS/postinst" configure >/dev/null 2>&1
+  DPKG_ROOT="$root" sh "$SCRIPTS/postrm" remove >/dev/null 2>&1
+  [ "$(cat "$root/$LIST")" = "$manual" ] || fail "a hand-written APT source was changed"
+
+  # Launchpad PPA already configured: no second StepForge source.
+  root="$OUT_DIR/root-ppa"; mkdir -p "$root/etc/apt/sources.list.d"
+  printf 'Types: deb\nURIs: https://ppa.launchpadcontent.net/twest39/stepforge/ubuntu/\nSuites: resolute\nComponents: main\n' \
+    > "$root/etc/apt/sources.list.d/twest39-ubuntu-stepforge-resolute.sources"
+  DPKG_ROOT="$root" sh "$SCRIPTS/postinst" configure >/dev/null 2>&1
+  [ ! -e "$root/$LIST" ] || fail "postinst added the APT repository alongside the PPA"
+
+  # The packaged key is a usable OpenPGP keyring.
+  if command -v gpg >/dev/null 2>&1; then
+    dpkg-deb --fsys-tarfile "$DEB" | tar -xO ./usr/share/keyrings/stepforge-archive-keyring.gpg > "$OUT_DIR/keyring.gpg"
+    gpg --show-keys "$OUT_DIR/keyring.gpg" >/dev/null 2>&1 || fail "packaged APT keyring is not an OpenPGP key"
+  fi
+fi
 
 # The launcher must refuse an unsandboxed launch by default.
 grep -q 'STEPFORGE_ALLOW_NO_SANDBOX' packaging/linux/common/launcher.sh \

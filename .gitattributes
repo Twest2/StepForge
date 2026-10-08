@@ -22,3 +22,4 @@ launcher.sh   text eol=lf
 *.ico         binary
 *.gz          binary
 *.traineddata binary
+*.gpg         binary

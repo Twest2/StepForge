@@ -57,14 +57,15 @@ only its version number (as the browser-style "User-Agent"); GitHub sees your
 IP address as with any website visit. See the
 [GitHub Privacy Statement](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement).
 
-The Ubuntu `.deb` adds the StepForge APT repository
+The Ubuntu `.deb` and Fedora `.rpm` add the StepForge APT or DNF repository
 (`packages.twestbrook.com`) to your system's software sources, as installing
-from the repository does. That traffic comes from APT, not StepForge: your
-system downloads the repository's package list whenever it refreshes
-software sources (`apt update`, or Ubuntu's Software Updater on its usual
-schedule), and the server sees your IP address and APT's version. See
-[Install StepForge on Ubuntu](linux/apt.md#alternative-install-a-downloaded-deb)
-to turn it off.
+from the repository does. That traffic comes from your package manager, not
+StepForge: your system downloads the repository's package list whenever it
+refreshes software sources (`apt update` / `dnf upgrade`, or the desktop's
+software updater on its usual schedule), and the server sees your IP address
+and the package manager's version. Uninstalling StepForge removes the
+repository again; see the [Ubuntu](linux/apt.md#uninstall) or
+[Fedora](linux/dnf.md#uninstall) guide.
 
 ## Optional AI
 

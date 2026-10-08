@@ -64,12 +64,6 @@ on StepForge updates with `sudo apt update && sudo apt upgrade` like a
 repository install. It leaves your sources alone if StepForge's repository or
 PPA is already set up.
 
-> [!NOTE]
-> On a machine without internet access, `apt update` will warn that it can't
-> reach the repository. To stop that, comment out the `deb` line in
-> `/etc/apt/sources.list.d/stepforge.list`; the package won't add it back.
-> Install newer `.deb` files the same way to upgrade.
-
 ## Uninstall
 
 ```bash

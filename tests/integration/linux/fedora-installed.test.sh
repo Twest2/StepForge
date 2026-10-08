@@ -35,3 +35,26 @@ width, height = struct.unpack('>II', png[16:24])
 assert width > 100 and height > 100, 'App rendered an empty window'
 print(f'Installed Fedora RPM smoke test passed ({width}x{height})')
 PY
+
+# A downloaded RPM adds the StepForge DNF repository so it updates with
+# dnf upgrade; an upgrade keeps it and removing the package removes it.
+repo=/etc/yum.repos.d/stepforge-rpm.repo
+fail() { echo "fedora-installed FAILED: $1" >&2; exit 1; }
+grep -qx 'baseurl=https://packages.twestbrook.com/rpm/stepforge-rpm/' "$repo" \
+  || fail 'the package did not add the StepForge DNF repository'
+dnf repolist --enabled | grep -q '^stepforge-rpm ' || fail 'DNF does not list the StepForge repository'
+added="$(cat "$repo")"
+rpm -U --replacepkgs "$1"
+[[ "$(cat "$repo")" == "$added" ]] || fail 'reinstalling rewrote the repository file'
+rpm -e stepforge
+[[ ! -e "$repo" ]] || fail 'removing the package left the repository it added'
+
+# A repository set up by hand (docs/linux/dnf.md) is left alone.
+manual=$'[stepforge-rpm]\nname=StepForge RPM Repository\nbaseurl=https://packages.twestbrook.com/rpm/stepforge-rpm/\nenabled=0\ngpgcheck=0'
+printf '%s\n' "$manual" > "$repo"
+rpm -i "$1"
+[[ "$(cat "$repo")" == "$manual" ]] || fail 'installing changed a hand-written repository file'
+rpm -e stepforge
+[[ "$(cat "$repo")" == "$manual" ]] || fail 'removing the package deleted a hand-written repository file'
+rm -f "$repo"
+echo 'Installed Fedora RPM repository test passed'

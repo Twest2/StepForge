@@ -53,7 +53,7 @@ sudo dnf upgrade stepforge
 
 ## Alternative: install a downloaded RPM
 
-If you'd rather not add a repository, download
+You can also download
 `stepforge-<version>-1.fc44.x86_64.rpm` and its `.sha256` file from the
 [latest release](https://github.com/Twest2/StepForge/releases/latest). From the
 folder you saved them to, verify the download and install it:
@@ -65,9 +65,10 @@ sudo dnf install ./stepforge-<version>-1.fc44.x86_64.rpm
 
 Use `dnf install` rather than `rpm -i` so DNF installs the dependencies too.
 
-> [!NOTE]
-> A downloaded RPM won't update automatically. To upgrade, download the newer
-> RPM and run the same command, or add the repository above.
+The package adds the StepForge repository for you at
+`/etc/yum.repos.d/stepforge-rpm.repo`, so from then on StepForge updates with
+`sudo dnf upgrade` like a repository install. It leaves your repository files
+alone if StepForge's repository is already set up.
 
 ## Uninstall
 
@@ -75,7 +76,8 @@ Use `dnf install` rather than `rpm -i` so DNF installs the dependencies too.
 sudo dnf remove stepforge
 ```
 
-To also remove the StepForge repository:
+If you installed a downloaded RPM, this also removes the repository the
+package added. If you added the repository yourself, remove it with:
 
 ```bash
 sudo rm /etc/yum.repos.d/stepforge-rpm.repo

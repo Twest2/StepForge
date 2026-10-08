@@ -82,8 +82,9 @@ sudo dnf install stepforge
 
 > [!TIP]
 > Installing from Chocolatey, APT, or DNF means StepForge updates along with
-> the rest of your system. A manually downloaded installer does not update
-> itself.
+> the rest of your system. The `.deb` and `.rpm` from the Releases page add
+> the APT or DNF repository for you, so they update the same way; the Windows
+> `.exe` does not update itself.
 
 ## Features
 

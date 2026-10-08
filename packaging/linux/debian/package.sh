@@ -40,6 +40,12 @@ elif [ -f "$ROOT_DIR/docs/LICENSE" ]; then
   install -m 0644 "$ROOT_DIR/docs/LICENSE" "$WORK_DIR/usr/share/doc/stepforge/copyright"
 fi
 
+# --- APT repository signing key ---------------------------------------------
+# The postinst points a downloaded .deb at the StepForge APT repository, which
+# is signed by this key, so later releases arrive with apt upgrade.
+install -D -m 0644 "$ROOT_DIR/packaging/linux/debian/stepforge-archive-keyring.gpg" \
+  "$WORK_DIR/usr/share/keyrings/stepforge-archive-keyring.gpg"
+
 # --- DEBIAN control + maintainer scripts ------------------------------------
 sed -e "s/@VERSION@/$VERSION/" -e "s/@ARCH@/$DEB_ARCH/" -e "s#@MAINTAINER@#$MAINTAINER#" \
   "$ROOT_DIR/packaging/linux/debian/control.in" > "$WORK_DIR/DEBIAN/control"
@@ -47,6 +53,26 @@ sed -e "s/@VERSION@/$VERSION/" -e "s/@ARCH@/$DEB_ARCH/" -e "s#@MAINTAINER@#$MAIN
 cat > "$WORK_DIR/DEBIAN/postinst" <<'POSTINST'
 #!/bin/sh
 set -e
+
+# Add the StepForge APT repository so a .deb downloaded from GitHub updates
+# with apt update && apt upgrade. Skip it when StepForge already has a source
+# (the repository set up by hand, the Launchpad PPA, or a line the user has
+# commented out) so apt never sees two entries with conflicting Signed-By
+# values. The file name matches the manual instructions, which overwrite it.
+# The repository only publishes amd64.
+REPO_LIST="$DPKG_ROOT/etc/apt/sources.list.d/stepforge.list"
+if [ "$1" = "configure" ] && [ "$(dpkg --print-architecture)" = "amd64" ] &&
+   ! grep -qsE 'packages\.twestbrook\.com/debian/stepforge|ppa\.launchpad(content)?\.net/twest39/stepforge' \
+     "$DPKG_ROOT/etc/apt/sources.list" "$DPKG_ROOT"/etc/apt/sources.list.d/*.list "$DPKG_ROOT"/etc/apt/sources.list.d/*.sources; then
+  mkdir -p "$DPKG_ROOT/etc/apt/sources.list.d"
+  cat > "$REPO_LIST" <<'LIST'
+# Added by the stepforge package so StepForge updates with apt upgrade.
+# Removed with the package. Comment out the deb line to stop updates.
+deb [arch=amd64 signed-by=/usr/share/keyrings/stepforge-archive-keyring.gpg] https://packages.twestbrook.com/debian/stepforge/ resolute main
+LIST
+  chmod 0644 "$REPO_LIST"
+fi
+
 # Make the Chromium setuid sandbox helper usable so the app launches sandboxed.
 HELPER=/opt/stepforge/node_modules/electron/dist/chrome-sandbox
 if [ -e "$HELPER" ]; then
@@ -70,6 +96,12 @@ cat > "$WORK_DIR/DEBIAN/postrm" <<'POSTRM'
 #!/bin/sh
 set -e
 if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
+  # Drop the repository the postinst added (its keyring went with the
+  # package); leave a source the user wrote by hand.
+  REPO_LIST="$DPKG_ROOT/etc/apt/sources.list.d/stepforge.list"
+  if grep -qs '^# Added by the stepforge package' "$REPO_LIST"; then
+    rm -f "$REPO_LIST"
+  fi
   if command -v update-desktop-database >/dev/null 2>&1; then update-desktop-database -q /usr/share/applications || true; fi
   if command -v update-mime-database >/dev/null 2>&1; then update-mime-database /usr/share/mime || true; fi
   if command -v gtk-update-icon-cache >/dev/null 2>&1; then gtk-update-icon-cache -q /usr/share/icons/hicolor || true; fi

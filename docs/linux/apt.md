@@ -48,8 +48,7 @@ sudo apt install --only-upgrade stepforge
 
 ## Alternative: install a downloaded `.deb`
 
-If you'd rather not add a repository, for example on a machine without
-internet access, download `stepforge_<version>_amd64.deb` from the
+You can also download `stepforge_<version>_amd64.deb` from the
 [latest release](https://github.com/Twest2/StepForge/releases/latest) and
 install it from the folder you saved it to:
 
@@ -59,9 +58,11 @@ sudo apt install ./stepforge_<version>_amd64.deb
 
 Use `apt install` rather than `dpkg -i` so APT installs the dependencies too.
 
-> [!NOTE]
-> A downloaded `.deb` won't update automatically. To upgrade, download the
-> newer `.deb` and run the same command, or add the repository above.
+The package adds the StepForge repository for you, signed by a key it
+installs at `/usr/share/keyrings/stepforge-archive-keyring.gpg`, so from then
+on StepForge updates with `sudo apt update && sudo apt upgrade` like a
+repository install. It leaves your sources alone if StepForge's repository or
+PPA is already set up.
 
 ## Uninstall
 
@@ -69,7 +70,9 @@ Use `apt install` rather than `dpkg -i` so APT installs the dependencies too.
 sudo apt remove stepforge
 ```
 
-To also remove the StepForge repository and its signing key:
+If you installed a downloaded `.deb`, this also removes the repository the
+package added. If you added the repository yourself, remove it and its
+signing key with:
 
 ```bash
 sudo rm /etc/apt/sources.list.d/stepforge.list /etc/apt/keyrings/stepforge.gpg

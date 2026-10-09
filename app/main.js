@@ -38,6 +38,7 @@ const { TextIntelService } = require('./text-intel');
 const { keepProcessesResponsive } = require('./win-power');
 const { zoomShortcutFromInputEvent } = require('./shortcut-utils');
 const security = require('./security');
+const { linuxPasswordStore } = require('./platform/linux/password-store');
 const PACKAGE_JSON = require(path.join(__dirname, '..', 'package.json'));
 // Linux packages launch the bundled Electron against /opt/stepforge, so
 // app.isPackaged is false there too. Only a source checkout is a dev build.
@@ -60,6 +61,13 @@ if (process.platform === 'win32') {
 app.commandLine.appendSwitch('disable-background-timer-throttling');
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
 app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+
+// Sign-ins are stored with safeStorage, which needs the system keyring. See
+// platform/linux/password-store.js for the desktops Chromium misses.
+if (process.platform === 'linux') {
+  const passwordStore = linuxPasswordStore({ hasSwitch: app.commandLine.hasSwitch('password-store') });
+  if (passwordStore) app.commandLine.appendSwitch('password-store', passwordStore);
+}
 
 /**
  * StepForge main process. Optional AI and Google Drive integrations are opt-in.
@@ -89,6 +97,8 @@ let googleDrive;
 // Every sync service by id. One of them, settings cloud.provider, syncs.
 let cloudProviders = {};
 let cloudConnectingTo = null;
+// The sign-in page last opened in the browser, kept while that sign-in waits.
+let cloudSignInLink = null;
 let githubPages;
 // Publishing to Confluence, in its own browser session (cookies, smart cards).
 let confluence;
@@ -846,11 +856,28 @@ function setupIpc() {
       settings.set('cloud.enabled', true);
       cloudSync.start();
       return cloudStatus();
-    } finally { cloudConnecting = false; cloudConnectingTo = null; }
+    } finally {
+      cloudConnecting = false;
+      cloudConnectingTo = null;
+      cloudSignInLink = null;
+      bringMainWindowToFront();
+    }
   }, { validate: (a) => Object.keys(a).every((key) => ['provider', 'server', 'username', 'password'].includes(key))
     && (a.provider === undefined || Object.hasOwn(CLOUD_LABELS, a.provider))
     && c.optionalString(a.server, 2000) && c.optionalString(a.username, 500) && c.optionalString(a.password, 1000) });
   h('cloud:cancel', () => { (cloudConnectingTo || activeCloud()).cancel(); return { ok: true }; });
+  // If the browser didn't open, or opened the wrong one: open the sign-in
+  // page again, or copy its link to paste elsewhere. The link stays here.
+  h('cloud:openSignInLink', () => {
+    if (!cloudSignInLink) return { ok: false };
+    void Promise.resolve(shell.openExternal(cloudSignInLink)).catch(() => {});
+    return { ok: true };
+  }, { validate: (a) => Object.keys(a).length === 0 });
+  h('cloud:copySignInLink', () => {
+    if (!cloudSignInLink) return { ok: false };
+    clipboard.writeText(cloudSignInLink);
+    return { ok: true };
+  }, { validate: (a) => Object.keys(a).length === 0 });
   h('cloud:disconnect', async () => {
     const drive = activeCloud();
     settings.set('cloud.enabled', false);
@@ -903,7 +930,9 @@ function setupIpc() {
   // GitHub Pages sharing. Like Drive, the network and the token stay in the
   // main process; the renderer only sees status and public guide links.
   h('github:status', () => githubPages.status());
-  h('github:connect', () => githubPages.connect(), { validate: (a) => Object.keys(a).length === 0 });
+  h('github:connect', async () => {
+    try { return await githubPages.connect(); } finally { bringMainWindowToFront(); }
+  }, { validate: (a) => Object.keys(a).length === 0 });
   h('github:cancel', () => { githubPages.cancelSignIn(); return { ok: true }; });
   h('github:disconnect', () => { githubPages.disconnect(); return githubPages.status(); });
   h('github:repositories', () => githubPages.repositories());
@@ -1387,6 +1416,14 @@ function setupIpc() {
   });
 }
 
+// Sign-in finishes in the browser; bring StepForge back in front of it.
+function bringMainWindowToFront() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+}
+
 // ---- lifecycle --------------------------------------------------------------
 
 const gotLock = app.requestSingleInstanceLock();
@@ -1426,7 +1463,8 @@ if (!gotLock) {
     // Dev builds keep their sign-in to their own data folder instead of
     // sharing (and possibly clearing) the release build's OS backup.
     const cloudVault = (slot) => (devBuild ? null : createCredentialVault({ slot }));
-    const cloudOptions = { directory: store.settingsDir, safeStorage, openExternal: (url) => shell.openExternal(url) };
+    const openSignInPage = (url) => { cloudSignInLink = url; return shell.openExternal(url); };
+    const cloudOptions = { directory: store.settingsDir, safeStorage, openExternal: openSignInPage };
     googleDrive = new GoogleDrive({ ...cloudOptions, vault: cloudVault('google') });
     cloudProviders = {
       google: googleDrive,

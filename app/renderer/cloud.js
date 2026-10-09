@@ -154,6 +154,7 @@ function makeCloudSettings(api, { provider = 'google' } = {}) {
       say(isWebDAV && request.username ? 'Signing in…' : S.hint);
       signingIn = true;
       cancel.classList.remove('hidden');
+      linkHelp.classList.toggle('hidden', Boolean(isWebDAV && request.username));
       try {
         const result = await api.cloud.connect(request);
         if (result?.needsPassword) {
@@ -167,11 +168,21 @@ function makeCloudSettings(api, { provider = 'google' } = {}) {
         if (password) password.value = '';
         say('Connected. Your guides will sync automatically.', 'success');
         await refreshLists();
-      } finally { signingIn = false; cancel.classList.add('hidden'); }
+      } finally { signingIn = false; cancel.classList.add('hidden'); linkHelp.classList.add('hidden'); }
     });
   };
   const connect = el('button.primary', { type: 'button', onClick: signIn }, S.signIn);
   const cancel = el('button.hidden', { type: 'button', onClick: () => api.cloud.cancel().catch((err) => say(err.message, 'error')) }, 'Cancel sign-in');
+  // For when the browser didn't open, or opened the wrong one.
+  const linkHelp = el('p.cloud-signin-help.muted.hidden', {}, 'Browser didn’t open? ',
+    el('button.link', { type: 'button', onClick: () => api.cloud.openSignInLink().catch((err) => say(err.message, 'error')) }, 'Open it again'),
+    ' or ',
+    el('button.link', { type: 'button', onClick: async () => {
+      try {
+        if ((await api.cloud.copySignInLink())?.ok) say('Sign-in link copied. Paste it into your browser’s address bar, then come back here.');
+      } catch (err) { say(err.message, 'error'); }
+    } }, 'copy the sign-in link'),
+    '.');
   const unavailable = el('p.muted.hidden', {}, `${S.name} sign-in is unavailable in this build of StepForge.`);
   const switching = el('p.cloud-note.hidden', {}, '');
   const signedOut = el('div.cloud-hero', {},
@@ -182,6 +193,7 @@ function makeCloudSettings(api, { provider = 'google' } = {}) {
       ...(isWebDAV ? [el('label.cloud-field', {}, el('span', {}, 'Server address'), server), loginFields] : []),
       switching,
       el('div.row', {}, connect, cancel, ...(isWebDAV ? [usePassword] : [])),
+      linkHelp,
       unavailable,
     ),
   );

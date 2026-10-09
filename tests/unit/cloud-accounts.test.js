@@ -178,6 +178,28 @@ test('a refused OneDrive refresh token asks the user to sign in again', async (t
   await assert.rejects(account.listVersions(), /OneDrive sign-in expired or was revoked/);
 });
 
+test('OneDrive sign-in keeps waiting when the browser could not be opened, and says when it is done', async (t) => {
+  let link;
+  const { account } = setup(t, OneDrive, {
+    clientId: ONEDRIVE_ID,
+    openExternal: async (url) => { link = url; throw new Error('no browser'); },
+    fetchImpl: async (url) => {
+      if (url.endsWith('/oauth2/v2.0/token')) return json({ access_token: 'access', refresh_token: 'refresh', expires_in: 3600 });
+      if (url.startsWith('https://graph.microsoft.com/v1.0/me/drive?')) return json({ id: 'drive-123' });
+      return json({});
+    },
+  });
+  const connected = account.connect();
+  while (!link) await new Promise((resolve) => setTimeout(resolve, 5));
+  const authorization = new URL(link);
+  const redirect = new URL(authorization.searchParams.get('redirect_uri'));
+  redirect.searchParams.set('state', authorization.searchParams.get('state'));
+  redirect.searchParams.set('code', 'the-code');
+  const page = await fetch(redirect);
+  assert.match(await page.text(), /Signed in to OneDrive\. You can close this tab and go back to StepForge\./);
+  assert.equal((await connected).connected, true);
+});
+
 // ---- Dropbox --------------------------------------------------------------
 
 test('Dropbox signs in with PKCE on a registered port and asks for offline access', async (t) => {

@@ -16,6 +16,16 @@ Open **Settings → Accounts** and choose a service.
 StepForge only gets access to its own folder. It can't see or change anything
 else in your OneDrive, Dropbox, or Nextcloud.
 
+When you sign in through the browser, StepForge comes back to the front once
+you've allowed access. If the browser doesn't open, or opens the wrong one,
+choose **Open it again** or **copy the sign-in link** under the sign-in button
+and paste the link into any browser on this computer.
+
+On Linux, StepForge keeps sign-ins in your desktop's keyring (GNOME Keyring,
+KWallet, or another Secret Service such as KeePassXC). If sign-in says it needs
+an operating-system credential store, make sure a keyring is installed and
+unlocked, then restart StepForge.
+
 Sync works the same way on every service: versions, restoring, combining
 edits from different computers, recently deleted guides, and **Free up space**
 are all described in

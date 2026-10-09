@@ -337,3 +337,20 @@ test('Drive settings show a progress bar and live counter while a guide transfer
   assert.equal(row.classList.contains('hidden'), true);
   result.dispose();
 });
+
+test('errors from the main process reach the UI without Electron’s IPC prefix', async () => {
+  let exposed;
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../app/preload.js'), 'utf8'), {
+    Promise,
+    require: () => ({
+      contextBridge: { exposeInMainWorld(name, api) { exposed = api; } },
+      ipcRenderer: {
+        invoke: async () => {
+          throw new Error("Error invoking remote method 'cloud:connect': Error: OneDrive sign-in was denied or cancelled.");
+        },
+      },
+    }),
+  });
+  await assert.rejects(exposed.cloud.connect({ provider: 'onedrive' }), { message: 'OneDrive sign-in was denied or cancelled.' });
+  await assert.rejects(exposed.cloud.status(), { message: 'OneDrive sign-in was denied or cancelled.' });
+});

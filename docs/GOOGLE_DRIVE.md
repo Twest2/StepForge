@@ -14,9 +14,11 @@ below about versions, conflicts, and freeing up space applies to all of them.
 
 1. Open **Settings → Accounts → Google Drive** and choose **Sign in with Google**.
 2. Your browser opens. Pick your Google account and allow StepForge to store
-   its data in your Drive.
-3. Return to StepForge. You'll see **Connected as** with your email address,
-   and your guides start syncing.
+   its data in your Drive. If the browser doesn't open, or opens the wrong
+   one, choose **Open it again** or **copy the sign-in link** under the sign-in
+   button and paste the link into any browser on this computer.
+3. StepForge comes back to the front. You'll see **Connected as** with your
+   email address, and your guides start syncing. You can close the browser tab.
 4. On your other computer, install StepForge and sign in with the **same**
    Google account.
 

@@ -16,6 +16,12 @@
 </p>
 
 <p align="center">
+  <a href="docs/linux/apt.md"><img alt="APT downloads" src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fpackages.twestbrook.com%2Fapi%2Fpackages%2Fstepforge%2Fversions%3Fname%3Dstepforge&query=%24%5B0%5D.totalDownloads&label=APT%20downloads&color=blue&cacheSeconds=3600"></a>
+  <a href="docs/linux/dnf.md"><img alt="DNF downloads" src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fpackages.twestbrook.com%2Fapi%2Fpackages%2Fstepforge-rpm%2Fversions%3Fname%3Dstepforge&query=%24%5B0%5D.totalDownloads&label=DNF%20downloads&color=blue&cacheSeconds=3600"></a>
+  <a href="docs/windows/chocolatey.md"><img alt="Chocolatey downloads" src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fpackages.twestbrook.com%2Fapi%2Fpackages%2Fstepforge-choco%2Fversions%3Fname%3Dstepforge&query=%24%5B0%5D.totalDownloads&label=Chocolatey%20downloads&color=blue&cacheSeconds=3600"></a>
+</p>
+
+<p align="center">
   <a href="docs/media/stepforge-demo.mp4"><img src="docs/media/stepforge-demo.gif" alt="StepForge demo: four clicks in a web app become steps in the StepForge editor, get annotated with callouts, and export to a PDF guide" width="800"></a><br>
   <sub><a href="docs/media/stepforge-demo.mp4">Watch the full-quality video (MP4)</a></sub>
 </p>

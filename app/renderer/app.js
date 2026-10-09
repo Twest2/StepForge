@@ -102,6 +102,18 @@ class StepForgeApp {
     api.capture.onAdded((payload) => this.onCaptureAdded(payload));
     api.capture.onState((payload) => this.updateCaptureState(payload));
     api.capture.onStepUpdated((payload) => this.onStepUpdated(payload));
+    api.guide.onChangedByAgent((payload) => this.onGuideChangedByAgent(payload));
+  }
+
+  /** An AI agent rewrote a guide's text: show it without losing the user's unsaved edits. */
+  async onGuideChangedByAgent(payload) {
+    if (!payload || !payload.guideId) return;
+    if (this.state.view === 'editor' && this.editor.guideId === payload.guideId) {
+      await this.editor.reloadAfterOutsideChange();
+      toast('An AI agent updated this guide.');
+    } else if (this.state.view === 'library') {
+      await this.refreshLibrary();
+    }
   }
 
   async onStepUpdated(payload) {

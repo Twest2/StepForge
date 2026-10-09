@@ -7,7 +7,12 @@ const { contextBridge, ipcRenderer } = require('electron');
  * is an explicit invoke; no raw ipcRenderer or Node access leaks through.
  */
 
-const invoke = (channel) => (args) => ipcRenderer.invoke(channel, args);
+// Electron prefixes an error thrown in the main process with "Error invoking
+// remote method '<channel>': Error: ". The UI shows only the message.
+const ipcInvoke = (channel, args) => Promise.resolve(ipcRenderer.invoke(channel, args)).catch((err) => {
+  throw new Error(String(err?.message || err).replace(/^Error invoking remote method '[^']*': (?:[A-Za-z]*Error: )?/, ''));
+});
+const invoke = (channel) => (args) => ipcInvoke(channel, args);
 
 const api = {
   library: {
@@ -66,8 +71,10 @@ const api = {
     status: invoke('cloud:status'),
     // Only the service and, for WebDAV, the server and login cross IPC. App
     // registrations stay in the main process.
-    connect: ({ provider, server, username, password } = {}) => ipcRenderer.invoke('cloud:connect', { provider, server, username, password }),
+    connect: ({ provider, server, username, password } = {}) => ipcInvoke('cloud:connect', { provider, server, username, password }),
     cancel: invoke('cloud:cancel'),
+    openSignInLink: invoke('cloud:openSignInLink'),
+    copySignInLink: invoke('cloud:copySignInLink'),
     disconnect: invoke('cloud:disconnect'),
     enable: invoke('cloud:enable'),
     sync: invoke('cloud:sync'),
@@ -88,7 +95,7 @@ const api = {
   },
   github: {
     status: invoke('github:status'),
-    connect: () => ipcRenderer.invoke('github:connect'),
+    connect: () => ipcInvoke('github:connect'),
     cancel: invoke('github:cancel'),
     disconnect: invoke('github:disconnect'),
     repositories: invoke('github:repositories'),

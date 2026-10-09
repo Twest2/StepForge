@@ -31,6 +31,8 @@ const GOOGLE_OAUTH = resolveOAuthConfig();
 const SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
 const API = 'https://www.googleapis.com/drive/v3';
 const MAX_ARCHIVE_BYTES = 256 * 1024 * 1024;
+// Long enough for two-step verification or a password reset in the browser.
+const SIGN_IN_TIMEOUT_MS = 10 * 60 * 1000;
 
 function googlePhotoLink(value) {
   try {
@@ -270,11 +272,11 @@ class GoogleDrive {
             res.end('Google sign-in was not completed. Return to StepForge.');
             reject(new Error('Google sign-in was denied or cancelled.'));
           } else {
-            res.end('Authorization received. Return to StepForge to see the result.');
+            res.end('Signed in to Google Drive. You can close this tab and go back to StepForge.');
             resolve(url.searchParams.get('code'));
           }
         });
-        timer = setTimeout(() => reject(new Error('Google sign-in timed out. Try again.')), 180000);
+        timer = setTimeout(() => reject(new Error('Google sign-in timed out. Try again.')), SIGN_IN_TIMEOUT_MS);
       });
       // Attach a rejection handler before awaiting browser/server startup.
       codePromise.catch(() => {});
@@ -284,7 +286,10 @@ class GoogleDrive {
         access_type: 'offline', prompt: 'consent select_account', state, code_challenge_method: 'S256',
         code_challenge: crypto.createHash('sha256').update(verifier).digest('base64url') });
       if (generation !== this.generation) throw new Error('Google sign-in cancelled.');
-      await this.openExternal(`https://accounts.google.com/o/oauth2/v2/auth?${query}`);
+      // Never wait for the browser: on some systems opening a URL only returns
+      // once the browser closes. If it doesn't open, the user can open the link
+      // from StepForge.
+      void Promise.resolve(this.openExternal(`https://accounts.google.com/o/oauth2/v2/auth?${query}`)).catch(() => {});
       const code = await codePromise;
       const tokens = await this.tokenRequest({
         client_id: clientId,

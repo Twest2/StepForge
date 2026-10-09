@@ -71,6 +71,44 @@ test('OAuth uses loopback, state and PKCE and persists only encrypted credential
   assert.equal(restarted.credentials.refresh_token, 'refresh-secret');
 });
 
+/** Return from the browser to the app's loopback address; resolves with the page text. */
+async function returnFromBrowser(url) {
+  const auth = new URL(url);
+  const redirect = new URL(auth.searchParams.get('redirect_uri'));
+  redirect.searchParams.set('state', auth.searchParams.get('state'));
+  redirect.searchParams.set('code', 'code');
+  const response = await fetch(redirect);
+  assert.equal(response.status, 200);
+  return response.text();
+}
+const tokenResponse = async () => json({ access_token: 'access-secret', refresh_token: 'refresh-secret', expires_in: 3600, scope: SCOPE });
+
+test('sign-in finishes even when opening the browser never returns', async (t) => {
+  // Some systems only return from opening a URL once the browser closes.
+  let page;
+  const { drive } = setup(t, {
+    openExternal: (url) => { page = returnFromBrowser(url); return new Promise(() => {}); },
+    fetchImpl: tokenResponse,
+  });
+  await drive.connect();
+  assert.equal(drive.status().connected, true);
+  assert.match(await page, /close this tab and go back to StepForge/);
+});
+
+test('sign-in keeps waiting when the browser could not be opened', async (t) => {
+  // The user opens the link themselves (StepForge offers to copy it).
+  let link;
+  const { drive } = setup(t, {
+    openExternal: async (url) => { link = url; throw new Error('no browser'); },
+    fetchImpl: tokenResponse,
+  });
+  const connected = drive.connect();
+  while (!link) await new Promise((resolve) => setTimeout(resolve, 5));
+  await returnFromBrowser(link);
+  await connected;
+  assert.equal(drive.status().connected, true);
+});
+
 test('OAuth cancellation closes the listener and does not persist credentials', async (t) => {
   let opened;
   const { drive } = setup(t, { openExternal: async (url) => { opened = new URL(url); queueMicrotask(() => drive.cancel()); } });

@@ -1152,6 +1152,8 @@ fieldset legend {
 .cloud-login { display: flex; flex-direction: column; gap: 6px; }
 .cloud-hero button.link { border: 0; background: transparent; color: var(--accent-strong); padding: 4px 6px; }
 .cloud-hero button.link:hover { text-decoration: underline; background: transparent; }
+.cloud-signin-help { margin: 8px 0 0; }
+.cloud-hero .cloud-signin-help button.link { padding: 0; font: inherit; }
 .cloud-banner button.link { border: 0; background: transparent; color: var(--accent-strong); padding: 0; font: inherit; text-decoration: underline; }
 .cloud-note { margin: 0; padding: 8px 10px; border-radius: 8px; font-size: 12px; background: var(--panel-2); }
 

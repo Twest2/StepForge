@@ -17,7 +17,8 @@ const { FolderStorage } = require('../core/folder-storage');
  */
 
 const MAX_TRANSFER_BYTES = 256 * 1024 * 1024;
-const SIGN_IN_TIMEOUT_MS = 5 * 60 * 1000;
+// Long enough for two-step verification or a password reset in the browser.
+const SIGN_IN_TIMEOUT_MS = 10 * 60 * 1000;
 
 class CloudAccount {
   /**
@@ -267,7 +268,7 @@ class CloudAccount {
             res.end(`${this.label} sign-in was not completed. Return to StepForge.`);
             reject(new Error(`${this.label} sign-in was denied or cancelled.`));
           } else {
-            res.end('Signed in. Return to StepForge to finish.');
+            res.end(`Signed in to ${this.label}. You can close this tab and go back to StepForge.`);
             resolve(url.searchParams.get('code'));
           }
         };

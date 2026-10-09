@@ -74,7 +74,7 @@ test('every badge in the real README has a configured download source', () => {
   assert.deepEqual([...labels].sort(), Object.keys(SOURCES).sort());
 });
 
-test('counts come from GitHub release assets and ProGet totalDownloads', async () => {
+test('counts come from GitHub release assets and ProGet totalDownloads via shields.io', async () => {
   const requested = [];
   const fetchImpl = async (url, options) => {
     requested.push({ url, auth: options.headers.Authorization });
@@ -83,10 +83,10 @@ test('counts come from GitHub release assets and ProGet totalDownloads', async (
       body = url.endsWith('page=1')
         ? [{ assets: [{ download_count: 10 }, { download_count: 2 }] }, { assets: [] }]
         : [];
-    } else if (url.includes('/stepforge-rpm/')) {
-      body = [];
+    } else if (url.includes(encodeURIComponent('/stepforge-rpm/'))) {
+      body = { label: 'downloads', message: 'no result', value: 'no result' };
     } else {
-      body = [{ totalDownloads: 18, downloads: 1 }, { totalDownloads: 18, downloads: 17 }];
+      body = { label: 'downloads', message: '18', value: '18' };
     }
     return { ok: true, status: 200, json: async () => body };
   };
@@ -98,7 +98,22 @@ test('counts come from GitHub release assets and ProGet totalDownloads', async (
     'Chocolatey downloads': 18,
   });
   assert.ok(requested.some((r) => r.url.includes('/repos/Twest2/StepForge/releases') && r.auth === 'Bearer t0k'));
-  assert.ok(requested.some((r) => r.url === 'https://packages.twestbrook.com/api/packages/stepforge-choco/versions?name=stepforge'));
+  const choco = requested.find((r) => r.url.includes(encodeURIComponent('/stepforge-choco/')));
+  assert.ok(choco.url.startsWith('https://img.shields.io/badge/dynamic/json.json?url='));
+  assert.equal(
+    new URL(choco.url).searchParams.get('url'),
+    'https://packages.twestbrook.com/api/packages/stepforge-choco/versions?name=stepforge',
+  );
+  assert.equal(new URL(choco.url).searchParams.get('query'), '$[0].totalDownloads');
+});
+
+test('an unreadable ProGet feed aborts instead of counting as zero', async () => {
+  const fetchImpl = async () => ({
+    ok: true,
+    status: 200,
+    json: async () => ({ message: 'resource not found', value: 'resource not found' }),
+  });
+  await assert.rejects(fetchCounts(['APT downloads'], { fetchImpl }), /resource not found/);
 });
 
 test('a failed request aborts the sort', async () => {

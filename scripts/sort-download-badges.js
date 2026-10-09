@@ -12,6 +12,7 @@ const START_MARKER = '<!-- download-badges:start';
 const END_MARKER = '<!-- download-badges:end -->';
 const GITHUB_REPO = 'Twest2/StepForge';
 const PROGET_BASE = 'https://packages.twestbrook.com';
+const SHIELDS_JSON = 'https://img.shields.io/badge/dynamic/json.json';
 
 // Each badge is identified by its img alt text.
 const SOURCES = {
@@ -90,16 +91,20 @@ async function githubDownloads(fetchImpl, repo, token) {
 }
 
 // ProGet repeats the package-wide totalDownloads on every version entry.
+// Cloudflare in front of packages.twestbrook.com refuses GitHub Actions
+// runners (HTTP 403), so read it through shields.io's JSON endpoint, the same
+// fetch the README badge itself makes.
 async function progetDownloads(fetchImpl, feed) {
-  const versions = await getJson(
+  const versionsUrl = `${PROGET_BASE}/api/packages/${encodeURIComponent(feed)}/versions?name=stepforge`;
+  const badge = await getJson(
     fetchImpl,
-    `${PROGET_BASE}/api/packages/${encodeURIComponent(feed)}/versions?name=stepforge`,
+    `${SHIELDS_JSON}?url=${encodeURIComponent(versionsUrl)}&query=${encodeURIComponent('$[0].totalDownloads')}&label=downloads`,
   );
-  if (!Array.isArray(versions)) throw new Error(`Unexpected ProGet response for feed ${feed}`);
-  if (versions.length === 0) return 0;
-  const total = versions[0].totalDownloads;
-  if (!Number.isFinite(total)) throw new Error(`ProGet feed ${feed} returned no totalDownloads`);
-  return total;
+  const value = String(badge.value ?? badge.message ?? '');
+  if (/^\d+$/.test(value)) return Number(value);
+  // An empty feed has no $[0] to query.
+  if (/no result/i.test(value)) return 0;
+  throw new Error(`shields.io could not read ProGet feed ${feed}: ${value || 'empty response'}`);
 }
 
 async function fetchCounts(labels, { fetchImpl = fetch, token } = {}) {

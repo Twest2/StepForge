@@ -57,9 +57,9 @@ guide-capture workflows. To keep it that way:
 
 ### License
 
-StepForge is licensed under
-[CC BY-NC 4.0](../LICENSE). By contributing, you agree your contribution is
-released under the same license.
+StepForge is licensed under the
+[Apache License 2.0](../LICENSE). By contributing, you agree your contribution
+is released under the same license.
 
 ## Run StepForge from source
 

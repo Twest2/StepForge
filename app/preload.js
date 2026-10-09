@@ -35,6 +35,8 @@ const api = {
   guide: {
     get: invoke('guide:get'),
     save: invoke('guide:save'),
+    // An AI agent changed a guide through `StepForge --mcp`.
+    onChangedByAgent: (fn) => ipcRenderer.on('guide:changed-by-agent', (e, payload) => fn(payload)),
   },
   step: {
     add: invoke('step:add'),
@@ -139,6 +141,10 @@ const api = {
     fillGuide: invoke('ai:fillGuide'),
     organizeGuide: invoke('ai:organizeGuide'),
     cancel: invoke('ai:cancel'),
+  },
+  agents: {
+    setup: invoke('agents:setup'),
+    copy: invoke('agents:copy'),
   },
   capture: {
     shoot: invoke('capture:shoot'),

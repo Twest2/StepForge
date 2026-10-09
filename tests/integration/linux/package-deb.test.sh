@@ -44,6 +44,7 @@ for needle in \
   './usr/share/icons/hicolor/256x256/apps/stepforge.png' \
   './opt/stepforge/node_modules/electron/dist/electron' \
   './opt/stepforge/app/main.js' \
+  './opt/stepforge/app/boot.js' \
   './opt/stepforge/app/assets/stepforge.png' \
   './usr/share/keyrings/stepforge-archive-keyring.gpg' \
   './usr/share/doc/stepforge/copyright'; do

@@ -109,7 +109,7 @@ sudo dnf install stepforge
 | **Share on the web** | Publish a guide to GitHub Pages in your own repository for 1, 7, or 30 days and send a link. Shared guides are public and are removed automatically when their time is up. |
 | **Publish to Confluence** | Create or update a Confluence page for a guide, on Confluence Cloud or your organization's Data Center site, including sites that need a smart card (CAC). |
 | **Private details** | Screenshots are checked for email addresses, card numbers, passwords, keys and more, which are blurred before a guide is published. |
-| **Optional extras** | Sync between computers with Google Drive, OneDrive, Dropbox or Nextcloud, and AI-written descriptions through a local [Ollama](https://ollama.com) model. Both are off until you turn them on. |
+| **Optional extras** | Sync between computers with Google Drive, OneDrive, Dropbox or Nextcloud, AI that writes whole guides through a local [Ollama](https://ollama.com) model, and [Claude or Codex](docs/AI_AGENTS.md) as guide writers. All are off until you turn them on. |
 
 ## Your first guide in one minute
 
@@ -133,7 +133,8 @@ StepForge works entirely on your computer.
 - Capture, editing, OCR, and export all work offline.
 - Cloud sync, GitHub sharing, and AI are **off by default** and only
   connect when you turn them on. AI talks to a model on your own machine unless
-  you explicitly allow a remote host.
+  you explicitly allow a remote host. AI agents such as Claude or Codex send
+  what they read to their own provider.
 
 The [privacy policy](docs/PRIVACY.md) lists exactly what is stored and what
 each optional feature sends.
@@ -143,7 +144,8 @@ each optional feature sends.
 **Using StepForge**
 
 - [Getting started](docs/GETTING_STARTED.md): recording, editing, and exporting
-- [AI descriptions with Ollama](docs/getting_started_with_ai.md)
+- [AI-written guides with Ollama](docs/getting_started_with_ai.md)
+- [Let Claude or Codex write your guides](docs/AI_AGENTS.md)
 - [Google Drive sync](docs/GOOGLE_DRIVE.md)
 - [Sync with OneDrive, Dropbox or Nextcloud](docs/CLOUD_ACCOUNTS.md)
 - [Share guides on the web with GitHub Pages](docs/GITHUB_PAGES.md)

@@ -1,0 +1,46 @@
+name: Sort download badges
+
+# The README's download badges show live counts, but their order is static.
+# Once a day, reorder them from most to fewest downloads and commit the README
+# only when the order actually changed.
+
+on:
+  schedule:
+    - cron: '23 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sort-download-badges
+  cancel-in-progress: false
+
+jobs:
+  sort:
+    name: Sort README download badges
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Reorder badges by download count
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/sort-download-badges.js README.md
+
+      - name: Commit the new order
+        run: |
+          if git diff --quiet -- README.md; then
+            echo 'Badge order unchanged; nothing to commit.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Sort README download badges by count' -- README.md
+          git push origin HEAD:main

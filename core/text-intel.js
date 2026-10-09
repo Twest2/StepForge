@@ -8,6 +8,7 @@ const {
   normalizeCodeBlock,
   normalizeTableBlock,
 } = require('./schema');
+const { blockText, orderedBlocks, nextBlockOrder } = require('./blocks');
 
 const DEFAULT_CAPTURE_TITLES = {
   fullscreen: 'Screen capture',
@@ -524,10 +525,12 @@ function buildCaptureTitle({ mode = 'fullscreen', metadata = {}, ocrText = '', r
 }
 
 function plainTextToHtml(text) {
-  const trimmed = normalizeWhitespace(text);
-  if (!trimmed) return '';
-  return trimmed
-    .split(/\n{2,}/)
+  // Blank lines separate paragraphs; single line breaks stay as <br>.
+  return String(text == null ? '' : text)
+    .replace(/\r\n?/g, '\n')
+    .split(/\n\s*\n/)
+    .map((para) => para.split('\n').map(normalizeWhitespace).filter(Boolean).join('\n'))
+    .filter(Boolean)
     .map((para) => `<p>${escapeHtml(para).replace(/\n/g, '<br>')}</p>`)
     .join('');
 }
@@ -593,6 +596,17 @@ function validateOllamaHost(host, { allowRemote = false } = {}) {
   return { ok: true, host: normalized, reason: '' };
 }
 
+// What each AI target writes. 'all' (title + description) is what capture
+// auto-documentation uses; 'step' also writes the step's blocks.
+const AI_TARGETS = ['title', 'description', 'all', 'blocks', 'step'];
+const writesTitle = (target) => ['title', 'all', 'step'].includes(target);
+const writesDescription = (target) => ['description', 'all', 'step'].includes(target);
+const writesBlocks = (target) => ['blocks', 'step'].includes(target);
+
+// AI may add at most this many new blocks to a step in one request, so a
+// chatty model cannot bury a step in filler notes.
+const MAX_NEW_AI_BLOCKS = 2;
+
 function normalizeAiLevel(level) {
   const key = normalizeWhitespace(level).toLowerCase();
   return AI_LEVEL_ALIASES.get(key) || (TEXTBLOCK_LEVELS.includes(key) ? key : 'info');
@@ -603,48 +617,80 @@ function normalizeAiPosition(position) {
   return TEXTBLOCK_POSITIONS.includes(key) ? key : 'after-description';
 }
 
+// A description paragraph holding nothing but a placeholder (such as a
+// [[stepforge]] credit) is never shown to the model. It is kept verbatim at
+// the start or end of the description, wherever the user put it.
+const PINNED_LEADING_RE = /^<(p|div)>\s*\[\[[A-Za-z0-9_ .-]+\]\]\s*<\/\1>/;
+const PINNED_TRAILING_RE = /<(p|div)>\s*\[\[[A-Za-z0-9_ .-]+\]\]\s*<\/\1>$/;
+
+function splitPinnedParagraphs(html) {
+  let body = String(html || '').trim();
+  const before = [];
+  const after = [];
+  for (let m = PINNED_LEADING_RE.exec(body); m; m = PINNED_LEADING_RE.exec(body)) {
+    before.push(m[0]);
+    body = body.slice(m[0].length).trim();
+  }
+  for (let m = PINNED_TRAILING_RE.exec(body); m; m = PINNED_TRAILING_RE.exec(body)) {
+    after.unshift(m[0]);
+    body = body.slice(0, m.index).trim();
+  }
+  return { before, body, after };
+}
+
+/** Plain text of a description without its pinned placeholder paragraphs. */
+function descriptionForAi(html) {
+  return htmlToText(splitPinnedParagraphs(html).body);
+}
+
+/** AI-written description HTML, with the original's pinned paragraphs kept in place. */
+function withPinnedParagraphs(originalHtml, newHtml) {
+  const { before, after } = splitPinnedParagraphs(originalHtml);
+  return [...before, newHtml, ...after].join('');
+}
+
 function normalizeAiBlock(block) {
   if (!block || typeof block !== 'object') return null;
   const kind = normalizeWhitespace(block.kind).toLowerCase();
+  // The id the model echoed back, if any: it names an existing block to
+  // rewrite. The normalized block always gets a fresh id of its own.
+  const sourceId = normalizeWhitespace(block.id) || null;
+  const order = Number.isFinite(block.order) ? block.order : null;
   if (kind === 'text') {
-    const normalized = normalizeTextBlock({
-      id: block.id,
-      order: Number.isFinite(block.order) ? block.order : null,
-      position: normalizeAiPosition(block.position),
-      level: normalizeAiLevel(block.level),
-      title: displayText(block.title),
-      descriptionHtml: plainTextToHtml(block.body ?? block.description ?? block.text ?? ''),
-    }, Number.isFinite(block.order) ? block.order : null);
-    return { ...normalized, kind: 'text' };
+    return {
+      ...normalizeTextBlock({
+        order,
+        position: normalizeAiPosition(block.position),
+        level: normalizeAiLevel(block.level),
+        title: displayText(block.title),
+        descriptionHtml: plainTextToHtml(block.body ?? block.description ?? block.text ?? ''),
+      }, order),
+      kind: 'text',
+      sourceId,
+      hasLevel: Boolean(normalizeWhitespace(block.level)),
+    };
   }
   if (kind === 'code') {
     return {
       ...normalizeCodeBlock({
-        id: block.id,
-        order: Number.isFinite(block.order) ? block.order : null,
+        order,
         language: displayText(block.language).toLowerCase(),
         code: String(block.code ?? ''),
-      }, Number.isFinite(block.order) ? block.order : null),
+      }, order),
       kind: 'code',
+      sourceId,
     };
   }
   if (kind === 'table') {
     const rows = Array.isArray(block.rows)
-      ? block.rows.map((row) => (Array.isArray(row) ? row.map((cell) => displayText(cell)) : []))
+      ? block.rows.map((row) => (Array.isArray(row) ? row.map((cell) => normalizeWhitespace(cell)) : []))
       : [];
-    return {
-      ...normalizeTableBlock({
-        id: block.id,
-        order: Number.isFinite(block.order) ? block.order : null,
-        rows,
-      }, Number.isFinite(block.order) ? block.order : null),
-      kind: 'table',
-    };
+    return { ...normalizeTableBlock({ order, rows }, order), kind: 'table', sourceId };
   }
   return null;
 }
 
-function normalizeAiPatch(raw) {
+function parseAiJson(raw) {
   let data = raw;
   if (typeof raw === 'string') {
     const trimmed = raw.trim().replace(/^```(?:json)?\s*|\s*```$/g, '');
@@ -656,14 +702,27 @@ function normalizeAiPatch(raw) {
   if (!data || typeof data !== 'object' || Array.isArray(data)) {
     throw new Error('AI response must be a JSON object');
   }
-  const out = {
+  return data;
+}
+
+function normalizeAiPatch(raw) {
+  const data = parseAiJson(raw);
+  return {
     title: displayText(data.title),
     descriptionHtml: plainTextToHtml(data.description ?? data.descriptionText ?? ''),
     blocks: Array.isArray(data.blocks)
       ? data.blocks.map((block) => normalizeAiBlock(block)).filter(Boolean)
       : [],
   };
-  return out;
+}
+
+/** Guide-level patch: the guide's title and introduction. */
+function normalizeGuidePatch(raw) {
+  const data = parseAiJson(raw);
+  return {
+    title: displayText(data.title),
+    descriptionHtml: plainTextToHtml(data.description ?? ''),
+  };
 }
 
 function summarizeBlocks(step = {}) {
@@ -684,6 +743,25 @@ function summarizeBlocks(step = {}) {
   return parts.length ? parts.join('\n') : '(none)';
 }
 
+/** The step's blocks as the JSON the model reads and echoes back by id. */
+function blocksForAi(step = {}) {
+  return orderedBlocks(step).map((block) => {
+    if (block.kind === 'text') {
+      return {
+        id: block.id,
+        kind: 'text',
+        level: block.level || 'info',
+        title: block.title || '',
+        body: descriptionForAi(block.descriptionHtml),
+      };
+    }
+    if (block.kind === 'code') {
+      return { id: block.id, kind: 'code', language: block.language || '', code: blockText(block) };
+    }
+    return { id: block.id, kind: 'table', rows: Array.isArray(block.rows) ? block.rows : [] };
+  });
+}
+
 const DEFAULT_PLACEHOLDER_TITLES = new Set(
   Object.values(DEFAULT_CAPTURE_TITLES).concat(['Capture', 'Untitled step']),
 );
@@ -696,7 +774,7 @@ function summarizeStepForAi(step = {}) {
   const titleLine = isPlaceholderTitle(step.title)
     ? 'Step title: (not set — generate a specific action title from the capture context)'
     : `Step title: ${step.title}`;
-  const descText = htmlToText(step.descriptionHtml || '');
+  const descText = descriptionForAi(step.descriptionHtml);
   return [
     titleLine,
     `Step description: ${descText || '(empty)'}`,
@@ -708,7 +786,7 @@ function summarizeStepForAi(step = {}) {
 function summarizeGuideForAi(guide = {}) {
   return [
     `Guide title: ${guide.title || '(untitled)'}`,
-    `Guide description: ${htmlToText(guide.descriptionHtml || '') || '(empty)'}`,
+    `Guide description: ${descriptionForAi(guide.descriptionHtml) || '(empty)'}`,
   ].join('\n');
 }
 
@@ -722,44 +800,46 @@ function hasRichCaptureContext(captureContext) {
   return ocr.length > 3 || win.length > 2 || app.length > 1 || element.length > 1;
 }
 
+function hasBlur(step) {
+  return Boolean(step && (step.annotations || []).some((ann) => ann.type === 'blur'));
+}
+
 function buildAiPrompt({
   target = 'all',
   guide = null,
   step = null,
   captureContext = null,
-  block = null,
   screenshotAttached = false,
 } = {}) {
+  const title = writesTitle(target);
+  const description = writesDescription(target);
+  const blocks = writesBlocks(target);
   const hasDraftTitle = step && !isPlaceholderTitle(step.title);
-  const hasDraftDesc = step && Boolean(htmlToText(step.descriptionHtml || ''));
+  const descText = descriptionForAi(step?.descriptionHtml);
+  const hasDraftDesc = Boolean(descText);
+  const existingBlocks = step ? blocksForAi(step) : [];
+  // OCR read the screen before any blur was drawn, so it may hold exactly
+  // what the user blurred. Steps with blurs never send OCR text.
+  const ocrText = captureContext && !hasBlur(step) ? captureContext.ocrText : '';
 
-  const targetText = {
-    title: hasDraftTitle
-      ? 'improve the user\'s draft step title — keep their intent, make it read like professional documentation'
-      : 'write a specific action title for this step using the capture context',
-    description: hasDraftDesc
-      ? 'improve the user\'s draft description — keep their intent, make it read like professional documentation'
-      : 'write a 1–2 sentence description of what the user does in this step, using the capture context',
-    block: 'rewrite only the target block',
-    all: 'write the step title and description from the capture context',
-  }[target] || 'rewrite the step';
+  const titleTask = hasDraftTitle
+    ? 'improve the user\'s draft step title — keep their intent, make it read like professional documentation'
+    : 'write a specific action title for this step using the capture context';
+  const descriptionTask = hasDraftDesc
+    ? 'improve the user\'s draft description — keep their intent, make it read like professional documentation'
+    : 'write a 1–2 sentence description of what the user does in this step, using the capture context';
+  const blocksTask = existingBlocks.length
+    ? 'rewrite the step\'s blocks, and add a block only where the reader needs one'
+    : 'add a block only where the reader needs one (warnings, tips, commands to type)';
+  const targetText = [title && titleTask, description && descriptionTask, blocks && blocksTask]
+    .filter(Boolean).join('; then ');
 
-  const richContext = hasRichCaptureContext(captureContext);
-
-  const allowedBlockNote = target === 'block' ? [
-    'Use block.kind = "text" with level in [info, warn, error, success] for note / warning / important / tip blocks.',
-    'Use block.kind = "code" for code snippets.',
-    'Use block.kind = "table" for tables, with rows as arrays of strings.',
-    'Use block.position values from [before-title, after-title, before-image, after-image, before-description, after-description].',
-  ].join(' ') : null;
+  const richContext = hasRichCaptureContext(captureContext ? { ...captureContext, ocrText } : null);
 
   // When the user already has a draft, surface it prominently so the model
   // knows exactly what text to polish rather than generating from scratch.
-  const descText = htmlToText(step?.descriptionHtml || '');
-  const draftTitleLine = hasDraftTitle && (target === 'title' || target === 'all')
-    ? `User's draft title (rewrite this): "${step.title}"` : null;
-  const draftDescLine = hasDraftDesc && (target === 'description' || target === 'all')
-    ? `User's draft description (rewrite this): "${descText}"` : null;
+  const draftTitleLine = hasDraftTitle && title ? `User's draft title (rewrite this): "${step.title}"` : null;
+  const draftDescLine = hasDraftDesc && description ? `User's draft description (rewrite this): "${descText}"` : null;
 
   const contextLines = [
     ...(captureContext ? [
@@ -769,8 +849,8 @@ function buildAiPrompt({
       captureContext.elementValue ? `Element content (what was typed): ${captureContext.elementValue}` : null,
       captureContext.recentTyped ? `Keyboard input before this step: ${captureContext.recentTyped}` : null,
       captureContext.recentShortcut ? `Keyboard shortcut used: ${captureContext.recentShortcut}` : null,
-      captureContext.ocrText ? `OCR text near click:\n${captureContext.ocrText}` : null,
-      (!hasDraftTitle || target === 'description') && captureContext.titleCandidate
+      ocrText ? `OCR text near click:\n${ocrText}` : null,
+      (!hasDraftTitle || !title) && captureContext.titleCandidate
         ? `Suggested title: ${captureContext.titleCandidate}` : null,
     ] : []),
     screenshotAttached ? 'Screenshot: attached to this request.' : null,
@@ -778,17 +858,14 @@ function buildAiPrompt({
     draftDescLine,
   ].filter(Boolean);
 
-  const prompt = [
-    'You write concise, action-focused step-by-step documentation for a desktop application guide.',
-    'Return JSON only. No markdown fences, no commentary, no extra keys outside the schema below.',
-    'Schema:',
-    target === 'block' ? [
-      '{',
-      '  "title": string,',
-      '  "description": string,',
+  const schema = [
+    '{',
+    title ? '  "title": string, // this step\'s title' : null,
+    description ? '  "description": string, // this step\'s description' : null,
+    blocks ? [
       '  "blocks": [{',
+      '    "id"?: string,',
       '    "kind": "text" | "code" | "table",',
-      '    "position"?: "before-title" | "after-title" | "before-image" | "after-image" | "before-description" | "after-description",',
       '    "level"?: "info" | "warn" | "error" | "success",',
       '    "title"?: string,',
       '    "body"?: string,',
@@ -796,43 +873,54 @@ function buildAiPrompt({
       '    "code"?: string,',
       '    "rows"?: string[][]',
       '  }]',
-      '}',
-    ].join('\n') : '{ "title": string, "description": string }',
+    ].join('\n') : null,
+    '}',
+  ].filter(Boolean).join('\n');
+
+  const prompt = [
+    'You write concise, action-focused step-by-step documentation for a desktop application guide.',
+    'Return JSON only. No markdown fences, no commentary, no extra keys outside the schema below.',
+    'Schema:',
+    schema,
     '',
     `Target: ${targetText}.`,
-    allowedBlockNote,
     '',
-    guide ? summarizeGuideForAi(guide) : 'Guide: (not provided)',
+    guide ? `The guide this step belongs to (context only — never copy it into the step):\n${summarizeGuideForAi(guide)}` : 'Guide: (not provided)',
     '',
-    step ? summarizeStepForAi(step) : 'Step: (not provided)',
+    step ? `The step to write:\n${summarizeStepForAi(step)}` : 'Step: (not provided)',
     '',
     contextLines.length
       ? `Capture context:\n${contextLines.join('\n')}`
       : 'Capture context: (not available)',
-    '',
-    block ? `Target block:\n${JSON.stringify(block, null, 2)}` : null,
+    blocks ? `\nExisting blocks (JSON):\n${JSON.stringify(existingBlocks, null, 2)}` : null,
     '',
     'Rules:',
-    '- Titles must be short imperative actions: "Click Save", "Select New document", "Open Settings".',
-    '- NEVER output "Screen capture", "Window capture", "Region capture", or "Capture" as a title — always produce something specific.',
-    hasDraftTitle && (target === 'title' || target === 'all')
+    title ? '- "title" is this step\'s title, never the guide\'s title. Titles must be short imperative actions: "Click Save", "Select New document", "Open Settings".' : null,
+    title ? '- NEVER output "Screen capture", "Window capture", "Region capture", or "Capture" as a title — always produce something specific.' : null,
+    title ? (hasDraftTitle
       ? '- The user wrote their own title (shown above). Your only job is to polish its grammar and phrasing. Do NOT replace it with something different. Do NOT change what action or subject it describes.'
-      : '- No title yet. Use the capture context (OCR text, window, app) to write a specific action title.',
-    hasDraftDesc && (target === 'description' || target === 'all')
+      : '- No title yet. Use the capture context (OCR text, window, app) to write a specific action title.') : null,
+    description ? (hasDraftDesc
       ? '- The user wrote their own description (shown above). Polish the wording to sound professional but preserve every fact and intent they stated.'
-      : '- No description yet. Write 1–2 sentences describing exactly what the user does.',
-    target === 'block'
-      ? '- Only include blocks that provide genuinely useful supplemental information (warnings, tips, code).'
-      : '- Do NOT add any blocks array. Only output "title" and "description".',
+      : '- No description yet. Write 1–2 sentences describing exactly what the user does.') : null,
+    blocks && existingBlocks.length
+      ? '- Rewrite every existing block listed above. Copy its "id" and "kind" so it is updated in place, and keep its meaning.'
+      : null,
+    blocks
+      ? `- Add a new block (with no "id") only when the reader truly needs it: a warning before a risky action, a tip that saves time, or a command or value to type. Add at most ${MAX_NEW_AI_BLOCKS} new blocks; adding none is fine.`
+      : null,
+    blocks ? '- Block levels: "warn" for warnings, "error" for must-know information, "success" for tips, "info" for notes.' : null,
+    blocks ? '- Never repeat the step description in a block.' : null,
+    blocks ? null : '- Do NOT include a "blocks" key.',
+    '- Keep every [[placeholder]] token (such as [[Product]]) exactly as written.',
     richContext
       ? '- Use the OCR text, window title, app name, and element info to make the documentation specific.'
       : '- Context is limited. Use the app name or window title if available; generate a reasonable action title.',
     screenshotAttached
-      ? '- A screenshot is attached. Use it together with the OCR and metadata to resolve visual details, but do not mention the screenshot in the output.'
+      ? '- A screenshot is attached. Marks drawn on it, such as a circle or a number, show where the user clicked. Use it to resolve visual details, but do not mention the screenshot in the output.'
       : '- No screenshot is attached. Rely on OCR, the window title, app name, and element info.',
     '- Do NOT generate blocks that describe the technical capture process or mention OCR.',
     '- Do NOT invent details not supported by the capture context.',
-    '- If the target is one block, only rewrite that block.',
   ].filter((l) => l !== null).join('\n');
 
   return {
@@ -841,46 +929,106 @@ function buildAiPrompt({
   };
 }
 
-function applyAiPatchToStep(step, patch, { target = 'all', blockId = null } = {}) {
+// Long guides are summarized for the guide-level prompt: each step's text is
+// clipped and only the first steps are listed, so the prompt stays small.
+const GUIDE_PROMPT_MAX_STEPS = 80;
+const GUIDE_PROMPT_MAX_STEP_CHARS = 240;
+
+/**
+ * Prompt for the guide's own title and introduction, written from its steps.
+ * `steps` are in guide order: { number, title, descriptionHtml }.
+ */
+function buildGuideAiPrompt({ guide = {}, steps = [] } = {}) {
+  const clip = (text) => (text.length > GUIDE_PROMPT_MAX_STEP_CHARS
+    ? `${text.slice(0, GUIDE_PROMPT_MAX_STEP_CHARS - 1)}…` : text);
+  const outline = steps.slice(0, GUIDE_PROMPT_MAX_STEPS).map((step) => {
+    const text = descriptionForAi(step.descriptionHtml);
+    return `${step.number}. ${isPlaceholderTitle(step.title) ? '(untitled)' : step.title}${text ? ` — ${clip(text)}` : ''}`;
+  });
+  if (steps.length > GUIDE_PROMPT_MAX_STEPS) outline.push(`… and ${steps.length - GUIDE_PROMPT_MAX_STEPS} more steps`);
+  const descText = descriptionForAi(guide.descriptionHtml);
+
+  const prompt = [
+    'You write the title and introduction of a step-by-step guide.',
+    'Return JSON only. No markdown fences, no commentary, no extra keys outside the schema below.',
+    'Schema:',
+    '{ "title": string, "description": string }',
+    '',
+    `Current guide title: ${guide.title || '(none)'}`,
+    `Current guide description: ${descText || '(empty)'}`,
+    '',
+    `Steps:\n${outline.join('\n') || '(none)'}`,
+    '',
+    'Rules:',
+    '- The title is short and says what the reader will get done, for example "Submit a lab in Canvas" or "Set up SSH keys on Ubuntu".',
+    '- If the current title already says what the guide does, keep it and only fix its grammar. If it is generic, such as "Untitled guide" or a capture time, replace it.',
+    descText
+      ? '- The user wrote their own description (shown above). Polish the wording but keep every fact and intent they stated.'
+      : '- Write a 1–3 sentence description of what the guide helps the reader do.',
+    '- Mention something the reader needs before starting only if a step shows it. Never add generic requirements such as an internet connection or administrator rights.',
+    '- Do not list the steps in the description.',
+    '- Keep every [[placeholder]] token (such as [[Product]]) exactly as written.',
+    '- Do NOT invent details the steps do not support.',
+  ].join('\n');
+
+  return {
+    systemPrompt: 'You are a technical documentation writer. Emit only valid JSON matching the schema. Never add commentary or markdown.',
+    prompt,
+  };
+}
+
+/** Rewrite existing blocks matched by id, and append at most MAX_NEW_AI_BLOCKS new ones. Never deletes. */
+function mergeAiBlocks(step, blocks) {
+  const lists = {
+    text: step.textBlocks || (step.textBlocks = []),
+    code: step.codeBlocks || (step.codeBlocks = []),
+    table: step.tableBlocks || (step.tableBlocks = []),
+  };
+  let order = nextBlockOrder(step);
+  let added = 0;
+  for (const block of blocks) {
+    const list = lists[block.kind];
+    if (!list) continue;
+    const existing = block.sourceId ? list.find((candidate) => candidate.id === block.sourceId) : null;
+    if (existing) {
+      if (block.kind === 'text') {
+        if (block.title) existing.title = block.title;
+        if (htmlToText(block.descriptionHtml)) {
+          existing.descriptionHtml = sanitizeHtml(withPinnedParagraphs(existing.descriptionHtml, block.descriptionHtml));
+        }
+        if (block.hasLevel) existing.level = block.level;
+      } else if (block.kind === 'code') {
+        if (block.code) existing.code = block.code;
+        if (block.language) existing.language = block.language;
+      } else if (block.rows.length) {
+        existing.rows = block.rows;
+      }
+      continue;
+    }
+    if (added >= MAX_NEW_AI_BLOCKS) continue;
+    const { kind, sourceId, hasLevel, ...fields } = block;
+    if (kind === 'text' && !fields.title && !htmlToText(fields.descriptionHtml)) continue;
+    if (kind === 'code' && !fields.code) continue;
+    if (kind === 'table' && !fields.rows.length) continue;
+    list.push({ ...fields, order: order++ });
+    added += 1;
+  }
+}
+
+function applyAiPatchToStep(step, patch, { target = 'all', guideTitle = '' } = {}) {
   const next = deepClone(step);
-  if ((target === 'all' || target === 'title') && patch.title) {
+  // Small models sometimes answer with the guide's title. A step that already
+  // has a real title keeps it rather than taking the guide's.
+  const copiedGuideTitle = Boolean(guideTitle) && !isPlaceholderTitle(step.title)
+    && normalizeWhitespace(patch.title).toLowerCase() === normalizeWhitespace(guideTitle).toLowerCase();
+  if (writesTitle(target) && patch.title && !copiedGuideTitle) {
     next.title = displayText(patch.title);
   }
-  if ((target === 'all' || target === 'description') && patch.descriptionHtml) {
-    next.descriptionHtml = sanitizeHtml(patch.descriptionHtml);
+  if (writesDescription(target) && patch.descriptionHtml) {
+    next.descriptionHtml = sanitizeHtml(withPinnedParagraphs(step.descriptionHtml, patch.descriptionHtml));
   }
-
-  if (target === 'all' && Array.isArray(patch.blocks) && patch.blocks.length) {
-    const textBlocks = [];
-    const codeBlocks = [];
-    const tableBlocks = [];
-    let nextOrder = 1;
-    for (const block of patch.blocks) {
-      const clone = deepClone(block);
-      clone.order = nextOrder++;
-      if (clone.kind === 'text') textBlocks.push(clone);
-      else if (clone.kind === 'code') codeBlocks.push(clone);
-      else if (clone.kind === 'table') tableBlocks.push(clone);
-    }
-    next.textBlocks = textBlocks;
-    next.codeBlocks = codeBlocks;
-    next.tableBlocks = tableBlocks;
-  } else if (target === 'block' && blockId && Array.isArray(patch.blocks) && patch.blocks.length) {
-    const replacement = patch.blocks[0];
-    const textBlock = (next.textBlocks || []).find((block) => block.id === blockId);
-    const codeBlock = (next.codeBlocks || []).find((block) => block.id === blockId);
-    const tableBlock = (next.tableBlocks || []).find((block) => block.id === blockId);
-    if (textBlock && replacement.kind === 'text') {
-      if (replacement.position) textBlock.position = replacement.position;
-      if (replacement.level) textBlock.level = replacement.level;
-      if (replacement.title) textBlock.title = replacement.title;
-      if (replacement.descriptionHtml) textBlock.descriptionHtml = sanitizeHtml(replacement.descriptionHtml);
-    } else if (codeBlock && replacement.kind === 'code') {
-      if (replacement.language) codeBlock.language = replacement.language;
-      if (replacement.code) codeBlock.code = replacement.code;
-    } else if (tableBlock && replacement.kind === 'table') {
-      if (replacement.rows) tableBlock.rows = replacement.rows;
-    }
+  if (writesBlocks(target) && Array.isArray(patch.blocks) && patch.blocks.length) {
+    mergeAiBlocks(next, patch.blocks);
   }
   if (!next.image) {
     const hasBody = Boolean(
@@ -895,7 +1043,17 @@ function applyAiPatchToStep(step, patch, { target = 'all', blockId = null } = {}
   return next;
 }
 
+function applyGuidePatch(guide, patch) {
+  const next = deepClone(guide);
+  if (patch.title) next.title = displayText(patch.title);
+  if (patch.descriptionHtml) {
+    next.descriptionHtml = sanitizeHtml(withPinnedParagraphs(guide.descriptionHtml, patch.descriptionHtml));
+  }
+  return next;
+}
+
 module.exports = {
+  AI_TARGETS,
   DEFAULT_CAPTURE_TITLES,
   buildCaptureTitle,
   isPasswordField,
@@ -904,8 +1062,14 @@ module.exports = {
   isLoopbackHost,
   validateOllamaHost,
   normalizeAiPatch,
+  normalizeGuidePatch,
   buildAiPrompt,
+  buildGuideAiPrompt,
   applyAiPatchToStep,
+  applyGuidePatch,
+  splitPinnedParagraphs,
+  descriptionForAi,
+  blocksForAi,
   summarizeStepForAi,
   summarizeGuideForAi,
   displayText,

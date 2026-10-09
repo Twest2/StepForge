@@ -136,7 +136,7 @@ const api = {
   ai: {
     test: invoke('ai:test'),
     fillStep: invoke('ai:fillStep'),
-    rewriteText: invoke('ai:rewriteText'),
+    fillGuide: invoke('ai:fillGuide'),
     cancel: invoke('ai:cancel'),
   },
   capture: {

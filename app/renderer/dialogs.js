@@ -458,6 +458,10 @@ function showSettingsDialog({
     const aiAutoDoc = el('input', { type: 'checkbox', checked: Boolean(settings.ai?.autoDoc) });
     const ollamaHost = makeInput(settings.ai?.ollama?.host || 'http://127.0.0.1:11434');
     const ollamaModel = makeInput(settings.ai?.ollama?.model || 'llama3.2:1b');
+    // Filled with the installed models after Test connection, so the model box suggests them.
+    const ollamaModels = el('datalist', { id: 'ollama-models' });
+    ollamaModel.setAttribute('list', 'ollama-models');
+    const aiScreenshots = el('input', { type: 'checkbox', checked: settings.ai?.attachScreenshots !== false });
     const aiStatus = el('div', { className: 'ai-status' }, 'Not tested yet. Vision-capable models can also inspect each step’s screenshot.');
     const testAiBtn = el('button', { type: 'button' }, 'Test connection');
     const persistOllamaModel = debounce(() => {
@@ -494,12 +498,16 @@ function showSettingsDialog({
           updateAiStatus(result.reason || 'Could not connect to Ollama.', { error: true });
           return;
         }
+        ollamaModels.replaceChildren(...(result.models || []).map((model) => el('option', { value: model })));
         if (result.installed) {
           updateAiStatus(result.vision
             ? `Connected to ${result.host} with ${result.model}. It can inspect screenshots.`
             : `Connected to ${result.host} with ${result.model}. This model is text-only, so StepForge will use OCR and metadata only.`, { ok: true });
         } else {
-          updateAiStatus(`Connected to ${result.host}. Model ${result.model} is not installed yet.`, { error: true });
+          const installed = (result.models || []).join(', ');
+          updateAiStatus(installed
+            ? `Connected to ${result.host}, but ${result.model || 'that model'} isn’t installed. Installed models: ${installed}.`
+            : `Connected to ${result.host}, but it has no models yet. Run “ollama pull gemma3” first.`, { error: true });
         }
       } catch (err) {
         updateAiStatus(err.message || 'Could not connect to Ollama.', { error: true });
@@ -590,14 +598,15 @@ function showSettingsDialog({
           settingRow('Blur while recording', 'Check each new capture as soon as it’s taken, instead of waiting until you publish.', makeSwitch(redactOnCapture, 'Blur while recording')),
           settingRow('Always hide these words', 'Names, project codes, or anything else to blur wherever it appears. One per line.', redactTerms)),
       ] },
-      { id: 'ai', label: 'AI', badge: 'Beta', description: 'Optional titles and descriptions from a local Ollama model. Nothing is sent anywhere else.', content: [
+      { id: 'ai', label: 'AI', badge: 'Beta', description: 'Let an AI model on your own computer write your guides, through Ollama. Your screenshots and text stay on this computer.', content: [
         settingsCard(null,
-          settingRow('Enable AI', 'Show AI actions in the editor.', makeSwitch(aiEnabled, 'Enable AI')),
-          settingRow('Auto-document captures', 'Describe each new capture automatically. Turn off to use AI only when you ask.', makeSwitch(aiAutoDoc, 'Auto-document captures'))),
+          settingRow('Enable AI', 'Turn on the AI ▾ menu in the guide toolbar: write a whole guide, a step, or one field.', makeSwitch(aiEnabled, 'Enable AI')),
+          settingRow('Auto-document captures', 'Write a title and description for each new capture as you record. Turn off to use AI only when you ask.', makeSwitch(aiAutoDoc, 'Auto-document captures')),
+          settingRow('Let the model see screenshots', 'Models that can read images see each step’s screenshot, with blurred areas already hidden. Turn off to send text only.', makeSwitch(aiScreenshots, 'Let the model see screenshots'))),
         settingsCard('Ollama',
           settingRow('Host', 'Where Ollama is running.', ollamaHost),
-          settingRow('Model', 'Any installed model. Vision models can read screenshots.', ollamaModel),
-          el('div.settings-test', {}, aiStatus, testAiBtn)),
+          settingRow('Model', 'Any installed model. Choose Test connection to list them.', ollamaModel),
+          el('div.settings-test', {}, aiStatus, testAiBtn, ollamaModels)),
       ] },
       { id: 'accounts', label: 'Accounts', description: 'Sync guides with Google Drive, OneDrive, Dropbox or Nextcloud, share them on the web with GitHub, or publish them to Confluence.', content: [accountsPanel.node] },
       { id: 'placeholders', label: 'Placeholders', description: 'Reusable text for every guide. Type [[name]] in a guide to insert it.', content: [
@@ -701,6 +710,7 @@ function showSettingsDialog({
                 ...settings.ai,
                 enabled: aiEnabled.checked,
                 autoDoc: aiAutoDoc.checked,
+                attachScreenshots: aiScreenshots.checked,
                 ollama: {
                   ...(settings.ai?.ollama || {}),
                   host: ollamaHost.value.trim(),
@@ -730,8 +740,8 @@ function showSettingsDialog({
     aiEnabled.addEventListener('change', () => {
       updateAiStatus(
         aiEnabled.checked
-          ? 'AI generation will be available once Ollama is reachable.'
-          : 'AI generation is disabled. The settings are still saved for later.',
+          ? 'Save, then use the AI ▾ menu in a guide. Test connection checks that Ollama is ready.'
+          : 'AI is off. These settings are kept for later.',
       );
     });
   });

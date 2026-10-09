@@ -16,6 +16,7 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/Twest2/StepForge/releases"><img alt="GitHub downloads" src="https://img.shields.io/github/downloads/Twest2/StepForge/total?label=GitHub%20downloads&color=blue"></a>
   <a href="docs/linux/apt.md"><img alt="APT downloads" src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fpackages.twestbrook.com%2Fapi%2Fpackages%2Fstepforge%2Fversions%3Fname%3Dstepforge&query=%24%5B0%5D.totalDownloads&label=APT%20downloads&color=blue&cacheSeconds=3600"></a>
   <a href="docs/linux/dnf.md"><img alt="DNF downloads" src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fpackages.twestbrook.com%2Fapi%2Fpackages%2Fstepforge-rpm%2Fversions%3Fname%3Dstepforge&query=%24%5B0%5D.totalDownloads&label=DNF%20downloads&color=blue&cacheSeconds=3600"></a>
   <a href="docs/windows/chocolatey.md"><img alt="Chocolatey downloads" src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fpackages.twestbrook.com%2Fapi%2Fpackages%2Fstepforge-choco%2Fversions%3Fname%3Dstepforge&query=%24%5B0%5D.totalDownloads&label=Chocolatey%20downloads&color=blue&cacheSeconds=3600"></a>

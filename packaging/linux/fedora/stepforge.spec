@@ -21,7 +21,7 @@ Version:        @VERSION@
 Release:        1%{?dist}
 Summary:        Local-first step-by-step guide capture and export tool
 
-License:        CC-BY-NC-4.0
+License:        Apache-2.0
 URL:            https://github.com/Twest2/StepForge
 
 # Runtime shared libraries (Chromium/Electron) + capture integration.

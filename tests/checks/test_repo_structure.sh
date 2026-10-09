@@ -27,7 +27,7 @@ node -e '
     // clone, but in a complete checkout it must.
     throw new Error("entrypoint missing: " + pkg.main);
   }
-  if (pkg.license !== "CC-BY-NC-4.0") throw new Error("unexpected license id");
+  if (pkg.license !== "Apache-2.0") throw new Error("unexpected license id");
 ' 2>/dev/null || {
   # Tolerate missing entrypoint only if app/ has not been committed yet.
   if [[ -d app ]]; then

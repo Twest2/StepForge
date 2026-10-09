@@ -1367,7 +1367,7 @@ function setupIpc() {
     devBuild,
     dataDir: store.root,
     platform: process.platform,
-    license: PACKAGE_JSON.license || 'CC-BY-NC-4.0',
+    license: PACKAGE_JSON.license || 'Apache-2.0',
   }));
   // Settings → About "Check for updates". Runs only when the user presses the
   // button: one request to GitHub's latest-release endpoint, nothing else.

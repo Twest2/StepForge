@@ -11,7 +11,7 @@
 
 <p align="center">
   <a href="https://github.com/Twest2/StepForge/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/Twest2/StepForge?label=release"></a>
-  <a href="LICENSE"><img alt="License: CC BY-NC 4.0" src="https://img.shields.io/badge/license-CC%20BY--NC%204.0-blue"></a>
+  <a href="LICENSE"><img alt="License: Apache 2.0" src="https://img.shields.io/badge/license-Apache%202.0-blue"></a>
   <img alt="Platforms" src="https://img.shields.io/badge/platforms-Windows%20%7C%20Ubuntu%20%7C%20Fedora-informational">
 </p>
 
@@ -164,13 +164,10 @@ how to run StepForge from source, and the test suite (`bash tests/run_test.sh`).
 
 ## License
 
-StepForge is released under the
-[Creative Commons Attribution-NonCommercial 4.0 International License](LICENSE)
-(CC BY-NC 4.0).
+StepForge is released under the [Apache License 2.0](LICENSE).
 
-You can use, modify, and share StepForge for free for any non-commercial
-purpose, as long as you give credit. Selling StepForge or using it
-commercially requires written permission from the copyright holder.
+You can use, modify, and share StepForge for free for any purpose, including
+commercial use, as long as you keep the copyright and license notices.
 
 StepForge is an independent project. It contains no code, branding, or assets
 from any commercial documentation tool.

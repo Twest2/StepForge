@@ -79,8 +79,11 @@ AI descriptions are **off by default**. When you enable them
   such as `127.0.0.1`). StepForge refuses other addresses unless you
   explicitly set `ai.allowRemoteHost`. If you do, your screenshots and text go
   to that server, and StepForge can't control what it does with them.
-- Screenshots can be left out entirely by setting `ai.attachScreenshots` to
-  `false`.
+- Screenshots are sent with your blurs filled in, so the model never sees
+  what you hid, and the text read near a click is left out for steps that
+  have blurs.
+- Screenshots can be left out entirely by turning off **Settings → AI → Let
+  the model see screenshots**.
 - Every request has a timeout and is cancelled when you close the guide.
 
 ## Optional Google Drive sync

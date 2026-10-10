@@ -430,6 +430,15 @@ class StepForgeApp {
       }, 'Share ▾'),
       el('button', {
         type: 'button',
+        className: this.editorMeta?.aiProgress ? 'ai-busy' : '',
+        title: this.editorMeta?.aiProgress ? 'AI is writing. Click to stop.' : 'Let AI write this guide',
+        onClick: (e) => {
+          const rect = e.currentTarget.getBoundingClientRect();
+          contextMenu(rect.left, rect.bottom + 4, this.editor.aiMenuItems());
+        },
+      }, this.editorMeta?.aiProgress ? `AI · ${this.editorMeta.aiProgress}` : 'AI ▾'),
+      el('button', {
+        type: 'button',
         onClick: (e) => {
           const rect = e.target.getBoundingClientRect();
           contextMenu(rect.left, rect.bottom + 4, [
@@ -438,9 +447,6 @@ class StepForgeApp {
             { label: 'Guide placeholders…', action: () => this.editor.openGuidePlaceholders() },
             { label: 'Backups & snapshots…', action: () => this.editor.openBackupsDialog() },
             { label: 'Find private details…', action: () => this.editor.findPrivateDetails() },
-            ...(this.editor.isAiEnabled() ? [
-              { label: 'Generate all text fields with AI (experimental)', action: () => this.editor.generateAllTextFieldsWithAi() },
-            ] : []),
             { label: guide && guide.linkedSource ? 'Linked guide…' : 'Linked guide (not linked)', action: () => this.editor.openLinkedGuide() },
             'sep',
             { label: 'Keyboard shortcuts…', action: () => this.editor.openShortcutsHelp() },

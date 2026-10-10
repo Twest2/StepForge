@@ -203,6 +203,10 @@ function contextMenu(x, y, items) {
       menu.append(mi);
       continue;
     }
+    if (item.disabled) {
+      menu.append(el('div.mi.disabled', { onMouseEnter: closeSubmenu, 'aria-disabled': 'true' }, item.label));
+      continue;
+    }
     menu.append(el('div.mi', {
       className: `mi${item.danger ? ' danger' : ''}`,
       onMouseEnter: closeSubmenu,

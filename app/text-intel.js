@@ -10,11 +10,18 @@ const {
   normalizeOllamaHost,
   validateOllamaHost,
   normalizeAiPatch,
+  normalizeGuidePatch,
   buildAiPrompt,
+  buildGuideAiPrompt,
   applyAiPatchToStep,
-  displayText,
+  applyGuidePatch,
   normalizeWhitespace,
 } = require('../core/text-intel');
+const { renderScreenshotForAi } = require('../core/ai-image');
+const { usablePlaceholders, substitutePlaceholders } = require('../core/ai-placeholders');
+const { buildOrganizePrompt, planOrganize } = require('../core/ai-organize');
+const { parentMap } = require('../core/step-outline');
+const { systemPlaceholders } = require('../core/placeholders');
 
 const DEFAULT_TITLE_VALUES = new Set(Object.values(DEFAULT_CAPTURE_TITLES).concat(['Capture']));
 
@@ -33,7 +40,7 @@ function modelLooksVisionCapable(model) {
   return clean.includes('vision')
     || clean.includes('llava')
     || clean.includes('gemma4')
-    || /(^|[^a-z0-9])qwen[23](?:\.[0-9]+)?vl([^a-z0-9]|$)/.test(clean);
+    || /(^|[^a-z0-9])qwen[23](?:\.[0-9]+)?-?vl([^a-z0-9]|$)/.test(clean);
 }
 
 let createWorkerImpl = null;
@@ -433,32 +440,46 @@ class TextIntelService {
     return capabilities.includes('vision');
   }
 
-  readStepImageBase64(guideId, stepId) {
-    const imagePath = this.store.stepImagePath(guideId, stepId, 'working') || this.store.stepImagePath(guideId, stepId, 'original');
-    if (!imagePath || !fs.existsSync(imagePath)) return '';
-    return fs.readFileSync(imagePath).toString('base64');
+  /**
+   * The step's screenshot as the model should see it (blurs filled, marks
+   * drawn, downscaled), base64-encoded, or '' when there is none or it is
+   * over the size budget.
+   */
+  screenshotForAi(guideId, step) {
+    if (!step.image) return '';
+    const imagePath = this.store.stepImagePath(guideId, step.stepId, 'working')
+      || this.store.stepImagePath(guideId, step.stepId, 'original');
+    let png = null;
+    try {
+      png = renderScreenshotForAi(imagePath, step.annotations);
+    } catch {
+      return ''; // unreadable image: fall back to a text-only request
+    }
+    if (!png || png.length > this.aiNetworkOptions().maxImageBytes) return '';
+    return png.toString('base64');
   }
 
-  async callOllamaText({ host, model, prompt, systemPrompt, guideId = null }) {
-    const url = new URL('/api/chat', `${host.replace(/\/+$/, '')}/`);
-    const response = await this.withConcurrency(() => this.fetchJson(url, {
-      method: 'POST',
-      guideId,
-      body: {
-        model,
-        stream: false,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: prompt },
-        ],
-        options: { temperature: 0.4 },
-      },
-    }));
-    if (!response.ok) throw new Error(`Ollama request failed (${response.status})`);
-    const payload = await response.json();
-    const content = payload?.message?.content;
-    if (typeof content !== 'string' || !content.trim()) throw new Error('Ollama returned an empty response');
-    return content.trim();
+  globalPlaceholders() {
+    return typeof this.settings.getGlobalPlaceholders === 'function' ? this.settings.getGlobalPlaceholders() || {} : {};
+  }
+
+  /** Placeholders AI may write into this guide's text (see core/ai-placeholders.js). */
+  placeholdersFor(guide) {
+    return usablePlaceholders({ globals: this.globalPlaceholders(), guidePlaceholders: guide?.placeholders || {} });
+  }
+
+  /** Enabled AI settings with a resolved host, or { ok: false, reason }. */
+  readyAiConfig() {
+    const config = this.aiConfig();
+    if (!config.enabled) return { ok: false, reason: 'Turn on AI in Settings first.' };
+    if (!config.ollama.host || !config.ollama.model) {
+      return { ok: false, reason: 'Choose an Ollama host and model in Settings → AI.' };
+    }
+    try {
+      return { ok: true, host: this.resolveHost(config.ollama.host), model: config.ollama.model };
+    } catch (err) {
+      return { ok: false, reason: err.message };
+    }
   }
 
   async callOllama({ host, model, prompt, systemPrompt, images = [], guideId = null }) {
@@ -498,22 +519,11 @@ class TextIntelService {
     guideId,
     stepId,
     target = 'all',
-    blockId = null,
   }) {
     try {
-      const config = this.aiConfig();
-      if (!config.enabled) {
-        return { ok: false, reason: 'Enable AI in settings first.' };
-      }
-      if (!config.ollama.host || !config.ollama.model) {
-        return { ok: false, reason: 'Configure Ollama host and model in Settings.' };
-      }
-      let host;
-      try {
-        host = this.resolveHost(config.ollama.host);
-      } catch (err) {
-        return { ok: false, reason: err.message };
-      }
+      const ready = this.readyAiConfig();
+      if (!ready.ok) return ready;
+      const { host, model } = ready;
       const netOptions = this.aiNetworkOptions();
 
       const guide = this.store.getGuide(guideId);
@@ -526,30 +536,14 @@ class TextIntelService {
       // response built from stale data cannot overwrite a newer user edit.
       const baseRevision = Number.isInteger(step.revision) ? step.revision : 0;
 
-      const currentBlock = blockId
-        ? [...(step.textBlocks || []), ...(step.codeBlocks || []), ...(step.tableBlocks || [])].find((b) => b.id === blockId) || null
-        : null;
-      if (blockId && target === 'block' && !currentBlock) {
-        return { ok: false, reason: 'Block not found.' };
-      }
-
-      // Only attach a screenshot when the user allows it, the model can use
-      // it, and it is within the size budget (a full 4K PNG base64-expands to
-      // tens of MB in the request body).
-      let screenshotBase64 = '';
-      if (netOptions.attachScreenshots && step.image) {
-        const candidate = this.readStepImageBase64(guideId, stepId);
-        const bytes = candidate ? Math.floor((candidate.length * 3) / 4) : 0;
-        if (candidate && bytes <= netOptions.maxImageBytes) {
-          screenshotBase64 = candidate;
-        }
-      }
-      const screenshotAttached = Boolean(screenshotBase64)
-        ? await this.modelSupportsVision({
-          host,
-          model: config.ollama.model,
-        })
+      // Only attach a screenshot when the user allows it and the model can
+      // use it. It is rendered with blurs filled, so a model never sees what
+      // the user hid.
+      const visionModel = netOptions.attachScreenshots && step.image
+        ? await this.modelSupportsVision({ host, model })
         : false;
+      const screenshotBase64 = visionModel ? this.screenshotForAi(guideId, step) : '';
+      const screenshotAttached = Boolean(screenshotBase64);
 
       let captureContext = null;
       // Use stored capture metadata when available (best context, from capture time).
@@ -599,18 +593,19 @@ class TextIntelService {
         }
       }
 
+      const placeholders = this.placeholdersFor(guide);
       const { systemPrompt, prompt } = buildAiPrompt({
         target,
         guide,
         step,
         captureContext,
-        block: currentBlock,
         screenshotAttached,
+        placeholders,
       });
 
       const raw = await this.callOllama({
         host,
-        model: config.ollama.model,
+        model,
         prompt,
         systemPrompt,
         images: screenshotAttached ? [screenshotBase64] : [],
@@ -627,7 +622,7 @@ class TextIntelService {
       } catch {
         currentStep = step;
       }
-      const updated = applyAiPatchToStep(currentStep, patch, { target, blockId });
+      const updated = applyAiPatchToStep(currentStep, patch, { target, guideTitle: guide.title, placeholders });
       let saved;
       try {
         saved = this.store.saveStep(guideId, updated, { expectedRevision: baseRevision });
@@ -643,45 +638,136 @@ class TextIntelService {
     }
   }
 
-  async rewriteText({ text, guideTitle = '', stepTitle = '' }) {
+  /**
+   * Write the guide's own title and introduction from its steps. Run it after
+   * the steps are written, so it summarizes their final text.
+   */
+  async generateGuidePatch({ guideId }) {
     try {
-      const config = this.aiConfig();
-      if (!config.enabled) return { ok: false, reason: 'Enable AI in settings first.' };
-      if (!config.ollama.host || !config.ollama.model) {
-        return { ok: false, reason: 'Configure Ollama host and model in Settings.' };
+      const ready = this.readyAiConfig();
+      if (!ready.ok) return ready;
+      const guide = this.store.getGuide(guideId);
+      if (!guide) return { ok: false, reason: 'Guide not found.' };
+      const baseRevision = Number.isInteger(guide.revision) ? guide.revision : 0;
+      const stepsMap = this.store.listSteps(guideId);
+      const steps = [];
+      const numbers = new Map();
+      let top = 0;
+      const childCounts = new Map();
+      for (const id of guide.stepsOrder || []) {
+        const step = stepsMap.get(id);
+        if (!step || step.hidden) continue;
+        let number;
+        if (step.parentStepId && numbers.has(step.parentStepId)) {
+          const n = (childCounts.get(step.parentStepId) || 0) + 1;
+          childCounts.set(step.parentStepId, n);
+          number = `${numbers.get(step.parentStepId)}.${n}`;
+        } else {
+          top += 1;
+          number = String(top);
+        }
+        numbers.set(step.stepId, number);
+        steps.push({ number, title: step.title, descriptionHtml: step.descriptionHtml });
       }
-      let host;
-      try {
-        host = this.resolveHost(config.ollama.host);
-      } catch (err) {
-        return { ok: false, reason: err.message };
-      }
-      const trimmed = normalizeWhitespace(text);
-      if (!trimmed) return { ok: false, reason: 'No text to rewrite.' };
-
-      const contextHint = [
-        guideTitle ? `Guide: ${guideTitle}` : '',
-        stepTitle ? `Step: ${stepTitle}` : '',
-      ].filter(Boolean).join('\n');
-
-      const prompt = [
-        contextHint,
-        contextHint ? '' : null,
-        'Rewrite the following text to sound professional and clear as step-by-step documentation.',
-        'Keep it concise. Do not add extra information. Return only the rewritten text.',
-        '',
-        trimmed,
-      ].filter((l) => l !== null).join('\n');
-
-      const result = await this.callOllamaText({
-        host,
-        model: config.ollama.model,
+      const placeholders = this.placeholdersFor(guide);
+      const { systemPrompt, prompt } = buildGuideAiPrompt({ guide, steps, placeholders });
+      const raw = await this.callOllama({
+        host: ready.host,
+        model: ready.model,
         prompt,
-        systemPrompt: 'You are a documentation editor. Return only the improved text, nothing else.',
+        systemPrompt,
+        guideId,
       });
-      return { ok: true, text: result };
+      const patch = normalizeGuidePatch(raw);
+      const current = this.store.getGuide(guideId) || guide;
+      let saved;
+      try {
+        saved = this.store.saveGuide(applyGuidePatch(current, patch, { placeholders }), { expectedRevision: baseRevision });
+      } catch (err) {
+        if (err && err.code === 'STEPFORGE_REVISION_CONFLICT') {
+          return { ok: false, reason: 'The guide changed while AI was writing; nothing was overwritten.' };
+        }
+        throw err;
+      }
+      return { ok: true, guide: saved, patch };
     } catch (err) {
-      return { ok: false, reason: err?.message || 'Rewrite failed.' };
+      return { ok: false, reason: err && err.message ? err.message : 'AI generation failed.' };
+    }
+  }
+
+  /**
+   * Write the whole guide's organizing pass: make steps substeps of earlier
+   * ones and add placeholders for values that repeat, then put the
+   * placeholders' tokens into every step's description and text blocks.
+   * Order never changes, existing placeholders are never overwritten, and
+   * only top-level steps are nested.
+   */
+  async organizeGuide({ guideId }) {
+    try {
+      const ready = this.readyAiConfig();
+      if (!ready.ok) return ready;
+      const guide = this.store.getGuide(guideId);
+      if (!guide) return { ok: false, reason: 'Guide not found.' };
+      const stepsMap = this.store.listSteps(guideId);
+      const steps = (guide.stepsOrder || []).map((id) => stepsMap.get(id)).filter(Boolean);
+      const parentOf = parentMap(steps);
+      const globals = this.globalPlaceholders();
+      const { systemPrompt, prompt } = buildOrganizePrompt({ steps, parentOf, placeholders: this.placeholdersFor(guide) });
+      const raw = await this.callOllama({ host: ready.host, model: ready.model, prompt, systemPrompt, guideId });
+      const existingNames = [
+        ...Object.keys(guide.placeholders || {}), ...Object.keys(globals), ...Object.keys(systemPlaceholders(guide)),
+      ];
+      const existingValues = this.placeholdersFor(guide).map((p) => p.value);
+      const plan = planOrganize(raw, { steps, parentOf, existing: { names: existingNames, values: existingValues } });
+
+      // Global placeholders live in settings; guide ones on the guide.
+      const newGlobal = plan.placeholders.filter((p) => p.scope === 'global');
+      const newGuide = plan.placeholders.filter((p) => p.scope === 'guide');
+      if (newGlobal.length) {
+        const fresh = this.globalPlaceholders();
+        for (const p of newGlobal) if (!(p.name in fresh)) fresh[p.name] = { format: 'markdown', text: p.value };
+        this.settings.setGlobalPlaceholders(fresh);
+      }
+      const latestGuide = this.store.getGuide(guideId);
+      const nextGuide = {
+        ...latestGuide,
+        placeholders: { ...(latestGuide.placeholders || {}), ...Object.fromEntries(newGuide.map((p) => [p.name, p.value])) },
+      };
+      const placeholders = this.placeholdersFor(nextGuide);
+      nextGuide.descriptionHtml = substitutePlaceholders(latestGuide.descriptionHtml, placeholders);
+      try {
+        this.store.saveGuide(nextGuide, { expectedRevision: latestGuide.revision });
+      } catch (err) {
+        if (err && err.code === 'STEPFORGE_REVISION_CONFLICT') {
+          return { ok: false, reason: 'The guide changed while AI was organizing it; nothing was overwritten.' };
+        }
+        throw err;
+      }
+
+      // One save per step: its new parent and its text with placeholder tokens.
+      let nested = 0;
+      for (const step of steps) {
+        const latest = this.store.getStep(guideId, step.stepId);
+        const next = {
+          ...latest,
+          descriptionHtml: substitutePlaceholders(latest.descriptionHtml, placeholders),
+          textBlocks: (latest.textBlocks || []).map((b) => ({ ...b, descriptionHtml: substitutePlaceholders(b.descriptionHtml, placeholders) })),
+        };
+        if (plan.parents.has(step.stepId) && !latest.parentStepId) {
+          next.parentStepId = plan.parents.get(step.stepId);
+          nested += 1;
+        }
+        if (JSON.stringify(next) === JSON.stringify(latest)) continue;
+        try {
+          this.store.saveStep(guideId, next, { expectedRevision: latest.revision });
+        } catch (err) {
+          if (!(err && err.code === 'STEPFORGE_REVISION_CONFLICT')) throw err;
+          // The user edited this step just now: leave it as they have it.
+        }
+      }
+      return { ok: true, substeps: nested, placeholders: plan.placeholders };
+    } catch (err) {
+      return { ok: false, reason: err && err.message ? err.message : 'AI could not organize the guide.' };
     }
   }
 

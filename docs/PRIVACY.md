@@ -3,7 +3,8 @@
 **Short version:** StepForge keeps your guides on your computer. It has no
 accounts, collects no analytics, and doesn't contact the internet unless you
 turn on Google Drive sync, connect GitHub to share guides, point AI at a remote
-server, or press **Check for updates**.
+server, or press **Check for updates**. If you connect an AI agent such as
+Claude or Codex, that agent sends what it reads to its AI provider.
 
 ## What StepForge never does
 
@@ -85,6 +86,26 @@ AI descriptions are **off by default**. When you enable them
 - Screenshots can be left out entirely by turning off **Settings → AI → Let
   the model see screenshots**.
 - Every request has a timeout and is cancelled when you close the guide.
+
+## Optional AI agents
+
+Agent access is **off by default**. When you turn on **Settings → AI → Let AI
+agents edit your guides** and connect an agent such as Claude Code or Codex
+([setup guide](AI_AGENTS.md)):
+
+- The agent starts StepForge with `--mcp`. StepForge then reads and writes your
+  library for that agent, on your computer. StepForge itself sends nothing over
+  the network.
+- **The agent sends what it reads to its own AI provider**, such as Anthropic
+  or OpenAI, under that provider's terms. That includes guide and step text
+  and, unless you turn off **Agents can see screenshots**, the screenshots.
+- Screenshots are shared with your blurs filled in. Agents never get the text
+  you typed while recording, field values, or the text StepForge read from the
+  screen.
+- Agents can rewrite text, make substeps, add placeholders, and draw
+  annotations. They can't reorder steps, change screenshots, or delete
+  anything.
+- Turning agent access off takes effect at the agent's next request.
 
 ## Optional Google Drive sync
 

@@ -1,8 +1,12 @@
-# AI-written steps with Ollama
+# AI-written guides with Ollama
 
-StepForge can write step titles and descriptions for you using an AI model
-that runs **on your own computer** through [Ollama](https://ollama.com). Your
-screenshots and text never go to a cloud AI service.
+StepForge can write your guides for you, a whole guide, one step, or a single
+field, using an AI model that runs **on your own computer** through
+[Ollama](https://ollama.com). Your screenshots and text never go to a cloud AI
+service.
+
+Prefer Claude or Codex? They can write your guides too: see
+[Let Claude or Codex write your guides](AI_AGENTS.md).
 
 AI is optional and **off by default**. StepForge already titles steps without
 it, using on-device text recognition. AI adds fuller, more natural

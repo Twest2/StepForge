@@ -17,11 +17,17 @@ const AI_SCREENSHOT_MAX_EDGE = 1600;
 function renderScreenshotForAi(imagePath, annotations = [], { maxEdge = AI_SCREENSHOT_MAX_EDGE } = {}) {
   if (!imagePath || !fs.existsSync(imagePath)) return null;
   let img = renderAnnotations(decodePng(fs.readFileSync(imagePath)), annotations || []);
-  const scale = Math.min(1, maxEdge / Math.max(img.width, img.height));
-  if (scale < 1) {
-    img = resize(img, Math.max(1, Math.round(img.width * scale)), Math.max(1, Math.round(img.height * scale)));
-  }
+  const target = aiScreenshotSize(img, { maxEdge });
+  if (target.width !== img.width) img = resize(img, target.width, target.height);
   return encodePng(img);
 }
 
-module.exports = { AI_SCREENSHOT_MAX_EDGE, renderScreenshotForAi };
+/** Size of the screenshot AI is shown for an image of `size`: the long edge capped at maxEdge. */
+function aiScreenshotSize(size, { maxEdge = AI_SCREENSHOT_MAX_EDGE } = {}) {
+  const scale = Math.min(1, maxEdge / Math.max(size.width, size.height));
+  return scale < 1
+    ? { width: Math.max(1, Math.round(size.width * scale)), height: Math.max(1, Math.round(size.height * scale)) }
+    : { width: size.width, height: size.height };
+}
+
+module.exports = { AI_SCREENSHOT_MAX_EDGE, renderScreenshotForAi, aiScreenshotSize };

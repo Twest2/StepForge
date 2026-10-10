@@ -650,7 +650,11 @@ function withPinnedParagraphs(originalHtml, newHtml) {
   return [...before, newHtml, ...after].join('');
 }
 
-function normalizeAiBlock(block) {
+/**
+ * One block from a model or agent, normalized. `bodyToHtml` converts a text
+ * block's body: plain text from local models, Markdown from agents.
+ */
+function normalizeAiBlock(block, { bodyToHtml = plainTextToHtml } = {}) {
   if (!block || typeof block !== 'object') return null;
   const kind = normalizeWhitespace(block.kind).toLowerCase();
   // The id the model echoed back, if any: it names an existing block to
@@ -664,7 +668,7 @@ function normalizeAiBlock(block) {
         position: normalizeAiPosition(block.position),
         level: normalizeAiLevel(block.level),
         title: displayText(block.title),
-        descriptionHtml: plainTextToHtml(block.body ?? block.description ?? block.text ?? ''),
+        descriptionHtml: bodyToHtml(String(block.body ?? block.description ?? block.text ?? '')),
       }, order),
       kind: 'text',
       sourceId,

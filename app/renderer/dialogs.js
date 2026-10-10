@@ -466,6 +466,33 @@ function showSettingsDialog({
     const ollamaModels = el('datalist', { id: 'ollama-models' });
     ollamaModel.setAttribute('list', 'ollama-models');
     const aiScreenshots = el('input', { type: 'checkbox', checked: settings.ai?.attachScreenshots !== false });
+    const agentsEnabled = el('input', { type: 'checkbox', checked: Boolean(settings.ai?.agents?.enabled) });
+    const agentsScreenshots = el('input', { type: 'checkbox', checked: settings.ai?.agents?.screenshots !== false });
+    // How Claude Code, Codex, or any MCP app starts StepForge for agents.
+    const agentSetup = el('div.agent-setup', {}, el('div.setting-desc', {}, 'Loading the setup commands…'));
+    const AGENT_SETUPS = [
+      ['claude', 'Claude Code', 'Run this in a terminal once.'],
+      ['codex', 'Codex', 'Run this in a terminal once.'],
+      ['json', 'Claude Desktop, Cursor, and other apps', 'Add this to the app’s MCP servers settings.'],
+    ];
+    api.agents.setup().then((texts) => {
+      agentSetup.replaceChildren(...AGENT_SETUPS.map(([kind, label, hint]) => {
+        const copy = el('button', {
+          type: 'button',
+          onClick: async () => {
+            await api.agents.copy({ kind });
+            copy.textContent = 'Copied';
+            setTimeout(() => { copy.textContent = 'Copy'; }, 1500);
+          },
+        }, 'Copy');
+        return el('div.agent-setup-row', {},
+          el('div.setting-text', {}, el('div.setting-title', {}, label), el('div.setting-desc', {}, hint)),
+          el('pre.agent-command', {}, texts[kind]),
+          copy);
+      }));
+    }).catch((err) => {
+      agentSetup.replaceChildren(el('div.setting-desc.error', {}, `Could not build the setup commands: ${err.message || err}`));
+    });
     const aiStatus = el('div', { className: 'ai-status' }, 'Not tested yet. Vision-capable models can also inspect each step’s screenshot.');
     const testAiBtn = el('button', { type: 'button' }, 'Test connection');
     const persistOllamaModel = debounce(() => {
@@ -602,18 +629,24 @@ function showSettingsDialog({
           settingRow('Blur while recording', 'Check each new capture as soon as it’s taken, instead of waiting until you publish.', makeSwitch(redactOnCapture, 'Blur while recording')),
           settingRow('Always hide these words', 'Names, project codes, or anything else to blur wherever it appears. One per line.', redactTerms)),
       ] },
-      { id: 'ai', label: 'AI', badge: 'Beta', description: 'Let an AI model on your own computer write your guides, through Ollama. Your screenshots and text stay on this computer.', content: [
+      { id: 'ai', label: 'AI', badge: 'Beta', description: 'Let AI write your guides: a model on your own computer through Ollama, or an AI agent such as Claude or Codex.', content: [
         settingsCard(null,
           settingRow('Enable AI', 'Turn on the AI ▾ menu in the guide toolbar: write a whole guide, a step, or one field.', makeSwitch(aiEnabled, 'Enable AI')),
           settingRow('Auto-document captures', 'Write a title and description for each new capture as you record. Turn off to use AI only when you ask.', makeSwitch(aiAutoDoc, 'Auto-document captures')),
           settingRow('Let the model see screenshots', 'Models that can read images see each step’s screenshot, with blurred areas already hidden. Turn off to send text only.', makeSwitch(aiScreenshots, 'Let the model see screenshots'))),
         settingsCard('Ollama',
+          el('div.setting-desc', {}, 'Runs on your computer, so your screenshots and text stay here.'),
           settingRow('Host', 'Where Ollama is running.', ollamaHost),
           settingRow('Model', el('span', {},
             'Any installed model. Choose Test connection to list them. See the ',
             docLink('AI guide', AI_GUIDE_URL), ' and ', docLink('recommended models', `${AI_GUIDE_URL}#recommended-models`), '.'),
           ollamaModel),
           el('div.settings-test', {}, aiStatus, testAiBtn, ollamaModels)),
+        settingsCard('AI agents (Claude, Codex)',
+          el('div.setting-desc', {}, 'AI apps such as Claude and Codex can connect to StepForge and write your guides for you. They can rewrite text, make substeps, add placeholders, and draw on screenshots, but they can’t reorder steps or delete anything.'),
+          settingRow('Let AI agents edit your guides', 'Turn off to cut off every connected agent at once.', makeSwitch(agentsEnabled, 'Let AI agents edit your guides')),
+          settingRow('Agents can see screenshots', 'Blurred areas are filled in first. Turn off to share step text only.', makeSwitch(agentsScreenshots, 'Agents can see screenshots')),
+          agentSetup),
       ] },
       { id: 'accounts', label: 'Accounts', description: 'Sync guides with Google Drive, OneDrive, Dropbox or Nextcloud, share them on the web with GitHub, or publish them to Confluence.', content: [accountsPanel.node] },
       { id: 'placeholders', label: 'Placeholders', description: 'Reusable text for every guide. Type [[name]] in a guide to insert it.', content: [
@@ -718,6 +751,11 @@ function showSettingsDialog({
                 enabled: aiEnabled.checked,
                 autoDoc: aiAutoDoc.checked,
                 attachScreenshots: aiScreenshots.checked,
+                agents: {
+                  ...(settings.ai?.agents || {}),
+                  enabled: agentsEnabled.checked,
+                  screenshots: agentsScreenshots.checked,
+                },
                 ollama: {
                   ...(settings.ai?.ollama || {}),
                   host: ollamaHost.value.trim(),

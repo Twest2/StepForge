@@ -1441,6 +1441,14 @@ fieldset legend {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%;
 }
 .settings-card > .setting-desc { padding-bottom: 12px; }
+/* Settings → AI → AI agents: one copyable setup command per kind of agent. */
+.agent-setup-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 6px 12px; padding: 12px 0; border-top: 1px solid var(--border); }
+.agent-setup-row .setting-text { grid-column: 1 / -1; }
+.agent-command {
+  margin: 0; padding: 8px 10px; border-radius: 8px; background: var(--panel-2);
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap; word-break: break-all; user-select: all;
+}
 .settings-test { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-top: 1px solid var(--border); }
 .ai-status { flex: 1; font-size: 12px; color: var(--muted); padding: 7px 10px; border-radius: 8px; background: var(--panel-2); }
 .ai-status.ok { color: inherit; background: color-mix(in srgb, var(--ok) 12%, var(--panel-solid)); }

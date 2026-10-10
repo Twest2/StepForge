@@ -25,6 +25,8 @@ function makeSelect(value, options) {
 }
 
 /** Settings row: a title and optional description beside its control. */
+const AI_GUIDE_URL = 'https://github.com/Twest2/StepForge/blob/main/docs/getting_started_with_ai.md';
+
 function settingRow(title, description, control) {
   return el('div.setting-row', {},
     el('div.setting-text', {},
@@ -383,6 +385,8 @@ function showSettingsDialog({
       dataDirLabel.title = info.dataDir || '';
     }).catch(() => { versionLabel.textContent = 'Unavailable'; });
     const openLink = (url) => () => { void api.shell.openExternal({ url }).catch(() => {}); };
+    // An inline link in a setting's description; opens in the browser.
+    const docLink = (label, url) => el('a', { href: url, onClick: (e) => { e.preventDefault(); openLink(url)(); } }, label);
     // "Check for updates" only contacts GitHub when pressed; see app/update-check.js.
     const updateStatus = el('div.update-status', { role: 'status', 'aria-live': 'polite' });
     const checkUpdatesBtn = el('button', { type: 'button' }, 'Check for updates');
@@ -605,7 +609,10 @@ function showSettingsDialog({
           settingRow('Let the model see screenshots', 'Models that can read images see each step’s screenshot, with blurred areas already hidden. Turn off to send text only.', makeSwitch(aiScreenshots, 'Let the model see screenshots'))),
         settingsCard('Ollama',
           settingRow('Host', 'Where Ollama is running.', ollamaHost),
-          settingRow('Model', 'Any installed model. Choose Test connection to list them.', ollamaModel),
+          settingRow('Model', el('span', {},
+            'Any installed model. Choose Test connection to list them. See the ',
+            docLink('AI guide', AI_GUIDE_URL), ' and ', docLink('recommended models', `${AI_GUIDE_URL}#recommended-models`), '.'),
+          ollamaModel),
           el('div.settings-test', {}, aiStatus, testAiBtn, ollamaModels)),
       ] },
       { id: 'accounts', label: 'Accounts', description: 'Sync guides with Google Drive, OneDrive, Dropbox or Nextcloud, share them on the web with GitHub, or publish them to Confluence.', content: [accountsPanel.node] },

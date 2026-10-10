@@ -1088,6 +1088,11 @@ function setupIpc() {
     validate: (a) => c.id(a.guideId) && c.id(a.stepId)
       && (a.target === undefined || c.oneOf(a.target, AI_TARGETS)),
   });
+  h('ai:organizeGuide', async ({ guideId } = {}) => {
+    const result = await textIntel.organizeGuide({ guideId });
+    if (result.ok) reindex(guideId);
+    return result;
+  }, { validate: (a) => c.id(a.guideId) });
   h('ai:fillGuide', async ({ guideId } = {}) => {
     const result = await textIntel.generateGuidePatch({ guideId });
     if (result.ok) reindex(guideId);

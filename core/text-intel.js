@@ -9,6 +9,7 @@ const {
   normalizeTableBlock,
 } = require('./schema');
 const { blockText, orderedBlocks, nextBlockOrder } = require('./blocks');
+const { placeholderPromptLines, substitutePlaceholders } = require('./ai-placeholders');
 
 const DEFAULT_CAPTURE_TITLES = {
   fullscreen: 'Screen capture',
@@ -810,6 +811,7 @@ function buildAiPrompt({
   step = null,
   captureContext = null,
   screenshotAttached = false,
+  placeholders = [],
 } = {}) {
   const title = writesTitle(target);
   const description = writesDescription(target);
@@ -893,6 +895,7 @@ function buildAiPrompt({
       ? `Capture context:\n${contextLines.join('\n')}`
       : 'Capture context: (not available)',
     blocks ? `\nExisting blocks (JSON):\n${JSON.stringify(existingBlocks, null, 2)}` : null,
+    (description || blocks) && placeholders.length ? `\n${placeholderPromptLines(placeholders).join('\n')}` : null,
     '',
     'Rules:',
     title ? '- "title" is this step\'s title, never the guide\'s title. Titles must be short imperative actions: "Click Save", "Select New document", "Open Settings".' : null,
@@ -938,7 +941,7 @@ const GUIDE_PROMPT_MAX_STEP_CHARS = 240;
  * Prompt for the guide's own title and introduction, written from its steps.
  * `steps` are in guide order: { number, title, descriptionHtml }.
  */
-function buildGuideAiPrompt({ guide = {}, steps = [] } = {}) {
+function buildGuideAiPrompt({ guide = {}, steps = [], placeholders = [] } = {}) {
   const clip = (text) => (text.length > GUIDE_PROMPT_MAX_STEP_CHARS
     ? `${text.slice(0, GUIDE_PROMPT_MAX_STEP_CHARS - 1)}…` : text);
   const outline = steps.slice(0, GUIDE_PROMPT_MAX_STEPS).map((step) => {
@@ -958,6 +961,7 @@ function buildGuideAiPrompt({ guide = {}, steps = [] } = {}) {
     `Current guide description: ${descText || '(empty)'}`,
     '',
     `Steps:\n${outline.join('\n') || '(none)'}`,
+    ...(placeholders.length ? ['', ...placeholderPromptLines(placeholders)] : []),
     '',
     'Rules:',
     '- The title is short and says what the reader will get done, for example "Submit a lab in Canvas" or "Set up SSH keys on Ubuntu".',
@@ -977,8 +981,11 @@ function buildGuideAiPrompt({ guide = {}, steps = [] } = {}) {
   };
 }
 
-/** Rewrite existing blocks matched by id, and append at most MAX_NEW_AI_BLOCKS new ones. Never deletes. */
-function mergeAiBlocks(step, blocks) {
+/**
+ * Rewrite existing blocks matched by id, and append at most `maxNew` new ones.
+ * Never deletes. Text block bodies get `placeholders` tokens for their values.
+ */
+function mergeAiBlocks(step, blocks, { maxNew = MAX_NEW_AI_BLOCKS, placeholders = [] } = {}) {
   const lists = {
     text: step.textBlocks || (step.textBlocks = []),
     code: step.codeBlocks || (step.codeBlocks = []),
@@ -994,7 +1001,8 @@ function mergeAiBlocks(step, blocks) {
       if (block.kind === 'text') {
         if (block.title) existing.title = block.title;
         if (htmlToText(block.descriptionHtml)) {
-          existing.descriptionHtml = sanitizeHtml(withPinnedParagraphs(existing.descriptionHtml, block.descriptionHtml));
+          existing.descriptionHtml = sanitizeHtml(withPinnedParagraphs(existing.descriptionHtml,
+            substitutePlaceholders(block.descriptionHtml, placeholders)));
         }
         if (block.hasLevel) existing.level = block.level;
       } else if (block.kind === 'code') {
@@ -1005,17 +1013,23 @@ function mergeAiBlocks(step, blocks) {
       }
       continue;
     }
-    if (added >= MAX_NEW_AI_BLOCKS) continue;
+    if (added >= maxNew) continue;
     const { kind, sourceId, hasLevel, ...fields } = block;
     if (kind === 'text' && !fields.title && !htmlToText(fields.descriptionHtml)) continue;
     if (kind === 'code' && !fields.code) continue;
     if (kind === 'table' && !fields.rows.length) continue;
+    if (kind === 'text') fields.descriptionHtml = substitutePlaceholders(fields.descriptionHtml, placeholders);
     list.push({ ...fields, order: order++ });
     added += 1;
   }
 }
 
-function applyAiPatchToStep(step, patch, { target = 'all', guideTitle = '' } = {}) {
+/**
+ * Apply a model's patch to a step. `placeholders` (usable ones, see
+ * core/ai-placeholders.js) replace their values with [[tokens]] in the
+ * AI-written description and block text.
+ */
+function applyAiPatchToStep(step, patch, { target = 'all', guideTitle = '', placeholders = [] } = {}) {
   const next = deepClone(step);
   // Small models sometimes answer with the guide's title. A step that already
   // has a real title keeps it rather than taking the guide's.
@@ -1025,10 +1039,11 @@ function applyAiPatchToStep(step, patch, { target = 'all', guideTitle = '' } = {
     next.title = displayText(patch.title);
   }
   if (writesDescription(target) && patch.descriptionHtml) {
-    next.descriptionHtml = sanitizeHtml(withPinnedParagraphs(step.descriptionHtml, patch.descriptionHtml));
+    next.descriptionHtml = sanitizeHtml(withPinnedParagraphs(step.descriptionHtml,
+      substitutePlaceholders(patch.descriptionHtml, placeholders)));
   }
   if (writesBlocks(target) && Array.isArray(patch.blocks) && patch.blocks.length) {
-    mergeAiBlocks(next, patch.blocks);
+    mergeAiBlocks(next, patch.blocks, { placeholders });
   }
   if (!next.image) {
     const hasBody = Boolean(
@@ -1043,11 +1058,12 @@ function applyAiPatchToStep(step, patch, { target = 'all', guideTitle = '' } = {
   return next;
 }
 
-function applyGuidePatch(guide, patch) {
+function applyGuidePatch(guide, patch, { placeholders = [] } = {}) {
   const next = deepClone(guide);
   if (patch.title) next.title = displayText(patch.title);
   if (patch.descriptionHtml) {
-    next.descriptionHtml = sanitizeHtml(withPinnedParagraphs(guide.descriptionHtml, patch.descriptionHtml));
+    next.descriptionHtml = sanitizeHtml(withPinnedParagraphs(guide.descriptionHtml,
+      substitutePlaceholders(patch.descriptionHtml, placeholders)));
   }
   return next;
 }
@@ -1067,7 +1083,11 @@ module.exports = {
   buildGuideAiPrompt,
   applyAiPatchToStep,
   applyGuidePatch,
+  normalizeAiBlock,
+  mergeAiBlocks,
   splitPinnedParagraphs,
+  withPinnedParagraphs,
+  isPlaceholderTitle,
   descriptionForAi,
   blocksForAi,
   summarizeStepForAi,

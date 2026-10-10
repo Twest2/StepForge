@@ -102,8 +102,9 @@ agents edit your guides** and connect an agent such as Claude Code or Codex
 - Screenshots are shared with your blurs filled in. Agents never get the text
   you typed while recording, field values, or the text StepForge read from the
   screen.
-- Agents can rewrite text only. They can't create or delete guides, steps,
-  blocks, or screenshots.
+- Agents can rewrite text, make substeps, add placeholders, and draw
+  annotations. They can't reorder steps, change screenshots, or delete
+  anything.
 - Turning agent access off takes effect at the agent's next request.
 
 ## Optional Google Drive sync

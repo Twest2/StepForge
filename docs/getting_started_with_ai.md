@@ -21,13 +21,17 @@ then check that it's running:
 ollama --version
 ```
 
+Already have Ollama? Update it to the latest version first. Newer models need
+a recent Ollama: Gemma 4 needs version 0.30.9 or newer, and an older Ollama
+fails with "unable to load model".
+
 ## 2. Download a model
 
 Pick one from [Recommended models](#recommended-models) and download it, for
 example:
 
 ```bash
-ollama pull gemma3:4b
+ollama pull gemma4:e4b
 ```
 
 You can switch models at any time.
@@ -38,7 +42,7 @@ You can switch models at any time.
 2. Turn on **Enable AI**.
 3. Leave **Host** as `http://127.0.0.1:11434` unless you changed Ollama's
    address.
-4. Set **Model** to the model you downloaded, for example `gemma3:4b`.
+4. Set **Model** to the model you downloaded, for example `gemma4:e4b`.
 5. Choose **Test connection**. StepForge confirms it can reach Ollama and that
    the model is installed. If it isn't, StepForge lists the models you do
    have, and the **Model** box suggests them as you type.
@@ -102,12 +106,14 @@ describe what's actually on screen. Start here if your computer can run them.
 
 | Model | Download | Size | Good for |
 | --- | --- | --- | --- |
-| **Gemma 3 4B** (start here) | `ollama pull gemma3:4b` | 3.4 GB | The best all-round choice for most computers |
+| **Gemma 4 E4B** (start here) | `ollama pull gemma4:e4b` | 6.6 GB | The best all-round choice, with a graphics card that has 8 GB or more |
+| **Gemma 4 E2B** | `ollama pull gemma4:e2b` | 4.6 GB | Gemma 4 on a computer with less graphics memory |
+| **Gemma 4 12B** | `ollama pull gemma4:12b` | 8.0 GB | The most natural writing, with a graphics card that has 12 GB or more |
+| **Gemma 3 4B** | `ollama pull gemma3:4b` | 3.4 GB | A lighter choice for modest computers |
 | **Qwen3-VL 2B** | `ollama pull qwen3-vl:2b` | 1.9 GB | The smallest model that reads screenshots well |
 | **Qwen3-VL 4B** | `ollama pull qwen3-vl:4b` | 3.3 GB | Reading small text and buttons in busy screenshots |
 | **Qwen2.5-VL 3B** | `ollama pull qwen2.5vl:3b` | 3.2 GB | An alternative if Qwen3-VL is slow on your computer |
 | **Granite 3.2 Vision 2B** | `ollama pull granite3.2-vision:2b` | 2.4 GB | Forms, tables, and document-style screens |
-| **Gemma 3 12B** | `ollama pull gemma3:12b` | 8.2 GB | The most natural writing, with a graphics card that has 12 GB or more |
 
 ### Text-only models
 
@@ -121,6 +127,8 @@ less specific. Choose one when your computer is too slow for the models above.
 | **Phi-4 Mini** | `ollama pull phi4-mini` | 2.5 GB | Careful, accurate wording |
 | **Llama 3.2 1B** | `ollama pull llama3.2:1b` | 1.3 GB | Older or slower computers |
 | **Gemma 3 1B** | `ollama pull gemma3:1b` | 0.8 GB | The smallest and fastest, with simpler writing |
+
+Gemma 4 has no text-only version: even its smallest model reads screenshots.
 
 StepForge asks Ollama whether a model can read images, so any model that can
 is used with screenshots automatically. Sizes are Ollama's downloads as of
@@ -153,6 +161,7 @@ The [privacy policy](PRIVACY.md#optional-ai) has the full details.
 | Problem | Fix |
 | --- | --- |
 | Test connection can't reach Ollama | Make sure Ollama is running (`ollama list` should respond) and the host is correct. |
+| "unable to load model" | Update Ollama to the latest version. Gemma 4 needs 0.30.9 or newer, and Gemma 3 needs 0.30.0 or newer. |
 | Model not found | Run `ollama list` and copy the model name exactly, including any tag like `:1b`. |
 | The AI ▾ menu items are greyed out | Turn on **Settings → AI → Enable AI** and save, then select a step for the step actions. |
 | Descriptions are vague | Try a model that reads screenshots from [Recommended models](#recommended-models), or a larger one if your computer can handle it. |

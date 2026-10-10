@@ -2,7 +2,6 @@
 
 const path = require('node:path');
 const fs = require('node:fs');
-const os = require('node:os');
 const { pathToFileURL } = require('node:url');
 const {
   app, BrowserWindow, ipcMain, dialog, shell, nativeTheme, globalShortcut,
@@ -10,7 +9,7 @@ const {
 } = require('electron');
 
 const { GuideStore } = require('../core/store');
-const { LibraryLocation } = require('../core/library-location');
+const { libraryLocationFor } = require('./data-dir');
 const { Settings } = require('../core/settings');
 const { GoogleDrive } = require('./google-drive');
 const { OneDrive } = require('./onedrive');
@@ -29,6 +28,7 @@ const { SearchIndex } = require('../core/search');
 const { TemplateManager, FORMATS, FORMAT_LABELS } = require('../core/templates');
 const { buildRenderAst } = require('../core/renderast');
 const { AI_TARGETS } = require('../core/text-intel');
+const { agentChangesSince, agentChangesStamp } = require('../core/agent-changes');
 const { runExport, EXPORTERS, FORMAT_INFO, FORMAT_ORDER } = require('../exporters');
 const { runExportInWorker } = require('./export-runner');
 const { exportGuideArchive, importGuideArchive, saveLinkedGuide } = require('../core/archive');
@@ -75,15 +75,6 @@ if (process.platform === 'linux') {
  * No telemetry or update checks. The renderer is sandboxed; this is the full
  * privileged surface.
  */
-
-function resolveDataDir() {
-  if (process.env.STEPFORGE_DATA_DIR) return process.env.STEPFORGE_DATA_DIR;
-  if (process.platform === 'win32') {
-    return path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'stepforge');
-  }
-  const xdg = process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local', 'share');
-  return path.join(xdg, 'stepforge');
-}
 
 let store;
 let libraryLocation;
@@ -573,6 +564,59 @@ function registerHotkeys() {
   } catch {
     // invalid accelerator strings must not crash the app
   }
+}
+
+// AI agents write guides from a separate `StepForge --mcp` process. Poll the
+// small file it updates after each write: reindex each changed guide and tell
+// the window, which reloads the guide if it's open.
+function watchAgentChanges() {
+  let seenStamp = agentChangesStamp(store.libraryDir);
+  let seenAt = Date.now();
+  setInterval(() => {
+    const stamp = agentChangesStamp(store.libraryDir);
+    if (stamp === seenStamp) return;
+    seenStamp = stamp;
+    let changed;
+    try {
+      changed = agentChangesSince(store.libraryDir, seenAt);
+    } catch {
+      return; // half-written or unreadable: the next change rewrites it
+    }
+    seenAt = changed.latest;
+    for (const guideId of changed.guideIds) {
+      if (!store.guideExists(guideId)) continue;
+      reindex(guideId);
+      sendToRenderer('guide:changed-by-agent', { guideId });
+    }
+  }, 1500).unref();
+}
+
+/** The command an AI agent runs to start this StepForge as an MCP server. */
+function agentSetupCommand() {
+  // `--mcp` never opens a window. On Linux, Electron still wants a display at
+  // startup unless it is told it runs headless, and that must be on the
+  // command line: agents may run over SSH, with no display at all.
+  const mcpArgs = process.platform === 'linux' ? ['--ozone-platform=headless', '--mcp'] : ['--mcp'];
+  // Linux packages start through a launcher script that sets up the sandbox.
+  const launcher = path.resolve(app.getAppPath(), '..', '..', 'usr', 'bin', 'stepforge');
+  if (process.platform === 'linux' && fs.existsSync(launcher)) return { command: launcher, args: mcpArgs };
+  if (app.isPackaged) return { command: process.execPath, args: mcpArgs };
+  return { command: process.execPath, args: [app.getAppPath(), ...mcpArgs] }; // development checkout
+}
+
+/** Ready-to-paste setup for each kind of agent: Claude Code, Codex, and an MCP JSON config. */
+function agentSetupTexts() {
+  const { command, args } = agentSetupCommand();
+  const quote = (arg) => {
+    if (/^[A-Za-z0-9_/.:=@-]+$/.test(arg)) return arg;
+    return process.platform === 'win32' ? `"${arg}"` : `'${arg.replace(/'/g, "'\\''")}'`;
+  };
+  const launch = [command, ...args].map(quote).join(' ');
+  return {
+    claude: `claude mcp add --scope user stepforge -- ${launch}`,
+    codex: `codex mcp add stepforge -- ${launch}`,
+    json: JSON.stringify({ mcpServers: { stepforge: { command, args } } }, null, 2),
+  };
 }
 
 function sendToRenderer(channel, payload) {
@@ -1093,6 +1137,11 @@ function setupIpc() {
     if (result.ok) reindex(guideId);
     return result;
   }, { validate: (a) => c.id(a.guideId) });
+  h('agents:setup', () => agentSetupTexts());
+  h('agents:copy', ({ kind }) => {
+    clipboard.writeText(agentSetupTexts()[kind]);
+    return { ok: true };
+  }, { validate: (a) => c.oneOf(a.kind, ['claude', 'codex', 'json']) });
   h('ai:fillGuide', async ({ guideId } = {}) => {
     const result = await textIntel.generateGuidePatch({ guideId });
     if (result.ok) reindex(guideId);
@@ -1449,14 +1498,7 @@ if (!gotLock) {
   app.on('select-client-certificate', (...args) => confluenceCertificates?.(...args));
 
   app.whenReady().then(() => {
-    const defaultDataDir = resolveDataDir();
-    libraryLocation = new LibraryLocation({
-      // Keep this bootstrap setting outside the movable library so a selected
-      // destination can be resolved before the store is opened.
-      file: path.join(app.getPath('userData'), 'library-location.json'),
-      defaultPath: defaultDataDir,
-      override: process.env.STEPFORGE_DATA_DIR || null,
-    });
+    libraryLocation = libraryLocationFor(app.getPath('userData'));
     const dataDir = libraryLocation.applyPending();
     store = new GuideStore(dataDir);
     settings = new Settings(store.settingsDir);
@@ -1532,6 +1574,7 @@ if (!gotLock) {
     } catch (err) {
       console.error(`[stepforge] search reconcile failed: ${err && err.message}`);
     }
+    watchAgentChanges();
     templates = new TemplateManager(store.templatesDir);
     textIntel = new TextIntelService({
       store,

@@ -88,6 +88,14 @@ const DEFAULT_SETTINGS = {
       host: 'http://127.0.0.1:11434',
       model: 'llama3.2:1b',
     },
+    // AI agents (Claude, Codex, any MCP app) reach guides through
+    // `StepForge --mcp`. Off by default: an agent sends what it reads to its
+    // own AI provider.
+    agents: {
+      enabled: false,
+      // Agents get each step's screenshot, rendered with blurs filled.
+      screenshots: true,
+    },
   },
   exports: {
     previewStepCount: 3,

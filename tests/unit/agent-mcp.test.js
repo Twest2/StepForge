@@ -49,14 +49,15 @@ function makeLibrary(t, agents = { enabled: true, screenshots: true }) {
   return { dir, store, settings, guide, first, second, tools, call, json, changes };
 }
 
-test('agents get read and rewrite tools only: nothing creates or deletes', (t) => {
+test('agents get read, rewrite and add tools only: nothing deletes, reorders, or creates steps', (t) => {
   const { tools } = makeLibrary(t);
-  assert.deepEqual(tools.map((tool) => tool.name), ['list_guides', 'get_guide', 'get_step', 'update_guide', 'update_step']);
+  assert.deepEqual(tools.map((tool) => tool.name),
+    ['list_guides', 'get_guide', 'get_step', 'update_guide', 'update_step', 'create_placeholder', 'add_annotations']);
   for (const tool of tools) {
     assert.equal(tool.inputSchema.type, 'object');
-    assert.ok(!/create|delete|remove|add_step/i.test(tool.name));
+    assert.ok(!/delete|remove|add_step|create_guide|create_step|reorder/i.test(tool.name));
   }
-  assert.match(INSTRUCTIONS, /cannot create or delete/);
+  assert.match(INSTRUCTIONS, /cannot reorder steps, or create or delete guides, steps/);
 });
 
 test('every tool refuses, with a fix the user can act on, while agent access is off', async (t) => {
@@ -203,4 +204,92 @@ test('`--mcp` serves the library over stdin and stdout', async (t) => {
   // The app polls this file to reload the guide.
   assert.deepEqual(agentChangesSince(store.libraryDir, 0).guideIds, [guide.guideId]);
   assert.ok(fs.existsSync(path.join(store.libraryDir, 'agent-changes.json')));
+});
+
+test('agents see placeholders, parents and annotations, and can nest steps without reordering', async (t) => {
+  const { call, json, guide, first, second, store, settings } = makeLibrary(t);
+  settings.setGlobalPlaceholders({ Org: { format: 'markdown', text: 'TAMU' } });
+  store.saveGuide({ ...store.getGuide(guide.guideId), placeholders: { Course: 'ECEN 350' } });
+  const read = json(await call('get_guide', { guide_id: guide.guideId }));
+  assert.deepEqual(read.placeholders.guide, [{ name: 'Course', value: 'ECEN 350' }]);
+  assert.deepEqual(read.placeholders.global, [{ name: 'Org', value: 'TAMU' }]);
+  assert.ok(read.placeholders.built_in.includes('Date'));
+  assert.deepEqual(read.steps.map((s) => s.parent_step_id), [null, null]);
+  assert.deepEqual(read.steps[0].screenshot_size, { width: 20, height: 10 });
+  assert.deepEqual(read.steps[0].annotations, [{ id: 'b1', type: 'blur', x: 0, y: 0, width: 10, height: 10 }]);
+
+  const nested = json(await call('update_step', { guide_id: guide.guideId, step_id: second.stepId, parent_step_id: first.stepId }));
+  assert.equal(nested.number, '1.1');
+  assert.deepEqual(store.getGuide(guide.guideId).stepsOrder, [first.stepId, second.stepId], 'order is unchanged');
+  const third = store.addStep(guide.guideId, { title: 'Third' });
+  const broken = await call('update_step', { guide_id: guide.guideId, step_id: first.stepId, parent_step_id: third.stepId });
+  assert.equal(broken.isError, true);
+  assert.match(broken.content[0].text, /break the step numbering/);
+  // The last substep can move back to the top level.
+  assert.equal(json(await call('update_step', { guide_id: guide.guideId, step_id: second.stepId, parent_step_id: null })).number, '2');
+});
+
+test('agents add guide and global placeholders but never change or shadow existing ones', async (t) => {
+  const { call, guide, store, settings, changes } = makeLibrary(t);
+  settings.setGlobalPlaceholders({ Org: { format: 'markdown', text: 'TAMU' } });
+  assert.equal((await call('create_placeholder', { name: 'Course Code', value: 'ECEN 350', scope: 'guide', guide_id: guide.guideId })).isError, undefined);
+  assert.equal(store.getGuide(guide.guideId).placeholders['Course Code'], 'ECEN 350');
+  assert.deepEqual(changes, [guide.guideId]);
+  assert.equal((await call('create_placeholder', { name: 'Support', value: '[help](mailto:it@example.com)', scope: 'global' })).isError, undefined);
+  assert.deepEqual(settings.getGlobalPlaceholders().Support, { format: 'markdown', text: '[help](mailto:it@example.com)' });
+
+  for (const [args, message] of [
+    [{ name: 'course code', value: 'x', scope: 'guide', guide_id: guide.guideId }, /already has \[\[course code\]\]/],
+    [{ name: 'org', value: 'x', scope: 'guide', guide_id: guide.guideId }, /global placeholder \[\[org\]\] already exists/],
+    [{ name: 'Date', value: 'x', scope: 'global' }, /can't be a placeholder name/],
+    [{ name: 'Lab', value: '  ', scope: 'global' }, /can't be empty/],
+    [{ name: 'Lab', value: 'x', scope: 'guide', guide_id: 'nope' }, /No guide with id/],
+  ]) {
+    const result = await call('create_placeholder', args);
+    assert.equal(result.isError, true, JSON.stringify(args));
+    assert.match(result.content[0].text, message);
+  }
+  assert.deepEqual(settings.getGlobalPlaceholders().Org, { format: 'markdown', text: 'TAMU' }, 'existing values are untouched');
+});
+
+test('agents draw every annotation type in screenshot pixels, added beside what is there', async (t) => {
+  const { call, json, guide, first, second, store } = makeLibrary(t);
+  const result = json(await call('add_annotations', {
+    guide_id: guide.guideId,
+    step_id: first.stepId,
+    annotations: [
+      { type: 'rect', x: 10, y: 2, width: 5, height: 4, color: '#2563EB' },
+      { type: 'arrow', from: [0, 0], to: [15, 5] },
+      { type: 'tooltip', x: 12, y: 1, width: 8, height: 3, text: 'Click here', tail: 'left' },
+      { type: 'number', x: 16, y: 6, width: 3, height: 3, value: 2 },
+      { type: 'oval', x: 15, y: -5, width: 100, height: 100 },
+    ],
+  }));
+  assert.equal(result.annotations_on_step, 6, 'the existing blur stays');
+  const saved = store.getStep(guide.guideId, first.stepId).annotations;
+  assert.equal(saved[0].type, 'blur');
+  const [rect, arrow, tip, badge, oval] = saved.slice(1);
+  assert.deepEqual([rect.x, rect.y, rect.w, rect.h], [0.5, 0.2, 0.25, 0.4]);
+  assert.equal(rect.style.stroke, '#2563EB');
+  assert.deepEqual([arrow.x, arrow.y, arrow.w, arrow.h], [0, 0, 0.75, 0.5]);
+  assert.equal(tip.text, 'Click here');
+  assert.equal(tip.style.tail, 'left');
+  assert.equal(badge.value, 2);
+  // Partly outside the screenshot: clamped to its edges.
+  assert.deepEqual([oval.x, oval.y, oval.w, oval.h], [0.75, 0, 0.25, 1]);
+
+  for (const [annotations, message] of [
+    [[{ type: 'star', x: 1, y: 1, width: 2, height: 2 }], /type must be one of/],
+    [[{ type: 'arrow', from: [1, 1] }], /needs from: \[x, y\] and to/],
+    [[{ type: 'rect', x: 1, y: 1 }], /needs x, y, width and height/],
+    [[{ type: 'tooltip', x: 1, y: 1, width: 5, height: 5 }], /needs text/],
+    [[{ type: 'number', x: 1, y: 1, width: 5, height: 5 }], /integer value/],
+    [[{ type: 'rect', x: 1, y: 1, width: 5, height: 5, color: 'red' }], /color must look like/],
+    [[{ type: 'oval', x: 40, y: 1, width: 5, height: 5 }], /outside the screenshot/],
+  ]) {
+    const bad = await call('add_annotations', { guide_id: guide.guideId, step_id: first.stepId, annotations });
+    assert.equal(bad.isError, true);
+    assert.match(bad.content[0].text, message);
+  }
+  assert.match((await call('add_annotations', { guide_id: guide.guideId, step_id: second.stepId, annotations: [{ type: 'rect', x: 1, y: 1, width: 5, height: 5 }] })).content[0].text, /no screenshot/);
 });

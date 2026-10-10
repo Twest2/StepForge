@@ -643,7 +643,7 @@ function showSettingsDialog({
           ollamaModel),
           el('div.settings-test', {}, aiStatus, testAiBtn, ollamaModels)),
         settingsCard('AI agents (Claude, Codex)',
-          el('div.setting-desc', {}, 'AI apps such as Claude and Codex can connect to StepForge and write your guides for you. They can read your guides and rewrite their text, but they can’t create or delete guides, steps, or screenshots. An agent sends what it reads to its AI provider, such as Anthropic or OpenAI.'),
+          el('div.setting-desc', {}, 'AI apps such as Claude and Codex can connect to StepForge and write your guides for you. They can rewrite text, make substeps, add placeholders, and draw on screenshots, but they can’t reorder steps or delete anything.'),
           settingRow('Let AI agents edit your guides', 'Turn off to cut off every connected agent at once.', makeSwitch(agentsEnabled, 'Let AI agents edit your guides')),
           settingRow('Agents can see screenshots', 'Blurred areas are filled in first. Turn off to share step text only.', makeSwitch(agentsScreenshots, 'Agents can see screenshots')),
           agentSetup),

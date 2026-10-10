@@ -18,12 +18,16 @@ window opens, and nothing runs when no agent is connected.
 | An agent can | An agent can't |
 | --- | --- |
 | List and read your guides | Create or delete guides or steps |
-| See each step's screenshot, with your blurs already filled in | Change screenshots, blurs, or annotations |
-| Rewrite a guide's title and description | Delete blocks |
-| Rewrite each step's title, description, and blocks, and add notes, warnings, tips, and code | Read anything outside your StepForge library |
+| See each step's screenshot, with your blurs already filled in | Reorder steps |
+| Rewrite a guide's title and description | Change or delete screenshots |
+| Rewrite each step's title, description, and blocks, and add notes, warnings, tips, and code | Delete blocks, annotations, or placeholders |
+| Make a step a substep of an earlier step | Change a placeholder you already have |
+| Add guide and global placeholders, and use them as `[[Name]]` | Read anything outside your StepForge library |
+| Draw on screenshots: rectangles, ovals, lines, arrows, text, callouts, numbered badges, blurs, highlights, magnifiers, and cursors | |
 
-Every step comes from a real capture, so an agent works on the text around
-your screenshots, not the screenshots themselves.
+Every step comes from a real capture, so an agent works around your
+screenshots: it writes the text, organizes the steps, and adds annotations on
+top, but the screenshots themselves never change.
 
 ## 1. Turn on agent access
 
@@ -65,15 +69,18 @@ starts without a display, for example when the agent runs over SSH.
 Record a guide in StepForge as usual, then ask your agent, for example:
 
 > Write the StepForge guide "Untitled guide": give every step a clear title and
-> description, add a warning where something can go wrong, and finish with a
-> title and short introduction for the guide.
+> description, add a warning where something can go wrong, group the steps
+> that belong together as substeps, put an arrow on anything easy to miss, and
+> finish with a title and short introduction for the guide.
 
 The agent finds the guide, looks at each step's screenshot, and rewrites the
-text. If the guide is open in StepForge, it updates on screen within a couple
+text. It uses your placeholders where their values would appear, and can add
+new ones for values that repeat, such as a course code or product name. If the guide is open in StepForge, it updates on screen within a couple
 of seconds. If you're typing in the same step at that moment, your edit wins.
 
 Before you share the guide, read what the agent wrote. To undo a big rewrite,
-use **More → Backups & snapshots**.
+use **More → Backups & snapshots**. Annotations an agent drew can be moved or
+deleted like your own.
 
 ## Privacy
 

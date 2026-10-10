@@ -28,6 +28,7 @@ const { createCredentialVault } = require('./credential-vault');
 const { SearchIndex } = require('../core/search');
 const { TemplateManager, FORMATS, FORMAT_LABELS } = require('../core/templates');
 const { buildRenderAst } = require('../core/renderast');
+const { AI_TARGETS } = require('../core/text-intel');
 const { runExport, EXPORTERS, FORMAT_INFO, FORMAT_ORDER } = require('../exporters');
 const { runExportInWorker } = require('./export-runner');
 const { exportGuideArchive, importGuideArchive, saveLinkedGuide } = require('../core/archive');
@@ -1079,25 +1080,24 @@ function setupIpc() {
       ollama,
     });
   }, { validate: (a) => (a.ollama === undefined || a.ollama === null || security.isPlainArgs(a.ollama)) });
-  h('ai:fillStep', async ({ guideId, stepId, target = 'all', blockId = null } = {}) => {
-    const result = await textIntel.generateStepPatch({
-      guideId,
-      stepId,
-      target,
-      blockId,
-    });
+  h('ai:fillStep', async ({ guideId, stepId, target = 'all' } = {}) => {
+    const result = await textIntel.generateStepPatch({ guideId, stepId, target });
     if (result.ok) reindex(guideId);
     return result;
   }, {
-    validate: (a) => c.id(a.guideId) && c.id(a.stepId) && c.optionalId(a.blockId)
-      && (a.target === undefined || c.oneOf(a.target, ['all', 'title', 'description', 'block'])),
+    validate: (a) => c.id(a.guideId) && c.id(a.stepId)
+      && (a.target === undefined || c.oneOf(a.target, AI_TARGETS)),
   });
-  h('ai:rewriteText', async ({ text, guideTitle = '', stepTitle = '' } = {}) => {
-    return textIntel.rewriteText({ text, guideTitle, stepTitle });
-  }, {
-    validate: (a) => c.string(a.text, 200000)
-      && c.optionalString(a.guideTitle, 1000) && c.optionalString(a.stepTitle, 1000),
-  });
+  h('ai:organizeGuide', async ({ guideId } = {}) => {
+    const result = await textIntel.organizeGuide({ guideId });
+    if (result.ok) reindex(guideId);
+    return result;
+  }, { validate: (a) => c.id(a.guideId) });
+  h('ai:fillGuide', async ({ guideId } = {}) => {
+    const result = await textIntel.generateGuidePatch({ guideId });
+    if (result.ok) reindex(guideId);
+    return result;
+  }, { validate: (a) => c.id(a.guideId) });
   // Cancel outstanding AI requests, e.g. when a guide/editor closes, so a
   // slow response can't resolve against data the user has moved on from.
   h('ai:cancel', ({ guideId = null } = {}) => {

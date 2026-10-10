@@ -14,6 +14,8 @@ const {
   applyAiPatchToStep,
 } = require('../../core/text-intel');
 const { TextIntelService } = require('../../app/text-intel');
+const { encodePng, decodePng } = require('../../core/png');
+const { createImage, fillRect } = require('../../core/raster');
 
 function makeSettings(values = {}) {
   const data = {
@@ -331,22 +333,10 @@ test('ai response normalization and application keeps fields structured', () => 
     title: 'Open settings',
     description: 'Pick the AI tab.',
     blocks: [
-      {
-        kind: 'text',
-        position: 'after-description',
-        level: 'tip',
-        title: 'Tip',
-        body: 'Use the local Ollama model.',
-      },
-      {
-        kind: 'code',
-        language: 'bash',
-        code: 'ollama pull llama3.2:1b',
-      },
-      {
-        kind: 'table',
-        rows: [['Name', 'Value'], ['Host', '127.0.0.1']],
-      },
+      { id: 'tb1', kind: 'text', level: 'tip', title: 'Tip', body: 'Use the local Ollama model.' },
+      { kind: 'code', language: 'bash', code: 'ollama pull llama3.2:1b' },
+      { kind: 'table', rows: [['Name', 'Value'], ['Host', '127.0.0.1'], ['URL', 'ON']] },
+      { kind: 'text', title: 'One block too many', body: 'Never added.' },
     ],
   }));
 
@@ -358,14 +348,23 @@ test('ai response normalization and application keeps fields structured', () => 
     tableBlocks: [{ id: 'tbl1', order: 3, rows: [['x']] }],
   });
 
-  const updated = applyAiPatchToStep(step, patch, { target: 'all' });
-  assert.equal(updated.title, 'Open settings');
-  assert.equal(updated.descriptionHtml, '<p>Pick the AI tab.</p>');
+  // 'all' (capture auto-documentation) writes the title and description only.
+  const textOnly = applyAiPatchToStep(step, patch, { target: 'all' });
+  assert.equal(textOnly.title, 'Open settings');
+  assert.equal(textOnly.descriptionHtml, '<p>Pick the AI tab.</p>');
+  assert.deepEqual(textOnly.textBlocks, step.textBlocks);
+  assert.deepEqual(textOnly.codeBlocks, step.codeBlocks);
+
+  // 'step' also rewrites blocks by id and adds at most two new ones; nothing is deleted.
+  const updated = applyAiPatchToStep(step, patch, { target: 'step' });
   assert.equal(updated.textBlocks.length, 1);
+  assert.equal(updated.textBlocks[0].id, 'tb1');
   assert.equal(updated.textBlocks[0].level, 'success');
   assert.equal(updated.textBlocks[0].descriptionHtml, '<p>Use the local Ollama model.</p>');
-  assert.equal(updated.codeBlocks[0].code, 'ollama pull llama3.2:1b');
-  assert.deepEqual(updated.tableBlocks[0].rows, [['Name', 'Value'], ['Host', '127.0.0.1']]);
+  assert.deepEqual(updated.codeBlocks.map((b) => b.code), ['old', 'ollama pull llama3.2:1b']);
+  assert.notEqual(updated.codeBlocks[1].id, 'cb1');
+  assert.deepEqual(updated.tableBlocks.map((b) => b.rows), [[['x']], [['Name', 'Value'], ['Host', '127.0.0.1'], ['URL', 'ON']]]);
+  assert.deepEqual([...updated.codeBlocks, ...updated.tableBlocks].map((b) => b.order), [2, 4, 3, 5]);
 });
 
 test('ollama connection test reports installed models', async (t) => {
@@ -408,11 +407,14 @@ test('ollama connection test reports installed models', async (t) => {
   assert.equal(result.vision, true);
 });
 
-test('vision-capable models receive the screenshot in the chat request', async (t) => {
+test('vision-capable models receive the screenshot with blurs filled', async (t) => {
   const root = makeTmpDir('text-intel-ai-vision');
   t.after(() => rmrf(root));
+  // Left half is the "secret" (pure red); the right half is blue.
+  const img = createImage(20, 10, [0, 0, 255, 255]);
+  fillRect(img, 0, 0, 10, 10, [255, 0, 0, 255]);
   const imagePath = path.join(root, 'step.png');
-  fs.writeFileSync(imagePath, Buffer.from('fake screenshot bytes'));
+  fs.writeFileSync(imagePath, encodePng(img));
 
   const step = createStep({
     title: 'Old title',
@@ -420,8 +422,9 @@ test('vision-capable models receive the screenshot in the chat request', async (
     image: {
       originalPath: 'original.png',
       workingPath: 'working.png',
-      size: { width: 10, height: 10 },
+      size: { width: 20, height: 10 },
     },
+    annotations: [{ id: 'b1', type: 'blur', x: 0, y: 0, w: 0.5, h: 1 }],
     captureMetadata: {
       windowTitle: 'Settings',
       appName: 'chrome',
@@ -446,42 +449,34 @@ test('vision-capable models receive the screenshot in the chat request', async (
       const pathname = new URL(url).pathname;
       fetchCalls.push({ pathname, init });
       if (pathname === '/api/show') {
-        return {
-          ok: true,
-          json: async () => ({
-            capabilities: ['completion', 'vision'],
-          }),
-        };
+        return { ok: true, json: async () => ({ capabilities: ['completion', 'vision'] }) };
       }
       if (pathname === '/api/chat') {
         return {
           ok: true,
-          json: async () => ({
-            message: {
-              content: JSON.stringify({
-                title: 'Open settings',
-                description: 'Use the AI tab.',
-              }),
-            },
-          }),
+          json: async () => ({ message: { content: JSON.stringify({ title: 'Open settings', description: 'Use the AI tab.' }) } }),
         };
       }
       throw new Error(`unexpected fetch: ${pathname}`);
     },
   });
 
-  const result = await service.generateStepPatch({
-    guideId: 'g1',
-    stepId: 's1',
-    target: 'all',
-  });
+  const result = await service.generateStepPatch({ guideId: 'g1', stepId: 's1', target: 'all' });
 
   assert.equal(result.ok, true);
   const chatCall = fetchCalls.find((call) => call.pathname === '/api/chat');
   assert.ok(chatCall, 'expected an Ollama chat request');
   const body = JSON.parse(chatCall.init.body);
-  assert.deepEqual(body.messages[1].images, [fs.readFileSync(imagePath).toString('base64')]);
+  assert.equal(body.messages[1].images.length, 1);
+  const sent = decodePng(Buffer.from(body.messages[1].images[0], 'base64'));
+  assert.equal(sent.width, 20);
+  for (let x = 0; x < 10; x++) {
+    const p = (5 * sent.width + x) * 4;
+    assert.ok(!(sent.data[p] === 255 && sent.data[p + 2] === 0), `pixel ${x} under the blur still shows the secret`);
+  }
   assert.match(body.messages[1].content, /Screenshot: attached/i);
+  // OCR ran before the blur was drawn, so it is left out for blurred steps.
+  assert.doesNotMatch(body.messages[1].content, /OCR text near click/);
 });
 
 test('invalid ollama output fails safely without saving the step', async (t) => {

@@ -293,3 +293,36 @@ test('agents draw every annotation type in screenshot pixels, added beside what 
   }
   assert.match((await call('add_annotations', { guide_id: guide.guideId, step_id: second.stepId, annotations: [{ type: 'rect', x: 1, y: 1, width: 5, height: 5 }] })).content[0].text, /no screenshot/);
 });
+
+test('on Windows, `--mcp` reruns StepForge as plain Node so piped stdin works', () => {
+  const vm = require('node:vm');
+  const source = fs.readFileSync(path.join(ROOT, 'app', 'boot.js'), 'utf8');
+  const run = ({ platform, electron, runAsNode = undefined, argv = ['StepForge.exe', '--mcp'] }) => {
+    const calls = { spawn: null, required: [] };
+    const child = { on() { return child; } };
+    const fakeRequire = (name) => {
+      if (name === 'node:child_process') return { spawn: (...args) => { calls.spawn = args; return child; } };
+      if (name === 'node:path') return path.win32;
+      calls.required.push(name);
+      return { main() {} };
+    };
+    const env = runAsNode ? { ELECTRON_RUN_AS_NODE: runAsNode } : {};
+    vm.runInNewContext(source, {
+      require: fakeRequire,
+      __dirname: 'C:\\Program Files\\StepForge\\resources\\app.asar\\app',
+      process: { argv, platform, env, execPath: 'C:\\Program Files\\StepForge\\StepForge.exe', versions: electron ? { electron: '41.10.7' } : {}, exit() {}, stderr: { write() {} } },
+    });
+    return calls;
+  };
+  const win = run({ platform: 'win32', electron: true });
+  assert.equal(win.spawn[0], 'C:\\Program Files\\StepForge\\StepForge.exe');
+  assert.deepEqual([...win.spawn[1]], ['C:\\Program Files\\StepForge\\resources\\app.asar\\app\\mcp.js']);
+  assert.equal(win.spawn[2].stdio, 'inherit');
+  assert.equal(win.spawn[2].env.ELECTRON_RUN_AS_NODE, '1');
+  assert.deepEqual(win.required, []);
+  // The Node-mode child, Linux, and plain Node serve directly; no --mcp starts the app.
+  assert.deepEqual(run({ platform: 'win32', electron: true, runAsNode: '1' }).required, ['./mcp']);
+  assert.deepEqual(run({ platform: 'linux', electron: true }).required, ['./mcp']);
+  assert.deepEqual(run({ platform: 'win32', electron: false }).required, ['./mcp']);
+  assert.deepEqual(run({ platform: 'win32', electron: true, argv: ['StepForge.exe'] }).required, ['./main']);
+});

@@ -41,28 +41,14 @@ Turn it off to share step text only.
 
 ## 2. Connect your agent
 
-The same card shows the exact setup for this computer. Choose **Copy** next to
-the one you use, then:
+Use the setup shown in **Settings → AI → AI agents**. It's made for this
+computer, with StepForge's exact location. Choose **Copy** next to the agent
+you use, then:
 
-**Claude Code:** paste the command into a terminal and run it once. It looks
-like this:
-
-```bash
-claude mcp add --scope user stepforge -- "C:\Users\you\AppData\Local\Programs\StepForge\StepForge.exe" --mcp
-```
-
-**Codex:** paste the command into a terminal and run it once:
-
-```bash
-codex mcp add stepforge -- "C:\Users\you\AppData\Local\Programs\StepForge\StepForge.exe" --mcp
-```
-
-**Claude Desktop, Cursor, and other MCP apps:** paste the JSON into the app's
-MCP server settings. For Claude Desktop, that's **Settings → Developer → Edit
-Config**, then restart Claude Desktop.
-
-On Linux the command also includes `--ozone-platform=headless`, so StepForge
-starts without a display, for example when the agent runs over SSH.
+- **Claude Code or Codex:** paste the command into a terminal and run it once.
+- **Claude Desktop, Cursor, and other MCP apps:** paste the JSON into the
+  app's MCP server settings, then restart the app. In Claude Desktop, that's
+  **Settings → Developer → Edit Config**.
 
 ## 3. Ask it to write a guide
 

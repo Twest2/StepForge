@@ -137,6 +137,7 @@ const api = {
     test: invoke('ai:test'),
     fillStep: invoke('ai:fillStep'),
     fillGuide: invoke('ai:fillGuide'),
+    organizeGuide: invoke('ai:organizeGuide'),
     cancel: invoke('ai:cancel'),
   },
   capture: {

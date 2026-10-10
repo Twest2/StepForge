@@ -18,6 +18,10 @@ const {
   normalizeWhitespace,
 } = require('../core/text-intel');
 const { renderScreenshotForAi } = require('../core/ai-image');
+const { usablePlaceholders, substitutePlaceholders } = require('../core/ai-placeholders');
+const { buildOrganizePrompt, planOrganize } = require('../core/ai-organize');
+const { parentMap } = require('../core/step-outline');
+const { systemPlaceholders } = require('../core/placeholders');
 
 const DEFAULT_TITLE_VALUES = new Set(Object.values(DEFAULT_CAPTURE_TITLES).concat(['Capture']));
 
@@ -36,7 +40,7 @@ function modelLooksVisionCapable(model) {
   return clean.includes('vision')
     || clean.includes('llava')
     || clean.includes('gemma4')
-    || /(^|[^a-z0-9])qwen[23](?:\.[0-9]+)?vl([^a-z0-9]|$)/.test(clean);
+    || /(^|[^a-z0-9])qwen[23](?:\.[0-9]+)?-?vl([^a-z0-9]|$)/.test(clean);
 }
 
 let createWorkerImpl = null;
@@ -455,6 +459,15 @@ class TextIntelService {
     return png.toString('base64');
   }
 
+  globalPlaceholders() {
+    return typeof this.settings.getGlobalPlaceholders === 'function' ? this.settings.getGlobalPlaceholders() || {} : {};
+  }
+
+  /** Placeholders AI may write into this guide's text (see core/ai-placeholders.js). */
+  placeholdersFor(guide) {
+    return usablePlaceholders({ globals: this.globalPlaceholders(), guidePlaceholders: guide?.placeholders || {} });
+  }
+
   /** Enabled AI settings with a resolved host, or { ok: false, reason }. */
   readyAiConfig() {
     const config = this.aiConfig();
@@ -580,12 +593,14 @@ class TextIntelService {
         }
       }
 
+      const placeholders = this.placeholdersFor(guide);
       const { systemPrompt, prompt } = buildAiPrompt({
         target,
         guide,
         step,
         captureContext,
         screenshotAttached,
+        placeholders,
       });
 
       const raw = await this.callOllama({
@@ -607,7 +622,7 @@ class TextIntelService {
       } catch {
         currentStep = step;
       }
-      const updated = applyAiPatchToStep(currentStep, patch, { target, guideTitle: guide.title });
+      const updated = applyAiPatchToStep(currentStep, patch, { target, guideTitle: guide.title, placeholders });
       let saved;
       try {
         saved = this.store.saveStep(guideId, updated, { expectedRevision: baseRevision });
@@ -654,7 +669,8 @@ class TextIntelService {
         numbers.set(step.stepId, number);
         steps.push({ number, title: step.title, descriptionHtml: step.descriptionHtml });
       }
-      const { systemPrompt, prompt } = buildGuideAiPrompt({ guide, steps });
+      const placeholders = this.placeholdersFor(guide);
+      const { systemPrompt, prompt } = buildGuideAiPrompt({ guide, steps, placeholders });
       const raw = await this.callOllama({
         host: ready.host,
         model: ready.model,
@@ -666,7 +682,7 @@ class TextIntelService {
       const current = this.store.getGuide(guideId) || guide;
       let saved;
       try {
-        saved = this.store.saveGuide(applyGuidePatch(current, patch), { expectedRevision: baseRevision });
+        saved = this.store.saveGuide(applyGuidePatch(current, patch, { placeholders }), { expectedRevision: baseRevision });
       } catch (err) {
         if (err && err.code === 'STEPFORGE_REVISION_CONFLICT') {
           return { ok: false, reason: 'The guide changed while AI was writing; nothing was overwritten.' };
@@ -676,6 +692,82 @@ class TextIntelService {
       return { ok: true, guide: saved, patch };
     } catch (err) {
       return { ok: false, reason: err && err.message ? err.message : 'AI generation failed.' };
+    }
+  }
+
+  /**
+   * Write the whole guide's organizing pass: make steps substeps of earlier
+   * ones and add placeholders for values that repeat, then put the
+   * placeholders' tokens into every step's description and text blocks.
+   * Order never changes, existing placeholders are never overwritten, and
+   * only top-level steps are nested.
+   */
+  async organizeGuide({ guideId }) {
+    try {
+      const ready = this.readyAiConfig();
+      if (!ready.ok) return ready;
+      const guide = this.store.getGuide(guideId);
+      if (!guide) return { ok: false, reason: 'Guide not found.' };
+      const stepsMap = this.store.listSteps(guideId);
+      const steps = (guide.stepsOrder || []).map((id) => stepsMap.get(id)).filter(Boolean);
+      const parentOf = parentMap(steps);
+      const globals = this.globalPlaceholders();
+      const { systemPrompt, prompt } = buildOrganizePrompt({ steps, parentOf, placeholders: this.placeholdersFor(guide) });
+      const raw = await this.callOllama({ host: ready.host, model: ready.model, prompt, systemPrompt, guideId });
+      const existingNames = [
+        ...Object.keys(guide.placeholders || {}), ...Object.keys(globals), ...Object.keys(systemPlaceholders(guide)),
+      ];
+      const existingValues = this.placeholdersFor(guide).map((p) => p.value);
+      const plan = planOrganize(raw, { steps, parentOf, existing: { names: existingNames, values: existingValues } });
+
+      // Global placeholders live in settings; guide ones on the guide.
+      const newGlobal = plan.placeholders.filter((p) => p.scope === 'global');
+      const newGuide = plan.placeholders.filter((p) => p.scope === 'guide');
+      if (newGlobal.length) {
+        const fresh = this.globalPlaceholders();
+        for (const p of newGlobal) if (!(p.name in fresh)) fresh[p.name] = { format: 'markdown', text: p.value };
+        this.settings.setGlobalPlaceholders(fresh);
+      }
+      const latestGuide = this.store.getGuide(guideId);
+      const nextGuide = {
+        ...latestGuide,
+        placeholders: { ...(latestGuide.placeholders || {}), ...Object.fromEntries(newGuide.map((p) => [p.name, p.value])) },
+      };
+      const placeholders = this.placeholdersFor(nextGuide);
+      nextGuide.descriptionHtml = substitutePlaceholders(latestGuide.descriptionHtml, placeholders);
+      try {
+        this.store.saveGuide(nextGuide, { expectedRevision: latestGuide.revision });
+      } catch (err) {
+        if (err && err.code === 'STEPFORGE_REVISION_CONFLICT') {
+          return { ok: false, reason: 'The guide changed while AI was organizing it; nothing was overwritten.' };
+        }
+        throw err;
+      }
+
+      // One save per step: its new parent and its text with placeholder tokens.
+      let nested = 0;
+      for (const step of steps) {
+        const latest = this.store.getStep(guideId, step.stepId);
+        const next = {
+          ...latest,
+          descriptionHtml: substitutePlaceholders(latest.descriptionHtml, placeholders),
+          textBlocks: (latest.textBlocks || []).map((b) => ({ ...b, descriptionHtml: substitutePlaceholders(b.descriptionHtml, placeholders) })),
+        };
+        if (plan.parents.has(step.stepId) && !latest.parentStepId) {
+          next.parentStepId = plan.parents.get(step.stepId);
+          nested += 1;
+        }
+        if (JSON.stringify(next) === JSON.stringify(latest)) continue;
+        try {
+          this.store.saveStep(guideId, next, { expectedRevision: latest.revision });
+        } catch (err) {
+          if (!(err && err.code === 'STEPFORGE_REVISION_CONFLICT')) throw err;
+          // The user edited this step just now: leave it as they have it.
+        }
+      }
+      return { ok: true, substeps: nested, placeholders: plan.placeholders };
+    } catch (err) {
+      return { ok: false, reason: err && err.message ? err.message : 'AI could not organize the guide.' };
     }
   }
 

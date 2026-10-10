@@ -311,7 +311,8 @@ class GuideEditor {
     }
     const ok = await confirmDialog(
       `AI will write the title, description and blocks for ${queue.length} step${queue.length === 1 ? '' : 's'}, `
-      + 'then the guide’s title and description. Text you already wrote is polished, not replaced with something new. '
+      + 'make substeps where steps belong together, add placeholders for values that repeat, '
+      + 'then write the guide’s title and description. Text you already wrote is polished, not replaced with something new. '
       + 'A snapshot is saved first, so you can undo this from More → Backups & snapshots.',
       { okLabel: 'Write the whole guide' },
     );
@@ -329,6 +330,8 @@ class GuideEditor {
     const run = { cancelled: false, progress: '' };
     this.aiRun = run;
     let written = 0;
+    let substeps = 0;
+    let newPlaceholders = [];
     const problems = [];
     try {
       for (const [index, step] of queue.entries()) {
@@ -350,12 +353,23 @@ class GuideEditor {
         }
       }
       if (!run.cancelled && written) {
+        this.setAiProgress('organizing');
+        if (this.pendingSave) await this.flushStep();
+        if (this.pendingGuideSave) await this.flushGuide();
+        const organized = await api.ai.organizeGuide({ guideId }).catch((err) => ({ ok: false, reason: err.message }));
+        if (organized?.ok) {
+          substeps = organized.substeps || 0;
+          newPlaceholders = (organized.placeholders || []).map((p) => `[[${p.name}]]`);
+        } else if (!run.cancelled) {
+          problems.push(organized?.reason || 'AI could not organize the guide.');
+        }
+      }
+      if (!run.cancelled && written) {
         this.setAiProgress('guide title');
         if (this.pendingGuideSave) await this.flushGuide();
         const result = await api.ai.fillGuide({ guideId }).catch((err) => ({ ok: false, reason: err.message }));
         if (!run.cancelled && result?.ok) {
           this.guide = result.guide;
-          this.renderAll();
         } else if (!run.cancelled) {
           problems.push(result?.reason || 'AI could not write the guide title.');
         }
@@ -365,12 +379,18 @@ class GuideEditor {
       this.emitMeta();
     }
     if (this.guideId !== guideId) return;
+    // Substeps and placeholders changed steps and numbering: show the guide as saved.
+    await this.reloadAfterOutsideChange();
+    const extras = [
+      substeps ? `made ${substeps} substep${substeps === 1 ? '' : 's'}` : '',
+      newPlaceholders.length ? `added ${newPlaceholders.join(', ')}` : '',
+    ].filter(Boolean).join(' and ');
     if (run.cancelled) {
       this.onToast(`Stopped. AI wrote ${written} of ${queue.length} step${queue.length === 1 ? '' : 's'}.`);
     } else if (problems.length) {
       this.onToast(`AI wrote ${written} of ${queue.length} steps. ${problems[0]}`, { error: true, ms: 6000 });
     } else {
-      this.onToast(`AI wrote the whole guide (${written} step${written === 1 ? '' : 's'}).`);
+      this.onToast(`AI wrote the whole guide (${written} step${written === 1 ? '' : 's'})${extras ? ` and ${extras}` : ''}.`, { ms: 5000 });
     }
   }
 
@@ -416,6 +436,16 @@ class GuideEditor {
     this.pendingGuideSave = false;
     this.setActive(true);
     await this.reload(stepId);
+  }
+
+  /**
+   * Show changes made outside the editor (AI organizing, an AI agent).
+   * Pending edits are saved first, so the user's own unsaved work always wins.
+   */
+  async reloadAfterOutsideChange() {
+    if (this.pendingSave) await this.flushStep();
+    if (this.pendingGuideSave) await this.flushGuide();
+    await this.reload(this.selectedStepId);
   }
 
   async reload(stepId = this.selectedStepId) {

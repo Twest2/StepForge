@@ -7,6 +7,17 @@ const dialogs = window.StepForgeDialogs || {};
 const shortcuts = window.StepForgeShortcuts || {};
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
+
+/** A step's content as a string, ignoring its revision, so two states can be compared. */
+function stepFingerprint(step) {
+  return JSON.stringify(step, (key, value) => {
+    if (key === 'revision') return undefined;
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      return Object.fromEntries(Object.keys(value).sort().map((k) => [k, value[k]]));
+    }
+    return value;
+  });
+}
 const BLOCK_KIND_ORDER = { text: 0, code: 1, table: 2 };
 
 // Which style fields are meaningful for each annotation type, so the
@@ -248,13 +259,14 @@ class GuideEditor {
 
   /** Show an AI-written step without losing edits the user made meanwhile. */
   applyAiStep(saved) {
-    if (!saved || !saved.stepId || !this.stepMap.has(saved.stepId)) return;
+    if (!saved || !saved.stepId || !this.stepMap.has(saved.stepId)) return false;
     // The user is the authority: if they are mid-edit on this step, their
     // pending save wins and the AI text is not pushed into the form.
-    if (this.pendingSave && this.selectedStepId === saved.stepId) return;
+    if (this.pendingSave && this.selectedStepId === saved.stepId) return false;
     this.commitSavedStep(saved);
     this.renderStepList();
     if (this.selectedStepId === saved.stepId) this.renderAll();
+    return true;
   }
 
   async writeStepWithAi(target) {
@@ -271,6 +283,7 @@ class GuideEditor {
     const run = { cancelled: false, progress: '' };
     this.aiRun = run;
     this.emitMeta();
+    const before = clone(step);
     try {
       const result = await api.ai.fillStep({ guideId: this.guideId, stepId: step.stepId, target });
       if (run.cancelled) return;
@@ -278,8 +291,12 @@ class GuideEditor {
         this.onToast(result?.reason || `AI could not write ${what}.`, { error: true });
         return;
       }
-      this.applyAiStep(result.step);
-      this.onToast(`AI wrote ${what}.`);
+      if (this.applyAiStep(result.step)) {
+        this.pushCanvasHistory(this.multiStepRecord([before], [result.step]));
+        this.onToast(`AI wrote ${what}. Press Ctrl+Z to undo.`);
+      } else {
+        this.onToast(`AI wrote ${what}.`);
+      }
     } catch (err) {
       if (!run.cancelled) this.onToast(err.message || `AI could not write ${what}.`, { error: true });
     } finally {
@@ -691,6 +708,7 @@ class GuideEditor {
 
     const bindCheckbox = (node, field) => node.addEventListener('change', () => {
       if (!this.currentStep) return;
+      this.pushCanvasHistory();
       this.currentStep[field] = node.checked;
       this.pendingSave = true;
       this.saveStepDebounced();
@@ -1470,10 +1488,29 @@ class GuideEditor {
     return false;
   }
 
+  /**
+   * Push an undo record. Ctrl+Z pops the newest record and puts the state it
+   * describes back, Ctrl+Y does the reverse; every record is "the state to go
+   * back to", so undo and redo each swap it with the state they replace. Records:
+   *   { step, image?, original? }  one step's fields (and images); the default,
+   *                                taken from the current step when called bare.
+   *   { type: 'delete-step', steps, order }
+   *                                steps removed, with their images and position.
+   *   { type: 'move-steps', order, parents }
+   *                                the guide's step order and each step's parent
+   *                                (stepId -> parentStepId | null); see
+   *                                outlineRecord().
+   *   { type: 'multi-step', steps, after }
+   *                                full clones of several steps, restored by id
+   *                                with no images; `after` is each step's
+   *                                stepFingerprint() right after the edit, to
+   *                                spot later changes. See multiStepRecord().
+   * Typed records do not need a current step.
+   */
   pushCanvasHistory(recordOrLabel = 'change') {
-    if (!this.currentStep) return;
-    const record = recordOrLabel && typeof recordOrLabel === 'object'
-      && (recordOrLabel.step || recordOrLabel.type === 'delete-step')
+    const typed = !!(recordOrLabel && typeof recordOrLabel === 'object' && recordOrLabel.type);
+    if (!typed && !this.currentStep) return;
+    const record = typed || (recordOrLabel && typeof recordOrLabel === 'object' && recordOrLabel.step)
       ? recordOrLabel
       : { step: clone(this.currentStep) };
     this.canvasHistory.push(record);
@@ -1482,14 +1519,92 @@ class GuideEditor {
     this.beforeCanvasSnapshot = null;
   }
 
-  async snapshotCurrentStep(includeImage = false) {
-    if (!this.currentStep) return null;
-    const record = { step: clone(this.currentStep) };
-    if (includeImage && this.currentStep.image) {
-      const image = await this.currentStepImageToBase64(this.currentStep);
+  /** A 'move-steps' record of the guide's step order and parents as they are now. */
+  outlineRecord() {
+    return {
+      type: 'move-steps',
+      order: this.steps.map((s) => s.stepId),
+      parents: Object.fromEntries(this.steps.map((s) => [s.stepId, s.parentStepId || null])),
+    };
+  }
+
+  /**
+   * A 'multi-step' record. `before` are step clones taken before an edit;
+   * `after` are the steps as the edit saved them. Their content lets undo
+   * notice a step that an AI pass or agent changed since, and ask first.
+   */
+  multiStepRecord(before, after = []) {
+    return {
+      type: 'multi-step',
+      steps: before.map((step) => clone(step)),
+      after: Object.fromEntries(after.filter((s) => s && s.stepId).map((s) => [s.stepId, stepFingerprint(s)])),
+    };
+  }
+
+  /** Put a 'move-steps' record's order and parents back. Returns the record for the state it replaced, or null. */
+  async applyOutlineRecord(record) {
+    const now = this.outlineRecord();
+    // Only send parents that differ, so restoring an order never trips over an outline that was already off.
+    const parents = {};
+    for (const [id, parentId] of Object.entries(record.parents || {})) {
+      if (id in now.parents && now.parents[id] !== parentId) parents[id] = parentId;
+    }
+    try {
+      await api.step.reorder({ guideId: this.guideId, order: record.order, parents });
+    } catch (err) {
+      this.onToast(`Could not undo the move: ${err.message || err}`, { error: true });
+      return null;
+    }
+    await this.reload(this.selectedStepId);
+    return now;
+  }
+
+  /**
+   * Put a 'multi-step' record's steps back. Returns the record for the
+   * states it replaced, or null if nothing was restored (the user said no,
+   * or none of the steps exist any more).
+   */
+  async applyMultiStepRecord(record) {
+    // Compare against what is on disk, not what this editor last saw.
+    await this.reload(this.selectedStepId);
+    const targets = record.steps.filter((step) => this.stepMap.has(step.stepId));
+    const stale = targets.filter((step) => {
+      const expected = record.after && record.after[step.stepId];
+      return expected !== undefined && stepFingerprint(this.stepMap.get(step.stepId)) !== expected;
+    });
+    if (stale.length) {
+      const ok = await confirmDialog(
+        `${stale.length === 1 ? 'A step was' : `${stale.length} steps were`} changed since this edit, `
+        + 'perhaps by AI or another app. Undo anyway and overwrite those changes?',
+        { danger: true, okLabel: 'Undo anyway' },
+      );
+      if (!ok) return null;
+    }
+    const replaced = [];
+    const saved = [];
+    try {
+      for (const step of targets) {
+        const current = this.stepMap.get(step.stepId);
+        const restored = clone(step);
+        restored.revision = current.revision; // a restore is a new revision, not an old one
+        replaced.push(clone(current));
+        saved.push(await api.step.save({ guideId: this.guideId, step: restored }));
+      }
+    } catch (err) {
+      this.onToast(`Could not undo every step: ${err.message || err}`, { error: true });
+    }
+    await this.reload(this.selectedStepId);
+    return saved.length ? this.multiStepRecord(replaced.slice(0, saved.length), saved) : null;
+  }
+
+  async snapshotCurrentStep(includeImage = false, target = this.currentStep) {
+    if (!target) return null;
+    const record = { step: clone(target) };
+    if (includeImage && target.image) {
+      const image = await this.currentStepImageToBase64(target);
       if (image) record.image = image;
       // Choose screenshot… replaces the original too, so undo needs it.
-      const original = await this.stepImageToBase64(this.currentStep, 'original');
+      const original = await this.stepImageToBase64(target, 'original');
       if (original) record.original = original;
     }
     return record;
@@ -1529,17 +1644,14 @@ class GuideEditor {
       this.onToast('Nothing to undo.');
       return;
     }
+    if (this.pendingSave) await this.flushStep();
     const previous = this.canvasHistory.pop();
-    if (previous.type === 'delete-step') {
-      await this.restoreDeletedSteps(previous);
-      this.canvasFuture.push(previous);
-      this.renderAll();
+    const current = await this.swapHistoryRecord(previous, 'undo');
+    if (!current) {
+      if (current === null) this.canvasHistory.push(previous);
       return;
     }
-    if (!this.currentStep) return;
-    const current = await this.snapshotCurrentStep(true);
-    if (current) this.canvasFuture.push(current);
-    await this.restoreHistoryRecord(previous);
+    this.canvasFuture.push(current);
     this.renderAll();
   }
 
@@ -1548,18 +1660,36 @@ class GuideEditor {
       this.onToast('Nothing to redo.');
       return;
     }
+    if (this.pendingSave) await this.flushStep();
     const next = this.canvasFuture.pop();
-    if (next.type === 'delete-step') {
-      await this.deleteStepsAgain(next);
-      this.canvasHistory.push(next);
-      this.renderAll();
+    const current = await this.swapHistoryRecord(next, 'redo');
+    if (!current) {
+      if (current === null) this.canvasFuture.push(next);
       return;
     }
-    if (!this.currentStep) return;
-    const current = await this.snapshotCurrentStep(true);
-    if (current) this.canvasHistory.push(current);
-    await this.restoreHistoryRecord(next);
+    this.canvasHistory.push(current);
     this.renderAll();
+  }
+
+  /**
+   * Put `record`'s state back and return a record of the state it replaced, so
+   * the caller can park it on the opposite stack. Returns null when nothing was
+   * restored (the record stays where it was) and undefined when the record was
+   * unusable (it is dropped).
+   */
+  async swapHistoryRecord(record, direction) {
+    if (record.type === 'delete-step') {
+      if (direction === 'undo') await this.restoreDeletedSteps(record);
+      else await this.deleteStepsAgain(record);
+      return record;
+    }
+    if (record.type === 'move-steps') return this.applyOutlineRecord(record);
+    if (record.type === 'multi-step') return this.applyMultiStepRecord(record);
+    const target = this.stepMap.get(record.step && record.step.stepId);
+    if (!target) return undefined;
+    const current = await this.snapshotCurrentStep(true, target);
+    await this.restoreHistoryRecord(record);
+    return current;
   }
 
   async flushStep(step = this.currentStep) {
@@ -1772,6 +1902,7 @@ class GuideEditor {
       return;
     }
 
+    const before = this.outlineRecord();
     step.parentStepId = targetStepId;
     await api.step.save({ guideId: this.guideId, step });
 
@@ -1785,6 +1916,7 @@ class GuideEditor {
     const movedBlock = order.filter((id) => subtreeIds.has(id));
     remaining.splice(insertAt, 0, ...movedBlock);
     await api.step.reorder({ guideId: this.guideId, order: remaining });
+    this.pushCanvasHistory(before);
 
     await this.reload(stepId);
     this.onToast(`“${step.title || 'Untitled step'}” is now a substep of step ${numbers.get(targetStepId)}.`);
@@ -1862,10 +1994,12 @@ class GuideEditor {
     const idx = this.steps.findIndex((s) => s.stepId === step.stepId);
     const nextIdx = idx + delta;
     if (nextIdx < 0 || nextIdx >= this.steps.length) return;
+    const before = this.outlineRecord();
     const order = this.steps.map((s) => s.stepId);
     const [item] = order.splice(idx, 1);
     order.splice(nextIdx, 0, item);
     await api.step.reorder({ guideId: this.guideId, order });
+    this.pushCanvasHistory(before);
     await this.reload(step.stepId);
   }
 
@@ -2011,30 +2145,46 @@ class GuideEditor {
     const source = this.canvas.selected();
     if (!source) return;
     const patch = clone(source.style || {});
+    const before = [];
+    const after = [];
+    const restyle = (step) => {
+      let touched = false;
+      for (const ann of step.annotations || []) {
+        if (ann.type === source.type && ann.id !== source.id) {
+          if (!touched) before.push(clone(step));
+          ann.style = { ...ann.style, ...patch };
+          touched = true;
+        }
+      }
+      return touched;
+    };
     if (scope === 'step') {
       const step = this.currentStep;
-      for (const ann of step.annotations || []) {
-        if (ann.type === source.type && ann.id !== source.id) ann.style = { ...ann.style, ...patch };
-      }
+      restyle(step);
       step.annotations = clone(step.annotations);
-      await this.flushStep(step);
-      this.onToast(`Style applied to all ${source.type} annotations in this step.`);
+      const saved = await this.flushStep(step);
+      if (saved) after.push(saved);
+      const undo = this.pushStyleHistory(before, after);
+      this.onToast(`Style applied to all ${source.type} annotations in this step.${undo}`);
     } else {
       for (const step of this.steps) {
-        let touched = false;
-        for (const ann of step.annotations || []) {
-          if (ann.type === source.type && ann.id !== source.id) {
-            ann.style = { ...ann.style, ...patch };
-            touched = true;
-          }
-        }
+        const touched = restyle(step);
         if (touched || step.stepId === this.currentStep?.stepId) {
-          await api.step.save({ guideId: this.guideId, step });
+          const saved = await api.step.save({ guideId: this.guideId, step });
+          if (touched) after.push(saved);
         }
       }
+      const undo = this.pushStyleHistory(before, after);
       await this.reload(this.selectedStepId);
-      this.onToast(`Style applied to all ${source.type} annotations in the guide.`);
+      this.onToast(`Style applied to all ${source.type} annotations in the guide.${undo}`);
     }
+  }
+
+  /** One undo step for a style applied to several steps. Returns the toast hint, or '' if nothing changed. */
+  pushStyleHistory(before, after) {
+    if (!before.length) return '';
+    this.pushCanvasHistory(this.multiStepRecord(before, after));
+    return ' Press Ctrl+Z to undo.';
   }
 
   async startCaptureSession() {
@@ -2323,6 +2473,28 @@ class GuideEditor {
     this.emitMeta();
   }
 
+  /** Ctrl+V with a copied annotation: add a copy to the current step as one undo step. False if there is nothing to paste. */
+  pasteAnnotation() {
+    const step = this.currentStep;
+    if (!this.annotationClipboard || !step?.image) return false;
+    this.pushCanvasHistory();
+    const copy = clone(this.annotationClipboard);
+    copy.id = `ann-${Date.now().toString(36)}`;
+    // Nudge it only when pasting back into the step it came from, so it
+    // doesn't land exactly on top of the original. Elsewhere it keeps its spot.
+    if (step.stepId === this.annotationClipboardStepId) {
+      copy.x = Math.min(0.92, copy.x + 0.03);
+      copy.y = Math.min(0.92, copy.y + 0.03);
+    }
+    step.annotations = step.annotations || [];
+    step.annotations.push(copy);
+    this.canvas.setAnnotations(step.annotations);
+    this.canvas.select(copy.id);
+    this.pendingSave = true;
+    this.saveStepDebounced();
+    return true;
+  }
+
   onCanvasSelect(ann) {
     this.selectedAnnotationId = ann ? ann.id : null;
     this.renderAnnotationPanel();
@@ -2517,24 +2689,13 @@ class GuideEditor {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c' && this.selectedAnnotationId) {
         e.preventDefault();
         this.annotationClipboard = clone(this.canvas.selected());
+        this.annotationClipboardStepId = this.currentStep?.stepId || null;
         this.onToast('Annotation copied.');
         return;
       }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
         e.preventDefault();
-        if (this.annotationClipboard && this.currentStep?.image) {
-          const copy = clone(this.annotationClipboard);
-          copy.id = `ann-${Date.now().toString(36)}`;
-          copy.x = Math.min(0.92, copy.x + 0.03);
-          copy.y = Math.min(0.92, copy.y + 0.03);
-          this.currentStep.annotations.push(copy);
-          this.canvas.setAnnotations(this.currentStep.annotations);
-          this.canvas.select(copy.id);
-          this.pendingSave = true;
-          this.saveStepDebounced();
-        } else {
-          this.pasteClipboardStep(); // OS clipboard image -> new step
-        }
+        if (!this.pasteAnnotation()) this.pasteClipboardStep(); // OS clipboard image -> new step
         return;
       }
       if ((e.key === 'Delete' || e.key === 'Backspace') && this.selectedAnnotationId) {

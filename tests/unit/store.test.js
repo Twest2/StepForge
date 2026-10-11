@@ -242,3 +242,38 @@ test('guide metadata: optional fields default to empty strings and round-trip vi
   loaded.metadata = 'not an object';
   assert.throws(() => store.saveGuide(loaded), /metadata must be an object/);
 });
+
+test('reorderSteps can re-parent steps in the same call, and refuses an outline that breaks numbering', (t) => {
+  const root = makeTmpDir('reorder-parents');
+  t.after(() => rmrf(root));
+  const store = new GuideStore(root);
+  const guide = store.createGuide({ title: 'Outline test' });
+  const a = store.addStep(guide.guideId, { kind: 'empty', title: 'A' });
+  const a1 = store.addStep(guide.guideId, { kind: 'empty', title: 'A1', parentStepId: a.stepId });
+  const b = store.addStep(guide.guideId, { kind: 'empty', title: 'B' });
+  const id = guide.guideId;
+  const parentOf = (stepId) => store.getStep(id, stepId).parentStepId;
+
+  // A move that would orphan A1 is refused whole: neither order nor parents change.
+  assert.throws(() => store.reorderSteps(id, [a1.stepId, a.stepId, b.stepId], { [a1.stepId]: a.stepId }), /numbering/);
+  assert.throws(() => store.reorderSteps(id, [b.stepId, a1.stepId, a.stepId], { [a1.stepId]: a.stepId }), /numbering/);
+  assert.deepEqual(store.getGuide(id).stepsOrder, [a.stepId, a1.stepId, b.stepId]);
+  assert.equal(parentOf(a1.stepId), a.stepId);
+
+  // Moving B first and the pair after it, with A1 re-parented, is a valid outline.
+  const revision = store.getStep(id, a1.stepId).revision;
+  store.reorderSteps(id, [b.stepId, a.stepId, a1.stepId], { [a1.stepId]: a.stepId });
+  assert.deepEqual(store.getGuide(id).stepsOrder, [b.stepId, a.stepId, a1.stepId]);
+  assert.equal(store.getStep(id, a1.stepId).revision, revision, 'unchanged parents are not rewritten');
+
+  // Nest and un-nest together with the order.
+  store.reorderSteps(id, [b.stepId, a.stepId, a1.stepId], { [a.stepId]: b.stepId, [a1.stepId]: null });
+  assert.equal(parentOf(a.stepId), b.stepId);
+  assert.equal(parentOf(a1.stepId), null);
+  assert.ok(store.getStep(id, a.stepId).revision > 0);
+
+  // Unknown steps in `parents` are refused; with no parents the old behavior holds.
+  assert.throws(() => store.reorderSteps(id, [a.stepId, b.stepId, a1.stepId], { 'step-bogus': null }));
+  store.reorderSteps(id, [a.stepId, b.stepId, a1.stepId]);
+  assert.deepEqual(store.getGuide(id).stepsOrder, [a.stepId, b.stepId, a1.stepId]);
+});

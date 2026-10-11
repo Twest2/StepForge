@@ -1322,7 +1322,7 @@ const SHORTCUTS = [
     ['PageUp / PageDown', 'Previous / next step'],
     ['Alt+↑ / Alt+↓', 'Move step up / down'],
     ['Ctrl+Delete', 'Delete current step'],
-    ['Ctrl+Z / Ctrl+Shift+Z', 'Undo / redo (including step deletion)'],
+    ['Ctrl+Z / Ctrl+Shift+Z', 'Undo / redo (including step moves, deleting steps and AI writes)'],
     ['Ctrl+V', 'Paste annotation, or clipboard image as new step'],
   ]],
   ['Canvas tools', [

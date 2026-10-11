@@ -12,6 +12,7 @@ const {
   normalizeGuide, normalizeStep,
 } = require('./schema');
 const { sanitizeHtml } = require('./sanitize');
+const { isValidOutline } = require('./step-outline');
 
 /**
  * Thrown by revision-aware saves when the on-disk revision no longer matches
@@ -380,11 +381,37 @@ class GuideStore {
     return restored;
   }
 
-  reorderSteps(guideId, newOrder) {
+  /**
+   * Put the steps in `newOrder`. `parents` (optional, { stepId: parentStepId | null })
+   * also re-parents the steps it names, in the same call; the resulting outline
+   * must read top to bottom (isValidOutline) or nothing is changed. Without
+   * `parents` only the order changes and the outline is not checked.
+   */
+  reorderSteps(guideId, newOrder, parents = null) {
     const guide = this.getGuide(guideId);
     const current = new Set(guide.stepsOrder);
     if (newOrder.length !== guide.stepsOrder.length || !newOrder.every((id) => current.has(id))) {
       throw new Error('reorderSteps: new order must contain exactly the existing steps');
+    }
+    const changes = [];
+    if (parents && Object.keys(parents).length) {
+      const steps = this.listSteps(guideId);
+      const parentOf = new Map();
+      for (const id of newOrder) parentOf.set(id, steps.has(id) ? steps.get(id).parentStepId || null : null);
+      for (const [id, parentId] of Object.entries(parents)) {
+        if (!parentOf.has(id)) throw new Error(`reorderSteps: unknown step ${id} in parents`);
+        if ((parentId || null) !== parentOf.get(id)) changes.push([id, parentId || null]);
+        parentOf.set(id, parentId || null);
+      }
+      if (!isValidOutline(newOrder, parentOf)) {
+        throw new Error('reorderSteps: that order would break the step numbering');
+      }
+    }
+    for (const [id, parentId] of changes) {
+      const step = this.getStep(guideId, id);
+      step.parentStepId = parentId;
+      step.revision = (Number.isInteger(step.revision) ? step.revision : 0) + 1;
+      writeJsonSync(path.join(this.stepDir(guideId, id), 'step.json'), step);
     }
     guide.stepsOrder = [...newOrder];
     return this.saveGuide(guide);

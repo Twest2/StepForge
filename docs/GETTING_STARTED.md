@@ -151,6 +151,12 @@ Each format has options (page size, table of contents, image width, and so
 on). Save your preferred options as a **template** so every guide exports the
 same way. Templates can be shared with teammates as `.sfglt` files.
 
+Exported screenshots get alt text built from the step title (for example
+"Screenshot for step 3: Click Save") in the HTML, Word, PowerPoint and
+Confluence formats, so screen readers announce more than a step number. PDFs
+carry the guide title, and the author if you set one, as their document
+properties. They are not tagged PDFs.
+
 **Placeholders** keep repeated text consistent. Define one in
 **Settings → Placeholders** (for example `Product` → `Admin Portal`) and type
 `[[Product]]` in any title or description. It's replaced when you export.

@@ -263,7 +263,10 @@ class GuideEditor {
     // The user is the authority: if they are mid-edit on this step, their
     // pending save wins and the AI text is not pushed into the form.
     if (this.pendingSave && this.selectedStepId === saved.stepId) return false;
-    this.commitSavedStep(saved);
+    // AI may have rewritten the blocks, so take its arrays; renderAll below
+    // rebuilds the block cards. Keeping the old ones showed stale blocks and
+    // wrote them back over the AI's on the next save.
+    this.commitSavedStep(saved, { replaceBlocks: true });
     this.renderStepList();
     if (this.selectedStepId === saved.stepId) this.renderAll();
     return true;
@@ -1549,19 +1552,34 @@ class GuideEditor {
     };
   }
 
-  /** Put a 'move-steps' record's order and parents back. Returns the record for the state it replaced, or null. */
+  /**
+   * Put a 'move-steps' record's order and parents back. Returns the record for
+   * the state it replaced, or undefined (the record is dropped) if it could
+   * not be restored. Steps added since the move (a live capture, a paste) stay
+   * just before the step they sit above now, or last; deleted ones are skipped.
+   */
   async applyOutlineRecord(record) {
     const now = this.outlineRecord();
+    const known = new Set(now.order);
+    const order = record.order.filter((id) => known.has(id));
+    const listed = new Set(order);
+    for (let i = now.order.length - 1; i >= 0; i--) {
+      const id = now.order[i];
+      if (listed.has(id)) continue;
+      const next = now.order.slice(i + 1).find((later) => listed.has(later));
+      order.splice(next ? order.indexOf(next) : order.length, 0, id);
+      listed.add(id);
+    }
     // Only send parents that differ, so restoring an order never trips over an outline that was already off.
     const parents = {};
     for (const [id, parentId] of Object.entries(record.parents || {})) {
       if (id in now.parents && now.parents[id] !== parentId) parents[id] = parentId;
     }
     try {
-      await api.step.reorder({ guideId: this.guideId, order: record.order, parents });
+      await api.step.reorder({ guideId: this.guideId, order, parents });
     } catch (err) {
       this.onToast(`Could not undo the move: ${err.message || err}`, { error: true });
-      return null;
+      return undefined;
     }
     await this.reload(this.selectedStepId);
     return now;
@@ -1733,7 +1751,7 @@ class GuideEditor {
     return committed;
   }
 
-  commitSavedStep(saved) {
+  commitSavedStep(saved, { replaceBlocks = false } = {}) {
     if (!saved || !saved.stepId) return saved;
     const existing = this.stepMap.get(saved.stepId);
     if (!existing || existing === saved) {
@@ -1744,8 +1762,9 @@ class GuideEditor {
     }
 
     // Keep the live block arrays so block-card closures keep pointing at the
-    // same objects after the backend returns a fresh saved step.
-    const preservedBlocks = {
+    // same objects after the backend returns a fresh saved step. A caller
+    // that re-renders the blocks (an AI write) takes the saved ones instead.
+    const preservedBlocks = replaceBlocks ? {} : {
       textBlocks: existing.textBlocks,
       codeBlocks: existing.codeBlocks,
       tableBlocks: existing.tableBlocks,

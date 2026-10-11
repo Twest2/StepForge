@@ -277,3 +277,23 @@ test('reorderSteps can re-parent steps in the same call, and refuses an outline 
   store.reorderSteps(id, [a.stepId, b.stepId, a1.stepId]);
   assert.deepEqual(store.getGuide(id).stepsOrder, [a.stepId, b.stepId, a1.stepId]);
 });
+
+test('reorderSteps checks the outline whenever parents is passed, even empty, unless it was already broken', (t) => {
+  const root = makeTmpDir('reorder-empty-parents');
+  t.after(() => rmrf(root));
+  const store = new GuideStore(root);
+  const guide = store.createGuide({ title: 'Outline test' });
+  const id = guide.guideId;
+  const a = store.addStep(id, { kind: 'empty', title: 'A' });
+  const a1 = store.addStep(id, { kind: 'empty', title: 'A1', parentStepId: a.stepId });
+  const b = store.addStep(id, { kind: 'empty', title: 'B' });
+
+  // An empty map is still a checked move: putting A1 above A would orphan it.
+  assert.throws(() => store.reorderSteps(id, [a1.stepId, a.stepId, b.stepId], {}), /numbering/);
+  assert.deepEqual(store.getGuide(id).stepsOrder, [a.stepId, a1.stepId, b.stepId]);
+
+  // A guide an old move already broke can still be reordered (and so undone).
+  store.reorderSteps(id, [b.stepId, a1.stepId, a.stepId]);
+  store.reorderSteps(id, [a1.stepId, b.stepId, a.stepId], {});
+  assert.deepEqual(store.getGuide(id).stepsOrder, [a1.stepId, b.stepId, a.stepId]);
+});

@@ -389,6 +389,34 @@ function isDirectiveTitle(text) {
   return ACTION_PREFIXES.some((prefix) => lower.startsWith(prefix));
 }
 
+// Mouse buttons arrive as 'left'/'right'/'middle'/'x1' from the Windows hook and
+// as 'button-1'..'button-N' (X11 numbering) on Linux; 'mouse' means unknown.
+function normalizeMouseButton(button) {
+  const raw = normalizeWhitespace(button || '').toLowerCase();
+  if (!raw || raw === 'mouse' || raw === 'left' || raw === 'button-1') return 'left';
+  if (raw === 'right' || raw === 'button-3') return 'right';
+  if (raw === 'middle' || raw === 'button-2') return 'middle';
+  return 'other';
+}
+
+// What kind of click a capture was: 'right', 'middle', 'double' (a left button
+// pressed twice inside the debounce window), 'left' for any other click, or ''
+// when the capture was not a click. A right/middle button keeps its own name
+// even when pressed twice.
+function clickKindOf(clickMeta) {
+  if (!clickMeta || clickMeta.button == null) return '';
+  const button = normalizeMouseButton(clickMeta.button);
+  if (button === 'right' || button === 'middle') return button;
+  return button === 'left' && clickMeta.double ? 'double' : 'left';
+}
+
+const CLICK_VERBS = { right: 'Right-click', middle: 'Middle-click', double: 'Double-click' };
+
+// "Click"/"Select" for a plain left click, "Right-click"/... otherwise.
+function clickVerb(clickKind, plainVerb = 'Click') {
+  return CLICK_VERBS[clickKind] || plainVerb;
+}
+
 function verbForElementRole(role) {
   const clean = normalizeWhitespace(role).toLowerCase();
   if (!clean) return null;
@@ -407,7 +435,7 @@ function verbForElementRole(role) {
   return null;
 }
 
-function formatCaptureTitle(text, { source = 'ocr', metadata = {} } = {}) {
+function formatCaptureTitle(text, { source = 'ocr', metadata = {}, clickKind = '' } = {}) {
   const clean = displayText(text);
   if (!clean) return '';
 
@@ -417,7 +445,8 @@ function formatCaptureTitle(text, { source = 'ocr', metadata = {} } = {}) {
 
   const roleVerb = (source === 'ocr' || source === 'element') ? verbForElementRole(metadata.elementRole) : null;
   if (roleVerb) {
-    return `${roleVerb} ${sentenceCase(clean)}`;
+    // "Search for" describes the search, not the mouse button, so it is kept.
+    return `${roleVerb === 'Search for' ? roleVerb : clickVerb(clickKind, roleVerb)} ${sentenceCase(clean)}`;
   }
 
   if (source === 'window' || source === 'app') {
@@ -425,7 +454,7 @@ function formatCaptureTitle(text, { source = 'ocr', metadata = {} } = {}) {
   }
 
   if (source === 'ocr' || source === 'element') {
-    return isShortUiLabel(clean) ? `Click ${sentenceCase(clean)}` : sentenceCase(clean);
+    return isShortUiLabel(clean) ? `${clickVerb(clickKind)} ${sentenceCase(clean)}` : sentenceCase(clean);
   }
 
   return sentenceCase(clean);
@@ -453,7 +482,7 @@ function isPasswordField(metadata = {}) {
       /password|passcode|\bpin\b/i.test(metadata.elementLabel || ''));
 }
 
-function buildCaptureTitle({ mode = 'fullscreen', metadata = {}, ocrText = '', recentTyped = '', recentShortcut = '' } = {}) {
+function buildCaptureTitle({ mode = 'fullscreen', metadata = {}, ocrText = '', recentTyped = '', recentShortcut = '', clickKind = '' } = {}) {
   const app = cleanAppName(metadata.appName);
 
   // 1. Keyboard shortcut → most reliable signal for "what action did the user take".
@@ -468,11 +497,17 @@ function buildCaptureTitle({ mode = 'fullscreen', metadata = {}, ocrText = '', r
 
   // Name the field, never its existing value. A clicked field can contain text
   // from an earlier action (or credentials); that is not evidence of typing.
+  // A right-, middle- or double-click on a field opens a menu or selects text
+  // rather than entering anything, so it is named for the click instead.
+  const clicked = CLICK_VERBS[clickKind];
   if (isPasswordField(metadata)) {
-    return qualify('Enter password');
+    return qualify(clicked ? `${clicked} password field` : 'Enter password');
   }
   const isInput = /^(edit|text field|input|field|combo box|textbox|text box)$/.test(role);
-  if (isInput) return qualify(label ? `Enter ${label}` : 'Enter text');
+  if (isInput) {
+    if (clicked) return qualify(`${clicked} ${label || 'text field'}`);
+    return qualify(label ? `Enter ${label}` : 'Enter text');
+  }
 
   // Close only the target established by accessible ancestry. A generic Close
   // button in a web dialog must not be described as closing the browser.
@@ -492,11 +527,11 @@ function buildCaptureTitle({ mode = 'fullscreen', metadata = {}, ocrText = '', r
   // crop that can include neighboring buttons. Preserve names containing pipes.
   if (label && !/^(window|pane|document|group|custom)$/.test(role) && !isPathOrUrlLike(label) &&
       (verbForElementRole(role) || isUsefulTitleCandidate(label, { source: 'element' }))) {
-    return qualify(formatCaptureTitle(label, { source: 'element', metadata }));
+    return qualify(formatCaptureTitle(label, { source: 'element', metadata, clickKind }));
   }
 
   const ocrPhrase = pickBestOcrPhrase(ocrText);
-  if (ocrPhrase) return qualify(formatCaptureTitle(ocrPhrase, { source: 'ocr', metadata }));
+  if (ocrPhrase) return qualify(formatCaptureTitle(ocrPhrase, { source: 'ocr', metadata, clickKind }));
 
   // 6. Window title (browser suffix + app name stripped) → page title or search query.
   const strippedWindowTitle = stripBrowserNameSuffix(metadata.windowTitle || '', metadata.appName);
@@ -1074,6 +1109,8 @@ function applyGuidePatch(guide, patch, { placeholders = [] } = {}) {
 
 module.exports = {
   AI_TARGETS,
+  normalizeMouseButton,
+  clickKindOf,
   DEFAULT_CAPTURE_TITLES,
   buildCaptureTitle,
   isPasswordField,

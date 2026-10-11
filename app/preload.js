@@ -50,6 +50,7 @@ const api = {
     fromClipboard: invoke('step:fromClipboard'),
     importImage: invoke('step:importImage'),
     chooseImage: invoke('step:chooseImage'),
+    retake: invoke('step:retake'),
     setImages: invoke('step:setImages'),
   },
   search: {

@@ -818,6 +818,10 @@ fieldset legend {
 .qa-item.active {
   background: var(--panel-2);
 }
+.fr-results { max-height: 320px; }
+.fr-item { align-items: center; }
+.quick-actions input[type=checkbox] { width: auto; padding: 0; }
+.fr-item mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: inherit; border-radius: 3px; }
 .qa-item .kind {
   flex: none;
   margin-top: 2px;

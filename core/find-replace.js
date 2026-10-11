@@ -221,8 +221,6 @@ function applyReplacements(steps, matches, replacement) {
       result.stale.push(match && match.id);
       continue;
     }
-    const reason = refusalReason(match, text);
-    if (reason) { result.refused.push({ id: match.id, reason }); continue; }
     if (!groups.has(match.stepId)) groups.set(match.stepId, new Map());
     const fields = groups.get(match.stepId);
     const key = match.path.join('.');
@@ -240,15 +238,18 @@ function applyReplacements(steps, matches, replacement) {
       const field = known.get(key);
       const stale = (m) => result.stale.push(m.id);
       if (!field) { group.matches.forEach(stale); continue; }
+      // Judge the replacement by the field it really lands in, not the kind the caller sent.
+      const reason = refusalReason(field, text);
+      if (reason) { group.matches.forEach((m) => result.refused.push({ id: m.id, reason })); continue; }
       const { parts, nodes } = fieldNodes(getAt(step, field.path), field.html);
 
       // Check each match against the text it points at; apply the rest per node.
       const edits = new Map(); // node number -> [{ start, end }]
-      for (const m of [...group.matches].sort((a, b) => a.node - b.node || a.start - b.start)) {
+      for (const m of [...group.matches].sort((a, b) => (a.node - b.node) || (a.start - b.start) || 0)) {
         const node = nodes[m.node];
         const list = edits.get(m.node) || [];
         const last = list[list.length - 1];
-        if (!node || !Number.isInteger(m.start) || !Number.isInteger(m.end)
+        if (!Number.isInteger(m.node) || !node || !Number.isInteger(m.start) || !Number.isInteger(m.end)
           || node.text.slice(m.start, m.end) !== m.matched || (last && m.start < last.end)
           || protectedSpans(node.text).some(([s, e]) => m.start < e && m.end > s)) {
           stale(m);
@@ -287,9 +288,28 @@ function applyReplacements(steps, matches, replacement) {
   return result;
 }
 
+const isIndex = (n) => Number.isInteger(n) && n >= 0 && n <= 10_000_000;
+
+/**
+ * True when `m` has the shape of a match findMatches() made, as far as
+ * applyReplacements() reads it: for checking matches that come back over IPC.
+ * The path must also name a real field of the step, which applyReplacements()
+ * checks itself; here it only has to be short and made of names and indexes.
+ * main.js also checks stepId with its usual id rule.
+ */
+function isMatchArg(m) {
+  return Boolean(m) && typeof m === 'object' && !Array.isArray(m)
+    && typeof m.stepId === 'string' && m.stepId.length >= 1 && m.stepId.length <= 128
+    && (m.id === undefined || (typeof m.id === 'string' && m.id.length <= 2000))
+    && typeof m.matched === 'string' && m.matched.length <= 4000
+    && Array.isArray(m.path) && m.path.length >= 1 && m.path.length <= 5
+    && m.path.every((p) => (typeof p === 'string' && /^[A-Za-z]{1,32}$/.test(p)) || isIndex(p))
+    && isIndex(m.node) && isIndex(m.start) && isIndex(m.end) && m.start <= m.end;
+}
+
 /** Escape replacement text for an HTML text node (quotes are fine there). */
 function escapeText(text) {
   return escapeHtml(text).replace(/&quot;/g, '"');
 }
 
-module.exports = { findMatches, applyReplacements, refusalReason, buildPattern };
+module.exports = { findMatches, applyReplacements, refusalReason, buildPattern, isMatchArg };

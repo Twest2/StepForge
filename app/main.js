@@ -25,7 +25,7 @@ const { TransferMeter } = require('../core/transfer-meter');
 const { CloudSync } = require('../core/cloud-sync');
 const { createCredentialVault } = require('./credential-vault');
 const { SearchIndex } = require('../core/search');
-const { findMatches, applyReplacements } = require('../core/find-replace');
+const { findMatches, applyReplacements, isMatchArg } = require('../core/find-replace');
 const { TemplateManager, FORMATS, FORMAT_LABELS } = require('../core/templates');
 const { buildRenderAst } = require('../core/renderast');
 const { AI_TARGETS } = require('../core/text-intel');
@@ -894,8 +894,7 @@ function setupIpc() {
     applyReplacements(orderedSteps(guideId), matches, replacement)
   ), {
     validate: (a) => c.id(a.guideId) && c.optionalString(a.replacement, 1000)
-      && Array.isArray(a.matches) && a.matches.length <= FIND_LIMIT
-      && a.matches.every((m) => m && typeof m === 'object' && Array.isArray(m.path)),
+      && Array.isArray(a.matches) && a.matches.length <= FIND_LIMIT && a.matches.every((m) => isMatchArg(m) && c.id(m.stepId)),
   });
 
   // Cloud access is confined to the main process; tokens never enter IPC.

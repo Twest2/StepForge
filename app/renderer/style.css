@@ -1221,6 +1221,8 @@ fieldset legend {
 .cloud-chips { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .cloud-chip { padding: 1px 7px; border-radius: 999px; font-size: 11px; color: var(--muted); background: var(--panel-2); }
 .cloud-chip.local { color: var(--accent-strong); background: color-mix(in srgb, var(--accent) 12%, var(--panel-solid)); }
+.cloud-chip.stale { border: 0; font: inherit; font-size: 11px; cursor: pointer; color: var(--text); background: var(--warn); }
+.cloud-chip.stale:hover { text-decoration: underline; }
 .cloud-empty { padding: 10px 4px; text-align: center; }
 
 .cloud-versions { position: relative; margin: 8px 0 2px 42px; padding-left: 14px; display: flex; flex-direction: column; gap: 6px; }

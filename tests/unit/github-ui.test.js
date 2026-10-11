@@ -112,6 +112,7 @@ function fakeApi(github = {}) {
       published: async () => [],
       publish: async (args) => { calls.push(['publish', args]); return { slug: 'a'.repeat(24), url: 'https://octo.github.io/guides/g/aaa/', expiresAt: '2026-10-06T12:00:00Z', pagesReady: true }; },
       unpublish: async (args) => { calls.push(['unpublish', args]); return []; },
+      extend: async (args) => { calls.push(['extend', args]); return []; },
       waitUntilLive: async (args) => { calls.push(['waitUntilLive', args]); return { live: true }; },
       copy: async (args) => { calls.push(['copy', args]); return { ok: true }; },
       connect: async () => { calls.push(['connect']); return { connected: true, login: 'octo' }; },
@@ -282,6 +283,60 @@ test('publishing an already shared guide offers removal', async () => {
   const modal = u.root.children.at(-1);
   assert.match(modal.textContent, /already shared/);
   assert.equal(u.visible(u.find(modal, 'Remove from the web')), true);
+});
+
+test('the Publish dialog says when a shared guide has changed since', async () => {
+  const u = ui();
+  const api = fakeApi({ connected: true, login: 'octo', repo: 'octo/guides', pagesReady: true });
+  api.github.published = async () => [{ slug: 'b'.repeat(24), guideId: 'guide-1', title: 'Reset', publishedAt: '2026-09-30T00:00:00Z', expiresAt: '2026-10-07T00:00:00Z', url: 'https://x/' }];
+  api.library = { list: async () => ({ guides: [{ guideId: 'guide-1', updatedAt: '2026-10-02T00:00:00Z' }] }) };
+  void u.context.showPublishToWebDialog({ api, guideId: 'guide-1', guideTitle: 'Reset' });
+  await settle();
+  await settle();
+  assert.match(u.root.children.at(-1).textContent, /The guide has changed since you shared it\./);
+
+  const quiet = ui();
+  api.library = { list: async () => ({ guides: [{ guideId: 'guide-1', updatedAt: '2026-09-29T00:00:00Z' }] }) };
+  void quiet.context.showPublishToWebDialog({ api, guideId: 'guide-1', guideTitle: 'Reset' });
+  await settle();
+  await settle();
+  assert.doesNotMatch(quiet.root.children.at(-1).textContent, /changed since/);
+});
+
+test('the shared list marks edited guides, opens Publish from the marker, and extends a link', async () => {
+  const u = ui();
+  const api = fakeApi({ connected: true, login: 'octo', repo: 'octo/guides', pagesReady: true });
+  const entry = (slug, guideId, title) => ({ slug: slug.repeat(24), guideId, title, publishedAt: '2026-09-30T00:00:00Z', expiresAt: '2026-10-07T00:00:00Z', url: `https://x/${slug}/` });
+  api.github.published = async () => [entry('a', 'edited', 'Edited guide'), entry('b', 'same', 'Same guide'), entry('c', 'gone', 'Deleted guide')];
+  api.library = { list: async () => ({ guides: [
+    { guideId: 'edited', updatedAt: '2026-10-02T00:00:00Z' },
+    { guideId: 'same', updatedAt: '2026-09-29T00:00:00Z' },
+  ] }) };
+  const menus = [];
+  u.context.contextMenu = (x, y, items) => { menus.push(items); };
+  const panel = u.context.makeGitHubSettings(api);
+  await settle();
+  await settle();
+  const markers = u.all(panel.node).filter((n) => n.tag === 'button' && n.textContent === 'Edited since you shared it');
+  assert.equal(markers.length, 1, 'only the guide that changed after publishing is marked');
+
+  // The marker opens the ordinary Publish dialog, which still needs the consent checkbox.
+  u.click(markers[0]);
+  await settle();
+  await settle();
+  const modal = u.root.children.at(-1);
+  assert.match(modal.textContent, /Publish to the web|already shared/);
+  const publish = u.find(modal, 'Publish');
+  assert.equal(publish.disabled, true, 'nothing is published until the person ticks the public-content box');
+  assert.deepEqual(api.calls.filter(([name]) => name === 'publish'), []);
+
+  const extend = u.all(panel.node).filter((n) => n.tag === 'button' && n.textContent === 'Extend');
+  assert.equal(extend.length, 3);
+  u.click(extend[1]);
+  assert.deepEqual([...menus[0].map((item) => item.label)], ['Keep online for 1 day from now', 'Keep online for 7 days from now', 'Keep online for 30 days from now']);
+  await menus[0][2].action();
+  assert.deepEqual(JSON.parse(JSON.stringify(api.calls.filter(([name]) => name === 'extend'))), [['extend', { slug: 'b'.repeat(24), days: 30 }]]);
+  panel.dispose();
 });
 
 test('publishing before GitHub is set up points to Settings → Accounts', async () => {

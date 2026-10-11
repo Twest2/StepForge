@@ -1257,8 +1257,11 @@ function setupIpc() {
   }, { validate: (a) => a.mode === undefined || c.oneOf(a.mode, ['copy', 'linked']) });
   // archive:peek was removed: nothing in the renderer used it, and it let a
   // compromised renderer read arbitrary local archives by path.
-  h('archive:saveLinked', ({ guideId, force }) => saveLinkedGuide(store, guideId, { force: Boolean(force) }),
-    { validate: (a) => c.id(a.guideId) });
+  h('archive:saveLinked', async ({ guideId, force }) => {
+    const result = await saveLinkedGuide(store, guideId, { force: Boolean(force) });
+    if (result.merged) reindex(guideId); // the merge changed the local guide
+    return result;
+  }, { validate: (a) => c.id(a.guideId) });
 
   // snapshots
   h('snapshots:list', ({ guideId }) => listSnapshots(store, guideId),

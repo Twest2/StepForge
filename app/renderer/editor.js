@@ -1654,13 +1654,23 @@ class GuideEditor {
       const result = await api.archive.saveLinked({ guideId: this.guideId, force: false });
       if (result.saved) {
         this.guide.linkedSource.lastSavedAt = new Date().toISOString();
-        this.onToast('Saved and synced to linked archive.');
+        await this.afterLinkedSave(result, 'Saved and synced to linked archive.');
       } else {
         this.onToast('Saved locally, but the linked archive is locked by another session.', { error: true });
       }
       return;
     }
     this.onToast('Saved.');
+  }
+
+  /** Toast a linked save. When it merged another session's changes, the guide on screen is reloaded. */
+  async afterLinkedSave(result, message) {
+    if (!result.merged) return this.onToast(message);
+    await this.reload();
+    const conflicts = result.conflicts
+      ? ` ${result.conflicts} ${result.conflicts === 1 ? 'conflict was' : 'conflicts were'} settled in favor of the most recent edit.`
+      : '';
+    this.onToast(`${message} Merged changes from another session.${conflicts}`);
   }
 
   async createSnapshot() {
@@ -2178,12 +2188,12 @@ class GuideEditor {
       lock: locked ? { acquired: false } : { acquired: true },
       onSave: async () => {
         const result = await api.archive.saveLinked({ guideId: this.guideId, force: false });
-        if (result.saved) this.onToast('Linked archive saved.');
+        if (result.saved) await this.afterLinkedSave(result, 'Linked archive saved.');
         else this.onToast('Could not save linked archive.', { error: true });
       },
       onForceSave: async () => {
         const result = await api.archive.saveLinked({ guideId: this.guideId, force: true });
-        if (result.saved) this.onToast('Linked archive force-saved.');
+        if (result.saved) await this.afterLinkedSave(result, 'Linked archive force-saved.');
         else this.onToast('Could not save linked archive.', { error: true });
       },
       onOpenArchive: async () => {

@@ -2069,8 +2069,9 @@ public static class SFHook {
     // captured bounds (GNOME crops to the focused window and sets them).
     const markable = mode !== 'window' || Boolean(frame.captureBounds);
     if (cursor && markable && this.settings.get('capture.clickMarker')) {
-      const fx = (cursor.x - frame.display.bounds.x) / frame.display.bounds.width;
-      const fy = (cursor.y - frame.display.bounds.y) / frame.display.bounds.height;
+      const bounds = frame.captureBounds || frame.display.bounds;
+      const fx = (cursor.x - bounds.x) / bounds.width;
+      const fy = (cursor.y - bounds.y) / bounds.height;
       if (fx >= 0 && fx <= 1 && fy >= 0 && fy <= 1) {
         const d = 0.035;
         annotations.push({

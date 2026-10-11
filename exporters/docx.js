@@ -48,18 +48,18 @@ function run(text, { bold = false, size = 22, font = '', color = '' } = {}) {
   ).join('');
 }
 
-function drawing(relId, widthPx, heightPx, maxWidthTwips) {
+function drawing(relId, widthPx, heightPx, maxWidthTwips, alt) {
   // scale to maxWidth (twips -> px at 96dpi: twips/15)
   const maxWpx = maxWidthTwips / 15;
   let w = widthPx, h = heightPx;
   if (w > maxWpx) { h = Math.round((h * maxWpx) / w); w = Math.round(maxWpx); }
   const cx = Math.round(w * EMU_PER_PX), cy = Math.round(h * EMU_PER_PX);
   return `<w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0">` +
-    `<wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="${relId}" name="Screenshot ${relId}"/>` +
+    `<wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="${relId}" name="Screenshot ${relId}" descr="${escapeXml(alt)}"/>` +
     `<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">` +
     `<a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">` +
     `<pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">` +
-    `<pic:nvPicPr><pic:cNvPr id="${relId}" name="img${relId}"/><pic:cNvPicPr/></pic:nvPicPr>` +
+    `<pic:nvPicPr><pic:cNvPr id="${relId}" name="img${relId}" descr="${escapeXml(alt)}"/><pic:cNvPicPr/></pic:nvPicPr>` +
     `<pic:blipFill><a:blip r:embed="rId${relId}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>` +
     `<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm>` +
     `<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>` +
@@ -302,7 +302,7 @@ function exportDocx(ast, outDir, template = {}) {
       const name = `image${relCounter}.png`;
       media.push({ name, data: encodePng(img) });
       rels.push(`<Relationship Id="rId${relId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${name}"/>`);
-      body.push(p(drawing(relId, img.width, img.height, tpl.imageWidthTwips)));
+      body.push(p(drawing(relId, img.width, img.height, tpl.imageWidthTwips, step.altText)));
       stepImageCount += 1;
     }
 

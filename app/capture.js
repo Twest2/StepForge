@@ -15,7 +15,7 @@ const {
   DEFAULT_START_SLACK_MS,
 } = require('./click-frames');
 const { physicalToDip } = require('./coords');
-const { DEFAULT_CAPTURE_TITLES } = require('../core/text-intel');
+const { DEFAULT_CAPTURE_TITLES, normalizeMouseButton } = require('../core/text-intel');
 
 /**
  * Capture service: full-screen, active-window, and region capture, plus a
@@ -54,6 +54,9 @@ const { DEFAULT_CAPTURE_TITLES } = require('../core/text-intel');
 // each register. Tunable via capture.clickDebounceMs; this is only the
 // default when the setting is absent.
 const DEFAULT_CLICK_DEBOUNCE_MS = 200;
+// A same-button press this soon after an accepted click is one press seen twice,
+// not a double-click (people cannot click twice in under ~20 ms).
+const MIN_DOUBLE_CLICK_GAP_MS = 20;
 // How long a Linux raw button event waits for its regular twin (the
 // representation that carries root coordinates) before firing without them.
 const LINUX_CLICK_TWIN_MS = 25;
@@ -244,6 +247,7 @@ class CaptureService {
     this.recentFrames = [];
     this.shooting = false;
     this.lastAcceptedClickByButton = new Map();
+    this.lastClickMetaByButton = new Map();
     this.streamBackend = null;
     this.streamBackendStarting = false;
     this.captureGen = 0; // bumped on stop to invalidate in-flight backend starts
@@ -1573,6 +1577,7 @@ public static class SFHook {
     this.linuxEvent = null;
     this.discardPendingRawClick();
     this.lastAcceptedClickByButton.clear();
+    this.lastClickMetaByButton.clear();
   }
 
   /**
@@ -1833,7 +1838,10 @@ public static class SFHook {
     return raw != null && Number.isFinite(v) && v >= 0 ? v : DEFAULT_CLICK_DEBOUNCE_MS;
   }
 
-  onOsClick(at = Date.now(), osPoint = null, button = 'mouse') {
+  onOsClick(at = Date.now(), osPoint = null, rawButton = 'mouse') {
+    // Windows says 'right', Linux says 'button-3'; everything downstream uses
+    // one vocabulary (left / right / middle / other).
+    const button = normalizeMouseButton(rawButton);
     if (!this.session || this.session.paused) return;
     // Recording isn't live until the window is hidden and the buffer primed
     // (see armRecording). Clicks during warmup land on the still-visible app
@@ -1867,7 +1875,7 @@ public static class SFHook {
     this.pendingClickOsPoint = osPoint && Number.isFinite(osPoint.x) && Number.isFinite(osPoint.y)
       ? { x: osPoint.x, y: osPoint.y }
       : null;
-    this.enqueueClickCapture(clickPos, clickAt, button || 'mouse');
+    this.enqueueClickCapture(clickPos, clickAt, button);
   }
 
   /**
@@ -1877,14 +1885,40 @@ public static class SFHook {
    * clicks, never from dropped ones, and a run of fast clicks can't push the
    * next deliberate click out indefinitely. Accepting a click records it as
    * the new reference point. Different buttons debounce independently.
+   *
+   * The dropped press is not lost information: it is the second half of a
+   * double-click, so the accepted click's metadata is flagged `double` (see
+   * settleClickKind, which holds titling until the flag can no longer change).
    */
   isDebouncedClick(at, button) {
-    const key = button || 'mouse';
+    const key = normalizeMouseButton(button);
     const windowMs = this.clickDebounceMs();
     const last = this.lastAcceptedClickByButton.get(key);
-    if (last != null && at >= last && at - last < windowMs) return true;
+    if (last != null && at >= last && at - last < windowMs) {
+      // A repeat a few ms later is a duplicate delivery of one press (several
+      // mouse device nodes, hook echoes), not a second click.
+      if (at - last >= MIN_DOUBLE_CLICK_GAP_MS) {
+        const meta = this.lastClickMetaByButton.get(key);
+        if (meta && meta.at === last) meta.double = true;
+      }
+      return true;
+    }
     this.lastAcceptedClickByButton.set(key, at);
+    this.lastClickMetaByButton.delete(key);
     return false;
+  }
+
+  /**
+   * Wait out the rest of the debounce window of a left click before it is
+   * titled: the second press of a double-click arrives up to one window after
+   * the first and sets clickMeta.double, which the title needs. Other buttons
+   * keep their name however often they are pressed, so they never wait.
+   */
+  async settleClickKind(clickMeta) {
+    if (!clickMeta || !Number.isFinite(clickMeta.at) || normalizeMouseButton(clickMeta.button) !== 'left') return;
+    const windowMs = this.clickDebounceMs();
+    const remaining = Math.min(windowMs, clickMeta.at + windowMs - Date.now());
+    if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
   }
 
   /**
@@ -1942,8 +1976,9 @@ public static class SFHook {
     this.pendingClickOsPoint = null;
     const clickMeta = {
       at: Number.isFinite(clickAt) ? clickAt : Date.now(),
-      button: button || 'mouse',
+      button: normalizeMouseButton(button),
     };
+    this.lastClickMetaByButton.set(clickMeta.button, clickMeta);
     if (osPoint) {
       clickMeta.osPoint = { x: osPoint.x, y: osPoint.y };
     }
@@ -2069,6 +2104,7 @@ public static class SFHook {
     const cropBounds = frame.captureBounds || (mode === 'fullscreen' ? frame.display?.bounds : null);
     const automaticView = this.settings.get('capture.smartCropping') !== false
       ? smartCrop(frame.size, cropBounds, clickPos, this.settings.get('capture.focusAmount') ?? 1.25) : null;
+    await this.settleClickKind(clickMeta);
     const { title, captureMetadata } = await this.buildStepMeta(mode, frame, clickPos, clickMeta);
     const step = this.store.addStep(guideId, {
       title,

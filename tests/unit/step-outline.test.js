@@ -147,3 +147,13 @@ test('moveSubtreeBy never produces an invalid outline from any start', () => {
     }
   }
 });
+
+test('moveSubtreeBy: the last substep moving down becomes the next step\'s first substep, and Alt+Up undoes it', () => {
+  const start = outline('A a1>A B b1>B C');
+  const down = moveSubtreeBy(start.order, start.parentOf, 'a1', 1);
+  assert.equal(show(down), 'A B a1>B b1>B C');
+  assert.equal(show(moveSubtreeBy(down.order, down.parentOf, 'a1', -1)), 'A a1>A B b1>B C');
+  // Two levels deep it lands under the next step at the closest level it can.
+  const deep = outline('A a1>A a11>a1 a2>A a21>a2');
+  assert.equal(show(moveSubtreeBy(deep.order, deep.parentOf, 'a11', 1)), 'A a1>A a2>A a11>a2 a21>a2');
+});

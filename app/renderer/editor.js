@@ -1572,10 +1572,15 @@ class GuideEditor {
       order.splice(next ? order.indexOf(next) : order.length, 0, id);
       listed.add(id);
     }
-    // Only send parents that differ, so restoring an order never trips over an outline that was already off.
+    let parentOf = new Map(order.map((id) => [id, id in (record.parents || {}) ? record.parents[id] : now.parents[id]]));
+    // The recorded outline may be one an old move broke, which the move being
+    // undone repaired. Put the order back but keep those steps flattened, as
+    // the store refuses to break a valid outline.
+    if (outline.isValidOutline && !outline.isValidOutline(order, parentOf)) parentOf = outline.repairOutline(order, parentOf);
+    // Only send parents that differ.
     const parents = {};
-    for (const [id, parentId] of Object.entries(record.parents || {})) {
-      if (id in now.parents && now.parents[id] !== parentId) parents[id] = parentId;
+    for (const [id, parentId] of parentOf) {
+      if (now.parents[id] !== (parentId || null)) parents[id] = parentId || null;
     }
     try {
       await api.step.reorder({ guideId: this.guideId, order, parents });

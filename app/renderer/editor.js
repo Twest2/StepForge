@@ -1173,6 +1173,14 @@ class GuideEditor {
           type: 'button',
           onClick: () => (allSelected ? this.clearStepSelection() : this.selectAllSteps()),
         }, allSelected ? 'Clear' : 'Select all'),
+        this.annotationClipboard
+          ? el('button', {
+            type: 'button',
+            disabled: !n,
+            title: 'Add the copied annotation at the same position on each selected step',
+            onClick: () => this.pasteAnnotationToSelectedSteps(),
+          }, `Paste annotation to ${n} step${n === 1 ? '' : 's'}`)
+          : null,
         el('button.danger', { type: 'button', disabled: !n, onClick: () => this.deleteSelectedSteps() }, 'Delete'),
       ),
     );
@@ -2495,6 +2503,60 @@ class GuideEditor {
     return true;
   }
 
+  /**
+   * Paste the copied annotation onto every selected step at the same
+   * normalized position, as one 'multi-step' undo record. Steps whose image
+   * has a different aspect ratio than the source (a crop, another window) are
+   * skipped, since the same position would land on something else.
+   */
+  async pasteAnnotationToSelectedSteps() {
+    if (!this.annotationClipboard) return;
+    const ids = this.steps.map((s) => s.stepId).filter((id) => this.selectedSteps.has(id));
+    if (!ids.length) return;
+    if (this.pendingSave) await this.flushStep();
+    const aspectOf = (step) => {
+      const size = step.image && step.image.size;
+      return size && size.width > 0 && size.height > 0 ? size.width / size.height : 0;
+    };
+    const source = this.annotationClipboardAspect || 0;
+    const numbers = stepNumberMap(this.steps);
+    const skipped = [];
+    const before = [];
+    const after = [];
+    const stamp = Date.now().toString(36);
+    let failed = null;
+    for (const stepId of ids) {
+      const step = this.stepMap.get(stepId);
+      if (!step) continue;
+      const aspect = aspectOf(step);
+      if (step.stepId === this.annotationClipboardStepId
+        || !aspect || !source || Math.abs(aspect / source - 1) > 0.01) {
+        skipped.push(numbers.get(stepId) || stepId);
+        continue;
+      }
+      const edited = clone(step);
+      const copy = clone(this.annotationClipboard);
+      copy.id = `ann-${stamp}-${Math.random().toString(36).slice(2, 7)}`;
+      edited.annotations = [...(edited.annotations || []), copy];
+      try {
+        after.push(await api.step.save({ guideId: this.guideId, step: edited }));
+        before.push(clone(step));
+      } catch (err) {
+        failed = err;
+        break;
+      }
+    }
+    if (before.length) this.pushCanvasHistory(this.multiStepRecord(before, after));
+    await this.reload(this.selectedStepId);
+    const plural = (n) => `${n} step${n === 1 ? '' : 's'}`;
+    let text = before.length ? `Annotation pasted onto ${plural(before.length)}. Press Ctrl+Z to undo.` : 'No steps changed.';
+    if (skipped.length) {
+      text += ` Skipped ${plural(skipped.length)} (source step, no image, or a different image shape): ${skipped.join(', ')}.`;
+    }
+    if (failed) text += ` Stopped early: ${failed.message || failed}`;
+    this.onToast(text, failed ? { error: true } : undefined);
+  }
+
   onCanvasSelect(ann) {
     this.selectedAnnotationId = ann ? ann.id : null;
     this.renderAnnotationPanel();
@@ -2690,6 +2752,9 @@ class GuideEditor {
         e.preventDefault();
         this.annotationClipboard = clone(this.canvas.selected());
         this.annotationClipboardStepId = this.currentStep?.stepId || null;
+        const size = this.currentStep?.image?.size;
+        this.annotationClipboardAspect = size && size.width > 0 && size.height > 0 ? size.width / size.height : 0;
+        this.renderStepBulkBar();
         this.onToast('Annotation copied.');
         return;
       }

@@ -189,3 +189,46 @@ test('pasting an annotation is its own undo step, and only nudges inside the ste
   assert.equal(other.y, 0.5);
   assert.equal(editor.canvasHistory.length, 1);
 });
+
+test('pasting an annotation onto selected steps skips other aspect ratios, and one Ctrl+Z reverts all', async () => {
+  const source = { id: 'ann-1', type: 'blur', x: 0.1, y: 0.2, w: 0.3, h: 0.05 };
+  const img = (width, height) => ({ size: { width, height } });
+  const { editor, db, toasts } = setup({
+    steps: [
+      { stepId: 'a', image: img(1920, 1080), annotations: [source] },
+      { stepId: 'b', image: img(1920, 1080) },
+      { stepId: 'c', image: img(1280, 721) }, // within 1% of 16:9
+      { stepId: 'd', image: img(1000, 1000) }, // a crop
+      { stepId: 'e' }, // no image
+      { stepId: 'f', image: img(1920, 1080) }, // not selected
+    ],
+  });
+  await editor.reload('a');
+  editor.annotationClipboard = { ...source };
+  editor.annotationClipboardStepId = 'a';
+  editor.annotationClipboardAspect = 1920 / 1080;
+  editor.selectedSteps = new Set(['a', 'b', 'c', 'd', 'e']);
+
+  await editor.pasteAnnotationToSelectedSteps();
+  const ids = ['b', 'c'].map((id) => db.steps.get(id).annotations.map((x) => x.id));
+  assert.equal(ids[0].length, 1);
+  assert.notEqual(ids[0][0], 'ann-1');
+  assert.notEqual(ids[0][0], ids[1][0]);
+  for (const id of ['b', 'c']) {
+    const ann = db.steps.get(id).annotations[0];
+    assert.deepEqual([ann.x, ann.y, ann.w, ann.h], [0.1, 0.2, 0.3, 0.05]);
+  }
+  assert.equal(db.steps.get('a').annotations.length, 1);
+  for (const id of ['d', 'e', 'f']) assert.equal(db.steps.get(id).annotations.length, 0);
+  assert.equal(editor.canvasHistory.length, 1);
+  assert.equal(editor.canvasHistory[0].type, 'multi-step');
+  assert.match(toasts.at(-1), /pasted onto 2 steps/);
+  assert.match(toasts.at(-1), /Skipped 3 steps.*: 1, 4, 5\./);
+
+  await editor.undo();
+  for (const id of ['b', 'c', 'd', 'e', 'f']) assert.equal(db.steps.get(id).annotations.length, 0);
+  assert.equal(db.steps.get('a').annotations.length, 1);
+  await editor.redo();
+  assert.equal(db.steps.get('b').annotations.length, 1);
+  assert.equal(db.steps.get('c').annotations.length, 1);
+});

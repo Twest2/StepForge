@@ -38,7 +38,19 @@ function setup({ steps, confirm = async () => true }) {
     },
     ai: {},
   };
-  const context = { window: { stepforge: api }, document: { activeElement: null }, confirmDialog: confirm, clearNode() {}, el() {} };
+  // Images "load" from paths like "size:1920x1080", so a test can give a step's file a size.
+  class Image {
+    set src(value) {
+      const m = /^size:(\d+)x(\d+)$/.exec(value);
+      setImmediate(() => {
+        if (!m) return this.onerror && this.onerror();
+        this.naturalWidth = Number(m[1]);
+        this.naturalHeight = Number(m[2]);
+        return this.onload && this.onload();
+      });
+    }
+  }
+  const context = { window: { stepforge: api }, document: { activeElement: null }, confirmDialog: confirm, clearNode() {}, el() {}, Image, setImmediate };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/editor.js'), 'utf8'), context);
   const editor = Object.create(context.window.GuideEditor.prototype);
   Object.assign(editor, {
@@ -273,4 +285,39 @@ test('undoing a move keeps steps added since in place, and a move that cannot be
   await editor.undo();
   assert.equal(editor.canvasHistory.length, before - 1);
   assert.match(toasts.at(-1), /Could not undo the move/);
+});
+
+test('bulk paste measures images stored without a size, and a second paste adds no duplicates', async () => {
+  const source = { id: 'ann-1', type: 'blur', x: 0.1, y: 0.2, w: 0.3, h: 0.05 };
+  const zero = { size: { width: 0, height: 0 } };
+  const { editor, db, api, toasts } = setup({
+    steps: [
+      { stepId: 'a', image: { size: { width: 1920, height: 1080 } }, annotations: [source] },
+      { stepId: 'b', image: zero }, // an older import: no stored size, but a 16:9 file
+      { stepId: 'c', image: zero }, // no stored size, and a square file
+    ],
+  });
+  api.step.imagePath = async ({ stepId }) => ({ b: 'size:1600x900', c: 'size:500x500' })[stepId] || null;
+  await editor.reload('a');
+  editor.annotationClipboard = { ...source };
+  editor.annotationClipboardAspect = 1920 / 1080;
+  editor.selectedSteps = new Set(['a', 'b', 'c']);
+
+  await editor.pasteAnnotationToSelectedSteps();
+  assert.equal(db.steps.get('a').annotations.length, 1, 'the source already has it');
+  assert.equal(db.steps.get('b').annotations.length, 1);
+  assert.equal(db.steps.get('c').annotations.length, 0);
+  assert.match(toasts.at(-1), /pasted onto 1 step\./);
+
+  // Pasting again changes nothing: every step either has it or does not fit.
+  await editor.pasteAnnotationToSelectedSteps();
+  assert.equal(db.steps.get('b').annotations.length, 1);
+  assert.match(toasts.at(-1), /No steps changed\./);
+  assert.equal(editor.canvasHistory.length, 1);
+
+  // Moving the source's copy away means the source step gets the paste too.
+  db.steps.get('a').annotations[0].x = 0.5;
+  await editor.reload('a');
+  await editor.pasteAnnotationToSelectedSteps();
+  assert.equal(db.steps.get('a').annotations.length, 2);
 });

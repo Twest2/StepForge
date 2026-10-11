@@ -2526,18 +2526,20 @@ class GuideEditor {
    * Paste the copied annotation onto every selected step at the same
    * normalized position, as one 'multi-step' undo record. Steps whose image
    * has a different aspect ratio than the source (a crop, another window) are
-   * skipped, since the same position would land on something else.
+   * skipped, since the same position would land on something else, and so are
+   * steps that already have this annotation in this spot (the source step, or
+   * a second paste).
    */
   async pasteAnnotationToSelectedSteps() {
-    if (!this.annotationClipboard) return;
+    const source = this.annotationClipboard;
+    if (!source) return;
     const ids = this.steps.map((s) => s.stepId).filter((id) => this.selectedSteps.has(id));
     if (!ids.length) return;
     if (this.pendingSave) await this.flushStep();
-    const aspectOf = (step) => {
-      const size = step.image && step.image.size;
-      return size && size.width > 0 && size.height > 0 ? size.width / size.height : 0;
-    };
-    const source = this.annotationClipboardAspect || 0;
+    const sourceAspect = this.annotationClipboardAspect || 0;
+    const near = (a, b) => Math.abs((Number(a) || 0) - (Number(b) || 0)) < 1e-6;
+    const alreadyThere = (step) => (step.annotations || []).some((ann) => ann.type === source.type
+      && near(ann.x, source.x) && near(ann.y, source.y) && near(ann.w, source.w) && near(ann.h, source.h));
     const numbers = stepNumberMap(this.steps);
     const skipped = [];
     const before = [];
@@ -2547,14 +2549,13 @@ class GuideEditor {
     for (const stepId of ids) {
       const step = this.stepMap.get(stepId);
       if (!step) continue;
-      const aspect = aspectOf(step);
-      if (step.stepId === this.annotationClipboardStepId
-        || !aspect || !source || Math.abs(aspect / source - 1) > 0.01) {
+      const aspect = alreadyThere(step) ? 0 : await this.stepImageAspect(step);
+      if (!aspect || !sourceAspect || Math.abs(aspect / sourceAspect - 1) > 0.01) {
         skipped.push(numbers.get(stepId) || stepId);
         continue;
       }
       const edited = clone(step);
-      const copy = clone(this.annotationClipboard);
+      const copy = clone(source);
       copy.id = `ann-${stamp}-${Math.random().toString(36).slice(2, 7)}`;
       edited.annotations = [...(edited.annotations || []), copy];
       try {
@@ -2570,10 +2571,26 @@ class GuideEditor {
     const plural = (n) => `${n} step${n === 1 ? '' : 's'}`;
     let text = before.length ? `Annotation pasted onto ${plural(before.length)}. Press Ctrl+Z to undo.` : 'No steps changed.';
     if (skipped.length) {
-      text += ` Skipped ${plural(skipped.length)} (source step, no image, or a different image shape): ${skipped.join(', ')}.`;
+      text += ` Skipped ${plural(skipped.length)} (already there, no image, or a different image shape): ${skipped.join(', ')}.`;
     }
     if (failed) text += ` Stopped early: ${failed.message || failed}`;
     this.onToast(text, failed ? { error: true } : undefined);
+  }
+
+  /**
+   * Width / height of a step's working image, or 0 without one. Steps added
+   * without a size (some imports, older guides) store { 0, 0 }; for those the
+   * image itself is measured, so they are not skipped for no visible reason.
+   */
+  async stepImageAspect(step) {
+    if (!step || !step.image) return 0;
+    const size = step.image.size;
+    if (size && size.width > 0 && size.height > 0) return size.width / size.height;
+    const file = await api.step.imagePath({ guideId: this.guideId, stepId: step.stepId, which: 'working' });
+    const img = file ? await loadImage(file) : null;
+    const width = img ? img.naturalWidth || img.width : 0;
+    const height = img ? img.naturalHeight || img.height : 0;
+    return width > 0 && height > 0 ? width / height : 0;
   }
 
   onCanvasSelect(ann) {
@@ -2771,8 +2788,11 @@ class GuideEditor {
         e.preventDefault();
         this.annotationClipboard = clone(this.canvas.selected());
         this.annotationClipboardStepId = this.currentStep?.stepId || null;
+        // The canvas has the image loaded, so its size is known even when the step stored { 0, 0 }.
         const size = this.currentStep?.image?.size;
-        this.annotationClipboardAspect = size && size.width > 0 && size.height > 0 ? size.width / size.height : 0;
+        const { imgW, imgH } = this.canvas;
+        this.annotationClipboardAspect = size && size.width > 0 && size.height > 0 ? size.width / size.height
+          : imgW > 0 && imgH > 0 ? imgW / imgH : 0;
         this.renderStepBulkBar();
         this.onToast('Annotation copied.');
         return;

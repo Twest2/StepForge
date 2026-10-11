@@ -51,7 +51,7 @@ function setupEditor(steps) {
       editor.selectedStepId = stepId && editor.stepMap.has(stepId) ? stepId : fresh[0].stepId;
     },
   });
-  return { editor, db, toasts, shown, api };
+  return { editor, db, toasts, shown, api, dialogs };
 }
 
 const guideSteps = () => [
@@ -171,4 +171,23 @@ test('the dialog lists matches, locks blocked ones, and sends only the ticked on
   assert.equal(sent.matches[0].start, 0);
   assert.equal(await d.result, true);
   assert.equal(d.context.closed, true);
+});
+
+test('Ctrl+H while the dialog is open does not stack a second one', async () => {
+  const { editor, dialogs } = setupEditor(guideSteps());
+  await editor.reload('a');
+  let opened = 0;
+  let close;
+  dialogs.showFindReplace = () => { opened += 1; return new Promise((resolve) => { close = resolve; }); };
+  const first = editor.openFindReplace();
+  await new Promise((r) => setImmediate(r));
+  await editor.openFindReplace();
+  assert.equal(opened, 1);
+  close(false);
+  await first;
+  const again = editor.openFindReplace();
+  await new Promise((r) => setImmediate(r));
+  assert.equal(opened, 2, 'it opens again once closed');
+  close(false);
+  await again;
 });

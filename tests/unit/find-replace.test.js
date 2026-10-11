@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { findMatches, applyReplacements, refusalReason } = require('../../core/find-replace');
+const { findMatches, applyReplacements, refusalReason, isMatchArg } = require('../../core/find-replace');
 const { createStep } = require('../../core/schema');
 
 const step = (fields) => createStep({ stepId: fields.stepId || 's1', ...fields });
@@ -257,4 +257,37 @@ test('multiple steps and unicode', () => {
   assert.equal(r.steps[0].title, 'Bar menu');
   assert.equal(r.steps[1].descriptionHtml, '<p>Bar and Bar</p>');
   assert.deepEqual(findMatches([a, b], 'café').map((m) => m.stepIndex), [0, 1, 1]);
+});
+
+test('a refusal follows the field the match lands in, not the kind the caller sent back', () => {
+  const s = step({ tableBlocks: [{ rows: [['a']] }] });
+  const [match] = findMatches([s], 'a');
+  const r = applyReplacements([s], [{ ...match, kind: 'code' }], 'x|y');
+  assert.equal(r.refused.length, 1);
+  assert.equal(r.applied, 0);
+  assert.deepEqual(r.steps, []);
+});
+
+test('malformed matches are stale instead of throwing', () => {
+  const s = step({ title: 'Widget' });
+  const [match] = findMatches([s], 'Widget');
+  const r = applyReplacements([s], [{ ...match, node: 'length' }, { ...match, start: '0' }], 'X');
+  assert.equal(r.applied, 0);
+  assert.equal(r.stale.length, 2);
+});
+
+test('isMatchArg accepts what findMatches makes and rejects other shapes', () => {
+  const s = step({ title: 'Widget', descriptionHtml: '<p>Widget</p>', tableBlocks: [{ rows: [['Widget']] }] });
+  const matches = findMatches([s], 'Widget', { replacement: 'x' });
+  assert.equal(matches.length, 3);
+  assert.ok(matches.every(isMatchArg));
+  const [m] = matches;
+  for (const bad of [
+    null, [], 'x', { ...m, stepId: 7 }, { ...m, stepId: '' }, { ...m, path: 'title' }, { ...m, path: [] },
+    { ...m, path: ['a', 'b', 'c', 'd', 'e', 'f'] }, { ...m, path: ['__proto__.x'] }, { ...m, path: [{}] },
+    { ...m, path: [-1] }, { ...m, node: 'length' }, { ...m, start: 1.5 }, { ...m, start: 4, end: 2 },
+    { ...m, matched: 3 }, { ...m, matched: 'x'.repeat(5000) }, { ...m, id: {} },
+  ]) {
+    assert.equal(isMatchArg(bad), false, JSON.stringify(bad && bad.path));
+  }
 });

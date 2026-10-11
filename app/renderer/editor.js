@@ -2386,13 +2386,18 @@ class GuideEditor {
 
   /** Ctrl+H: find and replace across every step; see core/find-replace.js. */
   async openFindReplace() {
-    if (!this.guideId || !this.steps.length) return;
-    if (this.pendingSave) await this.flushStep();
-    await dialogs.showFindReplace({
-      stepNumbers: Object.fromEntries(stepNumberMap(this.steps)),
-      find: (options) => api.findReplace.find({ guideId: this.guideId, ...options }),
-      replace: (matches, replacement) => this.replaceMatches(matches, replacement),
-    });
+    if (!this.guideId || !this.steps.length || this.findReplaceOpen) return;
+    this.findReplaceOpen = true; // Ctrl+H again while it is open would stack a second dialog
+    try {
+      if (this.pendingSave) await this.flushStep();
+      await dialogs.showFindReplace({
+        stepNumbers: Object.fromEntries(stepNumberMap(this.steps)),
+        find: (options) => api.findReplace.find({ guideId: this.guideId, ...options }),
+        replace: (matches, replacement) => this.replaceMatches(matches, replacement),
+      });
+    } finally {
+      this.findReplaceOpen = false;
+    }
   }
 
   /**

@@ -151,6 +151,8 @@ class CloudSync {
     this.pendingFile = path.join(this.directory, 'pending-deletions.json');
     this.pending = readJsonIfExists(this.pendingFile, { records: {} });
     this.pending.records ||= {};
+    // Guides restored from Trash, to record as restored in the cloud.
+    this.pending.restores ||= {};
     this.status = { phase: 'off', message: `${this.label} sharing is off.` };
     this.recover();
   }
@@ -731,6 +733,7 @@ class CloudSync {
     fs.mkdirSync(path.dirname(archive), { recursive: true });
     atomicWriteFileSync(archive, zipSync(local.entries));
     this.pending.records[id] = { title: guide.title, hash: local.hash, deletedAt: new Date().toISOString() };
+    delete this.pending.restores[id];
     this.savePending();
     if (this.enabled()) this.markChanged(id);
     return true;
@@ -740,6 +743,19 @@ class CloudSync {
     delete this.pending.records[id];
     fs.rmSync(this.pendingArchive(id), { force: true });
     this.savePending();
+  }
+
+  /**
+   * A guide was restored from Trash. A deletion not yet sent is dropped. One
+   * the cloud already has (including a recovery copy deleted permanently) is
+   * marked restored on the next sync, rather than moving the guide back to
+   * Trash, and other computers get the guide again.
+   */
+  restoredFromTrash(id) {
+    if (this.pending.records[id]) this.clearPendingDeletion(id);
+    this.pending.restores[id] = { restoredAt: new Date().toISOString() };
+    this.savePending();
+    if (this.enabled()) this.markChanged(id);
   }
 
   deletionStates(files) {
@@ -878,11 +894,26 @@ class CloudSync {
     const [files, deletionFiles] = await Promise.all([this.drive.listVersions(), this.drive.listDeletions()]);
     check();
     const deletions = this.deletionStates(deletionFiles);
+    for (const [id, { restoredAt }] of Object.entries(this.pending.restores)) {
+      check();
+      const marker = deletions.get(id);
+      if (this.store.guideExists(id) && ['deleted', 'purged'].includes(marker?.appProperties?.state)) {
+        const restored = await this.drive.upload({ data: Buffer.from('{}'), name: `Restored ${marker.appProperties.title || 'guide'}`,
+          properties: { stepforge: 'deletion-v1', guideId: id, state: 'restored', restoredAt } });
+        check();
+        await Promise.all(deletionFiles.filter((file) => file.appProperties?.guideId === id && file.id !== restored.id).map((file) => this.drive.deleteFile(file.id)));
+        deletions.set(id, restored);
+      }
+      delete this.pending.restores[id];
+      this.savePending();
+    }
     // Deletions are explicit Drive records, never inferred from a missing
     // directory. This makes an offline device converge without allowing an
     // old local copy to recreate the guide.
     for (const [id, marker] of deletions) {
       if (!['deleted', 'purged'].includes(marker.appProperties?.state)) continue;
+      // Restored from Trash during this sync: recorded as restored on the next.
+      if (this.pending.restores[id]) continue;
       if (this.store.guideExists(id)) {
         this.store.deleteGuide(id);
         this.onDelete(id);

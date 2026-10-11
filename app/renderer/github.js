@@ -52,7 +52,11 @@ function editedSinceShared(updatedAt, publishedAt) {
   return Number.isFinite(edited) && Number.isFinite(shared) && edited > shared;
 }
 
-function makeGitHubSettings(api) {
+/**
+ * `onPublishToWeb(guideId, title)` opens the Publish dialog the way the app
+ * does (saving the open editor first); without it the dialog opens directly.
+ */
+function makeGitHubSettings(api, { onPublishToWeb = null } = {}) {
   let current = {};
   let busy = false;
   let disposed = false;
@@ -399,8 +403,14 @@ function makeGitHubSettings(api) {
                   title: 'This guide changed after you shared it. Publish it again to update the public copy.',
                   onClick: () => {
                     if (busy || disposed) return;
-                    // The normal Publish dialog, with its public-content checkbox.
-                    void showPublishToWebDialog({ api, guideId: guide.guideId, guideTitle: guide.title || 'Untitled guide', onOpenAccounts: () => {} })
+                    // The normal Publish dialog, with its public-content checkbox. The
+                    // app saves edits still waiting in the editor first, so the update
+                    // includes them.
+                    const title = guide.title || 'Untitled guide';
+                    const publish = onPublishToWeb
+                      ? Promise.resolve(onPublishToWeb(guide.guideId, title))
+                      : showPublishToWebDialog({ api, guideId: guide.guideId, guideTitle: title, onOpenAccounts: () => {} });
+                    void publish.catch((err) => say(err.message, 'error'))
                       .then(() => { if (!disposed) void refreshPublished(); });
                   },
                 }, 'Edited since you shared it') : null)),
@@ -499,14 +509,14 @@ function makeGitHubSettings(api) {
  * Settings → Accounts: a short list of connected services. Choosing one shows
  * its panel with a way back to the list.
  */
-function makeAccountsSettings(api, { view = null } = {}) {
+function makeAccountsSettings(api, { view = null, onPublishToWeb = null } = {}) {
   // Sync services first (see CLOUD_SERVICES in cloud.js), then GitHub. Each
   // row's id is also its Settings view; Google Drive's is "drive".
   const rowId = (provider) => (provider === 'google' ? 'drive' : provider);
   const services = Object.keys(CLOUD_SERVICES);
   const clouds = services.map((provider) => ({ provider, id: rowId(provider), panel: makeCloudSettings(api, { provider }),
     state: el('span.account-state', {}, 'Checking…') }));
-  const github = makeGitHubSettings(api);
+  const github = makeGitHubSettings(api, { onPublishToWeb });
   const confluence = makeConfluenceSettings(api);
   let disposed = false;
 

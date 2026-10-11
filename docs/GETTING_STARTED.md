@@ -152,8 +152,8 @@ on). Save your preferred options as a **template** so every guide exports the
 same way. Templates can be shared with teammates as `.sfglt` files.
 
 Exported screenshots get alt text built from the step title (for example
-"Screenshot for step 3: Click Save") in the HTML, Word, PowerPoint and
-Confluence formats, so screen readers announce more than a step number. PDFs
+"Screenshot for step 3: Click Save") in the HTML, Word, PowerPoint, Markdown
+and Confluence formats, so screen readers announce more than a step number. PDFs
 carry the guide title, and the author if you set one, as their document
 properties. They are not tagged PDFs.
 

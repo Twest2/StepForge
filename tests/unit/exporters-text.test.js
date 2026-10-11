@@ -211,7 +211,7 @@ test('text block positions render around the title, description, and image', (t)
     'docs.example.com',
     'After description',
     'Before image',
-    '![Step 1](',
+    '![Screenshot for step 1: Open AcmeSync settings](',
     'After image',
   ]);
 
@@ -537,7 +537,7 @@ test('preview mode limits the AST to the first N steps', (t) => {
   assert.deepEqual(ast.steps.map((s) => s.number), ['1', '1.1']);
 });
 
-test('screenshot alt text: one string in the render AST, escaped by the HTML, Confluence and Confluence Word exporters', (t) => {
+test('screenshot alt text: one string in the render AST, escaped by the Markdown, HTML, Confluence and Confluence Word exporters', (t) => {
   const root = makeTmpDir('expalt');
   t.after(() => rmrf(root));
   const { store, guide, s1, s2 } = buildFixtureGuide(path.join(root, 'data'));
@@ -560,6 +560,9 @@ test('screenshot alt text: one string in the render AST, escaped by the HTML, Co
   store.saveStep(guide.guideId, placeholder);
   assert.equal(buildRenderAst(store, guide.guideId).steps[0].altText, 'Screenshot for step 1: Open AcmeSync settings');
 
+  const md = fs.readFileSync(exportMarkdown(ast, path.join(root, 'md')).file, 'utf8');
+  assert.ok(md.includes('![Screenshot for step 1: Save & exit \\<now\\> "quoted" it\'s done]('));
+  assert.ok(md.includes('![Screenshot for step 2]('));
   const html = fs.readFileSync(exportHtmlSimple(ast, path.join(root, 'html')).file, 'utf8');
   assert.ok(html.includes('alt="Screenshot for step 1: Save &amp; exit &lt;now&gt; &quot;quoted&quot; it\'s done"'));
   assert.ok(html.includes('alt="Screenshot for step 2"'));

@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const red = require('../../core/redaction');
-const { RedactionService } = require('../../app/redaction');
+const { RedactionService, bitmapToPpm } = require('../../app/redaction');
 const { TextIntelService } = require('../../app/text-intel');
 const { GuideStore } = require('../../core/store');
 const { makeTmpDir, rmrf, TINY_PNG } = require('./helpers');
@@ -92,7 +92,7 @@ function service(store, lines, terms = []) {
   const settings = { get: (key) => (key === 'redaction' ? { terms } : undefined) };
   const redactor = new RedactionService({ store, settings,
     readLines: async () => { calls.reads += 1; return lines; },
-    loadImage: async () => ({ width: 1000, height: 460, png: (scale) => { calls.scale = scale; return Buffer.from('png'); } }) });
+    loadImage: async () => ({ width: 1000, height: 460, encode: (scale) => { calls.scale = scale; return Buffer.from('png'); } }) });
   return { redactor, calls };
 }
 
@@ -137,6 +137,69 @@ test('new words to hide cause a fresh check, and step text can be reviewed and h
   assert.equal(second.redactor.review(guideId).text.length, 0);
 });
 
+test('a guide’s screenshots are read several at a time, and the first error stops the rest', async (t) => {
+  const root = makeTmpDir('redaction-parallel');
+  t.after(() => rmrf(root));
+  const store = new GuideStore(root);
+  const guide = store.createGuide({ title: 'Many screens' });
+  for (let i = 0; i < 7; i += 1) store.addStep(guide.guideId, { title: `Step ${i + 1}` }, TINY_PNG, { width: 1000, height: 460 });
+  const lines = [{ words: [{ text: 'casey@contoso.com', bbox: { x0: 200, y0: 40, x1: 600, y1: 70 } }] }];
+  let reading = 0;
+  let most = 0;
+  let reads = 0;
+  let failOn = 0;
+  const redactor = new RedactionService({ store, settings: { get: () => ({ terms: [] }) }, concurrency: 3,
+    readLines: async () => {
+      reads += 1;
+      if (reads === failOn) throw new Error('unreadable');
+      reading += 1;
+      most = Math.max(most, reading);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      reading -= 1;
+      return lines;
+    },
+    loadImage: async () => ({ width: 1000, height: 460, encode: () => Buffer.from('ppm') }) });
+  const progress = [];
+  const result = await redactor.checkGuide(guide.guideId, { onProgress: (p) => progress.push(p.done) });
+  assert.equal(most, 3);
+  assert.deepEqual([result.checked, result.added], [7, 7]);
+  assert.deepEqual(progress, [0, 1, 2, 3, 4, 5, 6, 7]);
+
+  reads = 0;
+  failOn = 2;
+  await assert.rejects(redactor.checkGuide(guide.guideId, { force: true }), /unreadable/);
+  assert.ok(reads < 7, 'nothing more is read after an error');
+});
+
+test('a raw screenshot bitmap becomes a PPM text recognition can read', () => {
+  // 2×2 BGRA with each row padded by 4 bytes.
+  const bgra = Buffer.from([
+    0, 0, 255, 255, 0, 255, 0, 255, 9, 9, 9, 9,
+    255, 0, 0, 255, 10, 20, 30, 255, 9, 9, 9, 9,
+  ]);
+  const ppm = bitmapToPpm(bgra, 2, 2);
+  const header = 'P6\n2 2\n255\n';
+  assert.equal(ppm.subarray(0, header.length).toString('ascii'), header);
+  assert.deepEqual([...ppm.subarray(header.length)], [255, 0, 0, 0, 255, 0, 0, 0, 255, 30, 20, 10]);
+  assert.throws(() => bitmapToPpm(Buffer.alloc(10), 2, 2), /couldn’t be read/);
+});
+
+test('a busy screen: text is found all over the page, not read as one block', { timeout: 120000 }, async (t) => {
+  let intel;
+  try { intel = new TextIntelService({ store: null, settings: { get: () => ({}) }, dataDir: makeTmpDir('ocr-busy'), windowContextProvider: {} }); }
+  catch (err) { t.skip(`text recognition unavailable: ${err.message}`); return; }
+  t.after(() => intel.shutdown());
+  // A header bar, a side menu and a bordered table. Read as one block of
+  // text, as Tesseract does by default, none of these details were found.
+  const lines = await intel.readLines(fs.readFileSync(path.join(__dirname, '../fixtures/busy-admin-screen.png')));
+  const found = red.findInLines(lines, { terms: [] });
+  const emails = found.filter((f) => f.kind === 'email').map((f) => f.text.replace(/\s+/g, ''));
+  for (const name of ['avery.lee', 'jordan.kim', 'sam.ortiz', 'riley.chen', 'morgan.patel', 'quinn.davis', 'taylor.nguyen', 'casey.brooks']) {
+    assert.ok(emails.includes(`${name}@contoso.com`), `${name}'s email is found`);
+  }
+  assert.equal(found.filter((f) => f.kind === 'ip').length, 8);
+});
+
 test('a real screenshot: text recognition finds every private detail and nothing else', { timeout: 120000 }, async (t) => {
   let intel;
   try { intel = new TextIntelService({ store: null, settings: { get: () => ({}) }, dataDir: makeTmpDir('ocr'), windowContextProvider: {} }); }
@@ -146,7 +209,7 @@ test('a real screenshot: text recognition finds every private detail and nothing
   const fixture = fs.readFileSync(path.join(__dirname, '../fixtures/private-details-2x.png'));
   const redactor = new RedactionService({ store, settings: { get: () => ({ terms: [] }) },
     readLines: (png) => intel.readLines(png),
-    loadImage: async () => ({ width: 1000, height: 460, png: (scale) => { assert.equal(scale, 2); return fixture; } }) });
+    loadImage: async () => ({ width: 1000, height: 460, encode: (scale) => { assert.equal(scale, 2); return fixture; } }) });
   const result = await redactor.checkGuide(guideId);
   assert.deepEqual(result.blurs.map((b) => b.kind).sort(), ['card', 'email', 'ip', 'phone', 'secret', 'secret', 'ssn', 'url']);
   const blurs = store.getStep(guideId, stepId).annotations;

@@ -15,7 +15,7 @@ const { GoogleDrive } = require('./google-drive');
 const { OneDrive } = require('./onedrive');
 const { Dropbox } = require('./dropbox');
 const { WebDAV } = require('./webdav');
-const { RedactionService } = require('./redaction');
+const { RedactionService, bitmapToPpm } = require('./redaction');
 const { forgetScreenshotChecks } = require('../core/redaction');
 const { Confluence, pageFromExport } = require('./confluence');
 const { createConfluenceSession } = require('./confluence-session');
@@ -1585,13 +1585,17 @@ if (!gotLock) {
     });
     redactor = new RedactionService({
       store, settings,
-      readLines: (png) => textIntel.readLines(png),
+      readLines: (image) => textIntel.readLines(image),
       loadImage: async (file) => {
         const image = nativeImage.createFromPath(file);
         if (image.isEmpty()) throw new Error('A screenshot in this guide couldn’t be read.');
         const { width, height } = image.getSize();
-        return { width, height, png: (scale) => (scale === 1 ? image : image.resize({ width: Math.round(width * scale), height: Math.round(height * scale), quality: 'best' })).toPNG() };
+        return { width, height, encode: (scale) => {
+          const sized = scale === 1 ? image : image.resize({ width: Math.round(width * scale), height: Math.round(height * scale), quality: 'best' });
+          return bitmapToPpm(sized.toBitmap(), sized.getSize().width, sized.getSize().height);
+        } };
       },
+      concurrency: textIntel.readers.size,
     });
     // Bringing up the desktop-capture stream spawns/upgrades Chromium's GPU
     // and screen-capture utility processes — which can be born after a session

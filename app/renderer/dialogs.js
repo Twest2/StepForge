@@ -330,6 +330,7 @@ function showSettingsDialog({
   settings,
   placeholders = {},
   onSave,
+  onPublishToWeb = null,
   section: initialSection = 'general',
 } = {}) {
   return new Promise((resolve) => {
@@ -338,7 +339,7 @@ function showSettingsDialog({
     // opens Accounts with that service's panel showing.
     const accountView = ['drive', 'onedrive', 'dropbox', 'webdav', 'github', 'confluence'].includes(initialSection) ? initialSection : null;
     if (accountView) initialSection = 'accounts';
-    const accountsPanel = makeAccountsSettings(api, { view: accountView });
+    const accountsPanel = makeAccountsSettings(api, { view: accountView, onPublishToWeb });
     const storagePath = el('code.settings-path', {}, 'Checking guide storage location…');
     const storageNote = el('div.setting-desc', {}, '');
     const showStorageError = (message) => { storageNote.textContent = message; storageNote.classList.add('error'); };

@@ -339,6 +339,24 @@ test('the shared list marks edited guides, opens Publish from the marker, and ex
   panel.dispose();
 });
 
+test('from Settings, the edited marker publishes through the app, so unsaved editor edits are saved first', async () => {
+  const u = ui();
+  const api = fakeApi({ connected: true, login: 'octo', repo: 'octo/guides', pagesReady: true });
+  api.github.published = async () => [{ slug: 'a'.repeat(24), guideId: 'edited', title: 'Edited guide', publishedAt: '2026-09-30T00:00:00Z', expiresAt: '2026-10-07T00:00:00Z', url: 'https://x/' }];
+  api.library = { list: async () => ({ guides: [{ guideId: 'edited', updatedAt: '2026-10-02T00:00:00Z' }] }) };
+  const published = [];
+  const accounts = u.context.makeAccountsSettings(api, { view: 'github', onPublishToWeb: async (guideId, title) => { published.push([guideId, title]); } });
+  await settle();
+  await settle();
+  const marker = u.all(accounts.node).find((n) => n.tag === 'button' && n.textContent === 'Edited since you shared it');
+  const dialogs = u.root.children.length;
+  u.click(marker);
+  await settle();
+  assert.deepEqual(published, [['edited', 'Edited guide']]);
+  assert.equal(u.root.children.length, dialogs, 'the app opens the dialog, not the panel');
+  accounts.dispose();
+});
+
 test('publishing before GitHub is set up points to Settings → Accounts', async () => {
   const u = ui();
   let opened = 0;

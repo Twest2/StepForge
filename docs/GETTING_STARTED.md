@@ -76,10 +76,10 @@ For each step you can:
   arrows and boxes still line up. Press **Ctrl+Z** to go back to the old
   screenshot. A step without a screenshot gets one the same way.
   To capture a fresh one instead, choose **Retake screenshot** and pick
-  **Full screen**, **Window** or **Region…**. StepForge hides itself for a
-  3 second countdown so you can get the app into the right state, then
-  replaces only that step's image. It is not available while a capture
-  session is running.
+  **Full screen**, **Window** or **Region…**. StepForge hides itself for 3
+  seconds so you can get the app into the right state, takes the new
+  screenshot and comes back. Only that step's image is replaced. It is not
+  available while a capture session is running.
 
 **Working with many steps at once:** choose **Select**, click one step, then
 **Shift-click** another to select everything in between, including substeps.

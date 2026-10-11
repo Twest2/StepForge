@@ -831,8 +831,11 @@ function setupIpc() {
     return { ok: true, steps };
   }, { validate: (a) => c.id(a.guideId) });
 
-  // Put a new screenshot on a step, keeping its text and annotations.
-  const swapStepImage = async (guideId, stepId, step, png, size) => {
+  // Put a new screenshot on a step, keeping its text and annotations. The
+  // step is read here, after the file dialog or countdown, so an edit that
+  // landed meanwhile (an agent, a sync) is kept rather than overwritten.
+  const swapStepImage = async (guideId, stepId, png, size) => {
+    const step = store.getStep(guideId, stepId);
     // Private-detail blurs matched the old screenshot; the new one is checked again.
     const removedBlurs = forgetScreenshotChecks(step);
     let saved = store.replaceImages(guideId, stepId, { original: png }, size, step);
@@ -843,7 +846,7 @@ function setupIpc() {
   // Right-click a step → Choose screenshot…: swap in an image file, keeping
   // the step's title, description and annotations.
   h('step:chooseImage', async ({ guideId, stepId }) => {
-    const step = store.getStep(guideId, stepId);
+    store.getStep(guideId, stepId); // throws for a step that does not exist, before any dialog
     const res = await dialog.showOpenDialog(mainWindow, {
       title: 'Choose a screenshot for this step',
       filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'] }],
@@ -852,15 +855,15 @@ function setupIpc() {
     if (res.canceled || !res.filePaths[0]) return { ok: false };
     const img = nativeImage.createFromPath(res.filePaths[0]);
     if (img.isEmpty()) throw new Error('StepForge couldn’t open that file as an image. Choose a PNG, JPEG, GIF, WebP or BMP file.');
-    return swapStepImage(guideId, stepId, step, img.toPNG(), img.getSize());
+    return swapStepImage(guideId, stepId, img.toPNG(), img.getSize());
   }, { validate: (a) => c.id(a.guideId) && c.id(a.stepId) });
   // Right-click a step → Retake screenshot: hide StepForge, count down, grab a
   // new frame and swap it in, the same way Choose screenshot… does.
   h('step:retake', async ({ guideId, stepId, mode, delayMs }) => {
-    const step = store.getStep(guideId, stepId);
+    store.getStep(guideId, stepId); // throws for a step that does not exist, before the countdown
     const frame = await capture.retakeFrame({ mode, delayMs });
     if (!frame.ok) return frame;
-    return swapStepImage(guideId, stepId, step, frame.png, frame.size);
+    return swapStepImage(guideId, stepId, frame.png, frame.size);
   }, {
     validate: (a) => c.id(a.guideId) && c.id(a.stepId)
       && (a.mode === undefined || c.oneOf(a.mode, ['fullscreen', 'window', 'region']))

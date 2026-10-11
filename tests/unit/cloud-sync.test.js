@@ -923,3 +923,74 @@ test('a shared file another computer removed during an upload is put back', asyn
   await synced(b.sync);
   assert.equal(snapshot(b.store, id).hash, snapshot(a.store, id).hash);
 });
+
+for (const permanently of [false, true]) {
+  test(`a guide restored from Trash stays restored after its cloud deletion${permanently ? ' and the recovery copy were deleted permanently' : ''}`, async (t) => {
+    const { device, files } = setup(t); const a = device('a'); const b = device('b');
+    const id = addGuide(a.store); await synced(a.sync); await synced(b.sync);
+    a.sync.stageDeletion(id); a.store.deleteGuide(id); await synced(a.sync); await synced(b.sync);
+    if (permanently) await a.sync.permanentlyDeleteRecovery(id);
+    assert.equal(b.store.guideExists(id), false);
+
+    const [name] = a.store.listTrash();
+    a.store.restoreFromTrash(name);
+    a.sync.restoredFromTrash(id);
+    await synced(a.sync); await synced(b.sync); await synced(a.sync);
+    assert.equal(a.store.getGuide(id).title, 'Original');
+    assert.equal(b.store.getGuide(id).title, 'Original', 'the other computer gets it back too');
+    assert.deepEqual(await a.sync.deletedGuides(), []);
+    assert.equal(files.filter((file) => file.appProperties?.stepforge === 'deletion-v1' && file.appProperties.state !== 'restored').length, 0);
+  });
+}
+
+test('restoring from Trash before the deletion was sent leaves nothing deleted in the cloud', async (t) => {
+  const { device, files } = setup(t); const a = device('a'); const b = device('b');
+  const id = addGuide(a.store); await synced(a.sync); await synced(b.sync);
+  a.sync.stageDeletion(id); a.store.deleteGuide(id);
+  a.store.restoreFromTrash(a.store.listTrash()[0]);
+  a.sync.restoredFromTrash(id);
+  await synced(a.sync); await synced(b.sync);
+  assert.equal(a.store.guideExists(id), true);
+  assert.equal(b.store.guideExists(id), true);
+  assert.equal(files.filter((file) => file.appProperties?.stepforge === 'deletion-v1').length, 0);
+  assert.equal(fs.existsSync(a.sync.pendingArchive(id)), false);
+});
+
+test('deleting a guide again after restoring it from Trash deletes it everywhere', async (t) => {
+  const { device } = setup(t); const a = device('a'); const b = device('b');
+  const id = addGuide(a.store); await synced(a.sync); await synced(b.sync);
+  a.sync.stageDeletion(id); a.store.deleteGuide(id); await synced(a.sync);
+  a.store.restoreFromTrash(a.store.listTrash()[0]);
+  a.sync.restoredFromTrash(id);
+  assert.equal(a.sync.stageDeletion(id), true);
+  a.store.deleteGuide(id);
+  await synced(a.sync); await synced(b.sync);
+  assert.equal(a.store.guideExists(id), false);
+  assert.equal(b.store.guideExists(id), false);
+  assert.equal((await a.sync.deletedGuides()).length, 1);
+});
+
+test('guides restored from Trash while a sync is running are not moved back to Trash', async (t) => {
+  const { device, drive } = setup(t); const a = device('a');
+  const first = addGuide(a.store); const second = addGuide(a.store); await synced(a.sync);
+  for (const id of [first, second]) { a.sync.stageDeletion(id); a.store.deleteGuide(id); }
+  await synced(a.sync);
+  const fromTrash = (id) => {
+    a.store.restoreFromTrash(a.store.listTrashItems().map((item) => item.name).find((name) => name.startsWith(id)));
+    a.sync.restoredFromTrash(id);
+  };
+  // Like restoring both at once from Trash: the second lands while the sync
+  // started by the first is recording it as restored.
+  fromTrash(first);
+  const upload = drive.upload;
+  drive.upload = async function (file) {
+    if (file.properties?.state === 'restored') { drive.upload = upload; fromTrash(second); }
+    return upload.call(this, file);
+  };
+  await synced(a.sync);
+  assert.equal(a.store.guideExists(first), true);
+  assert.equal(a.store.guideExists(second), true);
+  await synced(a.sync);
+  assert.equal(a.store.guideExists(second), true);
+  assert.deepEqual(await a.sync.deletedGuides(), []);
+});

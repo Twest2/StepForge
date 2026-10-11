@@ -148,13 +148,23 @@ test('a guide’s screenshots are read several at a time, and the first error st
   let most = 0;
   let reads = 0;
   let failOn = 0;
+  // Each read waits until three are in flight (or no more are coming), so
+  // the count doesn't depend on timer resolution.
+  let hold = true;
+  let release = () => {};
   const redactor = new RedactionService({ store, settings: { get: () => ({ terms: [] }) }, concurrency: 3,
     readLines: async () => {
       reads += 1;
       if (reads === failOn) throw new Error('unreadable');
       reading += 1;
       most = Math.max(most, reading);
-      await new Promise((resolve) => setTimeout(resolve, 5));
+      if (hold && reading < 3 && reads < 7) {
+        await new Promise((resolve) => { const others = release; release = () => { others(); resolve(); }; });
+      } else {
+        const others = release;
+        release = () => {};
+        others();
+      }
       reading -= 1;
       return lines;
     },
@@ -167,6 +177,7 @@ test('a guide’s screenshots are read several at a time, and the first error st
 
   reads = 0;
   failOn = 2;
+  hold = false;
   await assert.rejects(redactor.checkGuide(guide.guideId, { force: true }), /unreadable/);
   assert.ok(reads < 7, 'nothing more is read after an error');
 });

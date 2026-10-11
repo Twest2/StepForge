@@ -35,7 +35,7 @@ function setup({ steps, confirm = async () => true }) {
     },
     ai: {},
   };
-  const context = { window: { stepforge: api }, document: { activeElement: null }, confirmDialog: confirm, clearNode() {}, el() {} };
+  const context = { window: { stepforge: api, StepForgeOutline: require('../../core/step-outline') }, document: { activeElement: null }, confirmDialog: confirm, clearNode() {}, el() {} };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/editor.js'), 'utf8'), context);
   const editor = Object.create(context.window.GuideEditor.prototype);
   Object.assign(editor, {

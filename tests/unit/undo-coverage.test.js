@@ -26,9 +26,12 @@ function setup({ steps, confirm = async () => true }) {
         return JSON.parse(JSON.stringify(saved));
       },
       reorder: async ({ order, parents }) => {
+        // Mirrors store.reorderSteps: same steps, and a checked outline whenever parents is passed.
+        if (order.length !== db.order.length || !order.every((id) => db.steps.has(id))) throw new Error('exactly the existing steps');
         const parentOf = new Map(db.order.map((id) => [id, db.steps.get(id).parentStepId || null]));
+        const wasValid = isValidOutline(db.order, parentOf);
         for (const [id, parentId] of Object.entries(parents || {})) parentOf.set(id, parentId);
-        if (parents && Object.keys(parents).length && !isValidOutline(order, parentOf)) throw new Error('numbering');
+        if (parents && wasValid && !isValidOutline(order, parentOf)) throw new Error('numbering');
         for (const [id, parentId] of parentOf) db.steps.get(id).parentStepId = parentId;
         db.order = [...order];
       },
@@ -188,4 +191,43 @@ test('pasting an annotation is its own undo step, and only nudges inside the ste
   assert.equal(other.x, 0.4);
   assert.equal(other.y, 0.5);
   assert.equal(editor.canvasHistory.length, 1);
+});
+
+test('an AI write of the blocks shows the new blocks, and a later save keeps them', async () => {
+  const { editor, db, api } = setup({
+    steps: [{ stepId: 'a', title: 'one', textBlocks: [{ id: 't1', html: '<p>old</p>' }] }, { stepId: 'b' }],
+  });
+  await editor.reload('a');
+  api.ai.fillStep = async () => ({
+    ok: true,
+    step: await api.step.save({ step: { ...db.steps.get('a'), textBlocks: [{ id: 't2', html: '<p>AI</p>' }] } }),
+  });
+  await editor.writeStepWithAi('blocks');
+  assert.deepEqual(editor.currentStep.textBlocks.map((b) => b.html), ['<p>AI</p>']);
+  editor.currentStep.title = 'renamed';
+  await editor.flushStep();
+  assert.deepEqual(db.steps.get('a').textBlocks.map((b) => b.html), ['<p>AI</p>']);
+  await editor.undo();
+  assert.deepEqual(db.steps.get('a').textBlocks.map((b) => b.html), ['<p>old</p>']);
+});
+
+test('undoing a move keeps steps added since in place, and a move that cannot be restored is dropped', async () => {
+  const { editor, db, toasts } = setup({ steps: three() });
+  await editor.reload('c');
+  await editor.moveSelectedStep(-1);
+  assert.deepEqual(db.order, ['a', 'c', 'b']);
+  // A live capture adds a step at the end after the move.
+  db.steps.set('d', { stepId: 'd', revision: 1, annotations: [] });
+  db.order.push('d');
+  await editor.reload('c');
+  await editor.undo();
+  assert.deepEqual(db.order, ['a', 'b', 'c', 'd']);
+  assert.equal(editor.canvasFuture.length, 1);
+
+  // An outline record the store refuses is reported and dropped, so it can't block older undos.
+  editor.pushCanvasHistory({ type: 'move-steps', order: ['a', 'b', 'c', 'd'], parents: { a: 'b' } });
+  const before = editor.canvasHistory.length;
+  await editor.undo();
+  assert.equal(editor.canvasHistory.length, before - 1);
+  assert.match(toasts.at(-1), /Could not undo the move/);
 });

@@ -831,6 +831,15 @@ function setupIpc() {
     return { ok: true, steps };
   }, { validate: (a) => c.id(a.guideId) });
 
+  // Put a new screenshot on a step, keeping its text and annotations.
+  const swapStepImage = async (guideId, stepId, step, png, size) => {
+    // Private-detail blurs matched the old screenshot; the new one is checked again.
+    const removedBlurs = forgetScreenshotChecks(step);
+    let saved = store.replaceImages(guideId, stepId, { original: png }, size, step);
+    if (await blurNewCapture(guideId, stepId, { notify: false })) saved = store.getStep(guideId, stepId);
+    reindex(guideId);
+    return { ok: true, step: saved, removedBlurs };
+  };
   // Right-click a step → Choose screenshot…: swap in an image file, keeping
   // the step's title, description and annotations.
   h('step:chooseImage', async ({ guideId, stepId }) => {
@@ -843,15 +852,20 @@ function setupIpc() {
     if (res.canceled || !res.filePaths[0]) return { ok: false };
     const img = nativeImage.createFromPath(res.filePaths[0]);
     if (img.isEmpty()) throw new Error('StepForge couldn’t open that file as an image. Choose a PNG, JPEG, GIF, WebP or BMP file.');
-    const png = img.toPNG();
-    const size = img.getSize();
-    // Private-detail blurs matched the old screenshot; the new one is checked again.
-    const removedBlurs = forgetScreenshotChecks(step);
-    let saved = store.replaceImages(guideId, stepId, { original: png }, size, step);
-    if (await blurNewCapture(guideId, stepId, { notify: false })) saved = store.getStep(guideId, stepId);
-    reindex(guideId);
-    return { ok: true, step: saved, removedBlurs };
+    return swapStepImage(guideId, stepId, step, img.toPNG(), img.getSize());
   }, { validate: (a) => c.id(a.guideId) && c.id(a.stepId) });
+  // Right-click a step → Retake screenshot: hide StepForge, count down, grab a
+  // new frame and swap it in, the same way Choose screenshot… does.
+  h('step:retake', async ({ guideId, stepId, mode, delayMs }) => {
+    const step = store.getStep(guideId, stepId);
+    const frame = await capture.retakeFrame({ mode, delayMs });
+    if (!frame.ok) return frame;
+    return swapStepImage(guideId, stepId, step, frame.png, frame.size);
+  }, {
+    validate: (a) => c.id(a.guideId) && c.id(a.stepId)
+      && (a.mode === undefined || c.oneOf(a.mode, ['fullscreen', 'window', 'region']))
+      && c.optionalNumber(a.delayMs, 0, 60000),
+  });
   // Undo and redo of Choose screenshot… put both images back.
   h('step:setImages', ({ guideId, step, originalBase64, workingBase64, size }) => {
     const saved = store.replaceImages(guideId, step.stepId, {

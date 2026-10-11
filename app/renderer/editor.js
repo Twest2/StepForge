@@ -7,6 +7,8 @@ const dialogs = window.StepForgeDialogs || {};
 const shortcuts = window.StepForgeShortcuts || {};
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
+// Retake screenshot: time to open the menu or dialog the step shows once StepForge is hidden.
+const RETAKE_DELAY_MS = 3000;
 const BLOCK_KIND_ORDER = { text: 0, code: 1, table: 2 };
 
 // Which style fields are meaningful for each annotation type, so the
@@ -1068,6 +1070,14 @@ class GuideEditor {
             },
             { label: 'Duplicate step', action: () => this.duplicateSelectedStep() },
             { label: 'Choose screenshot…', action: () => this.chooseScreenshot(step.stepId) },
+            {
+              label: 'Retake screenshot',
+              submenu: [
+                { label: 'Full screen', action: () => this.retakeScreenshot(step.stepId, 'fullscreen') },
+                { label: 'Window', action: () => this.retakeScreenshot(step.stepId, 'window') },
+                { label: 'Region…', action: () => this.retakeScreenshot(step.stepId, 'region') },
+              ],
+            },
             'sep',
             { label: 'Move up', action: () => this.moveSelectedStep(-1) },
             { label: 'Move down', action: () => this.moveSelectedStep(1) },
@@ -1817,6 +1827,28 @@ class GuideEditor {
    * the old screenshot back.
    */
   async chooseScreenshot(stepId) {
+    await this.replaceStepScreenshot(stepId, (step) => api.step.chooseImage({ guideId: this.guideId, stepId: step.stepId }));
+  }
+
+  /**
+   * Step menu → Retake screenshot: StepForge hides itself, counts down and
+   * grabs a new screenshot for this step. Like Choose screenshot…, the text
+   * and annotations stay and Ctrl+Z puts the old screenshot back.
+   */
+  async retakeScreenshot(stepId, mode = 'fullscreen', delayMs = RETAKE_DELAY_MS) {
+    if (stepId && stepId !== this.selectedStepId) await this.selectStep(stepId);
+    if ((await api.capture.state())?.active) {
+      this.onToast('Stop the recording session before retaking a screenshot.', { error: true });
+      return;
+    }
+    await this.replaceStepScreenshot(stepId, (step) => api.step.retake({ guideId: this.guideId, stepId: step.stepId, mode, delayMs }), 'retaken');
+  }
+
+  /**
+   * Shared by Choose screenshot… and Retake screenshot: `pick(step)` swaps the
+   * image in the main process; this records the old images for undo.
+   */
+  async replaceStepScreenshot(stepId, pick, verb = 'replaced') {
     if (stepId && stepId !== this.selectedStepId) await this.selectStep(stepId);
     const step = this.currentStep;
     if (!step) return;
@@ -1824,19 +1856,22 @@ class GuideEditor {
     const before = await this.snapshotCurrentStep(true);
     let result;
     try {
-      result = await api.step.chooseImage({ guideId: this.guideId, stepId: step.stepId });
+      result = await pick(step);
     } catch (err) {
       this.onToast(err.message, { error: true });
       return;
     }
-    if (!result || !result.ok) return;
+    if (!result || !result.ok) {
+      if (result && result.reason) this.onToast(result.reason, { error: true });
+      return;
+    }
     if (before) this.pushCanvasHistory(before);
     await this.reload(step.stepId);
     const kept = (result.step.annotations || []).length;
     const blurs = result.removedBlurs ? ' Private details will be checked again before publishing.' : '';
     this.onToast(kept
-      ? `Screenshot replaced. Its annotations were kept, so check they still line up.${blurs} Press Ctrl+Z to undo.`
-      : `Screenshot replaced.${blurs} Press Ctrl+Z to undo.`);
+      ? `Screenshot ${verb}. Its annotations were kept, so check they still line up.${blurs} Press Ctrl+Z to undo.`
+      : `Screenshot ${verb}.${blurs} Press Ctrl+Z to undo.`);
   }
 
   async deleteSelectedStep() {

@@ -2179,9 +2179,27 @@ public static class SFHook {
    * rectangle in a fullscreen overlay; the crop becomes the step image.
    */
   async regionCapture(guideId) {
+    const picked = await this.pickRegionFrame();
+    if (!picked.ok) return picked;
+    // storeFrameAsStep already returns { ok, step }; return it directly so
+    // callers see result.step.stepId — not result.step.step.stepId, which is
+    // what wrapping it in another { ok, step } produced (region selection and
+    // region auto-documentation both read result.step.stepId).
+    return this.storeFrameAsStep(guideId, 'region', picked.frame, null, null);
+  }
+
+  /**
+   * Shoot the full screen and let the user drag a rectangle over it.
+   * Resolves { ok, frame } with the cropped frame, or { ok: false, reason }.
+   * `delayMs` waits (with the app window hidden) before the screen is grabbed.
+   */
+  async pickRegionFrame({ delayMs = 0 } = {}) {
     let grabbed;
     try {
-      grabbed = await this.withWindowHidden(() => this.grab('fullscreen'));
+      grabbed = await this.withWindowHidden(async () => {
+        if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
+        return this.grab('fullscreen');
+      });
     } catch (err) {
       return { ok: false, reason: err.message };
     }
@@ -2192,16 +2210,39 @@ public static class SFHook {
     const cropped = image.crop(rect);
     const size = cropped.getSize();
     if (!size.width || !size.height) return { ok: false, reason: 'empty selection' };
-    // storeFrameAsStep already returns { ok, step }; return it directly so
-    // callers see result.step.stepId — not result.step.step.stepId, which is
-    // what wrapping it in another { ok, step } produced (region selection and
-    // region auto-documentation both read result.step.stepId).
-    return this.storeFrameAsStep(guideId, 'region', {
-      image: cropped,
-      size,
-      display,
-      cursor: null,
-    }, null, null);
+    return { ok: true, frame: { image: cropped, size, display, cursor: null } };
+  }
+
+  /**
+   * Retake a step's screenshot: hide the app, wait out the countdown, grab
+   * a frame in `mode` and hand back its PNG. Nothing is stored here; the
+   * caller swaps the image into the step. Refused while a capture session
+   * is running, since it owns the window, the hotkey and the click capture.
+   */
+  async retakeFrame({ mode = 'fullscreen', delayMs = 3000 } = {}) {
+    if (this.session) return { ok: false, reason: 'Stop the recording session before retaking a screenshot.' };
+    if (this.shooting) return { ok: false, reason: 'capture already in progress' };
+    this.shooting = true;
+    try {
+      let frame;
+      if (mode === 'region') {
+        const picked = await this.pickRegionFrame({ delayMs });
+        if (!picked.ok) return picked;
+        frame = picked.frame;
+      } else {
+        try {
+          frame = await this.withWindowHidden(async () => {
+            if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
+            return this.captureCurrentFrame(mode);
+          });
+        } catch (err) {
+          return { ok: false, reason: err.message };
+        }
+      }
+      return { ok: true, png: frame.png || frame.image.toPNG(), size: frame.size };
+    } finally {
+      this.shooting = false;
+    }
   }
 
   /**

@@ -2365,6 +2365,41 @@ class GuideEditor {
     });
   }
 
+  /** Ctrl+H: find and replace across every step; see core/find-replace.js. */
+  async openFindReplace() {
+    if (!this.guideId || !this.steps.length) return;
+    if (this.pendingSave) await this.flushStep();
+    await dialogs.showFindReplace({
+      stepNumbers: Object.fromEntries(stepNumberMap(this.steps)),
+      find: (options) => api.findReplace.find({ guideId: this.guideId, ...options }),
+      replace: (matches, replacement) => this.replaceMatches(matches, replacement),
+    });
+  }
+
+  /**
+   * Replace the chosen find-and-replace matches. The edited steps are saved
+   * one by one and pushed as one 'multi-step' undo record, so a single Ctrl+Z
+   * puts every step back. Returns the number of matches replaced.
+   */
+  async replaceMatches(matches, replacement) {
+    if (this.pendingSave) await this.flushStep();
+    const result = await api.findReplace.apply({ guideId: this.guideId, matches, replacement });
+    const saved = [];
+    try {
+      for (const step of result.steps) saved.push(await api.step.save({ guideId: this.guideId, step }));
+    } catch (err) {
+      this.onToast(`Could not save every step: ${err.message || err}`, { error: true });
+    }
+    if (saved.length) this.pushCanvasHistory(this.multiStepRecord(result.before.slice(0, saved.length), saved));
+    await this.reload(this.selectedStepId);
+    const skipped = result.refused.length + result.stale.length;
+    const stepWord = saved.length === 1 ? 'step' : 'steps';
+    this.onToast(saved.length
+      ? `Replaced ${result.applied} in ${saved.length} ${stepWord}.${skipped ? ` ${skipped} skipped.` : ''} Press Ctrl+Z to undo.`
+      : `Nothing was replaced.${skipped ? ` ${skipped} skipped.` : ''}`);
+    return saved.length ? result.applied : 0;
+  }
+
   async openSearchResult(result) {
     if (!result) return;
     if (result.stepId) {
@@ -2645,6 +2680,11 @@ class GuideEditor {
     if ((e.ctrlKey || e.metaKey) && e.key === '/' && !e.shiftKey) {
       e.preventDefault();
       this.openQuickActions();
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'h' && !e.shiftKey && !e.altKey) {
+      e.preventDefault();
+      this.openFindReplace();
       return;
     }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {

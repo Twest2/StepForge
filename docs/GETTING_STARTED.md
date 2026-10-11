@@ -196,6 +196,7 @@ Press **Ctrl+/** for the quick-actions palette, or open
 | `Ctrl+Shift+2` | Pause / resume capture (global) |
 | `Ctrl+S` | Save |
 | `Ctrl+/` | Quick actions |
+| `Ctrl+H` | Find and replace across the guide (one Ctrl+Z undoes it) |
 | `PageUp` / `PageDown` | Previous / next step |
 | `Alt+↑` / `Alt+↓` | Move step up / down |
 | `Ctrl+Z` / `Ctrl+Shift+Z` | Undo / redo |

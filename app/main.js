@@ -25,6 +25,7 @@ const { TransferMeter } = require('../core/transfer-meter');
 const { CloudSync } = require('../core/cloud-sync');
 const { createCredentialVault } = require('./credential-vault');
 const { SearchIndex } = require('../core/search');
+const { findMatches, applyReplacements } = require('../core/find-replace');
 const { TemplateManager, FORMATS, FORMAT_LABELS } = require('../core/templates');
 const { buildRenderAst } = require('../core/renderast');
 const { AI_TARGETS } = require('../core/text-intel');
@@ -875,6 +876,27 @@ function setupIpc() {
     { validate: (a) => c.optionalString(a.q, 1000) && c.optionalId(a.guideId) });
   h('search:titles', ({ q }) => searchIndex.searchTitles(q),
     { validate: (a) => c.optionalString(a.q, 1000) });
+
+  // find and replace across a guide's steps (core/find-replace.js). `apply`
+  // only computes the edited steps; the editor saves them and records the undo.
+  const FIND_LIMIT = 1000;
+  h('findReplace:find', ({ guideId, query, replacement = '', caseSensitive = false, wholeWord = false }) => {
+    const found = findMatches(orderedSteps(guideId), query, {
+      caseSensitive, wholeWord, replacement, limit: FIND_LIMIT + 1,
+    });
+    return { matches: found.slice(0, FIND_LIMIT), truncated: found.length > FIND_LIMIT };
+  }, {
+    validate: (a) => c.id(a.guideId) && c.string(a.query, 1000) && c.optionalString(a.replacement, 1000)
+      && (a.caseSensitive === undefined || c.bool(a.caseSensitive))
+      && (a.wholeWord === undefined || c.bool(a.wholeWord)),
+  });
+  h('findReplace:apply', ({ guideId, matches, replacement = '' }) => (
+    applyReplacements(orderedSteps(guideId), matches, replacement)
+  ), {
+    validate: (a) => c.id(a.guideId) && c.optionalString(a.replacement, 1000)
+      && Array.isArray(a.matches) && a.matches.length <= FIND_LIMIT
+      && a.matches.every((m) => m && typeof m === 'object' && Array.isArray(m.path)),
+  });
 
   // Cloud access is confined to the main process; tokens never enter IPC.
   h('cloud:status', () => {

@@ -37,6 +37,21 @@ function githubTimeLeft(iso) {
   return `Removed in ${Math.round(hours / 24)} days`;
 }
 
+/** When each guide in the library was last changed, by id. Empty if the library can't be read. */
+async function guideUpdatedTimes(api) {
+  try {
+    const { guides } = await api.library.list();
+    return new Map(guides.map((guide) => [guide.guideId, guide.updatedAt]));
+  } catch { return new Map(); }
+}
+
+/** True when a guide was changed after it was shared, so the public copy is behind. */
+function editedSinceShared(updatedAt, publishedAt) {
+  const edited = Date.parse(updatedAt);
+  const shared = Date.parse(publishedAt);
+  return Number.isFinite(edited) && Number.isFinite(shared) && edited > shared;
+}
+
 function makeGitHubSettings(api) {
   let current = {};
   let busy = false;
@@ -330,7 +345,8 @@ function makeGitHubSettings(api) {
     if (!current.repo) return;
     const request = ++listRequest;
     let guides;
-    try { guides = await api.github.published(); } catch (err) {
+    let updated;
+    try { [guides, updated] = await Promise.all([api.github.published(), guideUpdatedTimes(api)]); } catch (err) {
       if (!disposed && request === listRequest) sharedList.replaceChildren(el('p.cloud-empty.muted', {}, err.message));
       return;
     }
@@ -344,6 +360,18 @@ function makeGitHubSettings(api) {
         catch (err) { say(err.message, 'error'); }
       } }, 'Copy link');
       const view = el('button', { type: 'button', onClick: open(guide.url) }, 'Open');
+      const extend = el('button', { type: 'button', onClick: (event) => {
+        if (busy || disposed) return;
+        const rect = event.currentTarget.getBoundingClientRect();
+        contextMenu(rect.left, rect.bottom + 4, [1, 7, 30].map((days) => ({
+          label: `Keep online for ${githubExpiryLabel(days)} from now`,
+          action: () => run(extend, 'Extending…', async () => {
+            await api.github.extend({ slug: guide.slug, days });
+            say(`“${guide.title}” stays online for ${githubExpiryLabel(days)} from now.`, 'success');
+            await refreshPublished();
+          }),
+        })));
+      } }, 'Extend');
       const remove = el('button.danger', { type: 'button', onClick: async () => {
         if (busy || disposed) return;
         const ok = await confirmDialog(el('div.cloud-confirm', {},
@@ -364,8 +392,19 @@ function makeGitHubSettings(api) {
             el('div.cloud-guide-title', { title: guide.title }, guide.title || 'Untitled guide'),
             el('div.cloud-chips', {},
               el('span.cloud-chip.local', {}, githubTimeLeft(guide.expiresAt)),
-              el('span.muted', { title: guide.url }, `Until ${githubWhen(guide.expiresAt)}`))),
-          el('div.cloud-guide-actions', {}, copy, view, remove))));
+              el('span.muted', { title: guide.url }, `Until ${githubWhen(guide.expiresAt)}`),
+              editedSinceShared(updated.get(guide.guideId), guide.publishedAt)
+                ? el('button.cloud-chip.stale', {
+                  type: 'button',
+                  title: 'This guide changed after you shared it. Publish it again to update the public copy.',
+                  onClick: () => {
+                    if (busy || disposed) return;
+                    // The normal Publish dialog, with its public-content checkbox.
+                    void showPublishToWebDialog({ api, guideId: guide.guideId, guideTitle: guide.title || 'Untitled guide', onOpenAccounts: () => {} })
+                      .then(() => { if (!disposed) void refreshPublished(); });
+                  },
+                }, 'Edited since you shared it') : null)),
+          el('div.cloud-guide-actions', {}, copy, view, extend, remove))));
     }
   }
 
@@ -779,14 +818,15 @@ async function showPublishToWebDialog({ api, guideId, guideTitle, onOpenAccounts
       }
     });
 
-    api.github.published().then((guides) => {
+    Promise.all([api.github.published(), guideUpdatedTimes(api)]).then(([guides, updated]) => {
       if (!open || publishing) return;
       const existing = guides.find((entry) => entry.guideId === guideId) || null;
       // replaceChildren() would print a skipped (null) item as "null".
       form = el('div.gh-publish', {}, ...[
         el('p', {}, `Publish “${guideTitle}” as a web page on your GitHub Pages site. Screenshots, text, and annotations are included, the same as an interactive HTML export.`),
         existing ? el('div.cloud-banner', {},
-          'This guide is already shared until ', githubWhen(existing.expiresAt), '. Publishing again updates the page with your latest changes and keeps the same link.') : null,
+          'This guide is already shared until ', githubWhen(existing.expiresAt), '. Publishing again updates the page with your latest changes and keeps the same link.',
+          editedSinceShared(updated.get(guideId), existing.publishedAt) ? ' The guide has changed since you shared it.' : '') : null,
         el('label.gh-field', {}, el('span', {}, 'Keep it online for'), days),
         privacyBox,
         githubPublicWarning('StepForge blurs the private details it finds, but it can miss some, such as names or text that’s hard to read. Check every screenshot before you publish, and use the Blur tool for anything else.'),

@@ -27,9 +27,12 @@ function setup({ steps, pick = async () => null }) {
         return JSON.parse(JSON.stringify(saved));
       },
       reorder: async ({ order, parents }) => {
+        // Mirrors store.reorderSteps: same steps, and a checked outline whenever parents is passed.
+        if (order.length !== db.order.length || !order.every((id) => db.steps.has(id))) throw new Error('exactly the existing steps');
         const parentOf = new Map(db.order.map((id) => [id, db.steps.get(id).parentStepId || null]));
+        const wasValid = isValidOutline(db.order, parentOf);
         for (const [id, parentId] of Object.entries(parents || {})) parentOf.set(id, parentId);
-        if (parents && Object.keys(parents).length && !isValidOutline(order, parentOf)) throw new Error('numbering');
+        if (parents && wasValid && !isValidOutline(order, parentOf)) throw new Error('numbering');
         for (const [id, parentId] of parentOf) db.steps.get(id).parentStepId = parentId;
         db.order = [...order];
       },
@@ -99,7 +102,8 @@ test('the last substep moving down leaves its parent instead of stranding itself
   const { editor, db } = setup({ steps: nested() });
   await editor.reload('a2');
   await editor.moveSelectedStep(1);
-  assert.deepEqual(outline(db), ['A', 'a1<A', 'B', 'b1<B', 'a2<B', 'C']);
+  // It lands right after B as B's first substep, so Alt+Up brings it straight back.
+  assert.deepEqual(outline(db), ['A', 'a1<A', 'B', 'a2<B', 'b1<B', 'C']);
   await editor.undo();
   assert.deepEqual(outline(db), ['A', 'a1<A', 'a2<A', 'B', 'b1<B', 'C']);
 });
@@ -204,5 +208,18 @@ test('a guide whose outline is already broken is repaired by the next move', asy
   await editor.reload('C');
   // x names A but sits under B. The move flattens x and still succeeds.
   await editor.moveSelectedStep(-1);
+  assert.deepEqual(outline(db), ['A', 'B', 'C', 'x']);
+});
+
+test('undoing a move that repaired a broken guide puts the order back and keeps it valid', async () => {
+  const steps = [{ stepId: 'A' }, { stepId: 'B' }, { stepId: 'x', parentStepId: 'A' }, { stepId: 'C' }];
+  const { editor, db, toasts } = setup({ steps });
+  await editor.reload('C');
+  await editor.moveSelectedStep(-1);
+  assert.deepEqual(outline(db), ['A', 'B', 'C', 'x']);
+  await editor.undo();
+  assert.deepEqual(outline(db), ['A', 'B', 'x', 'C'], 'x stays flattened rather than broken again');
+  assert.equal(toasts.filter((t) => /Could not/.test(t)).length, 0);
+  await editor.redo();
   assert.deepEqual(outline(db), ['A', 'B', 'C', 'x']);
 });

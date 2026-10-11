@@ -1,8 +1,8 @@
 'use strict';
 
 /**
- * The step outline: which steps are substeps of which. Order never changes
- * here. A valid outline reads top to bottom like a numbered list: each step's
+ * The step outline: which steps are substeps of which, and moving a step
+ * with its substeps (moveSubtree, moveSubtreeBy). A valid outline reads top to bottom like a numbered list: each step's
  * parent is the step right above it or one of that step's parents, so
  * numbering (1, 1.1, 1.1.1, 2 …) always follows the order on screen.
  */
@@ -171,7 +171,12 @@
       if (end >= order.length) return null;
       const nextDepth = depthOf(base, order[end]);
       gap = end + 1;
-      while (gap < order.length && depthOf(base, order[gap]) > nextDepth) gap += 1;
+      // Past a sibling, skip its whole subtree. Past a shallower step (this is
+      // the last substep), stop right after it, so the step becomes that step's
+      // first substep and Alt+Up brings it straight back.
+      if (nextDepth >= depth) {
+        while (gap < order.length && depthOf(base, order[gap]) > nextDepth) gap += 1;
+      }
     }
     return moveSubtree(order, parentOf, stepId, gap, depth);
   }

@@ -49,7 +49,7 @@ function toLatin1(text) {
 }
 
 /**
- * A PDF text string for document metadata. Printable ASCII goes out as a
+ * A PDF text string (document metadata, bookmark titles). Printable ASCII goes out as a
  * plain literal; anything else becomes UTF-16BE hex with a byte-order mark,
  * which every viewer decodes and which has no Latin-1 / PDFDocEncoding gaps.
  */
@@ -188,7 +188,7 @@ class PdfBuilder {
   }
 
   bookmark(title, pageIndex = this.pages.length - 1) {
-    this.bookmarks.push({ title: toLatin1(title), pageIndex });
+    this.bookmarks.push({ title: String(title), pageIndex }); // a text string, encoded when written
   }
 
   /**
@@ -268,7 +268,7 @@ class PdfBuilder {
       addObj(`<< /Type /Outlines /First ${itemIds[0]} 0 R /Last ${itemIds[itemIds.length - 1]} 0 R /Count ${itemIds.length} >>`);
       this.bookmarks.forEach((bm, i) => {
         const parts = [
-          `/Title (${esc(bm.title)})`,
+          `/Title ${pdfTextString(bm.title)}`,
           `/Parent ${outlineRootId} 0 R`,
           `/Dest [${pageIds[bm.pageIndex]} 0 R /Fit]`,
         ];

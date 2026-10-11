@@ -165,6 +165,19 @@ test('PDF export: /Info has the guide title and author, referenced from the trai
     `<< /Title <FEFF${hex('Caf\u00e9 \u2713 \u65e5\u672c \ud83d\ude80')}> /Author <FEFF${hex('Zo\u00eb')}> >>`);
 });
 
+test('PDF builder: bookmark titles outside Latin-1 are written as UTF-16BE, not "?"', () => {
+  const pdf = new PdfBuilder();
+  pdf.addPage();
+  pdf.bookmark('1. Click Save');
+  pdf.addPage();
+  pdf.bookmark('2. \u4fdd\u5b58\u3092\u30af\u30ea\u30c3\u30af \u201cOK\u201d');
+  const text = pdf.build().toString('latin1');
+  const hex = (str) => Buffer.from(str, 'utf16le').swap16().toString('hex').toUpperCase();
+  assert.ok(text.includes('/Title (1. Click Save)'), 'ASCII stays a plain literal');
+  assert.ok(text.includes(`/Title <FEFF${hex('2. \u4fdd\u5b58\u3092\u30af\u30ea\u30c3\u30af \u201cOK\u201d')}>`));
+  assert.ok(!text.includes('/Title (2. ?'), 'no Latin-1 fallback question marks');
+});
+
 test('PDF builder: no title or author means no /Info dictionary', () => {
   const pdf = new PdfBuilder();
   pdf.addPage();

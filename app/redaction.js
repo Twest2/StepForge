@@ -19,14 +19,50 @@ const redaction = require('../core/redaction');
 
 const MAX_READ_WIDTH = 4000;
 
+/**
+ * A raw 32-bit BGRA bitmap (Electron's nativeImage.toBitmap()) as a binary
+ * PPM, which text recognition reads as readily as a PNG. Encoding a large
+ * PNG blocks the main process for a third of a second; this takes a few ms.
+ */
+function bitmapToPpm(bgra, width, height) {
+  const stride = bgra.length / height;
+  if (!Number.isInteger(stride) || stride < width * 4) throw new Error('A screenshot in this guide couldn’t be read.');
+  const header = Buffer.from(`P6\n${width} ${height}\n255\n`, 'ascii');
+  const ppm = Buffer.allocUnsafe(header.length + width * height * 3);
+  header.copy(ppm);
+  let o = header.length;
+  for (let y = 0; y < height; y += 1) {
+    for (let i = y * stride, end = i + width * 4; i < end; i += 4, o += 3) {
+      ppm[o] = bgra[i + 2];
+      ppm[o + 1] = bgra[i + 1];
+      ppm[o + 2] = bgra[i];
+    }
+  }
+  return ppm;
+}
+
 class RedactionService {
   /**
-   * `readLines(png)` returns recognized lines with word boxes.
-   * `loadImage(path)` returns { width, height, png(scale) } for a screenshot.
+   * `readLines(image)` returns recognized lines with word boxes.
+   * `loadImage(path)` returns { width, height, encode(scale) } for a
+   * screenshot, `encode` giving the image enlarged `scale` times in a form
+   * `readLines` takes. `concurrency` screenshots are read at once.
    */
-  constructor({ store, settings, readLines, loadImage }) {
-    Object.assign(this, { store, settings, readLines, loadImage });
+  constructor({ store, settings, readLines, loadImage, concurrency = 1 }) {
+    Object.assign(this, { store, settings, readLines, loadImage, concurrency });
     this.running = new Map();
+    this.preparing = Promise.resolve();
+  }
+
+  /**
+   * Enlarging a screenshot keeps the main process busy for ~100 ms. With
+   * several screenshots being read at once, they're enlarged one at a time
+   * and other events (input, IPC) are handled in between.
+   */
+  prepare(fn) {
+    const turn = this.preparing.then(() => new Promise((resolve) => setTimeout(resolve, 0))).then(fn);
+    this.preparing = turn.catch(() => {});
+    return turn;
   }
 
   options() {
@@ -43,9 +79,12 @@ class RedactionService {
   }
 
   async readScreenshot(guideId, step, options) {
-    const image = await this.loadImage(this.store.stepImagePath(guideId, step.stepId));
-    const scale = Math.max(1, Math.min(2, MAX_READ_WIDTH / Math.max(1, image.width)));
-    const lines = await this.readLines(image.png(scale));
+    const { image, scale, encoded } = await this.prepare(async () => {
+      const loaded = await this.loadImage(this.store.stepImagePath(guideId, step.stepId));
+      const enlarge = Math.max(1, Math.min(2, MAX_READ_WIDTH / Math.max(1, loaded.width)));
+      return { image: loaded, scale: enlarge, encoded: loaded.encode(enlarge) };
+    });
+    const lines = await this.readLines(encoded);
     // Word boxes come back in the enlarged image's pixels.
     const toStep = (v, axis) => v / scale * (axis === 'x' ? step.image.size.width / image.width : step.image.size.height / image.height);
     const scaled = lines.map((line) => ({ words: line.words.map((w) => ({ text: w.text,
@@ -89,11 +128,32 @@ class RedactionService {
       const pending = guide.stepsOrder.map((id) => steps.get(id)).filter((step) => step?.kind === 'image' && step.image?.size
         && (force || step.redaction?.checked !== this.checkedKey(guideId, step, options)));
       let added = 0;
-      onProgress({ done: 0, total: pending.length });
-      for (const [index, step] of pending.entries()) {
-        added += await this.checkStep(guideId, step.stepId, { force, options });
-        onProgress({ done: index + 1, total: pending.length });
-      }
+      let done = 0;
+      let next = 0;
+      let failed = false;
+      onProgress({ done, total: pending.length });
+      // Several screenshots are read side by side; the first error stops the rest.
+      const checkNext = async () => {
+        while (next < pending.length && !failed) {
+          const step = pending[next];
+          next += 1;
+          let blurs;
+          try {
+            blurs = await this.checkStep(guideId, step.stepId, { force, options });
+          } catch (err) {
+            failed = true;
+            throw err;
+          }
+          // Not `added += await …`: that reads `added` before another check finishes.
+          added += blurs;
+          done += 1;
+          onProgress({ done, total: pending.length });
+        }
+      };
+      const lanes = Math.max(1, Math.min(this.concurrency, pending.length));
+      const results = await Promise.allSettled(Array.from({ length: lanes }, checkNext));
+      const error = results.find((result) => result.status === 'rejected');
+      if (error) throw error.reason;
       return { checked: pending.length, added, ...this.review(guideId) };
     })().finally(() => { if (this.running.get(guideId) === job) this.running.delete(guideId); });
     this.running.set(guideId, job);
@@ -155,4 +215,4 @@ class RedactionService {
   }
 }
 
-module.exports = { RedactionService, MAX_READ_WIDTH };
+module.exports = { RedactionService, MAX_READ_WIDTH, bitmapToPpm };

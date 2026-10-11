@@ -383,9 +383,12 @@ class GuideStore {
 
   /**
    * Put the steps in `newOrder`. `parents` (optional, { stepId: parentStepId | null })
-   * also re-parents the steps it names, in the same call; the resulting outline
-   * must read top to bottom (isValidOutline) or nothing is changed. Without
-   * `parents` only the order changes and the outline is not checked.
+   * also re-parents the steps it names, in the same call. Whenever `parents` is
+   * passed, even empty, the resulting outline must read top to bottom
+   * (isValidOutline) or nothing is changed; the one exception is a guide whose
+   * outline is already broken on disk (an old move), which keeps reordering
+   * the way it always could. Without `parents` only the order changes and the
+   * outline is not checked.
    */
   reorderSteps(guideId, newOrder, parents = null) {
     const guide = this.getGuide(guideId);
@@ -394,16 +397,17 @@ class GuideStore {
       throw new Error('reorderSteps: new order must contain exactly the existing steps');
     }
     const changes = [];
-    if (parents && Object.keys(parents).length) {
+    if (parents) {
       const steps = this.listSteps(guideId);
       const parentOf = new Map();
       for (const id of newOrder) parentOf.set(id, steps.has(id) ? steps.get(id).parentStepId || null : null);
+      const wasValid = isValidOutline(guide.stepsOrder, parentOf);
       for (const [id, parentId] of Object.entries(parents)) {
         if (!parentOf.has(id)) throw new Error(`reorderSteps: unknown step ${id} in parents`);
         if ((parentId || null) !== parentOf.get(id)) changes.push([id, parentId || null]);
         parentOf.set(id, parentId || null);
       }
-      if (!isValidOutline(newOrder, parentOf)) {
+      if (wasValid && !isValidOutline(newOrder, parentOf)) {
         throw new Error('reorderSteps: that order would break the step numbering');
       }
     }

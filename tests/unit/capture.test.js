@@ -1504,3 +1504,31 @@ test('Settings no longer offers a Region default mode that recording ignores', (
   assert.match(block, /'window'/);
   assert.doesNotMatch(block, /region/i);
 });
+
+test('an old settings file holding the dropped Region default loads as Fullscreen', (t) => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const { Settings } = require('../../core/settings');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sf-region-mode-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(dir, 'app-settings.json'), JSON.stringify({ capture: { mode: 'region', delayMs: 250 } }));
+  const settings = new Settings(dir);
+  assert.equal(settings.get('capture.mode'), 'fullscreen');
+  assert.equal(settings.get('capture.delayMs'), 250, 'the rest of the capture settings are kept');
+  fs.writeFileSync(path.join(dir, 'app-settings.json'), JSON.stringify({ capture: { mode: 'window' } }));
+  assert.equal(new Settings(dir).get('capture.mode'), 'window');
+});
+
+test('the click marker on a window frame is placed by captureBounds', async () => {
+  const { service, added } = markerService();
+  // A backend that reports the window's bounds but leaves the display's own.
+  const frame = makeFrame('win', 0, {
+    mode: 'window', display: { bounds: { x: 0, y: 0, width: 1920, height: 1080 } }, size: { width: 400, height: 300 },
+  });
+  frame.captureBounds = { x: 100, y: 200, width: 400, height: 300 };
+  await service.storeFrameAsStep('g', 'window', frame, { x: 300, y: 350 });
+  const mark = added[0].annotations[0];
+  assert.equal(mark.x + mark.w / 2, 0.5);
+  assert.equal(mark.y + mark.h / 2, 0.5);
+});

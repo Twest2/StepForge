@@ -17,7 +17,7 @@ const DEFAULT_SETTINGS = {
   redaction: { onCapture: false, terms: [] },
   capture: {
     delayMs: 0,
-    mode: 'fullscreen', // fullscreen | window | region
+    mode: 'fullscreen', // fullscreen | window ('region' in old files is treated as fullscreen)
     includeCursor: true,
     clickMarker: true,
     focusAmount: 1.25, // Zoom for new automatically focused captures: 1–2 in 0.05 increments.

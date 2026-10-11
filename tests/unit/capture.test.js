@@ -1421,3 +1421,86 @@ test('Windows control context stays attached to its paired click and clears for 
   assert.equal(contexts[0].elementIsPassword, false);
   assert.deepEqual(contexts[1], { windowTitle: 'Page - Chrome', appName: 'chrome' });
 });
+
+// ---- capture mode gaps -------------------------------------------------------
+
+function streamFrame(clickAt) {
+  return {
+    mode: 'fullscreen',
+    png: Buffer.from('stream-frame'),
+    size: { width: 100, height: 100 },
+    display: { bounds: { x: 0, y: 0, width: 100, height: 100 } },
+    startedAt: clickAt - 50,
+    capturedAt: clickAt - 40,
+    source: 'stream',
+  };
+}
+
+test('window mode on Wayland uses the full-screen stream frame instead of skipping the click', async () => {
+  const service = makeService({ settings: { 'capture.mode': 'window' } });
+  service._wayland = true; // KDE, sway and so on: no frame loop
+  const clickAt = Date.now();
+  const events = [];
+  service.notify = (name, payload) => events.push([name, payload]);
+  service.session = { guideId: 'guide-window-wl', paused: false, count: 0, intervalSec: 0 };
+  service.streamBackend = { isActive: () => true, frameForClick: async () => streamFrame(clickAt), stop: () => {} };
+
+  const frame = await service.frameForClick({ x: 10, y: 10 }, clickAt);
+  assert.equal(frame.source, 'stream');
+  assert.equal(frame.mode, 'fullscreen', 'the step is labelled with what was really captured');
+
+  await service.frameForClick({ x: 10, y: 10 }, clickAt);
+  const diagnostics = events.filter(([name, p]) => name === 'capture:diagnostic' && p.kind === 'window-mode-unavailable');
+  assert.equal(diagnostics.length, 1, 'the fallback is reported once per session, not once per click');
+  assert.match(diagnostics[0][1].reason, /full screen/);
+});
+
+test('window mode off Wayland still skips the stream and returns no frame without a frame loop', async () => {
+  const service = makeService({ settings: { 'capture.mode': 'window' } });
+  service._wayland = false;
+  service.session = { guideId: 'guide-window-x11', paused: false, count: 0, intervalSec: 0 };
+  service.streamBackend = {
+    isActive: () => true,
+    frameForClick: async () => { throw new Error('window mode must not use the full-screen stream off Wayland'); },
+    stop: () => {},
+  };
+  assert.equal(await service.frameForClick({ x: 10, y: 10 }, Date.now()), null);
+});
+
+function markerService() {
+  const service = makeService({ settings: {
+    'capture.clickMarker': true, 'capture.clickMarkerColor': '#E5484D', 'capture.smartCropping': false,
+  } });
+  const added = [];
+  service.store.addStep = (guideId, fields) => { added.push(fields); return { stepId: 's', ...fields }; };
+  return { service, added };
+}
+
+test('a window frame with captureBounds gets a click marker placed inside those bounds', async () => {
+  const { service, added } = markerService();
+  const bounds = { x: 100, y: 200, width: 400, height: 300 };
+  const frame = makeFrame('win', 0, { mode: 'window', display: { bounds }, size: { width: 400, height: 300 } });
+  frame.captureBounds = bounds;
+  const result = await service.storeFrameAsStep('g', 'window', frame, { x: 300, y: 350 });
+  assert.equal(result.ok, true);
+  assert.equal(added[0].annotations.length, 1);
+  const mark = added[0].annotations[0];
+  assert.equal(mark.x + mark.w / 2, 0.5);
+  assert.equal(mark.y + mark.h / 2, 0.5);
+});
+
+test('a window frame without captureBounds gets no click marker', async () => {
+  const { service, added } = markerService();
+  const frame = makeFrame('win', 0, { mode: 'window' });
+  const result = await service.storeFrameAsStep('g', 'window', frame, { x: 50, y: 50 });
+  assert.equal(result.ok, true);
+  assert.deepEqual(added[0].annotations, []);
+});
+
+test('Settings no longer offers a Region default mode that recording ignores', () => {
+  const source = require('node:fs').readFileSync(require('node:path').join(__dirname, '../../app/renderer/dialogs.js'), 'utf8');
+  const start = source.indexOf('const captureMode = makeSelect');
+  const block = source.slice(start, source.indexOf(']);', start));
+  assert.match(block, /'window'/);
+  assert.doesNotMatch(block, /region/i);
+});

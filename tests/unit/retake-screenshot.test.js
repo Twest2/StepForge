@@ -74,6 +74,54 @@ test('a failed grab is reported and clears the in-progress flag', async () => {
   assert.equal(service.shooting, false);
 });
 
+/** A stand-in BrowserWindow that logs what happens to it, with the time since `t0`. */
+function fakeWindow(log, t0) {
+  let visible = true;
+  const note = (what) => log.push([what, Date.now() - t0]);
+  return {
+    isDestroyed: () => false,
+    isVisible: () => visible,
+    isMinimized: () => false,
+    getTitle: () => 'StepForge',
+    hide: () => { visible = false; note('hide'); },
+    show: () => { visible = true; note('show'); },
+    focus: () => note('focus'),
+    showInactive: () => { visible = true; note('showInactive'); },
+  };
+}
+
+test('the real hide, countdown and grab path: hidden first, grab after the countdown, shown again', async () => {
+  const log = [];
+  const t0 = Date.now();
+  const win = fakeWindow(log, t0);
+  const service = new CaptureService({
+    store: {}, settings: { get: () => null }, getWindow: () => win, notify: () => {},
+    screenApi: { getCursorScreenPoint: () => ({ x: 0, y: 0 }), getAllDisplays: () => [] },
+  });
+  const image = { toPNG: () => Buffer.from('png'), getSize: () => ({ width: 8, height: 6 }) };
+  // Only the electron call itself is replaced; withWindowHidden and captureCurrentFrame are real.
+  service.grab = async (mode) => {
+    log.push([`grab ${mode} (visible: ${win.isVisible()})`, Date.now() - t0]);
+    return { image, display: { bounds: { x: 0, y: 0, width: 8, height: 6 } }, cursor: null };
+  };
+  const result = await service.retakeFrame({ mode: 'window', delayMs: 120 });
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.png, Buffer.from('png'));
+  assert.deepEqual(log.map(([what]) => what), ['hide', 'grab window (visible: false)', 'show', 'focus']);
+  // Hidden before the countdown (so the user can set up the app), grabbed after it.
+  const at = Object.fromEntries(log.map(([what, ms]) => [what.split(' ')[0], ms]));
+  assert.ok(at.hide < 50, `hid after ${at.hide} ms`);
+  assert.ok(at.grab - at.hide >= 110, `grabbed ${at.grab - at.hide} ms after hiding`);
+
+  // A failed grab still brings the window back.
+  log.length = 0;
+  service.grab = async () => { throw new Error('capture returned an empty image'); };
+  const failed = await service.retakeFrame({ mode: 'fullscreen', delayMs: 0 });
+  assert.equal(failed.ok, false);
+  assert.deepEqual(log.map(([what]) => what), ['hide', 'show', 'focus']);
+  assert.equal(win.isVisible(), true);
+});
+
 function editor(api) {
   const context = { window: { stepforge: api }, el: () => ({}), clearNode() {}, setTimeout, clearTimeout };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/editor.js'), 'utf8'), context);

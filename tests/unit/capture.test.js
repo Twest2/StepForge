@@ -390,10 +390,12 @@ test('queued click captures preserve the original event time and button', async 
 
   await service.enqueueClickCapture({ x: 7, y: 8 }, 1770000000456, 'left');
 
+  assert.ok(Number.isFinite(seen[0].clickMeta.receivedAt));
+  delete seen[0].clickMeta.receivedAt;
   assert.deepEqual(seen, [{
     trigger: 'click',
     clickPos: { x: 7, y: 8 },
-    clickMeta: { at: 1770000000456, button: 'left', keyContext: { recentTyped: '', recentShortcut: '' } },
+    clickMeta: { at: 1770000000456, button: 'left', point: { x: 7, y: 8 }, keyContext: { recentTyped: '', recentShortcut: '' } },
   }]);
 });
 
@@ -592,7 +594,7 @@ test('Windows and Linux button names normalise to one vocabulary', async () => {
     [5, 'button-1'], [6, 'button-3'], [7, 'button-2'], [8, 'mouse'],
   ]);
   assert.deepEqual(metas.map((m) => m.button),
-    ['left', 'right', 'middle', 'other', 'left', 'right', 'middle', 'left']);
+    ['left', 'right', 'middle', 'x1', 'left', 'right', 'middle', 'left']);
 });
 
 test('buttons are normalised before the debounce, so spellings share one window', () => {
@@ -670,6 +672,44 @@ test('right-clicks are titled at once, without waiting out the debounce window',
   const t0 = Date.now();
   await service.settleClickKind({ at: t0, button: 'right' });
   assert.ok(Date.now() - t0 < 200);
+});
+
+test('different extra buttons (Back, Forward) are debounced apart', async () => {
+  const service = makeService({ settings: { 'capture.clickDebounceMs': 200 } });
+  const windows = await recordClickMetas(service, [[1000, 'x1'], [1100, 'x2']]);
+  assert.deepEqual(windows.map((m) => m.button), ['x1', 'x2'], 'Windows: both presses are steps');
+  const linux = makeService({ settings: { 'capture.clickDebounceMs': 200 } });
+  const metas = await recordClickMetas(linux, [[1000, 'button-8'], [1100, 'button-9'], [1150, 'button-9']]);
+  assert.deepEqual(metas.map((m) => m.button), ['button-8', 'button-9'], 'X11: two buttons, and the repeat is still debounced');
+});
+
+test('a press elsewhere inside the window is not a double-click', async () => {
+  const service = makeService({ settings: { 'capture.clickDebounceMs': 200 } });
+  service.session = { guideId: 'g-far', paused: false, count: 0, intervalSec: 0 };
+  service.userIsInApp = () => false;
+  service.frameForClick = async () => makeFrame('frame');
+  service.osPointToDip = (p) => p;
+  const metas = [];
+  service.sessionCapture = async (trigger, clickPos, clickMeta) => { metas.push(clickMeta); };
+  // Report.xlsx at (20, 20), then Save at (800, 500) 90 ms later.
+  service.onOsClick(1000, { x: 20, y: 20 }, 'left');
+  service.onOsClick(1090, { x: 800, y: 500 }, 'left');
+  // A real double-click a few pixels apart still counts.
+  service.onOsClick(3000, { x: 300, y: 300 }, 'left');
+  service.onOsClick(3100, { x: 303, y: 302 }, 'left');
+  await service.clickQueue;
+  assert.deepEqual(metas.map((m) => m.double === true), [false, true]);
+  // Without a position for one press it can't be told apart, so it isn't a double-click.
+  assert.equal(service.isDebouncedClick(5000, 'left'), false);
+  assert.equal(service.isDebouncedClick(5100, 'left', { x: 1, y: 1 }), true);
+});
+
+test('titling waits from when StepForge got the press, whatever clock the event time uses', async () => {
+  const service = makeService({ settings: { 'capture.clickDebounceMs': 60 } });
+  // GNOME stamps presses with the Shell's monotonic clock (milliseconds since boot).
+  const t0 = Date.now();
+  await service.settleClickKind({ at: 12345, receivedAt: t0, button: 'left' });
+  assert.ok(Date.now() - t0 >= 50, 'it waited out the window');
 });
 
 // ---- warmup gating (recording goes live only after the window hides) -----------

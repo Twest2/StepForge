@@ -38,7 +38,19 @@ function setup({ steps, confirm = async () => true }) {
     },
     ai: {},
   };
-  const context = { window: { stepforge: api, StepForgeOutline: require('../../core/step-outline') }, document: { activeElement: null }, confirmDialog: confirm, clearNode() {}, el() {} };
+  // Images "load" from paths like "size:1920x1080", so a test can give a step's file a size.
+  class Image {
+    set src(value) {
+      const m = /^size:(\d+)x(\d+)$/.exec(value);
+      setImmediate(() => {
+        if (!m) return this.onerror && this.onerror();
+        this.naturalWidth = Number(m[1]);
+        this.naturalHeight = Number(m[2]);
+        return this.onload && this.onload();
+      });
+    }
+  }
+  const context = { window: { stepforge: api, StepForgeOutline: require('../../core/step-outline') }, document: { activeElement: null }, confirmDialog: confirm, clearNode() {}, el() {}, Image, setImmediate };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/editor.js'), 'utf8'), context);
   const editor = Object.create(context.window.GuideEditor.prototype);
   Object.assign(editor, {
@@ -193,6 +205,49 @@ test('pasting an annotation is its own undo step, and only nudges inside the ste
   assert.equal(editor.canvasHistory.length, 1);
 });
 
+test('pasting an annotation onto selected steps skips other aspect ratios, and one Ctrl+Z reverts all', async () => {
+  const source = { id: 'ann-1', type: 'blur', x: 0.1, y: 0.2, w: 0.3, h: 0.05 };
+  const img = (width, height) => ({ size: { width, height } });
+  const { editor, db, toasts } = setup({
+    steps: [
+      { stepId: 'a', image: img(1920, 1080), annotations: [source] },
+      { stepId: 'b', image: img(1920, 1080) },
+      { stepId: 'c', image: img(1280, 721) }, // within 1% of 16:9
+      { stepId: 'd', image: img(1000, 1000) }, // a crop
+      { stepId: 'e' }, // no image
+      { stepId: 'f', image: img(1920, 1080) }, // not selected
+    ],
+  });
+  await editor.reload('a');
+  editor.annotationClipboard = { ...source };
+  editor.annotationClipboardStepId = 'a';
+  editor.annotationClipboardAspect = 1920 / 1080;
+  editor.selectedSteps = new Set(['a', 'b', 'c', 'd', 'e']);
+
+  await editor.pasteAnnotationToSelectedSteps();
+  const ids = ['b', 'c'].map((id) => db.steps.get(id).annotations.map((x) => x.id));
+  assert.equal(ids[0].length, 1);
+  assert.notEqual(ids[0][0], 'ann-1');
+  assert.notEqual(ids[0][0], ids[1][0]);
+  for (const id of ['b', 'c']) {
+    const ann = db.steps.get(id).annotations[0];
+    assert.deepEqual([ann.x, ann.y, ann.w, ann.h], [0.1, 0.2, 0.3, 0.05]);
+  }
+  assert.equal(db.steps.get('a').annotations.length, 1);
+  for (const id of ['d', 'e', 'f']) assert.equal(db.steps.get(id).annotations.length, 0);
+  assert.equal(editor.canvasHistory.length, 1);
+  assert.equal(editor.canvasHistory[0].type, 'multi-step');
+  assert.match(toasts.at(-1), /pasted onto 2 steps/);
+  assert.match(toasts.at(-1), /Skipped 3 steps.*: 1, 4, 5\./);
+
+  await editor.undo();
+  for (const id of ['b', 'c', 'd', 'e', 'f']) assert.equal(db.steps.get(id).annotations.length, 0);
+  assert.equal(db.steps.get('a').annotations.length, 1);
+  await editor.redo();
+  assert.equal(db.steps.get('b').annotations.length, 1);
+  assert.equal(db.steps.get('c').annotations.length, 1);
+});
+
 test('an AI write of the blocks shows the new blocks, and a later save keeps them', async () => {
   const { editor, db, api } = setup({
     steps: [{ stepId: 'a', title: 'one', textBlocks: [{ id: 't1', html: '<p>old</p>' }] }, { stepId: 'b' }],
@@ -231,6 +286,41 @@ test('undoing a move keeps steps added since in place, and a move that cannot be
   await editor.undo();
   assert.equal(editor.canvasHistory.length, before - 1);
   assert.match(toasts.at(-1), /Could not undo the move/);
+});
+
+test('bulk paste measures images stored without a size, and a second paste adds no duplicates', async () => {
+  const source = { id: 'ann-1', type: 'blur', x: 0.1, y: 0.2, w: 0.3, h: 0.05 };
+  const zero = { size: { width: 0, height: 0 } };
+  const { editor, db, api, toasts } = setup({
+    steps: [
+      { stepId: 'a', image: { size: { width: 1920, height: 1080 } }, annotations: [source] },
+      { stepId: 'b', image: zero }, // an older import: no stored size, but a 16:9 file
+      { stepId: 'c', image: zero }, // no stored size, and a square file
+    ],
+  });
+  api.step.imagePath = async ({ stepId }) => ({ b: 'size:1600x900', c: 'size:500x500' })[stepId] || null;
+  await editor.reload('a');
+  editor.annotationClipboard = { ...source };
+  editor.annotationClipboardAspect = 1920 / 1080;
+  editor.selectedSteps = new Set(['a', 'b', 'c']);
+
+  await editor.pasteAnnotationToSelectedSteps();
+  assert.equal(db.steps.get('a').annotations.length, 1, 'the source already has it');
+  assert.equal(db.steps.get('b').annotations.length, 1);
+  assert.equal(db.steps.get('c').annotations.length, 0);
+  assert.match(toasts.at(-1), /pasted onto 1 step\./);
+
+  // Pasting again changes nothing: every step either has it or does not fit.
+  await editor.pasteAnnotationToSelectedSteps();
+  assert.equal(db.steps.get('b').annotations.length, 1);
+  assert.match(toasts.at(-1), /No steps changed\./);
+  assert.equal(editor.canvasHistory.length, 1);
+
+  // Moving the source's copy away means the source step gets the paste too.
+  db.steps.get('a').annotations[0].x = 0.5;
+  await editor.reload('a');
+  await editor.pasteAnnotationToSelectedSteps();
+  assert.equal(db.steps.get('a').annotations.length, 2);
 });
 
 test('a move undo keeps a substep added since under its parent', async () => {
@@ -300,4 +390,85 @@ test('undo stops when the current step\'s pending edits cannot be saved', async 
   await editor.undo();
   assert.deepEqual(db.order, ['a', 'b', 'c']);
   assert.equal(db.steps.get('b').title, 'typed, not saved yet');
+});
+
+/** The editor's 180 ms autosave, shortened, for tests where its timing matters. */
+function realAutosave(editor, ms = 5) {
+  let timer = null;
+  editor.saveStepDebounced = Object.assign(() => {
+    clearTimeout(timer);
+    timer = setTimeout(() => editor.flushStep(), ms);
+  }, { cancel() { clearTimeout(timer); timer = null; } });
+}
+const img169 = () => ({ size: { width: 1600, height: 900 } });
+
+test('bulk paste stops, keeping the edits, when the current step cannot be saved first', async () => {
+  const source = { id: 'ann-1', type: 'blur', x: 0.1, y: 0.2, w: 0.3, h: 0.05 };
+  const { editor, db, api } = setup({ steps: [
+    { stepId: 'a', image: img169(), annotations: [source] }, { stepId: 'b', image: img169() },
+  ] });
+  await editor.reload('a');
+  Object.assign(editor, { annotationClipboard: { ...source }, annotationClipboardStepId: 'a', annotationClipboardAspect: 16 / 9 });
+  editor.selectedSteps = new Set(['b']);
+  editor.currentStep.title = 'unsaved title';
+  editor.pendingSave = true;
+  const save = api.step.save;
+  api.step.save = async (args) => { if (args.step.stepId === 'a') throw new Error('EIO'); return save(args); };
+  await editor.pasteAnnotationToSelectedSteps();
+  assert.equal(db.steps.get('b').annotations.length, 0, 'nothing was pasted');
+  assert.equal(editor.currentStep.title, 'unsaved title', 'the edit is still in the editor');
+  assert.equal(editor.pendingSave, true);
+  assert.equal(editor.canvasHistory.length, 0);
+});
+
+test('an autosave during a bulk paste cannot write a target back without the paste', async () => {
+  const source = { id: 'ann-1', type: 'blur', x: 0.1, y: 0.2, w: 0.3, h: 0.05 };
+  const { editor, db, api } = setup({ steps: [
+    { stepId: 'a', image: img169(), annotations: [source] }, { stepId: 'b', image: img169() }, { stepId: 'c', image: img169() },
+  ] });
+  realAutosave(editor);
+  await editor.reload('b');
+  Object.assign(editor, { annotationClipboard: { ...source }, annotationClipboardStepId: 'a', annotationClipboardAspect: 16 / 9 });
+  editor.selectedSteps = new Set(['b', 'c']);
+  // A title edit on B is waiting for its autosave.
+  editor.currentStep.title = 'B renamed';
+  editor.pendingSave = true;
+  editor.saveStepDebounced();
+  const save = api.step.save;
+  api.step.save = async (args) => {
+    if (args.step.stepId === 'c' && args.step.annotations.length) {
+      // C's save is slow; meanwhile the person keeps typing in B.
+      editor.currentStep.title = 'B renamed again';
+      editor.pendingSave = true;
+      editor.saveStepDebounced();
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    }
+    return save(args);
+  };
+  await editor.pasteAnnotationToSelectedSteps();
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(db.steps.get('b').annotations.length, 1, 'B keeps its paste');
+  assert.equal(db.steps.get('b').title, 'B renamed again');
+  assert.equal(db.steps.get('c').annotations.length, 1);
+});
+
+test('bulk paste skips only an identical annotation, not a different one in the same place', async () => {
+  const label = (text) => ({ id: `ann-${text}`, type: 'text', x: 0.1, y: 0.2, w: 0.3, h: 0.05, text, style: { color: '#000' } });
+  const { editor, db } = setup({ steps: [
+    { stepId: 'a', image: img169(), annotations: [label('Click Save')] },
+    { stepId: 'b', image: img169() },
+    { stepId: 'c', image: img169(), annotations: [{ id: 'other', type: 'blur', x: 0.1, y: 0.2, w: 0.3, h: 0.05 }] },
+  ] });
+  await editor.reload('a');
+  Object.assign(editor, { annotationClipboard: label('Click Save'), annotationClipboardStepId: 'a', annotationClipboardAspect: 16 / 9 });
+  editor.selectedSteps = new Set(['a', 'b', 'c']);
+  await editor.pasteAnnotationToSelectedSteps();
+  assert.equal(db.steps.get('a').annotations.length, 1, 'the source already has this exact label');
+  assert.deepEqual(db.steps.get('b').annotations.map((x) => x.text), ['Click Save']);
+  assert.equal(db.steps.get('c').annotations.length, 2, 'a blur in the same spot is a different annotation');
+
+  // The label is corrected on the source and pasted again: B gets the new text.
+  editor.annotationClipboard = label('Click Apply');
+  await editor.pasteAnnotationToSelectedSteps();
+  assert.deepEqual(db.steps.get('b').annotations.map((x) => x.text), ['Click Save', 'Click Apply']);
 });

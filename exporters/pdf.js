@@ -123,7 +123,12 @@ const DEFAULT_TEMPLATE = {
 function exportPdf(ast, outDir, template = {}) {
   const tpl = { ...DEFAULT_TEMPLATE, ...template };
   const size = PAGE_SIZES[tpl.pageSize] || PAGE_SIZES.a4;
-  const pdf = new PdfBuilder({ pageWidth: size.width, pageHeight: size.height });
+  const pdf = new PdfBuilder({
+    pageWidth: size.width,
+    pageHeight: size.height,
+    title: ast.guide.title || 'Untitled guide',
+    author: ast.guide.metadata?.author || '',
+  });
   const M = tpl.margin;
   const usableW = size.width - 2 * M;
   const usableH = size.height - 2 * M;

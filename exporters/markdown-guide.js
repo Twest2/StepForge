@@ -29,6 +29,11 @@ const HTML_CALLOUT_THEME = {
   error: { label: 'Important', border: '#ef4444', fg: '#b91c1c', kind: 'important' },
 };
 
+/** Alt text inside ![…]: backslash-escape what would end it early or read as markup. */
+function markdownAlt(text) {
+  return String(text || '').replace(/[\\[\]<>]/g, '\\$&');
+}
+
 function anchorFor(step) {
   return `step-${step.number.replace(/\./g, '-')}`;
 }
@@ -124,9 +129,9 @@ function renderMarkdownGuide(ast, outDir, template = {}, {
     const img = images.get(step.stepId);
     if (img) {
       if (tpl.azureWiki && tpl.imageMaxWidth > 0) {
-        lines.push(`![Step ${step.number}](${imageUrl(img.relPath)} =${tpl.imageMaxWidth}x)`, '');
+        lines.push(`![${markdownAlt(step.altText)}](${imageUrl(img.relPath)} =${tpl.imageMaxWidth}x)`, '');
       } else {
-        lines.push(`![Step ${step.number}](${imageUrl(img.relPath)})`, '');
+        lines.push(`![${markdownAlt(step.altText)}](${imageUrl(img.relPath)})`, '');
       }
     }
     for (const tb of afterImage) emitBlock(lines, tb, { alertStyle });

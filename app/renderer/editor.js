@@ -27,6 +27,18 @@ function stepFingerprint(step) {
  * last. `parents` maps each recorded step to the parent it gets back, so the
  * order stays one the outline can read top to bottom.
  */
+/** An annotation's content as a string, without its id: equal for a copy at the same place. */
+function annotationContentKey(ann) {
+  return JSON.stringify(ann, (key, value) => {
+    if (key === 'id') return undefined;
+    if (typeof value === 'number') return Math.round(value * 1e6) / 1e6;
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      return Object.fromEntries(Object.keys(value).sort().map((k) => [k, value[k]]));
+    }
+    return value;
+  });
+}
+
 function reconcileOrder(recorded, current, parents, currentParents) {
   const known = new Set(current);
   const order = recorded.filter((id) => known.has(id));
@@ -2604,19 +2616,21 @@ class GuideEditor {
    * normalized position, as one 'multi-step' undo record. Steps whose image
    * has a different aspect ratio than the source (a crop, another window) are
    * skipped, since the same position would land on something else, and so are
-   * steps that already have this annotation in this spot (the source step, or
-   * a second paste).
+   * steps that already have this very annotation (same place, text and style:
+   * the source step, or a second paste).
    */
   async pasteAnnotationToSelectedSteps() {
     const source = this.annotationClipboard;
     if (!source) return;
     const ids = this.steps.map((s) => s.stepId).filter((id) => this.selectedSteps.has(id));
     if (!ids.length) return;
-    if (this.pendingSave) await this.flushStep();
+    // Stop if the current step's edits can't be saved: reloading at the end
+    // would otherwise replace them with what is on disk.
+    if (!(await this.settlePendingSave())) return;
     const sourceAspect = this.annotationClipboardAspect || 0;
-    const near = (a, b) => Math.abs((Number(a) || 0) - (Number(b) || 0)) < 1e-6;
-    const alreadyThere = (step) => (step.annotations || []).some((ann) => ann.type === source.type
-      && near(ann.x, source.x) && near(ann.y, source.y) && near(ann.w, source.w) && near(ann.h, source.h));
+    // The same annotation is the same type, place, text and style; only its id may differ.
+    const sourceKey = annotationContentKey(source);
+    const alreadyThere = (step) => (step.annotations || []).some((ann) => annotationContentKey(ann) === sourceKey);
     const numbers = stepNumberMap(this.steps);
     const skipped = [];
     const before = [];
@@ -2635,9 +2649,13 @@ class GuideEditor {
       const copy = clone(source);
       copy.id = `ann-${stamp}-${Math.random().toString(36).slice(2, 7)}`;
       edited.annotations = [...(edited.annotations || []), copy];
+      const original = clone(step);
       try {
-        after.push(await api.step.save({ guideId: this.guideId, step: edited }));
-        before.push(clone(step));
+        const saved = await api.step.save({ guideId: this.guideId, step: edited });
+        before.push(original);
+        // Into the live step at once, so an autosave during the rest of the
+        // batch saves the paste rather than the copy from before it.
+        after.push(this.commitBatchSave(saved));
       } catch (err) {
         failed = err;
         break;

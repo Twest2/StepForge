@@ -390,3 +390,84 @@ test('undo stops when the current step\'s pending edits cannot be saved', async 
   assert.deepEqual(db.order, ['a', 'b', 'c']);
   assert.equal(db.steps.get('b').title, 'typed, not saved yet');
 });
+
+/** The editor's 180 ms autosave, shortened, for tests where its timing matters. */
+function realAutosave(editor, ms = 5) {
+  let timer = null;
+  editor.saveStepDebounced = Object.assign(() => {
+    clearTimeout(timer);
+    timer = setTimeout(() => editor.flushStep(), ms);
+  }, { cancel() { clearTimeout(timer); timer = null; } });
+}
+const img169 = () => ({ size: { width: 1600, height: 900 } });
+
+test('bulk paste stops, keeping the edits, when the current step cannot be saved first', async () => {
+  const source = { id: 'ann-1', type: 'blur', x: 0.1, y: 0.2, w: 0.3, h: 0.05 };
+  const { editor, db, api } = setup({ steps: [
+    { stepId: 'a', image: img169(), annotations: [source] }, { stepId: 'b', image: img169() },
+  ] });
+  await editor.reload('a');
+  Object.assign(editor, { annotationClipboard: { ...source }, annotationClipboardStepId: 'a', annotationClipboardAspect: 16 / 9 });
+  editor.selectedSteps = new Set(['b']);
+  editor.currentStep.title = 'unsaved title';
+  editor.pendingSave = true;
+  const save = api.step.save;
+  api.step.save = async (args) => { if (args.step.stepId === 'a') throw new Error('EIO'); return save(args); };
+  await editor.pasteAnnotationToSelectedSteps();
+  assert.equal(db.steps.get('b').annotations.length, 0, 'nothing was pasted');
+  assert.equal(editor.currentStep.title, 'unsaved title', 'the edit is still in the editor');
+  assert.equal(editor.pendingSave, true);
+  assert.equal(editor.canvasHistory.length, 0);
+});
+
+test('an autosave during a bulk paste cannot write a target back without the paste', async () => {
+  const source = { id: 'ann-1', type: 'blur', x: 0.1, y: 0.2, w: 0.3, h: 0.05 };
+  const { editor, db, api } = setup({ steps: [
+    { stepId: 'a', image: img169(), annotations: [source] }, { stepId: 'b', image: img169() }, { stepId: 'c', image: img169() },
+  ] });
+  realAutosave(editor);
+  await editor.reload('b');
+  Object.assign(editor, { annotationClipboard: { ...source }, annotationClipboardStepId: 'a', annotationClipboardAspect: 16 / 9 });
+  editor.selectedSteps = new Set(['b', 'c']);
+  // A title edit on B is waiting for its autosave.
+  editor.currentStep.title = 'B renamed';
+  editor.pendingSave = true;
+  editor.saveStepDebounced();
+  const save = api.step.save;
+  api.step.save = async (args) => {
+    if (args.step.stepId === 'c' && args.step.annotations.length) {
+      // C's save is slow; meanwhile the person keeps typing in B.
+      editor.currentStep.title = 'B renamed again';
+      editor.pendingSave = true;
+      editor.saveStepDebounced();
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    }
+    return save(args);
+  };
+  await editor.pasteAnnotationToSelectedSteps();
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(db.steps.get('b').annotations.length, 1, 'B keeps its paste');
+  assert.equal(db.steps.get('b').title, 'B renamed again');
+  assert.equal(db.steps.get('c').annotations.length, 1);
+});
+
+test('bulk paste skips only an identical annotation, not a different one in the same place', async () => {
+  const label = (text) => ({ id: `ann-${text}`, type: 'text', x: 0.1, y: 0.2, w: 0.3, h: 0.05, text, style: { color: '#000' } });
+  const { editor, db } = setup({ steps: [
+    { stepId: 'a', image: img169(), annotations: [label('Click Save')] },
+    { stepId: 'b', image: img169() },
+    { stepId: 'c', image: img169(), annotations: [{ id: 'other', type: 'blur', x: 0.1, y: 0.2, w: 0.3, h: 0.05 }] },
+  ] });
+  await editor.reload('a');
+  Object.assign(editor, { annotationClipboard: label('Click Save'), annotationClipboardStepId: 'a', annotationClipboardAspect: 16 / 9 });
+  editor.selectedSteps = new Set(['a', 'b', 'c']);
+  await editor.pasteAnnotationToSelectedSteps();
+  assert.equal(db.steps.get('a').annotations.length, 1, 'the source already has this exact label');
+  assert.deepEqual(db.steps.get('b').annotations.map((x) => x.text), ['Click Save']);
+  assert.equal(db.steps.get('c').annotations.length, 2, 'a blur in the same spot is a different annotation');
+
+  // The label is corrected on the source and pasted again: B gets the new text.
+  editor.annotationClipboard = label('Click Apply');
+  await editor.pasteAnnotationToSelectedSteps();
+  assert.deepEqual(db.steps.get('b').annotations.map((x) => x.text), ['Click Save', 'Click Apply']);
+});

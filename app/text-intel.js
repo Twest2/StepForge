@@ -6,6 +6,7 @@ const path = require('node:path');
 const {
   DEFAULT_CAPTURE_TITLES,
   buildCaptureTitle,
+  clickKindOf,
   isPasswordField,
   normalizeOllamaHost,
   validateOllamaHost,
@@ -22,6 +23,7 @@ const { usablePlaceholders, substitutePlaceholders } = require('../core/ai-place
 const { buildOrganizePrompt, planOrganize } = require('../core/ai-organize');
 const { parentMap } = require('../core/step-outline');
 const { systemPlaceholders } = require('../core/placeholders');
+const { OcrPool } = require('./ocr-pool');
 
 const DEFAULT_TITLE_VALUES = new Set(Object.values(DEFAULT_CAPTURE_TITLES).concat(['Capture']));
 
@@ -76,6 +78,12 @@ class TextIntelService {
     this.worker = null;
     this.workerPromise = null;
     this.workerQueue = Promise.resolve();
+    // Workers start one at a time: the first ones unpack the language data
+    // into the same cache file, and starting them together races on it.
+    this.workerStarts = Promise.resolve();
+    // Whole screenshots (checking for private details) are read by several
+    // workers side by side.
+    this.readers = new OcrPool({ start: () => this.startWorker({ tessedit_pageseg_mode: '3' }) });
     this.ocrDataDir = path.join(dataDir, 'ocr', 'eng');
     this.modelCapabilityCache = new Map();
     // In-flight AI request controllers, grouped by guide, so closing a guide
@@ -173,6 +181,7 @@ class TextIntelService {
 
   async shutdown() {
     this.cancelInflight();
+    await this.readers.stop();
     if (this.worker) {
       try {
         await this.worker.terminate();
@@ -196,9 +205,8 @@ class TextIntelService {
     return targetDir;
   }
 
-  async getWorker() {
-    if (this.workerPromise) return this.workerPromise;
-    this.workerPromise = (async () => {
+  startWorker(parameters = {}) {
+    const started = this.workerStarts.then(async () => {
       const workerFactory = loadCreateWorker();
       const langPath = this.ensureLangData();
       const worker = await workerFactory('eng', 1, {
@@ -209,7 +217,18 @@ class TextIntelService {
       });
       await worker.setParameters({
         preserve_interword_spaces: '1',
+        ...parameters,
       });
+      return worker;
+    });
+    this.workerStarts = started.catch(() => {});
+    return started;
+  }
+
+  async getWorker() {
+    if (this.workerPromise) return this.workerPromise;
+    this.workerPromise = (async () => {
+      const worker = await this.startWorker();
       this.worker = worker;
       return worker;
     })();
@@ -233,13 +252,14 @@ class TextIntelService {
   }
 
   /**
-   * Every line of text in a PNG, with each word's box in the image's pixels:
-   * [{ words: [{ text, bbox: { x0, y0, x1, y1 } }] }]. Used to find private
-   * details (app/redaction.js).
+   * Every line of text in an image (PNG or PPM), with each word's box in the
+   * image's pixels: [{ words: [{ text, bbox: { x0, y0, x1, y1 } }] }]. Used
+   * to find private details (app/redaction.js). The text is looked for
+   * anywhere on the page; Tesseract's default reads the image as one block
+   * of text and misses most of a busy screen.
    */
-  async readLines(png) {
-    const worker = await this.getWorker();
-    const result = await worker.recognize(png, {}, { blocks: true, text: false });
+  async readLines(image) {
+    const result = await this.readers.run((worker) => worker.recognize(image, {}, { blocks: true, text: false }));
     return (result?.data?.blocks || [])
       .flatMap((block) => (block.paragraphs || []).flatMap((paragraph) => paragraph.lines || []))
       .map((line) => ({ words: (line.words || []).map((word) => ({ text: String(word.text || ''), bbox: word.bbox })) }));
@@ -319,7 +339,8 @@ class TextIntelService {
     const isPassword = isPasswordField(metadata);
     const safeOcr = isPassword ? '' : (ocr.text || '');
     const safeTyped = isPassword ? '' : recentTyped;
-    const title = buildCaptureTitle({ mode, metadata, ocrText: safeOcr, recentTyped: safeTyped, recentShortcut });
+    const clickKind = clickKindOf(clickMeta);
+    const title = buildCaptureTitle({ mode, metadata, ocrText: safeOcr, recentTyped: safeTyped, recentShortcut, clickKind });
     return {
       title,
       captureMetadata: {
@@ -335,6 +356,7 @@ class TextIntelService {
         elementAutomationId: metadata.elementAutomationId || '',
         recentTyped: safeTyped,
         recentShortcut,
+        clickKind,
         mode,
       },
     };

@@ -12,6 +12,7 @@ const {
   normalizeGuide, normalizeStep,
 } = require('./schema');
 const { sanitizeHtml } = require('./sanitize');
+const { isValidOutline } = require('./step-outline');
 
 /**
  * Thrown by revision-aware saves when the on-disk revision no longer matches
@@ -320,7 +321,12 @@ class GuideStore {
     return map;
   }
 
-  saveStep(guideId, step, { expectedRevision = null } = {}) {
+  /**
+   * `touch: false` leaves the guide's updatedAt alone, for bookkeeping that
+   * doesn't change what the guide shows (a private-detail check that found
+   * nothing). Its revision still moves, so caches keyed on it refresh.
+   */
+  saveStep(guideId, step, { expectedRevision = null, touch = true } = {}) {
     // Optimistic concurrency for background/AI/capture writes: refuse to
     // overwrite a step that changed since it was read. Direct user edits pass
     // no expectedRevision (last-write-wins — the user is the authority).
@@ -341,7 +347,7 @@ class GuideStore {
     validateStep(stored);
     writeJsonSync(path.join(this.stepDir(guideId, step.stepId), 'step.json'), stored);
     const guide = this.getGuide(guideId);
-    this.saveGuide(guide); // bump updatedAt
+    this.saveGuide(guide, { touch }); // bump updatedAt
     return stored;
   }
 
@@ -380,11 +386,41 @@ class GuideStore {
     return restored;
   }
 
-  reorderSteps(guideId, newOrder) {
+  /**
+   * Put the steps in `newOrder`. `parents` (optional, { stepId: parentStepId | null })
+   * also re-parents the steps it names, in the same call. Whenever `parents` is
+   * passed, even empty, the resulting outline must read top to bottom
+   * (isValidOutline) or nothing is changed; the one exception is a guide whose
+   * outline is already broken on disk (an old move), which keeps reordering
+   * the way it always could. Without `parents` only the order changes and the
+   * outline is not checked.
+   */
+  reorderSteps(guideId, newOrder, parents = null) {
     const guide = this.getGuide(guideId);
     const current = new Set(guide.stepsOrder);
     if (newOrder.length !== guide.stepsOrder.length || !newOrder.every((id) => current.has(id))) {
       throw new Error('reorderSteps: new order must contain exactly the existing steps');
+    }
+    const changes = [];
+    if (parents) {
+      const steps = this.listSteps(guideId);
+      const parentOf = new Map();
+      for (const id of newOrder) parentOf.set(id, steps.has(id) ? steps.get(id).parentStepId || null : null);
+      const wasValid = isValidOutline(guide.stepsOrder, parentOf);
+      for (const [id, parentId] of Object.entries(parents)) {
+        if (!parentOf.has(id)) throw new Error(`reorderSteps: unknown step ${id} in parents`);
+        if ((parentId || null) !== parentOf.get(id)) changes.push([id, parentId || null]);
+        parentOf.set(id, parentId || null);
+      }
+      if (wasValid && !isValidOutline(newOrder, parentOf)) {
+        throw new Error('reorderSteps: that order would break the step numbering');
+      }
+    }
+    for (const [id, parentId] of changes) {
+      const step = this.getStep(guideId, id);
+      step.parentStepId = parentId;
+      step.revision = (Number.isInteger(step.revision) ? step.revision : 0) + 1;
+      writeJsonSync(path.join(this.stepDir(guideId, id), 'step.json'), step);
     }
     guide.stepsOrder = [...newOrder];
     return this.saveGuide(guide);

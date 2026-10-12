@@ -8,6 +8,7 @@ const { RedactionService, bitmapToPpm } = require('../../app/redaction');
 const { TextIntelService } = require('../../app/text-intel');
 const { GuideStore } = require('../../core/store');
 const { makeTmpDir, rmrf, TINY_PNG } = require('./helpers');
+const { decodePng } = require('../../core/png');
 
 // Built from pieces so secret scanners don't mistake this made-up key for a real one.
 const FAKE_STRIPE_KEY = ['sk', 'live', '51Hx9aZ2kQ7vB3nR8tYc4mWp'].join('_');
@@ -193,6 +194,32 @@ test('a raw screenshot bitmap becomes a PPM text recognition can read', () => {
   assert.equal(ppm.subarray(0, header.length).toString('ascii'), header);
   assert.deepEqual([...ppm.subarray(header.length)], [255, 0, 0, 0, 255, 0, 0, 0, 255, 30, 20, 10]);
   assert.throws(() => bitmapToPpm(Buffer.alloc(10), 2, 2), /couldn’t be read/);
+});
+
+test('a transparent bitmap is laid over white, as a viewer shows it', () => {
+  // Premultiplied BGRA: fully transparent, half-transparent red, half-transparent black, opaque grey.
+  const bgra = Buffer.from([0, 0, 0, 0, 0, 0, 128, 128, 0, 0, 0, 128, 90, 90, 90, 255]);
+  const ppm = bitmapToPpm(bgra, 4, 1);
+  const header = 'P6\n4 1\n255\n';
+  assert.deepEqual([...ppm.subarray(header.length)], [255, 255, 255, 255, 127, 127, 127, 127, 127, 90, 90, 90]);
+});
+
+test('a screenshot with dark text on a transparent background: every private detail is found', { timeout: 120000 }, async (t) => {
+  let intel;
+  try { intel = new TextIntelService({ store: null, settings: { get: () => ({}) }, dataDir: makeTmpDir('ocr-alpha'), windowContextProvider: {} }); }
+  catch (err) { t.skip(`text recognition unavailable: ${err.message}`); return; }
+  t.after(() => intel.shutdown());
+  // The fixture as black text whose darkness is all in the alpha channel,
+  // the way Electron hands over a transparent PNG (premultiplied BGRA).
+  const { width, height, data } = decodePng(fs.readFileSync(path.join(__dirname, '../fixtures/private-details-2x.png')));
+  const bgra = Buffer.alloc(width * height * 4);
+  for (let i = 0; i < width * height; i += 1) {
+    const luma = Math.round(0.299 * data[i * 4] + 0.587 * data[i * 4 + 1] + 0.114 * data[i * 4 + 2]);
+    bgra[i * 4 + 3] = 255 - luma;
+  }
+  const lines = await intel.readLines(bitmapToPpm(bgra, width, height));
+  const kinds = red.findInLines(lines, { terms: [] }).map((f) => f.kind).sort();
+  assert.deepEqual(kinds, ['card', 'email', 'ip', 'phone', 'secret', 'secret', 'ssn', 'url']);
 });
 
 test('a busy screen: text is found all over the page, not read as one block', { timeout: 120000 }, async (t) => {

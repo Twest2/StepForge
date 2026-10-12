@@ -161,10 +161,12 @@ test('-Uninstall unregisters without the package scripts or the auto-uninstaller
   assert.ok(!r.calls.some((c) => c.startsWith('uninstall')));
 });
 
+// Launched the way the installer launches it (build/installer.nsh), so a
+// restrictive execution policy on Windows PowerShell 5.1 doesn't apply.
 test('run as a script, the helper always exits 0 and writes a result', { skip }, () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sf-choco-helper-'));
   const result = path.join(dir, 'result.txt');
-  const run = spawnSync(pwsh, ['-NoProfile', '-NonInteractive', '-File', helper, '-Version', 'not-a-version', '-ResultFile', result], {
+  const run = spawnSync(pwsh, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', helper, '-Version', 'not-a-version', '-ResultFile', result], {
     encoding: 'utf8',
     env: { ...process.env, ProgramData: dir },
   });

@@ -191,6 +191,46 @@ function makeHotkeyInput(value = '') {
   return wrap;
 }
 
+/**
+ * "Move to…" for a step: pick the place (after which step) and the level
+ * there. `positions` is [{ value, label, current?, levels: [{ value, label }] }];
+ * resolves { gap, depth } (the chosen values) or null.
+ */
+function showMoveStepDialog({ title = 'Move step', hint = '', positions = [], currentDepth = 0 } = {}) {
+  return new Promise((resolve) => {
+    const where = el('select', {}, positions.map((p) => el('option', { value: p.value }, p.current ? `${p.label} (current place)` : p.label)));
+    const level = el('select', {});
+    const fillLevels = () => {
+      const position = positions.find((p) => p.value === where.value) || positions[0];
+      clearNode(level);
+      for (const l of position.levels) level.append(el('option', { value: l.value }, l.label));
+      // Keep the step's present level where the new place allows it.
+      const keep = position.levels.reduce((best, l) => (Math.abs(l.depth - currentDepth) < Math.abs(best.depth - currentDepth) ? l : best), position.levels[0]);
+      if (keep) level.value = keep.value;
+    };
+    const current = positions.find((p) => p.current) || positions[0];
+    if (current) where.value = current.value;
+    where.addEventListener('change', fillLevels);
+    fillLevels();
+
+    const done = (value) => { close(); resolve(value); };
+    const { close } = openModal({
+      title,
+      body: el('div', {},
+        hint ? el('div.muted', { style: { marginBottom: '8px' } }, hint) : null,
+        labeledRow('Place', where),
+        labeledRow('Level', level),
+      ),
+      footer: [
+        el('button', { onClick: () => done(null) }, 'Cancel'),
+        el('button.primary', { onClick: () => done({ gap: where.value, depth: level.value }) }, 'Move'),
+      ],
+      onClose: () => resolve(null),
+    });
+    setTimeout(() => where.focus(), 0);
+  });
+}
+
 async function promptText({
   title,
   label = 'Value',
@@ -1459,7 +1499,7 @@ const SHORTCUTS = [
     ['Ctrl+/', 'Quick actions palette'],
     ['Ctrl+H', 'Find and replace across the guide'],
     ['PageUp / PageDown', 'Previous / next step'],
-    ['Alt+↑ / Alt+↓', 'Move step up / down'],
+    ['Alt+↑ / Alt+↓', 'Move step (and its substeps) up / down'],
     ['Ctrl+Delete', 'Delete current step'],
     ['Ctrl+Z / Ctrl+Shift+Z', 'Undo / redo (including step moves, deleting steps and AI writes)'],
     ['Ctrl+V', 'Paste annotation, or clipboard image as new step'],
@@ -1537,6 +1577,7 @@ function showRecordingReminder({
 
 window.StepForgeDialogs = {
   promptText,
+  showMoveStepDialog,
   showQuickActions,
   showFindReplace,
   showSettingsDialog,

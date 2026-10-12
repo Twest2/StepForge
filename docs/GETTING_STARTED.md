@@ -50,9 +50,11 @@ to title the step, so you'll usually see titles like *Click Releases* or
 
 The editor has three panes:
 
-- **Steps (left).** Every step in order. Drag or use **Alt+↑ / Alt+↓** to
-  reorder. Use **Make substep of…** to nest a step under another one; substeps
-  are numbered 1.1, 1.2, and so on.
+- **Steps (left).** Every step in order. Drag a step to move it with its
+  substeps; the line shows where it lands, and its indent shows the level
+  (drag sideways to change it). Or use **Alt+↑ / Alt+↓**, or right-click and
+  choose **Move to…**. Use **Make substep of…** to nest a step under another
+  one; substeps are numbered 1.1, 1.2, and so on.
 - **Screenshot (middle).** The captured image with its annotations.
 - **Details (right).** The step title, description, status, and extra
   content blocks.
@@ -210,7 +212,7 @@ Press **Ctrl+/** for the quick-actions palette, or open
 | `Ctrl+/` | Quick actions |
 | `Ctrl+H` | Find and replace across the guide (one Ctrl+Z undoes it) |
 | `PageUp` / `PageDown` | Previous / next step |
-| `Alt+↑` / `Alt+↓` | Move step up / down |
+| `Alt+↑` / `Alt+↓` | Move step (and its substeps) up / down |
 | `Ctrl+Z` / `Ctrl+Shift+Z` | Undo / redo |
 | `Ctrl+V` | Paste an annotation, or paste an image as a new step |
 | `Ctrl+Delete` | Delete the current step |

@@ -50,7 +50,7 @@ function setup({ steps, confirm = async () => true }) {
       });
     }
   }
-  const context = { window: { stepforge: api }, document: { activeElement: null }, confirmDialog: confirm, clearNode() {}, el() {}, Image, setImmediate };
+  const context = { window: { stepforge: api, StepForgeOutline: require('../../core/step-outline') }, document: { activeElement: null }, confirmDialog: confirm, clearNode() {}, el() {}, Image, setImmediate };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/editor.js'), 'utf8'), context);
   const editor = Object.create(context.window.GuideEditor.prototype);
   Object.assign(editor, {
@@ -267,7 +267,7 @@ test('an AI write of the blocks shows the new blocks, and a later save keeps the
 });
 
 test('undoing a move keeps steps added since in place, and a move that cannot be restored is dropped', async () => {
-  const { editor, db, toasts } = setup({ steps: three() });
+  const { editor, db, api, toasts } = setup({ steps: three() });
   await editor.reload('c');
   await editor.moveSelectedStep(-1);
   assert.deepEqual(db.order, ['a', 'c', 'b']);
@@ -281,6 +281,7 @@ test('undoing a move keeps steps added since in place, and a move that cannot be
 
   // An outline record the store refuses is reported and dropped, so it can't block older undos.
   editor.pushCanvasHistory({ type: 'move-steps', order: ['a', 'b', 'c', 'd'], parents: { a: 'b' } });
+  api.step.reorder = async () => { throw new Error('numbering'); };
   const before = editor.canvasHistory.length;
   await editor.undo();
   assert.equal(editor.canvasHistory.length, before - 1);

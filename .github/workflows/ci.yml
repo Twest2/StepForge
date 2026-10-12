@@ -59,6 +59,14 @@ jobs:
       - name: Run unit tests
         run: npm test
 
+      # The installer runs the Chocolatey helper with Windows PowerShell 5.1,
+      # not the pwsh that npm test finds, so check it there too.
+      - name: Run the Chocolatey helper tests on Windows PowerShell 5.1
+        if: runner.os == 'Windows'
+        env:
+          STEPFORGE_PWSH: powershell
+        run: node --test tests/unit/chocolatey-setup-helper.test.js
+
   audit:
     name: Dependency audit
     runs-on: ubuntu-latest

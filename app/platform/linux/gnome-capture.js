@@ -5,6 +5,7 @@ const { promisify } = require('node:util');
 const { dialog, nativeImage } = require('electron');
 const CaptureService = require('../../capture');
 const { PortalBackend } = require('./portal-backend');
+const { mouseButtonKey } = require('../../../core/text-intel');
 const run = promisify(execFile);
 const UUID = 'com.twestbrook.stepforge';
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -42,8 +43,9 @@ class GnomeCaptureService extends CaptureService {
   // Availability means the GNOME path is required. Readiness is verified on
   // each resume; a missing extension never silently switches to a timer.
   clickCaptureAvailable() { return true; }
+  windowModeFallsBack() { return false; } // window frames are cropped from the stream (cropFrame)
   startClickWatcher() { this.clickSource = 'unavailable'; }
-  stopClickWatcher() { this.clickSource = 'unavailable'; this.lastAcceptedClickByButton.clear(); }
+  stopClickWatcher() { this.clickSource = 'unavailable'; this.lastAcceptedClickByButton.clear(); this.lastClickMetaByButton.clear(); }
   osPointToDip(point) { return point; } // Shell already sends logical coordinates.
 
   async ensureExtension() {
@@ -130,21 +132,25 @@ class GnomeCaptureService extends CaptureService {
     if (!this.session || this.session.paused || this.warmingUp || this.userIsInApp()) return;
     if (event.windowPid === process.pid) return;
     if (![event.x, event.y, event.at].every(Number.isFinite) || ![1, 2, 3].includes(event.button)) return;
-    const button = `button-${event.button}`;
-    if (this.isDebouncedClick(event.at, button)) return;
-    const guideId = this.session.guideId;
+    const button = mouseButtonKey(`button-${event.button}`);
     const point = { x: event.x, y: event.y };
+    if (this.isDebouncedClick(event.at, button, point)) return;
+    const guideId = this.session.guideId;
     const mode = this.settings.get('capture.mode') || 'fullscreen';
+    const clickMeta = {
+      // `at` is the Shell's monotonic clock; receivedAt is ours (see settleClickKind).
+      at: event.at, receivedAt: Date.now(), point, button, guideId, timingSource: 'gnome-shell-sampled',
+      windowContext: { appName: event.appName || '', windowTitle: event.windowTitle || '' },
+    };
+    // A later same-button press inside the debounce window flags it `double`.
+    this.lastClickMetaByButton.set(button, clickMeta);
     // Select immediately, before disk I/O or another click can evict the frame.
     const framePromise = this.frameForClick(point, event.at, mode, event.window)
       .then((frame) => ({ frame }), (error) => ({ error }));
     this.clickQueue = this.clickQueue.then(async () => {
       const { frame, error } = await framePromise;
       if (error) throw error;
-      const result = await this.storeFrameAsStep(guideId, frame.mode, frame, point, {
-        at: event.at, button, guideId, timingSource: 'gnome-shell-sampled',
-        windowContext: { appName: event.appName || '', windowTitle: event.windowTitle || '' },
-      });
+      const result = await this.storeFrameAsStep(guideId, frame.mode, frame, point, clickMeta);
       if (result.ok) {
         // Accepted clicks stay with their original guide even across pause,
         // finish, or a new recording. Do not increment a different session.

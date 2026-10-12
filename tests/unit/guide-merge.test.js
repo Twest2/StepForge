@@ -119,3 +119,18 @@ test('step order: one side reorders while the other inserts', () => {
   assert.deepEqual(mergeOrder(['a', 'b', 'c'], [['a', 'b', 'c', 'y'], ['b', 'a', 'c']], new Set(['a', 'b', 'c', 'y'])), ['b', 'a', 'c', 'y']);
   assert.deepEqual(mergeOrder(['a', 'b'], [['x', 'a', 'b']], new Set(['a', 'b', 'x'])), ['x', 'a', 'b']);
 });
+
+test('a step one side deleted stays deleted when the other side differs from the base only in revision', () => {
+  const { mergeGuideEntries } = require('../../core/guide-merge');
+  const guide = (order, updatedAt) => ({ name: 'guide.json', data: JSON.stringify({ guideId: 'g', title: 'G', stepsOrder: order, updatedAt }) });
+  const step = (id, revision) => ({ name: `steps/${id}/step.json`, data: JSON.stringify({ stepId: id, title: id, revision }) });
+  const base = [guide(['s1', 's2'], '2026-01-01T00:00:00Z'), step('s1', 1), step('s2', 1)];
+  const deleted = [guide(['s2'], '2026-01-02T00:00:00Z'), step('s2', 1)];
+  const bumped = [guide(['s1', 's2'], '2026-01-01T00:00:00Z'), step('s1', 2), step('s2', 1)];
+  const { entries } = mergeGuideEntries({ base, sides: [{ entries: deleted, hash: 'a' }, { entries: bumped, hash: 'b' }] });
+  assert.deepEqual(entries.map((e) => e.name), ['manifest.json', 'guide.json', 'steps/s2/step.json']);
+  // A real edit still keeps it.
+  const edited = [guide(['s1', 's2'], '2026-01-01T00:00:00Z'), { name: 'steps/s1/step.json', data: JSON.stringify({ stepId: 's1', title: 'changed', revision: 2 }) }, step('s2', 1)];
+  const kept = mergeGuideEntries({ base, sides: [{ entries: deleted, hash: 'a' }, { entries: edited, hash: 'b' }] });
+  assert.ok(kept.entries.some((e) => e.name === 'steps/s1/step.json'));
+});

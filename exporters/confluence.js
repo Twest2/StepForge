@@ -158,7 +158,7 @@ function renderStep(step, ast, attachmentNames, tpl) {
   const attachment = attachmentNames.get(step.stepId);
   if (attachment) {
     const width = Math.max(100, Math.round(Number(tpl.imageWidth) || DEFAULT_TEMPLATE.imageWidth));
-    out.push(`<p><ac:image ac:border="true" ac:width="${width}" ac:alt="Step ${escapeXml(step.number)}"><ri:attachment ri:filename="${escapeXml(attachment)}" /></ac:image></p>`);
+    out.push(`<p><ac:image ac:border="true" ac:width="${width}" ac:alt="${escapeXml(step.altText)}"><ri:attachment ri:filename="${escapeXml(attachment)}" /></ac:image></p>`);
   }
   out.push(...panels(groups.afterImage));
 

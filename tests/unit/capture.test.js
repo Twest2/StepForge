@@ -390,10 +390,12 @@ test('queued click captures preserve the original event time and button', async 
 
   await service.enqueueClickCapture({ x: 7, y: 8 }, 1770000000456, 'left');
 
+  assert.ok(Number.isFinite(seen[0].clickMeta.receivedAt));
+  delete seen[0].clickMeta.receivedAt;
   assert.deepEqual(seen, [{
     trigger: 'click',
     clickPos: { x: 7, y: 8 },
-    clickMeta: { at: 1770000000456, button: 'left', keyContext: { recentTyped: '', recentShortcut: '' } },
+    clickMeta: { at: 1770000000456, button: 'left', point: { x: 7, y: 8 }, keyContext: { recentTyped: '', recentShortcut: '' } },
   }]);
 });
 
@@ -570,6 +572,144 @@ test('debounced clicks never reach the capture queue (end to end through onOsCli
 
   assert.equal(stored.length, 2, 'one step per accepted click — burst repeat dropped, real clicks kept');
   assert.equal(service.session.count, 2);
+});
+
+// ---- click kind (button + double-click) ------------------------------------
+
+/** Click through the real onOsClick/enqueueClickCapture, keeping each clickMeta. */
+function recordClickMetas(service, clicks) {
+  service.session = { guideId: 'g-kind', paused: false, count: 0, intervalSec: 0 };
+  service.userIsInApp = () => false;
+  service.frameForClick = async () => makeFrame('frame');
+  service.sessionCapture = async (trigger, clickPos, clickMeta) => { metas.push(clickMeta); };
+  const metas = [];
+  for (const [at, button] of clicks) service.onOsClick(at, { x: 10, y: 20 }, button);
+  return service.clickQueue.then(() => metas);
+}
+
+test('Windows and Linux button names normalise to one vocabulary', async () => {
+  const service = makeService({ settings: { 'capture.clickDebounceMs': 0 } });
+  const metas = await recordClickMetas(service, [
+    [1, 'left'], [2, 'right'], [3, 'middle'], [4, 'x1'],
+    [5, 'button-1'], [6, 'button-3'], [7, 'button-2'], [8, 'mouse'],
+  ]);
+  assert.deepEqual(metas.map((m) => m.button),
+    ['left', 'right', 'middle', 'x1', 'left', 'right', 'middle', 'left']);
+});
+
+test('buttons are normalised before the debounce, so spellings share one window', () => {
+  const service = makeService({ settings: { 'capture.clickDebounceMs': 200 } });
+  assert.equal(service.isDebouncedClick(0, 'left'), false);
+  assert.equal(service.isDebouncedClick(80, 'button-1'), true);
+  assert.equal(service.isDebouncedClick(90, 'right'), false);
+  assert.equal(service.isDebouncedClick(120, 'button-3'), true);
+});
+
+test('a dropped same-button press marks the accepted click as a double-click', async () => {
+  const service = makeService({ settings: { 'capture.clickDebounceMs': 200 } });
+  const metas = await recordClickMetas(service, [[1000, 'left'], [1090, 'left'], [1600, 'left']]);
+  assert.equal(metas.length, 2);
+  assert.equal(metas[0].double, true, 'the second press of a double-click is not lost');
+  assert.notEqual(metas[1].double, true, 'a later click is a fresh single click');
+});
+
+test('the double flag follows the Linux button-N spelling too', async () => {
+  const service = makeService({ settings: { 'capture.clickDebounceMs': 200 } });
+  const metas = await recordClickMetas(service, [[1000, 'button-3'], [1100, 'button-3']]);
+  assert.equal(metas.length, 1);
+  assert.equal(metas[0].button, 'right');
+  assert.equal(metas[0].double, true);
+});
+
+test('a press on another button, or a duplicate delivery, is not a double-click', async () => {
+  const service = makeService({ settings: { 'capture.clickDebounceMs': 200 } });
+  const metas = await recordClickMetas(service, [
+    [1000, 'left'], [1100, 'right'], // different button: its own click
+    [3000, 'left'], [3004, 'left'],  // 4 ms later: one press seen twice
+  ]);
+  assert.equal(metas.length, 3);
+  assert.ok(metas.every((m) => m.double !== true));
+});
+
+test('a double flag cannot leak onto a click after the session restarts', async () => {
+  const service = makeService({ settings: { 'capture.clickDebounceMs': 200 } });
+  await recordClickMetas(service, [[1000, 'left']]);
+  service.stopClickWatcher();
+  assert.equal(service.isDebouncedClick(1100, 'left'), false, 'fresh session accepts it');
+  assert.equal(service.lastClickMetaByButton.size, 0);
+});
+
+test('a double-clicked step is titled "Double-click" because titling waits for the second press', async () => {
+  const { buildCaptureTitle, clickKindOf } = require('../../core/text-intel');
+  const service = makeService({ settings: { 'capture.clickDebounceMs': 60, 'capture.clickMarker': false } });
+  service.session = { guideId: 'g-dbl', paused: false, count: 0, intervalSec: 0 };
+  service.userIsInApp = () => false;
+  service.frameForClick = async () => makeFrame('frame');
+  service.textIntel = {
+    // Stands in for TextIntelService: reads the flag when titling starts.
+    buildCaptureContext: async ({ clickMeta }) => ({
+      title: buildCaptureTitle({ ocrText: 'Report.xlsx', clickKind: clickKindOf(clickMeta) }),
+      captureMetadata: { clickKind: clickKindOf(clickMeta) },
+    }),
+  };
+  const stored = [];
+  service.store.addStep = (guideId, fields) => { stored.push(fields); return { stepId: `s${stored.length}` }; };
+  const at = Date.now();
+  service.onOsClick(at, { x: 10, y: 20 }, 'left');
+  // The second press lands after the first click's frame is ready but inside
+  // the window; the step must not have been titled yet.
+  await settle(30);
+  assert.equal(stored.length, 0, 'titling is held until the window closes');
+  service.onOsClick(at + 30, { x: 10, y: 20 }, 'left');
+  await service.clickQueue;
+  assert.equal(stored.length, 1);
+  assert.equal(stored[0].title, 'Double-click Report.xlsx');
+  assert.equal(stored[0].captureMetadata.clickKind, 'double');
+});
+
+test('right-clicks are titled at once, without waiting out the debounce window', async () => {
+  const service = makeService({ settings: { 'capture.clickDebounceMs': 5000 } });
+  const t0 = Date.now();
+  await service.settleClickKind({ at: t0, button: 'right' });
+  assert.ok(Date.now() - t0 < 200);
+});
+
+test('different extra buttons (Back, Forward) are debounced apart', async () => {
+  const service = makeService({ settings: { 'capture.clickDebounceMs': 200 } });
+  const windows = await recordClickMetas(service, [[1000, 'x1'], [1100, 'x2']]);
+  assert.deepEqual(windows.map((m) => m.button), ['x1', 'x2'], 'Windows: both presses are steps');
+  const linux = makeService({ settings: { 'capture.clickDebounceMs': 200 } });
+  const metas = await recordClickMetas(linux, [[1000, 'button-8'], [1100, 'button-9'], [1150, 'button-9']]);
+  assert.deepEqual(metas.map((m) => m.button), ['button-8', 'button-9'], 'X11: two buttons, and the repeat is still debounced');
+});
+
+test('a press elsewhere inside the window is not a double-click', async () => {
+  const service = makeService({ settings: { 'capture.clickDebounceMs': 200 } });
+  service.session = { guideId: 'g-far', paused: false, count: 0, intervalSec: 0 };
+  service.userIsInApp = () => false;
+  service.frameForClick = async () => makeFrame('frame');
+  service.osPointToDip = (p) => p;
+  const metas = [];
+  service.sessionCapture = async (trigger, clickPos, clickMeta) => { metas.push(clickMeta); };
+  // Report.xlsx at (20, 20), then Save at (800, 500) 90 ms later.
+  service.onOsClick(1000, { x: 20, y: 20 }, 'left');
+  service.onOsClick(1090, { x: 800, y: 500 }, 'left');
+  // A real double-click a few pixels apart still counts.
+  service.onOsClick(3000, { x: 300, y: 300 }, 'left');
+  service.onOsClick(3100, { x: 303, y: 302 }, 'left');
+  await service.clickQueue;
+  assert.deepEqual(metas.map((m) => m.double === true), [false, true]);
+  // Without a position for one press it can't be told apart, so it isn't a double-click.
+  assert.equal(service.isDebouncedClick(5000, 'left'), false);
+  assert.equal(service.isDebouncedClick(5100, 'left', { x: 1, y: 1 }), true);
+});
+
+test('titling waits from when StepForge got the press, whatever clock the event time uses', async () => {
+  const service = makeService({ settings: { 'capture.clickDebounceMs': 60 } });
+  // GNOME stamps presses with the Shell's monotonic clock (milliseconds since boot).
+  const t0 = Date.now();
+  await service.settleClickKind({ at: 12345, receivedAt: t0, button: 'left' });
+  assert.ok(Date.now() - t0 >= 50, 'it waited out the window');
 });
 
 // ---- warmup gating (recording goes live only after the window hides) -----------

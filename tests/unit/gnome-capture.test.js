@@ -76,6 +76,25 @@ test('GNOME clicks save correctly positioned markers and drain into the original
   assert.equal(mark.y + mark.h / 2, 0.5);
 });
 
+test('GNOME clicks carry a normalised button and flag a double-click', async () => {
+  const { service } = fixture();
+  service.settings.get = (key) => ({ 'capture.clickMarker': true, 'capture.clickDebounceMs': 200 })[key];
+  const metas = [];
+  service.storeFrameAsStep = async (guideId, mode, frame, point, meta) => { metas.push(meta); return { ok: false }; };
+  service.onGnomeClick({ x: 20, y: 30, at: 1000, button: 3 });
+  service.onGnomeClick({ x: 20, y: 30, at: 1100, button: 3 });
+  service.onGnomeClick({ x: 20, y: 30, at: 5000, button: 1 });
+  service.onGnomeClick({ x: 20, y: 30, at: 5120, button: 1 });
+  service.onGnomeClick({ x: 20, y: 30, at: 9000, button: 2 });
+  // A second press far from the first is a click elsewhere, not a double-click.
+  service.onGnomeClick({ x: 20, y: 30, at: 12000, button: 1 });
+  service.onGnomeClick({ x: 600, y: 400, at: 12090, button: 1 });
+  await service.clickQueue;
+  assert.deepEqual(metas.map((m) => [m.button, m.double === true]),
+    [['right', true], ['left', true], ['middle', false], ['left', false]]);
+  assert.ok(metas.every((m) => Number.isFinite(m.receivedAt)), 'titling waits on our clock, not the Shell\'s');
+});
+
 test('no clicks are stored during warmup, pause, or from StepForge itself', async () => {
   const { service, saved } = fixture();
   const click = { x: 20, y: 30, at: 1000, button: 1 };

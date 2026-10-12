@@ -103,7 +103,7 @@ sudo dnf install stepforge
 | **Three-pane editor** | Steps on the left, the screenshot in the middle, the words on the right. Reorder, nest substeps, and mark steps as done. |
 | **Annotation tools** | Rectangles, ovals, arrows, text, tooltips, numbered badges, highlights, magnifiers, and **blur** for hiding passwords and personal data. |
 | **Export anywhere** | PDF, DOCX, PPTX, Markdown, HTML, animated GIF, Confluence, Wiki.js, JSON, or a folder of annotated images. |
-| **Smart titles** | Local OCR reads the button or menu you clicked so steps arrive already titled, like "Click Save". |
+| **Smart titles** | Local OCR reads the button or menu you clicked so steps arrive already titled, like "Click Save", "Right-click Report.xlsx" or "Double-click Report.xlsx". |
 | **Organized library** | Folders, favorites, full-text search across every guide, snapshots, and a trash you can restore from. |
 | **Reusable content** | Placeholders (`[[Product]]`) and export templates keep a whole set of guides consistent. |
 | **Share on the web** | Publish a guide to GitHub Pages in your own repository for 1, 7, or 30 days and send a link. Shared guides are public and are removed automatically when their time is up. |

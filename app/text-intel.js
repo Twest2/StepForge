@@ -6,6 +6,7 @@ const path = require('node:path');
 const {
   DEFAULT_CAPTURE_TITLES,
   buildCaptureTitle,
+  clickKindOf,
   isPasswordField,
   normalizeOllamaHost,
   validateOllamaHost,
@@ -338,7 +339,8 @@ class TextIntelService {
     const isPassword = isPasswordField(metadata);
     const safeOcr = isPassword ? '' : (ocr.text || '');
     const safeTyped = isPassword ? '' : recentTyped;
-    const title = buildCaptureTitle({ mode, metadata, ocrText: safeOcr, recentTyped: safeTyped, recentShortcut });
+    const clickKind = clickKindOf(clickMeta);
+    const title = buildCaptureTitle({ mode, metadata, ocrText: safeOcr, recentTyped: safeTyped, recentShortcut, clickKind });
     return {
       title,
       captureMetadata: {
@@ -354,6 +356,7 @@ class TextIntelService {
         elementAutomationId: metadata.elementAutomationId || '',
         recentTyped: safeTyped,
         recentShortcut,
+        clickKind,
         mode,
       },
     };

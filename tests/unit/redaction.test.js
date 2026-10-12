@@ -255,3 +255,19 @@ test('a real screenshot: text recognition finds every private detail and nothing
   assert.ok(blurs.some((b) => b.redact.kind === 'email' && b.y < 0.08));
   assert.ok(blurs.every((b) => b.y < 0.66), 'the order number, date and price are left alone');
 });
+
+test('a check that finds nothing does not mark the guide as edited; one that adds a blur does', async (t) => {
+  const { store, guideId } = guideWithScreenshot(t);
+  // updatedAt has one-second resolution, so start from an old one.
+  store.saveGuide({ ...store.getGuide(guideId), updatedAt: '2026-01-01T00:00:00Z' }, { touch: false });
+  const before = store.getGuide(guideId);
+  const quiet = service(store, [{ words: [{ text: 'Settings', bbox: { x0: 0, y0: 0, x1: 80, y1: 30 } }] }]);
+  assert.equal((await quiet.redactor.checkGuide(guideId)).added, 0);
+  const after = store.getGuide(guideId);
+  assert.equal(after.updatedAt, before.updatedAt, 'only bookkeeping changed');
+  assert.ok(after.revision > before.revision, 'the revision still moves');
+
+  const found = service(store, [{ words: [{ text: 'casey@contoso.com', bbox: { x0: 200, y0: 40, x1: 600, y1: 70 } }] }]);
+  assert.equal((await found.redactor.checkGuide(guideId, { force: true })).added, 1);
+  assert.notEqual(store.getGuide(guideId).updatedAt, before.updatedAt, 'a new blur is a real change');
+});

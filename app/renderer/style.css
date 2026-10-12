@@ -479,6 +479,7 @@ body.platform-linux #capture-status button {
 }
 
 .steps-list {
+  position: relative; /* the drop line is placed against it */
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -517,6 +518,19 @@ body.platform-linux #capture-status button {
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+.step-item.dragging { opacity: 0.45; }
+/* Shows where a dragged step lands; its left edge is the level it will have. */
+.step-drop-line {
+  position: absolute;
+  right: 10px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+  pointer-events: none;
+}
+.step-drop-line.refused {
+  background: repeating-linear-gradient(90deg, var(--danger) 0 6px, transparent 6px 10px);
 }
 .step-item.skipped .t { text-decoration: line-through; opacity: 0.68; }
 .step-item.hiddenstep .t { opacity: 0.5; }
@@ -818,6 +832,10 @@ fieldset legend {
 .qa-item.active {
   background: var(--panel-2);
 }
+.fr-results { max-height: 320px; }
+.fr-item { align-items: center; }
+.quick-actions input[type=checkbox] { width: auto; padding: 0; }
+.fr-item mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: inherit; border-radius: 3px; }
 .qa-item .kind {
   flex: none;
   margin-top: 2px;
@@ -1221,6 +1239,8 @@ fieldset legend {
 .cloud-chips { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .cloud-chip { padding: 1px 7px; border-radius: 999px; font-size: 11px; color: var(--muted); background: var(--panel-2); }
 .cloud-chip.local { color: var(--accent-strong); background: color-mix(in srgb, var(--accent) 12%, var(--panel-solid)); }
+.cloud-chip.stale { border: 0; font: inherit; font-size: 11px; cursor: pointer; color: var(--text); background: var(--warn); }
+.cloud-chip.stale:hover { text-decoration: underline; }
 .cloud-empty { padding: 10px 4px; text-align: center; }
 
 .cloud-versions { position: relative; margin: 8px 0 2px 42px; padding-left: 14px; display: flex; flex-direction: column; gap: 6px; }
@@ -1481,3 +1501,4 @@ fieldset legend {
   .setting-row { flex-direction: column; align-items: stretch; gap: 8px; }
   .setting-control { max-width: none; justify-content: flex-start; }
 }
+#capture-status .capture-mode-note { padding: 1px 7px; border-radius: 999px; background: rgba(255, 255, 255, 0.2); font-weight: 600; }

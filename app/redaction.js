@@ -65,7 +65,10 @@ class RedactionService {
       step.annotations = [...(step.annotations || []), ...blurs];
       step.redaction = { ...(step.redaction || {}), checked: key };
       try {
-        this.store.saveStep(guideId, step, { expectedRevision: step.revision });
+        // A check that found nothing only records that it ran. That is not an
+        // edit, so it must not make the guide look changed ("edited since you
+        // shared it", library order).
+        this.store.saveStep(guideId, step, { expectedRevision: step.revision, touch: blurs.length > 0 });
         return blurs.length;
       } catch (err) {
         // Edited while it was being read: read the new version and try again.

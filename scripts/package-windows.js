@@ -79,6 +79,10 @@ async function buildWindowsInstaller() {
   fs.mkdirSync(releaseDir, { recursive: true });
   fs.rmSync(outputDir, { recursive: true, force: true });
 
+  // build/installer.nsh reads this at compile time: the exact Chocolatey package
+  // version the release pipeline publishes, which is the installer file name's.
+  process.env.STEPFORGE_CHOCO_VERSION = BUILD_VERSION;
+
   try {
     await build(createWindowsInstallerBuildOptions(outputDir));
   } catch (err) {
@@ -105,6 +109,7 @@ if (require.main === module) {
 
 module.exports = {
   APP_ID,
+  BUILD_VERSION,
   createWindowsInstallerConfig,
   createWindowsInstallerBuildOptions,
   findInstallerExe,

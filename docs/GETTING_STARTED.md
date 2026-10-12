@@ -183,8 +183,9 @@ and verifies your library before switching to the new location.
   images into one file. Anyone with StepForge can open it with
   **Import → Import a copy of a guide (.sfgz)…**.
 - **Linked guides** let several people work from one `.sfgz` on a shared
-  folder. StepForge saves back to the file and warns you if someone else has
-  it open.
+  folder. StepForge saves back to the file and warns you if someone else is
+  saving it. If someone else saved since you last did, your changes are merged
+  with theirs instead of replacing them.
 - **Snapshots** are automatic backups of each guide. Open
   **More → Backups & snapshots…** to create one by hand or roll back.
   **Settings → Editor → Snapshots to keep** controls how many are kept.

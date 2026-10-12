@@ -13,8 +13,9 @@ const crypto = require('node:crypto');
  * that wasn't needed costs a click, a missed password costs much more.
  */
 
-// Bump when the rules change so guides are scanned again.
-const RULES_VERSION = 1;
+// Bump when the rules, or how screenshots are read, change so guides are
+// scanned again. 2: screenshots are read as a page, not one block of text.
+const RULES_VERSION = 2;
 
 const KINDS = {
   email: 'Email address',

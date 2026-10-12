@@ -345,6 +345,10 @@ function showFindReplace({ stepNumbers = {}, find, replace } = {}) {
     let lastSearch = '';
     let token = 0;
     let busy = false;
+    // True from the moment Find, Replace or an option changes until the search
+    // for exactly those inputs comes back: the listed matches (and which of
+    // them the replacement can go into) belong to the old inputs meanwhile.
+    let stale = false;
 
     const chosen = () => matches.filter((m) => !m.blocked && !unticked.has(m.id));
 
@@ -352,9 +356,10 @@ function showFindReplace({ stepNumbers = {}, find, replace } = {}) {
       const n = chosen().length;
       const blocked = matches.filter((m) => m.blocked).length;
       summary.textContent = !query.value ? 'Type something to find.'
-        : !matches.length ? 'No matches.'
-          : `${matches.length} match${matches.length === 1 ? '' : 'es'}, ${n} selected${blocked ? `, ${blocked} cannot take this replacement` : ''}.`;
-      replaceButton.disabled = busy || n === 0;
+        : stale ? 'Searching…'
+          : !matches.length ? 'No matches.'
+            : `${matches.length} match${matches.length === 1 ? '' : 'es'}, ${n} selected${blocked ? `, ${blocked} cannot take this replacement` : ''}.`;
+      replaceButton.disabled = busy || stale || n === 0;
       replaceButton.textContent = n ? `Replace ${n}` : 'Replace';
     }
 
@@ -378,8 +383,16 @@ function showFindReplace({ stepNumbers = {}, find, replace } = {}) {
       updateSummary();
     }
 
+    /** The inputs changed: drop any search in flight and lock Replace until the new one is back. */
+    function invalidate() {
+      token += 1;
+      stale = true;
+      updateSummary();
+    }
+
     async function refresh() {
       const mine = ++token;
+      stale = true;
       const search = JSON.stringify([query.value, matchCase.checked, wholeWord.checked]);
       if (search !== lastSearch) { unticked = new Set(); lastSearch = search; }
       let result = { matches: [], truncated: false };
@@ -393,12 +406,13 @@ function showFindReplace({ stepNumbers = {}, find, replace } = {}) {
       }
       if (mine !== token) return;
       matches = result.matches;
+      stale = false;
       renderList(result.truncated);
     }
 
     async function doReplace() {
       const picked = chosen();
-      if (!picked.length || busy) return;
+      if (!picked.length || busy || stale) return;
       busy = true;
       updateSummary();
       try {
@@ -436,8 +450,8 @@ function showFindReplace({ stepNumbers = {}, find, replace } = {}) {
     });
 
     const debounced = debounce(refresh, 120);
-    for (const field of [query, replacement]) field.addEventListener('input', debounced);
-    for (const box of [matchCase, wholeWord]) box.addEventListener('change', refresh);
+    for (const field of [query, replacement]) field.addEventListener('input', () => { invalidate(); return debounced(); });
+    for (const box of [matchCase, wholeWord]) box.addEventListener('change', () => { invalidate(); return refresh(); });
     replaceButton.addEventListener('click', doReplace);
     query.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); refresh(); } });
     replacement.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); doReplace(); } });

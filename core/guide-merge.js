@@ -183,7 +183,9 @@ function mergeGuideEntries({ base, sides }) {
     if (!present.length) continue;
     if (was && present.length < read.length) {
       // Deleted somewhere: keep it only if a side that still has it changed it.
-      const edited = present.some((step) => !same(step.json, was.json) || !same(media(step), media(was)));
+      // A revision is bookkeeping (every save moves it), not an edit.
+      const edited = present.some((step) => !same(withoutKeys(step.json, ['revision']), withoutKeys(was.json, ['revision']))
+        || !same(media(step), media(was)));
       if (!edited) continue;
     }
     const pickedMedia = pickWhole(media(was), present.map(media), stats);

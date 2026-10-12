@@ -141,3 +141,22 @@ test('a shared file that cannot be read is not overwritten unless forced', async
   assert.equal((await saveLinkedGuide(a, id, { force: true })).saved, true);
   assert.equal(sharedStep(shared, steps[0]).title, 'Local');
 });
+
+test('a step deleted after a merge stays deleted when the other session saves again', async (t) => {
+  const { id, steps, shared, a, b } = sharedGuide(t);
+  edit(a, id, steps[0], { title: 'A edit' });
+  await saveLinkedGuide(a, id);
+  edit(b, id, steps[1], { title: 'B edit' });
+  assert.equal((await saveLinkedGuide(b, id)).merged, true);
+  // A picks up B's merge with a save of its own, then deletes step 1 and saves.
+  assert.equal((await saveLinkedGuide(a, id)).merged, true);
+  a.deleteStep(id, steps[0]);
+  await saveLinkedGuide(a, id);
+  assert.equal(readArchive(shared).guide.stepsOrder.includes(steps[0]), false);
+  // B saves with nothing new: its step 1 differs from the base only in revision.
+  const result = await saveLinkedGuide(b, id);
+  assert.equal(result.conflicts || 0, 0);
+  assert.equal(readArchive(shared).guide.stepsOrder.includes(steps[0]), false, 'the deleted step is not brought back');
+  assert.equal(b.getGuide(id).stepsOrder.includes(steps[0]), false);
+  assert.equal(sharedStep(shared, steps[1]).title, 'B edit');
+});

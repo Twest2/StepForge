@@ -709,7 +709,10 @@ function setupIpc() {
   h('library:trash:items', () => store.listTrashItems());
   h('library:trash:restore', ({ name }) => {
     const id = store.restoreFromTrash(name);
+    // Otherwise the guide's cloud deletion would move it back to Trash.
+    cloudSync?.restoredFromTrash(id);
     reindex(id);
+    void cloudSync?.sync();
     return id;
   }, { validate: (a) => c.fileName(a.name) });
   h('library:trash:purge', ({ names } = {}) => {

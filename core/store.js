@@ -321,7 +321,12 @@ class GuideStore {
     return map;
   }
 
-  saveStep(guideId, step, { expectedRevision = null } = {}) {
+  /**
+   * `touch: false` leaves the guide's updatedAt alone, for bookkeeping that
+   * doesn't change what the guide shows (a private-detail check that found
+   * nothing). Its revision still moves, so caches keyed on it refresh.
+   */
+  saveStep(guideId, step, { expectedRevision = null, touch = true } = {}) {
     // Optimistic concurrency for background/AI/capture writes: refuse to
     // overwrite a step that changed since it was read. Direct user edits pass
     // no expectedRevision (last-write-wins — the user is the authority).
@@ -342,7 +347,7 @@ class GuideStore {
     validateStep(stored);
     writeJsonSync(path.join(this.stepDir(guideId, step.stepId), 'step.json'), stored);
     const guide = this.getGuide(guideId);
-    this.saveGuide(guide); // bump updatedAt
+    this.saveGuide(guide, { touch }); // bump updatedAt
     return stored;
   }
 

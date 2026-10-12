@@ -15,6 +15,20 @@ const { orderedBlocks, blockText } = require('./blocks');
  * filtering, and absolute image paths — exporters never read the store.
  */
 
+/**
+ * Alt text for a step's screenshot: "Screenshot for step 3: Click Save", or
+ * "Screenshot for step 3" when the step has no title. Control characters
+ * (illegal in XML and PDF text) are dropped and whitespace collapsed, so every
+ * exporter can escape it for its own format without further cleanup.
+ */
+function screenshotAltText(number, title) {
+  const clean = String(title || '')
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return clean ? `Screenshot for step ${number}: ${clean}` : `Screenshot for step ${number}`;
+}
+
 function buildRenderAst(store, guideId, { globals = {}, now = new Date(), maxSteps = 0 } = {}) {
   const guide = store.getGuide(guideId);
   const stepsMap = store.listSteps(guideId);
@@ -60,6 +74,7 @@ function buildRenderAst(store, guideId, { globals = {}, now = new Date(), maxSte
     }
     numberOf.set(step.stepId, number);
 
+    const title = expand(step.title || '');
     const ast = {
       stepId: step.stepId,
       parentStepId: step.parentStepId,
@@ -69,7 +84,8 @@ function buildRenderAst(store, guideId, { globals = {}, now = new Date(), maxSte
       status: step.status,
       skipped: step.skipped,
       forceNewPage: Boolean(step.forceNewPage),
-      title: expand(step.title || ''),
+      title,
+      altText: screenshotAltText(number, title),
       descriptionHtml: sanitizeHtml(expandDesc(step.descriptionHtml)),
       descriptionText: htmlToText(expandDesc(step.descriptionHtml)),
       focusedView: step.focusedView,
@@ -146,4 +162,4 @@ function renderStepImage(astStep) {
   return applyFocusedView(annotated, astStep.focusedView);
 }
 
-module.exports = { buildRenderAst, renderStepImage };
+module.exports = { buildRenderAst, renderStepImage, screenshotAltText };

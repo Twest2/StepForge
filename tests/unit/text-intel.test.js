@@ -9,6 +9,8 @@ const { makeTmpDir, rmrf } = require('./helpers');
 const { createStep } = require('../../core/schema');
 const {
   buildCaptureTitle,
+  clickKindOf,
+  normalizeMouseButton,
   buildAiPrompt,
   normalizeAiPatch,
   applyAiPatchToStep,
@@ -257,6 +259,74 @@ test('capture context carries accessible targets and removes password text befor
   });
   assert.equal(tab.title, 'Close "Docs" tab in Chrome');
   assert.equal(tab.captureMetadata.parentTabTitle, 'Docs');
+});
+
+test('mouse buttons from Windows and Linux map to the same click kinds', () => {
+  assert.equal(normalizeMouseButton('right'), 'right');
+  assert.equal(normalizeMouseButton('button-3'), 'right');
+  assert.equal(normalizeMouseButton('button-2'), 'middle');
+  assert.equal(normalizeMouseButton('middle'), 'middle');
+  assert.equal(normalizeMouseButton('mouse'), 'left');
+  assert.equal(normalizeMouseButton('x1'), 'other');
+  assert.equal(clickKindOf(null), '');
+  assert.equal(clickKindOf({ button: 'left' }), 'left');
+  assert.equal(clickKindOf({ button: 'button-1', double: true }), 'double');
+  assert.equal(clickKindOf({ button: 'button-3', double: true }), 'right', 'a double right-click is still a right-click');
+  assert.equal(clickKindOf({ button: 'x2', double: true }), 'left');
+});
+
+test('right, middle and double clicks are named in the title', () => {
+  const link = { elementLabel: 'Report.xlsx', elementRole: 'list item', appName: 'explorer' };
+  const t = (clickKind, extra = {}) => buildCaptureTitle({ metadata: { ...link, ...extra }, clickKind });
+  assert.equal(t('left'), 'Select Report.xlsx in File Explorer');
+  assert.equal(t('right'), 'Right-click Report.xlsx in File Explorer');
+  assert.equal(t('double'), 'Double-click Report.xlsx in File Explorer');
+  assert.equal(t('middle', { elementRole: 'hyperlink', elementLabel: 'Docs' }), 'Middle-click Docs in File Explorer');
+  const button = { elementLabel: 'Save', elementRole: 'button' };
+  assert.equal(buildCaptureTitle({ metadata: button }), 'Click Save');
+  assert.equal(buildCaptureTitle({ metadata: button, clickKind: 'right' }), 'Right-click Save');
+  assert.equal(buildCaptureTitle({ metadata: button, clickKind: 'double' }), 'Double-click Save');
+});
+
+test('role verbs and short OCR labels become click verbs only for non-plain clicks', () => {
+  const tab = { elementLabel: 'Home', elementRole: 'tab' };
+  assert.equal(buildCaptureTitle({ metadata: tab, clickKind: 'left' }), 'Select Home');
+  assert.equal(buildCaptureTitle({ metadata: tab, clickKind: 'right' }), 'Right-click Home');
+  assert.equal(buildCaptureTitle({ ocrText: 'Report.xlsx' }), 'Click Report.xlsx');
+  assert.equal(buildCaptureTitle({ ocrText: 'Report.xlsx', clickKind: 'right' }), 'Right-click Report.xlsx');
+  assert.equal(buildCaptureTitle({ ocrText: 'Report.xlsx', clickKind: 'double' }), 'Double-click Report.xlsx');
+  // Not a click on a control: untouched.
+  assert.equal(buildCaptureTitle({ recentShortcut: 'Ctrl+S', clickKind: 'right' }), buildCaptureTitle({ recentShortcut: 'Ctrl+S' }));
+  assert.equal(buildCaptureTitle({ metadata: { elementLabel: 'Query', elementRole: 'search box' }, recentTyped: 'cats', clickKind: 'right' }),
+    'Search for "cats"');
+});
+
+test('right-clicking a field is not "entering" it', () => {
+  const field = { elementLabel: 'Name', elementRole: 'edit' };
+  assert.equal(buildCaptureTitle({ metadata: field }), 'Enter Name');
+  assert.equal(buildCaptureTitle({ metadata: field, clickKind: 'left' }), 'Enter Name');
+  assert.equal(buildCaptureTitle({ metadata: field, clickKind: 'right' }), 'Right-click Name');
+  assert.equal(buildCaptureTitle({ metadata: { ...field, elementIsPassword: true }, clickKind: 'right' }), 'Right-click password field');
+});
+
+test('capture context persists the click kind and titles with it', async (t) => {
+  const root = makeTmpDir('text-intel-clickkind');
+  t.after(() => rmrf(root));
+  const service = new TextIntelService({ store: { settingsDir: root }, settings: makeSettings(), dataDir: root });
+  service.ocrAroundClick = async () => ({ text: 'Report.xlsx' });
+  service.collectForegroundWindowContext = async () => ({});
+  const build = (clickMeta) => service.buildCaptureContext({ mode: 'fullscreen', clickMeta });
+  const right = await build({ button: 'right' });
+  assert.equal(right.title, 'Right-click Report.xlsx');
+  assert.equal(right.captureMetadata.clickKind, 'right');
+  const dbl = await build({ button: 'left', double: true });
+  assert.equal(dbl.title, 'Double-click Report.xlsx');
+  assert.equal(dbl.captureMetadata.clickKind, 'double');
+  const plain = await build({ button: 'left' });
+  assert.equal(plain.title, 'Click Report.xlsx');
+  assert.equal(plain.captureMetadata.clickKind, 'left');
+  const timed = await build(null);
+  assert.equal(timed.captureMetadata.clickKind, '');
 });
 
 test('app-qualified OCR title includes app name', () => {

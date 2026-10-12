@@ -48,14 +48,31 @@ function toLatin1(text) {
   return out;
 }
 
+/**
+ * A PDF text string (document metadata, bookmark titles). Printable ASCII goes out as a
+ * plain literal; anything else becomes UTF-16BE hex with a byte-order mark,
+ * which every viewer decodes and which has no Latin-1 / PDFDocEncoding gaps.
+ */
+function pdfTextString(text) {
+  const clean = String(text)
+    .replace(/[\u0000-\u001F\u007F]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (/^[\x20-\x7E]*$/.test(clean)) return `(${esc(clean)})`;
+  const be = Buffer.from(clean, 'utf16le').swap16();
+  return `<FEFF${be.toString('hex').toUpperCase()}>`;
+}
+
 function col(c) {
   return `${(c[0] / 255).toFixed(3)} ${(c[1] / 255).toFixed(3)} ${(c[2] / 255).toFixed(3)}`;
 }
 
 class PdfBuilder {
-  constructor({ pageWidth = 595.28, pageHeight = 841.89 } = {}) {
+  constructor({ pageWidth = 595.28, pageHeight = 841.89, title = '', author = '' } = {}) {
     this.pageWidth = pageWidth;
     this.pageHeight = pageHeight;
+    this.title = title; // document metadata for the /Info dictionary
+    this.author = author;
     this.pages = [];
     this.images = []; // { name, width, height, data (deflated RGB), smask? }
     this.imageCache = new Map();
@@ -171,7 +188,7 @@ class PdfBuilder {
   }
 
   bookmark(title, pageIndex = this.pages.length - 1) {
-    this.bookmarks.push({ title: toLatin1(title), pageIndex });
+    this.bookmarks.push({ title: String(title), pageIndex }); // a text string, encoded when written
   }
 
   /**
@@ -251,7 +268,7 @@ class PdfBuilder {
       addObj(`<< /Type /Outlines /First ${itemIds[0]} 0 R /Last ${itemIds[itemIds.length - 1]} 0 R /Count ${itemIds.length} >>`);
       this.bookmarks.forEach((bm, i) => {
         const parts = [
-          `/Title (${esc(bm.title)})`,
+          `/Title ${pdfTextString(bm.title)}`,
           `/Parent ${outlineRootId} 0 R`,
           `/Dest [${pageIds[bm.pageIndex]} 0 R /Fit]`,
         ];
@@ -262,7 +279,16 @@ class PdfBuilder {
       outlinesRef = `/Outlines ${outlineRootId} 0 R /PageMode /UseOutlines`;
     }
 
-    objects[0] = `<< /Type /Catalog /Pages 2 0 R ${outlinesRef} >>`;
+    // Document information dictionary: viewers show /Title in their title
+    // bar and accessibility checkers look for it.
+    const hasTitle = Boolean(String(this.title).trim());
+    const infoParts = [];
+    if (hasTitle) infoParts.push(`/Title ${pdfTextString(this.title)}`);
+    if (String(this.author).trim()) infoParts.push(`/Author ${pdfTextString(this.author)}`);
+    const infoId = infoParts.length ? addObj(`<< ${infoParts.join(' ')} >>`) : 0;
+    const viewerPrefs = hasTitle ? '/ViewerPreferences << /DisplayDocTitle true >>' : '';
+
+    objects[0] = `<< /Type /Catalog /Pages 2 0 R ${outlinesRef} ${viewerPrefs} >>`;
     objects[1] = `<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(' ')}] /Count ${pageIds.length} >>`;
 
     // Serialize with xref
@@ -290,7 +316,7 @@ class PdfBuilder {
     for (let i = 1; i <= objects.length; i++) {
       xref += `${String(offsets[i]).padStart(10, '0')} 00000 n \n`;
     }
-    xref += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF\n`;
+    xref += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R${infoId ? ` /Info ${infoId} 0 R` : ''} >>\nstartxref\n${xrefStart}\n%%EOF\n`;
     chunks.push(Buffer.from(xref, 'latin1'));
     return Buffer.concat(chunks);
   }

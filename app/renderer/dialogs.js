@@ -330,6 +330,7 @@ function showSettingsDialog({
   settings,
   placeholders = {},
   onSave,
+  onPublishToWeb = null,
   section: initialSection = 'general',
 } = {}) {
   return new Promise((resolve) => {
@@ -338,7 +339,7 @@ function showSettingsDialog({
     // opens Accounts with that service's panel showing.
     const accountView = ['drive', 'onedrive', 'dropbox', 'webdav', 'github', 'confluence'].includes(initialSection) ? initialSection : null;
     if (accountView) initialSection = 'accounts';
-    const accountsPanel = makeAccountsSettings(api, { view: accountView });
+    const accountsPanel = makeAccountsSettings(api, { view: accountView, onPublishToWeb });
     const storagePath = el('code.settings-path', {}, 'Checking guide storage location…');
     const storageNote = el('div.setting-desc', {}, '');
     const showStorageError = (message) => { storageNote.textContent = message; storageNote.classList.add('error'); };
@@ -427,10 +428,11 @@ function showSettingsDialog({
     ]);
     const spellcheck = el('input', { type: 'checkbox', checked: Boolean(settings.spellcheck) });
     const delayMs = makeInput(settings.capture?.delayMs ?? 0, 'number', { min: 0, step: 50 });
-    const captureMode = makeSelect(settings.capture?.mode || 'fullscreen', [
+    // An older settings file may still hold 'region', which recording always
+    // treated as fullscreen. Show what actually happens.
+    const captureMode = makeSelect(settings.capture?.mode === 'window' ? 'window' : 'fullscreen', [
       { value: 'fullscreen', label: 'Fullscreen' },
       { value: 'window', label: 'Window' },
-      { value: 'region', label: 'Region' },
     ]);
     const smartCropping = el('input', { type: 'checkbox', checked: settings.capture?.smartCropping !== false });
     const redactOnCapture = el('input', { type: 'checkbox', checked: settings.redaction?.onCapture === true });
@@ -604,7 +606,7 @@ function showSettingsDialog({
       ] },
       { id: 'capture', label: 'Capture', description: 'How StepForge records steps.', content: [
         settingsCard('Recording',
-          settingRow('Default mode', 'What a new capture records.', captureMode),
+          settingRow('Default mode', 'Record the whole screen or the active window. For a region, use Capture → Capture region….', captureMode),
           settingRow('Delay', 'Milliseconds to wait before each screenshot.', delayMs),
           settingRow('Click marker', 'Draw a marker where you clicked.', makeSwitch(clickMarker, 'Click marker')),
           settingRow('Capture outside clicks', 'Record clicks in other apps while a capture session is running.', makeSwitch(captureOutside, 'Capture outside clicks'))),

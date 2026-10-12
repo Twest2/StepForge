@@ -5,6 +5,7 @@
 const api = window.stepforge;
 const dialogs = window.StepForgeDialogs || {};
 const shortcuts = window.StepForgeShortcuts || {};
+const outline = window.StepForgeOutline || {};
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
 
@@ -724,6 +725,11 @@ class GuideEditor {
     this.dom.addStepBtn.addEventListener('click', () => this.addEmptyStep());
     this.dom.importBtn.addEventListener('click', () => this.importImageSteps());
     this.dom.selectStepsBtn.addEventListener('click', () => this.toggleStepSelectMode());
+    this.dom.stepsList.addEventListener('dragover', (e) => this.onStepDragOver(e));
+    this.dom.stepsList.addEventListener('dragleave', (e) => {
+      if (!this.dom.stepsList.contains(e.relatedTarget)) this.hideStepDropLine();
+    });
+    this.dom.stepsList.addEventListener('drop', (e) => this.onStepDrop(e));
     this.dom.moveUpBtn.addEventListener('click', () => this.moveSelectedStep(-1));
     this.dom.moveDownBtn.addEventListener('click', () => this.moveSelectedStep(1));
     this.dom.duplicateBtn.addEventListener('click', () => this.duplicateSelectedStep());
@@ -1118,6 +1124,9 @@ class GuideEditor {
       const itemProps = {
         className: `step-item${selected ? ' selected' : ''}${depth ? ' sub' : ''}${step.skipped ? ' skipped' : ''}${step.hidden ? ' hiddenstep' : ''}`,
         dataset: { stepId: step.stepId },
+        draggable: !this.stepSelectMode,
+        onDragStart: (e) => this.onStepDragStart(e, step.stepId),
+        onDragEnd: () => this.endStepDrag(),
         onMouseDown: (e) => {
           if (this.stepSelectMode && e.shiftKey) e.preventDefault();
         },
@@ -1156,6 +1165,7 @@ class GuideEditor {
             'sep',
             { label: 'Move up', action: () => this.moveSelectedStep(-1) },
             { label: 'Move down', action: () => this.moveSelectedStep(1) },
+            { label: 'Move to…', action: () => this.moveStepTo(step.stepId) },
             'sep',
             { label: 'Delete step', danger: true, action: () => this.deleteSelectedStep() },
           ]);
@@ -1624,11 +1634,21 @@ class GuideEditor {
    */
   async applyOutlineRecord(record) {
     const now = this.outlineRecord();
-    const order = reconcileOrder(record.order, now.order, { ...now.parents, ...(record.parents || {}) }, now.parents);
-    // Only send parents that differ, so restoring an order never trips over an outline that was already off.
+    const recorded = record.parents || {};
+    const order = reconcileOrder(record.order, now.order, { ...now.parents, ...recorded }, now.parents);
+    const parentOf = new Map(order.map((id) => [id, (id in recorded ? recorded[id] : now.parents[id]) || null]));
+    // The recorded outline may be one an old move broke, which the move being
+    // undone repaired. Put the order back but keep those recorded steps
+    // flattened, as the store refuses to break a valid outline. Steps added
+    // since keep the parents they have now.
+    if (outline.isValidOutline && !outline.isValidOutline(order, parentOf)) {
+      const repaired = outline.repairOutline(order, parentOf);
+      for (const id of order) if (id in recorded) parentOf.set(id, repaired.get(id));
+    }
+    // Only send parents that differ.
     const parents = {};
-    for (const [id, parentId] of Object.entries(record.parents || {})) {
-      if (id in now.parents && now.parents[id] !== parentId) parents[id] = parentId;
+    for (const [id, parentId] of parentOf) {
+      if (now.parents[id] !== (parentId || null)) parents[id] = parentId || null;
     }
     try {
       await api.step.reorder({ guideId: this.guideId, order, parents });
@@ -2224,19 +2244,177 @@ class GuideEditor {
     this.onToast('Step deleted. Press Ctrl+Z to undo.');
   }
 
+  /** Move the current step, with its substeps, past the neighbouring step and its substeps. */
   async moveSelectedStep(delta) {
     const step = this.currentStep;
     if (!step) return;
-    const idx = this.steps.findIndex((s) => s.stepId === step.stepId);
-    const nextIdx = idx + delta;
-    if (nextIdx < 0 || nextIdx >= this.steps.length) return;
+    const moved = outline.moveSubtreeBy(this.steps.map((s) => s.stepId), outline.parentMap(this.steps), step.stepId, delta);
+    if (moved) await this.applyStepMove(step.stepId, moved);
+  }
+
+  /**
+   * Save a move planned by core/step-outline.js ({ order, parentOf }) as one
+   * undo step. Returns false if nothing changed or the move was refused.
+   */
+  async applyStepMove(stepId, moved) {
+    if (!(await this.settlePendingSave())) return false;
     const before = this.outlineRecord();
-    const order = this.steps.map((s) => s.stepId);
-    const [item] = order.splice(idx, 1);
-    order.splice(nextIdx, 0, item);
-    await api.step.reorder({ guideId: this.guideId, order });
+    // Send only the parents the move changes, so it can't put back a parent
+    // that changed elsewhere since the move was planned.
+    const parents = {};
+    for (const [id, parentId] of moved.parentOf) {
+      if ((parentId || null) !== before.parents[id]) parents[id] = parentId || null;
+    }
+    const unchanged = moved.order.every((id, i) => id === before.order[i]) && !Object.keys(parents).length;
+    if (unchanged) return false;
+    try {
+      await api.step.reorder({ guideId: this.guideId, order: moved.order, parents });
+    } catch (err) {
+      this.onToast(`Could not move the step: ${err.message || err}`, { error: true });
+      return false;
+    }
     this.pushCanvasHistory(before);
-    await this.reload(step.stepId);
+    await this.reload(stepId);
+    return true;
+  }
+
+  /** "Move to…": pick a place and a level for a step and its substeps in a dialog. */
+  async moveStepTo(stepId) {
+    const step = this.stepMap.get(stepId);
+    if (!step) return;
+    const order = this.steps.map((s) => s.stepId);
+    const parentOf = outline.parentMap(this.steps);
+    const numbers = stepNumberMap(this.steps);
+    const nameOf = (id) => `${numbers.get(id)}  ${this.stepMap.get(id).title || 'Untitled step'}`;
+    const index = order.indexOf(stepId);
+    const blockEnd = index + outline.subtreeOf(order, parentOf, stepId).length;
+    const positions = [];
+    for (let gap = 0; gap <= order.length; gap++) {
+      if (gap > index && gap <= blockEnd) continue; // inside the step's own substeps, or the same spot again
+      // Each distinct level the gap allows, keyed by the parent the step would get.
+      const levels = new Map();
+      const deepest = gap > 0 ? outline.depthOf(parentOf, order[gap - 1]) + 1 : 0;
+      for (let depth = 0; depth <= deepest; depth++) {
+        const result = outline.moveSubtree(order, parentOf, stepId, gap, depth);
+        const parentId = result && result.parentOf.get(stepId);
+        if (!result || levels.has(parentId || '')) continue;
+        levels.set(parentId || '', {
+          value: String(depth),
+          depth: parentId ? outline.depthOf(result.parentOf, parentId) + 1 : 0,
+          label: parentId ? `Substep of ${nameOf(parentId)}` : 'Top level',
+        });
+      }
+      positions.push({
+        value: String(gap),
+        label: gap === 0 ? 'At the top' : `After ${nameOf(order[gap - 1])}`,
+        current: gap === index,
+        levels: [...levels.values()].sort((a, b) => a.depth - b.depth),
+      });
+    }
+    const choice = await dialogs.showMoveStepDialog({
+      title: `Move “${step.title || 'Untitled step'}”`,
+      hint: this.getStepDescendantIds(stepId).length ? 'Its substeps move with it.' : '',
+      positions,
+      currentDepth: outline.depthOf(parentOf, stepId),
+    });
+    if (!choice) return;
+    // The guide may have changed while the dialog was open (an agent, a
+    // sync), so plan the move again on the outline as it is now, keeping the
+    // chosen place as "after this step" rather than as a position.
+    const anchor = Number(choice.gap) > 0 ? order[Number(choice.gap) - 1] : null;
+    const nowOrder = this.steps.map((s) => s.stepId);
+    const nowGap = anchor ? nowOrder.indexOf(anchor) + 1 : 0;
+    const moved = this.stepMap.has(stepId) && (!anchor || nowGap > 0)
+      ? outline.moveSubtree(nowOrder, outline.parentMap(this.steps), stepId, nowGap, Number(choice.depth))
+      : null;
+    if (!moved) {
+      this.onToast('The guide changed while you were choosing, so the step was not moved. Try Move to… again.', { error: true });
+      return;
+    }
+    if (await this.applyStepMove(stepId, moved)) this.onToast('Step moved. Press Ctrl+Z to undo.');
+  }
+
+  /** Where a dragged step would land for a pointer at (x, y): { gap, depth, moved } with moved null if refused. */
+  stepDropTarget(x, y) {
+    const drag = this.stepDrag;
+    if (!drag) return null;
+    const rows = [...this.dom.stepsList.querySelectorAll('.step-item')];
+    let gap = rows.length;
+    for (let i = 0; i < rows.length; i++) {
+      const rect = rows[i].getBoundingClientRect();
+      if (y < rect.top + rect.height / 2) { gap = i; break; }
+    }
+    // Dragging sideways changes the level, one indent per 18px, relative to where the drag began.
+    const hint = Math.max(0, drag.depth + Math.round((x - drag.startX) / 18));
+    const parentOf = outline.parentMap(this.steps);
+    const moved = outline.moveSubtree(this.steps.map((s) => s.stepId), parentOf, drag.stepId, gap, hint);
+    return { gap, rows, moved, depth: moved ? outline.depthOf(moved.parentOf, drag.stepId) : hint };
+  }
+
+  onStepDragStart(e, stepId) {
+    if (this.stepSelectMode) { e.preventDefault(); return; }
+    const parentOf = outline.parentMap(this.steps);
+    this.stepDrag = { stepId, startX: e.clientX, depth: outline.depthOf(parentOf, stepId) };
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', stepId);
+    }
+    // Dim the step and its substeps, after the browser has taken its drag image.
+    const ids = new Set(outline.subtreeOf(this.steps.map((s) => s.stepId), parentOf, stepId));
+    setTimeout(() => {
+      for (const row of this.dom.stepsList.children) {
+        if (ids.has(row.dataset.stepId)) row.classList.add('dragging');
+      }
+    }, 0);
+  }
+
+  onStepDragOver(e) {
+    if (!this.stepDrag) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    const list = this.dom.stepsList;
+    const rect = list.getBoundingClientRect();
+    const edge = 40;
+    if (e.clientY < rect.top + edge) list.scrollTop -= Math.ceil((rect.top + edge - e.clientY) / 4);
+    else if (e.clientY > rect.bottom - edge) list.scrollTop += Math.ceil((e.clientY - (rect.bottom - edge)) / 4);
+    this.showStepDropLine(this.stepDropTarget(e.clientX, e.clientY));
+  }
+
+  async onStepDrop(e) {
+    if (!this.stepDrag) return;
+    e.preventDefault();
+    const { stepId } = this.stepDrag;
+    const target = this.stepDropTarget(e.clientX, e.clientY);
+    this.endStepDrag();
+    if (!target) return;
+    if (!target.moved) {
+      this.onToast('A step can’t be dropped inside its own substeps.', { error: true });
+      return;
+    }
+    await this.applyStepMove(stepId, target.moved);
+  }
+
+  endStepDrag() {
+    this.stepDrag = null;
+    this.hideStepDropLine();
+    for (const row of this.dom.stepsList.children) row.classList.remove('dragging');
+  }
+
+  /** Draw the drop line at the gap, indented to the level the step would end up at. */
+  showStepDropLine(target) {
+    if (!target) { this.hideStepDropLine(); return; }
+    const { gap, rows, moved, depth } = target;
+    if (!this.dom.stepDropLine) this.dom.stepDropLine = el('div.step-drop-line');
+    const line = this.dom.stepDropLine;
+    if (line.parentNode !== this.dom.stepsList) this.dom.stepsList.append(line);
+    const last = rows[rows.length - 1];
+    line.style.top = `${gap < rows.length ? rows[gap].offsetTop - 2 : last.offsetTop + last.offsetHeight + 2}px`;
+    line.style.left = `${10 + depth * 18}px`;
+    line.classList.toggle('refused', !moved);
+  }
+
+  hideStepDropLine() {
+    if (this.dom.stepDropLine) this.dom.stepDropLine.remove();
   }
 
   async importImageSteps() {

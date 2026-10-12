@@ -479,6 +479,7 @@ body.platform-linux #capture-status button {
 }
 
 .steps-list {
+  position: relative; /* the drop line is placed against it */
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -517,6 +518,19 @@ body.platform-linux #capture-status button {
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+.step-item.dragging { opacity: 0.45; }
+/* Shows where a dragged step lands; its left edge is the level it will have. */
+.step-drop-line {
+  position: absolute;
+  right: 10px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+  pointer-events: none;
+}
+.step-drop-line.refused {
+  background: repeating-linear-gradient(90deg, var(--danger) 0 6px, transparent 6px 10px);
 }
 .step-item.skipped .t { text-decoration: line-through; opacity: 0.68; }
 .step-item.hiddenstep .t { opacity: 0.5; }

@@ -46,6 +46,30 @@ test('expired and removed guides are dropped; others are kept', () => {
   assert.deepEqual(Object.keys(plan.manifest.guides), [later.slug]);
 });
 
+test('extending a live guide moves only its expiry', () => {
+  const first = site.planSite(site.emptyManifest(), { now: NOW, publish: { guideId: 'guide-a', title: 'Steps', days: 1 } });
+  const other = site.planSite(first.manifest, { now: NOW, publish: { guideId: 'guide-b', title: 'Other', days: 7 } });
+  const later = NOW + 12 * 60 * 60 * 1000;
+  const plan = site.planSite(other.manifest, { now: later, extend: { slug: first.slug, days: 30 } });
+  assert.equal(plan.slug, first.slug);
+  assert.deepEqual(plan.removed, []);
+  assert.deepEqual(plan.manifest.guides[first.slug], {
+    ...first.manifest.guides[first.slug],
+    expiresAt: new Date(later + 30 * DAY).toISOString(),
+  }, 'the title and publishedAt are left alone');
+  assert.deepEqual(plan.manifest.guides[other.slug], other.manifest.guides[other.slug]);
+  // It is "from now", so a shorter choice can shorten the link too.
+  const shorter = site.planSite(other.manifest, { now: later, extend: { slug: other.slug, days: 1 } });
+  assert.equal(shorter.manifest.guides[other.slug].expiresAt, new Date(later + DAY).toISOString());
+});
+
+test('an expired or unknown guide cannot be extended, and the choice is checked', () => {
+  const first = site.planSite(site.emptyManifest(), { now: NOW, publish: { guideId: 'guide-a', title: 'Steps', days: 1 } });
+  assert.throws(() => site.planSite(first.manifest, { now: NOW + 2 * DAY, extend: { slug: first.slug, days: 7 } }), /no longer shared/);
+  assert.throws(() => site.planSite(first.manifest, { now: NOW, extend: { slug: 'f'.repeat(24), days: 7 } }), /no longer shared/);
+  assert.throws(() => site.planSite(first.manifest, { now: NOW, extend: { slug: first.slug, days: 3 } }), /1, 7, 30 days/);
+});
+
 test('only 1, 7, or 30 days can be chosen', () => {
   for (const days of [0, 2, 31, 365, '7', null]) {
     assert.throws(() => site.planSite(site.emptyManifest(), { now: NOW, publish: { guideId: 'g', title: 't', days } }), /1, 7, 30 days/);

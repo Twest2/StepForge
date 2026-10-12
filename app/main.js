@@ -834,10 +834,22 @@ function setupIpc() {
     return { ok: true, steps };
   }, { validate: (a) => c.id(a.guideId) });
 
+  // Put a new screenshot on a step, keeping its text and annotations. The
+  // step is read here, after the file dialog or countdown, so an edit that
+  // landed meanwhile (an agent, a sync) is kept rather than overwritten.
+  const swapStepImage = async (guideId, stepId, png, size) => {
+    const step = store.getStep(guideId, stepId);
+    // Private-detail blurs matched the old screenshot; the new one is checked again.
+    const removedBlurs = forgetScreenshotChecks(step);
+    let saved = store.replaceImages(guideId, stepId, { original: png }, size, step);
+    if (await blurNewCapture(guideId, stepId, { notify: false })) saved = store.getStep(guideId, stepId);
+    reindex(guideId);
+    return { ok: true, step: saved, removedBlurs };
+  };
   // Right-click a step → Choose screenshot…: swap in an image file, keeping
   // the step's title, description and annotations.
   h('step:chooseImage', async ({ guideId, stepId }) => {
-    const step = store.getStep(guideId, stepId);
+    store.getStep(guideId, stepId); // throws for a step that does not exist, before any dialog
     const res = await dialog.showOpenDialog(mainWindow, {
       title: 'Choose a screenshot for this step',
       filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'] }],
@@ -846,15 +858,20 @@ function setupIpc() {
     if (res.canceled || !res.filePaths[0]) return { ok: false };
     const img = nativeImage.createFromPath(res.filePaths[0]);
     if (img.isEmpty()) throw new Error('StepForge couldn’t open that file as an image. Choose a PNG, JPEG, GIF, WebP or BMP file.');
-    const png = img.toPNG();
-    const size = img.getSize();
-    // Private-detail blurs matched the old screenshot; the new one is checked again.
-    const removedBlurs = forgetScreenshotChecks(step);
-    let saved = store.replaceImages(guideId, stepId, { original: png }, size, step);
-    if (await blurNewCapture(guideId, stepId, { notify: false })) saved = store.getStep(guideId, stepId);
-    reindex(guideId);
-    return { ok: true, step: saved, removedBlurs };
+    return swapStepImage(guideId, stepId, img.toPNG(), img.getSize());
   }, { validate: (a) => c.id(a.guideId) && c.id(a.stepId) });
+  // Right-click a step → Retake screenshot: hide StepForge, count down, grab a
+  // new frame and swap it in, the same way Choose screenshot… does.
+  h('step:retake', async ({ guideId, stepId, mode, delayMs }) => {
+    store.getStep(guideId, stepId); // throws for a step that does not exist, before the countdown
+    const frame = await capture.retakeFrame({ mode, delayMs });
+    if (!frame.ok) return frame;
+    return swapStepImage(guideId, stepId, frame.png, frame.size);
+  }, {
+    validate: (a) => c.id(a.guideId) && c.id(a.stepId)
+      && (a.mode === undefined || c.oneOf(a.mode, ['fullscreen', 'window', 'region']))
+      && c.optionalNumber(a.delayMs, 0, 60000),
+  });
   // Undo and redo of Choose screenshot… put both images back.
   h('step:setImages', ({ guideId, step, originalBase64, workingBase64, size }) => {
     const saved = store.replaceImages(guideId, step.stepId, {
@@ -1089,6 +1106,9 @@ function setupIpc() {
   });
   h('github:unpublish', ({ slug }) => githubPages.unpublish({ slug }),
     { validate: (a) => c.string(a.slug, 40) });
+  // Resets a live link's expiry; only the manifest changes, so nothing is re-uploaded.
+  h('github:extend', ({ slug, days }) => githubPages.extend({ slug, days }),
+    { validate: (a) => c.string(a.slug, 40) && c.oneOf(a.days, EXPIRY_DAYS) });
   // Checks a just-published link until GitHub Pages serves it.
   h('github:waitUntilLive', async ({ slug }) => ({ live: await githubPages.waitUntilLive(slug) }),
     { validate: (a) => c.string(a.slug, 40) });
@@ -1260,8 +1280,11 @@ function setupIpc() {
   }, { validate: (a) => a.mode === undefined || c.oneOf(a.mode, ['copy', 'linked']) });
   // archive:peek was removed: nothing in the renderer used it, and it let a
   // compromised renderer read arbitrary local archives by path.
-  h('archive:saveLinked', ({ guideId, force }) => saveLinkedGuide(store, guideId, { force: Boolean(force) }),
-    { validate: (a) => c.id(a.guideId) });
+  h('archive:saveLinked', async ({ guideId, force }) => {
+    const result = await saveLinkedGuide(store, guideId, { force: Boolean(force) });
+    if (result.merged) reindex(guideId); // the merge changed the local guide
+    return result;
+  }, { validate: (a) => c.id(a.guideId) });
 
   // snapshots
   h('snapshots:list', ({ guideId }) => listSnapshots(store, guideId),

@@ -707,8 +707,8 @@ class GitHubPages {
    * Guides that are kept reuse their existing blobs; nothing old stays in the
    * branch history.
    */
-  async writeSite(current, { now, publish = null, remove = null, html = null, onProgress = null }) {
-    const plan = site.planSite(current.manifest, { now, publish, remove });
+  async writeSite(current, { now, publish = null, remove = null, extend = null, html = null, onProgress = null }) {
+    const plan = site.planSite(current.manifest, { now, publish, remove, extend });
     const tree = [];
     for (const slug of Object.keys(plan.manifest.guides)) {
       const file = site.guidePath(slug);
@@ -726,13 +726,13 @@ class GitHubPages {
     // GitHub writes CNAME when the user sets a custom domain; keep it.
     const cname = current.entries.get(site.CNAME_PATH);
     if (cname) tree.push({ path: site.CNAME_PATH, mode: '100644', type: 'blob', sha: cname });
-    const unchanged = current.head && !publish && !plan.removed.length && !remove
+    const unchanged = current.head && !publish && !extend && !plan.removed.length && !remove
       && current.entries.size === tree.length + 2 && current.entries.has(site.ROOT_INDEX_PATH);
     if (unchanged) return { ...plan, changed: false };
     tree.push({ path: site.ROOT_INDEX_PATH, mode: '100644', type: 'blob', sha: await this.blob(Buffer.from(site.ROOT_INDEX)) });
     tree.push({ path: site.MANIFEST_PATH, mode: '100644', type: 'blob', sha: await this.blob(Buffer.from(site.serializeManifest(plan.manifest))) });
     const createdTree = await this.api('POST', this.repoPath('/git/trees'), { tree });
-    const message = publish ? 'Publish a StepForge guide' : remove ? 'Remove a StepForge guide' : 'Update shared StepForge guides';
+    const message = publish ? 'Publish a StepForge guide' : extend ? 'Extend a shared StepForge guide' : remove ? 'Remove a StepForge guide' : 'Update shared StepForge guides';
     const commit = await this.api('POST', this.repoPath('/git/commits'), { message, tree: createdTree.sha, parents: [] });
     if (current.head) {
       await this.api('PATCH', this.repoPath(`/git/refs/heads/${site.PAGES_BRANCH}`), { sha: commit.sha, force: true });
@@ -840,6 +840,23 @@ class GitHubPages {
     return this.exclusive(async () => {
       try {
         const plan = await this.writeSite(await this.readSite(), { now: this.now(), remove: slug });
+        return this.listFrom(plan.manifest);
+      } catch (err) { throw this.accessHint(err); }
+    });
+  }
+
+  /**
+   * Move a live guide's expiry to `days` from now. Only the manifest changes:
+   * the page and every other file keep their blobs, so nothing is rebuilt or
+   * uploaded, and the guide's `publishedAt` stays as it was.
+   */
+  extend({ slug, days }) {
+    this.requireSite();
+    if (!site.isSlug(slug)) throw new Error('Unknown shared guide.');
+    site.expiresAtFor(days);
+    return this.exclusive(async () => {
+      try {
+        const plan = await this.writeSite(await this.readSite(), { now: this.now(), extend: { slug, days } });
         return this.listFrom(plan.manifest);
       } catch (err) { throw this.accessHint(err); }
     });

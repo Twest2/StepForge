@@ -749,14 +749,19 @@ async function showPublishToWebDialog({ api, guideId, guideTitle, onOpenAccounts
     const body = el('div.gh-publish', {}, el('p.muted', {}, 'Checking what’s already shared…'));
     let open = true;
     let publishing = false;
-    const cancelBtn = el('button', { type: 'button', onClick: () => { open = false; close(); resolve(publishing); } }, 'Cancel');
+    // The private-detail check below writes blurs into the guide. Cancelling
+    // closes the dialog at once but resolves only when the check is done, so a
+    // caller that reloads the open editor afterwards sees those blurs.
+    let privacyCheck = Promise.resolve();
+    const resolveAfterCheck = (value) => { privacyCheck.then(() => resolve(value)); };
+    const cancelBtn = el('button', { type: 'button', onClick: () => { open = false; close(); resolveAfterCheck(publishing); } }, 'Cancel');
     const removeBtn = el('button.danger.hidden', { type: 'button' }, 'Remove from the web');
     const publishBtn = el('button.primary', { type: 'button', disabled: true }, 'Publish');
     const { close } = openModal({
       title: 'Publish to the web',
       body,
       footer: [cancelBtn, removeBtn, publishBtn],
-      onClose: () => { open = false; resolve(publishing); },
+      onClose: () => { open = false; resolveAfterCheck(publishing); },
     });
 
     const days = el('select', { 'aria-label': 'How long to keep the guide online' },
@@ -790,7 +795,7 @@ async function showPublishToWebDialog({ api, guideId, guideTitle, onOpenAccounts
         footer: [el('button.primary', { type: 'button', onClick: () => close() }, 'Done')],
       });
     });
-    runPrivacyCheck(api, guideId, (text) => { privacyText.textContent = text; })
+    privacyCheck = runPrivacyCheck(api, guideId, (text) => { privacyText.textContent = text; })
       .then(showReview)
       .catch((err) => {
         privacySpinner.classList.add('hidden');

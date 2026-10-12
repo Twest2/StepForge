@@ -231,3 +231,72 @@ test('undoing a move keeps steps added since in place, and a move that cannot be
   assert.equal(editor.canvasHistory.length, before - 1);
   assert.match(toasts.at(-1), /Could not undo the move/);
 });
+
+test('a move undo keeps a substep added since under its parent', async () => {
+  // A, B; move B up; then add a substep under B: B, B-child, A.
+  const { editor, db, toasts } = setup({ steps: [{ stepId: 'A' }, { stepId: 'B' }] });
+  await editor.reload('B');
+  await editor.moveSelectedStep(-1);
+  assert.deepEqual(db.order, ['B', 'A']);
+  db.steps.set('Bc', { stepId: 'Bc', parentStepId: 'B', revision: 1, annotations: [] });
+  db.order = ['B', 'Bc', 'A'];
+  await editor.reload('B');
+  await editor.undo();
+  assert.deepEqual(outline(db), ['A', 'B', 'Bc<B']);
+  assert.equal(toasts.filter((t) => /Could not/.test(t)).length, 0);
+  // ... and it can be redone.
+  await editor.redo();
+  assert.deepEqual(outline(db), ['B', 'Bc<B', 'A']);
+});
+
+test('a partly failed multi-step undo keeps the failed steps for a retry and the rest for redo', async () => {
+  const rect = (id, color) => ({ id, type: 'rect', style: { stroke: color } });
+  const { editor, db, api, toasts } = setup({ steps: [
+    { stepId: 'A', annotations: [rect('a1', 'red'), rect('a2', 'blue')] },
+    { stepId: 'B', annotations: [rect('b1', 'green')] },
+  ] });
+  await editor.reload('A');
+  editor.canvas.selected = () => rect('a1', 'red');
+  await editor.applyStyleAcross('guide');
+  assert.equal(db.steps.get('B').annotations[0].style.stroke, 'red');
+
+  // B's restore fails (a full disk, say); A's works.
+  const save = api.step.save;
+  api.step.save = async (args) => {
+    if (args.step.stepId === 'B') throw new Error('ENOSPC');
+    return save(args);
+  };
+  await editor.undo();
+  assert.equal(db.steps.get('A').annotations[1].style.stroke, 'blue');
+  assert.equal(db.steps.get('B').annotations[0].style.stroke, 'red');
+  assert.match(toasts.at(-1), /Could not undo every step/);
+
+  // Once the disk has room again, Ctrl+Z puts B back too.
+  api.step.save = save;
+  await editor.undo();
+  assert.equal(db.steps.get('B').annotations[0].style.stroke, 'green');
+  assert.equal(editor.canvasHistory.length, 0);
+  // Both steps can be redone.
+  await editor.redo();
+  await editor.redo();
+  assert.equal(db.steps.get('A').annotations[1].style.stroke, 'red');
+  assert.equal(db.steps.get('B').annotations[0].style.stroke, 'red');
+});
+
+test('undo stops when the current step\'s pending edits cannot be saved', async () => {
+  const { editor, db, api } = setup({ steps: three() });
+  await editor.reload('b');
+  await editor.moveSelectedStep(-1);
+  editor.currentStep.title = 'typed, not saved yet';
+  editor.pendingSave = true;
+  const save = api.step.save;
+  api.step.save = async () => { throw new Error('EIO'); };
+  await editor.undo();
+  assert.deepEqual(db.order, ['b', 'a', 'c'], 'nothing was undone');
+  assert.equal(editor.currentStep.title, 'typed, not saved yet', 'the edit is still in the editor');
+  assert.equal(editor.canvasHistory.length, 1);
+  api.step.save = save;
+  await editor.undo();
+  assert.deepEqual(db.order, ['a', 'b', 'c']);
+  assert.equal(db.steps.get('b').title, 'typed, not saved yet');
+});

@@ -651,3 +651,37 @@ test('the publish dialog checks screenshots for private details first and lets y
   assert.deepEqual(JSON.parse(JSON.stringify(api.calls.at(-1))), ['keepVisible', { guideId: 'guide-1', stepId: 's1', annotationId: 'a1' }]);
   assert.doesNotMatch(review.textContent, /Step 1/);
 });
+
+test('cancelling Publish while the private-detail check runs resolves only after the check has written its blurs', async () => {
+  const u = ui();
+  const api = fakeApi({ connected: true, login: 'octo', repo: 'octo/guides', pagesReady: true });
+  let finish;
+  api.redact.check = () => new Promise((resolve) => { finish = resolve; });
+  let resolved = false;
+  const dialog = u.context.showPublishToWebDialog({ api, guideId: 'guide-1', guideTitle: 'Reset' }).then(() => { resolved = true; });
+  await settle(); await settle();
+  u.click(u.find(u.root.children.at(-1), 'Cancel'));
+  await settle();
+  assert.equal(resolved, false, 'the caller would reload the editor before the blurs are on disk');
+  finish({ checked: 1, added: 1, steps: 1, blurs: [{ stepId: 's1', stepNumber: 1, annotationId: 'a1', kind: 'email', label: 'Email address' }], text: [] });
+  await dialog;
+  assert.equal(resolved, true);
+});
+
+test('App.publishToWeb (the marker\'s route) saves the open guide first and reloads it after a cancelled check', async () => {
+  const context = vm.createContext({ window: {}, document: { addEventListener() {} } });
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/util.js'), 'utf8'), context);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/app.js'), 'utf8').replace('\nboot();', '\n'), context);
+  const events = [];
+  let finishCheck;
+  // The dialog: cancelled at once, but its check finishes (and writes blurs) later.
+  context.showPublishToWebDialog = () => new Promise((resolve) => { finishCheck = () => { events.push('check wrote blurs'); resolve(false); }; });
+  const app = Object.create(context.window.StepForgeApp.prototype);
+  app.state = { view: 'editor' };
+  app.editor = { guideId: 'g1', saveAll: async () => { events.push('save'); }, reload: async () => { events.push('reload'); } };
+  const done = app.publishToWeb('g1', 'Guide');
+  await settle();
+  finishCheck();
+  await done;
+  assert.deepEqual(events, ['save', 'check wrote blurs', 'reload']);
+});

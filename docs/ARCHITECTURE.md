@@ -223,7 +223,9 @@ these run in the main process.
 - Archive imports validate every entry name against path traversal and
   absolute paths before extraction (`core/zip.js`).
 - Linked guides use sidecar `*.lock-sfgz` lock files; conflicts surface a
-  keep-editing / discard dialog and last-write-wins is documented.
+  keep-editing / discard dialog. A linked save re-reads the shared file under
+  the lock and three-way merges it (`core/guide-merge.js`) with the version
+  this library last saved or opened, kept in `history/linked-base.json`.
 - Renderer runs with `contextIsolation: true`, `nodeIntegration: false`,
   and `sandbox` enabled; only the preload API is exposed.
 - Description HTML is sanitized against an allowlist on save and again on

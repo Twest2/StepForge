@@ -100,7 +100,7 @@ function renderStep(step, ast, images, tpl, { rich = false } = {}) {
   parts.push(blocks(groups.beforeImage));
   const img = images.get(step.stepId);
   if (img && tpl.includeImages) {
-    parts.push(`<figure class="shot"><img alt="Step ${escapeHtml(step.number)}" src="${dataUri(img)}" width="${img.width}" height="${img.height}"${rich ? ' tabindex="0"' : ''}></figure>`);
+    parts.push(`<figure class="shot"><img alt="${escapeHtml(step.altText)}" src="${dataUri(img)}" width="${img.width}" height="${img.height}"${rich ? ' tabindex="0"' : ''}></figure>`);
   }
   parts.push(blocks(groups.afterImage));
   for (const block of groups.rest) {

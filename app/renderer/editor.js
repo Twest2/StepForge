@@ -59,6 +59,8 @@ function reconcileOrder(recorded, current, parents, currentParents) {
   return order;
 }
 
+// Retake screenshot: time to open the menu or dialog the step shows once StepForge is hidden.
+const RETAKE_DELAY_MS = 3000;
 const BLOCK_KIND_ORDER = { text: 0, code: 1, table: 2 };
 
 // Which style fields are meaningful for each annotation type, so the
@@ -211,6 +213,7 @@ class GuideEditor {
     this.imageLoadToken = 0;
     this.shellMounted = false;
     this.linkedConflict = false;
+    this.linkedSaveInFlight = null; // a linked save (runLinkedSave) while it runs
     this.descriptionDirty = false;
     this.titleDirty = false;
     this.active = true;
@@ -1130,6 +1133,14 @@ class GuideEditor {
             },
             { label: 'Duplicate step', action: () => this.duplicateSelectedStep() },
             { label: 'Choose screenshot…', action: () => this.chooseScreenshot(step.stepId) },
+            {
+              label: 'Retake screenshot',
+              submenu: [
+                { label: 'Full screen', action: () => this.retakeScreenshot(step.stepId, 'fullscreen') },
+                { label: 'Window', action: () => this.retakeScreenshot(step.stepId, 'window') },
+                { label: 'Region…', action: () => this.retakeScreenshot(step.stepId, 'region') },
+              ],
+            },
             'sep',
             { label: 'Move up', action: () => this.moveSelectedStep(-1) },
             { label: 'Move down', action: () => this.moveSelectedStep(1) },
@@ -1789,6 +1800,14 @@ class GuideEditor {
 
   async flushStep(step = this.currentStep) {
     if (!step) return;
+    if (this.linkedSaveInFlight) {
+      // A linked save may be merging another session's changes into the
+      // library copy; writing this older copy now would undo them. Wait, then
+      // save the step as it is after the merge (with these edits put back).
+      const live = this.stepMap.get(step.stepId) === step;
+      while (this.linkedSaveInFlight) await this.linkedSaveInFlight;
+      if (live) step = this.stepMap.get(step.stepId) || step;
+    }
     // Clear the dirty flag only AFTER a durable save. Clearing it first meant
     // a rejected IPC save silently lost the unsaved state (and this runs from
     // a debounce that does not handle rejections). Keep it dirty on failure,
@@ -1849,6 +1868,7 @@ class GuideEditor {
   }
 
   async flushGuide() {
+    while (this.linkedSaveInFlight) await this.linkedSaveInFlight; // see flushStep
     if (!this.guide) return;
     try {
       await api.guide.save({ guide: this.guide });
@@ -1877,16 +1897,91 @@ class GuideEditor {
     if (this.currentStep) await this.flushStep();
     if (this.guide) await this.flushGuide();
     if (this.guide && this.guide.linkedSource) {
-      const result = await api.archive.saveLinked({ guideId: this.guideId, force: false });
+      const result = await this.runLinkedSave({ force: false });
       if (result.saved) {
-        this.guide.linkedSource.lastSavedAt = new Date().toISOString();
-        this.onToast('Saved and synced to linked archive.');
+        if (this.guide.linkedSource) this.guide.linkedSource.lastSavedAt = new Date().toISOString();
+        this.toastLinkedSave(result, 'Saved and synced to linked archive.');
       } else {
         this.onToast('Saved locally, but the linked archive is locked by another session.', { error: true });
       }
       return;
     }
     this.onToast('Saved.');
+  }
+
+  /**
+   * Write a linked guide to its shared archive. If another session saved it
+   * meanwhile, the main process merges the two into the library copy first,
+   * so until this finishes the editor holds an older copy: step and guide
+   * saves wait for it (see flushStep / flushGuide) rather than write that
+   * copy over the merge. A merge reloads the guide, and edits made during the
+   * write are put back on top of it, field by field (reapplyEditsAfterMerge).
+   */
+  async runLinkedSave({ force = false } = {}) {
+    while (this.linkedSaveInFlight) await this.linkedSaveInFlight;
+    if (this.pendingSave) await this.flushStep();
+    if (this.pendingGuideSave) await this.flushGuide();
+    const snapshot = { guide: clone(this.guide), steps: new Map(this.steps.map((step) => [step.stepId, clone(step)])) };
+    let finished;
+    this.linkedSaveInFlight = new Promise((resolve) => { finished = resolve; });
+    try {
+      const result = await api.archive.saveLinked({ guideId: this.guideId, force });
+      if (result && result.saved && result.merged) await this.reapplyEditsAfterMerge(snapshot);
+      return result;
+    } finally {
+      this.linkedSaveInFlight = null;
+      finished();
+    }
+  }
+
+  /**
+   * Reload the merged guide, then put back what was edited since `snapshot`
+   * (taken when the linked save started): only the fields that changed, so
+   * whatever the merge brought in elsewhere in the step or guide is kept.
+   */
+  async reapplyEditsAfterMerge(snapshot) {
+    const liveSteps = new Map(this.steps.map((step) => [step.stepId, step]));
+    const liveGuide = this.guide;
+    await this.reload();
+    const BOOKKEEPING = new Set(['revision', 'updatedAt', 'createdAt', 'stepsOrder', 'linkedSource']);
+    const changedKeys = (now, then) => [...new Set([...Object.keys(now || {}), ...Object.keys(then || {})])]
+      .filter((key) => !BOOKKEEPING.has(key) && JSON.stringify(now[key]) !== JSON.stringify(then[key]));
+    const apply = (target, source, keys) => {
+      for (const key of keys) {
+        if (source[key] === undefined) delete target[key];
+        else target[key] = clone(source[key]);
+      }
+    };
+    const others = [];
+    for (const [stepId, then] of snapshot.steps) {
+      const now = liveSteps.get(stepId);
+      const fresh = this.stepMap.get(stepId);
+      if (!now || !fresh) continue;
+      const keys = changedKeys(now, then);
+      if (!keys.length) continue;
+      apply(fresh, now, keys);
+      if (stepId === this.selectedStepId) this.pendingSave = true;
+      else others.push(fresh);
+    }
+    // Saved directly: flushStep would wait for the save this is part of.
+    for (const step of others) this.commitSavedStep(await api.step.save({ guideId: this.guideId, step }));
+    const guideKeys = liveGuide && this.guide ? changedKeys(liveGuide, snapshot.guide) : [];
+    if (guideKeys.length) {
+      apply(this.guide, liveGuide, guideKeys);
+      this.pendingGuideSave = true;
+    }
+    this.renderAll();
+    if (this.pendingSave) this.saveStepDebounced();
+    if (this.pendingGuideSave) this.saveGuideDebounced();
+  }
+
+  /** Toast a linked save, saying when it merged another session's changes. */
+  toastLinkedSave(result, message) {
+    if (!result.merged) return this.onToast(message);
+    const conflicts = result.conflicts
+      ? ` ${result.conflicts} ${result.conflicts === 1 ? 'conflict was' : 'conflicts were'} settled in favor of the most recent edit.`
+      : '';
+    return this.onToast(`${message} Merged changes from another session.${conflicts}`);
   }
 
   async createSnapshot() {
@@ -2045,6 +2140,28 @@ class GuideEditor {
    * the old screenshot back.
    */
   async chooseScreenshot(stepId) {
+    await this.replaceStepScreenshot(stepId, (step) => api.step.chooseImage({ guideId: this.guideId, stepId: step.stepId }));
+  }
+
+  /**
+   * Step menu → Retake screenshot: StepForge hides itself, counts down and
+   * grabs a new screenshot for this step. Like Choose screenshot…, the text
+   * and annotations stay and Ctrl+Z puts the old screenshot back.
+   */
+  async retakeScreenshot(stepId, mode = 'fullscreen', delayMs = RETAKE_DELAY_MS) {
+    if (stepId && stepId !== this.selectedStepId) await this.selectStep(stepId);
+    if ((await api.capture.state())?.active) {
+      this.onToast('Stop the recording session before retaking a screenshot.', { error: true });
+      return;
+    }
+    await this.replaceStepScreenshot(stepId, (step) => api.step.retake({ guideId: this.guideId, stepId: step.stepId, mode, delayMs }), 'retaken');
+  }
+
+  /**
+   * Shared by Choose screenshot… and Retake screenshot: `pick(step)` swaps the
+   * image in the main process; this records the old images for undo.
+   */
+  async replaceStepScreenshot(stepId, pick, verb = 'replaced') {
     if (stepId && stepId !== this.selectedStepId) await this.selectStep(stepId);
     const step = this.currentStep;
     if (!step) return;
@@ -2052,19 +2169,22 @@ class GuideEditor {
     const before = await this.snapshotCurrentStep(true);
     let result;
     try {
-      result = await api.step.chooseImage({ guideId: this.guideId, stepId: step.stepId });
+      result = await pick(step);
     } catch (err) {
       this.onToast(err.message, { error: true });
       return;
     }
-    if (!result || !result.ok) return;
+    if (!result || !result.ok) {
+      if (result && result.reason) this.onToast(result.reason, { error: true });
+      return;
+    }
     if (before) this.pushCanvasHistory(before);
     await this.reload(step.stepId);
     const kept = (result.step.annotations || []).length;
     const blurs = result.removedBlurs ? ' Private details will be checked again before publishing.' : '';
     this.onToast(kept
-      ? `Screenshot replaced. Its annotations were kept, so check they still line up.${blurs} Press Ctrl+Z to undo.`
-      : `Screenshot replaced.${blurs} Press Ctrl+Z to undo.`);
+      ? `Screenshot ${verb}. Its annotations were kept, so check they still line up.${blurs} Press Ctrl+Z to undo.`
+      : `Screenshot ${verb}.${blurs} Press Ctrl+Z to undo.`);
   }
 
   async deleteSelectedStep() {
@@ -2423,13 +2543,13 @@ class GuideEditor {
       guide: guideMeta,
       lock: locked ? { acquired: false } : { acquired: true },
       onSave: async () => {
-        const result = await api.archive.saveLinked({ guideId: this.guideId, force: false });
-        if (result.saved) this.onToast('Linked archive saved.');
+        const result = await this.runLinkedSave({ force: false });
+        if (result.saved) this.toastLinkedSave(result, 'Linked archive saved.');
         else this.onToast('Could not save linked archive.', { error: true });
       },
       onForceSave: async () => {
-        const result = await api.archive.saveLinked({ guideId: this.guideId, force: true });
-        if (result.saved) this.onToast('Linked archive force-saved.');
+        const result = await this.runLinkedSave({ force: true });
+        if (result.saved) this.toastLinkedSave(result, 'Linked archive force-saved.');
         else this.onToast('Could not save linked archive.', { error: true });
       },
       onOpenArchive: async () => {

@@ -27,6 +27,18 @@ function stepFingerprint(step) {
  * last. `parents` maps each recorded step to the parent it gets back, so the
  * order stays one the outline can read top to bottom.
  */
+/** An annotation's content as a string, without its id: equal for a copy at the same place. */
+function annotationContentKey(ann) {
+  return JSON.stringify(ann, (key, value) => {
+    if (key === 'id') return undefined;
+    if (typeof value === 'number') return Math.round(value * 1e6) / 1e6;
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      return Object.fromEntries(Object.keys(value).sort().map((k) => [k, value[k]]));
+    }
+    return value;
+  });
+}
+
 function reconcileOrder(recorded, current, parents, currentParents) {
   const known = new Set(current);
   const order = recorded.filter((id) => known.has(id));
@@ -1228,6 +1240,14 @@ class GuideEditor {
           type: 'button',
           onClick: () => (allSelected ? this.clearStepSelection() : this.selectAllSteps()),
         }, allSelected ? 'Clear' : 'Select all'),
+        this.annotationClipboard
+          ? el('button', {
+            type: 'button',
+            disabled: !n,
+            title: 'Add the copied annotation at the same position on each selected step',
+            onClick: () => this.pasteAnnotationToSelectedSteps(),
+          }, `Paste annotation to ${n} step${n === 1 ? '' : 's'}`)
+          : null,
         el('button.danger', { type: 'button', disabled: !n, onClick: () => this.deleteSelectedSteps() }, 'Delete'),
       ),
     );
@@ -2711,6 +2731,83 @@ class GuideEditor {
     return true;
   }
 
+  /**
+   * Paste the copied annotation onto every selected step at the same
+   * normalized position, as one 'multi-step' undo record. Steps whose image
+   * has a different aspect ratio than the source (a crop, another window) are
+   * skipped, since the same position would land on something else, and so are
+   * steps that already have this very annotation (same place, text and style:
+   * the source step, or a second paste).
+   */
+  async pasteAnnotationToSelectedSteps() {
+    const source = this.annotationClipboard;
+    if (!source) return;
+    const ids = this.steps.map((s) => s.stepId).filter((id) => this.selectedSteps.has(id));
+    if (!ids.length) return;
+    // Stop if the current step's edits can't be saved: reloading at the end
+    // would otherwise replace them with what is on disk.
+    if (!(await this.settlePendingSave())) return;
+    const sourceAspect = this.annotationClipboardAspect || 0;
+    // The same annotation is the same type, place, text and style; only its id may differ.
+    const sourceKey = annotationContentKey(source);
+    const alreadyThere = (step) => (step.annotations || []).some((ann) => annotationContentKey(ann) === sourceKey);
+    const numbers = stepNumberMap(this.steps);
+    const skipped = [];
+    const before = [];
+    const after = [];
+    const stamp = Date.now().toString(36);
+    let failed = null;
+    for (const stepId of ids) {
+      const step = this.stepMap.get(stepId);
+      if (!step) continue;
+      const aspect = alreadyThere(step) ? 0 : await this.stepImageAspect(step);
+      if (!aspect || !sourceAspect || Math.abs(aspect / sourceAspect - 1) > 0.01) {
+        skipped.push(numbers.get(stepId) || stepId);
+        continue;
+      }
+      const edited = clone(step);
+      const copy = clone(source);
+      copy.id = `ann-${stamp}-${Math.random().toString(36).slice(2, 7)}`;
+      edited.annotations = [...(edited.annotations || []), copy];
+      const original = clone(step);
+      try {
+        const saved = await api.step.save({ guideId: this.guideId, step: edited });
+        before.push(original);
+        // Into the live step at once, so an autosave during the rest of the
+        // batch saves the paste rather than the copy from before it.
+        after.push(this.commitBatchSave(saved));
+      } catch (err) {
+        failed = err;
+        break;
+      }
+    }
+    if (before.length) this.pushCanvasHistory(this.multiStepRecord(before, after));
+    await this.reload(this.selectedStepId);
+    const plural = (n) => `${n} step${n === 1 ? '' : 's'}`;
+    let text = before.length ? `Annotation pasted onto ${plural(before.length)}. Press Ctrl+Z to undo.` : 'No steps changed.';
+    if (skipped.length) {
+      text += ` Skipped ${plural(skipped.length)} (already there, no image, or a different image shape): ${skipped.join(', ')}.`;
+    }
+    if (failed) text += ` Stopped early: ${failed.message || failed}`;
+    this.onToast(text, failed ? { error: true } : undefined);
+  }
+
+  /**
+   * Width / height of a step's working image, or 0 without one. Steps added
+   * without a size (some imports, older guides) store { 0, 0 }; for those the
+   * image itself is measured, so they are not skipped for no visible reason.
+   */
+  async stepImageAspect(step) {
+    if (!step || !step.image) return 0;
+    const size = step.image.size;
+    if (size && size.width > 0 && size.height > 0) return size.width / size.height;
+    const file = await api.step.imagePath({ guideId: this.guideId, stepId: step.stepId, which: 'working' });
+    const img = file ? await loadImage(file) : null;
+    const width = img ? img.naturalWidth || img.width : 0;
+    const height = img ? img.naturalHeight || img.height : 0;
+    return width > 0 && height > 0 ? width / height : 0;
+  }
+
   onCanvasSelect(ann) {
     this.selectedAnnotationId = ann ? ann.id : null;
     this.renderAnnotationPanel();
@@ -2906,6 +3003,12 @@ class GuideEditor {
         e.preventDefault();
         this.annotationClipboard = clone(this.canvas.selected());
         this.annotationClipboardStepId = this.currentStep?.stepId || null;
+        // The canvas has the image loaded, so its size is known even when the step stored { 0, 0 }.
+        const size = this.currentStep?.image?.size;
+        const { imgW, imgH } = this.canvas;
+        this.annotationClipboardAspect = size && size.width > 0 && size.height > 0 ? size.width / size.height
+          : imgW > 0 && imgH > 0 ? imgW / imgH : 0;
+        this.renderStepBulkBar();
         this.onToast('Annotation copied.');
         return;
       }

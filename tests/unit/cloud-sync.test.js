@@ -994,3 +994,42 @@ test('guides restored from Trash while a sync is running are not moved back to T
   assert.equal(a.store.guideExists(second), true);
   assert.deepEqual(await a.sync.deletedGuides(), []);
 });
+
+test('a guide restored from Trash with its cloud sharing turned off stays local and changes nothing in the cloud', async (t) => {
+  const { device, files } = setup(t); const a = device('a'); const b = device('b');
+  const id = addGuide(a.store); await synced(a.sync); await synced(b.sync);
+  await a.sync.setSharing(id, false);
+  assert.equal(a.sync.stageDeletion(id), false, 'an opted-out guide is deleted locally only');
+  a.store.deleteGuide(id);
+  b.sync.stageDeletion(id); b.store.deleteGuide(id);
+  await synced(b.sync); await synced(a.sync);
+
+  a.store.restoreFromTrash(a.store.listTrash()[0]);
+  a.sync.restoredFromTrash(id);
+  await synced(a.sync); await synced(b.sync); await synced(a.sync);
+  assert.equal(a.store.guideExists(id), true, 'the restored copy stays');
+  assert.equal(a.store.getGuide(id).cloud.sharingEnabled, false);
+  assert.equal(b.store.guideExists(id), false, 'the other computer does not get it back');
+  assert.equal(files.filter((file) => file.appProperties?.state === 'restored').length, 0);
+  assert.equal((await b.sync.deletedGuides()).length, 1, 'the cloud deletion is unchanged');
+});
+
+test('a restore is still published when the first listing after it misses the deletion', async (t) => {
+  const { device, drive } = setup(t); const a = device('a'); const b = device('b');
+  const id = addGuide(a.store); await synced(a.sync); await synced(b.sync);
+  a.sync.stageDeletion(id); a.store.deleteGuide(id); await synced(a.sync); await synced(b.sync);
+
+  a.store.restoreFromTrash(a.store.listTrash()[0]);
+  a.sync.restoredFromTrash(id);
+  // Like a delayed Drive listing: the deletion marker is missing once.
+  const listDeletions = drive.listDeletions;
+  drive.listDeletions = async function () {
+    drive.listDeletions = listDeletions;
+    return (await listDeletions.call(this)).filter((file) => file.appProperties?.guideId !== id);
+  };
+  await synced(a.sync);
+  await synced(a.sync); await synced(b.sync);
+  assert.equal(a.store.guideExists(id), true, 'not moved back to Trash by the next accurate listing');
+  assert.equal(b.store.guideExists(id), true, 'the other computer gets it back');
+  assert.deepEqual(await a.sync.deletedGuides(), []);
+});

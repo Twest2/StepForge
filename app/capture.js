@@ -15,7 +15,13 @@ const {
   DEFAULT_START_SLACK_MS,
 } = require('./click-frames');
 const { physicalToDip } = require('./coords');
-const { DEFAULT_CAPTURE_TITLES } = require('../core/text-intel');
+const { DEFAULT_CAPTURE_TITLES, mouseButtonKey } = require('../core/text-intel');
+
+/** True when two presses (DIP points) are close enough to be one double-click. */
+function withinDoubleClickRadius(a, b) {
+  if (!a || !b || ![a.x, a.y, b.x, b.y].every(Number.isFinite)) return false;
+  return Math.hypot(a.x - b.x, a.y - b.y) <= DOUBLE_CLICK_RADIUS;
+}
 
 /**
  * Capture service: full-screen, active-window, and region capture, plus a
@@ -54,6 +60,15 @@ const { DEFAULT_CAPTURE_TITLES } = require('../core/text-intel');
 // each register. Tunable via capture.clickDebounceMs; this is only the
 // default when the setting is absent.
 const DEFAULT_CLICK_DEBOUNCE_MS = 200;
+// A same-button press this soon after an accepted click is one press seen twice,
+// not a double-click (people cannot click twice in under ~20 ms).
+const MIN_DOUBLE_CLICK_GAP_MS = 20;
+// The second press of a double-click lands where the first did. Desktops allow
+// a few pixels (Windows 4, GTK 5); a press further away is a click on
+// something else that the debounce happened to drop.
+const DOUBLE_CLICK_RADIUS = 8;
+// Shown before and during a recording whose Window setting can't be honoured.
+const WINDOW_FALLBACK_NOTE = 'Window capture is not available on this desktop, so StepForge records the full screen.';
 // How long a Linux raw button event waits for its regular twin (the
 // representation that carries root coordinates) before firing without them.
 const LINUX_CLICK_TWIN_MS = 25;
@@ -227,6 +242,7 @@ class CaptureService {
     this.clickSource = 'unavailable';
     this.frameLoopTimer = null;
     this.frameLoopRunning = false;
+    this.windowFallbackNoted = false; // one window-mode-unavailable diagnostic per session
     this.frameWaiters = [];
     this.latestFrame = null;
     this.clickWatcherBuf = '';
@@ -244,6 +260,7 @@ class CaptureService {
     this.recentFrames = [];
     this.shooting = false;
     this.lastAcceptedClickByButton = new Map();
+    this.lastClickMetaByButton = new Map();
     this.streamBackend = null;
     this.streamBackendStarting = false;
     this.captureGen = 0; // bumped on stop to invalidate in-flight backend starts
@@ -268,10 +285,22 @@ class CaptureService {
     }
   }
 
+  /**
+   * True when Settings says Window but click captures will hold the whole
+   * screen: on Wayland outside GNOME there is no per-window grab (see
+   * frameForClick). GNOME's capture service crops to the window itself.
+   */
+  windowModeFallsBack() {
+    return (this.settings.get('capture.mode') || 'fullscreen') === 'window' && this.onWayland();
+  }
+
   state() {
+    // Said up front, so the recording bar shows it before anything is captured.
+    const modeNote = this.windowModeFallsBack() ? WINDOW_FALLBACK_NOTE : '';
     return this.session
       ? {
         active: true,
+        modeNote,
         paused: this.session.paused,
         guideId: this.session.guideId,
         count: this.session.count,
@@ -348,6 +377,7 @@ class CaptureService {
 
   startSession(guideId, { intervalSec = null } = {}) {
     this.finishSession();
+    this.windowFallbackNoted = false;
     // Default trigger: clicks when the platform supports it, otherwise the
     // user-selected fallback (timer or hotkey-only). That keeps Linux from
     // silently dropping into an unwanted 5-second timer when click capture
@@ -883,7 +913,23 @@ class CaptureService {
    */
   async frameForClick(clickPos = null, clickAt = Date.now()) {
     const mode = this.settings.get('capture.mode') || 'fullscreen';
-    const grabMode = mode === 'region' ? 'fullscreen' : mode;
+    let grabMode = mode === 'region' ? 'fullscreen' : mode;
+    // Window grabs need the frame loop's desktopCapturer filtering, which does
+    // not run on Wayland. Without this fallback every click would find no
+    // frame and be skipped, so window mode would record nothing. Use the
+    // full-screen stream frame instead and say so.
+    if (grabMode === 'window' && this.windowModeFallsBack()) {
+      clog('window mode is unavailable on this Wayland session; using the full-screen stream frame');
+      if (!this.windowFallbackNoted && this.session) {
+        this.windowFallbackNoted = true;
+        this.notify('capture:diagnostic', {
+          kind: 'window-mode-unavailable',
+          guideId: this.session.guideId,
+          reason: WINDOW_FALLBACK_NOTE,
+        });
+      }
+      grabMode = 'fullscreen';
+    }
     const clickTime = Number.isFinite(clickAt) ? clickAt : Date.now();
     // Click lead: prefer a frame captured a little *before* the hook
     // timestamp. The hook fires on button-down, but the visible UI often
@@ -1573,6 +1619,7 @@ public static class SFHook {
     this.linuxEvent = null;
     this.discardPendingRawClick();
     this.lastAcceptedClickByButton.clear();
+    this.lastClickMetaByButton.clear();
   }
 
   /**
@@ -1833,7 +1880,10 @@ public static class SFHook {
     return raw != null && Number.isFinite(v) && v >= 0 ? v : DEFAULT_CLICK_DEBOUNCE_MS;
   }
 
-  onOsClick(at = Date.now(), osPoint = null, button = 'mouse') {
+  onOsClick(at = Date.now(), osPoint = null, rawButton = 'mouse') {
+    // Windows says 'right', Linux says 'button-3'; everything downstream uses
+    // one vocabulary (left / right / middle, other buttons by their own name).
+    const button = mouseButtonKey(rawButton);
     if (!this.session || this.session.paused) return;
     // Recording isn't live until the window is hidden and the buffer primed
     // (see armRecording). Clicks during warmup land on the still-visible app
@@ -1843,14 +1893,6 @@ public static class SFHook {
       return;
     }
     const clickAt = Number.isFinite(at) ? at : Date.now();
-    // Leading-edge debounce: ignore a click that lands within the debounce
-    // window of the last accepted click of the same button. This makes fast
-    // / accidental repeat clicks register once, while two deliberate clicks
-    // spaced more than the window apart each register (one step per click).
-    if (this.isDebouncedClick(clickAt, button)) {
-      clog('click@', clickAt, button, 'debounced (within', this.clickDebounceMs(), 'ms of last accepted)');
-      return;
-    }
     // Prefer the position the watcher sampled with the button-down event
     // (physical px -> DIP); otherwise read the cursor synchronously, right
     // now, so the marker lands where the user clicked even if the shot
@@ -1863,11 +1905,19 @@ public static class SFHook {
     // a fallback there would stamp every click marker in the top-left corner.
     // Leaving clickPos null means the step is captured with no (wrong) marker.
     if (!clickPos && !this.onWayland()) clickPos = this.screen.getCursorScreenPoint();
+    // Leading-edge debounce: ignore a click that lands within the debounce
+    // window of the last accepted click of the same button. This makes fast
+    // / accidental repeat clicks register once, while two deliberate clicks
+    // spaced more than the window apart each register (one step per click).
+    if (this.isDebouncedClick(clickAt, button, clickPos)) {
+      clog('click@', clickAt, button, 'debounced (within', this.clickDebounceMs(), 'ms of last accepted)');
+      return;
+    }
     clog('click@', clickAt, button, 'os', osPoint, '-> dip', clickPos);
     this.pendingClickOsPoint = osPoint && Number.isFinite(osPoint.x) && Number.isFinite(osPoint.y)
       ? { x: osPoint.x, y: osPoint.y }
       : null;
-    this.enqueueClickCapture(clickPos, clickAt, button || 'mouse');
+    this.enqueueClickCapture(clickPos, clickAt, button);
   }
 
   /**
@@ -1877,14 +1927,46 @@ public static class SFHook {
    * clicks, never from dropped ones, and a run of fast clicks can't push the
    * next deliberate click out indefinitely. Accepting a click records it as
    * the new reference point. Different buttons debounce independently.
+   *
+   * The dropped press is not lost information: it is the second half of a
+   * double-click, so the accepted click's metadata is flagged `double` (see
+   * settleClickKind, which holds titling until the flag can no longer change).
    */
-  isDebouncedClick(at, button) {
-    const key = button || 'mouse';
+  isDebouncedClick(at, button, point = null) {
+    const key = mouseButtonKey(button);
     const windowMs = this.clickDebounceMs();
     const last = this.lastAcceptedClickByButton.get(key);
-    if (last != null && at >= last && at - last < windowMs) return true;
+    if (last != null && at >= last && at - last < windowMs) {
+      // A repeat a few ms later is a duplicate delivery of one press (several
+      // mouse device nodes, hook echoes), not a second click. A press away
+      // from the first is a click on something else, not its second half;
+      // without both positions it can't be told apart, so it isn't counted.
+      if (at - last >= MIN_DOUBLE_CLICK_GAP_MS) {
+        const meta = this.lastClickMetaByButton.get(key);
+        if (meta && meta.at === last && withinDoubleClickRadius(meta.point, point)) meta.double = true;
+      }
+      return true;
+    }
     this.lastAcceptedClickByButton.set(key, at);
+    this.lastClickMetaByButton.delete(key);
     return false;
+  }
+
+  /**
+   * Wait out the rest of the debounce window of a left click before it is
+   * titled: the second press of a double-click arrives up to one window after
+   * the first and sets clickMeta.double, which the title needs. Other buttons
+   * keep their name however often they are pressed, so they never wait.
+   */
+  async settleClickKind(clickMeta) {
+    if (!clickMeta || mouseButtonKey(clickMeta.button) !== 'left') return;
+    // Measured from when StepForge got the press: GNOME's timestamps are the
+    // Shell's monotonic clock, not Date.now().
+    const from = Number.isFinite(clickMeta.receivedAt) ? clickMeta.receivedAt : clickMeta.at;
+    if (!Number.isFinite(from)) return;
+    const windowMs = this.clickDebounceMs();
+    const remaining = Math.min(windowMs, from + windowMs - Date.now());
+    if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
   }
 
   /**
@@ -1942,8 +2024,12 @@ public static class SFHook {
     this.pendingClickOsPoint = null;
     const clickMeta = {
       at: Number.isFinite(clickAt) ? clickAt : Date.now(),
-      button: button || 'mouse',
+      receivedAt: Date.now(),
+      button: mouseButtonKey(button),
+      // Where it was pressed (DIP), for telling a double-click from a click elsewhere.
+      point: clickPos && Number.isFinite(clickPos.x) && Number.isFinite(clickPos.y) ? { x: clickPos.x, y: clickPos.y } : null,
     };
+    this.lastClickMetaByButton.set(clickMeta.button, clickMeta);
     if (osPoint) {
       clickMeta.osPoint = { x: osPoint.x, y: osPoint.y };
     }
@@ -2047,9 +2133,13 @@ public static class SFHook {
     // The click position (DIP, read at event time) wins over the frame's
     // grab-time cursor; stream-backend frames carry no cursor at all.
     const cursor = clickPos || frame.cursor || null;
-    if (cursor && mode !== 'window' && this.settings.get('capture.clickMarker')) {
-      const fx = (cursor.x - frame.display.bounds.x) / frame.display.bounds.width;
-      const fy = (cursor.y - frame.display.bounds.y) / frame.display.bounds.height;
+    // Window frames have a reliable origin only when the backend reports the
+    // captured bounds (GNOME crops to the focused window and sets them).
+    const markable = mode !== 'window' || Boolean(frame.captureBounds);
+    if (cursor && markable && this.settings.get('capture.clickMarker')) {
+      const bounds = frame.captureBounds || frame.display.bounds;
+      const fx = (cursor.x - bounds.x) / bounds.width;
+      const fy = (cursor.y - bounds.y) / bounds.height;
       if (fx >= 0 && fx <= 1 && fy >= 0 && fy <= 1) {
         const d = 0.035;
         annotations.push({
@@ -2069,6 +2159,7 @@ public static class SFHook {
     const cropBounds = frame.captureBounds || (mode === 'fullscreen' ? frame.display?.bounds : null);
     const automaticView = this.settings.get('capture.smartCropping') !== false
       ? smartCrop(frame.size, cropBounds, clickPos, this.settings.get('capture.focusAmount') ?? 1.25) : null;
+    await this.settleClickKind(clickMeta);
     const { title, captureMetadata } = await this.buildStepMeta(mode, frame, clickPos, clickMeta);
     const step = this.store.addStep(guideId, {
       title,
@@ -2179,9 +2270,27 @@ public static class SFHook {
    * rectangle in a fullscreen overlay; the crop becomes the step image.
    */
   async regionCapture(guideId) {
+    const picked = await this.pickRegionFrame();
+    if (!picked.ok) return picked;
+    // storeFrameAsStep already returns { ok, step }; return it directly so
+    // callers see result.step.stepId — not result.step.step.stepId, which is
+    // what wrapping it in another { ok, step } produced (region selection and
+    // region auto-documentation both read result.step.stepId).
+    return this.storeFrameAsStep(guideId, 'region', picked.frame, null, null);
+  }
+
+  /**
+   * Shoot the full screen and let the user drag a rectangle over it.
+   * Resolves { ok, frame } with the cropped frame, or { ok: false, reason }.
+   * `delayMs` waits (with the app window hidden) before the screen is grabbed.
+   */
+  async pickRegionFrame({ delayMs = 0 } = {}) {
     let grabbed;
     try {
-      grabbed = await this.withWindowHidden(() => this.grab('fullscreen'));
+      grabbed = await this.withWindowHidden(async () => {
+        if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
+        return this.grab('fullscreen');
+      });
     } catch (err) {
       return { ok: false, reason: err.message };
     }
@@ -2192,16 +2301,39 @@ public static class SFHook {
     const cropped = image.crop(rect);
     const size = cropped.getSize();
     if (!size.width || !size.height) return { ok: false, reason: 'empty selection' };
-    // storeFrameAsStep already returns { ok, step }; return it directly so
-    // callers see result.step.stepId — not result.step.step.stepId, which is
-    // what wrapping it in another { ok, step } produced (region selection and
-    // region auto-documentation both read result.step.stepId).
-    return this.storeFrameAsStep(guideId, 'region', {
-      image: cropped,
-      size,
-      display,
-      cursor: null,
-    }, null, null);
+    return { ok: true, frame: { image: cropped, size, display, cursor: null } };
+  }
+
+  /**
+   * Retake a step's screenshot: hide the app, wait out the countdown, grab
+   * a frame in `mode` and hand back its PNG. Nothing is stored here; the
+   * caller swaps the image into the step. Refused while a capture session
+   * is running, since it owns the window, the hotkey and the click capture.
+   */
+  async retakeFrame({ mode = 'fullscreen', delayMs = 3000 } = {}) {
+    if (this.session) return { ok: false, reason: 'Stop the recording session before retaking a screenshot.' };
+    if (this.shooting) return { ok: false, reason: 'capture already in progress' };
+    this.shooting = true;
+    try {
+      let frame;
+      if (mode === 'region') {
+        const picked = await this.pickRegionFrame({ delayMs });
+        if (!picked.ok) return picked;
+        frame = picked.frame;
+      } else {
+        try {
+          frame = await this.withWindowHidden(async () => {
+            if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
+            return this.captureCurrentFrame(mode);
+          });
+        } catch (err) {
+          return { ok: false, reason: err.message };
+        }
+      }
+      return { ok: true, png: frame.png || frame.image.toPNG(), size: frame.size };
+    } finally {
+      this.shooting = false;
+    }
   }
 
   /**

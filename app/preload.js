@@ -50,11 +50,16 @@ const api = {
     fromClipboard: invoke('step:fromClipboard'),
     importImage: invoke('step:importImage'),
     chooseImage: invoke('step:chooseImage'),
+    retake: invoke('step:retake'),
     setImages: invoke('step:setImages'),
   },
   search: {
     query: invoke('search:query'),
     titles: invoke('search:titles'),
+  },
+  findReplace: {
+    find: invoke('findReplace:find'),
+    apply: invoke('findReplace:apply'),
   },
   settings: {
     all: invoke('settings:all'),
@@ -107,6 +112,7 @@ const api = {
     published: invoke('github:published'),
     publish: invoke('github:publish'),
     unpublish: invoke('github:unpublish'),
+    extend: invoke('github:extend'),
     waitUntilLive: invoke('github:waitUntilLive'),
     copy: invoke('github:copy'),
     onStatus: (fn) => { const listener = (e, payload) => fn(payload); ipcRenderer.on('github:status', listener); return () => ipcRenderer.removeListener('github:status', listener); },
@@ -154,6 +160,7 @@ const api = {
     onAdded: (fn) => ipcRenderer.on('capture:added', (e, payload) => fn(payload)),
     onState: (fn) => ipcRenderer.on('capture:state', (e, payload) => fn(payload)),
     onStepUpdated: (fn) => ipcRenderer.on('step:updated', (e, payload) => fn(payload)),
+    onDiagnostic: (fn) => ipcRenderer.on('capture:diagnostic', (e, payload) => fn(payload)),
   },
   editor: {
     onZoomShortcut: (fn) => ipcRenderer.on('editor:zoom-shortcut', (e, payload) => fn(payload)),

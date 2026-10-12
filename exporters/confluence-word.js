@@ -178,7 +178,7 @@ class WordDocument {
     parts.push(blocks(g.afterTitle), blocks(g.beforeDescription), this.richText(step.descriptionHtml),
       blocks(g.afterDescription), blocks(g.beforeImage));
     const img = images.get(step.stepId);
-    if (img && tpl.includeImages) parts.push(this.image(img, `Step ${step.number}`));
+    if (img && tpl.includeImages) parts.push(this.image(img, step.altText));
     parts.push(blocks(g.afterImage));
     for (const block of g.rest) {
       if (block.kind === 'text') parts.push(this.callout(block));

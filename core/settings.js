@@ -17,7 +17,7 @@ const DEFAULT_SETTINGS = {
   redaction: { onCapture: false, terms: [] },
   capture: {
     delayMs: 0,
-    mode: 'fullscreen', // fullscreen | window | region
+    mode: 'fullscreen', // fullscreen | window ('region' in old files loads as fullscreen)
     includeCursor: true,
     clickMarker: true,
     focusAmount: 1.25, // Zoom for new automatically focused captures: 1–2 in 0.05 increments.
@@ -121,7 +121,11 @@ class Settings {
 
   load() {
     const stored = readJsonIfExists(this.file, {});
-    return mergeDeep(deepClone(DEFAULT_SETTINGS), stored);
+    const data = mergeDeep(deepClone(DEFAULT_SETTINGS), stored);
+    // 'region' (and anything else unknown) was offered once but always
+    // recorded the full screen; say so in the file too.
+    if (data.capture && !['fullscreen', 'window'].includes(data.capture.mode)) data.capture.mode = 'fullscreen';
+    return data;
   }
 
   save() {

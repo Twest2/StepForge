@@ -48,6 +48,39 @@ choco upgrade all -y
 
 Updates keep your guides, settings, and Google Drive sign-in.
 
+## Already installed from the .exe?
+
+The setup wizard has an **Updates** page with **Keep StepForge updated with
+Chocolatey**, checked by default. If Chocolatey isn't installed, it reads
+**Install Chocolatey and keep StepForge updated with it**. Leave it checked
+and, after the files are copied, Windows asks for administrator approval once.
+The installer then:
+
+1. Installs Chocolatey, if it is missing.
+2. Adds the `stepforge` feed, unless a source with that URL already exists.
+3. Tells Chocolatey which StepForge version you just installed, without
+   running the installer again.
+
+After that, `choco upgrade stepforge -y` updates StepForge. Notes:
+
+- **Internet access is needed**, and registering downloads the StepForge
+  package from the feed once. That package contains the whole installer
+  (about 100 MB).
+- If you installed **only for you**, the first Chocolatey update turns it into
+  an **all-users** install. Your guides, settings, and sign-in are kept.
+- **If it doesn't work** (you decline the approval prompt, you're offline, IT
+  policy blocks it, or you're on a development or prerelease build that isn't
+  on the feed), StepForge is still installed and the wizard says so. Details
+  are in `C:\ProgramData\StepForge\chocolatey-setup.log`. You can set it up
+  later with the [install steps](#install) above, or by running
+  `choco install stepforge --version <your version> --source=stepforge -y --skip-automation-scripts`.
+- Silent installs (`/S`) skip this unless you also pass `/chocolatey`, for
+  example `"StepForge Setup <version>.exe" /S /allusers /chocolatey`.
+  The installer never does this when Chocolatey itself is running it.
+- Uninstalling from **Apps & Features** also removes StepForge from
+  Chocolatey (with an approval prompt), so `choco upgrade` doesn't bring it
+  back.
+
 ## Switching from the regular installer
 
 You don't need to uninstall first. Just follow the install steps above:

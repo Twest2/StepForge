@@ -5,8 +5,9 @@ about two minutes.
 
 > [!TIP]
 > **Prefer automatic updates?** Install with [Chocolatey](windows/chocolatey.md)
-> instead. After a one-time setup, `choco upgrade stepforge` keeps you on the
-> latest version and skips the SmartScreen prompt below.
+> instead, which skips the SmartScreen prompt below. Or keep using this
+> installer: its **Updates** page (checked by default) sets up Chocolatey for
+> you, so `choco upgrade stepforge` works afterwards.
 
 *These instructions were recorded and exported with StepForge itself. The
 red circles mark where to click.*
@@ -58,7 +59,12 @@ users** of this computer. Installing for all users needs administrator rights.
 
 ![The install location page](steps-windows_installation/008-select-next.png)
 
-**2.6** Click **Install**.
+**2.6** Leave **Keep StepForge updated with Chocolatey** checked to be able to
+update with `choco upgrade stepforge` later (see
+[Already installed from the .exe?](windows/chocolatey.md#already-installed-from-the-exe)),
+then click **Install**. Windows asks for administrator approval once for this;
+if you decline, StepForge is still installed. Installing only for yourself
+becomes an all-users install on the first Chocolatey update.
 
 ![The Install button](steps-windows_installation/009-select-install.png)
 
@@ -75,9 +81,9 @@ users** of this computer. Installing for all users needs administrator rights.
 
 **To update,** download the newest installer from
 [Releases](https://github.com/Twest2/StepForge/releases/latest) and run it.
-Your guides and settings are kept. A manual install does not update itself,
-so consider switching to [Chocolatey](windows/chocolatey.md), which you can do
-at any time without uninstalling first.
+Your guides and settings are kept. Unless you left the Chocolatey option on during setup, a manual install does
+not update itself, so consider [Chocolatey](windows/chocolatey.md), which you
+can set up at any time without uninstalling first.
 
 **To uninstall,** open **Settings → Apps → Installed apps**, find
 **StepForge**, and choose **Uninstall**. Your guides stay in

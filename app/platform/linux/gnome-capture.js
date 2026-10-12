@@ -43,6 +43,7 @@ class GnomeCaptureService extends CaptureService {
   // Availability means the GNOME path is required. Readiness is verified on
   // each resume; a missing extension never silently switches to a timer.
   clickCaptureAvailable() { return true; }
+  windowModeFallsBack() { return false; } // window frames are cropped from the stream (cropFrame)
   startClickWatcher() { this.clickSource = 'unavailable'; }
   stopClickWatcher() { this.clickSource = 'unavailable'; this.lastAcceptedClickByButton.clear(); this.lastClickMetaByButton.clear(); }
   osPointToDip(point) { return point; } // Shell already sends logical coordinates.

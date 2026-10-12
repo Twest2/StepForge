@@ -10,6 +10,7 @@ const { execFileSync } = require('node:child_process');
 const { GuideStore } = require('../../core/store');
 const { buildRenderAst } = require('../../core/renderast');
 const { exportPdf } = require('../../exporters/pdf');
+const { PdfBuilder } = require('../../core/pdf');
 const { exportGifGuide } = require('../../exporters/gif');
 const { exportImageBundle } = require('../../exporters/image-bundle');
 const { exportDocx } = require('../../exporters/docx');
@@ -111,7 +112,8 @@ test('PDF export: valid document, bookmarks per step, images embedded', (t) => {
   const text = fs.readFileSync(file).toString('latin1');
   assert.ok(text.startsWith('%PDF-1.4'));
   // One outline item per step.
-  const outlineTitles = [...text.matchAll(/\/Title \(([^)]*)\)/g)].map((m) => m[1]);
+  const outlineTitles = [...text.matchAll(/\/Title \(([^)]*)\)/g)].map((m) => m[1])
+    .filter((title) => title !== 'Configure AcmeSync backups'); // the /Info title, checked below
   assert.deepEqual(outlineTitles, [
     '1. Open AcmeSync settings',
     '1.1. Verify the gear icon is visible',
@@ -119,6 +121,69 @@ test('PDF export: valid document, bookmarks per step, images embedded', (t) => {
   ]);
   // Two image XObjects.
   assert.equal((text.match(/\/Subtype \/Image/g) || []).length, 2);
+});
+
+/** Parse the trailer's /Info reference and return that object's dictionary text. */
+function pdfInfoDict(buf) {
+  const text = buf.toString('latin1');
+  const trailer = /trailer\n<<([^>]*)>>/.exec(text)[1];
+  const ref = /\/Info (\d+) 0 R/.exec(trailer);
+  assert.ok(ref, 'trailer references an /Info dictionary');
+  const objects = text.slice(0, text.indexOf('xref\n0 '));
+  const obj = new RegExp(`(?:^|\\n)${ref[1]} 0 obj\\n(<<[^\\n]*>>)\\nendobj`).exec(objects);
+  assert.ok(obj, '/Info object exists');
+  return obj[1];
+}
+
+test('PDF export: /Info has the guide title and author, referenced from the trailer', (t) => {
+  const root = makeTmpDir('pdfinfo');
+  t.after(() => rmrf(root));
+  const { store, guide } = buildFixtureGuide(path.join(root, 'data'));
+
+  // No author set: just a title, and the viewer is asked to show it.
+  const noAuthor = fs.readFileSync(exportPdf(buildRenderAst(store, guide.guideId), path.join(root, 'o1')).file);
+  assert.equal(pdfInfoDict(noAuthor), '<< /Title (Configure AcmeSync backups) >>');
+  assert.ok(noAuthor.toString('latin1').includes('/ViewerPreferences << /DisplayDocTitle true >>'));
+  // The xref still lists every object, including the new one.
+  const size = Number(/\/Size (\d+)/.exec(noAuthor.toString('latin1'))[1]);
+  assert.equal((noAuthor.toString('latin1').match(/ 00000 n \n/g) || []).length, size - 1);
+
+  // Author comes from guide metadata; ASCII special characters are escaped.
+  const g = store.getGuide(guide.guideId);
+  g.metadata = { author: 'Casey (QA) \\ Co' };
+  store.saveGuide(g);
+  const withAuthor = fs.readFileSync(exportPdf(buildRenderAst(store, guide.guideId), path.join(root, 'o2')).file);
+  assert.equal(pdfInfoDict(withAuthor), '<< /Title (Configure AcmeSync backups) /Author (Casey \\(QA\\) \\\\ Co) >>');
+
+  // Non-ASCII text is UTF-16BE hex with a BOM, including characters outside Latin-1 and surrogate pairs.
+  g.title = 'Caf\u00e9 \u2713 \u65e5\u672c \ud83d\ude80';
+  g.metadata = { author: 'Zo\u00eb' };
+  store.saveGuide(g);
+  const unicode = fs.readFileSync(exportPdf(buildRenderAst(store, guide.guideId), path.join(root, 'o3')).file);
+  const hex = (str) => Buffer.from(str, 'utf16le').swap16().toString('hex').toUpperCase();
+  assert.equal(pdfInfoDict(unicode),
+    `<< /Title <FEFF${hex('Caf\u00e9 \u2713 \u65e5\u672c \ud83d\ude80')}> /Author <FEFF${hex('Zo\u00eb')}> >>`);
+});
+
+test('PDF builder: bookmark titles outside Latin-1 are written as UTF-16BE, not "?"', () => {
+  const pdf = new PdfBuilder();
+  pdf.addPage();
+  pdf.bookmark('1. Click Save');
+  pdf.addPage();
+  pdf.bookmark('2. \u4fdd\u5b58\u3092\u30af\u30ea\u30c3\u30af \u201cOK\u201d');
+  const text = pdf.build().toString('latin1');
+  const hex = (str) => Buffer.from(str, 'utf16le').swap16().toString('hex').toUpperCase();
+  assert.ok(text.includes('/Title (1. Click Save)'), 'ASCII stays a plain literal');
+  assert.ok(text.includes(`/Title <FEFF${hex('2. \u4fdd\u5b58\u3092\u30af\u30ea\u30c3\u30af \u201cOK\u201d')}>`));
+  assert.ok(!text.includes('/Title (2. ?'), 'no Latin-1 fallback question marks');
+});
+
+test('PDF builder: no title or author means no /Info dictionary', () => {
+  const pdf = new PdfBuilder();
+  pdf.addPage();
+  const text = pdf.build().toString('latin1');
+  assert.ok(!text.includes('/Info'));
+  assert.ok(!text.includes('DisplayDocTitle'));
 });
 
 test('PDF Contents: each entry is a clickable link to its step\'s page', (t) => {
@@ -377,6 +442,13 @@ test('DOCX export: valid OPC package, well-formed XML, resolvable image rels', (
   for (const id of embeds) {
     assert.ok(relIds.includes(id), `missing relationship for ${id}`);
   }
+  // Every screenshot carries real alt text built from its step title.
+  const descrs = [...docXml.matchAll(/<wp:docPr [^>]*descr="([^"]*)"/g)].map((m) => m[1]);
+  assert.deepEqual(descrs, [
+    'Screenshot for step 1: Open AcmeSync settings',
+    'Screenshot for step 2: Enable nightly backups',
+  ]);
+  assert.equal((docXml.match(/<pic:cNvPr [^>]*descr="[^"]+"/g) || []).length, 2);
   assert.ok(docXml.includes('w:fldChar w:fldCharType="begin" w:dirty="true"'));
   assert.ok(docXml.includes('TOC \\o "1-3" \\h \\z \\u'));
   assert.ok(docXml.includes('w:pStyle w:val="Heading1"'));
@@ -469,6 +541,43 @@ test('PPTX export: slides per step, master/layout/theme present, rels resolve', 
   const mediaTargets = [...entries.keys()].filter((name) => name.startsWith('ppt/media/'));
   assert.equal(mediaTargets.length, 2);
   assert.ok(!mediaTargets.some((name) => name.includes('callout-')));
+  // Screenshots carry alt text built from the step title.
+  const descrs = [];
+  for (let i = 1; i <= slideCount; i++) {
+    for (const m of entries.get(`ppt/slides/slide${i}.xml`).toString('utf8').matchAll(/<p:cNvPr [^>]*name="Screenshot" descr="([^"]*)"/g)) descrs.push(m[1]);
+  }
+  assert.deepEqual(descrs, [
+    'Screenshot for step 1: Open AcmeSync settings',
+    'Screenshot for step 2: Enable nightly backups',
+  ]);
+});
+
+test('DOCX and PPTX alt text: escaped for XML attributes, and falls back when a step has no title', (t) => {
+  const root = makeTmpDir('altxml');
+  t.after(() => rmrf(root));
+  const { store, guide, s1, s2 } = buildFixtureGuide(path.join(root, 'data'));
+  const nasty = store.getStep(guide.guideId, s1.stepId);
+  nasty.title = 'Save & exit <now> "quoted" it\'s\n\tdone\u0001';
+  store.saveStep(guide.guideId, nasty);
+  const untitled = store.getStep(guide.guideId, s2.stepId);
+  untitled.title = '';
+  store.saveStep(guide.guideId, untitled);
+  const ast = buildRenderAst(store, guide.guideId);
+  assert.equal(ast.steps[0].altText, 'Screenshot for step 1: Save & exit <now> "quoted" it\'s done');
+  assert.equal(ast.steps[2].altText, 'Screenshot for step 2');
+
+  const escaped = 'Screenshot for step 1: Save &amp; exit &lt;now&gt; &quot;quoted&quot; it&apos;s done';
+  const docx = new Map(unzipSync(fs.readFileSync(exportDocx(ast, path.join(root, 'd')).file)).map((e) => [e.name, e.data]));
+  const docXml = docx.get('word/document.xml').toString('utf8');
+  assertWellFormedXml(docXml, 'document.xml');
+  assert.equal((docXml.match(new RegExp(`descr="${escaped}"`, 'g')) || []).length, 2, 'docPr and cNvPr');
+  assert.ok(docXml.includes('descr="Screenshot for step 2"'));
+
+  const pptx = new Map(unzipSync(fs.readFileSync(exportPptx(ast, path.join(root, 'p')).file)).map((e) => [e.name, e.data]));
+  const slides = [...pptx.keys()].filter((n) => /^ppt\/slides\/slide\d+\.xml$/.test(n)).map((n) => pptx.get(n).toString('utf8')).join('\n');
+  for (const [name, data] of pptx) if (/^ppt\/slides\/slide\d+\.xml$/.test(name)) assertWellFormedXml(data.toString('utf8'), name);
+  assert.ok(slides.includes(`descr="${escaped}"`));
+  assert.ok(slides.includes('descr="Screenshot for step 2"'));
 });
 
 test('PPTX export: TOC paginates onto additional slides before it would overflow', (t) => {

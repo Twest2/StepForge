@@ -15,7 +15,13 @@ const {
   DEFAULT_START_SLACK_MS,
 } = require('./click-frames');
 const { physicalToDip } = require('./coords');
-const { DEFAULT_CAPTURE_TITLES } = require('../core/text-intel');
+const { DEFAULT_CAPTURE_TITLES, mouseButtonKey } = require('../core/text-intel');
+
+/** True when two presses (DIP points) are close enough to be one double-click. */
+function withinDoubleClickRadius(a, b) {
+  if (!a || !b || ![a.x, a.y, b.x, b.y].every(Number.isFinite)) return false;
+  return Math.hypot(a.x - b.x, a.y - b.y) <= DOUBLE_CLICK_RADIUS;
+}
 
 /**
  * Capture service: full-screen, active-window, and region capture, plus a
@@ -54,6 +60,13 @@ const { DEFAULT_CAPTURE_TITLES } = require('../core/text-intel');
 // each register. Tunable via capture.clickDebounceMs; this is only the
 // default when the setting is absent.
 const DEFAULT_CLICK_DEBOUNCE_MS = 200;
+// A same-button press this soon after an accepted click is one press seen twice,
+// not a double-click (people cannot click twice in under ~20 ms).
+const MIN_DOUBLE_CLICK_GAP_MS = 20;
+// The second press of a double-click lands where the first did. Desktops allow
+// a few pixels (Windows 4, GTK 5); a press further away is a click on
+// something else that the debounce happened to drop.
+const DOUBLE_CLICK_RADIUS = 8;
 // Shown before and during a recording whose Window setting can't be honoured.
 const WINDOW_FALLBACK_NOTE = 'Window capture is not available on this desktop, so StepForge records the full screen.';
 // How long a Linux raw button event waits for its regular twin (the
@@ -247,6 +260,7 @@ class CaptureService {
     this.recentFrames = [];
     this.shooting = false;
     this.lastAcceptedClickByButton = new Map();
+    this.lastClickMetaByButton = new Map();
     this.streamBackend = null;
     this.streamBackendStarting = false;
     this.captureGen = 0; // bumped on stop to invalidate in-flight backend starts
@@ -1605,6 +1619,7 @@ public static class SFHook {
     this.linuxEvent = null;
     this.discardPendingRawClick();
     this.lastAcceptedClickByButton.clear();
+    this.lastClickMetaByButton.clear();
   }
 
   /**
@@ -1865,7 +1880,10 @@ public static class SFHook {
     return raw != null && Number.isFinite(v) && v >= 0 ? v : DEFAULT_CLICK_DEBOUNCE_MS;
   }
 
-  onOsClick(at = Date.now(), osPoint = null, button = 'mouse') {
+  onOsClick(at = Date.now(), osPoint = null, rawButton = 'mouse') {
+    // Windows says 'right', Linux says 'button-3'; everything downstream uses
+    // one vocabulary (left / right / middle, other buttons by their own name).
+    const button = mouseButtonKey(rawButton);
     if (!this.session || this.session.paused) return;
     // Recording isn't live until the window is hidden and the buffer primed
     // (see armRecording). Clicks during warmup land on the still-visible app
@@ -1875,14 +1893,6 @@ public static class SFHook {
       return;
     }
     const clickAt = Number.isFinite(at) ? at : Date.now();
-    // Leading-edge debounce: ignore a click that lands within the debounce
-    // window of the last accepted click of the same button. This makes fast
-    // / accidental repeat clicks register once, while two deliberate clicks
-    // spaced more than the window apart each register (one step per click).
-    if (this.isDebouncedClick(clickAt, button)) {
-      clog('click@', clickAt, button, 'debounced (within', this.clickDebounceMs(), 'ms of last accepted)');
-      return;
-    }
     // Prefer the position the watcher sampled with the button-down event
     // (physical px -> DIP); otherwise read the cursor synchronously, right
     // now, so the marker lands where the user clicked even if the shot
@@ -1895,11 +1905,19 @@ public static class SFHook {
     // a fallback there would stamp every click marker in the top-left corner.
     // Leaving clickPos null means the step is captured with no (wrong) marker.
     if (!clickPos && !this.onWayland()) clickPos = this.screen.getCursorScreenPoint();
+    // Leading-edge debounce: ignore a click that lands within the debounce
+    // window of the last accepted click of the same button. This makes fast
+    // / accidental repeat clicks register once, while two deliberate clicks
+    // spaced more than the window apart each register (one step per click).
+    if (this.isDebouncedClick(clickAt, button, clickPos)) {
+      clog('click@', clickAt, button, 'debounced (within', this.clickDebounceMs(), 'ms of last accepted)');
+      return;
+    }
     clog('click@', clickAt, button, 'os', osPoint, '-> dip', clickPos);
     this.pendingClickOsPoint = osPoint && Number.isFinite(osPoint.x) && Number.isFinite(osPoint.y)
       ? { x: osPoint.x, y: osPoint.y }
       : null;
-    this.enqueueClickCapture(clickPos, clickAt, button || 'mouse');
+    this.enqueueClickCapture(clickPos, clickAt, button);
   }
 
   /**
@@ -1909,14 +1927,46 @@ public static class SFHook {
    * clicks, never from dropped ones, and a run of fast clicks can't push the
    * next deliberate click out indefinitely. Accepting a click records it as
    * the new reference point. Different buttons debounce independently.
+   *
+   * The dropped press is not lost information: it is the second half of a
+   * double-click, so the accepted click's metadata is flagged `double` (see
+   * settleClickKind, which holds titling until the flag can no longer change).
    */
-  isDebouncedClick(at, button) {
-    const key = button || 'mouse';
+  isDebouncedClick(at, button, point = null) {
+    const key = mouseButtonKey(button);
     const windowMs = this.clickDebounceMs();
     const last = this.lastAcceptedClickByButton.get(key);
-    if (last != null && at >= last && at - last < windowMs) return true;
+    if (last != null && at >= last && at - last < windowMs) {
+      // A repeat a few ms later is a duplicate delivery of one press (several
+      // mouse device nodes, hook echoes), not a second click. A press away
+      // from the first is a click on something else, not its second half;
+      // without both positions it can't be told apart, so it isn't counted.
+      if (at - last >= MIN_DOUBLE_CLICK_GAP_MS) {
+        const meta = this.lastClickMetaByButton.get(key);
+        if (meta && meta.at === last && withinDoubleClickRadius(meta.point, point)) meta.double = true;
+      }
+      return true;
+    }
     this.lastAcceptedClickByButton.set(key, at);
+    this.lastClickMetaByButton.delete(key);
     return false;
+  }
+
+  /**
+   * Wait out the rest of the debounce window of a left click before it is
+   * titled: the second press of a double-click arrives up to one window after
+   * the first and sets clickMeta.double, which the title needs. Other buttons
+   * keep their name however often they are pressed, so they never wait.
+   */
+  async settleClickKind(clickMeta) {
+    if (!clickMeta || mouseButtonKey(clickMeta.button) !== 'left') return;
+    // Measured from when StepForge got the press: GNOME's timestamps are the
+    // Shell's monotonic clock, not Date.now().
+    const from = Number.isFinite(clickMeta.receivedAt) ? clickMeta.receivedAt : clickMeta.at;
+    if (!Number.isFinite(from)) return;
+    const windowMs = this.clickDebounceMs();
+    const remaining = Math.min(windowMs, from + windowMs - Date.now());
+    if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
   }
 
   /**
@@ -1974,8 +2024,12 @@ public static class SFHook {
     this.pendingClickOsPoint = null;
     const clickMeta = {
       at: Number.isFinite(clickAt) ? clickAt : Date.now(),
-      button: button || 'mouse',
+      receivedAt: Date.now(),
+      button: mouseButtonKey(button),
+      // Where it was pressed (DIP), for telling a double-click from a click elsewhere.
+      point: clickPos && Number.isFinite(clickPos.x) && Number.isFinite(clickPos.y) ? { x: clickPos.x, y: clickPos.y } : null,
     };
+    this.lastClickMetaByButton.set(clickMeta.button, clickMeta);
     if (osPoint) {
       clickMeta.osPoint = { x: osPoint.x, y: osPoint.y };
     }
@@ -2105,6 +2159,7 @@ public static class SFHook {
     const cropBounds = frame.captureBounds || (mode === 'fullscreen' ? frame.display?.bounds : null);
     const automaticView = this.settings.get('capture.smartCropping') !== false
       ? smartCrop(frame.size, cropBounds, clickPos, this.settings.get('capture.focusAmount') ?? 1.25) : null;
+    await this.settleClickKind(clickMeta);
     const { title, captureMetadata } = await this.buildStepMeta(mode, frame, clickPos, clickMeta);
     const step = this.store.addStep(guideId, {
       title,

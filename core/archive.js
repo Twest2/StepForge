@@ -295,13 +295,19 @@ async function writeLinkedGuide(store, guideId, { force = false } = {}) {
     const ours = buildArchiveEntries(store, guideId);
     const oursHash = contentHash(ours);
     const plan = planLinkedWrite(store, guideId, target, ours, oursHash, { force });
-    if (contentHash(plan.entries) !== oursHash) {
+    let entries = plan.entries;
+    if (contentHash(entries) !== oursHash) {
       // Backups keep the pre-merge guide. Nothing is applied until the merge validates.
       createSnapshot(store, guideId, { label: 'before-linked-merge' });
-      applyMergedEntries(store, guideId, plan.entries);
+      applyMergedEntries(store, guideId, entries);
+      // Share exactly what the library now holds. Applying bumps local
+      // revisions, and if the shared file and the remembered base kept the
+      // merge's own revisions, the next save would see a revision-only
+      // difference as an edit (and keep a step another session deleted).
+      entries = buildArchiveEntries(store, guideId);
     }
-    await require('./background-archive').writeArchive(plan.entries, target);
-    rememberLinkedBase(store, guideId, plan.entries, contentHash(plan.entries));
+    await require('./background-archive').writeArchive(entries, target);
+    rememberLinkedBase(store, guideId, entries, contentHash(entries));
     // Re-read metadata: editing can continue while the worker writes.
     const latest = store.getGuide(guideId);
     if (latest.linkedSource?.path === target) {

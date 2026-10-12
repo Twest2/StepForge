@@ -54,6 +54,8 @@ const { DEFAULT_CAPTURE_TITLES } = require('../core/text-intel');
 // each register. Tunable via capture.clickDebounceMs; this is only the
 // default when the setting is absent.
 const DEFAULT_CLICK_DEBOUNCE_MS = 200;
+// Shown before and during a recording whose Window setting can't be honoured.
+const WINDOW_FALLBACK_NOTE = 'Window capture is not available on this desktop, so StepForge records the full screen.';
 // How long a Linux raw button event waits for its regular twin (the
 // representation that carries root coordinates) before firing without them.
 const LINUX_CLICK_TWIN_MS = 25;
@@ -227,6 +229,7 @@ class CaptureService {
     this.clickSource = 'unavailable';
     this.frameLoopTimer = null;
     this.frameLoopRunning = false;
+    this.windowFallbackNoted = false; // one window-mode-unavailable diagnostic per session
     this.frameWaiters = [];
     this.latestFrame = null;
     this.clickWatcherBuf = '';
@@ -268,10 +271,22 @@ class CaptureService {
     }
   }
 
+  /**
+   * True when Settings says Window but click captures will hold the whole
+   * screen: on Wayland outside GNOME there is no per-window grab (see
+   * frameForClick). GNOME's capture service crops to the window itself.
+   */
+  windowModeFallsBack() {
+    return (this.settings.get('capture.mode') || 'fullscreen') === 'window' && this.onWayland();
+  }
+
   state() {
+    // Said up front, so the recording bar shows it before anything is captured.
+    const modeNote = this.windowModeFallsBack() ? WINDOW_FALLBACK_NOTE : '';
     return this.session
       ? {
         active: true,
+        modeNote,
         paused: this.session.paused,
         guideId: this.session.guideId,
         count: this.session.count,
@@ -348,6 +363,7 @@ class CaptureService {
 
   startSession(guideId, { intervalSec = null } = {}) {
     this.finishSession();
+    this.windowFallbackNoted = false;
     // Default trigger: clicks when the platform supports it, otherwise the
     // user-selected fallback (timer or hotkey-only). That keeps Linux from
     // silently dropping into an unwanted 5-second timer when click capture
@@ -883,7 +899,23 @@ class CaptureService {
    */
   async frameForClick(clickPos = null, clickAt = Date.now()) {
     const mode = this.settings.get('capture.mode') || 'fullscreen';
-    const grabMode = mode === 'region' ? 'fullscreen' : mode;
+    let grabMode = mode === 'region' ? 'fullscreen' : mode;
+    // Window grabs need the frame loop's desktopCapturer filtering, which does
+    // not run on Wayland. Without this fallback every click would find no
+    // frame and be skipped, so window mode would record nothing. Use the
+    // full-screen stream frame instead and say so.
+    if (grabMode === 'window' && this.windowModeFallsBack()) {
+      clog('window mode is unavailable on this Wayland session; using the full-screen stream frame');
+      if (!this.windowFallbackNoted && this.session) {
+        this.windowFallbackNoted = true;
+        this.notify('capture:diagnostic', {
+          kind: 'window-mode-unavailable',
+          guideId: this.session.guideId,
+          reason: WINDOW_FALLBACK_NOTE,
+        });
+      }
+      grabMode = 'fullscreen';
+    }
     const clickTime = Number.isFinite(clickAt) ? clickAt : Date.now();
     // Click lead: prefer a frame captured a little *before* the hook
     // timestamp. The hook fires on button-down, but the visible UI often
@@ -2047,9 +2079,13 @@ public static class SFHook {
     // The click position (DIP, read at event time) wins over the frame's
     // grab-time cursor; stream-backend frames carry no cursor at all.
     const cursor = clickPos || frame.cursor || null;
-    if (cursor && mode !== 'window' && this.settings.get('capture.clickMarker')) {
-      const fx = (cursor.x - frame.display.bounds.x) / frame.display.bounds.width;
-      const fy = (cursor.y - frame.display.bounds.y) / frame.display.bounds.height;
+    // Window frames have a reliable origin only when the backend reports the
+    // captured bounds (GNOME crops to the focused window and sets them).
+    const markable = mode !== 'window' || Boolean(frame.captureBounds);
+    if (cursor && markable && this.settings.get('capture.clickMarker')) {
+      const bounds = frame.captureBounds || frame.display.bounds;
+      const fx = (cursor.x - bounds.x) / bounds.width;
+      const fy = (cursor.y - bounds.y) / bounds.height;
       if (fx >= 0 && fx <= 1 && fy >= 0 && fy <= 1) {
         const d = 0.035;
         annotations.push({

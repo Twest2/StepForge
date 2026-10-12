@@ -1483,3 +1483,4 @@ fieldset legend {
   .setting-row { flex-direction: column; align-items: stretch; gap: 8px; }
   .setting-control { max-width: none; justify-content: flex-start; }
 }
+#capture-status .capture-mode-note { padding: 1px 7px; border-radius: 999px; background: rgba(255, 255, 255, 0.2); font-weight: 600; }

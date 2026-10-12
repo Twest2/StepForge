@@ -86,9 +86,13 @@ test('GNOME clicks carry a normalised button and flag a double-click', async () 
   service.onGnomeClick({ x: 20, y: 30, at: 5000, button: 1 });
   service.onGnomeClick({ x: 20, y: 30, at: 5120, button: 1 });
   service.onGnomeClick({ x: 20, y: 30, at: 9000, button: 2 });
+  // A second press far from the first is a click elsewhere, not a double-click.
+  service.onGnomeClick({ x: 20, y: 30, at: 12000, button: 1 });
+  service.onGnomeClick({ x: 600, y: 400, at: 12090, button: 1 });
   await service.clickQueue;
   assert.deepEqual(metas.map((m) => [m.button, m.double === true]),
-    [['right', true], ['left', true], ['middle', false]]);
+    [['right', true], ['left', true], ['middle', false], ['left', false]]);
+  assert.ok(metas.every((m) => Number.isFinite(m.receivedAt)), 'titling waits on our clock, not the Shell\'s');
 });
 
 test('no clicks are stored during warmup, pause, or from StepForge itself', async () => {

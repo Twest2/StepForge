@@ -399,6 +399,16 @@ function normalizeMouseButton(button) {
   return 'other';
 }
 
+// The identity a press is debounced by: left / right / middle under either
+// platform's spelling, and any other button (Windows x1/x2, X11 button-8/9,
+// Back and Forward) under its own name, so two different extra buttons
+// pressed close together are still two clicks.
+function mouseButtonKey(button) {
+  const kind = normalizeMouseButton(button);
+  if (kind !== 'other') return kind;
+  return normalizeWhitespace(button || '').toLowerCase();
+}
+
 // What kind of click a capture was: 'right', 'middle', 'double' (a left button
 // pressed twice inside the debounce window), 'left' for any other click, or ''
 // when the capture was not a click. A right/middle button keeps its own name
@@ -1110,6 +1120,7 @@ function applyGuidePatch(guide, patch, { placeholders = [] } = {}) {
 module.exports = {
   AI_TARGETS,
   normalizeMouseButton,
+  mouseButtonKey,
   clickKindOf,
   DEFAULT_CAPTURE_TITLES,
   buildCaptureTitle,

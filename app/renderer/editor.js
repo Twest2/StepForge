@@ -18,6 +18,47 @@ function stepFingerprint(step) {
     return value;
   });
 }
+/**
+ * Put back a recorded step order (`recorded`) when the guide now has the
+ * steps in `current`. Steps deleted since are left out. A step added since
+ * keeps its place relative to the steps around it: a substep goes at the end
+ * of its parent's substeps (`currentParents` says where it belongs now), and
+ * a top-level step goes just before the top-level step it sits above now, or
+ * last. `parents` maps each recorded step to the parent it gets back, so the
+ * order stays one the outline can read top to bottom.
+ */
+function reconcileOrder(recorded, current, parents, currentParents) {
+  const known = new Set(current);
+  const order = recorded.filter((id) => known.has(id));
+  const listed = new Set(order);
+  const parentOf = (id) => (id in parents ? parents[id] : currentParents[id]) || null;
+  const isWithin = (id, ancestor) => {
+    for (let p = parentOf(id); p; p = parentOf(p)) if (p === ancestor) return true;
+    return false;
+  };
+  const rootOf = (id) => {
+    let root = id;
+    for (let p = parentOf(id); p && listed.has(p); p = parentOf(p)) root = p;
+    return root;
+  };
+  current.forEach((id, i) => {
+    if (listed.has(id)) return;
+    const parent = currentParents[id] || null;
+    let at;
+    if (parent && listed.has(parent)) {
+      // After the parent and everything already nested under it.
+      at = order.indexOf(parent) + 1;
+      while (at < order.length && isWithin(order[at], parent)) at += 1;
+    } else {
+      const next = current.slice(i + 1).find((later) => listed.has(later));
+      at = next ? order.indexOf(rootOf(next)) : order.length;
+    }
+    order.splice(at, 0, id);
+    listed.add(id);
+  });
+  return order;
+}
+
 const BLOCK_KIND_ORDER = { text: 0, code: 1, table: 2 };
 
 // Which style fields are meaningful for each annotation type, so the
@@ -1555,21 +1596,12 @@ class GuideEditor {
   /**
    * Put a 'move-steps' record's order and parents back. Returns the record for
    * the state it replaced, or undefined (the record is dropped) if it could
-   * not be restored. Steps added since the move (a live capture, a paste) stay
-   * just before the step they sit above now, or last; deleted ones are skipped.
+   * not be restored. Steps added since the move (a live capture, a paste, a
+   * new substep) are kept, and deleted ones are skipped; see reconcileOrder().
    */
   async applyOutlineRecord(record) {
     const now = this.outlineRecord();
-    const known = new Set(now.order);
-    const order = record.order.filter((id) => known.has(id));
-    const listed = new Set(order);
-    for (let i = now.order.length - 1; i >= 0; i--) {
-      const id = now.order[i];
-      if (listed.has(id)) continue;
-      const next = now.order.slice(i + 1).find((later) => listed.has(later));
-      order.splice(next ? order.indexOf(next) : order.length, 0, id);
-      listed.add(id);
-    }
+    const order = reconcileOrder(record.order, now.order, { ...now.parents, ...(record.parents || {}) }, now.parents);
     // Only send parents that differ, so restoring an order never trips over an outline that was already off.
     const parents = {};
     for (const [id, parentId] of Object.entries(record.parents || {})) {
@@ -1608,19 +1640,31 @@ class GuideEditor {
     }
     const replaced = [];
     const saved = [];
-    try {
-      for (const step of targets) {
-        const current = this.stepMap.get(step.stepId);
-        const restored = clone(step);
-        restored.revision = current.revision; // a restore is a new revision, not an old one
+    const failed = [];
+    let error = null;
+    for (const step of targets) {
+      const current = this.stepMap.get(step.stepId);
+      const restored = clone(step);
+      restored.revision = current.revision; // a restore is a new revision, not an old one
+      try {
+        const result = await api.step.save({ guideId: this.guideId, step: restored });
         replaced.push(clone(current));
-        saved.push(await api.step.save({ guideId: this.guideId, step: restored }));
+        saved.push(this.commitBatchSave(result));
+      } catch (err) {
+        error = error || err;
+        failed.push(step);
       }
-    } catch (err) {
-      this.onToast(`Could not undo every step: ${err.message || err}`, { error: true });
     }
+    if (error) this.onToast(`Could not undo every step: ${error.message || error}`, { error: true });
     await this.reload(this.selectedStepId);
-    return saved.length ? this.multiStepRecord(replaced.slice(0, saved.length), saved) : null;
+    if (!saved.length) return null;
+    const inverse = this.multiStepRecord(replaced, saved);
+    if (!failed.length) return inverse;
+    // Some steps were put back and some were not. The ones put back can be
+    // redone; the ones that failed stay on this stack, so pressing the key
+    // again retries just those and no step's earlier state is lost.
+    const rest = { ...record, steps: failed };
+    return { partial: true, inverse, rest };
   }
 
   async snapshotCurrentStep(includeImage = false, target = this.currentStep) {
@@ -1670,14 +1714,19 @@ class GuideEditor {
       this.onToast('Nothing to undo.');
       return;
     }
-    if (this.pendingSave) await this.flushStep();
+    if (!(await this.settlePendingSave())) return;
     const previous = this.canvasHistory.pop();
     const current = await this.swapHistoryRecord(previous, 'undo');
     if (!current) {
       if (current === null) this.canvasHistory.push(previous);
       return;
     }
-    this.canvasFuture.push(current);
+    if (current.partial) {
+      this.canvasHistory.push(current.rest);
+      this.canvasFuture.push(current.inverse);
+    } else {
+      this.canvasFuture.push(current);
+    }
     this.renderAll();
   }
 
@@ -1686,22 +1735,29 @@ class GuideEditor {
       this.onToast('Nothing to redo.');
       return;
     }
-    if (this.pendingSave) await this.flushStep();
+    if (!(await this.settlePendingSave())) return;
     const next = this.canvasFuture.pop();
     const current = await this.swapHistoryRecord(next, 'redo');
     if (!current) {
       if (current === null) this.canvasFuture.push(next);
       return;
     }
-    this.canvasHistory.push(current);
+    if (current.partial) {
+      this.canvasFuture.push(current.rest);
+      this.canvasHistory.push(current.inverse);
+    } else {
+      this.canvasHistory.push(current);
+    }
     this.renderAll();
   }
 
   /**
    * Put `record`'s state back and return a record of the state it replaced, so
    * the caller can park it on the opposite stack. Returns null when nothing was
-   * restored (the record stays where it was) and undefined when the record was
-   * unusable (it is dropped).
+   * restored (the record stays where it was), undefined when the record was
+   * unusable (it is dropped), and { partial, inverse, rest } when only some
+   * steps of a 'multi-step' record were restored: `inverse` goes on the
+   * opposite stack and `rest` (the steps that failed) stays for a retry.
    */
   async swapHistoryRecord(record, direction) {
     if (record.type === 'delete-step') {
@@ -1716,6 +1772,27 @@ class GuideEditor {
     const current = await this.snapshotCurrentStep(true, target);
     await this.restoreHistoryRecord(record);
     return current;
+  }
+
+  /**
+   * Before an edit that saves several steps itself (undo, bulk paste, find
+   * and replace): stop the autosave timer, so it can't later write an old copy
+   * of a step over the batch, and save the current step's pending edits.
+   * False if that save failed; the caller must then stop, leaving the edits
+   * in the editor for the retry instead of reloading over them.
+   */
+  async settlePendingSave() {
+    this.saveStepDebounced.cancel();
+    if (!this.pendingSave) return true;
+    return (await this.flushStep()) !== null;
+  }
+
+  /**
+   * Take a step a batch edit saved into the live editor state, so an autosave
+   * or a later edit starts from it rather than from the copy before the batch.
+   */
+  commitBatchSave(saved) {
+    return this.commitSavedStep(saved, { replaceBlocks: true });
   }
 
   async flushStep(step = this.currentStep) {

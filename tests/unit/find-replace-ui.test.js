@@ -191,3 +191,84 @@ test('Ctrl+H while the dialog is open does not stack a second one', async () => 
   close(false);
   await again;
 });
+
+test('Replace is locked from the moment the search changes until its results are back, Enter included', async () => {
+  const steps = [createStep({ stepId: 'a', title: 'Widget Other' })];
+  const pending = [];
+  const replaced = [];
+  const d = setupDialog({
+    find: (o) => new Promise((resolve) => pending.push(() => resolve({ matches: json(findMatches(steps, o.query, { replacement: o.replacement })), truncated: false }))),
+    replace: async (matches) => { replaced.push(matches.map((m) => m.matched)); },
+  });
+  const query = d.byPlaceholder('Find');
+  const replacement = d.byPlaceholder('Replace with');
+  const enter = { key: 'Enter', preventDefault() {} };
+  replacement.value = 'Gadget';
+  query.value = 'Widget';
+  const first = query.handlers.input();
+  pending.shift()();
+  await first;
+  assert.equal(d.replaceButton.disabled, false);
+
+  // Find now says Other, but its search hasn't come back: the Widget matches must not be used.
+  query.value = 'Other';
+  const second = query.handlers.input();
+  assert.equal(d.replaceButton.disabled, true);
+  await replacement.handlers.keydown(enter);
+  await d.replaceButton.handlers.click();
+  assert.deepEqual(replaced, []);
+
+  pending.shift()();
+  await second;
+  assert.equal(d.replaceButton.disabled, false);
+  await replacement.handlers.keydown(enter);
+  assert.deepEqual(replaced, [['Other']]);
+});
+
+/** The editor's autosave, shortened, for tests where its timing matters. */
+function realAutosave(editor, ms = 5) {
+  let timer = null;
+  editor.saveStepDebounced = Object.assign(() => {
+    clearTimeout(timer);
+    timer = setTimeout(() => editor.flushStep(), ms);
+  }, { cancel() { clearTimeout(timer); timer = null; } });
+}
+
+test('replacing stops, keeping the edits, when the current step cannot be saved first', async () => {
+  const { editor, db, api } = setupEditor(guideSteps());
+  await editor.reload('a');
+  editor.currentStep.descriptionHtml = '<p>unsaved</p>';
+  editor.pendingSave = true;
+  const save = api.step.save;
+  api.step.save = async (args) => { if (args.step.stepId === 'a') throw new Error('EIO'); return save(args); };
+  const matches = json(findMatches(editor.steps, 'Widget')).filter((m) => m.stepId === 'b');
+  await assert.rejects(editor.replaceMatches(matches, 'Gadget'), /could not be saved/);
+  assert.deepEqual(db.steps.get('b').tableBlocks[0].rows, [['Widget', 'x']]);
+  assert.equal(editor.currentStep.descriptionHtml, '<p>unsaved</p>');
+  assert.equal(editor.pendingSave, true);
+  assert.equal(editor.canvasHistory.length, 0);
+});
+
+test('an autosave during a replace batch cannot write the old text back', async () => {
+  const { editor, db, api } = setupEditor(guideSteps());
+  realAutosave(editor);
+  await editor.reload('a');
+  editor.saveStepDebounced(); // an autosave of A is already queued
+  editor.pendingSave = true;
+  const save = api.step.save;
+  api.step.save = async (args) => {
+    if (args.step.stepId === 'c' && /Gadget/.test(args.step.title)) {
+      // C's save is slow; the queued or a new autosave of A fires meanwhile.
+      editor.pendingSave = true;
+      editor.saveStepDebounced();
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    }
+    return save(args);
+  };
+  const matches = json(findMatches(editor.steps, 'Widget'));
+  await editor.replaceMatches(matches, 'Gadget');
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(db.steps.get('a').title, 'Open Gadget');
+  assert.equal(db.steps.get('a').descriptionHtml, '<p>The Gadget menu</p>');
+  assert.equal(db.steps.get('c').title, 'Gadget again');
+});

@@ -2466,7 +2466,8 @@ class GuideEditor {
     if (!this.guideId || !this.steps.length || this.findReplaceOpen) return;
     this.findReplaceOpen = true; // Ctrl+H again while it is open would stack a second dialog
     try {
-      if (this.pendingSave) await this.flushStep();
+      // Search what is saved; if the current step can't be saved, don't open.
+      if (!(await this.settlePendingSave())) return;
       await dialogs.showFindReplace({
         stepNumbers: Object.fromEntries(stepNumberMap(this.steps)),
         find: (options) => api.findReplace.find({ guideId: this.guideId, ...options }),
@@ -2483,11 +2484,15 @@ class GuideEditor {
    * puts every step back. Returns the number of matches replaced.
    */
   async replaceMatches(matches, replacement) {
-    if (this.pendingSave) await this.flushStep();
+    // Stop if the current step's edits can't be saved: the reload at the end
+    // would otherwise replace them with what is on disk.
+    if (!(await this.settlePendingSave())) throw new Error('This step’s changes could not be saved, so nothing was replaced.');
     const result = await api.findReplace.apply({ guideId: this.guideId, matches, replacement });
     const saved = [];
     try {
-      for (const step of result.steps) saved.push(await api.step.save({ guideId: this.guideId, step }));
+      // Each saved step goes into the live editor state at once, so an
+      // autosave during the batch saves the replacement, not the old text.
+      for (const step of result.steps) saved.push(this.commitBatchSave(await api.step.save({ guideId: this.guideId, step })));
     } catch (err) {
       this.onToast(`Could not save every step: ${err.message || err}`, { error: true });
     }

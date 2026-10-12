@@ -23,6 +23,13 @@ const MAX_READ_WIDTH = 4000;
  * A raw 32-bit BGRA bitmap (Electron's nativeImage.toBitmap()) as a binary
  * PPM, which text recognition reads as readily as a PNG. Encoding a large
  * PNG blocks the main process for a third of a second; this takes a few ms.
+ *
+ * PPM has no alpha, so each pixel is laid over white first, as a viewer
+ * shows it. Otherwise an imported PNG with dark text on a transparent
+ * background (transparent pixels are stored as black) reads as solid black
+ * and none of its text is found. Skia's bitmaps are premultiplied, so over
+ * white a channel is c + (255 - alpha); the clamp keeps straight-alpha input
+ * in range.
  */
 function bitmapToPpm(bgra, width, height) {
   const stride = bgra.length / height;
@@ -33,9 +40,10 @@ function bitmapToPpm(bgra, width, height) {
   let o = header.length;
   for (let y = 0; y < height; y += 1) {
     for (let i = y * stride, end = i + width * 4; i < end; i += 4, o += 3) {
-      ppm[o] = bgra[i + 2];
-      ppm[o + 1] = bgra[i + 1];
-      ppm[o + 2] = bgra[i];
+      const white = 255 - bgra[i + 3];
+      ppm[o] = Math.min(255, bgra[i + 2] + white);
+      ppm[o + 1] = Math.min(255, bgra[i + 1] + white);
+      ppm[o + 2] = Math.min(255, bgra[i] + white);
     }
   }
   return ppm;

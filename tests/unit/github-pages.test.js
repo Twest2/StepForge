@@ -552,6 +552,46 @@ test('publishing, republishing and removing always leave a single-commit Pages b
   assert.deepEqual(Object.keys(branch.manifest.guides), [other.slug]);
 });
 
+test('extending a link commits a new manifest without uploading the page again', async (t) => {
+  const { pages, gh, clock } = await connected(t);
+  await pages.selectRepository({ fullName: 'octo/stepforge-guides' });
+  const guide = exportedGuide(t);
+  const first = await pages.publish({ ...guide, days: 1 });
+  const other = await pages.publish({ guideId: 'guide-b', title: 'Second guide', html: '<html><head></head><body>two</body></html>', days: 30 });
+  const before = gh.branch();
+  const headBefore = gh.refs.get('gh-pages');
+  const publishedAt = before.manifest.guides[first.slug].publishedAt;
+
+  clock.now += 12 * 60 * 60 * 1000;
+  const uploads = gh.requests.length;
+  const list = await pages.extend({ slug: first.slug, days: 30 });
+  const sent = gh.requests.slice(uploads);
+  assert.notEqual(gh.refs.get('gh-pages'), headBefore, 'the extension is committed, not skipped as unchanged');
+  assert.ok(sent.includes('POST /repos/octo/stepforge-guides/git/commits'));
+  assert.equal(sent.filter((request) => request.endsWith('/git/blobs')).length, 2, 'only the root page and the manifest are written');
+
+  const after = gh.branch();
+  assert.deepEqual(after.head.parents, []);
+  assert.equal(after.manifest.guides[first.slug].expiresAt, new Date(clock.now + 30 * DAY).toISOString());
+  assert.equal(after.manifest.guides[first.slug].publishedAt, publishedAt);
+  assert.equal(after.files.get(site.guidePath(first.slug)), before.files.get(site.guidePath(first.slug)), 'the page is untouched');
+  assert.equal(after.files.get(site.guidePath(other.slug)), before.files.get(site.guidePath(other.slug)));
+  assert.equal(list.find((entry) => entry.slug === first.slug).expiresAt, after.manifest.guides[first.slug].expiresAt);
+
+  // A guide whose time is up cannot come back by extending it.
+  clock.now += 40 * DAY;
+  await assert.rejects(() => pages.extend({ slug: first.slug, days: 7 }), /no longer shared/);
+});
+
+test('extending refuses bad input before contacting GitHub', async (t) => {
+  const { pages, gh } = await connected(t);
+  await pages.selectRepository({ fullName: 'octo/stepforge-guides' });
+  const before = gh.requests.length;
+  assert.throws(() => pages.extend({ slug: '../main', days: 7 }), /Unknown shared guide/);
+  assert.throws(() => pages.extend({ slug: 'a'.repeat(24), days: 3 }), /1, 7, 30 days/);
+  assert.equal(gh.requests.length, before);
+});
+
 test('a custom domain GitHub wrote to the Pages branch survives publishing', async (t) => {
   const { pages, gh } = await connected(t);
   await pages.selectRepository({ fullName: 'octo/stepforge-guides' });

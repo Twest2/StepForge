@@ -95,10 +95,18 @@ checksums.
   file permissions, like any other documents. If you need to send a guide
   securely, encrypt the `.sfgz` with a separate tool.
 - **Linked-guide locks are advisory.** When several people open the same
-  `.sfgz` on a shared folder, a `<name>.lock-sfgz` file records who has it
-  open. It helps people coordinate but isn't a security boundary; a crashed or
-  hostile client can remove it. Conflicting saves are shown to the user, and
-  the last save wins.
+  `.sfgz` on a shared folder, a `<name>.lock-sfgz` file is created next to it
+  while someone is saving. It records who is saving, not who has the guide
+  open, and it isn't a security boundary: a crashed or hostile client can
+  remove it. Saving while someone else holds it is refused unless the user
+  chooses to save anyway. Each save also re-reads the shared file. If someone
+  else saved it since you last did, their changes and yours are merged
+  instead of one replacing the other, and StepForge tells you. When both of
+  you changed the same value, the more recently edited version wins that one
+  value and the toast reports the number of conflicts. Because the lock is
+  advisory, two saves can still run at the same moment, and the later one may
+  miss the other's changes until the next save merges them. A backup of the
+  guide is taken before each merge.
 - **Screenshots contain what was on screen.** Review and blur sensitive
   information before sharing.
   A blur's area is filled only from the pixels around it, so exported and

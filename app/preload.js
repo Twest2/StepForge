@@ -57,6 +57,10 @@ const api = {
     query: invoke('search:query'),
     titles: invoke('search:titles'),
   },
+  findReplace: {
+    find: invoke('findReplace:find'),
+    apply: invoke('findReplace:apply'),
+  },
   settings: {
     all: invoke('settings:all'),
     set: invoke('settings:set'),

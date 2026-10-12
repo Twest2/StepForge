@@ -2601,6 +2601,51 @@ class GuideEditor {
     });
   }
 
+  /** Ctrl+H: find and replace across every step; see core/find-replace.js. */
+  async openFindReplace() {
+    if (!this.guideId || !this.steps.length || this.findReplaceOpen) return;
+    this.findReplaceOpen = true; // Ctrl+H again while it is open would stack a second dialog
+    try {
+      // Search what is saved; if the current step can't be saved, don't open.
+      if (!(await this.settlePendingSave())) return;
+      await dialogs.showFindReplace({
+        stepNumbers: Object.fromEntries(stepNumberMap(this.steps)),
+        find: (options) => api.findReplace.find({ guideId: this.guideId, ...options }),
+        replace: (matches, replacement) => this.replaceMatches(matches, replacement),
+      });
+    } finally {
+      this.findReplaceOpen = false;
+    }
+  }
+
+  /**
+   * Replace the chosen find-and-replace matches. The edited steps are saved
+   * one by one and pushed as one 'multi-step' undo record, so a single Ctrl+Z
+   * puts every step back. Returns the number of matches replaced.
+   */
+  async replaceMatches(matches, replacement) {
+    // Stop if the current step's edits can't be saved: the reload at the end
+    // would otherwise replace them with what is on disk.
+    if (!(await this.settlePendingSave())) throw new Error('This step’s changes could not be saved, so nothing was replaced.');
+    const result = await api.findReplace.apply({ guideId: this.guideId, matches, replacement });
+    const saved = [];
+    try {
+      // Each saved step goes into the live editor state at once, so an
+      // autosave during the batch saves the replacement, not the old text.
+      for (const step of result.steps) saved.push(this.commitBatchSave(await api.step.save({ guideId: this.guideId, step })));
+    } catch (err) {
+      this.onToast(`Could not save every step: ${err.message || err}`, { error: true });
+    }
+    if (saved.length) this.pushCanvasHistory(this.multiStepRecord(result.before.slice(0, saved.length), saved));
+    await this.reload(this.selectedStepId);
+    const skipped = result.refused.length + result.stale.length;
+    const stepWord = saved.length === 1 ? 'step' : 'steps';
+    this.onToast(saved.length
+      ? `Replaced ${result.applied} in ${saved.length} ${stepWord}.${skipped ? ` ${skipped} skipped.` : ''} Press Ctrl+Z to undo.`
+      : `Nothing was replaced.${skipped ? ` ${skipped} skipped.` : ''}`);
+    return saved.length ? result.applied : 0;
+  }
+
   async openSearchResult(result) {
     if (!result) return;
     if (result.stepId) {
@@ -2958,6 +3003,11 @@ class GuideEditor {
     if ((e.ctrlKey || e.metaKey) && e.key === '/' && !e.shiftKey) {
       e.preventDefault();
       this.openQuickActions();
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'h' && !e.shiftKey && !e.altKey) {
+      e.preventDefault();
+      this.openFindReplace();
       return;
     }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {

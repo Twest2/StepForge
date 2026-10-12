@@ -325,6 +325,142 @@ function showQuickActions({ query = '', commands = [], searchFn, onOpenItem, onC
   });
 }
 
+/**
+ * Ctrl+H. `find({ query, replacement, caseSensitive, wholeWord })` resolves to
+ * { matches, truncated } (see core/find-replace.js); `replace(matches,
+ * replacement)` replaces the ticked ones and resolves to how many it replaced.
+ * Matches the replacement cannot go into (`blocked`) are listed but locked.
+ */
+function showFindReplace({ stepNumbers = {}, find, replace } = {}) {
+  return new Promise((resolve) => {
+    const query = el('input', { type: 'search', placeholder: 'Find', autocomplete: 'off', spellcheck: false });
+    const replacement = el('input', { type: 'text', placeholder: 'Replace with', autocomplete: 'off', spellcheck: false });
+    const matchCase = el('input', { type: 'checkbox' });
+    const wholeWord = el('input', { type: 'checkbox' });
+    const summary = el('span.muted');
+    const list = el('div.qa-results.fr-results');
+    const replaceButton = el('button.primary', { disabled: true }, 'Replace');
+    let matches = [];
+    let unticked = new Set(); // ids the user unticked; everything else is ticked
+    let lastSearch = '';
+    let token = 0;
+    let busy = false;
+    // True from the moment Find, Replace or an option changes until the search
+    // for exactly those inputs comes back: the listed matches (and which of
+    // them the replacement can go into) belong to the old inputs meanwhile.
+    let stale = false;
+
+    const chosen = () => matches.filter((m) => !m.blocked && !unticked.has(m.id));
+
+    function updateSummary() {
+      const n = chosen().length;
+      const blocked = matches.filter((m) => m.blocked).length;
+      summary.textContent = !query.value ? 'Type something to find.'
+        : stale ? 'Searching…'
+          : !matches.length ? 'No matches.'
+            : `${matches.length} match${matches.length === 1 ? '' : 'es'}, ${n} selected${blocked ? `, ${blocked} cannot take this replacement` : ''}.`;
+      replaceButton.disabled = busy || stale || n === 0;
+      replaceButton.textContent = n ? `Replace ${n}` : 'Replace';
+    }
+
+    function renderList(truncated) {
+      clearNode(list);
+      for (const m of matches) {
+        const box = el('input', { type: 'checkbox', checked: !m.blocked && !unticked.has(m.id), disabled: Boolean(m.blocked) });
+        box.addEventListener('change', () => {
+          if (box.checked) unticked.delete(m.id); else unticked.add(m.id);
+          updateSummary();
+        });
+        list.append(el('label.qa-item.fr-item', { title: m.blocked || '' },
+          box,
+          el('div', {},
+            el('div.snippet', {}, el('b', {}, `Step ${stepNumbers[m.stepId] || m.stepIndex + 1}`), ` · ${m.where}`),
+            el('div', {}, m.before, el('mark', {}, m.matched), m.after),
+            m.blocked ? el('div.muted', {}, m.blocked) : null,
+          )));
+      }
+      if (truncated) list.append(el('div.muted', { style: { padding: '8px 2px' } }, `Showing the first ${matches.length} matches. Narrow the search to see the rest.`));
+      updateSummary();
+    }
+
+    /** The inputs changed: drop any search in flight and lock Replace until the new one is back. */
+    function invalidate() {
+      token += 1;
+      stale = true;
+      updateSummary();
+    }
+
+    async function refresh() {
+      const mine = ++token;
+      stale = true;
+      const search = JSON.stringify([query.value, matchCase.checked, wholeWord.checked]);
+      if (search !== lastSearch) { unticked = new Set(); lastSearch = search; }
+      let result = { matches: [], truncated: false };
+      if (query.value) {
+        try {
+          result = await find({
+            query: query.value, replacement: replacement.value,
+            caseSensitive: matchCase.checked, wholeWord: wholeWord.checked,
+          });
+        } catch { /* keep the empty result; the next keystroke retries */ }
+      }
+      if (mine !== token) return;
+      matches = result.matches;
+      stale = false;
+      renderList(result.truncated);
+    }
+
+    async function doReplace() {
+      const picked = chosen();
+      if (!picked.length || busy || stale) return;
+      busy = true;
+      updateSummary();
+      try {
+        await replace(picked.map((m) => ({
+          id: m.id, stepId: m.stepId, path: m.path, node: m.node, start: m.start, end: m.end, matched: m.matched, kind: m.kind,
+        })), replacement.value);
+        close();
+        resolve(true);
+      } catch (err) {
+        busy = false;
+        summary.textContent = `Could not replace: ${(err && err.message) || err}`;
+      }
+    }
+
+    const { close } = openModal({
+      title: 'Find and replace',
+      wide: true,
+      body: el('div.quick-actions', {},
+        query,
+        el('div', { style: { height: '8px' } }),
+        replacement,
+        el('div.form-row', { style: { gap: '16px', margin: '8px 0' } },
+          el('label', {}, matchCase, ' Match case'),
+          el('label', {}, wholeWord, ' Whole word'),
+          summary),
+        list,
+        el('div.muted', { style: { marginTop: '8px' } },
+          'Searches step titles and descriptions, text, code and table blocks, and annotation labels. Screenshots are not changed. Ctrl+Z undoes the whole replacement.'),
+      ),
+      footer: [
+        el('button', { onClick: () => { close(); resolve(false); } }, 'Close'),
+        replaceButton,
+      ],
+      onClose: () => resolve(false),
+    });
+
+    const debounced = debounce(refresh, 120);
+    for (const field of [query, replacement]) field.addEventListener('input', () => { invalidate(); return debounced(); });
+    for (const box of [matchCase, wholeWord]) box.addEventListener('change', () => { invalidate(); return refresh(); });
+    replaceButton.addEventListener('click', doReplace);
+    query.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); refresh(); } });
+    replacement.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); doReplace(); } });
+
+    updateSummary();
+    setTimeout(() => query.focus(), 0);
+  });
+}
+
 function showSettingsDialog({
   api,
   settings,
@@ -1321,6 +1457,7 @@ const SHORTCUTS = [
   ['Capture & steps', [
     ['Ctrl+S', 'Save (writes linked archive when guide is linked)'],
     ['Ctrl+/', 'Quick actions palette'],
+    ['Ctrl+H', 'Find and replace across the guide'],
     ['PageUp / PageDown', 'Previous / next step'],
     ['Alt+↑ / Alt+↓', 'Move step up / down'],
     ['Ctrl+Delete', 'Delete current step'],
@@ -1401,6 +1538,7 @@ function showRecordingReminder({
 window.StepForgeDialogs = {
   promptText,
   showQuickActions,
+  showFindReplace,
   showSettingsDialog,
   showExportDialog,
   showLinkedGuideDialog,

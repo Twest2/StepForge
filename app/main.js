@@ -1086,6 +1086,9 @@ function setupIpc() {
   });
   h('github:unpublish', ({ slug }) => githubPages.unpublish({ slug }),
     { validate: (a) => c.string(a.slug, 40) });
+  // Resets a live link's expiry; only the manifest changes, so nothing is re-uploaded.
+  h('github:extend', ({ slug, days }) => githubPages.extend({ slug, days }),
+    { validate: (a) => c.string(a.slug, 40) && c.oneOf(a.days, EXPIRY_DAYS) });
   // Checks a just-published link until GitHub Pages serves it.
   h('github:waitUntilLive', async ({ slug }) => ({ live: await githubPages.waitUntilLive(slug) }),
     { validate: (a) => c.string(a.slug, 40) });
@@ -1257,8 +1260,11 @@ function setupIpc() {
   }, { validate: (a) => a.mode === undefined || c.oneOf(a.mode, ['copy', 'linked']) });
   // archive:peek was removed: nothing in the renderer used it, and it let a
   // compromised renderer read arbitrary local archives by path.
-  h('archive:saveLinked', ({ guideId, force }) => saveLinkedGuide(store, guideId, { force: Boolean(force) }),
-    { validate: (a) => c.id(a.guideId) });
+  h('archive:saveLinked', async ({ guideId, force }) => {
+    const result = await saveLinkedGuide(store, guideId, { force: Boolean(force) });
+    if (result.merged) reindex(guideId); // the merge changed the local guide
+    return result;
+  }, { validate: (a) => c.id(a.guideId) });
 
   // snapshots
   h('snapshots:list', ({ guideId }) => listSnapshots(store, guideId),

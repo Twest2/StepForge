@@ -308,9 +308,10 @@ async function showPublishToConfluenceDialog({ api, guideId, guideTitle, onOpenA
       error);
     body.replaceChildren(form);
 
-    api.confluence.published({ guideId }).then((page) => {
+    Promise.all([api.confluence.published({ guideId }), guideUpdatedTimes(api)]).then(([page, updated]) => {
       if (!page || !open) return;
-      previous.replaceChildren('Published before. Publishing again updates ', el('button.link', { type: 'button', onClick: () => confluenceOpen(api, page.url) }, 'the same page'), '.');
+      previous.replaceChildren('Published before. Publishing again updates ', el('button.link', { type: 'button', onClick: () => confluenceOpen(api, page.url) }, 'the same page'), '.',
+        editedSinceShared(updated.get(guideId), page.publishedAt) ? ' The guide has changed since you published it.' : '');
       previous.classList.remove('hidden');
     }).catch(() => {});
     api.confluence.spaces().then((list) => {

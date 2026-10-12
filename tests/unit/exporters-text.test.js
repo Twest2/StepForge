@@ -211,7 +211,7 @@ test('text block positions render around the title, description, and image', (t)
     'docs.example.com',
     'After description',
     'Before image',
-    '![Step 1](',
+    '![Screenshot for step 1: Open AcmeSync settings](',
     'After image',
   ]);
 
@@ -225,7 +225,7 @@ test('text block positions render around the title, description, and image', (t)
     'docs.example.com',
     'After description',
     'Before image',
-    'alt="Step 1"',
+    'alt="Screenshot for step 1: Open AcmeSync settings"',
     'After image',
   ]);
 });
@@ -316,6 +316,11 @@ test('Confluence export: a Word document for the website importer, plus instruct
       assert.ok(parts.has(`word/${target[1]}`), `part for ${id}`);
     }
   }
+  assert.deepEqual([...doc.matchAll(/<wp:docPr [^>]*descr="([^"]*)"/g)].map((m) => m[1]), [
+    'Screenshot for step 1: Open AcmeSync settings',
+    'Screenshot for step 2: Enable nightly backups',
+  ]);
+  assert.equal((doc.match(/<pic:cNvPr [^>]*descr="Screenshot for step \d/g) || []).length, 2);
   const media = [...parts.keys()].filter((k) => k.startsWith('word/media/'));
   assert.equal(media.length, 2);
   assert.equal(decodePng(parts.get(media[0])).width, 320);
@@ -530,4 +535,46 @@ test('preview mode limits the AST to the first N steps', (t) => {
   const ast = buildRenderAst(store, guide.guideId, { maxSteps: 2 });
   assert.equal(ast.steps.length, 2);
   assert.deepEqual(ast.steps.map((s) => s.number), ['1', '1.1']);
+});
+
+test('screenshot alt text: one string in the render AST, escaped by the Markdown, HTML, Confluence and Confluence Word exporters', (t) => {
+  const root = makeTmpDir('expalt');
+  t.after(() => rmrf(root));
+  const { store, guide, s1, s2 } = buildFixtureGuide(path.join(root, 'data'));
+  const first = store.getStep(guide.guideId, s1.stepId);
+  first.title = 'Save & exit <now> "quoted" it\'s\n\tdone\u0001';
+  store.saveStep(guide.guideId, first);
+  const second = store.getStep(guide.guideId, s2.stepId);
+  second.title = '';
+  store.saveStep(guide.guideId, second);
+
+  const ast = buildRenderAst(store, guide.guideId);
+  assert.deepEqual(ast.steps.map((s) => s.altText), [
+    'Screenshot for step 1: Save & exit <now> "quoted" it\'s done',
+    'Screenshot for step 1.1: Verify the gear icon is visible',
+    'Screenshot for step 2',
+  ]);
+  // Placeholders are expanded before the alt text is built.
+  const placeholder = store.getStep(guide.guideId, s1.stepId);
+  placeholder.title = 'Open [[Product]] settings';
+  store.saveStep(guide.guideId, placeholder);
+  assert.equal(buildRenderAst(store, guide.guideId).steps[0].altText, 'Screenshot for step 1: Open AcmeSync settings');
+
+  const md = fs.readFileSync(exportMarkdown(ast, path.join(root, 'md')).file, 'utf8');
+  assert.ok(md.includes('![Screenshot for step 1: Save & exit \\<now\\> "quoted" it\'s done]('));
+  assert.ok(md.includes('![Screenshot for step 2]('));
+  const html = fs.readFileSync(exportHtmlSimple(ast, path.join(root, 'html')).file, 'utf8');
+  assert.ok(html.includes('alt="Screenshot for step 1: Save &amp; exit &lt;now&gt; &quot;quoted&quot; it\'s done"'));
+  assert.ok(html.includes('alt="Screenshot for step 2"'));
+  const rich = fs.readFileSync(exportHtmlRich(ast, path.join(root, 'rich')).file, 'utf8');
+  assert.ok(rich.includes('alt="Screenshot for step 2"'));
+
+  const { apiPage, file } = exportConfluence(ast, path.join(root, 'conf'), { apiFiles: true });
+  const storage = fs.readFileSync(apiPage, 'utf8');
+  assert.ok(storage.includes('ac:alt="Screenshot for step 1: Save &amp; exit &lt;now&gt; &quot;quoted&quot; it&apos;s done"'));
+  assert.ok(storage.includes('ac:alt="Screenshot for step 2"'));
+
+  const doc = unzipSync(fs.readFileSync(file)).find((e) => e.name === 'word/document.xml').data.toString('utf8');
+  assert.ok(doc.includes('descr="Screenshot for step 1: Save &amp; exit &lt;now&gt; &quot;quoted&quot; it&apos;s done"'));
+  assert.ok(doc.includes('descr="Screenshot for step 2"'));
 });

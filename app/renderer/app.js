@@ -102,6 +102,7 @@ class StepForgeApp {
     api.capture.onAdded((payload) => this.onCaptureAdded(payload));
     api.capture.onState((payload) => this.updateCaptureState(payload));
     api.capture.onStepUpdated((payload) => this.onStepUpdated(payload));
+    if (api.capture.onDiagnostic) api.capture.onDiagnostic((payload) => this.onCaptureDiagnostic(payload));
     api.guide.onChangedByAgent((payload) => this.onGuideChangedByAgent(payload));
   }
 
@@ -357,6 +358,13 @@ class StepForgeApp {
     this.updateCaptureState(this.captureState || null);
   }
 
+  /** Problems the recorder reports while it runs. Only ones the user can act on are shown. */
+  onCaptureDiagnostic(payload) {
+    if (payload && payload.kind === 'window-mode-unavailable' && payload.reason) {
+      toast(payload.reason, { error: true });
+    }
+  }
+
   updateCaptureState(state) {
     this.captureState = state || { active: false };
     clearNode(this.captureStatus);
@@ -405,6 +413,9 @@ class StepForgeApp {
 
     this.captureStatus.append(
       el('span', { title: `Capture session — ${trigger}` }, `Recording - ${trigger}`),
+      // Settings says Window but this desktop can only record the full screen:
+      // say so before the first capture, since other windows will be in it.
+      s.modeNote ? el('span.capture-mode-note', { title: s.modeNote }, 'Full screen (window capture unavailable)') : null,
       pauseBtn,
     );
   }

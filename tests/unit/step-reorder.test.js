@@ -223,3 +223,55 @@ test('undoing a move that repaired a broken guide puts the order back and keeps 
   await editor.redo();
   assert.deepEqual(outline(db), ['A', 'B', 'C', 'x']);
 });
+
+test('undoing a move keeps a substep added since under its parent', async () => {
+  // [A, a1 under A, B]; move A down; then add b1 under B: [B, b1, A, a1].
+  const { editor, db, toasts } = setup({ steps: [{ stepId: 'A' }, { stepId: 'a1', parentStepId: 'A' }, { stepId: 'B' }] });
+  await editor.reload('A');
+  await editor.moveSelectedStep(1);
+  assert.deepEqual(outline(db), ['B', 'A', 'a1<A']);
+  db.steps.set('b1', { stepId: 'b1', parentStepId: 'B', revision: 1, annotations: [] });
+  db.order = ['B', 'b1', 'A', 'a1'];
+  await editor.reload('A');
+  await editor.undo();
+  assert.deepEqual(outline(db), ['A', 'a1<A', 'B', 'b1<B'], 'b1 stays a substep of B');
+  assert.equal(toasts.filter((t) => /Could not/.test(t)).length, 0);
+});
+
+test('Move to… plans again on the outline as it is when the dialog closes', async () => {
+  const steps = ['A', 'B', 'C', 'D'].map((id) => ({ stepId: id, title: id }));
+  let agent;
+  const { editor, db } = setup({
+    steps,
+    pick: async ({ positions }) => {
+      // While the dialog is open an agent nests B under A, and the editor reloads.
+      await agent();
+      return { gap: positions.find((p) => p.label === 'At the top').value, depth: '0' };
+    },
+  });
+  agent = async () => {
+    db.steps.get('B').parentStepId = 'A';
+    await editor.reload('D');
+  };
+  await editor.reload('D');
+  await editor.moveStepTo('D');
+  assert.deepEqual(outline(db), ['D', 'A', 'B<A', 'C'], "the agent's nesting survives the move");
+});
+
+test('Move to… does nothing when the place it was going to is gone', async () => {
+  const steps = ['A', 'B', 'C'].map((id) => ({ stepId: id, title: id }));
+  const { editor, db, toasts } = setup({
+    steps,
+    pick: async ({ positions }) => {
+      // The step it should follow is deleted while the dialog is open.
+      db.order = ['A', 'C'];
+      db.steps.delete('B');
+      await editor.reload('C');
+      return { gap: positions.find((p) => p.label.includes('B')).value, depth: '0' };
+    },
+  });
+  await editor.reload('A');
+  await editor.moveStepTo('A');
+  assert.deepEqual(db.order, ['A', 'C']);
+  assert.match(toasts.at(-1), /guide changed/);
+});

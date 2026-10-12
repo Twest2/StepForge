@@ -2117,11 +2117,15 @@ class GuideEditor {
    * undo step. Returns false if nothing changed or the move was refused.
    */
   async applyStepMove(stepId, moved) {
-    if (this.pendingSave) await this.flushStep();
+    if (!(await this.settlePendingSave())) return false;
     const before = this.outlineRecord();
-    const parents = Object.fromEntries(moved.parentOf);
-    const unchanged = moved.order.every((id, i) => id === before.order[i])
-      && moved.order.every((id) => (parents[id] || null) === before.parents[id]);
+    // Send only the parents the move changes, so it can't put back a parent
+    // that changed elsewhere since the move was planned.
+    const parents = {};
+    for (const [id, parentId] of moved.parentOf) {
+      if ((parentId || null) !== before.parents[id]) parents[id] = parentId || null;
+    }
+    const unchanged = moved.order.every((id, i) => id === before.order[i]) && !Object.keys(parents).length;
     if (unchanged) return false;
     try {
       await api.step.reorder({ guideId: this.guideId, order: moved.order, parents });
@@ -2174,8 +2178,19 @@ class GuideEditor {
       currentDepth: outline.depthOf(parentOf, stepId),
     });
     if (!choice) return;
-    const moved = outline.moveSubtree(order, parentOf, stepId, Number(choice.gap), Number(choice.depth));
-    if (!moved) return;
+    // The guide may have changed while the dialog was open (an agent, a
+    // sync), so plan the move again on the outline as it is now, keeping the
+    // chosen place as "after this step" rather than as a position.
+    const anchor = Number(choice.gap) > 0 ? order[Number(choice.gap) - 1] : null;
+    const nowOrder = this.steps.map((s) => s.stepId);
+    const nowGap = anchor ? nowOrder.indexOf(anchor) + 1 : 0;
+    const moved = this.stepMap.has(stepId) && (!anchor || nowGap > 0)
+      ? outline.moveSubtree(nowOrder, outline.parentMap(this.steps), stepId, nowGap, Number(choice.depth))
+      : null;
+    if (!moved) {
+      this.onToast('The guide changed while you were choosing, so the step was not moved. Try Move to… again.', { error: true });
+      return;
+    }
     if (await this.applyStepMove(stepId, moved)) this.onToast('Step moved. Press Ctrl+Z to undo.');
   }
 

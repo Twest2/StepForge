@@ -98,9 +98,11 @@ function slugForGuide(manifest, guideId) {
 /**
  * Work out the next manifest. Expired guides are always dropped. `publish`
  * adds or refreshes one guide (keeping its existing link); `remove` drops one
- * slug. Returns the new manifest plus the slugs that were removed.
+ * slug; `extend` ({ slug, days }) moves a live guide's expiry to `days` from
+ * now without touching the page, so a guide that has already expired cannot
+ * be extended. Returns the new manifest plus the slugs that were removed.
  */
-function planSite(manifest, { now = Date.now(), publish = null, remove = null } = {}) {
+function planSite(manifest, { now = Date.now(), publish = null, remove = null, extend = null } = {}) {
   const next = emptyManifest();
   const removed = [];
   for (const [slug, entry] of Object.entries(manifest.guides)) {
@@ -108,6 +110,12 @@ function planSite(manifest, { now = Date.now(), publish = null, remove = null } 
     else next.guides[slug] = { ...entry };
   }
   let slug = null;
+  if (extend) {
+    const entry = next.guides[extend.slug];
+    if (!entry) throw new Error('This guide is no longer shared, so its link can’t be extended. Publish it again to get it back online.');
+    entry.expiresAt = expiresAtFor(extend.days, now);
+    slug = extend.slug;
+  }
   if (publish) {
     slug = slugForGuide(next, publish.guideId) || publish.slug || newSlug();
     if (!isSlug(slug)) throw new Error('Invalid link id for the published guide.');

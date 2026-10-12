@@ -59,8 +59,8 @@ function para(text, { size = 1800, bold = false, color = '111827' } = {}) {
   return `<a:p><a:r><a:rPr lang="en-US" sz="${size}" b="${bold ? 1 : 0}" dirty="0"><a:solidFill><a:srgbClr val="${color}"/></a:solidFill></a:rPr><a:t>${escapeXml(text)}</a:t></a:r></a:p>`;
 }
 
-function picture(relId, x, y, w, h) {
-  return `<p:pic><p:nvPicPr><p:cNvPr id="${relId + 100}" name="Screenshot"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr>` +
+function picture(relId, x, y, w, h, alt) {
+  return `<p:pic><p:nvPicPr><p:cNvPr id="${relId + 100}" name="Screenshot" descr="${escapeXml(alt)}"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr>` +
     `<p:blipFill><a:blip r:embed="rId${relId}"/><a:stretch><a:fillRect/></a:stretch></p:blipFill>` +
     `<p:spPr><a:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="${w}" cy="${h}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>`;
 }
@@ -282,7 +282,7 @@ function exportPptx(ast, outDir, template = {}) {
       let w = img.width * EMU_PER_PX, h = img.height * EMU_PER_PX;
       const scale = Math.min(maxW / w, maxH / h, 1);
       w = Math.round(w * scale); h = Math.round(h * scale);
-      content += picture(relId, Math.round((SLIDE_W - w) / 2), y, w, h);
+      content += picture(relId, Math.round((SLIDE_W - w) / 2), y, w, h, step.altText);
       y += h + 100000;
     }
 

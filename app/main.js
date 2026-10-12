@@ -15,7 +15,7 @@ const { GoogleDrive } = require('./google-drive');
 const { OneDrive } = require('./onedrive');
 const { Dropbox } = require('./dropbox');
 const { WebDAV } = require('./webdav');
-const { RedactionService } = require('./redaction');
+const { RedactionService, bitmapToPpm } = require('./redaction');
 const { forgetScreenshotChecks } = require('../core/redaction');
 const { Confluence, pageFromExport } = require('./confluence');
 const { createConfluenceSession } = require('./confluence-session');
@@ -25,6 +25,7 @@ const { TransferMeter } = require('../core/transfer-meter');
 const { CloudSync } = require('../core/cloud-sync');
 const { createCredentialVault } = require('./credential-vault');
 const { SearchIndex } = require('../core/search');
+const { findMatches, applyReplacements, isMatchArg } = require('../core/find-replace');
 const { TemplateManager, FORMATS, FORMAT_LABELS } = require('../core/templates');
 const { buildRenderAst } = require('../core/renderast');
 const { AI_TARGETS } = require('../core/text-intel');
@@ -777,9 +778,12 @@ function setupIpc() {
       && c.optionalBase64(a.originalBase64) && c.optionalBase64(a.workingBase64)
       && c.optionalNumber(a.position, 0, 100000),
   });
-  h('steps:reorder', ({ guideId, order }) => store.reorderSteps(guideId, order), {
+  h('steps:reorder', ({ guideId, order, parents }) => store.reorderSteps(guideId, order, parents), {
     validate: (a) => c.id(a.guideId)
-      && Array.isArray(a.order) && a.order.length <= 100000 && a.order.every((id) => c.id(id)),
+      && Array.isArray(a.order) && a.order.length <= 100000 && a.order.every((id) => c.id(id))
+      && (a.parents == null || (typeof a.parents === 'object' && !Array.isArray(a.parents)
+        && Object.keys(a.parents).length <= 100000
+        && Object.entries(a.parents).every(([id, parentId]) => c.id(id) && c.optionalId(parentId)))),
   });
   h('step:imagePath', ({ guideId, stepId, which }) => {
     const p = store.stepImagePath(guideId, stepId, which || 'working');
@@ -834,10 +838,22 @@ function setupIpc() {
     return { ok: true, steps };
   }, { validate: (a) => c.id(a.guideId) });
 
+  // Put a new screenshot on a step, keeping its text and annotations. The
+  // step is read here, after the file dialog or countdown, so an edit that
+  // landed meanwhile (an agent, a sync) is kept rather than overwritten.
+  const swapStepImage = async (guideId, stepId, png, size) => {
+    const step = store.getStep(guideId, stepId);
+    // Private-detail blurs matched the old screenshot; the new one is checked again.
+    const removedBlurs = forgetScreenshotChecks(step);
+    let saved = store.replaceImages(guideId, stepId, { original: png }, size, step);
+    if (await blurNewCapture(guideId, stepId, { notify: false })) saved = store.getStep(guideId, stepId);
+    reindex(guideId);
+    return { ok: true, step: saved, removedBlurs };
+  };
   // Right-click a step → Choose screenshot…: swap in an image file, keeping
   // the step's title, description and annotations.
   h('step:chooseImage', async ({ guideId, stepId }) => {
-    const step = store.getStep(guideId, stepId);
+    store.getStep(guideId, stepId); // throws for a step that does not exist, before any dialog
     const res = await dialog.showOpenDialog(mainWindow, {
       title: 'Choose a screenshot for this step',
       filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'] }],
@@ -846,15 +862,20 @@ function setupIpc() {
     if (res.canceled || !res.filePaths[0]) return { ok: false };
     const img = nativeImage.createFromPath(res.filePaths[0]);
     if (img.isEmpty()) throw new Error('StepForge couldn’t open that file as an image. Choose a PNG, JPEG, GIF, WebP or BMP file.');
-    const png = img.toPNG();
-    const size = img.getSize();
-    // Private-detail blurs matched the old screenshot; the new one is checked again.
-    const removedBlurs = forgetScreenshotChecks(step);
-    let saved = store.replaceImages(guideId, stepId, { original: png }, size, step);
-    if (await blurNewCapture(guideId, stepId, { notify: false })) saved = store.getStep(guideId, stepId);
-    reindex(guideId);
-    return { ok: true, step: saved, removedBlurs };
+    return swapStepImage(guideId, stepId, img.toPNG(), img.getSize());
   }, { validate: (a) => c.id(a.guideId) && c.id(a.stepId) });
+  // Right-click a step → Retake screenshot: hide StepForge, count down, grab a
+  // new frame and swap it in, the same way Choose screenshot… does.
+  h('step:retake', async ({ guideId, stepId, mode, delayMs }) => {
+    store.getStep(guideId, stepId); // throws for a step that does not exist, before the countdown
+    const frame = await capture.retakeFrame({ mode, delayMs });
+    if (!frame.ok) return frame;
+    return swapStepImage(guideId, stepId, frame.png, frame.size);
+  }, {
+    validate: (a) => c.id(a.guideId) && c.id(a.stepId)
+      && (a.mode === undefined || c.oneOf(a.mode, ['fullscreen', 'window', 'region']))
+      && c.optionalNumber(a.delayMs, 0, 60000),
+  });
   // Undo and redo of Choose screenshot… put both images back.
   h('step:setImages', ({ guideId, step, originalBase64, workingBase64, size }) => {
     const saved = store.replaceImages(guideId, step.stepId, {
@@ -875,6 +896,26 @@ function setupIpc() {
     { validate: (a) => c.optionalString(a.q, 1000) && c.optionalId(a.guideId) });
   h('search:titles', ({ q }) => searchIndex.searchTitles(q),
     { validate: (a) => c.optionalString(a.q, 1000) });
+
+  // find and replace across a guide's steps (core/find-replace.js). `apply`
+  // only computes the edited steps; the editor saves them and records the undo.
+  const FIND_LIMIT = 1000;
+  h('findReplace:find', ({ guideId, query, replacement = '', caseSensitive = false, wholeWord = false }) => {
+    const found = findMatches(orderedSteps(guideId), query, {
+      caseSensitive, wholeWord, replacement, limit: FIND_LIMIT + 1,
+    });
+    return { matches: found.slice(0, FIND_LIMIT), truncated: found.length > FIND_LIMIT };
+  }, {
+    validate: (a) => c.id(a.guideId) && c.string(a.query, 1000) && c.optionalString(a.replacement, 1000)
+      && (a.caseSensitive === undefined || c.bool(a.caseSensitive))
+      && (a.wholeWord === undefined || c.bool(a.wholeWord)),
+  });
+  h('findReplace:apply', ({ guideId, matches, replacement = '' }) => (
+    applyReplacements(orderedSteps(guideId), matches, replacement)
+  ), {
+    validate: (a) => c.id(a.guideId) && c.optionalString(a.replacement, 1000)
+      && Array.isArray(a.matches) && a.matches.length <= FIND_LIMIT && a.matches.every((m) => isMatchArg(m) && c.id(m.stepId)),
+  });
 
   // Cloud access is confined to the main process; tokens never enter IPC.
   h('cloud:status', () => {
@@ -1089,6 +1130,9 @@ function setupIpc() {
   });
   h('github:unpublish', ({ slug }) => githubPages.unpublish({ slug }),
     { validate: (a) => c.string(a.slug, 40) });
+  // Resets a live link's expiry; only the manifest changes, so nothing is re-uploaded.
+  h('github:extend', ({ slug, days }) => githubPages.extend({ slug, days }),
+    { validate: (a) => c.string(a.slug, 40) && c.oneOf(a.days, EXPIRY_DAYS) });
   // Checks a just-published link until GitHub Pages serves it.
   h('github:waitUntilLive', async ({ slug }) => ({ live: await githubPages.waitUntilLive(slug) }),
     { validate: (a) => c.string(a.slug, 40) });
@@ -1260,8 +1304,11 @@ function setupIpc() {
   }, { validate: (a) => a.mode === undefined || c.oneOf(a.mode, ['copy', 'linked']) });
   // archive:peek was removed: nothing in the renderer used it, and it let a
   // compromised renderer read arbitrary local archives by path.
-  h('archive:saveLinked', ({ guideId, force }) => saveLinkedGuide(store, guideId, { force: Boolean(force) }),
-    { validate: (a) => c.id(a.guideId) });
+  h('archive:saveLinked', async ({ guideId, force }) => {
+    const result = await saveLinkedGuide(store, guideId, { force: Boolean(force) });
+    if (result.merged) reindex(guideId); // the merge changed the local guide
+    return result;
+  }, { validate: (a) => c.id(a.guideId) });
 
   // snapshots
   h('snapshots:list', ({ guideId }) => listSnapshots(store, guideId),
@@ -1588,13 +1635,17 @@ if (!gotLock) {
     });
     redactor = new RedactionService({
       store, settings,
-      readLines: (png) => textIntel.readLines(png),
+      readLines: (image) => textIntel.readLines(image),
       loadImage: async (file) => {
         const image = nativeImage.createFromPath(file);
         if (image.isEmpty()) throw new Error('A screenshot in this guide couldn’t be read.');
         const { width, height } = image.getSize();
-        return { width, height, png: (scale) => (scale === 1 ? image : image.resize({ width: Math.round(width * scale), height: Math.round(height * scale), quality: 'best' })).toPNG() };
+        return { width, height, encode: (scale) => {
+          const sized = scale === 1 ? image : image.resize({ width: Math.round(width * scale), height: Math.round(height * scale), quality: 'best' });
+          return bitmapToPpm(sized.toBitmap(), sized.getSize().width, sized.getSize().height);
+        } };
       },
+      concurrency: textIntel.readers.size,
     });
     // Bringing up the desktop-capture stream spawns/upgrades Chromium's GPU
     // and screen-capture utility processes — which can be born after a session

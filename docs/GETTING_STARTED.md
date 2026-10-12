@@ -50,9 +50,11 @@ to title the step, so you'll usually see titles like *Click Releases* or
 
 The editor has three panes:
 
-- **Steps (left).** Every step in order. Drag or use **Alt+↑ / Alt+↓** to
-  reorder. Use **Make substep of…** to nest a step under another one; substeps
-  are numbered 1.1, 1.2, and so on.
+- **Steps (left).** Every step in order. Drag a step to move it with its
+  substeps; the line shows where it lands, and its indent shows the level
+  (drag sideways to change it). Or use **Alt+↑ / Alt+↓**, or right-click and
+  choose **Move to…**. Use **Make substep of…** to nest a step under another
+  one; substeps are numbered 1.1, 1.2, and so on.
 - **Screenshot (middle).** The captured image with its annotations.
 - **Details (right).** The step title, description, status, and extra
   content blocks.
@@ -75,6 +77,11 @@ For each step you can:
   file. The step's title, description, and annotations stay, so check that
   arrows and boxes still line up. Press **Ctrl+Z** to go back to the old
   screenshot. A step without a screenshot gets one the same way.
+  To capture a fresh one instead, choose **Retake screenshot** and pick
+  **Full screen**, **Window** or **Region…**. StepForge hides itself for 3
+  seconds so you can get the app into the right state, takes the new
+  screenshot and comes back. Only that step's image is replaced. It is not
+  available while a capture session is running.
 
 **Working with many steps at once:** choose **Select**, click one step, then
 **Shift-click** another to select everything in between, including substeps.
@@ -151,6 +158,12 @@ Each format has options (page size, table of contents, image width, and so
 on). Save your preferred options as a **template** so every guide exports the
 same way. Templates can be shared with teammates as `.sfglt` files.
 
+Exported screenshots get alt text built from the step title (for example
+"Screenshot for step 3: Click Save") in the HTML, Word, PowerPoint, Markdown
+and Confluence formats, so screen readers announce more than a step number. PDFs
+carry the guide title, and the author if you set one, as their document
+properties. They are not tagged PDFs.
+
 **Placeholders** keep repeated text consistent. Define one in
 **Settings → Placeholders** (for example `Product` → `Admin Portal`) and type
 `[[Product]]` in any title or description. It's replaced when you export.
@@ -177,8 +190,9 @@ and verifies your library before switching to the new location.
   images into one file. Anyone with StepForge can open it with
   **Import → Import a copy of a guide (.sfgz)…**.
 - **Linked guides** let several people work from one `.sfgz` on a shared
-  folder. StepForge saves back to the file and warns you if someone else has
-  it open.
+  folder. StepForge saves back to the file and warns you if someone else is
+  saving it. If someone else saved since you last did, your changes are merged
+  with theirs instead of replacing them.
 - **Snapshots** are automatic backups of each guide. Open
   **More → Backups & snapshots…** to create one by hand or roll back.
   **Settings → Editor → Snapshots to keep** controls how many are kept.
@@ -196,8 +210,9 @@ Press **Ctrl+/** for the quick-actions palette, or open
 | `Ctrl+Shift+2` | Pause / resume capture (global) |
 | `Ctrl+S` | Save |
 | `Ctrl+/` | Quick actions |
+| `Ctrl+H` | Find and replace across the guide (one Ctrl+Z undoes it) |
 | `PageUp` / `PageDown` | Previous / next step |
-| `Alt+↑` / `Alt+↓` | Move step up / down |
+| `Alt+↑` / `Alt+↓` | Move step (and its substeps) up / down |
 | `Ctrl+Z` / `Ctrl+Shift+Z` | Undo / redo |
 | `Ctrl+V` | Paste an annotation, or paste an image as a new step |
 | `Ctrl+Delete` | Delete the current step |

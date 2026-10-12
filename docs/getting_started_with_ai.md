@@ -71,6 +71,8 @@ Open a guide and choose **AI ▾** in the toolbar, next to **More ▾**:
   StepForge saves a snapshot. To undo, choose **More → Backups & snapshots**
   and restore the snapshot labeled **before AI**. Global placeholders AI added
   live in **Settings → Placeholders** and stay after a restore.
+- **You can undo a single-step write.** After AI writes one step, its title,
+  its description or its blocks, press Ctrl+Z to get your old text back.
 - **AI uses your placeholders.** It sees your global placeholders and this
   guide's placeholders, and writes the `[[name]]` token wherever a
   placeholder's value would appear in a description or block. Titles keep

@@ -1087,6 +1087,8 @@ class StepForgeApp {
       settings,
       placeholders,
       section,
+      // Shared guides → "Edited since you shared it" publishes like the toolbar does.
+      onPublishToWeb: (guideId, title) => this.publishToWeb(guideId, title),
       onSave: async (next) => {
         await api.settings.set({ keyPath: 'appearance', value: next.appearance });
         await api.settings.set({ keyPath: 'spellcheck', value: next.spellcheck });

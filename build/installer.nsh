@@ -1,6 +1,50 @@
 !include LogicLib.nsh
 !include nsDialogs.nsh
 
+; Runs packaging/windows/chocolatey-setup.ps1 (already extracted to
+; $PLUGINSDIR) elevated through UAC with the arguments in a variable, and waits
+; for it. ExecShellWait gives no exit code, so the helper writes a result file.
+; Sets $3 to "ok" or "failed" and $4 to the log file. A declined UAC prompt or a
+; helper that never ran counts as "failed". Uses $2-$7.
+!macro StepForgeRunChocoHelper ARGS
+  ; Prefer the 64-bit PowerShell; the installer is a 32-bit process.
+  StrCpy $2 "$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe"
+  ${IfNot} ${FileExists} "$2"
+    StrCpy $2 "$SYSDIR\WindowsPowerShell\v1.0\powershell.exe"
+  ${EndIf}
+  ReadEnvStr $4 ProgramData
+  StrCpy $4 "$4\StepForge\chocolatey-setup.log"
+  StrCpy $3 "failed"
+
+  ClearErrors
+  ExecShellWait "runas" "$2" "${ARGS}" SW_HIDE
+  ${If} ${Errors}
+    StrCpy $4 "administrator approval was declined, or PowerShell could not start"
+  ${Else}
+    ClearErrors
+    FileOpen $5 "$PLUGINSDIR\chocolatey-setup.result" r
+    ${IfNot} ${Errors}
+      FileRead $5 $6
+      FileRead $5 $7
+      FileClose $5
+      StrCpy $3 $6 2
+      ; Strip the line break from the log path.
+      StrCpy $6 $7 1 -1
+      ${If} $6 == "$\n"
+        StrCpy $7 $7 -1
+      ${EndIf}
+      StrCpy $6 $7 1 -1
+      ${If} $6 == "$\r"
+        StrCpy $7 $7 -1
+      ${EndIf}
+      ${If} $7 != ""
+        StrCpy $4 $7
+      ${EndIf}
+    ${EndIf}
+  ${EndIf}
+  ClearErrors
+!macroend
+
 !ifndef BUILD_UNINSTALLER
   Var StepForgeDesktopShortcutCheckbox
   Var StepForgeDesktopShortcutState
@@ -11,9 +55,17 @@
 
   ; The exact Chocolatey package version for this build: the numbers in the
   ; installer file name. scripts/package-windows.js sets it from buildVersion.
-  !define STEPFORGE_CHOCO_VERSION "$%STEPFORGE_CHOCO_VERSION%"
-  !if "${STEPFORGE_CHOCO_VERSION}" == ""
-    !error "STEPFORGE_CHOCO_VERSION is not set. Build the installer with scripts/package-windows.js."
+  ; makensis leaves an unset $%VAR% as literal text, so a "%" means unset.
+  ; Without it the installer is still built, just without the Updates page.
+  !define STEPFORGE_CHOCO_VERSION_ENV "$%STEPFORGE_CHOCO_VERSION%"
+  !searchreplace STEPFORGE_CHOCO_VERSION_NO_PCT "${STEPFORGE_CHOCO_VERSION_ENV}" "%" ""
+  !if "${STEPFORGE_CHOCO_VERSION_NO_PCT}" == "${STEPFORGE_CHOCO_VERSION_ENV}"
+    !if "${STEPFORGE_CHOCO_VERSION_ENV}" != ""
+      !define STEPFORGE_CHOCO_VERSION "${STEPFORGE_CHOCO_VERSION_ENV}"
+    !endif
+  !endif
+  !ifndef STEPFORGE_CHOCO_VERSION
+    !echo "STEPFORGE_CHOCO_VERSION is not set: this installer will not offer Chocolatey updates."
   !endif
 
   ; Assisted installer page for the desktop shortcut choice.
@@ -29,8 +81,13 @@
     ; so starting choco again from here would deadlock or recurse.
     StrCpy $StepForgeChocoState "true"
     StrCpy $StepForgeChocoSkip "false"
+    !ifndef STEPFORGE_CHOCO_VERSION
+      StrCpy $StepForgeChocoSkip "true"
+    !endif
+    ; StdUtils takes the option name without its "/" (like electron-builder's
+    ; own "updated" flag for --updated); it matches /chocolatey.
     ${If} ${Silent}
-      ${StdUtils.TestParameter} $R9 "/chocolatey"
+      ${StdUtils.TestParameter} $R9 "chocolatey"
       ${If} $R9 != "true"
         StrCpy $StepForgeChocoSkip "true"
       ${EndIf}
@@ -232,6 +289,7 @@
     ; The helper runs once, elevated. Nothing here may fail the install: a
     ; declined UAC prompt, no internet or a version missing from the feed only
     ; shows a message at the end.
+    !ifdef STEPFORGE_CHOCO_VERSION
     ${If} $StepForgeChocoSkip != "true"
     ${AndIf} $StepForgeChocoState == "true"
       DetailPrint "Setting up Chocolatey updates..."
@@ -244,42 +302,26 @@
         StrCpy $1 "$1 -InstallChocolatey"
       ${EndIf}
 
-      ; Prefer the 64-bit PowerShell; this installer is a 32-bit process.
-      StrCpy $2 "$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe"
-      ${IfNot} ${FileExists} "$2"
-        StrCpy $2 "$SYSDIR\WindowsPowerShell\v1.0\powershell.exe"
-      ${EndIf}
-
-      ClearErrors
-      ExecShellWait "runas" "$2" "$1" SW_HIDE
-      StrCpy $3 ""
-      ${IfNot} ${Errors}
-        FileOpen $4 "$PLUGINSDIR\chocolatey-setup.result" r
-        ${IfNot} ${Errors}
-          FileRead $4 $3
-          FileClose $4
-        ${EndIf}
-      ${EndIf}
-      ClearErrors
-
-      StrCpy $3 $3 2
+      !insertmacro StepForgeRunChocoHelper $1
       ${If} $3 != "ok"
-        ReadEnvStr $5 ProgramData
-        DetailPrint "Chocolatey updates were not set up. See $5\StepForge\chocolatey-setup.log"
+        DetailPrint "Chocolatey updates were not set up. See $4"
         ${IfNot} ${Silent}
-          MessageBox MB_OK|MB_ICONINFORMATION "StepForge was installed, but Chocolatey updates were not set up.$\r$\n$\r$\nDetails: $5\StepForge\chocolatey-setup.log$\r$\nHelp: https://github.com/Twest2/StepForge/blob/main/docs/windows/chocolatey.md"
+          MessageBox MB_OK|MB_ICONINFORMATION "StepForge was installed, but Chocolatey updates were not set up.$\r$\n$\r$\nDetails: $4$\r$\nHelp: https://github.com/Twest2/StepForge/blob/main/docs/windows/chocolatey.md"
         ${EndIf}
       ${EndIf}
     ${EndIf}
+    !endif
   !macroend
 !endif
 
 !ifdef BUILD_UNINSTALLER
   ; Uninstalling from Apps & Features unregisters StepForge from Chocolatey, so
   ; "choco upgrade" does not bring it back. Not for upgrades (--updated), silent
-  ; uninstalls, or when Chocolatey itself is uninstalling the package. This
-  ; uses the copy of the helper the installer kept where only administrators
-  ; can change it; without that copy StepForge was never registered.
+  ; uninstalls, or when Chocolatey itself is uninstalling the package. It runs
+  ; only if Chocolatey has StepForge registered, found through the machine-wide
+  ; ChocolateyInstall variable that only administrators can set, so there is
+  ; no UAC prompt for everyone else. The helper is embedded in the uninstaller,
+  ; not kept on disk where it could be swapped.
   !macro customUnInstall
     StrCpy $0 "true"
     ${If} ${Silent}
@@ -294,18 +336,24 @@
     ${If} $1 != ""
       StrCpy $0 "false"
     ${EndIf}
+    ReadEnvStr $1 ChocolateyPackageVersion
+    ${If} $1 != ""
+      StrCpy $0 "false"
+    ${EndIf}
 
-    ReadEnvStr $1 ProgramData
+    ReadRegStr $1 HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" ChocolateyInstall
     ${If} $0 == "true"
     ${AndIf} $1 != ""
-    ${AndIf} ${FileExists} "$1\StepForge\chocolatey-setup.ps1"
-      StrCpy $2 "$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe"
-      ${IfNot} ${FileExists} "$2"
-        StrCpy $2 "$SYSDIR\WindowsPowerShell\v1.0\powershell.exe"
+    ${AndIf} ${FileExists} "$1\lib\stepforge\stepforge.nuspec"
+      DetailPrint "Removing StepForge from Chocolatey..."
+      InitPluginsDir
+      File "/oname=$PLUGINSDIR\chocolatey-setup.ps1" "${PROJECT_DIR}\packaging\windows\chocolatey-setup.ps1"
+      Delete "$PLUGINSDIR\chocolatey-setup.result"
+      StrCpy $1 '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "$PLUGINSDIR\chocolatey-setup.ps1" -Uninstall -ResultFile "$PLUGINSDIR\chocolatey-setup.result"'
+      !insertmacro StepForgeRunChocoHelper $1
+      ${If} $3 != "ok"
+        DetailPrint "StepForge is still registered with Chocolatey. See $4"
       ${EndIf}
-      ClearErrors
-      ExecShellWait "runas" "$2" '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "$1\StepForge\chocolatey-setup.ps1" -Uninstall' SW_HIDE
-      ClearErrors
     ${EndIf}
   !macroend
 !endif

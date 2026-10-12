@@ -11,6 +11,7 @@ const {
   createWindowsInstallerBuildOptions,
   findInstallerExe,
   BUILD_VERSION,
+  chocolateyPackageVersion,
 } = require('../../scripts/package-windows');
 
 test('Windows packaging uses an assisted NSIS installer', (t) => {
@@ -50,93 +51,102 @@ test('Windows packaging uses an assisted NSIS installer', (t) => {
 });
 
 const root = path.resolve(__dirname, '../..');
-const nsis = fs.readFileSync(path.join(root, 'build/installer.nsh'), 'utf8');
-const helper = fs.readFileSync(path.join(root, 'packaging/windows/chocolatey-setup.ps1'), 'utf8');
+const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
+const nsis = read('build/installer.nsh');
+const installerPart = nsis.slice(nsis.indexOf('!ifndef BUILD_UNINSTALLER'), nsis.indexOf('!ifdef BUILD_UNINSTALLER'));
+const uninstallerPart = nsis.slice(nsis.indexOf('!ifdef BUILD_UNINSTALLER'));
 
-test('the installer is built with the exact Chocolatey package version', () => {
-  const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+test('the version registered with Chocolatey is the one release.yml publishes', () => {
+  const pkg = JSON.parse(read('package.json'));
   assert.equal(BUILD_VERSION, pkg.buildVersion || pkg.version);
-  const script = fs.readFileSync(path.join(root, 'scripts/package-windows.js'), 'utf8');
-  assert.match(script, /process\.env\.STEPFORGE_CHOCO_VERSION = BUILD_VERSION;/);
-  assert.match(nsis, /!define STEPFORGE_CHOCO_VERSION "\$%STEPFORGE_CHOCO_VERSION%"/);
-  assert.match(nsis, /!error "STEPFORGE_CHOCO_VERSION is not set/);
-  // The version is passed to the helper, and the file name uses the same number.
-  assert.match(nsis, /-Version "\$\{STEPFORGE_CHOCO_VERSION\}"/);
-  assert.match(createWindowsInstallerConfig('/tmp/x').nsis.artifactName, /Setup \$\{buildVersion\}/);
+
+  // release.yml takes the package version from the installer file name.
+  const job = read('.github/workflows/release.yml').split('  publish-chocolatey:')[1];
+  const pattern = job.match(/-notmatch '(\^StepForge Setup [^']+)'/)[1];
+  const releaseName = new RegExp(pattern);
+  const artifactName = createWindowsInstallerConfig('/tmp/x').nsis.artifactName;
+  for (const version of ['1.4.0', '1.4.0.2', '0.3.2.1', '10.20.30.40', '1.4', '1.4.0-beta.1', '1.4.0"; calc', '']) {
+    const fileName = artifactName.replace('${productName}', 'StepForge').replace('${buildVersion}', version).replace('${ext}', 'exe');
+    const published = (fileName.match(releaseName) || [])[1] || null;
+    assert.equal(chocolateyPackageVersion(version), published, `build version ${JSON.stringify(version)}`);
+  }
+
+  // package-windows.js hands it to makensis, and the installer passes it on.
+  const script = read('scripts/package-windows.js');
+  assert.match(script, /const chocoVersion = chocolateyPackageVersion\(BUILD_VERSION\);/);
+  assert.match(script, /process\.env\.STEPFORGE_CHOCO_VERSION = chocoVersion;/);
+  assert.match(script, /delete process\.env\.STEPFORGE_CHOCO_VERSION;/);
+  assert.match(installerPart, /"\$%STEPFORGE_CHOCO_VERSION%"/);
+  assert.match(installerPart, /-Version "\$\{STEPFORGE_CHOCO_VERSION\}"/);
 });
 
-test('the installer offers Chocolatey updates on a page after the desktop icon page', () => {
+test('an installer built without the version still builds, without the Updates page', () => {
+  // makensis keeps an unset $%VAR% as literal text, so "!if ... == ''" alone
+  // never fires; the "%" check does.
+  assert.match(installerPart, /!searchreplace STEPFORGE_CHOCO_VERSION_NO_PCT "\$\{STEPFORGE_CHOCO_VERSION_ENV\}" "%" ""/);
+  assert.doesNotMatch(nsis, /!error/);
+  const init = installerPart.slice(installerPart.indexOf('!macro customInit'));
+  assert.match(init, /!ifndef STEPFORGE_CHOCO_VERSION\s+StrCpy \$StepForgeChocoSkip "true"\s+!endif/);
+  const install = installerPart.slice(installerPart.indexOf('!macro customInstall'));
+  assert.match(install, /!ifdef STEPFORGE_CHOCO_VERSION\s+\$\{If\} \$StepForgeChocoSkip != "true"/);
+});
+
+test('the installer offers Chocolatey updates on a page after the desktop icon page, checked by default', () => {
   const desktop = nsis.indexOf('PageCallbacks StepForgeDesktopShortcutPagePre');
   const choco = nsis.indexOf('PageCallbacks StepForgeChocoPagePre');
   assert.ok(desktop > 0 && choco > desktop);
-  assert.match(nsis, /Keep StepForge updated with Chocolatey/);
-  assert.match(nsis, /Install Chocolatey and keep StepForge updated with it/);
+  assert.match(nsis, /"Keep StepForge updated with Chocolatey"/);
+  assert.match(nsis, /"Install Chocolatey and keep StepForge updated with it"/);
   assert.match(nsis, /needs internet access and administrator approval/);
   assert.match(nsis, /switches StepForge to an all-users install/);
-  // Checked by default.
   assert.match(nsis, /StrCpy \$StepForgeChocoState "true"/);
-  assert.match(nsis, /BM_SETCHECK\} \$\{BST_CHECKED\}/);
-});
-
-test('the installer skips Chocolatey for silent installs, upgrades and choco itself', () => {
-  assert.match(nsis, /\$\{StdUtils\.TestParameter\} \$R9 "\/chocolatey"/);
-  assert.match(nsis, /\$\{If\} \$\{Silent\}\s+\$\{StdUtils\.TestParameter\}/);
-  assert.match(nsis, /\$\{If\} \$\{isUpdated\}\s+StrCpy \$StepForgeChocoSkip "true"/);
-  for (const name of ['ChocolateyPackageName', 'ChocolateyPackageFolder', 'ChocolateyPackageVersion']) {
-    assert.match(nsis, new RegExp(`ReadEnvStr \\$0 ${name}`));
-  }
-  // ChocolateyInstall is permanent on any machine with choco, so it is only used to find choco.exe.
-  assert.doesNotMatch(nsis, /ReadEnvStr \$0 ChocolateyInstall\s+\$\{If\} \$0 != ""\s+StrCpy \$StepForgeChocoSkip/);
   assert.match(nsis, /\$\{If\} \$StepForgeChocoSkip == "true"\s+Abort/);
 });
 
-test('the installer runs the helper once, elevated, and never fails the install', () => {
-  assert.match(nsis, /File "\/oname=\$PLUGINSDIR\\chocolatey-setup\.ps1" "\$\{PROJECT_DIR\}\\packaging\\windows\\chocolatey-setup\.ps1"/);
-  assert.equal((nsis.match(/ExecShellWait "runas"/g) || []).length, 2, 'one install launch, one uninstall launch');
-  assert.match(nsis, /-InstallChocolatey/);
-  assert.match(nsis, /\$StepForgeChocoPresent != "true"/);
-  // Failure only shows a message that points at the log and the docs.
-  assert.match(nsis, /StepForge was installed, but Chocolatey updates were not set up/);
-  assert.match(nsis, /StepForge\\chocolatey-setup\.log/);
-  assert.match(nsis, /docs\/windows\/chocolatey\.md/);
-  assert.doesNotMatch(nsis, /Abort\s+\$\{EndIf\}\s+\$\{EndIf\}\s+!macroend/);
-  assert.ok(!/ExecShellWait[^\n]*\n\s*(Abort|Quit)/.test(nsis));
+test('the installer skips Chocolatey for silent installs without /chocolatey, upgrades and choco itself', () => {
+  // StdUtils matches option names without their "/" (electron-builder's own
+  // flags are tested the same way: "updated" for --updated).
+  assert.match(installerPart, /\$\{If\} \$\{Silent\}\s+\$\{StdUtils\.TestParameter\} \$R9 "chocolatey"/);
+  assert.doesNotMatch(nsis, /TestParameter \$R9 "\//);
+  assert.match(installerPart, /\$\{If\} \$\{isUpdated\}\s+StrCpy \$StepForgeChocoSkip "true"/);
+  for (const name of ['ChocolateyPackageName', 'ChocolateyPackageFolder', 'ChocolateyPackageVersion']) {
+    assert.match(installerPart, new RegExp(`ReadEnvStr \\$0 ${name}\\s+\\$\\{If\\} \\$0 != ""\\s+StrCpy \\$StepForgeChocoSkip "true"`));
+    assert.match(uninstallerPart, new RegExp(`ReadEnvStr \\$1 ${name}\\s+\\$\\{If\\} \\$1 != ""\\s+StrCpy \\$0 "false"`));
+  }
+  // ChocolateyInstall is permanent on any machine with choco, so it never means "choco is running us".
+  assert.doesNotMatch(nsis, /ReadEnvStr \$[01] ChocolateyInstall\s+\$\{If\} \$[01] != ""\s+StrCpy \$(StepForgeChocoSkip|0)/);
 });
 
-test('the uninstaller unregisters from Chocolatey only for interactive user uninstalls', () => {
-  const un = nsis.slice(nsis.indexOf('!macro customUnInstall'));
-  assert.match(un, /\$\{If\} \$\{Silent\}\s+\$\{OrIf\} \$\{isUpdated\}/);
-  assert.match(un, /ReadEnvStr \$1 ChocolateyPackageName/);
-  assert.match(un, /-Uninstall'/);
-  assert.match(nsis, /!ifdef BUILD_UNINSTALLER\s+;/);
+test('the helper runs elevated once and any failure only shows a note', () => {
+  const run = nsis.slice(nsis.indexOf('!macro StepForgeRunChocoHelper'), nsis.indexOf('!macroend'));
+  assert.equal((nsis.match(/^\s*ExecShellWait /gm) || []).length, 1, 'one launcher macro');
+  assert.match(run, /ExecShellWait "runas" "\$2" "\$\{ARGS\}" SW_HIDE/);
+  assert.match(run, /\$\{If\} \$\{Errors\}\s+StrCpy \$4 "administrator approval was declined/);
+  assert.match(run, /StrCpy \$3 "failed"/);
+  assert.equal((nsis.match(/!insertmacro StepForgeRunChocoHelper \$1/g) || []).length, 2, 'install and uninstall');
+  assert.match(installerPart, /\$\{If\} \$StepForgeChocoPresent != "true"\s+StrCpy \$1 "\$1 -InstallChocolatey"/);
+  assert.match(installerPart, /MessageBox MB_OK\|MB_ICONINFORMATION "StepForge was installed, but Chocolatey updates were not set up\.[^"]*Details: \$4[^"]*docs\/windows\/chocolatey\.md"/);
+  // Nothing after the helper can abort the install or uninstall.
+  const after = nsis.slice(nsis.indexOf('!macro customInstall'));
+  assert.doesNotMatch(after, /\b(Abort|Quit|SetErrorLevel)\b/);
 });
 
-test('the Chocolatey helper script covers discovery, idempotent setup and never fails', () => {
-  // choco.exe lookup order.
-  const env = helper.indexOf("$env:ChocolateyInstall");
-  const onPath = helper.indexOf("Get-Command 'choco.exe'");
-  const programData = helper.indexOf("'chocolatey\\bin\\choco.exe'");
-  assert.ok(env > 0 && onPath > env && programData > onPath);
-  // Official Chocolatey install command, only when asked for.
-  assert.match(helper, /Set-ExecutionPolicy Bypass -Scope Process -Force/);
-  assert.match(helper, /SecurityProtocol -bor 3072/);
-  assert.match(helper, /DownloadString\('https:\/\/community\.chocolatey\.org\/install\.ps1'\)/);
-  assert.match(helper, /if \(-not \$InstallChocolatey\)/);
-  // Source added only if no source has the feed URL, under any name.
-  assert.match(helper, /packages\.twestbrook\.com\/nuget\/stepforge-choco\//);
-  assert.match(helper, /'source', 'list', '-r'/);
-  assert.match(helper, /\$fields\[1\]\.Trim\(\)\.TrimEnd\('\/'\) -eq \$wanted/);
-  assert.match(helper, /"--name=\$SourceName", "--source=\$FeedUrl"/);
-  // Registers the exact version without running the installer again, once.
-  assert.match(helper, /'--version', \$Version, '--source', \$FeedUrl, '-y', '--skip-automation-scripts'/);
-  assert.match(helper, /if \(\$registered -eq \$Version\)/);
-  assert.match(helper, /'uninstall', 'stepforge', '-y', '--skip-automation-scripts'/);
-  // Logging and never-fail behavior.
-  assert.match(helper, /Join-Path \$env:ProgramData 'StepForge'/);
-  assert.match(helper, /chocolatey-setup\.log/);
-  assert.match(helper, /catch \{\s+Write-Log "Unexpected error/);
-  assert.match(helper, /\nexit 0\s*$/);
-  assert.match(helper, /Write-Result 'failed'/);
-  // Windows PowerShell 5.1 compatible: no PowerShell 7 syntax.
-  assert.doesNotMatch(helper, /\?\?|SkipHttpErrorCheck|\?\s.*\s:\s/);
+test('the uninstaller unregisters only for interactive uninstalls of a registered StepForge', () => {
+  assert.match(uninstallerPart, /\$\{If\} \$\{Silent\}\s+\$\{OrIf\} \$\{isUpdated\}\s+StrCpy \$0 "false"/);
+  // Only the machine-wide ChocolateyInstall (administrators only) and an
+  // actual registration trigger a UAC prompt.
+  assert.match(uninstallerPart, /ReadRegStr \$1 HKLM "SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment" ChocolateyInstall/);
+  assert.match(uninstallerPart, /\$\{AndIf\} \$\{FileExists\} "\$1\\lib\\stepforge\\stepforge\.nuspec"/);
+  // The helper comes from inside the uninstaller, never from a copy on disk.
+  assert.match(uninstallerPart, /File "\/oname=\$PLUGINSDIR\\chocolatey-setup\.ps1"/);
+  assert.match(uninstallerPart, /-Uninstall -ResultFile/);
+  assert.doesNotMatch(nsis, /ProgramData\\StepForge\\chocolatey-setup\.ps1|\$1\\StepForge\\chocolatey-setup\.ps1/);
+});
+
+test('Chocolatey packages do not shim the embedded installer', () => {
+  const job = read('.github/workflows/release.yml').split('  publish-chocolatey:')[1];
+  const copy = job.indexOf('Copy-Item -LiteralPath $installer.FullName');
+  const ignore = job.indexOf('New-Item -ItemType File -Force -Path "packaging/windows/chocolatey/tools/$($installer.Name).ignore"');
+  const pack = job.indexOf('choco pack');
+  assert.ok(copy > 0 && ignore > copy && pack > ignore);
 });

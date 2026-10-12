@@ -774,9 +774,12 @@ function setupIpc() {
       && c.optionalBase64(a.originalBase64) && c.optionalBase64(a.workingBase64)
       && c.optionalNumber(a.position, 0, 100000),
   });
-  h('steps:reorder', ({ guideId, order }) => store.reorderSteps(guideId, order), {
+  h('steps:reorder', ({ guideId, order, parents }) => store.reorderSteps(guideId, order, parents), {
     validate: (a) => c.id(a.guideId)
-      && Array.isArray(a.order) && a.order.length <= 100000 && a.order.every((id) => c.id(id)),
+      && Array.isArray(a.order) && a.order.length <= 100000 && a.order.every((id) => c.id(id))
+      && (a.parents == null || (typeof a.parents === 'object' && !Array.isArray(a.parents)
+        && Object.keys(a.parents).length <= 100000
+        && Object.entries(a.parents).every(([id, parentId]) => c.id(id) && c.optionalId(parentId)))),
   });
   h('step:imagePath', ({ guideId, stepId, which }) => {
     const p = store.stepImagePath(guideId, stepId, which || 'working');

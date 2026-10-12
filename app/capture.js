@@ -54,6 +54,8 @@ const { DEFAULT_CAPTURE_TITLES } = require('../core/text-intel');
 // each register. Tunable via capture.clickDebounceMs; this is only the
 // default when the setting is absent.
 const DEFAULT_CLICK_DEBOUNCE_MS = 200;
+// Shown before and during a recording whose Window setting can't be honoured.
+const WINDOW_FALLBACK_NOTE = 'Window capture is not available on this desktop, so StepForge records the full screen.';
 // How long a Linux raw button event waits for its regular twin (the
 // representation that carries root coordinates) before firing without them.
 const LINUX_CLICK_TWIN_MS = 25;
@@ -269,10 +271,22 @@ class CaptureService {
     }
   }
 
+  /**
+   * True when Settings says Window but click captures will hold the whole
+   * screen: on Wayland outside GNOME there is no per-window grab (see
+   * frameForClick). GNOME's capture service crops to the window itself.
+   */
+  windowModeFallsBack() {
+    return (this.settings.get('capture.mode') || 'fullscreen') === 'window' && this.onWayland();
+  }
+
   state() {
+    // Said up front, so the recording bar shows it before anything is captured.
+    const modeNote = this.windowModeFallsBack() ? WINDOW_FALLBACK_NOTE : '';
     return this.session
       ? {
         active: true,
+        modeNote,
         paused: this.session.paused,
         guideId: this.session.guideId,
         count: this.session.count,
@@ -890,14 +904,14 @@ class CaptureService {
     // not run on Wayland. Without this fallback every click would find no
     // frame and be skipped, so window mode would record nothing. Use the
     // full-screen stream frame instead and say so.
-    if (grabMode === 'window' && this.onWayland()) {
+    if (grabMode === 'window' && this.windowModeFallsBack()) {
       clog('window mode is unavailable on this Wayland session; using the full-screen stream frame');
       if (!this.windowFallbackNoted && this.session) {
         this.windowFallbackNoted = true;
         this.notify('capture:diagnostic', {
           kind: 'window-mode-unavailable',
           guideId: this.session.guideId,
-          reason: 'Window capture is not available on this desktop, so StepForge is recording the full screen.',
+          reason: WINDOW_FALLBACK_NOTE,
         });
       }
       grabMode = 'fullscreen';

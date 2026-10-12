@@ -154,6 +154,7 @@ const api = {
     onAdded: (fn) => ipcRenderer.on('capture:added', (e, payload) => fn(payload)),
     onState: (fn) => ipcRenderer.on('capture:state', (e, payload) => fn(payload)),
     onStepUpdated: (fn) => ipcRenderer.on('step:updated', (e, payload) => fn(payload)),
+    onDiagnostic: (fn) => ipcRenderer.on('capture:diagnostic', (e, payload) => fn(payload)),
   },
   editor: {
     onZoomShortcut: (fn) => ipcRenderer.on('editor:zoom-shortcut', (e, payload) => fn(payload)),

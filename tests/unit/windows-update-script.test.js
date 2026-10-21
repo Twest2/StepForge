@@ -68,11 +68,14 @@ async function runScript({ pid, chocoExit = 0, installed = '1.4.1', target = '1.
   swap(/^function Test-TrustedChoco \{$/m, 'function Test-TrustedChoco { return $true }\r\nfunction Test-TrustedChoco-NotUsed {');
   if (!windows) swap(/'lib\\stepforge\\stepforge\.nuspec'/, "'lib/stepforge/stepforge.nuspec'");
   if (timeoutSec) swap(/-Timeout 120\b/, `-Timeout ${timeoutSec}`);
+  // Windows PowerShell doesn't print Read-Host's prompt when its input is
+  // piped, so a stand-in prints it, then still waits for a line like the real one.
+  text = 'function Read-Host { param([string]$Prompt) Write-Host "${Prompt}: "; [void][Console]::In.ReadLine() }\r\n' + text;
 
   // Asynchronous, so this process keeps reaping its own stand-in StepForge.
   // With its output piped, Windows PowerShell would write -EncodedCommand's
-  // host messages as CLIXML, dropping Read-Host's prompt; the real window
-  // isn't piped, so ask for plain text here.
+  // host messages as CLIXML; the real window isn't piped, so ask for plain
+  // text here.
   const child = spawn(pwsh, ['-NoProfile', '-OutputFormat', 'Text', '-EncodedCommand', encodeCommand(text)], { stdio: ['pipe', 'pipe', 'pipe'] });
   let output = '';
   child.stdout.on('data', (chunk) => { output += chunk; });

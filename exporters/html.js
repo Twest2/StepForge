@@ -101,7 +101,7 @@ function codeHtml(block, ast) {
       .filter(Boolean).join(';');
     return style ? `<span style="${style}">${escapeHtml(run.text)}</span>` : escapeHtml(run.text);
   }).join(''));
-  return `<pre class="code themed" style="background:${hl.background};color:${hl.foreground}"><code>${lines.join('\n')}</code></pre>`;
+  return `<pre class="code themed${hl.dark ? '' : ' light'}" style="background:${hl.background};color:${hl.foreground}"><code>${lines.join('\n')}</code></pre>`;
 }
 
 function renderStep(step, ast, images, tpl, { rich = false } = {}) {
@@ -226,6 +226,14 @@ a { color: var(--accent); text-underline-offset: 2px; }
 .callout-success { border-color: var(--success); background: var(--success-bg); } .callout-success .callout-title { color: var(--success); }
 .callout-warn { border-color: var(--warn); background: var(--warn-bg); } .callout-warn .callout-title { color: var(--warn); }
 .callout-error { border-color: var(--error); background: var(--error-bg); } .callout-error .callout-title { color: var(--error); }
+.code-block { position: relative; margin: 1em 0; }
+.code-block > pre.code { margin: 0; }
+.copy-code { position: absolute; top: 8px; right: 8px; padding: 4px 10px; font: 600 12px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: rgba(255,255,255,.85); background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.18); border-radius: 6px;
+  cursor: pointer; opacity: .75; transition: opacity .15s, background .15s; }
+.code-block:hover .copy-code, .copy-code:focus-visible { opacity: 1; background: rgba(255,255,255,.16); }
+.code-block.light .copy-code { color: rgba(0,0,0,.7); background: rgba(0,0,0,.04); border-color: rgba(0,0,0,.15); }
+.code-block.light:hover .copy-code, .code-block.light .copy-code:focus-visible { background: rgba(0,0,0,.08); }
 pre.code { background: var(--code-bg); color: var(--code-fg); padding: 14px 16px; border-radius: 8px; overflow-x: auto; font-size: .88rem; line-height: 1.55; }
 code { font-family: ui-monospace, "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
 :not(pre) > code { background: var(--soft); border: 1px solid var(--border); border-radius: 5px; padding: 1px 5px; font-size: .9em; }
@@ -248,6 +256,7 @@ tbody tr:last-child td { border-bottom: 0; }
   .contents, .toc, .done-toggle, .progress, .lightbox { display: none !important; }
   .step { break-inside: avoid-page; }
   .shot img { box-shadow: none; max-height: 85vh; width: auto; }
+  .copy-code { display: none; }
   pre.code.themed { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   a { color: inherit; }
 }
@@ -280,6 +289,54 @@ const RICH_CSS = `
   .page.rich { display: block; }
   .toc { position: static; max-height: none; border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; margin-bottom: 32px; background: var(--soft); }
 }
+`;
+
+// Adds a Copy button to each code block. Script-added, so a page opened
+// with scripts off shows no button that can't work. Copies the code's plain
+// text, never the colors.
+const COPY_SCRIPT = `
+(function () {
+  function fallbackCopy(text) {
+    var area = document.createElement('textarea');
+    area.value = text;
+    area.setAttribute('readonly', '');
+    area.style.position = 'fixed';
+    area.style.opacity = '0';
+    document.body.appendChild(area);
+    area.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) {}
+    area.remove();
+    return ok ? Promise.resolve() : Promise.reject(new Error('copy failed'));
+  }
+  function copyText(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+      return navigator.clipboard.writeText(text).catch(function () { return fallbackCopy(text); });
+    }
+    return fallbackCopy(text);
+  }
+  document.querySelectorAll('pre.code').forEach(function (pre) {
+    var wrap = document.createElement('div');
+    wrap.className = 'code-block' + (pre.classList.contains('light') ? ' light' : '');
+    pre.parentNode.insertBefore(wrap, pre);
+    wrap.appendChild(pre);
+    var button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'copy-code';
+    button.textContent = 'Copy';
+    button.setAttribute('aria-label', 'Copy code');
+    var timer;
+    function say(label) {
+      button.textContent = label;
+      clearTimeout(timer);
+      timer = setTimeout(function () { button.textContent = 'Copy'; }, 1500);
+    }
+    button.addEventListener('click', function () {
+      copyText(pre.querySelector('code').textContent).then(function () { say('Copied'); }, function () { say('Copy failed'); });
+    });
+    wrap.appendChild(button);
+  });
+})();
 `;
 
 const RICH_SCRIPT = `
@@ -380,7 +437,7 @@ ${ast.steps.map((step) => renderStep(step, ast, images, tpl)).join('\n')}
 ${footer(ast)}
 </div>`;
   const file = path.join(outDir, `${guideSlug(ast)}.html`);
-  fs.writeFileSync(file, page(ast, tpl, BASE_CSS, body));
+  fs.writeFileSync(file, page(ast, tpl, BASE_CSS, body, body.includes('<pre class="code') ? COPY_SCRIPT : ''));
   return { file, imageCount: images.size };
 }
 
@@ -408,7 +465,8 @@ ${footer(ast)}
 </div>
 <div class="lightbox" role="dialog" aria-label="Screenshot"><img alt=""></div>`;
   const file = path.join(outDir, `${guideSlug(ast)}-rich.html`);
-  fs.writeFileSync(file, page(ast, tpl, BASE_CSS + RICH_CSS, body, RICH_SCRIPT.replace('__KEY__', JSON.stringify(storageKey))));
+  const script = RICH_SCRIPT.replace('__KEY__', JSON.stringify(storageKey)) + (body.includes('<pre class="code') ? COPY_SCRIPT : '');
+  fs.writeFileSync(file, page(ast, tpl, BASE_CSS + RICH_CSS, body, script));
   return { file, imageCount: images.size };
 }
 

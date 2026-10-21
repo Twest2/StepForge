@@ -229,3 +229,23 @@ test('Markdown: the fence names the language editors know', (t) => {
   const md = fs.readFileSync(exportMarkdown(ast(), out('md')).file, 'utf8');
   assert.ok(md.includes('```python\nimport tkinter as tk\ntk.Tk()\n```'));
 });
+
+test('HTML: code blocks get a script-added Copy button that copies the plain text; pages without code get no script', (t) => {
+  const { ast, out } = codeGuide(t);
+  for (const exporter of [exportHtmlSimple, exportHtmlRich]) {
+    const html = fs.readFileSync(exporter(ast(), out(`copy-${exporter.name}`)).file, 'utf8');
+    assert.ok(html.includes("button.className = 'copy-code'"), `${exporter.name} has the copy script`);
+    assert.ok(html.includes("pre.querySelector('code').textContent"), 'copies the text, not the markup');
+    assert.ok(html.includes('\n  .copy-code { display: none; }\n'), 'hidden when printed');
+  }
+  const light = fs.readFileSync(exportHtmlSimple(ast({ theme: 'github-light' }), out('copy-light')).file, 'utf8');
+  assert.ok(light.includes('<pre class="code themed light"'), 'light themes mark the block so the button stays visible');
+
+  const root = makeTmpDir('nocode');
+  t.after(() => rmrf(root));
+  const store = new GuideStore(path.join(root, 'data'));
+  const guide = store.createGuide({ title: 'No code' });
+  store.addStep(guide.guideId, { kind: 'empty', title: 'Just text', descriptionHtml: '<p>Hello</p>' });
+  const plainPage = fs.readFileSync(exportHtmlSimple(buildRenderAst(store, guide.guideId), path.join(root, 'out')).file, 'utf8');
+  assert.ok(!plainPage.includes('<script>'));
+});

@@ -29,7 +29,7 @@
 <p align="center">
   <a href="https://github.com/Twest2/StepForge/releases/latest"><strong>Download</strong></a> ·
   <a href="docs/GETTING_STARTED.md"><strong>Getting started</strong></a> ·
-  <a href="#share-a-guide-with-a-link"><strong>Share with a link</strong></a> ·
+  <a href="#share-a-guide-with-a-web-link"><strong>Share with a link</strong></a> ·
   <a href="docs/windows_installation.md"><strong>See a real guide made with it</strong></a> ·
   <a href="https://stepforge.twestbrook.com"><strong>Website</strong></a>
 </p>

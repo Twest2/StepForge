@@ -48,14 +48,18 @@ class LibraryLocation {
   // verified destination is committed, the old library stays authoritative.
   applyPending() {
     if (this.override || !this.state.pending) return this.status().current;
-    let staging;
+    let holder;
     try {
       const { source, target } = this.validate(this.state.pending.source, this.state.pending.target);
       const before = this.manifest(source);
-      staging = fs.mkdtempSync(path.join(path.dirname(target), '.stepforge-move-'));
+      // Copy into a folder that doesn't exist yet: newer Node versions refuse
+      // to copy onto an existing directory, even an empty one, with
+      // errorOnExist. The temporary holder keeps the name unique.
+      holder = fs.mkdtempSync(path.join(path.dirname(target), '.stepforge-move-'));
+      const staging = path.join(holder, 'library');
       fs.cpSync(source, staging, { recursive: true, force: false, errorOnExist: true });
       if (before !== this.manifest(staging) || before !== this.manifest(source)) throw new Error('Library verification failed; the original is unchanged.');
-      fs.rmdirSync(target); fs.renameSync(staging, target); staging = null;
+      fs.rmdirSync(target); fs.renameSync(staging, target); fs.rmdirSync(holder); holder = null;
       const previous = this.state;
       this.state = { current: target, backup: source };
       try { writeJsonSync(this.file, this.state); }
@@ -67,7 +71,7 @@ class LibraryLocation {
       return target;
     } catch (error) {
       this.error = `The library was not moved: ${error.message}`;
-      if (staging) fs.rmSync(staging, { recursive: true, force: true });
+      if (holder) fs.rmSync(holder, { recursive: true, force: true });
       return this.status().current;
     }
   }

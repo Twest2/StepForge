@@ -70,7 +70,10 @@ async function runScript({ pid, chocoExit = 0, installed = '1.4.1', target = '1.
   if (timeoutSec) swap(/-Timeout 120\b/, `-Timeout ${timeoutSec}`);
 
   // Asynchronous, so this process keeps reaping its own stand-in StepForge.
-  const child = spawn(pwsh, ['-NoProfile', '-EncodedCommand', encodeCommand(text)], { stdio: ['pipe', 'pipe', 'pipe'] });
+  // With its output piped, Windows PowerShell would write -EncodedCommand's
+  // host messages as CLIXML, dropping Read-Host's prompt; the real window
+  // isn't piped, so ask for plain text here.
+  const child = spawn(pwsh, ['-NoProfile', '-OutputFormat', 'Text', '-EncodedCommand', encodeCommand(text)], { stdio: ['pipe', 'pipe', 'pipe'] });
   let output = '';
   child.stdout.on('data', (chunk) => { output += chunk; });
   child.stderr.on('data', (chunk) => { output += chunk; });

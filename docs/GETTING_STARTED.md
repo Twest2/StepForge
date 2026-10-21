@@ -73,7 +73,7 @@ For each step you can:
   so readers see the relevant part of the screen instead of the whole desktop.
 - Start a **New page** at this step in paged formats such as PDF.
 - **Replace the screenshot** when the software you documented has changed:
-  right-click the step and choose **Choose screenshot…**, then pick an image
+  right-click the step and choose **Choose image…**, then pick an image
   file. The step's title, description, and annotations stay, so check that
   arrows and boxes still line up. Press **Ctrl+Z** to go back to the old
   screenshot. A step without a screenshot gets one the same way.

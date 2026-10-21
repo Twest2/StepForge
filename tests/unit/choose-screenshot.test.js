@@ -75,7 +75,7 @@ function editor(api) {
   return instance;
 }
 
-test('Choose screenshot… can be undone and redone, including the original image', async () => {
+test('Choose image… can be undone and redone, including the original image', async () => {
   const calls = [];
   const api = {
     saved: null,
@@ -113,7 +113,7 @@ test('cancelling the file picker changes nothing', async () => {
   assert.deepEqual(e.toasts, []);
 });
 
-test('the step menu offers Choose screenshot…', () => {
+test('the step menu offers Choose image…', () => {
   const source = fs.readFileSync(path.join(__dirname, '../../app/renderer/editor.js'), 'utf8');
-  assert.match(source, /label: 'Choose screenshot…', action: \(\) => this\.chooseScreenshot\(step\.stepId\)/);
+  assert.match(source, /label: 'Choose image…', action: \(\) => this\.chooseScreenshot\(step\.stepId\)/);
 });

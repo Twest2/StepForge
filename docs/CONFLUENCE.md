@@ -1,5 +1,7 @@
 # Publish guides to Confluence
 
+> **Beta.** Publishing to Confluence is new and may still change.
+
 StepForge can publish a guide as a Confluence page, with its screenshots
 attached. Publishing the same guide again updates that page, so its link
 never changes. This works with **Confluence Cloud** and with **Confluence Data

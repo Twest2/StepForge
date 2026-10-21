@@ -133,6 +133,17 @@ const api = {
     onStatus: (fn) => { const listener = (e, payload) => fn(payload); ipcRenderer.on('confluence:status', listener); return () => ipcRenderer.removeListener('confluence:status', listener); },
     onProgress: (fn) => { const listener = (e, payload) => fn(payload); ipcRenderer.on('confluence:progress', listener); return () => ipcRenderer.removeListener('confluence:progress', listener); },
   },
+  wikijs: {
+    status: invoke('wikijs:status'),
+    probe: invoke('wikijs:probe'),
+    connect: invoke('wikijs:connect'),
+    cancel: invoke('wikijs:cancel'),
+    disconnect: invoke('wikijs:disconnect'),
+    defaults: invoke('wikijs:defaults'),
+    publish: invoke('wikijs:publish'),
+    onStatus: (fn) => { const listener = (e, payload) => fn(payload); ipcRenderer.on('wikijs:status', listener); return () => ipcRenderer.removeListener('wikijs:status', listener); },
+    onProgress: (fn) => { const listener = (e, payload) => fn(payload); ipcRenderer.on('wikijs:progress', listener); return () => ipcRenderer.removeListener('wikijs:progress', listener); },
+  },
   redact: {
     check: invoke('redact:check'),
     review: invoke('redact:review'),

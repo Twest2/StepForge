@@ -27,10 +27,10 @@ const EXPORTERS = {
 };
 
 /**
- * What the export dialog shows for each format: a one-line description and
+ * What the export dialog shows for each format: a one-line description,
  * friendly labels/controls for the options (OPTION_INFO) where an exporter
- * provides them. Options without an entry fall back to a label derived
- * from the key.
+ * provides them, and a badge for formats that are new ("Beta"). Options
+ * without an entry fall back to a label derived from the key.
  */
 const FORMAT_INFO = {
   pdf: { description: 'A print-ready document with a cover page and contents.' },
@@ -41,8 +41,8 @@ const FORMAT_INFO = {
   'html-rich': { description: 'An interactive checklist page: contents sidebar, "done" toggles and zoomable screenshots.', options: require('./html').OPTION_INFO },
   gif: { description: 'An animated slideshow of the screenshots for chat, tickets and READMEs.', options: require('./gif').OPTION_INFO },
   'image-bundle': { description: 'A folder of numbered, annotated screenshots with an index.json.', options: require('./image-bundle').OPTION_INFO },
-  confluence: { description: 'A Word document ready for Confluence\'s built-in import, so you can create the page from the website.', options: require('./confluence').OPTION_INFO },
-  wikijs: { description: 'A Wiki.js 2 markdown page with Wiki.js callouts, plus a folder of screenshots.', options: require('./wikijs').OPTION_INFO },
+  confluence: { description: 'A Word document ready for Confluence\'s built-in import, so you can create the page from the website.', options: require('./confluence').OPTION_INFO, badge: 'Beta' },
+  wikijs: { description: 'A Wiki.js 2 markdown page with Wiki.js callouts, plus a folder of screenshots.', options: require('./wikijs').OPTION_INFO, badge: 'Beta' },
   json: { description: 'The raw guide data and screenshots, for scripts and integrations.' },
 };
 

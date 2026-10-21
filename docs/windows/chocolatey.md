@@ -34,7 +34,22 @@ StepForge is installed for all users and appears in the Start menu. Head to
 
 ## Update
 
-Close StepForge, then run:
+The easiest way: in StepForge, open **Settings → About**, press **Check for
+updates**, then **Update now**. StepForge saves your work and closes, Windows
+asks for administrator approval, and a PowerShell window titled **Updating
+StepForge** runs `choco upgrade stepforge -y` (StepForge only, nothing else
+installed through Chocolatey). When it's done, StepForge opens again as a
+normal app. If you decline the approval prompt, StepForge stays open and
+nothing changes. If the update fails, the window says why, shows Chocolatey's
+exit code and stays open until you press Enter; Chocolatey's own log is
+`C:\ProgramData\chocolatey\logs\chocolatey.log`.
+
+**Update now** appears only when StepForge is registered with Chocolatey,
+which a Chocolatey install, or the .exe installer's **Keep StepForge updated
+with Chocolatey** option, does.
+
+To update from PowerShell instead, close StepForge, then run this in an
+Administrator PowerShell:
 
 ```powershell
 choco upgrade stepforge -y
@@ -62,7 +77,8 @@ an all-users install already has it):
 3. Tells Chocolatey which StepForge version you just installed, without
    running the installer again.
 
-After that, `choco upgrade stepforge -y` updates StepForge. Installed with an
+After that, **Settings → About → Check for updates → Update now** updates
+StepForge, and so does `choco upgrade stepforge -y`. Installed with an
 older installer that has no **Updates** page? Run the latest installer once;
 your guides and settings are kept. Notes:
 
@@ -117,6 +133,9 @@ choco source remove --name=stepforge
 | `choco` is not recognized | Chocolatey isn't installed, or the terminal was opened before it was. Install Chocolatey, then open a new Administrator PowerShell. |
 | Access denied, or a request for elevation | Reopen PowerShell with **Run as administrator** and try again. |
 | `The package was not found with the source(s) listed` | The StepForge feed hasn't been added. Run the `choco source add` command above and confirm it appears in `choco source list`. |
+| **Update now** is missing from Settings → About | It appears only after **Check for updates** finds a newer version. If it still doesn't, StepForge isn't registered with Chocolatey: run the latest installer and keep **Keep StepForge updated with Chocolatey** checked, or see [Already installed from the .exe?](#already-installed-from-the-exe). |
+| The update window says StepForge did not close | StepForge was still running after two minutes, so nothing was installed. Press **Update now** again, or close StepForge and run `choco upgrade stepforge -y` in an Administrator PowerShell. |
+| The update window says Chocolatey doesn't have the new version yet | The Chocolatey package is published shortly after the GitHub release. Try again later. |
 
 To check which version you have installed:
 

@@ -58,6 +58,11 @@ only its version number (as the browser-style "User-Agent"); GitHub sees your
 IP address as with any website visit. See the
 [GitHub Privacy Statement](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement).
 
+On Windows, **Update now** (shown when StepForge is registered with
+Chocolatey) runs `choco upgrade stepforge -y`, so Chocolatey downloads the new
+version from the StepForge package feed and its configured sources, as it
+does when you run the command yourself.
+
 The Ubuntu `.deb` and Fedora `.rpm` add the StepForge APT or DNF repository
 (`packages.twestbrook.com`) to your system's software sources, as installing
 from the repository does. That traffic comes from your package manager, not

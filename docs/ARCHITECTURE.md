@@ -185,7 +185,12 @@ opt-in and off by default:
   presses the button in Settings → About: one GET to GitHub's latest-release
   API with redirects refused, a 10-second deadline, and a 1 MB response cap.
   Only a release URL under the StepForge releases page is ever offered to the
-  user.
+  user. On Windows installs registered with Chocolatey, **Update now**
+  (`app/windows-update.js`) makes no request itself: it starts one elevated
+  PowerShell window, after a UAC prompt, that waits for StepForge to quit and
+  runs `choco upgrade stepforge -y`. The script is built in the main process
+  from StepForge's own PID and paths, never from renderer input, and passed
+  with `-EncodedCommand` rather than as a file.
 
 - **AI** (`app/text-intel.js`, `core/text-intel.js`) talks to a user-configured
   Ollama endpoint. Non-loopback hosts are refused unless

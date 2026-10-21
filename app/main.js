@@ -861,7 +861,7 @@ function setupIpc() {
     reindex(guideId);
     return { ok: true, step: saved, removedBlurs };
   };
-  // Right-click a step → Choose screenshot…: swap in an image file, keeping
+  // Right-click a step → Choose image…: swap in an image file, keeping
   // the step's title, description and annotations.
   h('step:chooseImage', async ({ guideId, stepId }) => {
     store.getStep(guideId, stepId); // throws for a step that does not exist, before any dialog
@@ -876,7 +876,7 @@ function setupIpc() {
     return swapStepImage(guideId, stepId, img.toPNG(), img.getSize());
   }, { validate: (a) => c.id(a.guideId) && c.id(a.stepId) });
   // Right-click a step → Retake screenshot: hide StepForge, count down, grab a
-  // new frame and swap it in, the same way Choose screenshot… does.
+  // new frame and swap it in, the same way Choose image… does.
   h('step:retake', async ({ guideId, stepId, mode, delayMs }) => {
     store.getStep(guideId, stepId); // throws for a step that does not exist, before the countdown
     const frame = await capture.retakeFrame({ mode, delayMs });
@@ -887,7 +887,7 @@ function setupIpc() {
       && (a.mode === undefined || c.oneOf(a.mode, ['fullscreen', 'window', 'region']))
       && c.optionalNumber(a.delayMs, 0, 60000),
   });
-  // Undo and redo of Choose screenshot… put both images back.
+  // Undo and redo of Choose image… put both images back.
   h('step:setImages', ({ guideId, step, originalBase64, workingBase64, size }) => {
     const saved = store.replaceImages(guideId, step.stepId, {
       original: originalBase64 ? Buffer.from(originalBase64, 'base64') : null,

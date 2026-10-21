@@ -1492,6 +1492,8 @@ fieldset legend {
 .update-status.error { border-color: color-mix(in srgb, #ef4444 50%, var(--border)); }
 .update-status-title { font-weight: 700; margin-bottom: 2px; }
 .update-status .settings-actions { margin-top: 10px; }
+.update-now-note:empty { display: none; }
+.update-status .update-now-note { margin-top: 8px; }
 .settings-about-name { font-size: 18px; font-weight: 700; }
 
 @media (max-width: 720px) {

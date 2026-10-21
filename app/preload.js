@@ -208,6 +208,7 @@ const api = {
   app: {
     info: invoke('app:info'),
     checkForUpdates: invoke('app:checkForUpdates'),
+    updateNow: invoke('app:updateNow'),
     platformCapabilities: invoke('platform:capabilities'),
   },
 };

@@ -228,7 +228,7 @@ a { color: var(--accent); text-underline-offset: 2px; }
 .callout-error { border-color: var(--error); background: var(--error-bg); } .callout-error .callout-title { color: var(--error); }
 .code-block { position: relative; margin: 1em 0; }
 .code-block > pre.code { margin: 0; }
-.copy-code { position: absolute; top: 8px; right: 8px; padding: 4px 10px; font: 600 12px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+.copy-code { position: absolute; top: 8px; right: 8px; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0;
   color: rgba(255,255,255,.85); background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.18); border-radius: 6px;
   cursor: pointer; opacity: .75; transition: opacity .15s, background .15s; }
 .code-block:hover .copy-code, .copy-code:focus-visible { opacity: 1; background: rgba(255,255,255,.16); }
@@ -291,7 +291,7 @@ const RICH_CSS = `
 }
 `;
 
-// Adds a Copy button to each code block. Script-added, so a page opened
+// Adds a copy button (two overlapping squares, a check once copied) to each code block. Script-added, so a page opened
 // with scripts off shows no button that can't work. Copies the code's plain
 // text, never the colors.
 const COPY_SCRIPT = `
@@ -315,6 +315,14 @@ const COPY_SCRIPT = `
     }
     return fallbackCopy(text);
   }
+  var SVG = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.3" ' +
+    'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">';
+  var ICONS = {
+    copy: SVG + '<rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/>' +
+      '<path d="M10.5 5.5V4A1.5 1.5 0 0 0 9 2.5H4A1.5 1.5 0 0 0 2.5 4v5A1.5 1.5 0 0 0 4 10.5h1.5"/></svg>',
+    copied: SVG + '<path d="M3 8.5l3 3 7-7"/></svg>',
+    failed: SVG + '<path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/></svg>',
+  };
   document.querySelectorAll('pre.code').forEach(function (pre) {
     var wrap = document.createElement('div');
     wrap.className = 'code-block' + (pre.classList.contains('light') ? ' light' : '');
@@ -323,16 +331,20 @@ const COPY_SCRIPT = `
     var button = document.createElement('button');
     button.type = 'button';
     button.className = 'copy-code';
-    button.textContent = 'Copy';
-    button.setAttribute('aria-label', 'Copy code');
     var timer;
-    function say(label) {
-      button.textContent = label;
-      clearTimeout(timer);
-      timer = setTimeout(function () { button.textContent = 'Copy'; }, 1500);
+    function show(icon, label) {
+      button.innerHTML = ICONS[icon];
+      button.title = label;
+      button.setAttribute('aria-label', label);
     }
+    function flash(icon, label) {
+      show(icon, label);
+      clearTimeout(timer);
+      timer = setTimeout(function () { show('copy', 'Copy code'); }, 1500);
+    }
+    show('copy', 'Copy code');
     button.addEventListener('click', function () {
-      copyText(pre.querySelector('code').textContent).then(function () { say('Copied'); }, function () { say('Copy failed'); });
+      copyText(pre.querySelector('code').textContent).then(function () { flash('copied', 'Copied'); }, function () { flash('failed', 'Copy failed'); });
     });
     wrap.appendChild(button);
   });

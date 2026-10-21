@@ -66,6 +66,7 @@ function ui() {
   load('cloud.js');
   load('privacy.js');
   load('confluence.js');
+  load('wikijs.js');
   load('github.js');
   load('dialogs.js');
 
@@ -92,6 +93,10 @@ function fakeApi(github = {}) {
     progress: (update) => { for (const fn of progressListeners) fn(update); },
     shell: { openExternal: async ({ url }) => { calls.push(['open', url]); return { ok: true }; } },
     confluence: {
+      status: async () => ({ connected: false }),
+      onStatus: () => () => {},
+    },
+    wikijs: {
       status: async () => ({ connected: false }),
       onStatus: () => () => {},
     },
@@ -122,15 +127,19 @@ function fakeApi(github = {}) {
   return api;
 }
 
-test('Accounts lists every sync service, then GitHub, and opens each one’s panel', async () => {
+test('Accounts lists every sync service, then GitHub, Confluence and Wiki.js, and opens each one’s panel', async () => {
   const u = ui();
   const accounts = u.context.makeAccountsSettings(fakeApi());
   await settle();
   const rows = u.all(accounts.node).filter((n) => n.tag === 'button' && n.classList.contains('account-row'));
-  assert.deepEqual(rows.map((row) => row.children[1].children[0].textContent),
-    ['Google Drive', 'OneDrive', 'Dropbox', 'Nextcloud or WebDAV', 'GitHub', 'Confluence']);
+  const names = rows.map((row) => row.children[1].children[0]);
+  assert.deepEqual(names.map((name) => name.children[0]),
+    ['Google Drive', 'OneDrive', 'Dropbox', 'Nextcloud or WebDAV', 'GitHub', 'Confluence', 'Wiki.js']);
+  // The publishing services are new, and say so.
+  assert.deepEqual(names.map((name) => name.children.find((c) => c.classList?.contains('beta-badge'))?.textContent || ''),
+    ['', '', '', '', '', 'Beta', 'Beta']);
   const logos = rows.map((row) => row.children[0].children[0].src);
-  assert.deepEqual(logos, ['google-drive', 'onedrive', 'dropbox', 'nextcloud', 'github', 'confluence'].map((name) => `../assets/icons/${name}.svg`));
+  assert.deepEqual(logos, ['google-drive', 'onedrive', 'dropbox', 'nextcloud', 'github', 'confluence', 'wikijs'].map((name) => `../assets/icons/${name}.svg`));
   for (const logo of logos) {
     const file = path.join(__dirname, '../../app/renderer', logo);
     assert.match(fs.readFileSync(file, 'utf8'), /^<svg /, `${logo} ships with the app as a local SVG`);
@@ -138,8 +147,8 @@ test('Accounts lists every sync service, then GitHub, and opens each one’s pan
   assert.equal(rows[0].textContent.includes('casey@example.com'), true, 'Drive row shows who is signed in');
   for (const row of rows.slice(1)) assert.equal(row.textContent.includes('Not connected'), true);
   const panels = u.all(accounts.node).filter((n) => n.tag === 'fieldset');
-  assert.equal(panels.length, 6);
-  const [drivePanel, oneDrivePanel, , , githubPanel, confluencePanel] = panels;
+  assert.equal(panels.length, 7);
+  const [drivePanel, oneDrivePanel, , , githubPanel, confluencePanel, wikijsPanel] = panels;
   assert.equal(u.visible(drivePanel), false, 'no service panel until one is chosen');
 
   u.click(rows[4]);
@@ -157,6 +166,11 @@ test('Accounts lists every sync service, then GitHub, and opens each one’s pan
   u.click(rows[5]);
   assert.equal(u.visible(confluencePanel), true);
   assert.match(confluencePanel.textContent, /Publish guides as Confluence pages/);
+  u.click(u.find(accounts.node, 'All accounts'));
+  u.click(rows[6]);
+  assert.equal(u.visible(wikijsPanel), true);
+  assert.equal(u.visible(confluencePanel), false);
+  assert.match(wikijsPanel.textContent, /Publish guides as Wiki\.js pages/);
   accounts.dispose();
 
   const direct = u.context.makeAccountsSettings(fakeApi(), { view: 'github' });
@@ -684,4 +698,232 @@ test('App.publishToWeb (the marker\'s route) saves the open guide first and relo
   finishCheck();
   await done;
   assert.deepEqual(events, ['save', 'check wrote blurs', 'reload']);
+});
+
+function wikiApi(overrides = {}) {
+  const api = fakeApi();
+  const progressListeners = new Set();
+  api.wikijs = {
+    status: async () => ({ connected: false }),
+    onStatus: () => () => {},
+    onProgress: (fn) => { progressListeners.add(fn); return () => progressListeners.delete(fn); },
+    probe: async (args) => { api.calls.push(['probe', args]); return { baseUrl: 'https://wiki.example.com', host: 'wiki.example.com', apiKeyUrl: 'https://wiki.example.com/a/api', strategies: [{ key: 'local', name: 'Local', usernameType: 'email' }] }; },
+    connect: async (args) => { api.calls.push(['connect', args]); return { connected: true, host: 'wiki.example.com', method: args.method, user: args.method === 'password' ? 'Casey Jones' : '', strategy: 'Local' }; },
+    disconnect: async () => { api.calls.push(['disconnect']); return { connected: false }; },
+    cancel: async () => ({ ok: true }),
+    defaults: async (args) => { api.calls.push(['defaults', args]); return { path: 'guides/reset-a-password', title: 'Reset a password', locale: 'en', published: null }; },
+    publish: async (args) => { api.calls.push(['publish', args]); return { id: 4, url: 'https://wiki.example.com/en/guides/reset-a-password', title: args.title, updated: false }; },
+    ...overrides,
+  };
+  api.wikiProgress = (update) => { for (const fn of progressListeners) fn(update); };
+  return api;
+}
+
+test('the Wiki.js panel asks for the site, then a username and password or an API key', async () => {
+  const u = ui();
+  const api = wikiApi();
+  const panel = u.context.makeWikiJsSettings(api);
+  await settle();
+  const inputs = () => u.all(panel.node).filter((n) => n.tag === 'input' || n.tag === 'select');
+  const field = (label) => inputs().find((n) => n['aria-label'] === label);
+  assert.equal(u.visible(field('Password')), false, 'nothing to sign in to until the site is known');
+  field('Wiki.js site address').value = 'wiki.example.com';
+  await u.find(panel.node, 'Continue').listeners.click();
+  await settle();
+  assert.deepEqual(JSON.parse(JSON.stringify(api.calls[0])), ['probe', { address: 'wiki.example.com' }]);
+  assert.equal(u.visible(field('Sign in with')), false, 'no choice when the wiki has one sign-in');
+  assert.equal(u.visible(field('Email address')), true, 'local accounts sign in with an email address');
+  assert.equal(u.visible(field('API key')), true);
+  u.click(u.find(panel.node, 'Open API Access on your wiki'));
+  assert.deepEqual(api.calls.at(-1), ['open', 'https://wiki.example.com/a/api']);
+
+  field('Email address').value = 'casey@example.com';
+  field('Password').value = 'hunter2';
+  await u.find(panel.node, 'Sign in').listeners.click();
+  await settle();
+  assert.deepEqual(JSON.parse(JSON.stringify(api.calls.at(-1))), ['connect', { address: 'wiki.example.com', method: 'password', username: 'casey@example.com', password: 'hunter2', strategy: 'local' }]);
+  assert.equal(field('Password').value, '', 'the password isn’t kept on screen');
+  assert.match(panel.node.textContent, /Signed in as Casey Jones\./);
+  assert.match(panel.node.textContent, /wiki\.example\.com · Wiki\.js · signed in with Local/);
+  await u.find(panel.node, 'Sign out').listeners.click();
+  await settle();
+  assert.deepEqual(api.calls.at(-1), ['disconnect']);
+  assert.match(panel.node.textContent, /Signed out\. Pages you published stay on the wiki\./);
+  panel.dispose();
+});
+
+test('“Sign in with” appears only for several sign-ins, and an SSO-only wiki points to API keys', async () => {
+  const u = ui();
+  const strategies = [{ key: 'ldap-1', name: 'Company LDAP', usernameType: 'username' }, { key: 'local', name: 'Local', usernameType: 'email' }];
+  const api = wikiApi();
+  api.wikijs.probe = async () => ({ baseUrl: 'https://wiki.example.com', host: 'wiki.example.com', apiKeyUrl: 'https://wiki.example.com/a/api', strategies });
+  const panel = u.context.makeWikiJsSettings(api);
+  await settle();
+  const field = (label) => u.all(panel.node).find((n) => ['input', 'select'].includes(n.tag) && n['aria-label'] === label);
+  field('Wiki.js site address').value = 'wiki.example.com';
+  await u.find(panel.node, 'Continue').listeners.click();
+  await settle();
+  const choose = field('Sign in with');
+  assert.equal(u.visible(choose), true);
+  assert.deepEqual(choose.children.map((o) => o.textContent), ['Company LDAP', 'Local']);
+  assert.equal(u.visible(field('Username')), true, 'LDAP signs in with a username');
+  choose.value = 'local';
+  choose.listeners.change();
+  assert.equal(u.visible(field('Email address')), true);
+  field('Email address').value = 'casey@example.com';
+  field('Password').value = 'pw';
+  await u.find(panel.node, 'Sign in').listeners.click();
+  assert.equal(api.calls.at(-1)[1].strategy, 'local');
+  panel.dispose();
+
+  const sso = wikiApi();
+  sso.wikijs.probe = async () => ({ baseUrl: 'https://wiki.example.com', host: 'wiki.example.com', apiKeyUrl: 'https://wiki.example.com/a/api', strategies: [] });
+  const ssoPanel = u.context.makeWikiJsSettings(sso);
+  await settle();
+  u.all(ssoPanel.node).find((n) => n['aria-label'] === 'Wiki.js site address').value = 'wiki.example.com';
+  await u.find(ssoPanel.node, 'Continue').listeners.click();
+  await settle();
+  assert.match(ssoPanel.node.textContent, /only offers single sign-on.*Use an API key instead/);
+  assert.equal(u.find(ssoPanel.node, 'Sign in'), undefined, 'no password sign-in to offer');
+  const key = u.all(ssoPanel.node).find((n) => n['aria-label'] === 'API key');
+  key.value = 'eyJ.key.sig';
+  await u.find(ssoPanel.node, 'Connect').listeners.click();
+  await settle();
+  assert.deepEqual(JSON.parse(JSON.stringify(sso.calls.at(-1))), ['connect', { address: 'wiki.example.com', method: 'apikey', apiKey: 'eyJ.key.sig' }]);
+  assert.match(ssoPanel.node.textContent, /Connected to wiki\.example\.com with an API key\./);
+  assert.match(ssoPanel.node.textContent, /signed in with an API key/);
+  ssoPanel.dispose();
+});
+
+test('Accounts shows who is signed in to Wiki.js', async () => {
+  const u = ui();
+  const api = wikiApi({ status: async () => ({ connected: true, host: 'wiki.example.com', user: 'Casey Jones', method: 'password' }) });
+  const accounts = u.context.makeAccountsSettings(api);
+  await settle();
+  const row = u.all(accounts.node).filter((n) => n.tag === 'button' && n.classList.contains('account-row')).at(-1);
+  assert.match(row.textContent, /Wiki\.js.*Beta.*Casey Jones/);
+  accounts.dispose();
+  const keyed = u.context.makeAccountsSettings(wikiApi({ status: async () => ({ connected: true, host: 'wiki.example.com', user: '', method: 'apikey' }) }));
+  await settle();
+  assert.match(u.all(keyed.node).filter((n) => n.classList?.contains('account-row')).at(-1).textContent, /wiki\.example\.com/);
+  keyed.dispose();
+});
+
+test('Publish to Wiki.js prefills the path, warns before replacing a page edited on the wiki, and links to the page', async () => {
+  const u = ui();
+  let answers = [{ edited: { path: 'guides/reset-a-password', title: 'Reset a password' } }];
+  const api = wikiApi({
+    status: async () => ({ connected: true, host: 'wiki.example.com', method: 'apikey' }),
+    publish: async (args) => {
+      api.calls.push(['publish', args]);
+      api.wikiProgress({ guideId: 'guide-1', stage: 'upload', index: 1, count: 2, loaded: 10, total: 20 });
+      return answers.shift() || { id: 4, url: 'https://wiki.example.com/en/guides/reset-a-password', title: args.title, updated: true };
+    },
+  });
+  const done = u.context.showPublishToWikiJsDialog({ api, guideId: 'guide-1', guideTitle: 'Reset a password' });
+  await settle(); await settle();
+  const modal = u.root.children.at(-1);
+  const field = (label) => u.all(modal).find((n) => n.tag === 'input' && n['aria-label'] === label);
+  assert.deepEqual([field('Page path').value, field('Page title').value, field('Language').value], ['guides/reset-a-password', 'Reset a password', 'en']);
+  assert.match(modal.textContent, /The page will be at wiki\.example\.com\/en\/guides\/reset-a-password/);
+  assert.match(modal.textContent, /No private details found|Blurred|private/);
+  const publish = u.find(modal, 'Publish');
+  assert.equal(publish.disabled, false);
+  field('Page path').value = 'guides/it/reset';
+  field('Page path').listeners.input();
+  publish.listeners.click();
+  await settle();
+  // Asked first, with nothing replaced yet.
+  const confirm = u.root.children.at(-1);
+  assert.match(confirm.textContent, /This page was edited on the wiki since you last published\. Replace it\?/);
+  assert.deepEqual(JSON.parse(JSON.stringify(api.calls.filter(([name]) => name === 'publish').map(([, args]) => args))),
+    [{ guideId: 'guide-1', path: 'guides/it/reset', title: 'Reset a password', locale: 'en', replace: false }]);
+  u.click(u.find(confirm, 'Replace page'));
+  await settle(); await settle();
+  assert.equal(api.calls.filter(([name]) => name === 'publish').at(-1)[1].replace, true);
+  assert.match(modal.textContent, /Updated “Reset a password” on Wiki\.js\./);
+  assert.match(modal.textContent, /https:\/\/wiki\.example\.com\/en\/guides\/reset-a-password/);
+  u.click(u.find(modal, 'Open in browser'));
+  assert.deepEqual(api.calls.at(-1), ['open', 'https://wiki.example.com/en/guides/reset-a-password']);
+  u.click(u.find(modal, 'Done'));
+  assert.equal(await done, true);
+
+  // Saying no keeps the wiki's version and goes back to the form.
+  answers = [{ conflict: { path: 'guides/shared', title: 'Shared' } }];
+  u.context.showPublishToWikiJsDialog({ api, guideId: 'guide-1', guideTitle: 'Reset a password' });
+  await settle(); await settle();
+  const second = u.root.children.at(-1);
+  u.find(second, 'Publish').listeners.click();
+  await settle();
+  const ask = u.root.children.at(-1);
+  assert.match(ask.textContent, /A page already exists at guides\/shared\. Replace it\?/);
+  u.click(u.find(ask, 'Cancel'));
+  await settle();
+  assert.equal(api.calls.filter(([name]) => name === 'publish').at(-1)[1].replace, false);
+  assert.equal(u.visible(u.find(second, 'Publish')), true);
+});
+
+test('Publish to Wiki.js before signing in points to Settings → Accounts', async () => {
+  const u = ui();
+  let opened = 0;
+  const done = u.context.showPublishToWikiJsDialog({ api: wikiApi(), guideId: 'g', guideTitle: 'G', onOpenAccounts: () => { opened += 1; } });
+  await settle();
+  const modal = u.root.children.at(-1);
+  assert.match(modal.textContent, /Settings → Accounts → Wiki\.js/);
+  u.click(u.find(modal, 'Set up Wiki.js'));
+  assert.equal(opened, 1);
+  assert.equal(await done, false);
+});
+
+test('Export marks the Confluence and Wiki.js formats as Beta', async () => {
+  const u = ui();
+  u.context.window.StepForgeDialogs.showExportDialog({
+    formats: [{ id: 'pdf', label: 'PDF', description: 'A document.' }, { id: 'wikijs', label: 'Wiki.js', description: 'A Wiki.js page.', badge: 'Beta' }],
+    defaultFormat: 'pdf',
+    onLoadDefaults: async () => ({}),
+  });
+  const modal = u.root.children.at(-1);
+  const format = u.all(modal).find((n) => n.tag === 'select');
+  assert.deepEqual(format.children.map((o) => o.textContent), ['PDF', 'Wiki.js (Beta)']);
+  const desc = u.all(modal).find((n) => n.classList?.contains('export-format-desc'));
+  assert.equal(u.all(desc).some((n) => n.classList?.contains('beta-badge')), false);
+  format.value = 'wikijs';
+  format.listeners.change();
+  assert.equal(u.all(desc).find((n) => n.classList?.contains('beta-badge'))?.textContent, 'Beta');
+  assert.match(desc.textContent, /A Wiki\.js page\./);
+
+  const { FORMAT_INFO } = require('../../exporters');
+  assert.deepEqual(Object.keys(FORMAT_INFO).filter((id) => FORMAT_INFO[id].badge === 'Beta'), ['confluence', 'wikijs']);
+});
+
+test('the guide menus offer Publish to Wiki.js beside Confluence, both marked Beta', async () => {
+  const context = vm.createContext({ window: {}, document: { addEventListener() {} } });
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/util.js'), 'utf8'), context);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/app.js'), 'utf8').replace('\nboot();', '\n'), context);
+  let items = null;
+  context.contextMenu = (x, y, list) => { items = list; };
+  const opened = [];
+  context.showPublishToWikiJsDialog = async (args) => { opened.push(args.guideId); return false; };
+  const app = Object.create(context.window.StepForgeApp.prototype);
+  app.state = { view: 'library', library: { guideFolders: {}, folders: [] } };
+  app.editor = { guideId: null };
+  app.guideContextMenu({ clientX: 0, clientY: 0 }, { guideId: 'g1', title: 'Guide' });
+  const publishing = items.filter((item) => /^Publish to (Confluence|Wiki\.js)/.test(item.label));
+  assert.deepEqual(JSON.parse(JSON.stringify(publishing.map((item) => [item.label, item.badge]))), [['Publish to Confluence…', 'Beta'], ['Publish to Wiki.js…', 'Beta']]);
+  await publishing[1].action();
+  assert.deepEqual(opened, ['g1']);
+  // The editor's Share menu has the same two items.
+  const src = fs.readFileSync(path.join(__dirname, '../../app/renderer/app.js'), 'utf8');
+  assert.equal((src.match(/label: 'Publish to Wiki\.js…', badge: 'Beta'/g) || []).length, 2);
+  assert.equal((src.match(/label: 'Publish to Confluence…', badge: 'Beta'/g) || []).length, 2);
+
+  // The menu draws the badge as the same chip Settings uses.
+  const appended = [];
+  const ui2 = ui();
+  ui2.context.document.querySelectorAll = () => [];
+  ui2.context.document.body = { append: (node) => appended.push(node) };
+  ui2.context.innerWidth = 1000; ui2.context.innerHeight = 800;
+  ui2.context.contextMenu(0, 0, [{ label: 'Publish to Wiki.js…', badge: 'Beta', action() {} }]);
+  const chip = ui2.all(appended[0]).find((n) => n.classList?.contains('beta-badge'));
+  assert.ok(chip && chip.classList.contains('settings-chip'));
 });

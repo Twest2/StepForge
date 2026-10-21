@@ -44,13 +44,13 @@ and more.
 > [!NOTE]
 > The [Windows installation guide](docs/windows_installation.md) in this
 > repository was recorded with StepForge. It's a good example of what the app
-> produces. (It's still reconmended to install via Chocolatey so you get updates)
+> produces. (On Windows, the installer can set up Chocolatey for you so you get updates.)
 
 ## Install
 
 | Platform | Recommended | Guide |
 | --- | --- | --- |
-| **Windows 10 / 11** (64-bit) | Chocolatey · .exe| [Chocolatey](docs/windows/chocolatey.md) · [Windows](docs/windows_installation.md)|
+| **Windows 10 / 11** (64-bit) | Chocolatey · .exe (sets up Chocolatey updates) | [Chocolatey](docs/windows/chocolatey.md) · [Windows](docs/windows_installation.md)|
 | **Ubuntu 26.04** | APT repository | [Ubuntu](docs/linux/apt.md) |
 | **Fedora 44 Workstation** | DNF repository | [Fedora](docs/linux/dnf.md) |
 | **Other Linux** | Portable `.tar.gz` | [Linux overview](docs/linux/linux_install.md) |

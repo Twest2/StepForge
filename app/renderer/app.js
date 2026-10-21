@@ -1100,6 +1100,8 @@ class StepForgeApp {
       section,
       // Shared guides → "Edited since you shared it" publishes like the toolbar does.
       onPublishToWeb: (guideId, title) => this.publishToWeb(guideId, title),
+      // Update now closes StepForge; save the open guide first.
+      flushEdits: () => this.flushEditorBeforeNavigation(),
       onSave: async (next) => {
         await api.settings.set({ keyPath: 'appearance', value: next.appearance });
         await api.settings.set({ keyPath: 'spellcheck', value: next.spellcheck });

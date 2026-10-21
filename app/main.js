@@ -1499,11 +1499,31 @@ function setupIpc() {
   }));
   // Settings → About "Check for updates". Runs only when the user presses the
   // button: one request to GitHub's latest-release endpoint, nothing else.
-  h('app:checkForUpdates', () => require('./update-check').checkForUpdates({
-    currentVersion: PACKAGE_JSON.buildVersion || app.getVersion(),
-    platform: process.platform,
-    hasCommand: (name) => ['/usr/bin', '/bin', '/usr/local/bin'].some((dir) => fs.existsSync(path.join(dir, name))),
-  }));
+  // The result is kept so Update now installs the version this check found.
+  let lastUpdateCheck = null;
+  h('app:checkForUpdates', async () => {
+    lastUpdateCheck = await require('./update-check').checkForUpdates({
+      currentVersion: PACKAGE_JSON.buildVersion || app.getVersion(),
+      platform: process.platform,
+      hasCommand: (name) => ['/usr/bin', '/bin', '/usr/local/bin'].some((dir) => fs.existsSync(path.join(dir, name))),
+      chocolatey: require('./windows-update').updateNowAvailable({ platform: process.platform, packaged: app.isPackaged }),
+    });
+    return lastUpdateCheck;
+  });
+  // Settings → About "Update now" (Windows, registered with Chocolatey). Takes
+  // no arguments: app/windows-update.js re-checks everything and builds the
+  // elevated command from this process's own PID and paths. Once the elevated
+  // window has started, StepForge quits normally so before-quit can drain
+  // pending writes; the window waits for that, then runs the upgrade.
+  h('app:updateNow', async () => {
+    const result = await require('./windows-update').updateNow({
+      platform: process.platform,
+      packaged: app.isPackaged,
+      lastCheck: lastUpdateCheck,
+    });
+    if (result.ok) setTimeout(() => app.quit(), 250);
+    return result;
+  }, { validate: (a) => Object.keys(a).length === 0 });
   // Platform capture-capability profile (session type, portal/PipeWire,
   // xinput, click source, actionable messages) for the diagnostics UI, plus
   // the honest active trigger for this machine and settings.

@@ -501,12 +501,91 @@ function showFindReplace({ stepNumbers = {}, find, replace } = {}) {
   });
 }
 
+/**
+ * Settings → About "Check for updates", and on Windows installs registered
+ * with Chocolatey, "Update now". The check only contacts GitHub when pressed
+ * (app/update-check.js); Update now is decided and run by the main process
+ * (app/windows-update.js). `flushEdits` saves the open guide before StepForge
+ * closes for the update and resolves false if that failed.
+ */
+function makeUpdateCheck(api, { openLink, flushEdits = null }) {
+  const updateStatus = el('div.update-status', { role: 'status', 'aria-live': 'polite' });
+  const checkUpdatesBtn = el('button', { type: 'button' }, 'Check for updates');
+
+  const updateNowButton = (result) => {
+    const button = el('button.primary', { type: 'button' }, 'Update now');
+    const note = el('div.setting-desc.update-now-note', {});
+    button.addEventListener('click', async () => {
+      const ok = await confirmDialog(`StepForge will close to install version ${result.latestVersion}. Continue?`, { okLabel: 'Update now' });
+      if (!ok) return;
+      note.textContent = '';
+      note.classList.remove('error');
+      setButtonLoading(button, true, 'Starting…');
+      let outcome;
+      try {
+        if (flushEdits && !await flushEdits()) {
+          outcome = { ok: false, message: 'Your latest changes couldn’t be saved, so the update didn’t start.' };
+        } else {
+          outcome = await api.app.updateNow();
+        }
+      } catch {
+        outcome = { ok: false, message: 'Couldn’t start the update. Try again, or download the new installer.' };
+      }
+      if (outcome && outcome.ok) {
+        // StepForge quits on its own; keep the button off until it does.
+        setButtonLoading(button, true, 'Closing StepForge…');
+        note.textContent = 'An administrator window will install the update and reopen StepForge.';
+        return;
+      }
+      setButtonLoading(button, false);
+      note.textContent = (outcome && outcome.message) || 'Couldn’t start the update.';
+      note.classList.toggle('error', outcome?.reason !== 'declined');
+    });
+    return { button, note };
+  };
+
+  checkUpdatesBtn.addEventListener('click', async () => {
+    setButtonLoading(checkUpdatesBtn, true, 'Checking…');
+    clearNode(updateStatus);
+    updateStatus.className = 'update-status';
+    let result;
+    try {
+      result = await api.app.checkForUpdates();
+    } catch {
+      result = { status: 'error', message: 'Couldn’t check for updates. Try again later.' };
+    } finally {
+      setButtonLoading(checkUpdatesBtn, false);
+    }
+    if (result.status === 'update-available') {
+      updateStatus.classList.add('available');
+      // With Update now, downloading stays available as the secondary action.
+      const updateNow = result.updateNow ? updateNowButton(result) : null;
+      const download = el(updateNow ? 'button' : 'button.primary', { type: 'button', onClick: openLink(result.releaseUrl) }, 'View release and download');
+      updateStatus.append(
+        el('div.update-status-title', {}, `Version ${result.latestVersion} is available`),
+        el('div.setting-desc', {}, `You have ${result.currentVersion}. ${result.hint || ''}`),
+        el('div.settings-actions', {}, updateNow ? updateNow.button : null, download),
+        updateNow ? updateNow.note : null);
+    } else if (result.status === 'up-to-date') {
+      updateStatus.classList.add('current');
+      updateStatus.append(el('div.update-status-title', {}, 'You’re up to date'),
+        el('div.setting-desc', {}, `Version ${result.currentVersion} is the latest release.`));
+    } else {
+      updateStatus.classList.add('error');
+      updateStatus.append(el('div.setting-desc', {}, result.message || 'Couldn’t check for updates.'));
+      checkUpdatesBtn.textContent = 'Try again';
+    }
+  });
+  return { checkUpdatesBtn, updateStatus };
+}
+
 function showSettingsDialog({
   api,
   settings,
   placeholders = {},
   onSave,
   onPublishToWeb = null,
+  flushEdits = null,
   section: initialSection = 'general',
 } = {}) {
   return new Promise((resolve) => {
@@ -564,38 +643,7 @@ function showSettingsDialog({
     const openLink = (url) => () => { void api.shell.openExternal({ url }).catch(() => {}); };
     // An inline link in a setting's description; opens in the browser.
     const docLink = (label, url) => el('a', { href: url, onClick: (e) => { e.preventDefault(); openLink(url)(); } }, label);
-    // "Check for updates" only contacts GitHub when pressed; see app/update-check.js.
-    const updateStatus = el('div.update-status', { role: 'status', 'aria-live': 'polite' });
-    const checkUpdatesBtn = el('button', { type: 'button' }, 'Check for updates');
-    checkUpdatesBtn.addEventListener('click', async () => {
-      setButtonLoading(checkUpdatesBtn, true, 'Checking…');
-      clearNode(updateStatus);
-      updateStatus.className = 'update-status';
-      let result;
-      try {
-        result = await api.app.checkForUpdates();
-      } catch {
-        result = { status: 'error', message: 'Couldn’t check for updates. Try again later.' };
-      } finally {
-        setButtonLoading(checkUpdatesBtn, false);
-      }
-      if (result.status === 'update-available') {
-        updateStatus.classList.add('available');
-        updateStatus.append(
-          el('div.update-status-title', {}, `Version ${result.latestVersion} is available`),
-          el('div.setting-desc', {}, `You have ${result.currentVersion}. ${result.hint || ''}`),
-          el('div.settings-actions', {},
-            el('button.primary', { type: 'button', onClick: openLink(result.releaseUrl) }, 'View release and download')));
-      } else if (result.status === 'up-to-date') {
-        updateStatus.classList.add('current');
-        updateStatus.append(el('div.update-status-title', {}, 'You’re up to date'),
-          el('div.setting-desc', {}, `Version ${result.currentVersion} is the latest release.`));
-      } else {
-        updateStatus.classList.add('error');
-        updateStatus.append(el('div.setting-desc', {}, result.message || 'Couldn’t check for updates.'));
-        checkUpdatesBtn.textContent = 'Try again';
-      }
-    });
+    const { checkUpdatesBtn, updateStatus } = makeUpdateCheck(api, { openLink, flushEdits });
 
     const appearance = makeSelect(settings.appearance || 'system', [
       { value: 'system', label: 'System' },
@@ -1581,6 +1629,7 @@ window.StepForgeDialogs = {
   showQuickActions,
   showFindReplace,
   showSettingsDialog,
+  makeUpdateCheck,
   showExportDialog,
   showLinkedGuideDialog,
   showInfoDialog,

@@ -41,11 +41,15 @@ function formatVersion(value) {
 /**
  * How to install the update, based on how StepForge is usually installed on
  * this platform. Package-manager installs update through the package manager;
- * everyone else downloads the new release.
+ * everyone else downloads the new release. On Windows, an install registered
+ * with Chocolatey gets the Update now button (app/windows-update.js).
  */
-function installHint(platform, hasCommand = () => false) {
+function installHint(platform, hasCommand = () => false, { chocolatey = false } = {}) {
   if (platform === 'win32') {
-    return 'Installed with Chocolatey? Run "choco upgrade stepforge -y" in an Administrator PowerShell. Otherwise, download and run the new installer.';
+    if (chocolatey) {
+      return 'Update now installs it with Chocolatey. StepForge closes while it updates and opens again when it’s done.';
+    }
+    return 'Download the new installer from the release page. Run the installer again and keep "Keep StepForge updated with Chocolatey" checked to get one-click updates.';
   }
   if (platform === 'linux') {
     if (hasCommand('dnf')) return 'Run "sudo dnf upgrade stepforge", or download the new .rpm.';
@@ -66,11 +70,14 @@ async function readLimitedText(response, maxBytes) {
 /**
  * Ask GitHub for the latest published release and compare it with the
  * running version. Never throws: failures come back as { status: 'error' }.
+ * `chocolatey` is true for a Windows install that Update now can update; the
+ * result's `updateNow` says whether to offer the button.
  */
 async function checkForUpdates({
   currentVersion,
   platform = process.platform,
   hasCommand = () => false,
+  chocolatey = false,
   fetchImpl = globalThis.fetch,
   timeoutMs = DEFAULT_TIMEOUT_MS,
 } = {}) {
@@ -126,7 +133,8 @@ async function checkForUpdates({
     publishedAt: typeof release.published_at === 'string' ? release.published_at : null,
   };
   if (compareVersions(latest, current) > 0) {
-    return { ...result, status: 'update-available', hint: installHint(platform, hasCommand) };
+    const updateNow = platform === 'win32' && chocolatey === true;
+    return { ...result, status: 'update-available', updateNow, hint: installHint(platform, hasCommand, { chocolatey: updateNow }) };
   }
   return { ...result, status: 'up-to-date' };
 }

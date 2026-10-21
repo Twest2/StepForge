@@ -5,7 +5,8 @@ const path = require('node:path');
 const { zipSync } = require('../core/zip');
 const { escapeXml } = require('../core/util');
 const { encodePng } = require('../core/png');
-const { guideSlug, renderAllImages, LEVEL_LABEL, stepContentGroups, codeBlockText } = require('./common');
+const { guideSlug, renderAllImages, LEVEL_LABEL, stepContentGroups, codeBlockText, wordCodeRuns, wordCodeShading } = require('./common');
+const { highlightCode } = require('../core/code-highlight');
 const { guideMetaLines, guideSummary, tocEntries } = require('./document-layout');
 
 /**
@@ -312,8 +313,10 @@ function exportDocx(ast, outDir, template = {}) {
       if (block.kind === 'text') {
         emitTextBlock(block);
       } else if (block.kind === 'code') {
-        body.push(p(run(codeBlockText(block), { size: 18, font: 'Courier New', color: '1F2937' }),
-          '<w:shd w:val="clear" w:fill="F3F4F6"/>'));
+        const hl = highlightCode(codeBlockText(block), block.language, ast.codeStyle);
+        body.push(hl
+          ? p(wordCodeRuns(hl, { size: 18 }), wordCodeShading(hl))
+          : p(run(codeBlockText(block), { size: 18, font: 'Courier New', color: '1F2937' }), '<w:shd w:val="clear" w:fill="F3F4F6"/>'));
       } else if (block.kind === 'table') {
         if (block.rows && block.rows.length) body.push(table(block.rows), p(''));
       }

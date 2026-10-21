@@ -100,6 +100,8 @@ const DEFAULT_SETTINGS = {
   exports: {
     previewStepCount: 3,
     openFolderAfterExport: true,
+    // Code block colors: a theme id from core/code-themes.js, or 'plain'.
+    codeTheme: 'atom-one-dark',
     lastOutputDirs: {}, // format -> dir
   },
   library: {

@@ -3,15 +3,20 @@
 const zlib = require('node:zlib');
 
 /**
- * Minimal PDF 1.4 writer: pages, Helvetica/Helvetica-Bold/Courier text,
- * rects/lines, deflated content streams, RGB images as XObjects, and a
- * simple outline (bookmarks). Coordinates passed in are top-left based in
+ * Minimal PDF 1.4 writer: pages, Helvetica and Courier text (regular, bold,
+ * oblique), rects/lines, deflated content streams, RGB images as XObjects,
+ * and a simple outline (bookmarks). Coordinates passed in are top-left based in
  * points; converted to PDF's bottom-left space internally.
  */
 
-const FONTS = { F1: 'Helvetica', F2: 'Helvetica-Bold', F3: 'Courier', F4: 'Helvetica-Oblique', F5: 'Helvetica-BoldOblique' };
+const FONTS = {
+  F1: 'Helvetica', F2: 'Helvetica-Bold', F3: 'Courier', F4: 'Helvetica-Oblique', F5: 'Helvetica-BoldOblique',
+  // Code-block styles: syntax themes set comments in italic and some tokens in bold.
+  F6: 'Courier-Bold', F7: 'Courier-Oblique', F8: 'Courier-BoldOblique',
+};
 // Approximate average glyph width factors (per 1pt font size) for wrapping.
-const FONT_WIDTH_FACTOR = { F1: 0.51, F2: 0.55, F3: 0.6, F4: 0.51, F5: 0.55 };
+// Courier is monospaced: every glyph is exactly 0.6em in every style.
+const FONT_WIDTH_FACTOR = { F1: 0.51, F2: 0.55, F3: 0.6, F4: 0.51, F5: 0.55, F6: 0.6, F7: 0.6, F8: 0.6 };
 
 function esc(text) {
   return String(text).replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');

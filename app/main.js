@@ -35,6 +35,7 @@ const { runExportInWorker } = require('./export-runner');
 const { exportGuideArchive, importGuideArchive, saveLinkedGuide } = require('../core/archive');
 const { createSnapshot, listSnapshots, restoreSnapshot, autoSnapshotIfDue } = require('../core/snapshots');
 const { readLock } = require('../core/locks');
+const { resolveCodeStyle } = require('../core/code-highlight');
 const CaptureService = require('./platform/capture-service').captureServiceClass();
 const { TextIntelService } = require('./text-intel');
 const { keepProcessesResponsive } = require('./win-power');
@@ -174,6 +175,11 @@ function orderedSteps(guideId) {
 
 function applyTheme() {
   nativeTheme.themeSource = settings.get('appearance') || 'system';
+}
+
+/** Code block colors for an export, from Settings → Exports. */
+function exportCodeStyle() {
+  return resolveCodeStyle(settings.get('exports.codeTheme'));
 }
 
 function dispatchZoomShortcut(kind) {
@@ -1066,7 +1072,7 @@ function setupIpc() {
       await redactor.checkGuide(guideId, { onProgress: ({ done, total }) => progress({ stage: 'check', done, total }) });
       progress({ stage: 'export' });
       const result = await runExportInWorker({ dataDir: store.root, guideId, format: 'confluence',
-        options: { apiFiles: true, includeImages: true, toc: true }, outDir, globals: settings.getGlobalPlaceholders() });
+        options: { apiFiles: true, includeImages: true, toc: true }, outDir, globals: settings.getGlobalPlaceholders(), codeStyle: exportCodeStyle() });
       return await confluence.publish({ guideId, space, parent, replace, onProgress: progress,
         page: pageFromExport(path.dirname(result.apiPage)) });
     } finally {
@@ -1108,6 +1114,7 @@ function setupIpc() {
         options,
         outDir,
         globals: settings.getGlobalPlaceholders(),
+        codeStyle: exportCodeStyle(),
       });
       const html = fs.readFileSync(result.file, 'utf8');
       // The exported title has placeholders filled in, matching the page.
@@ -1413,6 +1420,7 @@ function setupIpc() {
       options: options || {},
       outDir: dir,
       globals: settings.getGlobalPlaceholders(),
+      codeStyle: exportCodeStyle(),
     });
     producedFiles.add(result.file);
     if (settings.get('exports.openFolderAfterExport')) shell.showItemInFolder(result.file);
@@ -1444,6 +1452,7 @@ function setupIpc() {
     const ast = buildRenderAst(store, guideId, {
       globals: settings.getGlobalPlaceholders(),
       maxSteps: settings.get('exports.previewStepCount') || 3,
+      codeStyle: exportCodeStyle(),
     });
     const result = runExport(format, ast, previewDir, options || {});
     // Folder-style exports (image bundle, Confluence) preview as their folder.

@@ -13,7 +13,7 @@ it, using on-device text recognition. AI adds fuller, more natural
 descriptions on top.
 
 > [!NOTE]
-> AI support is in **beta**. Always read what it writes before you share a
+> AI can get things wrong. Always read what it writes before you share a
 > guide.
 
 ## 1. Install Ollama

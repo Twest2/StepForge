@@ -29,6 +29,14 @@ function findInstallerExe(dir) {
   return null;
 }
 
+// The Chocolatey package version release.yml publishes for an installer built
+// from this build version: the numbers in "StepForge Setup <version>.exe".
+// Null when release.yml would reject the name.
+function chocolateyPackageVersion(buildVersion) {
+  const version = String(buildVersion || '');
+  return /^\d+(\.\d+){2,3}$/.test(version) ? version : null;
+}
+
 function createWindowsInstallerConfig(outputDir) {
   return {
     appId: APP_ID,
@@ -79,6 +87,17 @@ async function buildWindowsInstaller() {
   fs.mkdirSync(releaseDir, { recursive: true });
   fs.rmSync(outputDir, { recursive: true, force: true });
 
+  // build/installer.nsh reads this at compile time: the exact Chocolatey package
+  // version the release pipeline publishes, which is the installer file name's.
+  // Without a valid one the installer is built without the Chocolatey page.
+  const chocoVersion = chocolateyPackageVersion(BUILD_VERSION);
+  if (chocoVersion) {
+    process.env.STEPFORGE_CHOCO_VERSION = chocoVersion;
+  } else {
+    delete process.env.STEPFORGE_CHOCO_VERSION;
+    console.warn(`Build version ${BUILD_VERSION} is not a Chocolatey package version; the installer will not offer Chocolatey updates.`);
+  }
+
   try {
     await build(createWindowsInstallerBuildOptions(outputDir));
   } catch (err) {
@@ -105,6 +124,8 @@ if (require.main === module) {
 
 module.exports = {
   APP_ID,
+  BUILD_VERSION,
+  chocolateyPackageVersion,
   createWindowsInstallerConfig,
   createWindowsInstallerBuildOptions,
   findInstallerExe,

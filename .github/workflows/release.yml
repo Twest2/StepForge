@@ -635,6 +635,10 @@ jobs:
           $version = $Matches[1]
 
           Copy-Item -LiteralPath $installer.FullName -Destination packaging/windows/chocolatey/tools/
+          # When the .exe installer registers itself, the install script that
+          # would delete this file is skipped; the .ignore file keeps
+          # Chocolatey from putting a "StepForge Setup" shim on PATH.
+          New-Item -ItemType File -Force -Path "packaging/windows/chocolatey/tools/$($installer.Name).ignore" | Out-Null
           New-Item -ItemType Directory -Force -Path dist/chocolatey | Out-Null
           choco pack packaging/windows/chocolatey/stepforge.nuspec --version $version --outputdirectory dist/chocolatey
           if ($LASTEXITCODE -ne 0) { throw "choco pack failed with exit code $LASTEXITCODE" }

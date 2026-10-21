@@ -8,6 +8,7 @@ const { systemPlaceholders, resolveScopes, expandPlaceholders, expandRichPlaceho
 const { decodePng } = require('./png');
 const { renderAnnotations, applyFocusedView } = require('./raster');
 const { orderedBlocks, blockText } = require('./blocks');
+const { DEFAULT_CODE_STYLE } = require('./code-highlight');
 
 /**
  * The Render AST is the single normalized document model every exporter
@@ -29,7 +30,7 @@ function screenshotAltText(number, title) {
   return clean ? `Screenshot for step ${number}: ${clean}` : `Screenshot for step ${number}`;
 }
 
-function buildRenderAst(store, guideId, { globals = {}, now = new Date(), maxSteps = 0 } = {}) {
+function buildRenderAst(store, guideId, { globals = {}, now = new Date(), maxSteps = 0, codeStyle = DEFAULT_CODE_STYLE } = {}) {
   const guide = store.getGuide(guideId);
   const stepsMap = store.listSteps(guideId);
 
@@ -133,6 +134,7 @@ function buildRenderAst(store, guideId, { globals = {}, now = new Date(), maxSte
     version: 1,
     generatedAt: now.toISOString(),
     placeholders: values,
+    codeStyle,
     guide: {
       id: guide.guideId,
       title: expand(guide.title),

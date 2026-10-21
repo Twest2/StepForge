@@ -3,6 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { escapeHtml } = require('../core/util');
+const { highlightCode } = require('../core/code-highlight');
 const { encodePng } = require('../core/png');
 const { guideSlug, renderAllImages, LEVEL_LABEL, stepContentGroups, codeBlockText } = require('./common');
 const { anchorFor, tocEntries, guideMetaLines } = require('./document-layout');
@@ -90,6 +91,19 @@ function renderTocItems(ast) {
     </li>`).join('');
 }
 
+/** A code block in the chosen code theme, or the page's own code colors for Plain. */
+function codeHtml(block, ast) {
+  const text = codeBlockText(block);
+  const hl = highlightCode(text, block.language, ast.codeStyle);
+  if (!hl) return `<pre class="code"><code>${escapeHtml(text)}</code></pre>`;
+  const lines = hl.lines.map((line) => line.map((run) => {
+    const style = [run.color !== hl.foreground ? `color:${run.color}` : '', run.italic ? 'font-style:italic' : '', run.bold ? 'font-weight:bold' : '']
+      .filter(Boolean).join(';');
+    return style ? `<span style="${style}">${escapeHtml(run.text)}</span>` : escapeHtml(run.text);
+  }).join(''));
+  return `<pre class="code themed${hl.dark ? '' : ' light'}" style="background:${hl.background};color:${hl.foreground}"><code>${lines.join('\n')}</code></pre>`;
+}
+
 function renderStep(step, ast, images, tpl, { rich = false } = {}) {
   const groups = stepContentGroups(step);
   const blocks = (list) => list.map((tb) => blockHtml(tb, ast)).join('\n');
@@ -105,7 +119,7 @@ function renderStep(step, ast, images, tpl, { rich = false } = {}) {
   parts.push(blocks(groups.afterImage));
   for (const block of groups.rest) {
     if (block.kind === 'text') parts.push(blockHtml(block, ast));
-    else if (block.kind === 'code') parts.push(`<pre class="code"><code>${escapeHtml(codeBlockText(block))}</code></pre>`);
+    else if (block.kind === 'code') parts.push(codeHtml(block, ast));
     else if (block.kind === 'table' && block.rows && block.rows.length) parts.push(tableHtml(block.rows));
   }
 
@@ -212,6 +226,14 @@ a { color: var(--accent); text-underline-offset: 2px; }
 .callout-success { border-color: var(--success); background: var(--success-bg); } .callout-success .callout-title { color: var(--success); }
 .callout-warn { border-color: var(--warn); background: var(--warn-bg); } .callout-warn .callout-title { color: var(--warn); }
 .callout-error { border-color: var(--error); background: var(--error-bg); } .callout-error .callout-title { color: var(--error); }
+.code-block { position: relative; margin: 1em 0; }
+.code-block > pre.code { margin: 0; }
+.copy-code { position: absolute; top: 8px; right: 8px; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0;
+  color: rgba(255,255,255,.85); background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.18); border-radius: 6px;
+  cursor: pointer; opacity: .75; transition: opacity .15s, background .15s; }
+.code-block:hover .copy-code, .copy-code:focus-visible { opacity: 1; background: rgba(255,255,255,.16); }
+.code-block.light .copy-code { color: rgba(0,0,0,.7); background: rgba(0,0,0,.04); border-color: rgba(0,0,0,.15); }
+.code-block.light:hover .copy-code, .code-block.light .copy-code:focus-visible { background: rgba(0,0,0,.08); }
 pre.code { background: var(--code-bg); color: var(--code-fg); padding: 14px 16px; border-radius: 8px; overflow-x: auto; font-size: .88rem; line-height: 1.55; }
 code { font-family: ui-monospace, "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
 :not(pre) > code { background: var(--soft); border: 1px solid var(--border); border-radius: 5px; padding: 1px 5px; font-size: .9em; }
@@ -234,6 +256,8 @@ tbody tr:last-child td { border-bottom: 0; }
   .contents, .toc, .done-toggle, .progress, .lightbox { display: none !important; }
   .step { break-inside: avoid-page; }
   .shot img { box-shadow: none; max-height: 85vh; width: auto; }
+  .copy-code { display: none; }
+  pre.code.themed { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   a { color: inherit; }
 }
 `;
@@ -265,6 +289,66 @@ const RICH_CSS = `
   .page.rich { display: block; }
   .toc { position: static; max-height: none; border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; margin-bottom: 32px; background: var(--soft); }
 }
+`;
+
+// Adds a copy button (two overlapping squares, a check once copied) to each code block. Script-added, so a page opened
+// with scripts off shows no button that can't work. Copies the code's plain
+// text, never the colors.
+const COPY_SCRIPT = `
+(function () {
+  function fallbackCopy(text) {
+    var area = document.createElement('textarea');
+    area.value = text;
+    area.setAttribute('readonly', '');
+    area.style.position = 'fixed';
+    area.style.opacity = '0';
+    document.body.appendChild(area);
+    area.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) {}
+    area.remove();
+    return ok ? Promise.resolve() : Promise.reject(new Error('copy failed'));
+  }
+  function copyText(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+      return navigator.clipboard.writeText(text).catch(function () { return fallbackCopy(text); });
+    }
+    return fallbackCopy(text);
+  }
+  var SVG = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.3" ' +
+    'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">';
+  var ICONS = {
+    copy: SVG + '<rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/>' +
+      '<path d="M10.5 5.5V4A1.5 1.5 0 0 0 9 2.5H4A1.5 1.5 0 0 0 2.5 4v5A1.5 1.5 0 0 0 4 10.5h1.5"/></svg>',
+    copied: SVG + '<path d="M3 8.5l3 3 7-7"/></svg>',
+    failed: SVG + '<path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/></svg>',
+  };
+  document.querySelectorAll('pre.code').forEach(function (pre) {
+    var wrap = document.createElement('div');
+    wrap.className = 'code-block' + (pre.classList.contains('light') ? ' light' : '');
+    pre.parentNode.insertBefore(wrap, pre);
+    wrap.appendChild(pre);
+    var button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'copy-code';
+    var timer;
+    function show(icon, label) {
+      button.innerHTML = ICONS[icon];
+      button.title = label;
+      button.setAttribute('aria-label', label);
+    }
+    function flash(icon, label) {
+      show(icon, label);
+      clearTimeout(timer);
+      timer = setTimeout(function () { show('copy', 'Copy code'); }, 1500);
+    }
+    show('copy', 'Copy code');
+    button.addEventListener('click', function () {
+      copyText(pre.querySelector('code').textContent).then(function () { flash('copied', 'Copied'); }, function () { flash('failed', 'Copy failed'); });
+    });
+    wrap.appendChild(button);
+  });
+})();
 `;
 
 const RICH_SCRIPT = `
@@ -305,17 +389,48 @@ const RICH_SCRIPT = `
   });
   refresh();
 
-  // Highlight the step currently in view.
-  if ('IntersectionObserver' in window) {
-    var visible = {};
-    var io = new IntersectionObserver(function (entries) {
-      entries.forEach(function (e) { visible[e.target.id] = e.isIntersecting; });
-      var current = null;
-      document.querySelectorAll('section.step').forEach(function (s) { if (!current && visible[s.id]) current = s.id; });
-      Object.keys(links).forEach(function (id) { links[id].classList.toggle('active', id === current); });
-    }, { rootMargin: '0px 0px -60% 0px' });
-    document.querySelectorAll('section.step').forEach(function (s) { io.observe(s); });
+  // Highlight the step being read: the last one whose top has scrolled past
+  // a line 30% down the window, or the last step once the page is scrolled
+  // to the bottom. A step picked in Contents stays highlighted until the
+  // reader scrolls by hand, because steps near the end of a page (or every
+  // step of a short guide) can't scroll up far enough to reach the line.
+  var sections = Array.prototype.slice.call(document.querySelectorAll('section.step'));
+  var picked = null;
+  function setActive(id) {
+    Object.keys(links).forEach(function (k) { links[k].classList.toggle('active', k === id); });
   }
+  function spy() {
+    if (picked) { setActive(picked); return; }
+    if (!sections.length) return;
+    var current = sections[0].id;
+    var line = window.innerHeight * 0.3;
+    sections.forEach(function (s) { if (s.getBoundingClientRect().top <= line) current = s.id; });
+    var root = document.documentElement;
+    if (window.scrollY > 0 && window.innerHeight + window.scrollY >= root.scrollHeight - 2) current = sections[sections.length - 1].id;
+    setActive(current);
+  }
+  var queued = false;
+  window.addEventListener('scroll', function () {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(function () { queued = false; spy(); });
+  }, { passive: true });
+  window.addEventListener('resize', spy);
+  function pick(id) { if (links[id]) { picked = id; spy(); } }
+  Object.keys(links).forEach(function (id) { links[id].addEventListener('click', function () { pick(id); }); });
+  window.addEventListener('hashchange', function () { pick(location.hash.slice(1)); });
+  ['wheel', 'touchmove'].forEach(function (type) {
+    window.addEventListener(type, function () { picked = null; }, { passive: true });
+  });
+  // Dragging the page's scrollbar.
+  window.addEventListener('mousedown', function (e) {
+    if (e.target === document.documentElement && e.clientX >= document.documentElement.clientWidth) picked = null;
+  });
+  window.addEventListener('keydown', function (e) {
+    if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].indexOf(e.key) >= 0) picked = null;
+  });
+  if (location.hash) pick(location.hash.slice(1));
+  spy();
 
   // Click a screenshot to view it full size.
   var box = document.querySelector('.lightbox');
@@ -365,7 +480,7 @@ ${ast.steps.map((step) => renderStep(step, ast, images, tpl)).join('\n')}
 ${footer(ast)}
 </div>`;
   const file = path.join(outDir, `${guideSlug(ast)}.html`);
-  fs.writeFileSync(file, page(ast, tpl, BASE_CSS, body));
+  fs.writeFileSync(file, page(ast, tpl, BASE_CSS, body, body.includes('<pre class="code') ? COPY_SCRIPT : ''));
   return { file, imageCount: images.size };
 }
 
@@ -393,7 +508,8 @@ ${footer(ast)}
 </div>
 <div class="lightbox" role="dialog" aria-label="Screenshot"><img alt=""></div>`;
   const file = path.join(outDir, `${guideSlug(ast)}-rich.html`);
-  fs.writeFileSync(file, page(ast, tpl, BASE_CSS + RICH_CSS, body, RICH_SCRIPT.replace('__KEY__', JSON.stringify(storageKey))));
+  const script = RICH_SCRIPT.replace('__KEY__', JSON.stringify(storageKey)) + (body.includes('<pre class="code') ? COPY_SCRIPT : '');
+  fs.writeFileSync(file, page(ast, tpl, BASE_CSS + RICH_CSS, body, script));
   return { file, imageCount: images.size };
 }
 

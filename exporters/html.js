@@ -389,17 +389,48 @@ const RICH_SCRIPT = `
   });
   refresh();
 
-  // Highlight the step currently in view.
-  if ('IntersectionObserver' in window) {
-    var visible = {};
-    var io = new IntersectionObserver(function (entries) {
-      entries.forEach(function (e) { visible[e.target.id] = e.isIntersecting; });
-      var current = null;
-      document.querySelectorAll('section.step').forEach(function (s) { if (!current && visible[s.id]) current = s.id; });
-      Object.keys(links).forEach(function (id) { links[id].classList.toggle('active', id === current); });
-    }, { rootMargin: '0px 0px -60% 0px' });
-    document.querySelectorAll('section.step').forEach(function (s) { io.observe(s); });
+  // Highlight the step being read: the last one whose top has scrolled past
+  // a line 30% down the window, or the last step once the page is scrolled
+  // to the bottom. A step picked in Contents stays highlighted until the
+  // reader scrolls by hand, because steps near the end of a page (or every
+  // step of a short guide) can't scroll up far enough to reach the line.
+  var sections = Array.prototype.slice.call(document.querySelectorAll('section.step'));
+  var picked = null;
+  function setActive(id) {
+    Object.keys(links).forEach(function (k) { links[k].classList.toggle('active', k === id); });
   }
+  function spy() {
+    if (picked) { setActive(picked); return; }
+    if (!sections.length) return;
+    var current = sections[0].id;
+    var line = window.innerHeight * 0.3;
+    sections.forEach(function (s) { if (s.getBoundingClientRect().top <= line) current = s.id; });
+    var root = document.documentElement;
+    if (window.scrollY > 0 && window.innerHeight + window.scrollY >= root.scrollHeight - 2) current = sections[sections.length - 1].id;
+    setActive(current);
+  }
+  var queued = false;
+  window.addEventListener('scroll', function () {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(function () { queued = false; spy(); });
+  }, { passive: true });
+  window.addEventListener('resize', spy);
+  function pick(id) { if (links[id]) { picked = id; spy(); } }
+  Object.keys(links).forEach(function (id) { links[id].addEventListener('click', function () { pick(id); }); });
+  window.addEventListener('hashchange', function () { pick(location.hash.slice(1)); });
+  ['wheel', 'touchmove'].forEach(function (type) {
+    window.addEventListener(type, function () { picked = null; }, { passive: true });
+  });
+  // Dragging the page's scrollbar.
+  window.addEventListener('mousedown', function (e) {
+    if (e.target === document.documentElement && e.clientX >= document.documentElement.clientWidth) picked = null;
+  });
+  window.addEventListener('keydown', function (e) {
+    if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].indexOf(e.key) >= 0) picked = null;
+  });
+  if (location.hash) pick(location.hash.slice(1));
+  spy();
 
   // Click a screenshot to view it full size.
   var box = document.querySelector('.lightbox');

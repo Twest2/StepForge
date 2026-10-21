@@ -6,6 +6,7 @@ const { PdfBuilder } = require('../core/pdf');
 const { guideSlug, renderAllImages, LEVEL_LABEL, stepContentGroups, codeBlockText } = require('./common');
 const { htmlToText } = require('../core/util');
 const { htmlToBlocks } = require('../core/htmlblocks');
+const { highlightCode } = require('../core/code-highlight');
 
 const LIST_INDENT = 14;
 const QUOTE_INDENT = 10;
@@ -19,6 +20,64 @@ const LEVEL_STYLE = {
   warn: { accent: [245, 158, 11], tint: [255, 251, 235] }, // amber — Warning
   error: { accent: [239, 68, 68], tint: [254, 242, 242] }, // red — Important
 };
+
+const CODE_SIZE = 9;
+const CODE_LINE_H = CODE_SIZE * 1.3;
+const CODE_PAD_X = 8;
+const CODE_WRAP_INDENT = 2; // characters, on the continuation rows of a wrapped line
+// The Plain code theme: the original light-gray box.
+const PLAIN_CODE = { background: [243, 244, 246], foreground: [31, 41, 55] };
+
+const rgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+
+function codeFont(run) {
+  if (run.bold && run.italic) return 'F8';
+  if (run.bold) return 'F6';
+  if (run.italic) return 'F7';
+  return 'F3';
+}
+
+/**
+ * Lay a code block out as page rows: lines highlighted in the code theme,
+ * tabs expanded, and anything wider than `width` characters wrapped (at a
+ * space when there's one in the second half of the row) onto indented rows.
+ */
+function layoutCode(block, codeStyle, width) {
+  const text = String(codeBlockText(block) || '');
+  const hl = highlightCode(text, block.language, codeStyle);
+  const background = hl ? rgb(hl.background) : PLAIN_CODE.background;
+  const lines = hl
+    ? hl.lines.map((line) => line.map((run) => ({ text: run.text, font: codeFont(run), color: rgb(run.color) })))
+    : text.replace(/\r\n?/g, '\n').split('\n').map((line) => [{ text: line, font: 'F3', color: PLAIN_CODE.foreground }]);
+  const rows = [];
+  for (const line of lines) {
+    const chars = [];
+    for (const run of line) {
+      for (const ch of run.text.replace(/\t/g, '    ')) chars.push({ ch, run });
+    }
+    let at = 0;
+    let indent = 0;
+    do {
+      const room = Math.max(1, width - indent);
+      let end = Math.min(chars.length, at + room);
+      if (end < chars.length) {
+        for (let i = end - 1; i > at + room / 2; i--) {
+          if (chars[i].ch === ' ') { end = i + 1; break; }
+        }
+      }
+      const runs = [];
+      for (const { ch, run } of chars.slice(at, end)) {
+        const prev = runs[runs.length - 1];
+        if (prev && prev.font === run.font && prev.color === run.color) prev.text += ch;
+        else runs.push({ text: ch, font: run.font, color: run.color });
+      }
+      rows.push({ runs, indent });
+      at = end;
+      indent = CODE_WRAP_INDENT;
+    } while (at < chars.length);
+  }
+  return { background, rows };
+}
 
 function fontForRun(run) {
   if (run.code) return 'F3';
@@ -195,10 +254,43 @@ function exportPdf(ast, outDir, template = {}) {
     return h + 10;
   };
 
-  const measureCode = (block) => {
-    const lines = String(codeBlockText(block) || '').split('\n');
-    const lineH = 9 * 1.3;
-    return lines.length * lineH + 16;
+  const codeChars = Math.floor((usableW - 2 * CODE_PAD_X) / pdf.textWidth('M', CODE_SIZE, 'F3'));
+  const codeLayouts = new Map();
+  const codeLayoutFor = (block) => {
+    if (!codeLayouts.has(block)) codeLayouts.set(block, layoutCode(block, ast.codeStyle, codeChars));
+    return codeLayouts.get(block);
+  };
+  const measureCode = (block) => codeLayoutFor(block).rows.length * CODE_LINE_H + 16;
+
+  /**
+   * Draw a code block: the theme background behind each page's share of the
+   * rows (so a block continuing on the next page keeps its background), and
+   * each row as colored runs.
+   */
+  const drawCode = (block) => {
+    const { background, rows } = codeLayoutFor(block);
+    ensure(Math.min(rows.length, 4) * CODE_LINE_H + 12);
+    let i = 0;
+    let padTop = 6;
+    while (i < rows.length) {
+      if (i > 0) {
+        pdf.addPage();
+        y = M;
+        padTop = 4;
+      }
+      const fits = Math.floor((size.height - M - y - padTop - 4) / CODE_LINE_H);
+      const n = Math.max(1, Math.min(rows.length - i, fits));
+      pdf.rect(M, y, usableW, padTop + n * CODE_LINE_H + 4, { fill: background });
+      y += padTop;
+      for (const row of rows.slice(i, i + n)) {
+        const x = M + CODE_PAD_X + pdf.textWidth(' '.repeat(row.indent), CODE_SIZE, 'F3');
+        pdf.textRun(row.runs, x, y, CODE_SIZE);
+        y += CODE_LINE_H;
+      }
+      y += 4;
+      i += n;
+    }
+    y += 6;
   };
 
   const measureTable = (block) => {
@@ -350,18 +442,7 @@ function exportPdf(ast, outDir, template = {}) {
       if (block.kind === 'text') {
         emitBlock(block);
       } else if (block.kind === 'code') {
-        const lines = String(codeBlockText(block) || '').split('\n');
-        const lineH = 9 * 1.3;
-        ensure(Math.min(lines.length, 4) * lineH + 12);
-        const boxH = lines.length * lineH + 10;
-        pdf.rect(M, y, usableW, Math.min(boxH, size.height - M - y), { fill: [243, 244, 246] });
-        y += 6;
-        for (const line of lines) {
-          ensure(lineH);
-          pdf.text(line.slice(0, 95), M + 8, y, { size: 9, font: 'F3', color: [31, 41, 55] });
-          y += lineH;
-        }
-        y += 10;
+        drawCode(block);
       } else if (block.kind === 'table') {
         if (!block.rows || !block.rows.length) continue;
         const cols = Math.max(...block.rows.map((r) => r.length));

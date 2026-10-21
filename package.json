@@ -25,6 +25,7 @@
   },
   "dependencies": {
     "@tesseract.js-data/eng": "^1.0.0",
+    "highlight.js": "^11.11.1",
     "tesseract.js": "^7.0.0"
   },
   "devDependencies": {

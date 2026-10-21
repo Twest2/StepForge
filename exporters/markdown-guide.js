@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { escapeHtml } = require('../core/util');
 const { guideSlug, writeStepImages, LEVEL_LABEL, stepContentGroups, codeBlockText } = require('./common');
+const { markdownFenceLanguage } = require('../core/code-highlight');
 const { htmlToMarkdown } = require('./htmlmd');
 const { tocEntries, guideMetaLines, guideSummary } = require('./document-layout');
 
@@ -140,7 +141,7 @@ function renderMarkdownGuide(ast, outDir, template = {}, {
       if (block.kind === 'text') {
         emitBlock(lines, block, { alertStyle });
       } else if (block.kind === 'code') {
-        lines.push(`\`\`\`${block.language || ''}`, codeBlockText(block), '```', '');
+        lines.push(`\`\`\`${markdownFenceLanguage(block.language)}`, codeBlockText(block), '```', '');
       } else if (block.kind === 'table') {
         if (!block.rows || !block.rows.length) continue;
         const width = Math.max(...block.rows.map((r) => r.length));

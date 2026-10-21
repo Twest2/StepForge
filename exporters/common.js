@@ -2,7 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { slugify } = require('../core/util');
+const { slugify, escapeXml } = require('../core/util');
 const { encodePng } = require('../core/png');
 const { renderStepImage } = require('../core/renderast');
 const { orderedBlocks, blockText } = require('../core/blocks');
@@ -108,6 +108,26 @@ function codeBlockText(block) {
   return blockText(block);
 }
 
+/**
+ * Highlighted code (from core/code-highlight) as WordprocessingML runs for one
+ * paragraph, a <w:br/> between lines. `size` is in half-points; 0 leaves it
+ * to the paragraph style.
+ */
+function wordCodeRuns(hl, { size = 0 } = {}) {
+  const font = '<w:rFonts w:ascii="Courier New" w:hAnsi="Courier New" w:cs="Courier New"/>';
+  return hl.lines.map((line, i) => {
+    const runs = line.map((run) => {
+      const rpr = [font, run.bold ? '<w:b/>' : '', run.italic ? '<w:i/>' : '', `<w:color w:val="${run.color.slice(1).toUpperCase()}"/>`,
+        size ? `<w:sz w:val="${size}"/>` : ''].join('');
+      return `<w:r><w:rPr>${rpr}</w:rPr><w:t xml:space="preserve">${escapeXml(run.text)}</w:t></w:r>`;
+    }).join('');
+    return `${i ? '<w:r><w:br/></w:r>' : ''}${runs}`;
+  }).join('');
+}
+
+/** Paragraph shading for a highlighted code block's background. */
+const wordCodeShading = (hl) => `<w:shd w:val="clear" w:color="auto" w:fill="${hl.background.slice(1).toUpperCase()}"/>`;
+
 const LEVEL_LABEL = { info: 'Note', warn: 'Warning', error: 'Important', success: 'Tip' };
 
 module.exports = {
@@ -118,5 +138,7 @@ module.exports = {
   stepBlocks,
   stepContentGroups,
   codeBlockText,
+  wordCodeRuns,
+  wordCodeShading,
   LEVEL_LABEL,
 };

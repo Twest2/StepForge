@@ -4,7 +4,8 @@ const { zipSync } = require('../core/zip');
 const { escapeXml } = require('../core/util');
 const { encodePng } = require('../core/png');
 const { htmlToBlocks } = require('../core/htmlblocks');
-const { LEVEL_LABEL, stepContentGroups, codeBlockText } = require('./common');
+const { LEVEL_LABEL, stepContentGroups, codeBlockText, wordCodeRuns, wordCodeShading } = require('./common');
+const { highlightCode } = require('../core/code-highlight');
 const { guideMetaLines } = require('./document-layout');
 
 /**
@@ -183,7 +184,10 @@ class WordDocument {
     for (const block of g.rest) {
       if (block.kind === 'text') parts.push(this.callout(block));
       else if (block.kind === 'code') {
-        parts.push(paragraph(runXml(codeBlockText(block), { code: true }), '<w:pStyle w:val="Code"/>'));
+        const hl = highlightCode(codeBlockText(block), block.language, this.ast.codeStyle);
+        parts.push(hl
+          ? paragraph(wordCodeRuns(hl), `<w:pStyle w:val="Code"/>${wordCodeShading(hl)}`)
+          : paragraph(runXml(codeBlockText(block), { code: true }), '<w:pStyle w:val="Code"/>'));
       } else if (block.kind === 'table' && block.rows && block.rows.length) parts.push(this.table(block.rows));
     }
     return parts.join('');

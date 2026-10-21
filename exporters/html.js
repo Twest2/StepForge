@@ -3,6 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { escapeHtml } = require('../core/util');
+const { highlightCode } = require('../core/code-highlight');
 const { encodePng } = require('../core/png');
 const { guideSlug, renderAllImages, LEVEL_LABEL, stepContentGroups, codeBlockText } = require('./common');
 const { anchorFor, tocEntries, guideMetaLines } = require('./document-layout');
@@ -90,6 +91,19 @@ function renderTocItems(ast) {
     </li>`).join('');
 }
 
+/** A code block in the chosen code theme, or the page's own code colors for Plain. */
+function codeHtml(block, ast) {
+  const text = codeBlockText(block);
+  const hl = highlightCode(text, block.language, ast.codeStyle);
+  if (!hl) return `<pre class="code"><code>${escapeHtml(text)}</code></pre>`;
+  const lines = hl.lines.map((line) => line.map((run) => {
+    const style = [run.color !== hl.foreground ? `color:${run.color}` : '', run.italic ? 'font-style:italic' : '', run.bold ? 'font-weight:bold' : '']
+      .filter(Boolean).join(';');
+    return style ? `<span style="${style}">${escapeHtml(run.text)}</span>` : escapeHtml(run.text);
+  }).join(''));
+  return `<pre class="code themed" style="background:${hl.background};color:${hl.foreground}"><code>${lines.join('\n')}</code></pre>`;
+}
+
 function renderStep(step, ast, images, tpl, { rich = false } = {}) {
   const groups = stepContentGroups(step);
   const blocks = (list) => list.map((tb) => blockHtml(tb, ast)).join('\n');
@@ -105,7 +119,7 @@ function renderStep(step, ast, images, tpl, { rich = false } = {}) {
   parts.push(blocks(groups.afterImage));
   for (const block of groups.rest) {
     if (block.kind === 'text') parts.push(blockHtml(block, ast));
-    else if (block.kind === 'code') parts.push(`<pre class="code"><code>${escapeHtml(codeBlockText(block))}</code></pre>`);
+    else if (block.kind === 'code') parts.push(codeHtml(block, ast));
     else if (block.kind === 'table' && block.rows && block.rows.length) parts.push(tableHtml(block.rows));
   }
 
@@ -234,6 +248,7 @@ tbody tr:last-child td { border-bottom: 0; }
   .contents, .toc, .done-toggle, .progress, .lightbox { display: none !important; }
   .step { break-inside: avoid-page; }
   .shot img { box-shadow: none; max-height: 85vh; width: auto; }
+  pre.code.themed { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   a { color: inherit; }
 }
 `;

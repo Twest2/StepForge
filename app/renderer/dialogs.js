@@ -46,6 +46,20 @@ function settingsCard(title, ...rows) {
   return el('div.settings-card', {}, title ? el('div.settings-card-title', {}, title) : null, ...rows);
 }
 
+// Settings → Exports → Code theme. Mirrors CODE_THEME_CHOICES in
+// core/code-highlight.js (a unit test keeps the two in step).
+const CODE_THEME_CHOICES = [
+  { value: 'atom-one-dark', label: 'Atom One Dark' },
+  { value: 'atom-one-light', label: 'Atom One Light' },
+  { value: 'github-light', label: 'GitHub Light' },
+  { value: 'github-dark', label: 'GitHub Dark' },
+  { value: 'dracula', label: 'Dracula' },
+  { value: 'monokai', label: 'Monokai' },
+  { value: 'solarized-light', label: 'Solarized Light' },
+  { value: 'nord', label: 'Nord' },
+  { value: 'plain', label: 'Plain (no highlighting)' },
+];
+
 const HOTKEY_LABELS = {
   CommandOrControl: 'Ctrl',
   Control: 'Ctrl',
@@ -629,6 +643,8 @@ function showSettingsDialog({
     const focusedDefault = el('input', { type: 'checkbox', checked: settings.editor?.focusedViewDefaultForNewSteps !== false });
     const previewCount = makeInput(settings.exports?.previewStepCount ?? 3, 'number', { min: 1, step: 1 });
     const openFolder = el('input', { type: 'checkbox', checked: Boolean(settings.exports?.openFolderAfterExport) });
+    const codeTheme = makeSelect(CODE_THEME_CHOICES.some((t) => t.value === settings.exports?.codeTheme) ? settings.exports.codeTheme : 'atom-one-dark',
+      CODE_THEME_CHOICES);
     const captureOutside = el('input', { type: 'checkbox', checked: Boolean(settings.capture?.captureOutsideClicks) });
     const fallbackTrigger = makeSelect(settings.capture?.fallbackTrigger === 'interval' ? 'interval' : 'hotkey', [
       { value: 'hotkey', label: 'Hotkey' },
@@ -774,7 +790,8 @@ function showSettingsDialog({
           settingRow('Spellcheck', 'Underline misspelled words while editing.', makeSwitch(spellcheck, 'Spellcheck'))),
         settingsCard('Exports',
           settingRow('Open folder after export', 'Show the exported file in your file manager.', makeSwitch(openFolder, 'Open folder after export')),
-          settingRow('Preview step count', 'How many steps the export preview renders.', previewCount)),
+          settingRow('Preview step count', 'How many steps the export preview renders.', previewCount),
+          settingRow('Code theme', 'Syntax colors for code blocks in PDF, Word, HTML and Confluence exports.', codeTheme)),
         settingsCard('Guide storage',
           el('div.settings-storage', {}, storagePath, storageNote),
           el('div.settings-actions', {}, chooseStorageBtn, resetStorageBtn, cancelStorageBtn),
@@ -914,6 +931,7 @@ function showSettingsDialog({
                 ...settings.exports,
                 previewStepCount: Number(previewCount.value || 3),
                 openFolderAfterExport: openFolder.checked,
+                codeTheme: codeTheme.value,
               },
               backups: {
                 ...settings.backups,

@@ -226,6 +226,22 @@ Confluence publishing is **off until you connect a site** ([how it works](CONFLU
 - **Disconnect** removes the saved sign-in and the Confluence cookies. Pages
   you published stay in Confluence.
 
+## Optional Wiki.js publishing
+
+Wiki.js publishing is **off until you connect a wiki** ([how it works](WIKIJS.md)).
+
+- StepForge only talks to the Wiki.js site you enter. Requests never follow
+  redirects, so a password or API key can't be sent anywhere else, and no
+  cookies are kept.
+- Your password or API key is stored encrypted with your operating system's
+  credential storage. With a password, the short-lived sign-in token Wiki.js
+  sends back is only kept in memory.
+- When you publish, the guide's text and its screenshots (with private details
+  blurred, see above) are sent to the page path you choose. Nothing is sent
+  until you choose **Publish**.
+- **Sign out** removes the saved password or API key. Pages you published stay
+  on the wiki.
+
 ## Bundled components
 
 Besides the Electron desktop runtime, StepForge includes the Tesseract OCR

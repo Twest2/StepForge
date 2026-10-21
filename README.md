@@ -107,7 +107,8 @@ sudo dnf install stepforge
 | **Organized library** | Folders, favorites, full-text search across every guide, snapshots, and a trash you can restore from. |
 | **Reusable content** | Placeholders (`[[Product]]`) and export templates keep a whole set of guides consistent. |
 | **Share on the web** | Publish a guide to GitHub Pages in your own repository for 1, 7, or 30 days and send a link. Shared guides are public and are removed automatically when their time is up. |
-| **Publish to Confluence** | Create or update a Confluence page for a guide, on Confluence Cloud or your organization's Data Center site, including sites that need a smart card (CAC). |
+| **Publish to Confluence** (beta) | Create or update a Confluence page for a guide, on Confluence Cloud or your organization's Data Center site, including sites that need a smart card (CAC). |
+| **Publish to Wiki.js** (beta) | Create or update a page for a guide on your Wiki.js 2 site, with its screenshots uploaded to the wiki. |
 | **Private details** | Screenshots are checked for email addresses, card numbers, passwords, keys and more, which are blurred before a guide is published. |
 | **Optional extras** | Sync between computers with Google Drive, OneDrive, Dropbox or Nextcloud, AI that writes whole guides through a local [Ollama](https://ollama.com) model, and [Claude or Codex](docs/AI_AGENTS.md) as guide writers. All are off until you turn them on. |
 
@@ -150,6 +151,7 @@ each optional feature sends.
 - [Sync with OneDrive, Dropbox or Nextcloud](docs/CLOUD_ACCOUNTS.md)
 - [Share guides on the web with GitHub Pages](docs/GITHUB_PAGES.md)
 - [Publish guides to Confluence](docs/CONFLUENCE.md)
+- [Publish guides to Wiki.js](docs/WIKIJS.md)
 - [Privacy](docs/PRIVACY.md) and [security](docs/SECURITY.md)
 
 **Installing**

@@ -1351,6 +1351,14 @@ fieldset legend {
 .confluence-results { display: flex; flex-direction: column; gap: 4px; max-height: 180px; overflow: auto; }
 .confluence-result { text-align: left; }
 .cloud-avatar img { width: 22px; height: 22px; object-fit: contain; }
+/* Wiki.js (wikijs.js) */
+.wikijs-method { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+.wikijs-method select { width: 100%; max-width: 360px; }
+.wikijs-address { font-size: 12px; overflow-wrap: anywhere; }
+.wikijs-publish .gh-field { justify-content: flex-start; }
+.wikijs-publish .gh-field > span { flex: none; width: 84px; }
+.wikijs-publish .gh-field input { flex: 1; min-width: 0; }
+.wikijs-publish .gh-field input.wikijs-locale { flex: none; width: 90px; }
 /* Private details review (privacy.js) */
 .privacy-dialog { display: flex; flex-direction: column; gap: 10px; min-width: min(560px, 80vw); }
 .privacy-dialog p { margin: 0; }
@@ -1478,6 +1486,9 @@ fieldset legend {
   color: var(--accent-strong); background: color-mix(in srgb, var(--accent) 12%, var(--panel-solid));
 }
 .settings-chip.dev { color: var(--text); background: color-mix(in srgb, var(--caution) 25%, var(--panel-solid)); }
+/* The same chip beside new features elsewhere (betaBadge in util.js). */
+.beta-badge { display: inline-block; line-height: 1.5; vertical-align: 1px; white-space: nowrap; }
+.account-text strong .beta-badge, .ctx-menu .mi .beta-badge { margin-left: 8px; }
 .settings-card .placeholder-rows { padding-top: 12px; }
 
 .settings-pane .cloud-panel { border: 0; padding: 0; margin: 0; background: none; }

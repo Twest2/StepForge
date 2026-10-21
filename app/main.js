@@ -19,6 +19,9 @@ const { RedactionService, bitmapToPpm } = require('./redaction');
 const { forgetScreenshotChecks } = require('../core/redaction');
 const { Confluence, pageFromExport } = require('./confluence');
 const { createConfluenceSession } = require('./confluence-session');
+const { htmlToText } = require('../core/util');
+const { WikiJs, pageFromExport: wikiPageFromExport, normalizePagePath, normalizeLocale,
+  validConnectArgs: validWikiConnectArgs, validPublishArgs: validWikiPublishArgs } = require('./wikijs');
 const { GitHubPages } = require('./github-pages');
 const { EXPIRY_DAYS, titleFromHtml } = require('../core/pages-site');
 const { TransferMeter } = require('../core/transfer-meter');
@@ -97,6 +100,8 @@ let githubPages;
 let confluence;
 let confluenceSession;
 let confluenceCertificates;
+// Publishing to Wiki.js 2 (GraphQL), with no cookies kept.
+let wikijs;
 let cloudSync;
 let cloudConnecting = false;
 let cloudTesting = false;
@@ -1074,6 +1079,42 @@ function setupIpc() {
     }
   }, { validate: (a) => c.id(a.guideId) && spaceArg(a.space) && a.space && parentArg(a.parent) && (a.replace === undefined || typeof a.replace === 'boolean') });
 
+  // Wiki.js: the API key or password stays in the main process.
+  h('wikijs:status', () => wikijs.status());
+  h('wikijs:probe', ({ address }) => wikijs.probe(address), { validate: withSite });
+  h('wikijs:connect', ({ address, method, apiKey, username, password, strategy }) => wikijs.connect({ address, method, apiKey, username, password, strategy }),
+    { validate: validWikiConnectArgs });
+  h('wikijs:cancel', () => { wikijs.cancel(); return { ok: true }; });
+  h('wikijs:disconnect', () => wikijs.disconnect());
+  h('wikijs:defaults', ({ guideId }) => {
+    if (!store.guideExists(guideId)) throw new Error('Guide not found.');
+    return wikijs.defaultsFor(guideId, store.getGuide(guideId).title);
+  }, { validate: (a) => c.id(a.guideId) });
+  h('wikijs:publish', async ({ guideId, path: pagePath, title, locale = 'en', replace = false }) => {
+    if (!store.guideExists(guideId)) throw new Error('Guide not found.');
+    // A path or language Wiki.js would refuse is reported before any work starts.
+    const target = normalizePagePath(pagePath);
+    const language = normalizeLocale(locale);
+    wikijs.requireSite();
+    const progress = (update) => sendToRenderer('wikijs:progress', { guideId, ...update });
+    const outDir = path.join(store.tempDir, `wikijs-${guideId}`);
+    fs.rmSync(outDir, { recursive: true, force: true });
+    try {
+      // Like publishing on the web: nothing leaves unchecked.
+      progress({ stage: 'check' });
+      await redactor.checkGuide(guideId, { onProgress: ({ done, total }) => progress({ stage: 'check', done, total }) });
+      progress({ stage: 'export' });
+      const assetFolder = `/${target}`;
+      const result = await runExportInWorker({ dataDir: store.root, guideId, format: 'wikijs',
+        options: { includeImages: true, toc: false, frontMatter: false, assetFolder }, outDir, globals: settings.getGlobalPlaceholders() });
+      const description = htmlToText(store.getGuide(guideId).descriptionHtml || '').replace(/\s+/g, ' ').trim();
+      return await wikijs.publish({ guideId, path: target, title, locale: language, description, replace, onProgress: progress,
+        page: wikiPageFromExport(result.file, assetFolder) });
+    } finally {
+      fs.rmSync(outDir, { recursive: true, force: true });
+    }
+  }, { validate: validWikiPublishArgs });
+
   // Private details: check screenshots, then review what was blurred.
   h('redact:check', ({ guideId, force = false }) => redactor.checkGuide(guideId, { force,
     onProgress: (update) => sendToRenderer('redact:progress', { guideId, ...update }) }),
@@ -1367,6 +1408,7 @@ function setupIpc() {
     label: FORMAT_LABELS[format] || format,
     description: FORMAT_INFO[format]?.description || '',
     options: FORMAT_INFO[format]?.options || {},
+    badge: FORMAT_INFO[format]?.badge || '',
   })));
   h('export:defaults', ({ format }) => {
     // Exporter modules expose DEFAULT_TEMPLATE; the dialog renders editable
@@ -1590,6 +1632,14 @@ if (!gotLock) {
       openLoginWindow: confluenceParts.openLoginWindow,
       onStatus: (status) => sendToRenderer('confluence:status', status),
     });
+    const wikiSession = session.fromPartition('wikijs');
+    wikiSession.setPermissionRequestHandler((wc, permission, callback) => callback(false));
+    wikiSession.setPermissionCheckHandler(() => false);
+    wikijs = new WikiJs({
+      directory: store.settingsDir, safeStorage, vault: cloudVault('wikijs'),
+      fetchImpl: (url, init) => wikiSession.fetch(url, init),
+      onStatus: (status) => sendToRenderer('wikijs:status', status),
+    });
     githubPages = new GitHubPages({ directory: store.settingsDir, safeStorage,
       openExternal: (url) => shell.openExternal(url),
       // The sign-in code is copied so it can be pasted on github.com.
@@ -1764,6 +1814,8 @@ if (!gotLock) {
       if (recovered && settings.get('cloud.enabled') === true) void cloudSync.sync();
     });
     if (settings.get('cloud.enabled') === true) cloudSync.start();
+    // A Wiki.js sign-in lost in an update or reinstall comes back from the OS keyring.
+    void wikijs.recover().catch(() => {});
     // Shared guides past their expiry come down even if GitHub's scheduled
     // clean-up has not run yet. Only runs for users who connected GitHub.
     setTimeout(() => { void githubPages.sweep().catch(() => {}); }, 15000);

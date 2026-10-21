@@ -12,9 +12,9 @@ const { execFile } = require('node:child_process');
 
 const SERVICE = 'stepforge-google-drive';
 const ENTROPY = 'StepForge Google Drive';
-// Each cloud service has its own slot. Google keeps the original names so
-// existing backups are still found.
-const LABELS = { google: 'Google Drive', onedrive: 'OneDrive', dropbox: 'Dropbox', webdav: 'Nextcloud' };
+// Each cloud service, and Wiki.js, has its own slot. Google keeps the
+// original names so existing backups are still found.
+const LABELS = { google: 'Google Drive', onedrive: 'OneDrive', dropbox: 'Dropbox', webdav: 'Nextcloud', wikijs: 'Wiki.js' };
 
 function run(file, args, input, timeout = 15000) {
   return new Promise((resolve, reject) => {

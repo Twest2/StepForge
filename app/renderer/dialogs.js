@@ -513,7 +513,7 @@ function showSettingsDialog({
     const form = el('form', { className: 'settings-form' });
     // A service's id ("drive", "onedrive", "dropbox", "webdav", "github")
     // opens Accounts with that service's panel showing.
-    const accountView = ['drive', 'onedrive', 'dropbox', 'webdav', 'github', 'confluence'].includes(initialSection) ? initialSection : null;
+    const accountView = ['drive', 'onedrive', 'dropbox', 'webdav', 'github', 'confluence', 'wikijs'].includes(initialSection) ? initialSection : null;
     if (accountView) initialSection = 'accounts';
     const accountsPanel = makeAccountsSettings(api, { view: accountView, onPublishToWeb });
     const storagePath = el('code.settings-path', {}, 'Checking guide storage location…');
@@ -826,7 +826,7 @@ function showSettingsDialog({
           settingRow('Agents can see screenshots', 'Blurred areas are filled in first. Turn off to share step text only.', makeSwitch(agentsScreenshots, 'Agents can see screenshots')),
           agentSetup),
       ] },
-      { id: 'accounts', label: 'Accounts', description: 'Sync guides with Google Drive, OneDrive, Dropbox or Nextcloud, share them on the web with GitHub, or publish them to Confluence.', content: [accountsPanel.node] },
+      { id: 'accounts', label: 'Accounts', description: 'Sync guides with Google Drive, OneDrive, Dropbox or Nextcloud, share them on the web with GitHub, or publish them to Confluence or Wiki.js.', content: [accountsPanel.node] },
       { id: 'placeholders', label: 'Placeholders', description: 'Reusable text for every guide. Type [[name]] in a guide to insert it.', content: [
         settingsCard(null, placeholderRows, el('div.settings-actions', {}, addPlaceholderBtn)),
       ] },
@@ -866,7 +866,7 @@ function showSettingsDialog({
         if (item.id === 'accounts') accountsPanel.show(null);
         showSection(item.id);
       } },
-        item.label, item.badge ? el('span.settings-chip', {}, item.badge) : null);
+        item.label, item.badge ? betaBadge(item.badge) : null);
       navButtons.set(item.id, button);
       nav.append(button);
       const pane = el('section.settings-pane', { role: 'tabpanel', 'aria-label': item.label },
@@ -993,10 +993,12 @@ function showExportDialog({
         label: f.label || f.id || f.value || f.name,
         description: f.description || '',
         options: f.options || {},
+        badge: f.badge || '',
       };
     });
     const formatInfo = (value) => formatOptions.find((f) => f.value === value) || {};
-    const formatSelect = makeSelect(defaultFormat, formatOptions);
+    // A list option can only hold text, so the badge goes in its label too.
+    const formatSelect = makeSelect(defaultFormat, formatOptions.map((f) => ({ ...f, label: f.badge ? `${f.label} (${f.badge})` : f.label })));
     const formatDesc = el('div.muted.export-format-desc');
     const templateSelect = makeSelect('', [{ value: '', label: 'Default template' }]);
     const outDirInput = makeInput(defaultOutDir, 'text', { placeholder: 'Choose an output folder' });
@@ -1089,7 +1091,10 @@ function showExportDialog({
       for (const name of list) templateSelect.append(el('option', { value: name }, name));
     }
 
-    const refreshFormatDesc = () => { formatDesc.textContent = formatInfo(formatSelect.value).description || ''; };
+    const refreshFormatDesc = () => {
+      const info = formatInfo(formatSelect.value);
+      formatDesc.replaceChildren(...(info.badge ? [betaBadge(info.badge), ' '] : []), info.description || '');
+    };
 
     // Publish on the web: HTML exports can also go to the user's GitHub Pages
     // site (Settings → Accounts → GitHub), using the options chosen here.

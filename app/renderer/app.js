@@ -447,7 +447,8 @@ class StepForgeApp {
           contextMenu(rect.left, rect.bottom + 4, [
             { label: 'Save as a .sfgz file…', action: () => this.editor.shareAsFile() },
             { label: 'Publish to the web…', action: () => this.publishToWeb(guide?.guideId || this.editor.guideId, guide?.title) },
-            { label: 'Publish to Confluence…', action: () => this.publishToConfluence(guide?.guideId || this.editor.guideId, guide?.title) },
+            { label: 'Publish to Confluence…', badge: 'Beta', action: () => this.publishToConfluence(guide?.guideId || this.editor.guideId, guide?.title) },
+            { label: 'Publish to Wiki.js…', badge: 'Beta', action: () => this.publishToWikiJs(guide?.guideId || this.editor.guideId, guide?.title) },
           ]);
         },
       }, 'Share ▾'),
@@ -798,7 +799,8 @@ class StepForgeApp {
       { label: 'Duplicate guide', action: () => this.duplicateGuide(guide.guideId) },
       { label: 'Export', action: () => this.openGuideExport(guide.guideId) },
       { label: 'Publish to the web…', action: () => this.publishToWeb(guide.guideId, guide.title) },
-      { label: 'Publish to Confluence…', action: () => this.publishToConfluence(guide.guideId, guide.title) },
+      { label: 'Publish to Confluence…', badge: 'Beta', action: () => this.publishToConfluence(guide.guideId, guide.title) },
+      { label: 'Publish to Wiki.js…', badge: 'Beta', action: () => this.publishToWikiJs(guide.guideId, guide.title) },
       ...moveItems,
       'sep',
       { label: 'Delete guide', danger: true, action: () => this.deleteGuide(guide.guideId) },
@@ -1055,6 +1057,21 @@ class StepForgeApp {
       guideId,
       guideTitle: title || 'Untitled guide',
       onOpenAccounts: () => this.openSettings('confluence'),
+    });
+    // Checking for private details may have added blurs to the open guide.
+    if (changed && inEditor) await this.editor.reload();
+  }
+
+  /** Publish a guide as a Wiki.js page (Settings → Accounts → Wiki.js). */
+  async publishToWikiJs(guideId, title) {
+    if (!guideId) return;
+    const inEditor = this.state.view === 'editor' && this.editor.guideId === guideId;
+    if (inEditor) await this.editor.saveAll();
+    const changed = await showPublishToWikiJsDialog({
+      api,
+      guideId,
+      guideTitle: title || 'Untitled guide',
+      onOpenAccounts: () => this.openSettings('wikijs'),
     });
     // Checking for private details may have added blurs to the open guide.
     if (changed && inEditor) await this.editor.reload();

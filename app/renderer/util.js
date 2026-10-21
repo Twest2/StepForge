@@ -30,6 +30,11 @@ function el(spec, props = {}, ...children) {
   return node;
 }
 
+/** The "Beta" chip beside features that are new and may still change (AI, Confluence, Wiki.js). */
+function betaBadge(text = 'Beta') {
+  return el('span.settings-chip.beta-badge', {}, text);
+}
+
 function clearNode(node) {
   while (node.firstChild) node.removeChild(node.firstChild);
 }
@@ -160,7 +165,8 @@ function promptDialog(title, { value = '', label = 'Name' } = {}) {
 
 /**
  * Context menu at (x, y).
- * items: [{label, danger, action}] | [{label, submenu}] | 'sep'.
+ * items: [{label, danger, action, badge}] | [{label, submenu}] | 'sep'.
+ * `badge` adds a chip such as "Beta" after the label.
  * `submenu` is an array (or a function returning one) of the same item
  * shapes, shown in a scrollable panel beside the item on hover.
  */
@@ -211,7 +217,7 @@ function contextMenu(x, y, items) {
       className: `mi${item.danger ? ' danger' : ''}`,
       onMouseEnter: closeSubmenu,
       onClick: () => { closeAll(); item.action(); },
-    }, item.label));
+    }, item.label, item.badge ? betaBadge(item.badge) : null));
   }
   document.body.append(menu);
   const rect = menu.getBoundingClientRect();

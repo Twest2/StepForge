@@ -148,8 +148,8 @@ Choose **Export**, pick a format, and choose where to save.
 | **PPTX** | Training sessions and walkthrough slides |
 | **Markdown** | Git repositories, READMEs, and docs sites |
 | **HTML** (simple or rich) | A single web page; *rich* adds a sidebar and done-checkboxes |
-| **Confluence** | Importing into Confluence |
-| **Wiki.js** | Publishing to a Wiki.js site |
+| **Confluence** (beta) | Importing into Confluence |
+| **Wiki.js** (beta) | Uploading to a Wiki.js site by hand |
 | **GIF** | A short animated walkthrough |
 | **Image bundle** | Numbered, annotated PNGs for use anywhere |
 | **JSON** | Feeding guides into your own tools |

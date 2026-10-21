@@ -443,7 +443,7 @@ class GuideStore {
   }
 
   /**
-   * Replace a step's screenshot (Choose screenshot…, and undoing it).
+   * Replace a step's screenshot (Choose image…, and undoing it).
    * `images.original` becomes original.png; `images.working` (or the
    * original) becomes working.png. A step without a screenshot gets one.
    * `stepPatch` is saved with it, so text and annotations go in one write.

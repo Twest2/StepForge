@@ -1153,7 +1153,7 @@ class GuideEditor {
               },
             },
             { label: 'Duplicate step', action: () => this.duplicateSelectedStep() },
-            { label: 'Choose screenshot…', action: () => this.chooseScreenshot(step.stepId) },
+            { label: 'Choose image…', action: () => this.chooseScreenshot(step.stepId) },
             {
               label: 'Retake screenshot',
               submenu: [
@@ -1716,7 +1716,7 @@ class GuideEditor {
     if (includeImage && target.image) {
       const image = await this.currentStepImageToBase64(target);
       if (image) record.image = image;
-      // Choose screenshot… replaces the original too, so undo needs it.
+      // Choose image… replaces the original too, so undo needs it.
       const original = await this.stepImageToBase64(target, 'original');
       if (original) record.original = original;
     }
@@ -2175,7 +2175,7 @@ class GuideEditor {
   }
 
   /**
-   * Step menu → Choose screenshot…: use an image file as the step's
+   * Step menu → Choose image…: use an image file as the step's
    * screenshot. Its title, description and annotations stay; Ctrl+Z puts
    * the old screenshot back.
    */
@@ -2185,7 +2185,7 @@ class GuideEditor {
 
   /**
    * Step menu → Retake screenshot: StepForge hides itself, counts down and
-   * grabs a new screenshot for this step. Like Choose screenshot…, the text
+   * grabs a new screenshot for this step. Like Choose image…, the text
    * and annotations stay and Ctrl+Z puts the old screenshot back.
    */
   async retakeScreenshot(stepId, mode = 'fullscreen', delayMs = RETAKE_DELAY_MS) {
@@ -2198,7 +2198,7 @@ class GuideEditor {
   }
 
   /**
-   * Shared by Choose screenshot… and Retake screenshot: `pick(step)` swaps the
+   * Shared by Choose image… and Retake screenshot: `pick(step)` swaps the
    * image in the main process; this records the old images for undo.
    */
   async replaceStepScreenshot(stepId, pick, verb = 'replaced') {

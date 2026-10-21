@@ -872,7 +872,7 @@ function showSettingsDialog({
           settingRow('Blur while recording', 'Check each new capture as soon as it’s taken, instead of waiting until you publish.', makeSwitch(redactOnCapture, 'Blur while recording')),
           settingRow('Always hide these words', 'Names, project codes, or anything else to blur wherever it appears. One per line.', redactTerms)),
       ] },
-      { id: 'ai', label: 'AI', badge: 'Beta', description: 'Let AI write your guides: a model on your own computer through Ollama, or an AI agent such as Claude or Codex.', content: [
+      { id: 'ai', label: 'AI', description: 'Let AI write your guides: a model on your own computer through Ollama, or an AI agent such as Claude or Codex.', content: [
         settingsCard(null,
           settingRow('Enable AI', 'Turn on the AI ▾ menu in the guide toolbar: write a whole guide, a step, or one field.', makeSwitch(aiEnabled, 'Enable AI')),
           settingRow('Auto-document captures', 'Write a title and description for each new capture as you record. Turn off to use AI only when you ask.', makeSwitch(aiAutoDoc, 'Auto-document captures')),

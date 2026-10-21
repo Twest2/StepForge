@@ -2626,6 +2626,15 @@ class GuideEditor {
       settings,
       placeholders,
       section,
+      // Update now closes StepForge; save this guide first.
+      flushEdits: async () => {
+        try {
+          if (this.pendingSave || this.pendingGuideSave) await this.saveAll();
+        } catch {
+          return false;
+        }
+        return !this.pendingSave && !this.pendingGuideSave;
+      },
       onSave: async (next) => {
         await api.settings.set({ keyPath: 'appearance', value: next.appearance });
         await api.settings.set({ keyPath: 'spellcheck', value: next.spellcheck });

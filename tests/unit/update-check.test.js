@@ -55,7 +55,30 @@ test('a newer release is reported with its link and an install hint for this pla
   assert.equal(result.latestVersion, '1.0');
   assert.equal(result.currentVersion, '0.7.0');
   assert.equal(result.releaseUrl, 'https://github.com/Twest2/StepForge/releases/tag/v1.0');
-  assert.match(result.hint, /choco upgrade stepforge/);
+  assert.match(result.hint, /Download the new installer/);
+  assert.equal(result.updateNow, false, 'not registered with Chocolatey: download only');
+});
+
+test('Windows: Update now is offered only for an install registered with Chocolatey', async () => {
+  const registered = await checkForUpdates({ currentVersion: '0.7.0', platform: 'win32', chocolatey: true, fetchImpl: githubReturns(release('v1.0')).fetchImpl });
+  assert.equal(registered.updateNow, true);
+  assert.match(registered.hint, /^Update now installs it with Chocolatey\. StepForge closes while it updates and opens again when it’s done\.$/);
+
+  // Linux never gets the button, whatever it is told.
+  const linux = await checkForUpdates({ currentVersion: '0.7.0', platform: 'linux', chocolatey: true, fetchImpl: githubReturns(release('v1.0')).fetchImpl });
+  assert.equal(linux.updateNow, false);
+  assert.match(linux.hint, /Download the new version/);
+
+  const current = await checkForUpdates({ currentVersion: '1.0', platform: 'win32', chocolatey: true, fetchImpl: githubReturns(release('v1.0')).fetchImpl });
+  assert.equal(current.status, 'up-to-date');
+  assert.equal(current.updateNow, undefined, 'nothing to update');
+});
+
+test('the Windows hint without Chocolatey says how to get one-click updates', () => {
+  const hint = installHint('win32');
+  assert.equal(hint, 'Download the new installer from the release page. Run the installer again and keep "Keep StepForge updated with Chocolatey" checked to get one-click updates.');
+  assert.equal(installHint('win32', () => false, { chocolatey: false }), hint);
+  assert.doesNotMatch(installHint('win32', () => false, { chocolatey: true }), /installer/);
 });
 
 test('Linux hints follow the installed package manager', () => {

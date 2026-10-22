@@ -671,6 +671,9 @@ class WikiJs {
     // A password sign-in whose token is missing or about to run out signs
     // in again now. Not on every publish: Wiki.js allows five sign-ins a minute.
     await this.token(this.credentials);
+    // A two-step session Wiki.js ended works like a visitor's, who can often
+    // still read pages: find that out (or renew it) before anything changes.
+    if (this.credentials.twoStep) await this.call('{ users { profile { id } } }');
     const existing = await this.findPage(pagePath, locale);
     const known = this.publishedFor(guideId);
     const ours = Boolean(existing && known && known.id === existing.id);

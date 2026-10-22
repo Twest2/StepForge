@@ -795,6 +795,98 @@ test('“Sign in with” appears only for several sign-ins, and an SSO-only wiki
   ssoPanel.dispose();
 });
 
+test('a two-step account enters a code after its password, and can sign in again when Wiki.js ends the session', async () => {
+  const u = ui();
+  const api = wikiApi({
+    connect: async (args) => {
+      api.calls.push(['connect', args]);
+      return args.code ? { connected: true, host: 'wiki.example.com', method: 'password', user: 'Casey Jones', strategy: 'Local', twoStep: true, needsCode: false }
+        : { needsCode: true };
+    },
+  });
+  const panel = u.context.makeWikiJsSettings(api);
+  await settle();
+  const field = (label) => u.all(panel.node).find((n) => ['input', 'select'].includes(n.tag) && n['aria-label'] === label);
+  field('Wiki.js site address').value = 'wiki.example.com';
+  await u.find(panel.node, 'Continue').listeners.click();
+  await settle();
+  assert.equal(u.visible(field('Verification code')), false, 'no code until Wiki.js asks');
+  field('Email address').value = 'casey@example.com';
+  field('Password').value = 'hunter2';
+  await u.find(panel.node, 'Sign in').listeners.click();
+  await settle();
+  assert.equal(u.visible(field('Verification code')), true);
+  assert.match(panel.node.textContent, /two-step verification\. Enter the 6-digit code from your authenticator app/);
+  field('Verification code').value = '123456';
+  await u.find(panel.node, 'Verify').listeners.click();
+  await settle();
+  assert.deepEqual(JSON.parse(JSON.stringify(api.calls.at(-1))), ['connect', { address: 'wiki.example.com', method: 'password',
+    username: 'casey@example.com', password: 'hunter2', strategy: 'local', code: '123456' }]);
+  assert.match(panel.node.textContent, /Signed in as Casey Jones\./);
+  assert.match(panel.node.textContent, /signed in with Local and two-step verification/);
+  assert.equal(field('Password').value, '');
+  panel.dispose();
+
+  // Signed out on the wiki: the panel asks for a code.
+  const later = wikiApi({
+    status: async () => ({ connected: true, host: 'wiki.example.com', method: 'password', user: 'Casey Jones', strategy: 'Local', twoStep: true, needsCode: true }),
+    signInAgain: async (args) => { later.calls.push(['signInAgain', args]); return { connected: true, host: 'wiki.example.com', method: 'password', user: 'Casey Jones', twoStep: true, needsCode: false }; },
+  });
+  const again = u.context.makeWikiJsSettings(later);
+  await settle();
+  assert.match(again.node.textContent, /Signed out on the wiki/);
+  const code = u.all(again.node).find((n) => n['aria-label'] === 'Verification code' && u.visible(n));
+  code.value = '654321';
+  await u.find(again.node, 'Sign in again').listeners.click();
+  await settle();
+  assert.deepEqual(JSON.parse(JSON.stringify(later.calls.at(-1))), ['signInAgain', { code: '654321' }]);
+  assert.equal(u.find(again.node, 'Sign in again'), undefined, 'hidden once signed in');
+  again.dispose();
+});
+
+test('Publish to Wiki.js asks for a code when Wiki.js ended the session, then publishes', async () => {
+  const u = ui();
+  let answers = [{ needsCode: true }];
+  const api = wikiApi({
+    status: async () => ({ connected: true, host: 'wiki.example.com', method: 'password', twoStep: true }),
+    publish: async (args) => { api.calls.push(['publish', args]); return answers.shift() || { id: 4, url: 'https://wiki.example.com/en/guides/vpn', title: args.title, updated: true }; },
+    signInAgain: async (args) => {
+      api.calls.push(['signInAgain', args]);
+      if (args.code !== '123456') throw new Error('Wiki.js didn’t accept that code.');
+      return { connected: true, needsCode: false };
+    },
+  });
+  u.context.showPublishToWikiJsDialog({ api, guideId: 'guide-1', guideTitle: 'VPN' });
+  await settle(); await settle();
+  const modal = u.root.children.at(-1);
+  u.find(modal, 'Publish').listeners.click();
+  await settle();
+  const ask = u.root.children.at(-1);
+  assert.match(ask.textContent, /Sign in to Wiki\.js again.*Wiki\.js ended your session/);
+  const code = u.all(ask).find((n) => n['aria-label'] === 'Verification code');
+  code.value = '000000';
+  await u.find(ask, 'Sign in').listeners.click();
+  assert.match(ask.textContent, /didn’t accept that code/);
+  assert.equal(u.root.children.at(-1), ask, 'stays open to try again');
+  code.value = '123456';
+  await u.find(ask, 'Sign in').listeners.click();
+  await settle(); await settle();
+  assert.deepEqual(api.calls.filter(([name]) => name === 'publish').length, 2, 'publishes after signing in');
+  assert.match(modal.textContent, /Updated “VPN” on Wiki\.js\./);
+
+  // Cancelling goes back to the form and says why.
+  answers = [{ needsCode: true }];
+  u.context.showPublishToWikiJsDialog({ api, guideId: 'guide-1', guideTitle: 'VPN' });
+  await settle(); await settle();
+  const second = u.root.children.at(-1);
+  u.find(second, 'Publish').listeners.click();
+  await settle();
+  u.click(u.find(u.root.children.at(-1), 'Cancel'));
+  await settle();
+  assert.equal(u.visible(u.find(second, 'Publish')), true);
+  assert.match(second.textContent, /Publishing needs a code from your authenticator app/);
+});
+
 test('Accounts shows who is signed in to Wiki.js', async () => {
   const u = ui();
   const api = wikiApi({ status: async () => ({ connected: true, host: 'wiki.example.com', user: 'Casey Jones', method: 'password' }) });

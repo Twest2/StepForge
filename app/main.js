@@ -21,7 +21,7 @@ const { Confluence, pageFromExport } = require('./confluence');
 const { createConfluenceSession } = require('./confluence-session');
 const { htmlToText } = require('../core/util');
 const { WikiJs, pageFromExport: wikiPageFromExport, normalizePagePath, normalizeLocale,
-  validConnectArgs: validWikiConnectArgs, validPublishArgs: validWikiPublishArgs } = require('./wikijs');
+  validConnectArgs: validWikiConnectArgs, validCodeArgs: validWikiCodeArgs, validPublishArgs: validWikiPublishArgs } = require('./wikijs');
 const { GitHubPages } = require('./github-pages');
 const { EXPIRY_DAYS, titleFromHtml } = require('../core/pages-site');
 const { TransferMeter } = require('../core/transfer-meter');
@@ -1089,8 +1089,9 @@ function setupIpc() {
   // Wiki.js: the API key or password stays in the main process.
   h('wikijs:status', () => wikijs.status());
   h('wikijs:probe', ({ address }) => wikijs.probe(address), { validate: withSite });
-  h('wikijs:connect', ({ address, method, apiKey, username, password, strategy }) => wikijs.connect({ address, method, apiKey, username, password, strategy }),
+  h('wikijs:connect', ({ address, method, apiKey, username, password, strategy, code }) => wikijs.connect({ address, method, apiKey, username, password, strategy, code }),
     { validate: validWikiConnectArgs });
+  h('wikijs:signInAgain', ({ code }) => wikijs.signInAgain({ code }), { validate: validWikiCodeArgs });
   h('wikijs:cancel', () => { wikijs.cancel(); return { ok: true }; });
   h('wikijs:disconnect', () => wikijs.disconnect());
   h('wikijs:defaults', ({ guideId }) => {
@@ -1103,6 +1104,8 @@ function setupIpc() {
     const target = normalizePagePath(pagePath);
     const language = normalizeLocale(locale);
     wikijs.requireSite();
+    // Signed out on the wiki: ask for the code before checking and exporting.
+    if (wikijs.status().needsCode) return { needsCode: true };
     const progress = (update) => sendToRenderer('wikijs:progress', { guideId, ...update });
     const outDir = path.join(store.tempDir, `wikijs-${guideId}`);
     fs.rmSync(outDir, { recursive: true, force: true });

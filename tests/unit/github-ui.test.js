@@ -925,6 +925,116 @@ test('Publish to Confluence warns before replacing a page edited there, says who
   assert.match(modal.textContent, /Updated “VPN” in Confluence\./);
 });
 
+test('Publish to Confluence picks the parent page: the default, a search, or the top of the space', async () => {
+  const u = ui();
+  const api = confluenceApi({
+    status: async () => ({ connected: true, host: 'wiki.example.mil', space: { key: 'OPS', name: 'Operations', id: '1' }, parent: { id: '7', title: 'How-to guides' } }),
+    spaces: async () => [{ key: 'DOC', name: 'Docs', id: '2' }, { key: 'OPS', name: 'Operations', id: '1' }],
+    findPages: async (args) => { api.calls.push(['findPages', args]); return [{ id: '8', title: 'Runbooks' }]; },
+  });
+  u.context.showPublishToConfluenceDialog({ api, guideId: 'guide-1', guideTitle: 'VPN' });
+  await settle(); await settle();
+  const modal = u.root.children.at(-1);
+  const space = u.all(modal).find((n) => n.tag === 'select');
+  const choose = (key) => { space.value = key; space.listeners.change(); };
+  choose('OPS');
+  assert.match(modal.textContent, /Parent page: How-to guides/);
+  assert.match(modal.textContent, /The page goes under “How-to guides”\./);
+
+  const search = u.all(modal).find((n) => n['aria-label'] === 'Search for a parent page');
+  search.value = 'run';
+  search.listeners.input();
+  await new Promise((resolve) => setTimeout(resolve, 350));
+  assert.deepEqual(JSON.parse(JSON.stringify(api.calls.find(([name]) => name === 'findPages'))), ['findPages', { spaceKey: 'OPS', query: 'run' }]);
+  u.click(u.find(modal, 'Runbooks'));
+  assert.match(modal.textContent, /The page goes under “Runbooks”\./);
+  u.click(u.find(modal, 'Top of the space'));
+  assert.match(modal.textContent, /The page goes at the top of Operations\./);
+
+  // Another space starts at its top, unless it's the default space.
+  choose('DOC');
+  assert.match(modal.textContent, /The page goes at the top of Docs\./);
+  choose('OPS');
+  assert.match(modal.textContent, /The page goes under “How-to guides”\./);
+  u.find(modal, 'Publish').listeners.click();
+  await settle();
+  const sent = JSON.parse(JSON.stringify(api.calls.find(([name]) => name === 'publish')[1]));
+  assert.deepEqual([sent.parent, sent.parentPicked], [{ id: '7', title: 'How-to guides' }, false]);
+});
+
+test('a guide already published to the space keeps its page where it is unless another parent is picked', async () => {
+  const u = ui();
+  const api = confluenceApi({
+    published: async () => ({ id: '100', spaceKey: 'OPS', url: 'https://wiki.example.mil/display/OPS/VPN', parent: { id: '8', title: 'Runbooks' }, publishedAt: '2026-10-01T10:00:00Z' }),
+    findPages: async () => [{ id: '7', title: 'How-to guides' }],
+  });
+  u.context.showPublishToConfluenceDialog({ api, guideId: 'guide-1', guideTitle: 'VPN' });
+  await settle(); await settle();
+  const modal = u.root.children.at(-1);
+  const space = u.all(modal).find((n) => n.tag === 'select');
+  space.value = 'OPS';
+  space.listeners.change();
+  assert.match(modal.textContent, /Parent page: Runbooks/);
+  assert.match(modal.textContent, /Publishing again updates the page where it is\./);
+  assert.equal(u.find(modal, 'Top of the space'), undefined, 'can’t be moved to the top from StepForge');
+
+  const search = u.all(modal).find((n) => n['aria-label'] === 'Search for a parent page');
+  search.value = 'how';
+  search.listeners.input();
+  await new Promise((resolve) => setTimeout(resolve, 350));
+  u.click(u.find(modal, 'How-to guides'));
+  assert.match(modal.textContent, /The page moves under “How-to guides”\./);
+  u.find(modal, 'Publish').listeners.click();
+  await settle();
+  const sent = JSON.parse(JSON.stringify(api.calls.find(([name]) => name === 'publish')[1]));
+  assert.deepEqual([sent.parent, sent.parentPicked], [{ id: '7', title: 'How-to guides' }, true]);
+});
+
+test('Publish waits for the guide’s last publish before it can be used, so its page isn’t moved to the default', async () => {
+  const u = ui();
+  let answer;
+  const api = confluenceApi({
+    status: async () => ({ connected: true, host: 'wiki.example.mil', space: { key: 'OPS', name: 'Operations', id: '1' }, parent: { id: '7', title: 'How-to guides' } }),
+    published: () => new Promise((resolve) => { answer = resolve; }),
+  });
+  u.context.showPublishToConfluenceDialog({ api, guideId: 'guide-1', guideTitle: 'VPN' });
+  await settle(); await settle();
+  const modal = u.root.children.at(-1);
+  const space = u.all(modal).find((n) => n.tag === 'select');
+  space.value = 'OPS';
+  space.listeners.change();
+  const publish = u.find(modal, 'Publish');
+  assert.equal(publish.disabled, true, 'not until StepForge knows where the page is');
+  answer({ id: '100', spaceKey: 'OPS', url: 'https://wiki.example.mil/display/OPS/VPN', parent: { id: '8', title: 'Runbooks' }, publishedAt: '2026-10-01T10:00:00Z' });
+  await settle(); await settle();
+  assert.equal(publish.disabled, false);
+  assert.match(modal.textContent, /Parent page: Runbooks/);
+  publish.listeners.click();
+  await settle();
+  const sent = JSON.parse(JSON.stringify(api.calls.find(([name]) => name === 'publish')[1]));
+  assert.deepEqual([sent.parent, sent.parentPicked], [{ id: '8', title: 'Runbooks' }, false]);
+});
+
+test('if the guide’s last publish can’t be read, Publish still works and doesn’t ask to move the page', async () => {
+  const u = ui();
+  const api = confluenceApi({
+    status: async () => ({ connected: true, host: 'wiki.example.mil', space: { key: 'OPS', name: 'Operations', id: '1' }, parent: { id: '7', title: 'How-to guides' } }),
+    published: async () => { throw new Error('unreadable'); },
+  });
+  api.library = { list: async () => { throw new Error('no library'); } };
+  u.context.showPublishToConfluenceDialog({ api, guideId: 'guide-1', guideTitle: 'VPN' });
+  await settle(); await settle();
+  const modal = u.root.children.at(-1);
+  const space = u.all(modal).find((n) => n.tag === 'select');
+  space.value = 'OPS';
+  space.listeners.change();
+  const publish = u.find(modal, 'Publish');
+  assert.equal(publish.disabled, false);
+  publish.listeners.click();
+  await settle();
+  assert.equal(api.calls.find(([name]) => name === 'publish')[1].parentPicked, false);
+});
+
 test('without a name or date, the edited warning still reads cleanly', async () => {
   const u = ui();
   const api = confluenceApi();

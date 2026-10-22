@@ -67,7 +67,8 @@ function dataCenter({ base = 'https://wiki.example.mil/confluence', token = 'pat
       const page = server.pages.get(match[1]);
       const body = JSON.parse(init.body);
       assert.equal(body.version.number, page.version + 1, 'updates bump the version');
-      Object.assign(page, { title: body.title, body: body.body.storage.value, version: body.version.number, by: 'Casey Jones', when: now() });
+      Object.assign(page, { title: body.title, body: body.body.storage.value, version: body.version.number, by: 'Casey Jones', when: now(),
+        ...(body.ancestors ? { ancestors: body.ancestors } : {}) });
       return json({ id: page.id, version: { number: page.version }, _links: links(page) });
     }
     match = /^\/rest\/api\/content\/(\d+)\/child\/attachment(?:\/(\w+)\/data)?$/.exec(rest);
@@ -259,6 +260,38 @@ test('a page published before versions were remembered updates without asking, t
   assert.equal(confluence.publishedFor('g').version, 3);
   server.edit(first.id);
   assert.ok((await confluence.publish({ guideId: 'g', space, page: page() })).edited);
+});
+
+test('the guide’s page stays where it is unless another parent page is chosen', async (t) => {
+  const server = dataCenter();
+  const { confluence } = setup(t, server);
+  await confluence.connect({ address: 'wiki.example.mil/confluence', token: 'pat-123' });
+  const space = { key: 'OPS', name: 'Operations' };
+  const howTo = { id: '7', title: 'How-to guides' };
+  const first = await confluence.publish({ guideId: 'g', space, parent: howTo, page: page() });
+  assert.deepEqual(confluence.publishedFor('g').parent, howTo);
+  // A teammate moves the page in Confluence; publishing again leaves it there.
+  server.pages.get(first.id).ancestors = [{ id: '9' }];
+  await confluence.publish({ guideId: 'g', space, parent: howTo, page: page() });
+  assert.deepEqual(server.pages.get(first.id).ancestors, [{ id: '9' }]);
+  await confluence.publish({ guideId: 'g', space, parent: null, page: page() });
+  assert.deepEqual(server.pages.get(first.id).ancestors, [{ id: '9' }]);
+  // A different parent that wasn't picked (the dialog's default) doesn't move it either.
+  await confluence.publish({ guideId: 'g', space, parent: { id: '8', title: 'Runbooks' }, page: page() });
+  assert.deepEqual(server.pages.get(first.id).ancestors, [{ id: '9' }]);
+  assert.deepEqual(confluence.publishedFor('g').parent, howTo);
+  // Picking another parent moves it.
+  await confluence.publish({ guideId: 'g', space, parent: { id: '8', title: 'Runbooks' }, parentPicked: true, page: page() });
+  assert.deepEqual(server.pages.get(first.id).ancestors, [{ id: '8' }]);
+  assert.deepEqual(confluence.publishedFor('g').parent, { id: '8', title: 'Runbooks' });
+
+  // A page at the top is remembered as such; one published before parents were remembered stays unknown.
+  await confluence.publish({ guideId: 'top', space, parent: null, page: page('At the top') });
+  assert.equal(confluence.publishedFor('top').parent, null);
+  const { parent, ...older } = confluence.publishedFor('top');
+  confluence.rememberPage('top', older);
+  await confluence.publish({ guideId: 'top', space, parent: null, page: page('At the top') });
+  assert.equal('parent' in confluence.publishedFor('top'), false);
 });
 
 test('Confluence Cloud signs in with an email and API token and publishes through the v2 pages API', async (t) => {

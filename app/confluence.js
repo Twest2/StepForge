@@ -327,8 +327,10 @@ class Confluence {
   }
 
   // Pages published for each guide, by site:
-  // { [baseUrl]: { [guideId]: { id, url, spaceKey, title, version, publishedAt } } }
-  // `version` is the page's version number after the publish; older entries have none.
+  // { [baseUrl]: { [guideId]: { id, url, spaceKey, title, version, parent, publishedAt } } }
+  // `version` is the page's version number after the publish, and `parent`
+  // ({ id, title } or null for the top of the space) where StepForge put it.
+  // Older entries have neither.
   publishedPages() { return readJsonIfExists(this.pagesFile, {}); }
 
   publishedFor(guideId) {
@@ -425,8 +427,12 @@ class Confluence {
    *                 when it was last edited;
    *   { conflict }  another page in the space already has this title.
    * Both are only replaced with `replace`.
+   *
+   * `parent` is where a new page goes. The guide's own page stays where it
+   * is, wherever someone may have moved it, unless `parentPicked` says the
+   * user chose `parent` and it's a different page, which moves it there.
    */
-  async publish({ guideId, space, parent = null, page, replace = false, onProgress = () => {} }) {
+  async publish({ guideId, space, parent = null, parentPicked = false, page, replace = false, onProgress = () => {} }) {
     this.requireSite();
     if (!space?.key) throw new Error('Choose a Confluence space for this guide.');
     let existing = null;
@@ -441,10 +447,12 @@ class Confluence {
       if (same && !replace) return { conflict: { title: same.title, space: space.name || space.key } };
       if (same) existing = await this.getPage(same.id);
     }
+    const ours = Boolean(existing && known && existing.id === String(known.id));
+    const stays = ours && (!parentPicked || !parent || parent.id === known.parent?.id);
     onProgress({ stage: 'page' });
     let saved;
     try {
-      saved = await this.savePage({ existing, space, parentId: parent?.id || null, title: page.title, body: page.body });
+      saved = await this.savePage({ existing, space, parentId: stays ? null : parent?.id || null, title: page.title, body: page.body });
     } catch (err) {
       if (err.status === 400 && /title/i.test(err.detail || '')) return { conflict: { title: page.title, space: space.name || space.key } };
       throw err;
@@ -462,7 +470,8 @@ class Confluence {
     // a teammate's edit made meanwhile would be taken for ours and replaced
     // without asking next time. (Attaching files doesn't add page versions.)
     const version = saved.version?.number || (existing ? existing.version + 1 : 1);
-    const result = { id: pageId, url: this.pageUrl(saved), spaceKey: space.key, title: page.title, updated: Boolean(existing), version, publishedAt: new Date().toISOString() };
+    const result = { id: pageId, url: this.pageUrl(saved), spaceKey: space.key, title: page.title, updated: Boolean(existing), version,
+      parent: stays ? known.parent : parent && { id: String(parent.id), title: String(parent.title || '') }, publishedAt: new Date().toISOString() };
     const { updated, ...remembered } = result;
     this.rememberPage(guideId, remembered);
     return result;

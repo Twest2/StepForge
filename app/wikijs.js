@@ -135,7 +135,7 @@ function uploadBody(folderId, fileName, data, contentType = 'image/png') {
 
 const sameTime = (a, b) => Boolean(a && b) && (a === b || Date.parse(a) === Date.parse(b));
 
-const PAGE_FIELDS = 'id path locale title editor updatedAt scriptCss scriptJs tags { tag }';
+const PAGE_FIELDS = 'id path locale title editor updatedAt authorName scriptCss scriptJs tags { tag }';
 
 class WikiJs {
   /** `fetchImpl` is the network (Electron's, in a session of its own); `vault` keeps a backup of the sign-in. */
@@ -464,7 +464,7 @@ class WikiJs {
         { path: pagePath, locale });
       const page = data?.pages?.singleByPath;
       return page && { id: page.id, path: page.path, locale: page.locale, title: page.title, editor: page.editor, updatedAt: page.updatedAt,
-        tags: (page.tags || []).map((t) => t?.tag).filter(Boolean), scriptCss: page.scriptCss, scriptJs: page.scriptJs };
+        authorName: page.authorName || '', tags: (page.tags || []).map((t) => t?.tag).filter(Boolean), scriptCss: page.scriptCss, scriptJs: page.scriptJs };
     } catch (err) {
       if (err.code === CODES.notFound) return null;
       if (err.code !== CODES.viewForbidden) throw err;
@@ -547,7 +547,8 @@ class WikiJs {
    * assets: [{ name, data }] }, with image links already pointing at the
    * asset folder for `path`. Before anything changes on the wiki:
    *   { edited }    the guide's page was edited on the wiki since it was
-   *                 last published from here;
+   *                 last published from here: its url, and who (by) and
+   *                 when it was last edited;
    *   { conflict }  another page already has this path.
    * Both are only replaced with `replace`.
    */
@@ -565,7 +566,10 @@ class WikiJs {
     const ours = Boolean(existing && known && known.id === existing.id);
     if (existing && !replace) {
       if (!ours) return { conflict: { path: pagePath, title: existing.title || pagePath } };
-      if (!sameTime(existing.updatedAt, known.updatedAt)) return { edited: { path: pagePath, title: existing.title || pagePath } };
+      // The page list has no author, so `by` is empty for writers without "manage pages".
+      if (!sameTime(existing.updatedAt, known.updatedAt)) {
+        return { edited: { path: pagePath, title: existing.title || pagePath, url: this.pageUrl(pagePath, locale), by: existing.authorName || '', when: existing.updatedAt } };
+      }
     }
     const total = page.assets.reduce((n, a) => n + a.data.length, 0);
     if (page.assets.length) {

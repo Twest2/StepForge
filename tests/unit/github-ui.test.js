@@ -869,6 +869,73 @@ test('Publish to Wiki.js prefills the path, warns before replacing a page edited
   assert.equal(u.visible(u.find(second, 'Publish')), true);
 });
 
+function confluenceApi(overrides = {}) {
+  const api = fakeApi();
+  api.confluence = {
+    status: async () => ({ connected: true, host: 'wiki.example.mil', space: { key: 'OPS', name: 'Operations', id: '1' }, parent: null }),
+    onStatus: () => () => {},
+    onProgress: () => () => {},
+    spaces: async () => [{ key: 'OPS', name: 'Operations', id: '1' }],
+    findPages: async (args) => { api.calls.push(['findPages', args]); return []; },
+    published: async () => null,
+    publish: async (args) => { api.calls.push(['publish', args]); return { id: '100', url: 'https://wiki.example.mil/display/OPS/VPN', title: 'VPN', updated: true }; },
+    ...overrides,
+  };
+  return api;
+}
+
+test('Publish to Confluence warns before replacing a page edited there, says who and when, and can open it', async () => {
+  const u = ui();
+  const edited = { edited: { title: 'VPN', url: 'https://wiki.example.mil/display/OPS/VPN', by: 'Jane Doe', when: `${new Date().getFullYear()}-10-20T12:00:00Z` } };
+  let answers = [edited];
+  const api = confluenceApi({
+    publish: async (args) => {
+      api.calls.push(['publish', args]);
+      return answers.shift() || { id: '100', url: 'https://wiki.example.mil/display/OPS/VPN', title: 'VPN', updated: true };
+    },
+  });
+  u.context.showPublishToConfluenceDialog({ api, guideId: 'guide-1', guideTitle: 'VPN' });
+  await settle(); await settle();
+  const modal = u.root.children.at(-1);
+  const space = u.all(modal).find((n) => n.tag === 'select');
+  space.value = 'OPS';
+  space.listeners.change();
+  u.find(modal, 'Publish').listeners.click();
+  await settle();
+  const confirm = u.root.children.at(-1);
+  assert.match(confirm.textContent, /This page was edited in Confluence by Jane Doe on Oct 20 since you last published\. Publishing will replace those edits\./);
+  assert.match(confirm.textContent, /Confluence keeps the edited version in the page history\./);
+  u.click(u.find(confirm, 'Open page'));
+  assert.deepEqual(api.calls.at(-1), ['open', 'https://wiki.example.mil/display/OPS/VPN']);
+  assert.equal(u.root.children.at(-1), confirm, 'the question stays open');
+
+  // Cancel keeps Confluence's version and goes back to the form.
+  u.click(u.find(confirm, 'Cancel'));
+  await settle();
+  assert.equal(u.visible(u.find(modal, 'Publish')), true);
+  assert.deepEqual(api.calls.filter(([name]) => name === 'publish').map(([, args]) => args.replace), [false]);
+
+  // Publish anyway replaces it.
+  answers = [edited];
+  u.find(modal, 'Publish').listeners.click();
+  await settle();
+  u.click(u.find(u.root.children.at(-1), 'Publish anyway'));
+  await settle(); await settle();
+  assert.deepEqual(api.calls.filter(([name]) => name === 'publish').map(([, args]) => args.replace), [false, false, true]);
+  assert.match(modal.textContent, /Updated “VPN” in Confluence\./);
+});
+
+test('without a name or date, the edited warning still reads cleanly', async () => {
+  const u = ui();
+  const api = confluenceApi();
+  const answer = u.context.confirmReplaceEdits(api, { url: '', by: '', when: '' }, { where: 'in Confluence', history: 'Kept in history.' });
+  const confirm = u.root.children.at(-1);
+  assert.match(confirm.textContent, /^Page edited since you published.*This page was edited in Confluence since you last published\. Publishing will replace those edits\./);
+  assert.equal(u.find(confirm, 'Open page'), undefined, 'no page to open');
+  u.click(u.find(confirm, 'Publish anyway'));
+  assert.equal(await answer, true);
+});
+
 test('Publish to Wiki.js before signing in points to Settings → Accounts', async () => {
   const u = ui();
   let opened = 0;

@@ -81,6 +81,25 @@ Choose **Review** to check the blurs. Screenshots are attached as
 If the space already has a page with the guide's title, StepForge asks before
 replacing it. Confluence keeps the old version in the page history.
 
+### Publishing again
+
+StepForge remembers each guide's page, so publishing again updates the same
+page and replaces its screenshots.
+
+If someone edited the page in Confluence since you last published it,
+StepForge asks first, and says who edited it and when: "This page was edited
+in Confluence by Jane Doe on Oct 20 since you last published. Publishing will
+replace those edits."
+
+- **Open page** shows the page in your browser, so you can see the edits
+  (**Page history** in Confluence lists them). The question stays open.
+- **Publish anyway** replaces the page with the guide. Confluence keeps the
+  edited version in the page history.
+- **Cancel** keeps Confluence's version.
+
+Guides published with an earlier version of StepForge are checked from their
+next publish on.
+
 ## Smart cards (CAC and PIV)
 
 Many government and corporate sites ask for your smart card before they show

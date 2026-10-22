@@ -458,8 +458,10 @@ class Confluence {
       loaded += attachment.data.length;
     }
     onProgress({ stage: 'upload', index: page.attachments.length, count: page.attachments.length, loaded: total, total });
-    // Read back after the uploads, so the version remembered is the one the site ended on.
-    const version = (await this.getPage(pageId))?.version || saved.version?.number || 1;
+    // The version StepForge's own save made. Not read back after the uploads:
+    // a teammate's edit made meanwhile would be taken for ours and replaced
+    // without asking next time. (Attaching files doesn't add page versions.)
+    const version = saved.version?.number || (existing ? existing.version + 1 : 1);
     const result = { id: pageId, url: this.pageUrl(saved), spaceKey: space.key, title: page.title, updated: Boolean(existing), version, publishedAt: new Date().toISOString() };
     const { updated, ...remembered } = result;
     this.rememberPage(guideId, remembered);

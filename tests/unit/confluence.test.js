@@ -225,6 +225,26 @@ test('a page edited on Confluence since the last publish is only replaced when t
   assert.equal(again.edited, undefined, 'no warning once StepForge’s version is the latest');
 });
 
+test('an edit made on Confluence while screenshots upload is still caught on the next publish', async (t) => {
+  const server = dataCenter();
+  const { confluence } = setup(t, server);
+  await confluence.connect({ address: 'wiki.example.mil/confluence', token: 'pat-123' });
+  const space = { key: 'OPS', name: 'Operations' };
+  const upload = confluence.uploadAttachment.bind(confluence);
+  let editedDuringUpload = false;
+  confluence.uploadAttachment = async (pageId, ...rest) => {
+    const result = await upload(pageId, ...rest);
+    if (!editedDuringUpload) { editedDuringUpload = true; server.edit(pageId); }
+    return result;
+  };
+  const first = await confluence.publish({ guideId: 'g', space, page: page() });
+  assert.equal(server.pages.get(first.id).version, 2, 'the teammate saved after StepForge');
+  assert.equal(confluence.publishedFor('g').version, 1, 'only StepForge’s own save is remembered');
+  const asked = await confluence.publish({ guideId: 'g', space, page: page() });
+  assert.equal(asked.edited?.by, 'Jane Doe');
+  assert.equal(server.pages.get(first.id).body, '<p>Fixed on the site</p>', 'the teammate’s edit is kept');
+});
+
 test('a page published before versions were remembered updates without asking, then is checked', async (t) => {
   const server = dataCenter();
   const { confluence } = setup(t, server);

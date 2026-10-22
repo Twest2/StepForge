@@ -257,7 +257,9 @@ async function showPublishToConfluenceDialog({ api, guideId, guideTitle, onOpenA
     const showError = (message) => { error.textContent = message; error.classList.remove('hidden'); };
     let checking = true;
     const chosenSpace = () => spaces.find((s) => s.key === spaceSelect.value) || null;
-    const canPublish = () => Boolean(chosenSpace()) && !checking && !publishing;
+    // Publish waits for the guide's last publish, which says where its page is.
+    let knownLoaded = false;
+    const canPublish = () => Boolean(chosenSpace()) && knownLoaded && !checking && !publishing;
 
     // Where the page goes. The guide's own page stays where it is unless
     // another parent is picked; StepForge can't move it to the top of a space.
@@ -368,10 +370,13 @@ async function showPublishToConfluenceDialog({ api, guideId, guideTitle, onOpenA
       error);
     body.replaceChildren(form);
 
-    Promise.all([api.confluence.published({ guideId }), guideUpdatedTimes(api)]).then(([page, updated]) => {
+    const lastPublish = api.confluence.published({ guideId });
+    lastPublish.then((page) => { known = page || null; }, () => {}).finally(() => {
+      knownLoaded = true;
+      if (open) settleParent();
+    });
+    Promise.all([lastPublish, guideUpdatedTimes(api)]).then(([page, updated]) => {
       if (!page || !open) return;
-      known = page;
-      settleParent();
       previous.replaceChildren('Published before. Publishing again updates ', el('button.link', { type: 'button', onClick: () => confluenceOpen(api, page.url) }, 'the same page'), '.',
         editedSinceShared(updated.get(guideId), page.publishedAt) ? ' The guide has changed since you published it.' : '');
       previous.classList.remove('hidden');
@@ -395,7 +400,8 @@ async function showPublishToConfluenceDialog({ api, guideId, guideTitle, onOpenA
       cancelBtn.textContent = 'Close';
       const stop = api.confluence.onProgress((update) => { if (update?.guideId === guideId) progress.set(update); });
       try {
-        const result = await api.confluence.publish({ guideId, space, parent, replace });
+        // parentPicked: only a parent chosen here moves an already-published page.
+        const result = await api.confluence.publish({ guideId, space, parent, parentPicked: picked, replace });
         changed = true;
         if (result.edited || result.conflict) {
           publishing = false;

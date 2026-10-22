@@ -276,8 +276,12 @@ test('the guide’s page stays where it is unless another parent page is chosen'
   assert.deepEqual(server.pages.get(first.id).ancestors, [{ id: '9' }]);
   await confluence.publish({ guideId: 'g', space, parent: null, page: page() });
   assert.deepEqual(server.pages.get(first.id).ancestors, [{ id: '9' }]);
-  // Picking another parent moves it.
+  // A different parent that wasn't picked (the dialog's default) doesn't move it either.
   await confluence.publish({ guideId: 'g', space, parent: { id: '8', title: 'Runbooks' }, page: page() });
+  assert.deepEqual(server.pages.get(first.id).ancestors, [{ id: '9' }]);
+  assert.deepEqual(confluence.publishedFor('g').parent, howTo);
+  // Picking another parent moves it.
+  await confluence.publish({ guideId: 'g', space, parent: { id: '8', title: 'Runbooks' }, parentPicked: true, page: page() });
   assert.deepEqual(server.pages.get(first.id).ancestors, [{ id: '8' }]);
   assert.deepEqual(confluence.publishedFor('g').parent, { id: '8', title: 'Runbooks' });
 

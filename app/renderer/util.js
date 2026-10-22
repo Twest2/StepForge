@@ -145,6 +145,39 @@ function confirmDialog(message, { danger = false, okLabel = 'OK' } = {}) {
   });
 }
 
+/** "Oct 20", with the year when it isn't this year; '' for no date. */
+function shortDate(iso) {
+  const date = new Date(iso || '');
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: date.getFullYear() === new Date().getFullYear() ? undefined : 'numeric' });
+}
+
+/**
+ * Asks before publishing over a page someone edited on the site since the
+ * guide was last published. `edited` is { url, by, when } from the main
+ * process; `where` names the site ("in Confluence"), and `history` says
+ * where the edited version is kept. Open page leaves the question open.
+ * Resolves true to publish anyway.
+ */
+function confirmReplaceEdits(api, edited, { where, history }) {
+  const by = edited?.by ? ` by ${edited.by}` : '';
+  const date = shortDate(edited?.when);
+  return new Promise((resolve) => {
+    const { close } = openModal({
+      title: 'Page edited since you published',
+      body: el('div.cloud-confirm', {},
+        el('strong', {}, `This page was edited ${where}${by}${date ? ` on ${date}` : ''} since you last published. Publishing will replace those edits.`),
+        el('p', {}, history)),
+      footer: [
+        edited?.url ? el('button', { type: 'button', onClick: () => { void api.shell.openExternal({ url: edited.url }).catch(() => {}); } }, 'Open page') : null,
+        el('button', { type: 'button', onClick: () => { close(); resolve(false); } }, 'Cancel'),
+        el('button.primary', { type: 'button', onClick: () => { close(); resolve(true); } }, 'Publish anyway'),
+      ].filter(Boolean),
+      onClose: () => resolve(false),
+    });
+  });
+}
+
 function promptDialog(title, { value = '', label = 'Name' } = {}) {
   return new Promise((resolve) => {
     const input = el('input', { type: 'text', value });

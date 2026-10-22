@@ -225,6 +225,9 @@ Confluence publishing is **off until you connect a site** ([how it works](CONFLU
 - When you publish, the guide's text and its screenshots (with private details
   blurred, see above) are sent to the space you choose. Nothing is sent until
   you choose **Publish**.
+- To notice edits made in Confluence, StepForge saves each published page's
+  address and version number on this computer. When you publish again, it
+  asks the site who last edited the page; the name is shown, not saved.
 - A smart card is used through your operating system; StepForge never sees
   your PIN or private key. It remembers which certificate you chose for each
   site.

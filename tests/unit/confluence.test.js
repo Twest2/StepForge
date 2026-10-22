@@ -20,7 +20,14 @@ const json = (body, status = 200) => new Response(JSON.stringify(body), { status
 
 /** A small Confluence Data Center: users, spaces, pages and attachments. */
 function dataCenter({ base = 'https://wiki.example.mil/confluence', token = 'pat-123', needsCertificate = false } = {}) {
-  const server = { pages: new Map(), attachments: new Map(), requests: [], nextId: 100, certificateOk: !needsCertificate };
+  const server = { pages: new Map(), attachments: new Map(), requests: [], nextId: 100, certificateOk: !needsCertificate, clock: Date.parse('2026-10-01T10:00:00Z') };
+  const now = () => new Date(server.clock += 60000).toISOString();
+  const links = (page) => ({ base, webui: `/display/${page.space}/${encodeURIComponent(page.title)}` });
+  // Someone editing the page on the site.
+  server.edit = (id, displayName = 'Jane Doe') => {
+    const page = server.pages.get(id);
+    Object.assign(page, { body: '<p>Fixed on the site</p>', version: page.version + 1, by: displayName, when: now() });
+  };
   server.fetch = async (url, init = {}) => {
     const u = new URL(url);
     const method = init.method || 'GET';
@@ -47,20 +54,21 @@ function dataCenter({ base = 'https://wiki.example.mil/confluence', token = 'pat
     if (rest === '/rest/api/content' && method === 'POST') {
       const body = JSON.parse(init.body);
       const id = String(server.nextId++);
-      server.pages.set(id, { id, title: body.title, space: body.space.key, body: body.body.storage.value, version: 1, ancestors: body.ancestors });
-      return json({ id, version: { number: 1 }, _links: { base, webui: `/display/${body.space.key}/${encodeURIComponent(body.title)}` } });
+      server.pages.set(id, { id, title: body.title, space: body.space.key, body: body.body.storage.value, version: 1, ancestors: body.ancestors, by: 'Casey Jones', when: now() });
+      return json({ id, version: { number: 1 }, _links: links(server.pages.get(id)) });
     }
     let match = /^\/rest\/api\/content\/(\d+)$/.exec(rest);
     if (match && method === 'GET') {
       const page = server.pages.get(match[1]);
-      return page ? json({ id: page.id, title: page.title, version: { number: page.version } }) : json({ message: 'No content' }, 404);
+      return page ? json({ id: page.id, title: page.title, version: { number: page.version, by: { displayName: page.by }, when: page.when }, _links: links(page) })
+        : json({ message: 'No content' }, 404);
     }
     if (match && method === 'PUT') {
       const page = server.pages.get(match[1]);
       const body = JSON.parse(init.body);
       assert.equal(body.version.number, page.version + 1, 'updates bump the version');
-      Object.assign(page, { title: body.title, body: body.body.storage.value, version: body.version.number });
-      return json({ id: page.id, version: { number: page.version }, _links: { base, webui: `/display/${page.space}/${encodeURIComponent(page.title)}` } });
+      Object.assign(page, { title: body.title, body: body.body.storage.value, version: body.version.number, by: 'Casey Jones', when: now() });
+      return json({ id: page.id, version: { number: page.version }, _links: links(page) });
     }
     match = /^\/rest\/api\/content\/(\d+)\/child\/attachment(?:\/(\w+)\/data)?$/.exec(rest);
     if (match && method === 'GET') {
@@ -195,6 +203,64 @@ test('a page with the same title is only replaced when the user says so', async 
   assert.equal(server.pages.size, 1);
 });
 
+test('a page edited on Confluence since the last publish is only replaced when the user says so', async (t) => {
+  const server = dataCenter();
+  const { confluence } = setup(t, server);
+  await confluence.connect({ address: 'wiki.example.mil/confluence', token: 'pat-123' });
+  const space = { key: 'OPS', name: 'Operations' };
+  const first = await confluence.publish({ guideId: 'g', space, page: page() });
+  assert.equal(confluence.publishedFor('g').version, 1, 'remembers the page’s version');
+  server.edit(first.id);
+  const uploads = server.requests.filter((r) => r.startsWith('POST') && r.includes('/child/attachment')).length;
+  const asked = await confluence.publish({ guideId: 'g', space, page: page() });
+  assert.deepEqual(asked, { edited: { title: 'Reset a password', url: 'https://wiki.example.mil/confluence/display/OPS/Reset%20a%20password',
+    by: 'Jane Doe', when: server.pages.get(first.id).when } });
+  assert.equal(server.pages.get(first.id).body, '<p>Fixed on the site</p>', 'nothing changed yet');
+  assert.equal(server.requests.filter((r) => r.startsWith('POST') && r.includes('/child/attachment')).length, uploads, 'nothing uploaded yet');
+  const replaced = await confluence.publish({ guideId: 'g', space, page: page(), replace: true });
+  assert.equal(replaced.updated, true);
+  assert.equal(server.pages.get(first.id).body, page().body);
+  assert.equal(confluence.publishedFor('g').version, 3);
+  const again = await confluence.publish({ guideId: 'g', space, page: page() });
+  assert.equal(again.edited, undefined, 'no warning once StepForge’s version is the latest');
+});
+
+test('an edit made on Confluence while screenshots upload is still caught on the next publish', async (t) => {
+  const server = dataCenter();
+  const { confluence } = setup(t, server);
+  await confluence.connect({ address: 'wiki.example.mil/confluence', token: 'pat-123' });
+  const space = { key: 'OPS', name: 'Operations' };
+  const upload = confluence.uploadAttachment.bind(confluence);
+  let editedDuringUpload = false;
+  confluence.uploadAttachment = async (pageId, ...rest) => {
+    const result = await upload(pageId, ...rest);
+    if (!editedDuringUpload) { editedDuringUpload = true; server.edit(pageId); }
+    return result;
+  };
+  const first = await confluence.publish({ guideId: 'g', space, page: page() });
+  assert.equal(server.pages.get(first.id).version, 2, 'the teammate saved after StepForge');
+  assert.equal(confluence.publishedFor('g').version, 1, 'only StepForge’s own save is remembered');
+  const asked = await confluence.publish({ guideId: 'g', space, page: page() });
+  assert.equal(asked.edited?.by, 'Jane Doe');
+  assert.equal(server.pages.get(first.id).body, '<p>Fixed on the site</p>', 'the teammate’s edit is kept');
+});
+
+test('a page published before versions were remembered updates without asking, then is checked', async (t) => {
+  const server = dataCenter();
+  const { confluence } = setup(t, server);
+  await confluence.connect({ address: 'wiki.example.mil/confluence', token: 'pat-123' });
+  const space = { key: 'OPS', name: 'Operations' };
+  const first = await confluence.publish({ guideId: 'g', space, page: page() });
+  const { version, ...older } = confluence.publishedFor('g');
+  confluence.rememberPage('g', older);
+  server.edit(first.id);
+  const updated = await confluence.publish({ guideId: 'g', space, page: page() });
+  assert.deepEqual([updated.edited, updated.updated], [undefined, true]);
+  assert.equal(confluence.publishedFor('g').version, 3);
+  server.edit(first.id);
+  assert.ok((await confluence.publish({ guideId: 'g', space, page: page() })).edited);
+});
+
 test('Confluence Cloud signs in with an email and API token and publishes through the v2 pages API', async (t) => {
   const requests = [];
   const pages = new Map();
@@ -205,6 +271,7 @@ test('Confluence Cloud signs in with an email and API token and publishes throug
     if (u.pathname === '/wiki/rest/api/user/current') return json({ accountId: 'a1', displayName: 'Casey', type: 'known' });
     if (u.pathname === '/wiki/api/v2/spaces') return json({ results: [{ id: 42, key: 'DOC', name: 'Docs' }], _links: {} });
     if (u.pathname === '/wiki/api/v2/pages' && (init.method || 'GET') === 'GET') return json({ results: [] });
+    if (u.pathname === '/wiki/api/v2/pages/900') return json({ id: '900', title: 'Reset a password', version: { number: 1 } });
     if (u.pathname === '/wiki/api/v2/pages') {
       const body = JSON.parse(init.body);
       assert.deepEqual([body.spaceId, body.status, body.body.representation], ['42', 'current', 'storage']);
@@ -224,6 +291,46 @@ test('Confluence Cloud signs in with an email and API token and publishes throug
   const result = await confluence.publish({ guideId: 'g', space, page: page() });
   assert.equal(result.url, 'https://acme.atlassian.net/wiki/spaces/DOC/pages/900');
   assert.ok(requests.includes('POST /wiki/rest/api/content/900/child/attachment'));
+});
+
+test('on Confluence Cloud an edited page’s editor is looked up by account id', async (t) => {
+  const page900 = { id: '900', title: 'Reset a password', version: { number: 1, authorId: 'a1', createdAt: '2026-10-01T10:00:00Z' },
+    _links: { base: 'https://acme.atlassian.net/wiki', webui: '/spaces/DOC/pages/900' } };
+  let userLookups = 0;
+  const fetchImpl = async (url, init = {}) => {
+    const u = new URL(url);
+    const method = init.method || 'GET';
+    if (u.pathname === '/wiki/rest/api/user/current') return json({ accountId: 'a1', displayName: 'Casey', type: 'known' });
+    if (u.pathname === '/wiki/rest/api/user') {
+      userLookups += 1;
+      return u.searchParams.get('accountId') === 'j2' ? json({ accountId: 'j2', displayName: 'Jane Doe' }) : json({ message: 'No user' }, 404);
+    }
+    if (u.pathname === '/wiki/api/v2/pages' && method === 'GET') return json({ results: [] });
+    if (u.pathname === '/wiki/api/v2/pages') return json(page900);
+    if (u.pathname === '/wiki/api/v2/pages/900' && method === 'GET') return json(page900);
+    if (u.pathname === '/wiki/api/v2/pages/900') {
+      page900.version = { number: JSON.parse(init.body).version.number, authorId: 'a1', createdAt: '2026-10-03T10:00:00Z' };
+      return json(page900);
+    }
+    if (/\/child\/attachment/.test(u.pathname)) return json({ results: [] });
+    throw new Error(`unexpected ${method} ${url}`);
+  };
+  const directory = makeTmpDir('confluence');
+  t.after(() => rmrf(directory));
+  const confluence = new Confluence({ directory, safeStorage: safeStorage(), fetchImpl });
+  await confluence.connect({ address: 'acme.atlassian.net', token: 'api-token', email: 'casey@example.com' });
+  const space = { key: 'DOC', name: 'Docs', id: '42' };
+  await confluence.publish({ guideId: 'g', space, page: page() });
+  assert.equal(userLookups, 0, 'no lookups unless the page was edited');
+  page900.version = { number: 2, authorId: 'j2', createdAt: '2026-10-02T10:00:00Z' };
+  assert.deepEqual(await confluence.publish({ guideId: 'g', space, page: page() }), { edited: { title: 'Reset a password',
+    url: 'https://acme.atlassian.net/wiki/spaces/DOC/pages/900', by: 'Jane Doe', when: '2026-10-02T10:00:00Z' } });
+  // Someone Confluence won't name is left out rather than failing the publish.
+  page900.version = { number: 3, authorId: 'gone', createdAt: '2026-10-02T11:00:00Z' };
+  const unnamed = await confluence.publish({ guideId: 'g', space, page: page() });
+  assert.equal(unnamed.edited.by, '');
+  const replaced = await confluence.publish({ guideId: 'g', space, page: page(), replace: true });
+  assert.deepEqual([replaced.updated, confluence.publishedFor('g').version], [true, 4]);
 });
 
 test('publishing names screenshots by step number, so private details in step titles stay off the site', async (t) => {

@@ -336,12 +336,14 @@ async function showPublishToConfluenceDialog({ api, guideId, guideTitle, onOpenA
         const parent = status.parent && status.space?.key === space.key ? status.parent : null;
         const result = await api.confluence.publish({ guideId, space, parent, replace });
         changed = true;
-        if (result.conflict) {
+        if (result.edited || result.conflict) {
           publishing = false;
-          const ok = await confirmDialog(el('div.cloud-confirm', {},
-            el('strong', {}, `A page called “${result.conflict.title}” already exists in ${result.conflict.space}.`),
-            el('p', {}, 'Replace its content with this guide? Confluence keeps the old version in the page history.')),
-          { okLabel: 'Replace page' });
+          const ok = result.edited
+            ? await confirmReplaceEdits(api, result.edited, { where: 'in Confluence', history: 'Confluence keeps the edited version in the page history.' })
+            : await confirmDialog(el('div.cloud-confirm', {},
+              el('strong', {}, `A page called “${result.conflict.title}” already exists in ${result.conflict.space}.`),
+              el('p', {}, 'Replace its content with this guide? Confluence keeps the old version in the page history.')),
+            { okLabel: 'Replace page' });
           if (ok && open) { await publish(true); return; }
           body.replaceChildren(form);
           publishBtn.classList.remove('hidden');

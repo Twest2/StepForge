@@ -326,7 +326,9 @@ class Confluence {
     return this.status();
   }
 
-  // Pages published for each guide, by site: { [baseUrl]: { [guideId]: { id, url, spaceKey, title } } }
+  // Pages published for each guide, by site:
+  // { [baseUrl]: { [guideId]: { id, url, spaceKey, title, version, publishedAt } } }
+  // `version` is the page's version number after the publish; older entries have none.
   publishedPages() { return readJsonIfExists(this.pagesFile, {}); }
 
   publishedFor(guideId) {
@@ -339,14 +341,32 @@ class Confluence {
     writeJsonSync(this.pagesFile, all);
   }
 
+  /**
+   * A page's id, title, version number and address, and who saved that
+   * version and when: Data Center names them (`by`); Cloud only gives an
+   * account id (`authorId`), see editorName().
+   */
   async getPage(id) {
     const site = this.requireSite();
     if (site.cloud) {
       const page = await this.request(`/api/v2/pages/${encodeURIComponent(id)}`, { allowMissing: true });
-      return page && { id: String(page.id), version: page.version?.number || 1, title: page.title };
+      return page && { id: String(page.id), version: page.version?.number || 1, title: page.title, url: this.pageUrl(page),
+        by: '', authorId: page.version?.authorId || '', when: page.version?.createdAt || '' };
     }
     const page = await this.request(`/rest/api/content/${encodeURIComponent(id)}?expand=version,space`, { allowMissing: true });
-    return page && { id: String(page.id), version: page.version?.number || 1, title: page.title };
+    return page && { id: String(page.id), version: page.version?.number || 1, title: page.title, url: this.pageUrl(page),
+      by: page.version?.by?.displayName || page.version?.by?.publicName || '', authorId: '', when: page.version?.when || '' };
+  }
+
+  /** Who saved a page's latest version, or '' when Confluence won't say. */
+  async editorName(page) {
+    if (page.by || !page.authorId) return page.by || '';
+    try {
+      const user = await this.request(`/rest/api/user?accountId=${encodeURIComponent(page.authorId)}`, { allowMissing: true });
+      return user?.displayName || user?.publicName || '';
+    } catch {
+      return '';
+    }
   }
 
   async pageByTitle(space, title) {
@@ -398,9 +418,13 @@ class Confluence {
 
   /**
    * Create or update the guide's page. `page` is { title, body (storage
-   * format), attachments: [{ name, data }] }. With `replace` a page that
-   * already has this title (and wasn't published from this guide) is
-   * updated; otherwise that's reported as { conflict }.
+   * format), attachments: [{ name, data }] }. Before anything changes on the
+   * site:
+   *   { edited }    the guide's page was edited on Confluence since it was
+   *                 last published from here: its url, and who (by) and
+   *                 when it was last edited;
+   *   { conflict }  another page in the space already has this title.
+   * Both are only replaced with `replace`.
    */
   async publish({ guideId, space, parent = null, page, replace = false, onProgress = () => {} }) {
     this.requireSite();
@@ -408,6 +432,10 @@ class Confluence {
     let existing = null;
     const known = this.publishedFor(guideId);
     if (known && known.spaceKey === space.key) existing = await this.getPage(known.id);
+    // Pages published before versions were remembered can't be checked.
+    if (existing && !replace && known.version && existing.version > known.version) {
+      return { edited: { title: existing.title, url: existing.url, by: await this.editorName(existing), when: existing.when } };
+    }
     if (!existing) {
       const same = await this.pageByTitle(space, page.title);
       if (same && !replace) return { conflict: { title: same.title, space: space.name || space.key } };
@@ -430,8 +458,13 @@ class Confluence {
       loaded += attachment.data.length;
     }
     onProgress({ stage: 'upload', index: page.attachments.length, count: page.attachments.length, loaded: total, total });
-    const result = { id: pageId, url: this.pageUrl(saved), spaceKey: space.key, title: page.title, updated: Boolean(existing), publishedAt: new Date().toISOString() };
-    this.rememberPage(guideId, result);
+    // The version StepForge's own save made. Not read back after the uploads:
+    // a teammate's edit made meanwhile would be taken for ours and replaced
+    // without asking next time. (Attaching files doesn't add page versions.)
+    const version = saved.version?.number || (existing ? existing.version + 1 : 1);
+    const result = { id: pageId, url: this.pageUrl(saved), spaceKey: space.key, title: page.title, updated: Boolean(existing), version, publishedAt: new Date().toISOString() };
+    const { updated, ...remembered } = result;
+    this.rememberPage(guideId, remembered);
     return result;
   }
 }

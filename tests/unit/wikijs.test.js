@@ -326,9 +326,12 @@ test('when Wiki.js ends a two-step session, publishing asks for a code first, th
   server.tokens.clear(); // signed out on the wiki, or past the renewal period
   const uploads = server.requests.filter((r) => r === 'upload').length;
   const logins = server.logins;
+  const issued = server.issued;
   assert.deepEqual(await wikijs.publish({ guideId: 'g', path: 'guides/vpn', title: 'VPN', page: page('/guides/vpn') }), { needsCode: true });
-  assert.equal(server.logins, logins, 'no sign-in without a code');
+  assert.equal(server.logins, logins + 1, 'one password sign-in, to see whether Wiki.js still wants a code');
+  assert.equal(server.issued, issued, 'no session without the code');
   assert.equal(server.requests.filter((r) => r === 'upload').length, uploads, 'nothing uploaded');
+  assert.deepEqual(await wikijs.needsCodeNow(), true, 'still asked before the next publish');
   assert.equal(wikijs.status().needsCode, true);
   assert.equal(new WikiJs({ directory: path.dirname(wikijs.file), safeStorage: wikijs.safeStorage, fetchImpl: server.fetch }).status().needsCode, true, 'remembered');
 
@@ -337,6 +340,32 @@ test('when Wiki.js ends a two-step session, publishing asks for a code first, th
   assert.deepEqual([status.connected, status.needsCode], [true, false]);
   const again = await wikijs.publish({ guideId: 'g', path: 'guides/vpn', title: 'VPN', page: page('/guides/vpn') });
   assert.deepEqual([again.id, again.updated], [first.id, true]);
+});
+
+test('if two-step verification is turned off on the wiki, the next sign-in carries on without a code', async (t) => {
+  const server = wiki();
+  server.users['casey@example.com'].tfa = '123456';
+  const { wikijs } = setup(t, server);
+  await wikijs.connect({ address: 'wiki.example.com', method: 'password', username: 'casey@example.com', password: 'hunter2', code: '123456' });
+  delete server.users['casey@example.com'].tfa;
+  server.tokens.clear();
+  assert.equal(wikijs.status().twoStep, true);
+  // Before publishing: StepForge signs in, Wiki.js asks for no code, and nobody is asked for one.
+  const published = await wikijs.publish({ guideId: 'g', path: 'guides/vpn', title: 'VPN', page: page('/guides/vpn') });
+  assert.equal(published.updated, false);
+  assert.deepEqual([wikijs.status().twoStep, wikijs.status().needsCode], [false, false]);
+  const reopened = new WikiJs({ directory: path.dirname(wikijs.file), safeStorage: wikijs.safeStorage, fetchImpl: server.fetch });
+  assert.deepEqual([reopened.status().twoStep, reopened.session], [false, null], 'an ordinary password sign-in again: no stored session');
+
+  // Already asked for a code when it was turned off: Sign in again keeps the sign-in it gets.
+  server.users['casey@example.com'].tfa = '123456';
+  await wikijs.signInAgain({ code: '123456' });
+  server.tokens.clear();
+  assert.deepEqual(await wikijs.publish({ guideId: 'g', path: 'guides/vpn', title: 'VPN', page: page('/guides/vpn') }), { needsCode: true });
+  delete server.users['casey@example.com'].tfa;
+  const status = await wikijs.signInAgain({ code: '123456' });
+  assert.deepEqual([status.connected, status.twoStep, status.needsCode], [true, false, false]);
+  assert.equal((await wikijs.publish({ guideId: 'g', path: 'guides/vpn', title: 'VPN', page: page('/guides/vpn') })).updated, true);
 });
 
 test('a two-step account that isn’t allowed to do something is told so, not asked for a code', async (t) => {

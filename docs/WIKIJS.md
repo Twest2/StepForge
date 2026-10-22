@@ -82,9 +82,19 @@ page and replaces its screenshots. Wiki.js keeps the old version in the page's
 history.
 
 If someone edited the page on the wiki since you last published it, StepForge
-asks first: "This page was edited on the wiki since you last published.
-Replace it?" Choose **Cancel** to keep the wiki's version. StepForge also asks
-before replacing a page it didn't publish from this guide.
+asks first, and says who edited it and when: "This page was edited on the
+wiki by Jane Doe on Oct 20 since you last published. Publishing will replace
+those edits."
+
+- **Open page** shows the page in your browser, so you can see the edits
+  (the page's history lists them). The question stays open.
+- **Publish anyway** replaces the page with the guide.
+- **Cancel** keeps the wiki's version.
+
+If your account can write pages but not manage them, Wiki.js doesn't tell
+StepForge who made the edit, so the question leaves the name out.
+
+StepForge also asks before replacing a page it didn't publish from this guide.
 
 Tags added to the page on the wiki are kept when it's updated.
 

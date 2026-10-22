@@ -44,7 +44,10 @@ function wiki({ base = 'https://wiki.example.com', apiKey = jwt({ api: 1, grp: 1
     if (token === server.apiKey) return { api: true };
     return server.tokens.has(token) ? { user: true } : null;
   };
-  server.edit = (pagePath, content) => { const page = [...server.pages.values()].find((p) => p.path === pagePath); Object.assign(page, { content, updatedAt: now() }); };
+  server.edit = (pagePath, content, authorName = 'Jane Doe') => {
+    const page = [...server.pages.values()].find((p) => p.path === pagePath);
+    Object.assign(page, { content, authorName, updatedAt: now() });
+  };
   server.fetch = async (url, init = {}) => {
     const u = new URL(url);
     const method = init.method || 'GET';
@@ -95,7 +98,7 @@ function wiki({ base = 'https://wiki.example.com', apiKey = jwt({ api: 1, grp: 1
       return json({ data: { pages: { singleByPath: { ...page, tags: page.tags.map((tag) => ({ tag })) } } } });
     }
     if (/list\(locale/.test(query)) {
-      return json({ data: { pages: { list: [...server.pages.values()].filter((p) => p.locale === v.locale).map(({ content, scriptCss, scriptJs, editor, ...p }) => p) } } });
+      return json({ data: { pages: { list: [...server.pages.values()].filter((p) => p.locale === v.locale).map(({ content, scriptCss, scriptJs, editor, authorName, ...p }) => p) } } });
     }
     if (/folders\(/.test(query)) return json({ data: { assets: { folders: server.folders.filter((f) => f.parentId === v.id).map(({ id, slug }) => ({ id, slug })) } } });
     if (/createFolder/.test(query)) {
@@ -113,14 +116,14 @@ function wiki({ base = 'https://wiki.example.com', apiKey = jwt({ api: 1, grp: 1
       }
       assert.deepEqual([v.editor, v.isPublished, v.isPrivate], ['markdown', true, false]);
       const page = { id: server.nextId++, path: v.path, locale: v.locale, title: v.title, description: v.description, content: v.content, editor: v.editor,
-        tags: v.tags, scriptCss: '', scriptJs: '', updatedAt: now() };
+        tags: v.tags, scriptCss: '', scriptJs: '', authorName: 'Administrator', updatedAt: now() };
       server.pages.set(page.id, page);
       return json({ data: { pages: { create: { responseResult: ok(), page: { id: page.id, updatedAt: page.updatedAt } } } } });
     }
     if (/update\(/.test(query)) {
       const page = server.pages.get(v.id);
       assert.ok(Array.isArray(v.tags), 'Wiki.js needs the tags on every update');
-      Object.assign(page, { title: v.title, content: v.content, tags: v.tags, scriptCss: v.scriptCss, updatedAt: now(), updates: (page.updates || 0) + 1 });
+      Object.assign(page, { title: v.title, content: v.content, tags: v.tags, scriptCss: v.scriptCss, authorName: 'Administrator', updatedAt: now(), updates: (page.updates || 0) + 1 });
       return json({ data: { pages: { update: { responseResult: ok(), page: { id: page.id, updatedAt: page.updatedAt } } } } });
     }
     throw new Error(`unexpected ${query}`);
@@ -323,7 +326,8 @@ test('a page edited on the wiki since the last publish is only replaced when the
   server.edit('guides/vpn', 'Fixed a typo on the wiki');
   const uploads = server.assets.size;
   const asked = await wikijs.publish({ guideId: 'g', path: 'guides/vpn', title: 'VPN', page: page('/guides/vpn') });
-  assert.deepEqual(asked, { edited: { path: 'guides/vpn', title: 'VPN' } });
+  assert.deepEqual(asked, { edited: { path: 'guides/vpn', title: 'VPN', url: 'https://wiki.example.com/en/guides/vpn',
+    by: 'Jane Doe', when: server.pages.get(first.id).updatedAt } });
   assert.equal(server.pages.get(first.id).content, 'Fixed a typo on the wiki', 'nothing changed yet');
   assert.equal(server.requests.filter((r) => r === 'upload').length, uploads, 'nothing uploaded yet');
   const replaced = await wikijs.publish({ guideId: 'g', path: 'guides/vpn', title: 'VPN', page: page('/guides/vpn'), replace: true });
@@ -354,6 +358,10 @@ test('writers without “manage pages” find their page through the page list',
   const second = await wikijs.publish({ guideId: 'g', path: 'guides/vpn', title: 'VPN', page: page('/guides/vpn') });
   assert.deepEqual([second.id, second.updated], [first.id, true]);
   assert.ok(server.requests.some((r) => /list\(locale/.test(r)));
+  // The page list doesn't say who edited a page, so the warning has no name.
+  server.edit('guides/vpn', 'Edited on the wiki');
+  const asked = await wikijs.publish({ guideId: 'g', path: 'guides/vpn', title: 'VPN', page: page('/guides/vpn') });
+  assert.deepEqual([asked.edited.by, asked.edited.when], ['', server.pages.get(first.id).updatedAt]);
 });
 
 test('a page switched to another editor on the wiki is switched back to Markdown before it’s updated', async (t) => {

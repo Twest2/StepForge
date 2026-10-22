@@ -6,7 +6,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 // A small DOM stand-in with working classes, so visibility can be asserted.
-function ui() {
+function ui({ realLoading = false } = {}) {
   function el(spec, props = {}, ...children) {
     const [tag, ...classes] = spec.split('.');
     const classSet = new Set(classes.filter((c) => !c.includes('#')));
@@ -33,6 +33,8 @@ function ui() {
       // Like the real DOM, replaceChildren() turns null into the text "null".
       replaceChildren(...items) { this.children = []; this._text = undefined; this.append(...items.map((item) => (item === null ? 'null' : item))); },
       remove() { if (this.parent) this.parent.children = this.parent.children.filter((n) => n !== this); this.isConnected = false; },
+      get firstChild() { return this.children[0] ?? null; },
+      removeChild(child) { this.children = this.children.filter((n) => n !== child); return child; },
       addEventListener(type, fn) { (this.listeners ||= {})[type] = fn; },
       focus() {},
       getBoundingClientRect: () => ({ left: 0, bottom: 0 }),
@@ -61,7 +63,8 @@ function ui() {
   const load = (file) => vm.runInContext(fs.readFileSync(path.join(__dirname, '../../app/renderer', file), 'utf8'), context);
   load('util.js');
   context.el = el;
-  context.setButtonLoading = (button, loading, label) => { button.loadingLabel = loading ? label : undefined; };
+  // realLoading keeps util.js's own, which swaps the label and puts it back.
+  if (!realLoading) context.setButtonLoading = (button, loading, label) => { button.loadingLabel = loading ? label : undefined; };
   context.toast = (message, options) => { toasts.push([message, options?.error === true]); };
   load('cloud.js');
   load('privacy.js');
@@ -796,7 +799,7 @@ test('“Sign in with” appears only for several sign-ins, and an SSO-only wiki
 });
 
 test('a two-step account enters a code after its password, and can sign in again when Wiki.js ends the session', async () => {
-  const u = ui();
+  const u = ui({ realLoading: true });
   const api = wikiApi({
     connect: async (args) => {
       api.calls.push(['connect', args]);

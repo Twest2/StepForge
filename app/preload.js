@@ -137,6 +137,7 @@ const api = {
     status: invoke('wikijs:status'),
     probe: invoke('wikijs:probe'),
     connect: invoke('wikijs:connect'),
+    signInAgain: invoke('wikijs:signInAgain'),
     cancel: invoke('wikijs:cancel'),
     disconnect: invoke('wikijs:disconnect'),
     defaults: invoke('wikijs:defaults'),

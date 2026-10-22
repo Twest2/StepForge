@@ -243,7 +243,10 @@ Wiki.js publishing is **off until you connect a wiki** ([how it works](WIKIJS.md
   cookies are kept.
 - Your password or API key is stored encrypted with your operating system's
   credential storage. With a password, the short-lived sign-in token Wiki.js
-  sends back is only kept in memory.
+  sends back is only kept in memory, except with two-step verification: then
+  the sign-in token is stored encrypted alongside the password, so you don't
+  need a new code from your authenticator app each time. StepForge never
+  stores the codes or your authenticator's secret.
 - When you publish, the guide's text and its screenshots (with private details
   blurred, see above) are sent to the page path you choose. Nothing is sent
   until you choose **Publish**.

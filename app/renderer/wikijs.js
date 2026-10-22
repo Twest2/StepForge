@@ -12,6 +12,12 @@ function wikiJsOpen(api, url) {
   if (url) void api.shell.openExternal({ url }).catch(() => {});
 }
 
+/** The code field for two-step sign-in: digits only, filled in by password managers that know one-time codes. */
+function wikiJsCodeInput() {
+  return el('input', { type: 'text', inputMode: 'numeric', autocomplete: 'one-time-code', maxLength: 7, spellcheck: false,
+    placeholder: '123456', 'aria-label': 'Verification code' });
+}
+
 function makeWikiJsSettings(api) {
   let current = {};
   let site = null;
@@ -44,10 +50,14 @@ function makeWikiJsSettings(api) {
   const username = el('input', { type: 'text', autocomplete: 'username', spellcheck: false, 'aria-label': 'Username' });
   const password = el('input', { type: 'password', autocomplete: 'current-password', 'aria-label': 'Password' });
   const signIn = el('button.primary', { type: 'button' }, 'Sign in');
+  // Shown when Wiki.js asks for a code from the authenticator app.
+  const code = wikiJsCodeInput();
+  const codeField = el('label.cloud-field.hidden', {}, el('span', {}, 'Verification code'), code);
   const passwordOption = el('div.wikijs-method', {},
     strategyField,
     el('label.cloud-field', {}, usernameLabel, username),
     el('label.cloud-field', {}, el('span', {}, 'Password'), password),
+    codeField,
     el('div.row', {}, signIn));
   const noPasswordNote = el('p.muted.hidden', {}, '');
 
@@ -77,7 +87,8 @@ function makeWikiJsSettings(api) {
     username.type = email ? 'email' : 'text';
     username.setAttribute('aria-label', email ? 'Email address' : 'Username');
   };
-  strategySelect.addEventListener('change', refreshUsername);
+  // A different sign-in starts over without the code.
+  strategySelect.addEventListener('change', () => { refreshUsername(); askForCode(false); });
 
   const showMethod = (found) => {
     site = found;
@@ -100,18 +111,40 @@ function makeWikiJsSettings(api) {
     showMethod(await api.wikijs.probe({ address: address.value.trim() }));
   }));
   address.addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); next.click(); } });
-  address.addEventListener('input', () => { method.classList.add('hidden'); next.classList.remove('hidden'); site = null; });
+  address.addEventListener('input', () => { method.classList.add('hidden'); next.classList.remove('hidden'); site = null; askForCode(false); });
+
+  const askForCode = (asking) => {
+    codeField.classList.toggle('hidden', !asking);
+    signIn.textContent = asking ? 'Verify' : 'Sign in';
+    code.value = '';
+    if (asking) code.focus?.();
+  };
+  for (const input of [username, password]) input.addEventListener('input', () => askForCode(false));
 
   const connected = (status) => {
     password.value = '';
     apiKey.value = '';
+    askForCode(false);
     say(status.user ? `Signed in as ${status.user}.` : `Connected to ${status.host} with an API key.`, 'success');
     update(status);
   };
-  signIn.addEventListener('click', () => run(signIn, 'Signing in…', async () => {
-    connected(await api.wikijs.connect({ address: address.value.trim(), method: 'password',
-      username: username.value.trim(), password: password.value, strategy: chosenStrategy()?.key || '' }));
-  }));
+  signIn.addEventListener('click', async () => {
+    let wantsCode = false;
+    await run(signIn, 'Signing in…', async () => {
+      const asking = !codeField.classList.contains('hidden');
+      const result = await api.wikijs.connect({ address: address.value.trim(), method: 'password',
+        username: username.value.trim(), password: password.value, strategy: chosenStrategy()?.key || '',
+        ...(asking ? { code: code.value.trim() } : {}) });
+      if (result.needsCode) wantsCode = true;
+      else connected(result);
+    });
+    // Once run() is done: ending the loading state puts the button's earlier label back.
+    if (wantsCode && !disposed) {
+      askForCode(true);
+      say('This account uses two-step verification. Enter the 6-digit code from your authenticator app.');
+    }
+  });
+  code.addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); signIn.click(); } });
   password.addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); signIn.click(); } });
   connect.addEventListener('click', () => run(connect, 'Connecting…', async () => {
     connected(await api.wikijs.connect({ address: address.value.trim(), method: 'apikey', apiKey: apiKey.value }));
@@ -129,10 +162,25 @@ function makeWikiJsSettings(api) {
     el('div.cloud-avatar', { 'aria-hidden': 'true' }, el('img', { src: WIKIJS_ICON, alt: '' })),
     el('div.cloud-account-info', {}, who, el('div.cloud-status-line', {}, siteLine)),
     el('div.cloud-account-actions', {}, disconnect));
+  // Wiki.js ended a two-step session: a code signs in again.
+  const againCode = wikiJsCodeInput();
+  const againBtn = el('button.primary', { type: 'button' }, 'Sign in again');
+  const again = el('section.cloud-card.hidden', {},
+    el('header.cloud-card-head', {}, el('h4', {}, 'Signed out on the wiki')),
+    el('p.muted', {}, 'Enter the 6-digit code from your authenticator app to sign in again. StepForge asks for this when Wiki.js ends your session, for example after a long break.'),
+    el('label.cloud-field', {}, el('span', {}, 'Verification code'), againCode),
+    el('div.row', {}, againBtn));
+  againBtn.addEventListener('click', () => run(againBtn, 'Signing in…', async () => {
+    const status = await api.wikijs.signInAgain({ code: againCode.value.trim() });
+    againCode.value = '';
+    say(`Signed in as ${status.user}.`, 'success');
+    update(status);
+  }));
+  againCode.addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); againBtn.click(); } });
   const usage = el('section.cloud-card', {},
     el('header.cloud-card-head', {}, el('h4', {}, 'Publishing')),
     el('p.muted', {}, 'Choose Share → Publish to Wiki.js… in a guide. You pick the page’s path when you publish; publishing the guide again updates the same page.'));
-  const signedIn = el('div.cloud-stack.hidden', {}, account, usage);
+  const signedIn = el('div.cloud-stack.hidden', {}, account, again, usage);
 
   function update(status) {
     current = status || {};
@@ -141,7 +189,9 @@ function makeWikiJsSettings(api) {
     if (current.error && !current.connected) say(current.error, 'error');
     if (!current.connected) return;
     who.textContent = current.user || 'API key';
-    siteLine.textContent = `${current.host} · Wiki.js · ${current.method === 'apikey' ? 'signed in with an API key' : `signed in with ${current.strategy || 'a password'}`}`;
+    siteLine.textContent = `${current.host} · Wiki.js · ${current.method === 'apikey' ? 'signed in with an API key' : `signed in with ${current.strategy || 'a password'}`}`
+      + (current.twoStep ? ' and two-step verification' : '');
+    again.classList.toggle('hidden', !current.needsCode);
   }
 
   const node = el('fieldset.cloud-panel', {}, el('legend', {}, 'Wiki.js'), signedOut, banner, signedIn);
@@ -194,6 +244,48 @@ function wikiJsProgress(guideTitle) {
   };
   set({ stage: 'check' });
   return { node, set };
+}
+
+/**
+ * Wiki.js ended a two-step session: ask for a code and sign in again.
+ * Resolves true once signed in, false if the user cancels.
+ */
+function askWikiJsCode(api) {
+  return new Promise((resolve) => {
+    const code = wikiJsCodeInput();
+    const error = el('p.gh-note.error.hidden', { role: 'alert' }, '');
+    const cancel = el('button', { type: 'button', onClick: () => { close(); resolve(false); } }, 'Cancel');
+    const verify = el('button.primary', { type: 'button' }, 'Sign in');
+    const { close } = openModal({
+      title: 'Sign in to Wiki.js again',
+      body: el('div.cloud-confirm', {},
+        el('p', {}, 'Wiki.js ended your session. Enter the 6-digit code from your authenticator app to sign in again and publish.'),
+        el('label.cloud-field', {}, el('span', {}, 'Verification code'), code),
+        error),
+      footer: [cancel, verify],
+      onClose: () => resolve(false),
+    });
+    let busy = false;
+    verify.addEventListener('click', async () => {
+      if (busy) return;
+      busy = true;
+      setButtonLoading(verify, true, 'Signing in…');
+      try {
+        await api.wikijs.signInAgain({ code: code.value.trim() });
+        close();
+        resolve(true);
+      } catch (err) {
+        error.textContent = err.message;
+        error.classList.remove('hidden');
+        code.value = '';
+      } finally {
+        busy = false;
+        setButtonLoading(verify, false);
+      }
+    });
+    code.addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); verify.click(); } });
+    code.focus?.();
+  });
 }
 
 /** Where a page will be: the site, language and path, as Wiki.js shows them. */
@@ -327,6 +419,14 @@ async function showPublishToWikiJsDialog({ api, guideId, guideTitle, onOpenAccou
       try {
         const result = await api.wikijs.publish({ guideId, path: pathInput.value.trim(), title: titleInput.value.trim(), locale: localeInput.value.trim() || 'en', replace });
         changed = true;
+        if (result.needsCode) {
+          publishing = false;
+          if (!open) { toast(`Wiki.js ended your session. Publish “${guideTitle}” again to enter a code from your authenticator app.`, { error: true }); return; }
+          if (await askWikiJsCode(api) && open) { await publish(replace); return; }
+          backToForm();
+          showError('Publishing needs a code from your authenticator app. Choose Publish to try again.');
+          return;
+        }
         if (result.edited || result.conflict) {
           publishing = false;
           const ok = result.edited

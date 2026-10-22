@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {
   WikiJs, normalizeSite, normalizePagePath, normalizeLocale, pageSlug, folderOf, pageFromExport, uploadBody, friendlyNetworkError,
-  validConnectArgs, validPublishArgs,
+  validConnectArgs, validCodeArgs, validPublishArgs,
 } = require('../../app/wikijs');
 const { makeTmpDir, rmrf, TINY_PNG } = require('./helpers');
 
@@ -29,20 +29,33 @@ const gqlError = (message, code = null) => json({ errors: [{ message, extensions
 /**
  * A small Wiki.js 2: GraphQL for sign-in, pages and asset folders, and /u
  * for uploads. `manager: false` makes the signed-in user a plain writer, who
- * can't use pages.singleByPath.
+ * can't use pages.singleByPath. A user with `tfa` (their current code) signs
+ * in in two steps. A token that ran out within the renewal period is renewed
+ * like Wiki.js does: a new one in the new-jwt header of JSON requests, and
+ * the request goes ahead.
  */
 function wiki({ base = 'https://wiki.example.com', apiKey = jwt({ api: 1, grp: 1 }), strategies = null, manager = true, apiEnabled = true } = {}) {
   const server = {
     base, apiKey, pages: new Map(), folders: [], assets: new Map(), requests: [], logins: 0, nextId: 1, clock: Date.parse('2026-10-01T10:00:00Z'),
     users: { 'casey@example.com': { password: 'hunter2', name: 'Casey Jones' } },
     strategies: strategies || [{ key: 'local', displayName: 'Local', order: 0, isEnabled: true, strategy: { key: 'local', useForm: true, usernameType: 'email' } }],
-    tokens: new Set(), loginResult: null,
+    tokens: new Set(), loginResult: null, continuations: new Map(), renewalMs: 14 * 24 * 60 * 60 * 1000, uploadsForbidden: false,
+  };
+  server.issue = (name, expiresInMs = 30 * 60 * 1000) => {
+    server.issued = (server.issued || 0) + 1;
+    const token = jwt({ id: 7, name, n: server.issued, exp: Math.floor((Date.now() + expiresInMs) / 1000) });
+    server.tokens.add(token);
+    return token;
   };
   const now = () => new Date(server.clock += 1000).toISOString();
   const whoIs = (auth) => {
     const token = String(auth || '').replace(/^Bearer /, '');
     if (token === server.apiKey) return { api: true };
-    return server.tokens.has(token) ? { user: true } : null;
+    if (!server.tokens.has(token)) return null;
+    const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString());
+    const expired = Date.now() - payload.exp * 1000;
+    if (expired <= 0) return { user: true };
+    return expired < server.renewalMs ? { user: true, renewed: server.issue(payload.name) } : null;
   };
   server.edit = (pagePath, content, authorName = 'Jane Doe') => {
     const page = [...server.pages.values()].find((p) => p.path === pagePath);
@@ -57,7 +70,7 @@ function wiki({ base = 'https://wiki.example.com', apiKey = jwt({ api: 1, grp: 1
     const who = whoIs(init.headers?.Authorization);
     if (u.pathname === '/u' && method === 'POST') {
       server.requests.push('upload');
-      if (!who) return json({ succeeded: false, message: 'You are not authorized to upload files.' }, 403);
+      if (!who || server.uploadsForbidden) return json({ succeeded: false, message: 'You are not authorized to upload files.' }, 403);
       const raw = Buffer.from(init.body).toString('latin1');
       const boundary = /boundary=(.+)$/.exec(init.headers['Content-Type'])[1];
       const parts = raw.split(`--${boundary}`).slice(1, -1);
@@ -70,10 +83,24 @@ function wiki({ base = 'https://wiki.example.com', apiKey = jwt({ api: 1, grp: 1
       return new Response('ok', { status: 200 });
     }
     assert.equal(u.pathname, '/graphql');
+    const response = await graphql(init, who);
+    if (who?.renewed) response.headers.set('new-jwt', who.renewed);
+    return response;
+  };
+  const graphql = async (init, who) => {
     const { query, variables: v } = JSON.parse(init.body);
     server.requests.push(query.replace(/\s+/g, ' ').trim().slice(0, 60));
     if (who?.api && !apiEnabled) return json({ data: {}, errors: [{ message: 'API is disabled. You must enable it from the Administration Area first.', path: [] }] }, 500);
     if (/activeStrategies/.test(query)) return json({ data: { authentication: { activeStrategies: server.strategies } } });
+    if (/loginTFA\(/.test(query)) {
+      // Each continuation token works once, right code or wrong.
+      const username = server.continuations.get(v.continuationToken);
+      server.continuations.delete(v.continuationToken);
+      if (!username) return json({ data: { authentication: { loginTFA: { responseResult: fail(1006, 'AuthTFAInvalid', 'Invalid TFA Security Code or Login Token.'), jwt: null } } } });
+      const user = server.users[username];
+      if (v.securityCode !== user.tfa) return json({ data: { authentication: { loginTFA: { responseResult: fail(1005, 'AuthTFAFailed', 'Incorrect TFA Security Code.'), jwt: null } } } });
+      return json({ data: { authentication: { loginTFA: { responseResult: ok('Login success'), jwt: server.issue(user.name) } } } });
+    }
     if (/login\(/.test(query)) {
       server.logins += 1;
       if (server.loginResult) return json({ data: { authentication: { login: server.loginResult } } });
@@ -81,9 +108,12 @@ function wiki({ base = 'https://wiki.example.com', apiKey = jwt({ api: 1, grp: 1
       if (!user || user.password !== v.password || !server.strategies.some((s) => s.key === v.strategy)) {
         return json({ data: { authentication: { login: { responseResult: fail(1002, 'AuthLoginFailed', 'Invalid email / username or password.'), jwt: null } } } });
       }
-      const token = jwt({ id: 7, name: user.name, n: server.logins, exp: Math.floor(Date.now() / 1000) + 1800 });
-      server.tokens.add(token);
-      return json({ data: { authentication: { login: { responseResult: ok('Login success'), jwt: token } } } });
+      if (user.tfa) {
+        const continuationToken = `continue-${server.logins}`;
+        server.continuations.set(continuationToken, v.username);
+        return json({ data: { authentication: { login: { responseResult: ok('Login success'), jwt: null, mustProvideTFA: true, continuationToken } } } });
+      }
+      return json({ data: { authentication: { login: { responseResult: ok('Login success'), jwt: server.issue(user.name) } } } });
     }
     if (/profile/.test(query)) {
       if (!who) return gqlError('You must be authenticated to access this resource.', 1019);
@@ -220,7 +250,7 @@ test('a username and password sign in through authentication.login; the token is
   assert.equal(reopened.credentials.password, 'hunter2');
 });
 
-test('“Sign in with” lists only the wiki’s form sign-ins; SSO-only wikis and two-step accounts point to API keys', async (t) => {
+test('“Sign in with” lists only the wiki’s form sign-ins; SSO-only wikis point to API keys', async (t) => {
   const strategies = [
     { key: 'local', displayName: 'Local', order: 1, isEnabled: true, strategy: { key: 'local', useForm: true, usernameType: 'email' } },
     { key: 'abc-123', displayName: 'Company LDAP', order: 0, isEnabled: true, strategy: { key: 'ldap', useForm: true, usernameType: 'username' } },
@@ -240,14 +270,96 @@ test('“Sign in with” lists only the wiki’s form sign-ins; SSO-only wikis a
   await assert.rejects(wikijs.connect({ address: 'wiki.example.com', method: 'password', username: 'casey', password: 'pw' }), /only offers single sign-on.*API key/);
 
   server.strategies = [strategies[0]];
-  server.loginResult = { responseResult: ok(), jwt: null, mustProvideTFA: true };
-  await assert.rejects(wikijs.connect({ address: 'wiki.example.com', method: 'password', username: 'casey@example.com', password: 'x' }), /two-step verification.*API key/);
+  server.loginResult = { responseResult: ok(), jwt: null, mustSetupTFA: true };
+  await assert.rejects(wikijs.connect({ address: 'wiki.example.com', method: 'password', username: 'casey@example.com', password: 'x' }), /set up two-step verification first.*browser/);
   server.loginResult = { responseResult: ok(), jwt: null, mustChangePwd: true };
   await assert.rejects(wikijs.connect({ address: 'wiki.example.com', method: 'password', username: 'casey@example.com', password: 'x' }), /new password/);
   server.loginResult = null;
   const tooMany = async () => gqlError('Too many requests, please try again in 48 seconds.');
   const limited = new WikiJs({ directory: path.dirname(wikijs.file), safeStorage: safeStorage(), fetchImpl: async (url, init) => (/login/.test(init.body) ? tooMany() : server.fetch(url, init)) });
   await assert.rejects(limited.connect({ address: 'wiki.example.com', method: 'password', username: 'casey@example.com', password: 'hunter2' }), /too many sign-in attempts/);
+});
+
+test('a two-step account connects with a code from the authenticator app, and keeps its session through a restart', async (t) => {
+  const server = wiki();
+  server.users['casey@example.com'].tfa = '123456';
+  const { wikijs } = setup(t, server);
+  const signIn = (code) => wikijs.connect({ address: 'wiki.example.com', method: 'password', username: 'casey@example.com', password: 'hunter2', code });
+  assert.deepEqual(await signIn(), { needsCode: true }, 'asks for a code');
+  assert.equal(fs.existsSync(wikijs.file), false, 'nothing saved yet');
+  await assert.rejects(signIn('12345'), /6-digit code/);
+  await assert.rejects(signIn('654321'), /didn’t accept that code/);
+  const status = await signIn(' 123 456 ');
+  assert.deepEqual([status.connected, status.user, status.twoStep, status.needsCode], [true, 'Casey Jones', true, false]);
+
+  // A restart keeps the session, so publishing doesn't need a sign-in (or a code).
+  const reopened = new WikiJs({ directory: path.dirname(wikijs.file), safeStorage: wikijs.safeStorage, fetchImpl: server.fetch });
+  assert.equal(reopened.session.token, wikijs.session.token);
+  const logins = server.logins;
+  const published = await reopened.publish({ guideId: 'g', path: 'guides/vpn', title: 'VPN', page: page('/guides/vpn') });
+  assert.equal(published.updated, false);
+  assert.equal(server.logins, logins);
+});
+
+test('a two-step session that ran out is renewed by Wiki.js, and the new token is kept', async (t) => {
+  const server = wiki();
+  server.users['casey@example.com'].tfa = '123456';
+  const { wikijs } = setup(t, server);
+  await wikijs.connect({ address: 'wiki.example.com', method: 'password', username: 'casey@example.com', password: 'hunter2', code: '123456' });
+  // Ran out two days ago, inside the renewal period: used anyway, never signed in again.
+  wikijs.session = { token: server.issue('Casey Jones', -2 * 24 * 60 * 60 * 1000), expires: Date.now() - 2 * 24 * 60 * 60 * 1000 };
+  const logins = server.logins;
+  const published = await wikijs.publish({ guideId: 'g', path: 'guides/vpn', title: 'VPN', page: page('/guides/vpn') });
+  assert.equal(published.updated, false);
+  assert.equal(server.logins, logins);
+  assert.ok(wikijs.session.expires > Date.now(), 'the renewed token replaces it');
+  const reopened = new WikiJs({ directory: path.dirname(wikijs.file), safeStorage: wikijs.safeStorage, fetchImpl: server.fetch });
+  assert.equal(reopened.session.token, wikijs.session.token, 'and is stored');
+});
+
+test('when Wiki.js ends a two-step session, publishing asks for a code first, then carries on', async (t) => {
+  const server = wiki();
+  server.users['casey@example.com'].tfa = '123456';
+  const { wikijs } = setup(t, server);
+  await wikijs.connect({ address: 'wiki.example.com', method: 'password', username: 'casey@example.com', password: 'hunter2', code: '123456' });
+  const first = await wikijs.publish({ guideId: 'g', path: 'guides/vpn', title: 'VPN', page: page('/guides/vpn') });
+  server.tokens.clear(); // signed out on the wiki, or past the renewal period
+  const uploads = server.requests.filter((r) => r === 'upload').length;
+  const logins = server.logins;
+  assert.deepEqual(await wikijs.publish({ guideId: 'g', path: 'guides/vpn', title: 'VPN', page: page('/guides/vpn') }), { needsCode: true });
+  assert.equal(server.logins, logins, 'no sign-in without a code');
+  assert.equal(server.requests.filter((r) => r === 'upload').length, uploads, 'nothing uploaded');
+  assert.equal(wikijs.status().needsCode, true);
+  assert.equal(new WikiJs({ directory: path.dirname(wikijs.file), safeStorage: wikijs.safeStorage, fetchImpl: server.fetch }).status().needsCode, true, 'remembered');
+
+  await assert.rejects(wikijs.signInAgain({ code: '000000' }), /didn’t accept that code/);
+  const status = await wikijs.signInAgain({ code: '123456' });
+  assert.deepEqual([status.connected, status.needsCode], [true, false]);
+  const again = await wikijs.publish({ guideId: 'g', path: 'guides/vpn', title: 'VPN', page: page('/guides/vpn') });
+  assert.deepEqual([again.id, again.updated], [first.id, true]);
+});
+
+test('a two-step account that isn’t allowed to do something is told so, not asked for a code', async (t) => {
+  const server = wiki();
+  server.users['casey@example.com'].tfa = '123456';
+  server.uploadsForbidden = true;
+  const { wikijs } = setup(t, server);
+  await wikijs.connect({ address: 'wiki.example.com', method: 'password', username: 'casey@example.com', password: 'hunter2', code: '123456' });
+  await assert.rejects(wikijs.publish({ guideId: 'g', path: 'guides/vpn', title: 'VPN', page: page('/guides/vpn') }), /permission to upload files/);
+  assert.equal(wikijs.status().needsCode, false, 'the session is still good');
+});
+
+test('an account that turns on two-step verification later is asked for a code, then stays signed in', async (t) => {
+  const server = wiki();
+  const { wikijs } = setup(t, server);
+  await wikijs.connect({ address: 'wiki.example.com', method: 'password', username: 'casey@example.com', password: 'hunter2' });
+  assert.equal(wikijs.status().twoStep, false);
+  server.users['casey@example.com'].tfa = '123456';
+  server.tokens.clear();
+  assert.deepEqual(await wikijs.publish({ guideId: 'g', path: 'guides/vpn', title: 'VPN', page: page('/guides/vpn') }), { needsCode: true });
+  const status = await wikijs.signInAgain({ code: '123456' });
+  assert.deepEqual([status.twoStep, status.needsCode], [true, false]);
+  assert.equal((await wikijs.publish({ guideId: 'g', path: 'guides/vpn', title: 'VPN', page: page('/guides/vpn') })).updated, false);
 });
 
 test('requests stay on the site, never follow redirects, and network problems are explained', async (t) => {
@@ -428,6 +540,11 @@ test('IPC arguments are checked before anything runs', () => {
   assert.equal(validConnectArgs({ address: 'wiki.example.com', method: 'apikey', apiKey: 'k'.repeat(5000) }), false);
   assert.equal(validConnectArgs({ address: 7, method: 'apikey' }), false);
   assert.equal(validConnectArgs({ address: 'w', method: 'apikey', redirect: 'https://evil' }), false, 'no unknown fields');
+  assert.equal(validConnectArgs({ address: 'w', method: 'password', username: 'u', password: 'p', code: '123456' }), true);
+  assert.equal(validConnectArgs({ address: 'w', method: 'password', username: 'u', password: 'p', code: 123456 }), false);
+  assert.equal(validCodeArgs({ code: '123456' }), true);
+  assert.equal(validCodeArgs({ code: '1'.repeat(21) }), false);
+  assert.equal(validCodeArgs({ code: '123456', password: 'p' }), false);
 
   assert.equal(validPublishArgs({ guideId: 'g-1', path: 'guides/x', title: 'X' }), true);
   assert.equal(validPublishArgs({ guideId: 'g-1', path: 'guides/x', title: 'X', locale: 'de', replace: true }), true);

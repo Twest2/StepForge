@@ -19,7 +19,9 @@ file and a folder of screenshots.
    - **Your username and password**, the ones you use on the wiki's own
      sign-in page. If the wiki has more than one way to sign in with a
      password (for example its own accounts and your company directory),
-     choose which under **Sign in with**.
+     choose which under **Sign in with**. If your account uses
+     [two-step verification](#two-step-verification), StepForge then asks
+     for a code.
    - **An [API key](#api-keys)**. Paste it in and choose **Connect**.
 
 StepForge stores your password or API key encrypted with your operating
@@ -30,8 +32,33 @@ Use an API key instead of a password when:
 
 - the wiki only offers single sign-on (for example Microsoft, Google or Okta).
   StepForge says so after **Continue**;
-- your account uses two-step verification, or Wiki.js asks you to change your
-  password. StepForge can't complete those steps.
+- Wiki.js asks you to change your password, or to set up two-step
+  verification. StepForge can't complete those steps; do them on the wiki in
+  your browser, or use an API key.
+
+## Two-step verification
+
+If your account uses two-step verification, signing in takes your password
+and then the 6-digit code from your authenticator app:
+
+1. Enter your username and password and choose **Sign in**.
+2. StepForge shows a **Verification code** field. Enter the code your app
+   shows now and choose **Verify**.
+
+You don't need a code each time you publish. StepForge keeps your Wiki.js
+session, encrypted like your password, and Wiki.js renews it while you use
+it. Wiki.js renews a session that's been unused for up to 14 days by default
+(your administrator can change this under **Administration → Security**).
+
+StepForge asks for a code again when Wiki.js has ended your session, for
+example after a longer break, or if an administrator signed you out:
+
+- **Publish to Wiki.js** asks for the code, then carries on publishing.
+- **Settings → Accounts → Wiki.js** shows **Signed out on the wiki** with a
+  code field.
+
+If your account doesn't have two-step verification set up yet and the wiki
+requires it, set it up on the wiki in your browser first, then sign in here.
 
 ## API keys
 

@@ -19,6 +19,15 @@ const { check: c, isPlainArgs } = require('./security');
  *                      password is kept so StepForge can sign in again
  *                      before each publish and when the token runs out.
  *
+ * Two-step verification: login answers mustProvideTFA with a continuation
+ * token, and authentication.loginTFA trades it and the code from the user's
+ * authenticator app for the sign-in token. Signing in again would need a new
+ * code, so for these accounts (`twoStep`) the token is stored encrypted with
+ * the password and used for as long as Wiki.js renews it: a token that ran
+ * out within the wiki's renewal period (14 days by default) is accepted and
+ * a new one sent back in the new-jwt header. Only when that stops working is
+ * the user asked for a code again.
+ *
  * Secrets are stored encrypted with the operating system's credential store
  * (Electron safeStorage), with a copy in the OS user's keyring (app/
  * credential-vault.js) so an update or reinstall doesn't lose them.
@@ -41,6 +50,10 @@ const VAULT_KEY = 'wikijs';
 // as the page's locale.
 const RESERVED_SEGMENTS = ['login', 'logout', 'register', 'verify', 'favicons', 'fonts', 'img', 'js', 'svg', 'graphql', 'healthz'];
 const LOCALE_SEGMENT = /^[a-z]{2}(-[a-z]{2})?$/i;
+
+// Wiki.js wants a code from the user's authenticator app. publish() and
+// connect() answer { needsCode } instead, so the user can be asked for one.
+const needsCode = () => Object.assign(new Error('Enter the 6-digit code from your authenticator app.'), { needsCode: true });
 
 // Wiki.js error codes (server/helpers/error.js).
 const CODES = { authFailed: 1002, authRequired: 1019, folderExists: 2002, duplicate: 6002, notFound: 6003, illegalPath: 6005,
@@ -155,7 +168,7 @@ class WikiJs {
     try {
       if (!fs.existsSync(this.file)) return;
       this.requireEncryption();
-      this.credentials = JSON.parse(this.safeStorage.decryptString(fs.readFileSync(this.file)));
+      this.restore(JSON.parse(this.safeStorage.decryptString(fs.readFileSync(this.file))));
     } catch {
       this.loadError = 'Your saved Wiki.js sign-in couldn’t be unlocked. Sign in again.';
     }
@@ -167,9 +180,21 @@ class WikiJs {
     }
   }
 
+  /** What's stored: the sign-in, plus the session for two-step accounts (see the top of this file). */
+  stored() {
+    if (!this.credentials) return null;
+    return this.credentials.twoStep && this.session ? { ...this.credentials, session: this.session } : this.credentials;
+  }
+
+  restore(stored) {
+    const { session = null, ...credentials } = stored;
+    this.credentials = credentials;
+    this.session = credentials.twoStep && session?.token ? session : null;
+  }
+
   save() {
     this.requireEncryption();
-    atomicWriteFileSync(this.file, this.safeStorage.encryptString(JSON.stringify(this.credentials)));
+    atomicWriteFileSync(this.file, this.safeStorage.encryptString(JSON.stringify(this.stored())));
     this.loadError = null;
     void this.backup();
     this.onStatus(this.status());
@@ -177,7 +202,7 @@ class WikiJs {
 
   // The OS-user copy keeps the sign-in through an update or reinstall.
   async backup() {
-    const secret = this.credentials && JSON.stringify(this.credentials);
+    const secret = this.credentials && JSON.stringify(this.stored());
     if (!this.vault || !secret || this.vaulted === secret) return;
     try {
       await this.vault.write(VAULT_KEY, secret);
@@ -192,7 +217,7 @@ class WikiJs {
     let stored;
     try { stored = JSON.parse(await this.vault.read(VAULT_KEY) || 'null'); } catch { return false; }
     if (this.credentials || !stored?.baseUrl || !stored.method) return false;
-    this.credentials = stored;
+    this.restore(stored);
     this.vaulted = JSON.stringify(stored);
     try { this.save(); } catch { this.loadError = null; this.onStatus(this.status()); }
     return true;
@@ -212,6 +237,9 @@ class WikiJs {
       method: c?.method || '',
       user: c?.method === 'password' ? c.user?.name || c.username : '',
       strategy: c?.method === 'password' ? c.strategyName || '' : '',
+      twoStep: Boolean(c?.twoStep),
+      // Signed out on the wiki: a code is needed before the next publish.
+      needsCode: Boolean(c?.twoStep && !this.session),
     };
   }
 
@@ -328,34 +356,86 @@ class WikiJs {
     return { baseUrl, host: new URL(baseUrl).host, strategies, apiKeyUrl: `${baseUrl}/a/api` };
   }
 
-  /** Sign in with a username and password: a fresh token, or a readable reason there isn't one. */
-  async login({ baseUrl, username, password, strategy }) {
+  /**
+   * Sign in with a username and password, and for two-step accounts `code`
+   * from the authenticator app: a fresh token ({ token, expires, twoStep }),
+   * or a readable reason there isn't one. Without a code, a two-step account
+   * throws a `needsCode` error.
+   */
+  async login({ baseUrl, username, password, strategy }, { code = '' } = {}) {
     const { data } = await this.graphql(baseUrl, `mutation ($username: String!, $password: String!, $strategy: String!) {
       authentication { login(username: $username, password: $password, strategy: $strategy) {
-        responseResult { succeeded errorCode slug message } jwt mustChangePwd mustProvideTFA mustSetupTFA } } }`,
+        responseResult { succeeded errorCode slug message } jwt mustChangePwd mustProvideTFA mustSetupTFA continuationToken } } }`,
     { username, password, strategy });
-    const result = WikiJs.check(data?.authentication?.login, (r) => (r.errorCode === CODES.authFailed
+    let result = WikiJs.check(data?.authentication?.login, (r) => (r.errorCode === CODES.authFailed
       ? 'Wiki.js didn’t accept that username and password.'
       : `Wiki.js couldn’t sign you in (${r.message}).`));
-    if (result.mustProvideTFA || result.mustSetupTFA) {
-      throw new Error('This account uses two-step verification, which StepForge can’t complete. Sign in with an API key instead.');
+    if (result.mustSetupTFA) {
+      throw new Error('This wiki wants you to set up two-step verification first. Sign in to the wiki in your browser to set it up, then sign in here again.');
+    }
+    const twoStep = Boolean(result.mustProvideTFA);
+    if (twoStep) {
+      const securityCode = String(code).replace(/\s+/g, '');
+      if (!securityCode) throw needsCode();
+      if (!/^\d{6}$/.test(securityCode)) throw new Error('Enter the 6-digit code from your authenticator app.');
+      // The continuation token works once, right or wrong, so each code needs a fresh login.
+      const answer = await this.graphql(baseUrl, `mutation ($continuationToken: String!, $securityCode: String!) {
+        authentication { loginTFA(continuationToken: $continuationToken, securityCode: $securityCode) {
+          responseResult { succeeded errorCode slug message } jwt mustChangePwd } } }`,
+      { continuationToken: String(result.continuationToken || ''), securityCode });
+      result = WikiJs.check(answer.data?.authentication?.loginTFA, (r) => (/TFAFailed/i.test(r.slug)
+        ? 'Wiki.js didn’t accept that code. Codes change every 30 seconds; enter the one your app shows now.'
+        : /TFAInvalid/i.test(r.slug) ? 'The sign-in took too long. Enter a new code.'
+          : `Wiki.js couldn’t sign you in (${r.message}).`));
     }
     if (result.mustChangePwd) {
       throw new Error('Wiki.js wants a new password for this account. Sign in to the wiki in your browser to change it, then try again, or use an API key.');
     }
     if (!result.jwt) throw new Error('Wiki.js didn’t send a sign-in token. Try an API key instead.');
     const expires = (decodeToken(result.jwt)?.exp || 0) * 1000 || Date.now() + 30 * 60 * 1000;
-    return { token: result.jwt, expires };
+    return { token: result.jwt, expires, twoStep };
   }
 
   /** A token for `login`: the API key, or a password sign-in's token (signing in again when needed). */
   async token(login = this.requireSite(), { fresh = false } = {}) {
     if (login.method === 'apikey') return login.apiKey;
     const session = login === this.credentials ? this.session : null;
+    // Even once it has run out: Wiki.js renews it (see the top of this file).
+    if (login.twoStep) {
+      if (!fresh && session?.token) return session.token;
+      throw needsCode();
+    }
     if (!fresh && session && session.expires - Date.now() > TOKEN_MARGIN_MS) return session.token;
     const next = await this.login(login);
-    if (login === this.credentials) this.session = next;
+    if (login === this.credentials) this.session = { token: next.token, expires: next.expires };
     return next.token;
+  }
+
+  /**
+   * A two-step account was turned away. If its session still works, the
+   * user just isn't allowed to do that (`err` stands); otherwise the session
+   * is over and the user is asked for a code.
+   */
+  async endedSession(login, err) {
+    const token = this.session?.token;
+    if (token && await this.profile(login.baseUrl, token).then(() => true, () => false)) return err;
+    if (login === this.credentials) {
+      this.session = null;
+      this.save();
+    }
+    return needsCode();
+  }
+
+  /** Sign in again with a code from the authenticator app, after Wiki.js ended the session. */
+  async signInAgain({ code }) {
+    const login = this.requireSite();
+    if (login.method !== 'password') throw new Error('Only a password sign-in uses codes.');
+    const session = await this.login(login, { code });
+    if (!session.twoStep) throw new Error('Wiki.js didn’t ask for a code. Publish again.');
+    login.twoStep = true;
+    this.session = { token: session.token, expires: session.expires };
+    this.save();
+    return this.status();
   }
 
   /** A GraphQL request as the signed-in user. A password sign-in is renewed once if Wiki.js turns it down. */
@@ -364,13 +444,17 @@ class WikiJs {
     const run = async (fresh) => {
       const { data, renewed } = await this.graphql(login.baseUrl, query, variables, { ...options, token: await this.token(login, { fresh }) });
       // Wiki.js renews an expired token by itself and sends the new one back.
-      if (renewed && login.method === 'password' && login === this.credentials) this.session = { token: renewed, expires: (decodeToken(renewed)?.exp || 0) * 1000 };
+      if (renewed && login.method === 'password' && login === this.credentials) {
+        this.session = { token: renewed, expires: (decodeToken(renewed)?.exp || 0) * 1000 };
+        if (login.twoStep) this.save();
+      }
       return data;
     };
     try {
       return await run(false);
     } catch (err) {
       if (!err.auth || login.method !== 'password') throw err;
+      if (login.twoStep) throw await this.endedSession(login, err);
       return run(true);
     }
   }
@@ -385,10 +469,12 @@ class WikiJs {
 
   /**
    * Sign in: { address, method: 'apikey', apiKey } or { address, method:
-   * 'password', username, password, strategy } (strategy may be left out
-   * when the wiki has only one).
+   * 'password', username, password, strategy, code } (strategy may be left
+   * out when the wiki has only one; code is for two-step accounts). Resolves
+   * with the status, or { needsCode } when Wiki.js wants a code: send the
+   * same again with it.
    */
-  async connect({ address, method, apiKey = '', username = '', password = '', strategy = '' }) {
+  async connect({ address, method, apiKey = '', username = '', password = '', strategy = '', code = '' }) {
     this.requireEncryption();
     const baseUrl = normalizeSite(address);
     let login;
@@ -406,10 +492,17 @@ class WikiJs {
       const chosen = strategies.find((s) => s.key === strategy) || (strategies.length === 1 || !strategy ? strategies[0] : null);
       if (!chosen) throw new Error('Choose how to sign in.');
       login = { baseUrl, method, username: username.trim(), password, strategy: chosen.key, strategyName: chosen.name };
-      const session = await this.login(login);
+      let session;
+      try {
+        session = await this.login(login, { code });
+      } catch (err) {
+        if (err.needsCode) return { needsCode: true };
+        throw err;
+      }
       const profile = await this.profile(baseUrl, session.token);
       login.user = { name: String(profile.name || profile.email || login.username), email: String(profile.email || '') };
-      this.session = session;
+      if (session.twoStep) login.twoStep = true;
+      this.session = { token: session.token, expires: session.expires };
     } else {
       throw new Error('Choose how to sign in.');
     }
@@ -501,8 +594,14 @@ class WikiJs {
       return this.request(login.baseUrl, '/u', { method: 'POST', body, contentType, token: await this.token(login, { fresh }), timeout: 300000 });
     };
     let response = await send(false);
-    // A visitor can't upload: a password sign-in that ran out is renewed once.
-    if (response.status === 403 && this.credentials.method === 'password') response = await send(true);
+    // A visitor can't upload: a password sign-in that ran out is renewed once,
+    // and a two-step one whose session ended needs a code.
+    if (response.status === 403 && this.credentials.twoStep) {
+      const err = await this.endedSession(this.credentials, null);
+      if (err) throw err;
+    } else if (response.status === 403 && this.credentials.method === 'password') {
+      response = await send(true);
+    }
     if (response.ok) return;
     const message = response.data?.message || '';
     if (response.status === 413 || /too large/i.test(message || response.text)) {
@@ -550,9 +649,20 @@ class WikiJs {
    *                 last published from here: its url, and who (by) and
    *                 when it was last edited;
    *   { conflict }  another page already has this path.
-   * Both are only replaced with `replace`.
+   * Both are only replaced with `replace`. { needsCode } means a two-step
+   * account was signed out on the wiki: signInAgain(), then publish again.
    */
-  async publish({ guideId, path: rawPath, locale: rawLocale = 'en', title, description = '', page, replace = false, onProgress = () => {} }) {
+  async publish(args) {
+    try {
+      return await this.publishPage(args);
+    } catch (err) {
+      // Nothing is lost: publishing again after the code picks up where this stopped.
+      if (err.needsCode) return { needsCode: true };
+      throw err;
+    }
+  }
+
+  async publishPage({ guideId, path: rawPath, locale: rawLocale = 'en', title, description = '', page, replace = false, onProgress = () => {} }) {
     this.requireSite();
     const pagePath = normalizePagePath(rawPath);
     const locale = normalizeLocale(rawLocale);
@@ -607,9 +717,14 @@ const onlyKeys = (a, keys) => isPlainArgs(a) && Object.keys(a || {}).every((key)
 
 /** wikijs:connect: a site and one way of signing in. */
 function validConnectArgs(a) {
-  return onlyKeys(a, ['address', 'method', 'apiKey', 'username', 'password', 'strategy']) && c.string(a.address, 2000)
+  return onlyKeys(a, ['address', 'method', 'apiKey', 'username', 'password', 'strategy', 'code']) && c.string(a.address, 2000)
     && c.oneOf(a.method, ['apikey', 'password']) && c.optionalString(a.apiKey, 4000) && c.optionalString(a.username, 320)
-    && c.optionalString(a.password, 1000) && c.optionalString(a.strategy, 100);
+    && c.optionalString(a.password, 1000) && c.optionalString(a.strategy, 100) && c.optionalString(a.code, 20);
+}
+
+/** wikijs:signInAgain: a code from the authenticator app. */
+function validCodeArgs(a) {
+  return onlyKeys(a, ['code']) && c.string(a.code, 20);
 }
 
 /** wikijs:publish: the guide, where its page goes, and whether to replace what's there. */
@@ -621,5 +736,5 @@ function validPublishArgs(a) {
 
 module.exports = {
   WikiJs, normalizeSite, normalizePagePath, normalizeLocale, pageSlug, folderOf, pageFromExport, uploadBody, friendlyNetworkError,
-  validConnectArgs, validPublishArgs,
+  validConnectArgs, validCodeArgs, validPublishArgs,
 };

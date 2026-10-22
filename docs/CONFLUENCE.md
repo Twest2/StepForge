@@ -26,7 +26,8 @@ for Confluence's importer.
        Your site's own login page opens in a StepForge window. Sign in as
        usual; the window closes by itself when you're done.
 4. Choose the space for new pages and, if you like, a parent page to put them
-   under.
+   under. These are where the publish dialog starts; you can pick others
+   for each guide when you publish.
 
 ## Tokens
 
@@ -70,8 +71,15 @@ the site, and the token tells Confluence who you are once you're there.
 ## Publish a guide
 
 Choose **Share → Publish to Confluence…** in the editor, or **Publish to
-Confluence…** from a guide's menu in the library. Pick the space and choose
-**Publish**.
+Confluence…** from a guide's menu in the library. Then check:
+
+- **Space**: the space the page goes in. It starts as the space from
+  Settings.
+- **Parent page**: the page to put it under. Search for a page by its title,
+  or choose **Top of the space**. It starts as the parent page from Settings
+  when the space is the same, or as the top of the space.
+
+Choose **Publish**.
 
 Before anything is sent, StepForge checks the guide's screenshots for private
 details and blurs what it finds ([how](GETTING_STARTED.md#find-private-details)).
@@ -85,6 +93,11 @@ replacing it. Confluence keeps the old version in the page history.
 
 StepForge remembers each guide's page, so publishing again updates the same
 page and replaces its screenshots.
+
+The page stays where it is, even if someone moved it in Confluence. To move
+it, pick another parent page when you publish. StepForge can't move a page
+to the top of a space, so **Top of the space** isn't offered for a page
+that's already published there; move the page in Confluence instead.
 
 If someone edited the page in Confluence since you last published it,
 StepForge asks first, and says who edited it and when: "This page was edited

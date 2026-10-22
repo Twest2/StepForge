@@ -811,7 +811,8 @@ test('Accounts shows who is signed in to Wiki.js', async () => {
 
 test('Publish to Wiki.js prefills the path, warns before replacing a page edited on the wiki, and links to the page', async () => {
   const u = ui();
-  let answers = [{ edited: { path: 'guides/reset-a-password', title: 'Reset a password' } }];
+  let answers = [{ edited: { path: 'guides/reset-a-password', title: 'Reset a password', url: 'https://wiki.example.com/en/guides/it/reset',
+    by: 'Jane Doe', when: `${new Date().getFullYear()}-10-20T12:00:00Z` } }];
   const api = wikiApi({
     status: async () => ({ connected: true, host: 'wiki.example.com', method: 'apikey' }),
     publish: async (args) => {
@@ -835,10 +836,15 @@ test('Publish to Wiki.js prefills the path, warns before replacing a page edited
   await settle();
   // Asked first, with nothing replaced yet.
   const confirm = u.root.children.at(-1);
-  assert.match(confirm.textContent, /This page was edited on the wiki since you last published\. Replace it\?/);
+  assert.match(confirm.textContent, /This page was edited on the wiki by Jane Doe on Oct 20 since you last published\. Publishing will replace those edits\./);
+  assert.match(confirm.textContent, /Wiki\.js keeps the edited version in the page history\./);
   assert.deepEqual(JSON.parse(JSON.stringify(api.calls.filter(([name]) => name === 'publish').map(([, args]) => args))),
     [{ guideId: 'guide-1', path: 'guides/it/reset', title: 'Reset a password', locale: 'en', replace: false }]);
-  u.click(u.find(confirm, 'Replace page'));
+  // Open page shows the edits and leaves the question open.
+  u.click(u.find(confirm, 'Open page'));
+  assert.deepEqual(api.calls.at(-1), ['open', 'https://wiki.example.com/en/guides/it/reset']);
+  assert.equal(u.root.children.at(-1), confirm);
+  u.click(u.find(confirm, 'Publish anyway'));
   await settle(); await settle();
   assert.equal(api.calls.filter(([name]) => name === 'publish').at(-1)[1].replace, true);
   assert.match(modal.textContent, /Updated “Reset a password” on Wiki\.js\./);

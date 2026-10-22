@@ -429,10 +429,10 @@ class Confluence {
    * Both are only replaced with `replace`.
    *
    * `parent` is where a new page goes. The guide's own page stays where it
-   * is, wherever someone may have moved it, unless `parent` is a different
-   * page, which moves it there.
+   * is, wherever someone may have moved it, unless `parentPicked` says the
+   * user chose `parent` and it's a different page, which moves it there.
    */
-  async publish({ guideId, space, parent = null, page, replace = false, onProgress = () => {} }) {
+  async publish({ guideId, space, parent = null, parentPicked = false, page, replace = false, onProgress = () => {} }) {
     this.requireSite();
     if (!space?.key) throw new Error('Choose a Confluence space for this guide.');
     let existing = null;
@@ -448,7 +448,7 @@ class Confluence {
       if (same) existing = await this.getPage(same.id);
     }
     const ours = Boolean(existing && known && existing.id === String(known.id));
-    const stays = ours && (!parent || parent.id === known.parent?.id);
+    const stays = ours && (!parentPicked || !parent || parent.id === known.parent?.id);
     onProgress({ stage: 'page' });
     let saved;
     try {

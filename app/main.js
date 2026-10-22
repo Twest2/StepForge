@@ -1066,7 +1066,7 @@ function setupIpc() {
   h('confluence:setDefaults', ({ space = null, parent = null }) => confluence.setDefaults({ space, parent }),
     { validate: (a) => spaceArg(a.space) && parentArg(a.parent) });
   h('confluence:published', ({ guideId }) => confluence.publishedFor(guideId), { validate: (a) => c.id(a.guideId) });
-  h('confluence:publish', async ({ guideId, space, parent = null, replace = false }) => {
+  h('confluence:publish', async ({ guideId, space, parent = null, parentPicked = false, replace = false }) => {
     if (!store.guideExists(guideId)) throw new Error('Guide not found.');
     const progress = (update) => sendToRenderer('confluence:progress', { guideId, ...update });
     const outDir = path.join(store.tempDir, `confluence-${guideId}`);
@@ -1078,12 +1078,13 @@ function setupIpc() {
       progress({ stage: 'export' });
       const result = await runExportInWorker({ dataDir: store.root, guideId, format: 'confluence',
         options: { apiFiles: true, includeImages: true, toc: true }, outDir, globals: settings.getGlobalPlaceholders(), codeStyle: exportCodeStyle() });
-      return await confluence.publish({ guideId, space, parent, replace, onProgress: progress,
+      return await confluence.publish({ guideId, space, parent, parentPicked, replace, onProgress: progress,
         page: pageFromExport(path.dirname(result.apiPage)) });
     } finally {
       fs.rmSync(outDir, { recursive: true, force: true });
     }
-  }, { validate: (a) => c.id(a.guideId) && spaceArg(a.space) && a.space && parentArg(a.parent) && (a.replace === undefined || typeof a.replace === 'boolean') });
+  }, { validate: (a) => c.id(a.guideId) && spaceArg(a.space) && a.space && parentArg(a.parent)
+    && (a.parentPicked === undefined || typeof a.parentPicked === 'boolean') && (a.replace === undefined || typeof a.replace === 'boolean') });
 
   // Wiki.js: the API key or password stays in the main process.
   h('wikijs:status', () => wikijs.status());

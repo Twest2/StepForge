@@ -128,18 +128,22 @@ function makeWikiJsSettings(api) {
     say(status.user ? `Signed in as ${status.user}.` : `Connected to ${status.host} with an API key.`, 'success');
     update(status);
   };
-  signIn.addEventListener('click', () => run(signIn, 'Signing in…', async () => {
-    const asking = !codeField.classList.contains('hidden');
-    const result = await api.wikijs.connect({ address: address.value.trim(), method: 'password',
-      username: username.value.trim(), password: password.value, strategy: chosenStrategy()?.key || '',
-      ...(asking ? { code: code.value.trim() } : {}) });
-    if (result.needsCode) {
+  signIn.addEventListener('click', async () => {
+    let wantsCode = false;
+    await run(signIn, 'Signing in…', async () => {
+      const asking = !codeField.classList.contains('hidden');
+      const result = await api.wikijs.connect({ address: address.value.trim(), method: 'password',
+        username: username.value.trim(), password: password.value, strategy: chosenStrategy()?.key || '',
+        ...(asking ? { code: code.value.trim() } : {}) });
+      if (result.needsCode) wantsCode = true;
+      else connected(result);
+    });
+    // Once run() is done: ending the loading state puts the button's earlier label back.
+    if (wantsCode && !disposed) {
       askForCode(true);
       say('This account uses two-step verification. Enter the 6-digit code from your authenticator app.');
-      return;
     }
-    connected(result);
-  }));
+  });
   code.addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); signIn.click(); } });
   password.addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); signIn.click(); } });
   connect.addEventListener('click', () => run(connect, 'Connecting…', async () => {

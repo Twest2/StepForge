@@ -1105,7 +1105,7 @@ function setupIpc() {
     const language = normalizeLocale(locale);
     wikijs.requireSite();
     // Signed out on the wiki: ask for the code before checking and exporting.
-    if (wikijs.status().needsCode) return { needsCode: true };
+    if (await wikijs.needsCodeNow()) return { needsCode: true };
     const progress = (update) => sendToRenderer('wikijs:progress', { guideId, ...update });
     const outDir = path.join(store.tempDir, `wikijs-${guideId}`);
     fs.rmSync(outDir, { recursive: true, force: true });

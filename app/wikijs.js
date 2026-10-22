@@ -401,39 +401,65 @@ class WikiJs {
     if (login.method === 'apikey') return login.apiKey;
     const session = login === this.credentials ? this.session : null;
     // Even once it has run out: Wiki.js renews it (see the top of this file).
-    if (login.twoStep) {
-      if (!fresh && session?.token) return session.token;
-      throw needsCode();
+    if (login.twoStep && !fresh && session?.token) return session.token;
+    if (!login.twoStep && !fresh && session && session.expires - Date.now() > TOKEN_MARGIN_MS) return session.token;
+    // A two-step account whose session ended: this asks for a code, unless
+    // two-step verification was turned off on the wiki meanwhile.
+    let next;
+    try {
+      next = await this.login(login);
+    } catch (err) {
+      if (err.needsCode && login === this.credentials && this.session) {
+        this.session = null;
+        this.save();
+      }
+      throw err;
     }
-    if (!fresh && session && session.expires - Date.now() > TOKEN_MARGIN_MS) return session.token;
-    const next = await this.login(login);
-    if (login === this.credentials) this.session = { token: next.token, expires: next.expires };
+    if (login === this.credentials) this.useSession(next);
     return next.token;
   }
 
+  /** Keep a new sign-in; whether it took a code says whether the account uses two-step verification now. */
+  useSession(next) {
+    const wasTwoStep = Boolean(this.credentials.twoStep);
+    if (next.twoStep) this.credentials.twoStep = true;
+    else delete this.credentials.twoStep;
+    this.session = { token: next.token, expires: next.expires };
+    if (wasTwoStep || next.twoStep) this.save();
+  }
+
   /**
-   * A two-step account was turned away. If its session still works, the
-   * user just isn't allowed to do that (`err` stands); otherwise the session
-   * is over and the user is asked for a code.
+   * Whether a two-step account's session still works: if so and a request
+   * was turned away, the user just isn't allowed to do that, and shouldn't
+   * be asked for a code.
    */
-  async endedSession(login, err) {
-    const token = this.session?.token;
-    if (token && await this.profile(login.baseUrl, token).then(() => true, () => false)) return err;
-    if (login === this.credentials) {
-      this.session = null;
-      this.save();
+  async sessionWorks(login) {
+    const token = login.twoStep && login === this.credentials ? this.session?.token : '';
+    return Boolean(token) && this.profile(login.baseUrl, token).then(() => true, () => false);
+  }
+
+  /**
+   * Whether publishing has to ask for a code first. When Wiki.js ended a
+   * two-step session, this signs in to find out: no code is needed if two-step
+   * verification was turned off on the wiki.
+   */
+  async needsCodeNow() {
+    if (!this.status().needsCode) return false;
+    try {
+      await this.token();
+      return false;
+    } catch (err) {
+      if (err.needsCode) return true;
+      throw err;
     }
-    return needsCode();
   }
 
   /** Sign in again with a code from the authenticator app, after Wiki.js ended the session. */
   async signInAgain({ code }) {
     const login = this.requireSite();
     if (login.method !== 'password') throw new Error('Only a password sign-in uses codes.');
-    const session = await this.login(login, { code });
-    if (!session.twoStep) throw new Error('Wiki.js didn’t ask for a code. Publish again.');
-    login.twoStep = true;
-    this.session = { token: session.token, expires: session.expires };
+    // A code isn't needed if two-step verification was turned off on the wiki; the sign-in is kept either way.
+    this.useSession(await this.login(login, { code }));
     this.save();
     return this.status();
   }
@@ -454,7 +480,7 @@ class WikiJs {
       return await run(false);
     } catch (err) {
       if (!err.auth || login.method !== 'password') throw err;
-      if (login.twoStep) throw await this.endedSession(login, err);
+      if (await this.sessionWorks(login)) throw err;
       return run(true);
     }
   }
@@ -594,12 +620,9 @@ class WikiJs {
       return this.request(login.baseUrl, '/u', { method: 'POST', body, contentType, token: await this.token(login, { fresh }), timeout: 300000 });
     };
     let response = await send(false);
-    // A visitor can't upload: a password sign-in that ran out is renewed once,
-    // and a two-step one whose session ended needs a code.
-    if (response.status === 403 && this.credentials.twoStep) {
-      const err = await this.endedSession(this.credentials, null);
-      if (err) throw err;
-    } else if (response.status === 403 && this.credentials.method === 'password') {
+    // A visitor can't upload: a password sign-in that ran out is renewed once
+    // (a two-step one whose session ended asks for a code).
+    if (response.status === 403 && this.credentials.method === 'password' && !(await this.sessionWorks(this.credentials))) {
       response = await send(true);
     }
     if (response.ok) return;

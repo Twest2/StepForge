@@ -57,6 +57,9 @@ example after a longer break, or if an administrator signed you out:
 - **Settings → Accounts → Wiki.js** shows **Signed out on the wiki** with a
   code field.
 
+If two-step verification is turned off for your account later, StepForge
+notices the next time it signs in, and stops asking for codes.
+
 If your account doesn't have two-step verification set up yet and the wiki
 requires it, set it up on the wiki in your browser first, then sign in here.
 

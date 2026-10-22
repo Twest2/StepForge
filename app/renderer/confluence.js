@@ -140,7 +140,7 @@ function makeConfluenceSettings(api) {
     el('div.confluence-parent', {}, el('span.muted', {}, 'Parent page: '), parentText),
     el('div.row', {}, parentQuery, topLevel),
     parentResults,
-    el('p.muted', {}, 'You can pick another space when you publish. Publishing a guide again updates its page.'));
+    el('p.muted', {}, 'You can pick another space or parent page when you publish. Publishing a guide again updates its page.'));
   const signedIn = el('div.cloud-stack.hidden', {}, account, places);
 
   const loadSpaces = async () => {
@@ -252,20 +252,81 @@ async function showPublishToConfluenceDialog({ api, guideId, guideTitle, onOpenA
 
     const spaceSelect = el('select', { 'aria-label': 'Confluence space' }, el('option', { value: '' }, 'Loading spaces…'));
     let spaces = [];
-    const parentNote = el('p.muted', {}, '');
     const previous = el('div.cloud-banner.hidden', {});
     const error = el('p.gh-note.error.hidden', { role: 'alert' }, '');
     const showError = (message) => { error.textContent = message; error.classList.remove('hidden'); };
     let checking = true;
     const chosenSpace = () => spaces.find((s) => s.key === spaceSelect.value) || null;
-    const canPublish = () => Boolean(chosenSpace()) && !checking && !publishing;
+    // Publish waits for the guide's last publish, which says where its page is.
+    let knownLoaded = false;
+    const canPublish = () => Boolean(chosenSpace()) && knownLoaded && !checking && !publishing;
+
+    // Where the page goes. The guide's own page stays where it is unless
+    // another parent is picked; StepForge can't move it to the top of a space.
+    let known = null;
+    let parent = null;
+    let picked = false;
+    let searchTimer = null;
+    let searchRequest = 0;
+    const parentText = el('span', {}, '');
+    const parentQuery = el('input', { type: 'search', placeholder: 'Search pages in this space', 'aria-label': 'Search for a parent page' });
+    const parentResults = el('div.confluence-results');
+    const topLevel = el('button', { type: 'button' }, 'Top of the space');
+    const parentNote = el('p.muted', {}, '');
+    const parentPicker = el('div.hidden', {},
+      el('div.confluence-parent', {}, el('span.muted', {}, 'Parent page: '), parentText),
+      el('div.row', {}, parentQuery, topLevel),
+      parentResults);
+    const publishedHere = () => Boolean(known && known.spaceKey === chosenSpace()?.key);
+    const defaultParent = (space) => {
+      if (!space) return null;
+      if (known?.spaceKey === space.key) return known.parent || null;
+      return status.space?.key === space.key ? status.parent || null : null;
+    };
     const refresh = () => {
       publishBtn.disabled = !canPublish();
       const space = chosenSpace();
-      parentNote.textContent = space && status.parent && status.space?.key === space.key
-        ? `The page goes under “${status.parent.title}”.` : space ? `The page goes at the top of ${space.name}.` : '';
+      parentPicker.classList.toggle('hidden', !space);
+      topLevel.classList.toggle('hidden', publishedHere());
+      const stays = publishedHere() && (!parent || parent.id === known.parent?.id);
+      parentText.textContent = parent ? parent.title : stays ? 'Where it is now' : 'At the top of the space';
+      parentNote.textContent = !space ? ''
+        : stays ? 'Publishing again updates the page where it is. Pick another parent page to move it there.'
+          : publishedHere() ? `The page moves under “${parent.title}”.`
+            : parent ? `The page goes under “${parent.title}”.` : `The page goes at the top of ${space.name}.`;
     };
-    spaceSelect.addEventListener('change', refresh);
+    const resetParent = () => {
+      clearTimeout(searchTimer);
+      searchRequest += 1;
+      picked = false;
+      parent = defaultParent(chosenSpace());
+      parentQuery.value = '';
+      parentResults.replaceChildren();
+      refresh();
+    };
+    // What loads later (spaces, the guide's last publish) doesn't undo a pick.
+    const settleParent = () => (picked ? refresh() : resetParent());
+    spaceSelect.addEventListener('change', resetParent);
+    topLevel.addEventListener('click', () => { parent = null; picked = true; parentResults.replaceChildren(); refresh(); });
+    parentQuery.addEventListener('input', () => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(async () => {
+        const space = chosenSpace();
+        if (!space || !open) return;
+        const request = ++searchRequest;
+        try {
+          const pages = await api.confluence.findPages({ spaceKey: space.key, query: parentQuery.value });
+          if (!open || request !== searchRequest) return;
+          parentResults.replaceChildren(...(pages.length ? pages.map((page) => el('button.confluence-result', { type: 'button', onClick: () => {
+            parent = page;
+            picked = true;
+            parentQuery.value = '';
+            parentResults.replaceChildren();
+            refresh();
+          } }, page.title)) : [el('p.muted', {}, 'No matching pages.')]));
+        } catch (err) { showError(err.message); }
+      }, 300);
+    });
 
     // Private details are checked before Publish is available, as for the web.
     const privacyText = el('span', {}, 'Checking screenshots for private details…');
@@ -303,12 +364,18 @@ async function showPublishToConfluenceDialog({ api, guideId, guideTitle, onOpenA
       el('p', {}, `Publish “${guideTitle}” as a page on ${status.host}, with its screenshots attached.`),
       previous,
       el('label.gh-field', {}, el('span', {}, 'Space'), spaceSelect),
+      parentPicker,
       parentNote,
       privacyBox,
       error);
     body.replaceChildren(form);
 
-    Promise.all([api.confluence.published({ guideId }), guideUpdatedTimes(api)]).then(([page, updated]) => {
+    const lastPublish = api.confluence.published({ guideId });
+    lastPublish.then((page) => { known = page || null; }, () => {}).finally(() => {
+      knownLoaded = true;
+      if (open) settleParent();
+    });
+    Promise.all([lastPublish, guideUpdatedTimes(api)]).then(([page, updated]) => {
       if (!page || !open) return;
       previous.replaceChildren('Published before. Publishing again updates ', el('button.link', { type: 'button', onClick: () => confluenceOpen(api, page.url) }, 'the same page'), '.',
         editedSinceShared(updated.get(guideId), page.publishedAt) ? ' The guide has changed since you published it.' : '');
@@ -319,7 +386,7 @@ async function showPublishToConfluenceDialog({ api, guideId, guideTitle, onOpenA
       if (!open) return;
       spaceSelect.replaceChildren(el('option', { value: '' }, 'Choose a space'),
         ...list.map((s) => el('option', { value: s.key, selected: s.key === status.space?.key }, `${s.name} (${s.key})`)));
-      refresh();
+      settleParent();
     }).catch((err) => showError(err.message));
 
     const publish = async (replace = false) => {
@@ -333,8 +400,8 @@ async function showPublishToConfluenceDialog({ api, guideId, guideTitle, onOpenA
       cancelBtn.textContent = 'Close';
       const stop = api.confluence.onProgress((update) => { if (update?.guideId === guideId) progress.set(update); });
       try {
-        const parent = status.parent && status.space?.key === space.key ? status.parent : null;
-        const result = await api.confluence.publish({ guideId, space, parent, replace });
+        // parentPicked: only a parent chosen here moves an already-published page.
+        const result = await api.confluence.publish({ guideId, space, parent, parentPicked: picked, replace });
         changed = true;
         if (result.edited || result.conflict) {
           publishing = false;

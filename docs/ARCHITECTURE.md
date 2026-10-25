@@ -68,7 +68,10 @@ Internal working storage is **folder-based**; sharing/backups use a
   the image), textBlocks[], codeBlocks[], tableBlocks[], links[].
 
 All writes are **atomic** (write to `*.tmp`, fsync, rename). Deleting a guide
-moves it to `library/trash/` first.
+moves it to `library/trash/<guideId>-<ms>` first. The main process deletes
+trashed guides older than `library.trashDays` (default 30, 0 = never), counting
+from deletion or from `library.trashEmptyingSince`, whichever is later, so
+guides already in the trash when emptying is turned on get the full time.
 
 ## Annotation Scene Graph
 

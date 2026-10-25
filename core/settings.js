@@ -106,6 +106,8 @@ const DEFAULT_SETTINGS = {
   },
   library: {
     sortBy: 'updatedAt',
+    // Trashed guides are deleted for good after this many days; 0 keeps them.
+    trashDays: 30,
   },
   backups: {
     automatic: true,

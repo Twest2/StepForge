@@ -2373,6 +2373,8 @@ public static class SFHook {
         height: display.bounds.height,
         frame: false,
         transparent: true,
+        // Electron 43+ rounds frameless windows on Linux too; this one covers the screen.
+        roundedCorners: false,
         alwaysOnTop: true,
         fullscreen: true,
         skipTaskbar: true,

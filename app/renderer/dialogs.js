@@ -1407,6 +1407,15 @@ function showLinkedGuideDialog({ guide, lock, onSave, onForceSave, onOpenArchive
   });
 }
 
+/** "Sep 22, 2026, 3:35 AM · auto" from a snapshot file name. */
+function snapshotLabel(name) {
+  const match = name.match(/^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z(?:-(.+?))?\.(?:zip|snapshot)$/);
+  if (!match) return name;
+  const [, day, h, m, sec, ms, label] = match;
+  const when = new Date(`${day}T${h}:${m}:${sec}.${ms}Z`).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  return label ? `${when} · ${label.replace(/_/g, ' ')}` : when;
+}
+
 function showBackupsDialog({ snapshots = [], onCreate, onRestore } = {}) {
   return new Promise((resolve) => {
     let list = [...snapshots];
@@ -1420,7 +1429,7 @@ function showBackupsDialog({ snapshots = [], onCreate, onRestore } = {}) {
       }
       for (const name of list) {
         rows.append(el('div.row', { style: { justifyContent: 'space-between', gap: '10px' } },
-          el('span', { style: { overflow: 'hidden', textOverflow: 'ellipsis' } }, name),
+          el('span', { style: { overflow: 'hidden', textOverflow: 'ellipsis' }, title: name }, snapshotLabel(name)),
           el('button', {
             type: 'button',
             onClick: async () => {

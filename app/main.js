@@ -808,6 +808,19 @@ function setupIpc() {
     validate: (a) => c.id(a.guideId) && c.id(a.stepId)
       && (a.which === undefined || a.which === null || c.oneOf(a.which, ['original', 'working'])),
   });
+  // A screenshot's bytes as stored, for undo. Redrawing it through a canvas
+  // would re-encode it, and an undone crop would become a second copy.
+  h('step:imageData', ({ guideId, stepId, which }) => {
+    const p = store.stepImagePath(guideId, stepId, which || 'working');
+    if (!p || !fs.existsSync(p)) return null;
+    const data = fs.readFileSync(p);
+    const isPng = data.length >= 24 && data.toString('latin1', 12, 16) === 'IHDR';
+    const size = isPng ? { width: data.readUInt32BE(16), height: data.readUInt32BE(20) } : nativeImage.createFromBuffer(data).getSize();
+    return { base64: data.toString('base64'), size };
+  }, {
+    validate: (a) => c.id(a.guideId) && c.id(a.stepId)
+      && (a.which === undefined || a.which === null || c.oneOf(a.which, ['original', 'working'])),
+  });
   h('step:setWorkingImage', ({ guideId, stepId, pngBase64, size, step }) =>
     store.setWorkingImage(guideId, stepId, Buffer.from(pngBase64, 'base64'), size, step || null), {
     maxChars: IMAGE_BUDGET,

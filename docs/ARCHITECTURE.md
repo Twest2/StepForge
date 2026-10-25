@@ -48,7 +48,7 @@ Internal working storage is **folder-based**; sharing/backups use a
       steps/<step-id>/
         step.json
         original.png              never mutated after capture
-        working.png               crop target; annotations stay vector JSON
+        working.png               only once cropped; annotations stay vector JSON
       history/snapshots/*.zip     automated + manual backups
     index/search-index.json       inverted full-text index
   temp/                           previews; cleaned on close
@@ -60,7 +60,10 @@ Internal working storage is **folder-based**; sharing/backups use a
   linkedSource, exportProfiles, createdAt/updatedAt.
 - `step.json` — stepId, parentStepId, kind (`image | empty | content`),
   status (`todo | in-progress | done`), title, descriptionHtml, hidden,
-  skipped, focusedView {enabled, zoom, panX, panY}, image paths + size,
+  skipped, focusedView {enabled, zoom, panX, panY}, image paths + size
+  (`workingPath` equals `originalPath` until the screenshot is cropped, so an
+  uncropped screenshot is stored once; the store owns these paths and keeps
+  them when a caller saves an older copy of the step),
   `annotations[]` (normalized scene graph, coordinates in 0..1 fractions of
   the image), textBlocks[], codeBlocks[], tableBlocks[], links[].
 

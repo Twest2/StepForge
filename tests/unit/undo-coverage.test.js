@@ -20,6 +20,7 @@ function setup({ steps, confirm = async () => true }) {
     guide: { get: async () => ({ guide: { stepsOrder: db.order }, steps: db.order.map((id) => JSON.parse(JSON.stringify(db.steps.get(id)))) }) },
     step: {
       imagePath: async () => null,
+      imageData: async () => null,
       save: async ({ step }) => {
         const saved = { ...JSON.parse(JSON.stringify(step)), revision: db.steps.get(step.stepId).revision + 1 };
         db.steps.set(step.stepId, saved);

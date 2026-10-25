@@ -218,6 +218,90 @@ test('working image can be replaced (crop) and reset without touching original',
   assert.deepEqual(fs.readFileSync(store.stepImagePath(guide.guideId, step.stepId, 'working')), TINY_PNG);
 });
 
+test('an uncropped screenshot is stored once; a crop adds working.png and un-crop removes it', (t) => {
+  const root = makeTmpDir('one-copy');
+  t.after(() => rmrf(root));
+  const store = new GuideStore(root);
+  const { guideId } = store.createGuide({ title: 'One copy' });
+  const { stepId } = store.addStep(guideId, { title: 'shot' }, TINY_PNG, { width: 1, height: 1 });
+  const dir = store.stepDir(guideId, stepId);
+  const files = () => fs.readdirSync(dir).filter((f) => f.endsWith('.png')).sort();
+  assert.deepEqual(files(), ['original.png']);
+  assert.equal(store.stepImagePath(guideId, stepId, 'working'), store.stepImagePath(guideId, stepId, 'original'));
+
+  const cropped = Buffer.concat([TINY_PNG, Buffer.from('crop')]);
+  store.setWorkingImage(guideId, stepId, cropped, { width: 1, height: 1 });
+  assert.deepEqual(files(), ['original.png', 'working.png']);
+
+  // Undoing the crop puts the original's bytes back: one file again.
+  store.setWorkingImage(guideId, stepId, TINY_PNG, { width: 1, height: 1 });
+  assert.deepEqual(files(), ['original.png']);
+
+  store.setWorkingImage(guideId, stepId, cropped, { width: 1, height: 1 });
+  store.resetWorkingImage(guideId, stepId, { width: 1, height: 1 });
+  assert.deepEqual(files(), ['original.png']);
+  assert.deepEqual(fs.readFileSync(store.stepImagePath(guideId, stepId, 'working')), TINY_PNG);
+});
+
+test('a step saved from an older copy keeps the crop the store made since', (t) => {
+  const root = makeTmpDir('stale-paths');
+  t.after(() => rmrf(root));
+  const store = new GuideStore(root);
+  const { guideId } = store.createGuide({ title: 'Stale' });
+  const { stepId } = store.addStep(guideId, { title: 'shot' }, TINY_PNG, { width: 1, height: 1 });
+  const before = store.getStep(guideId, stepId); // the editor's copy, from before the crop
+  const cropped = Buffer.concat([TINY_PNG, Buffer.from('crop')]);
+  store.setWorkingImage(guideId, stepId, cropped, { width: 1, height: 1 });
+
+  store.saveStep(guideId, { ...before, title: 'Renamed' });
+  assert.equal(store.getStep(guideId, stepId).title, 'Renamed');
+  assert.deepEqual(fs.readFileSync(store.stepImagePath(guideId, stepId, 'working')), cropped);
+  // The same holds for a crop sent with a step patch from before it.
+  store.setWorkingImage(guideId, stepId, Buffer.concat([cropped, Buffer.from('2')]), { width: 1, height: 1 }, before);
+  assert.deepEqual(fs.readFileSync(store.stepImagePath(guideId, stepId, 'original')), TINY_PNG);
+});
+
+test('replacing a cropped screenshot drops the old crop', (t) => {
+  const root = makeTmpDir('replace-crop');
+  t.after(() => rmrf(root));
+  const store = new GuideStore(root);
+  const { guideId } = store.createGuide({ title: 'Replace' });
+  const { stepId } = store.addStep(guideId, { title: 'shot' }, TINY_PNG, { width: 1, height: 1 });
+  store.setWorkingImage(guideId, stepId, Buffer.concat([TINY_PNG, Buffer.from('crop')]), { width: 1, height: 1 });
+  const fresh = Buffer.concat([TINY_PNG, Buffer.from('new')]);
+  store.replaceImages(guideId, stepId, { original: fresh }, { width: 2, height: 2 });
+  const dir = store.stepDir(guideId, stepId);
+  assert.deepEqual(fs.readdirSync(dir).filter((f) => f.endsWith('.png')), ['original.png']);
+  assert.deepEqual(fs.readFileSync(store.stepImagePath(guideId, stepId, 'working')), fresh);
+
+  // Undo of Choose image… sends both images; a different working one is kept.
+  const crop = Buffer.concat([TINY_PNG, Buffer.from('crop')]);
+  store.replaceImages(guideId, stepId, { original: TINY_PNG, working: crop }, { width: 1, height: 1 });
+  assert.deepEqual(fs.readFileSync(store.stepImagePath(guideId, stepId, 'working')), crop);
+  assert.deepEqual(fs.readFileSync(store.stepImagePath(guideId, stepId, 'original')), TINY_PNG);
+});
+
+test('steps from before one-copy storage, with both files, keep working', (t) => {
+  const root = makeTmpDir('legacy-copies');
+  t.after(() => rmrf(root));
+  const store = new GuideStore(root);
+  const { guideId } = store.createGuide({ title: 'Legacy' });
+  const { stepId } = store.addStep(guideId, { title: 'shot' });
+  const dir = store.stepDir(guideId, stepId);
+  fs.writeFileSync(path.join(dir, 'original.png'), TINY_PNG);
+  fs.writeFileSync(path.join(dir, 'working.png'), TINY_PNG);
+  const step = store.getStep(guideId, stepId);
+  step.kind = 'image';
+  step.image = { originalPath: 'original.png', workingPath: 'working.png', size: { width: 1, height: 1 } };
+  fs.writeFileSync(path.join(dir, 'step.json'), JSON.stringify(step));
+
+  const cropped = Buffer.concat([TINY_PNG, Buffer.from('crop')]);
+  store.setWorkingImage(guideId, stepId, cropped, { width: 1, height: 1 });
+  assert.deepEqual(fs.readFileSync(path.join(dir, 'working.png')), cropped);
+  store.resetWorkingImage(guideId, stepId, { width: 1, height: 1 });
+  assert.deepEqual(fs.readdirSync(dir).filter((f) => f.endsWith('.png')), ['original.png']);
+});
+
 test('stored HTML is sanitized: scripts and handlers cannot round-trip', (t) => {
   const root = makeTmpDir('sanitize');
   t.after(() => rmrf(root));

@@ -578,6 +578,32 @@ function registerHotkeys() {
   }
 }
 
+// Permanently delete guides that have been in the trash longer than
+// Settings → General → Trash allows. Guides already in the trash when
+// emptying is turned on count from that moment, so none go without notice.
+const TRASH_CHECK_MS = 6 * 60 * 60 * 1000;
+
+function trashEmptyingStart() {
+  const since = settings.get('library.trashEmptyingSince');
+  if (Number.isFinite(since)) return since;
+  const now = Date.now();
+  settings.set('library.trashEmptyingSince', now);
+  return now;
+}
+
+function emptyOldTrash() {
+  const days = settings.get('library.trashDays');
+  if (!(days > 0)) return;
+  try {
+    const removed = store.purgeExpiredTrash({ days, since: trashEmptyingStart() });
+    if (!removed.length) return;
+    console.log(`[stepforge] emptied ${removed.length} guide(s) older than ${days} days from the trash`);
+    sendToRenderer('cloud:library-changed', {}); // refreshes the window's library and trash
+  } catch (err) {
+    console.error(`[stepforge] emptying old trash failed: ${err && err.message}`);
+  }
+}
+
 // AI agents write guides from a separate `StepForge --mcp` process. Poll the
 // small file it updates after each write: reindex each changed guide and tell
 // the window, which reloads the guide if it's open.
@@ -1212,7 +1238,12 @@ function setupIpc() {
   h('storage:cancelMove', () => libraryLocation.cancel());
   h('settings:set', ({ keyPath, value }) => {
     if (keyPath === 'cloud' || keyPath.startsWith('cloud.')) throw new Error('Use the cloud sync controls in Settings → Accounts.');
+    const trashWasKept = !(settings.get('library.trashDays') > 0);
     settings.set(keyPath, value);
+    // Turning emptying on starts the clock now for guides already in the trash.
+    if (keyPath.startsWith('library') && trashWasKept && settings.get('library.trashDays') > 0) {
+      settings.set('library.trashEmptyingSince', Date.now());
+    }
     if (keyPath === 'appearance') applyTheme();
     if (keyPath.startsWith('capture.hotkey')) registerHotkeys();
     return settings.data;
@@ -1708,6 +1739,9 @@ if (!gotLock) {
       console.error(`[stepforge] search reconcile failed: ${err && err.message}`);
     }
     watchAgentChanges();
+    // Deleting a large trash can take a while, so not during startup.
+    setTimeout(emptyOldTrash, 30 * 1000);
+    setInterval(emptyOldTrash, TRASH_CHECK_MS);
     templates = new TemplateManager(store.templatesDir);
     textIntel = new TextIntelService({
       store,

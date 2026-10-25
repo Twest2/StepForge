@@ -45,6 +45,7 @@ const api = {
     restore: invoke('step:restore'),
     reorder: invoke('steps:reorder'),
     imagePath: invoke('step:imagePath'),
+    imageData: invoke('step:imageData'),
     setWorkingImage: invoke('step:setWorkingImage'),
     resetWorkingImage: invoke('step:resetWorkingImage'),
     fromClipboard: invoke('step:fromClipboard'),

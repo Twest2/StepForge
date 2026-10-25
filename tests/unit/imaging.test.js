@@ -40,6 +40,55 @@ test('PNG encode -> decode round-trips pixels exactly', () => {
   assert.deepEqual(decoded.data, src.data);
 });
 
+// A screenshot-like image: flat panels, a gradient, and noisy "text" rows,
+// so every filter type gets chosen for some row.
+function screenshotLike(width, height, alpha = 255) {
+  const img = raster.createImage(width, height, [240, 240, 240, alpha]);
+  raster.fillRect(img, 0, 0, width, 12, [30, 30, 46, alpha]);
+  let seed = 7;
+  for (let y = 12; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const p = (y * width + x) * 4;
+      if (y < height / 2) {
+        img.data[p] = x * 3; img.data[p + 1] = y * 2; img.data[p + 2] = (x + y) & 0xff;
+      } else if (y % 4 === 0) {
+        seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+        img.data[p] = img.data[p + 1] = img.data[p + 2] = seed & 0xff;
+      }
+    }
+  }
+  return img;
+}
+
+function pngColorType(buffer) {
+  return buffer[25]; // IHDR data starts at byte 16; color type is its 10th byte
+}
+
+test('PNG encoder writes opaque images as RGB and round-trips them exactly', () => {
+  const src = screenshotLike(97, 61);
+  const png = encodePng(src);
+  assert.equal(pngColorType(png), 2);
+  assert.deepEqual(decodePng(png).data, src.data);
+});
+
+test('PNG encoder keeps an alpha channel only when a pixel is not opaque', () => {
+  const src = screenshotLike(31, 17);
+  src.data[(5 * 31 + 9) * 4 + 3] = 128;
+  const png = encodePng(src);
+  assert.equal(pngColorType(png), 6);
+  assert.deepEqual(decodePng(png).data, src.data);
+});
+
+test('PNG encoder output is smaller than unfiltered RGBA', () => {
+  const src = screenshotLike(400, 240);
+  const stride = src.width * 4;
+  const unfiltered = Buffer.alloc((stride + 1) * src.height);
+  for (let y = 0; y < src.height; y++) src.data.copy(unfiltered, y * (stride + 1) + 1, y * stride, (y + 1) * stride);
+  const before = zlib.deflateSync(unfiltered, { level: 6 }).length;
+  const after = encodePng(src).length;
+  assert.ok(after < before * 0.9, `expected at least 10% smaller, got ${after} vs ${before}`);
+});
+
 test('our PNG output is valid for external tools (ImageMagick)', { skip: !hasTool('identify') }, (t) => {
   const dir = makeTmpDir('pngcheck');
   t.after(() => rmrf(dir));

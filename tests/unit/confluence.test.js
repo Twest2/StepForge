@@ -418,6 +418,17 @@ test('with two sign-in certificates StepForge asks once per site, then uses the 
   assert.equal(asked, 1);
   // Only the Confluence session's requests are handled; others keep Electron's default.
   let prevented = false;
-  parts.onSelectCertificate({ preventDefault: () => { prevented = true; } }, { session: {} }, 'x', certificates, () => {});
+  assert.equal(parts.onSelectCertificate({ preventDefault: () => { prevented = true; } }, { session: {} }, 'x', certificates, () => {}), false);
   assert.equal(prevented, false);
+
+  // Since Electron 44 the session's own fetches ask with no webContents: a
+  // site this session fetched gets the saved certificate, any other site none.
+  const handled = (url) => new Promise((resolve) => {
+    const taken = parts.onSelectCertificate({ preventDefault() {} }, null, url, certificates, (cert) => resolve(cert?.fingerprint || 'none'));
+    if (!taken) resolve('not handled');
+  });
+  assert.equal(await handled('https://wiki.example.mil/rest/api/space'), 'not handled');
+  await parts.fetch('https://wiki.example.mil/rest/api/space');
+  assert.equal(await handled('https://wiki.example.mil/rest/api/space'), 'two');
+  assert.equal(await handled('https://elsewhere.example.com/'), 'not handled');
 });

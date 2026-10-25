@@ -2,19 +2,38 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { zipDirSync, directoryEntries, extractZipSync } = require('./zip');
+const { directoryEntries, extractZipSync, unzipSync, zipSync } = require('./zip');
 const { atomicWriteFileSync, readJsonSync } = require('./util');
 const { validateGuide } = require('./schema');
+const parts = require('./cloud-parts');
 
 /**
- * Snapshot backups: a zip of the guide directory (excluding history/) stored
- * under <guide>/history/snapshots/. Used for automated backups and manual
- * backup/restore.
+ * Snapshot backups of a guide directory (excluding history/), for automated
+ * backups and manual backup/restore. A snapshot is a small manifest in
+ * <guide>/history/snapshots/<name>.snapshot that lists every file by hash,
+ * keeping guide and step JSON inline. Screenshots are stored once, by hash,
+ * in history/snapshot-files/, and every snapshot that contains one shares
+ * that copy, so a snapshot only adds what changed since the last.
+ *
+ * Snapshots from before this were whole zips (<name>.zip). They still list
+ * and restore, and convertZipSnapshots() turns them into manifests.
  */
+
+const SNAPSHOT_EXT = '.snapshot';
+// A file saved for a snapshot whose manifest isn't written yet is this new;
+// cleanup leaves files this young alone.
+const FRESH_FILE_MS = 10 * 60 * 1000;
 
 function snapshotsDir(store, guideId) {
   return path.join(store.guideDir(guideId), 'history', 'snapshots');
 }
+
+function filesDir(store, guideId) {
+  return path.join(store.guideDir(guideId), 'history', 'snapshot-files');
+}
+
+const isSnapshotName = (name) => name.endsWith(SNAPSHOT_EXT) || name.endsWith('.zip');
+const notHistory = (rel) => rel !== 'history' && !rel.startsWith('history/');
 
 let lastSnapshotMs = 0;
 function snapshotName(label) {
@@ -22,33 +41,67 @@ function snapshotName(label) {
   // in one clock tick (or a backwards clock adjustment).
   lastSnapshotMs = Math.max(Date.now(), lastSnapshotMs + 1);
   const stamp = new Date(lastSnapshotMs).toISOString().replace(/[:.]/g, '-');
-  return label ? `${stamp}-${label.replace(/[^A-Za-z0-9_-]+/g, '_')}.zip` : `${stamp}.zip`;
+  return `${stamp}${label ? `-${label.replace(/[^A-Za-z0-9_-]+/g, '_')}` : ''}${SNAPSHOT_EXT}`;
 }
 
+/** Save `entries` as snapshot `name`: new screenshots first, then the manifest. */
+function writeSnapshot(store, guideId, name, entries) {
+  const { manifest, parts: files } = parts.encodeSnapshot(entries);
+  const dir = filesDir(store, guideId);
+  fs.mkdirSync(dir, { recursive: true });
+  for (const [sha, data] of files) {
+    const file = path.join(dir, sha);
+    if (!fs.existsSync(file)) atomicWriteFileSync(file, data);
+  }
+  fs.mkdirSync(snapshotsDir(store, guideId), { recursive: true });
+  atomicWriteFileSync(path.join(snapshotsDir(store, guideId), name), manifest);
+}
+
+/**
+ * Take a snapshot. With `background` it returns a promise, as it did when
+ * snapshots were zipped in a worker; hashing the files is quick enough now.
+ */
 function createSnapshot(store, guideId, { label = '', keepLast = 0, background = false } = {}) {
   const guideDir = store.guideDir(guideId);
   if (!fs.existsSync(path.join(guideDir, 'guide.json'))) throw new Error(`guide not found: ${guideId}`);
-  const content = (background ? directoryEntries : zipDirSync)(guideDir, {
-    filter: (rel) => rel !== 'history' && !rel.startsWith('history/'),
-  });
-  const dir = snapshotsDir(store, guideId);
-  fs.mkdirSync(dir, { recursive: true });
   const name = snapshotName(label);
-  if (background) {
-    return require('./background-archive').writeArchive(content, path.join(dir, name)).then(() => {
-      if (keepLast > 0) pruneSnapshots(store, guideId, keepLast);
-      return name;
-    });
-  }
-  atomicWriteFileSync(path.join(dir, name), content);
-  if (keepLast > 0) pruneSnapshots(store, guideId, keepLast);
-  return name;
+  const take = () => {
+    writeSnapshot(store, guideId, name, directoryEntries(guideDir, { filter: notHistory }));
+    if (keepLast > 0) pruneSnapshots(store, guideId, keepLast);
+    return name;
+  };
+  if (background) return new Promise((resolve) => resolve(take()));
+  return take();
 }
 
 function listSnapshots(store, guideId) {
   const dir = snapshotsDir(store, guideId);
   if (!fs.existsSync(dir)) return [];
-  return fs.readdirSync(dir).filter((n) => n.endsWith('.zip')).sort().reverse();
+  return fs.readdirSync(dir).filter(isSnapshotName).sort().reverse();
+}
+
+function readManifest(store, guideId, name) {
+  return parts.decodeSnapshot(fs.readFileSync(path.join(snapshotsDir(store, guideId), name)));
+}
+
+/** Delete saved screenshots that no snapshot lists any more. */
+function removeUnusedFiles(store, guideId, now = Date.now()) {
+  const dir = filesDir(store, guideId);
+  if (!fs.existsSync(dir)) return;
+  const used = new Set();
+  for (const name of listSnapshots(store, guideId).filter((n) => n.endsWith(SNAPSHOT_EXT))) {
+    try {
+      parts.partShas(readManifest(store, guideId, name)).forEach((sha) => used.add(sha));
+    } catch {
+      return; // can't tell what a damaged manifest uses, so keep everything
+    }
+  }
+  for (const sha of fs.readdirSync(dir)) {
+    if (used.has(sha)) continue;
+    const file = path.join(dir, sha);
+    if (now - fs.statSync(file).mtimeMs < FRESH_FILE_MS) continue;
+    fs.rmSync(file, { force: true });
+  }
 }
 
 function pruneSnapshots(store, guideId, keepLast) {
@@ -56,6 +109,47 @@ function pruneSnapshots(store, guideId, keepLast) {
   for (const name of all.slice(keepLast)) {
     fs.rmSync(path.join(snapshotsDir(store, guideId), name), { force: true });
   }
+  removeUnusedFiles(store, guideId);
+}
+
+/** A snapshot as zip bytes, whichever way it is stored. */
+function snapshotZip(store, guideId, name) {
+  const file = path.join(snapshotsDir(store, guideId), name);
+  if (name.endsWith('.zip')) return fs.readFileSync(file);
+  let manifest;
+  try {
+    manifest = readManifest(store, guideId, name);
+  } catch {
+    throw new Error('the snapshot is damaged');
+  }
+  const dir = filesDir(store, guideId);
+  return zipSync(parts.assembleEntries(manifest, (sha) => {
+    const data = fs.existsSync(path.join(dir, sha)) ? fs.readFileSync(path.join(dir, sha)) : null;
+    if (!data || parts.sha256(data) !== sha) throw new Error('a screenshot the snapshot needs is missing or damaged');
+    return data;
+  }));
+}
+
+/**
+ * Turn a guide's zip snapshots into manifests, keeping their names apart
+ * from the extension. Each zip goes only after its manifest is written; one
+ * that can't be read is left as it is. Returns how many were converted.
+ */
+function convertZipSnapshots(store, guideId) {
+  const dir = snapshotsDir(store, guideId);
+  let converted = 0;
+  for (const zip of listSnapshots(store, guideId).filter((n) => n.endsWith('.zip'))) {
+    let entries;
+    try {
+      entries = unzipSync(fs.readFileSync(path.join(dir, zip)));
+    } catch {
+      continue;
+    }
+    writeSnapshot(store, guideId, zip.replace(/\.zip$/, SNAPSHOT_EXT), entries);
+    fs.rmSync(path.join(dir, zip), { force: true });
+    converted += 1;
+  }
+  return converted;
 }
 
 /**
@@ -68,9 +162,10 @@ function pruneSnapshots(store, guideId, keepLast) {
  * deletes the old — so a failure mid-swap leaves a recoverable state.
  */
 function restoreSnapshot(store, guideId, name) {
-  const file = path.join(snapshotsDir(store, guideId), path.basename(name));
-  if (!fs.existsSync(file)) throw new Error(`snapshot not found: ${name}`);
-  const buf = fs.readFileSync(file);
+  name = path.basename(name);
+  if (!isSnapshotName(name) || !fs.existsSync(path.join(snapshotsDir(store, guideId), name))) {
+    throw new Error(`snapshot not found: ${name}`);
+  }
   const guideDir = store.guideDir(guideId);
 
   // 1. Extract + validate into a temp staging dir. Nothing live is touched yet.
@@ -78,7 +173,7 @@ function restoreSnapshot(store, guideId, name) {
   fs.rmSync(staging, { recursive: true, force: true });
   try {
     fs.mkdirSync(staging, { recursive: true });
-    extractZipSync(buf, staging);
+    extractZipSync(snapshotZip(store, guideId, name), staging);
     const guideJson = path.join(staging, 'guide.json');
     if (!fs.existsSync(guideJson)) throw new Error('snapshot is missing guide.json');
     validateGuide(readJsonSync(guideJson)); // throws on a corrupt snapshot
@@ -160,5 +255,5 @@ async function autoSnapshotIfDue(store, guideId, settings) {
 
 module.exports = {
   createSnapshot, listSnapshots, pruneSnapshots, restoreSnapshot, snapshotsDir,
-  autoSnapshotIfDue,
+  autoSnapshotIfDue, convertZipSnapshots, removeUnusedFiles,
 };

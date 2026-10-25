@@ -10,7 +10,9 @@ const { GuideStore } = require('../../core/store');
 const { SearchIndex } = require('../../core/search');
 const { unzipSync, zipSync, crc32 } = require('../../core/zip');
 const { exportGuideArchive, importGuideArchive } = require('../../core/archive');
-const { createSnapshot, restoreSnapshot, autoSnapshotIfDue } = require('../../core/snapshots');
+const {
+  createSnapshot, restoreSnapshot, autoSnapshotIfDue, listSnapshots, pruneSnapshots, convertZipSnapshots, removeUnusedFiles,
+} = require('../../core/snapshots');
 const { acquireLock, releaseLock } = require('../../core/locks');
 const { makeTmpDir, rmrf, TINY_PNG } = require('./helpers');
 
@@ -158,6 +160,101 @@ test('restoring a valid snapshot swaps content and keeps history', (t) => {
   assert.ok(fs.existsSync(path.join(store.guideDir(guide.guideId), 'history')));
 });
 
+// A screenshot over the inline limit, so snapshots store it as a shared file.
+const bigShot = (seed) => Buffer.concat([TINY_PNG, Buffer.alloc(40000, seed)]);
+const sharedFiles = (store, guideId) => {
+  const dir = path.join(store.guideDir(guideId), 'history', 'snapshot-files');
+  return fs.existsSync(dir) ? fs.readdirSync(dir).sort() : [];
+};
+
+test('snapshots share unchanged screenshots and only add what changed', (t) => {
+  const root = makeTmpDir('snap-shared');
+  t.after(() => rmrf(root));
+  const store = new GuideStore(root);
+  const { guideId } = store.createGuide({ title: 'Shared' });
+  const { stepId } = store.addStep(guideId, { title: 'one' }, bigShot(1), { width: 1, height: 1 });
+  store.addStep(guideId, { title: 'two' }, bigShot(2), { width: 1, height: 1 });
+  const first = createSnapshot(store, guideId, { label: 'a' });
+  assert.match(first, /-a\.snapshot$/);
+  const filesAfterFirst = sharedFiles(store, guideId);
+  assert.equal(filesAfterFirst.length, 2, 'original.png and working.png are the same bytes, saved once');
+
+  store.saveGuide({ ...store.getGuide(guideId), title: 'Renamed' });
+  createSnapshot(store, guideId, { label: 'b' });
+  assert.deepEqual(sharedFiles(store, guideId), filesAfterFirst, 'a text change adds no screenshot');
+  const manifest = fs.statSync(path.join(store.guideDir(guideId), 'history', 'snapshots', first)).size;
+  assert.ok(manifest < 4000, `a snapshot manifest is small (${manifest} bytes)`);
+
+  store.setWorkingImage(guideId, stepId, bigShot(3), { width: 1, height: 1 });
+  createSnapshot(store, guideId, { label: 'c' });
+  assert.equal(sharedFiles(store, guideId).length, 3, 'a crop adds one screenshot');
+
+  const restored = restoreSnapshot(store, guideId, first);
+  assert.equal(restored.title, 'Shared');
+  assert.deepEqual(fs.readFileSync(store.stepImagePath(guideId, stepId, 'working')), bigShot(1));
+});
+
+test('pruning removes screenshots no remaining snapshot uses, but not ones just saved', (t) => {
+  const root = makeTmpDir('snap-prune');
+  t.after(() => rmrf(root));
+  const store = new GuideStore(root);
+  const { guideId } = store.createGuide({ title: 'Prune' });
+  const { stepId } = store.addStep(guideId, { title: 'one' }, bigShot(1), { width: 1, height: 1 });
+  createSnapshot(store, guideId, { label: 'old' });
+  store.replaceImages(guideId, stepId, { original: bigShot(2) }, { width: 1, height: 1 });
+  createSnapshot(store, guideId, { label: 'new' });
+  assert.equal(sharedFiles(store, guideId).length, 2);
+
+  pruneSnapshots(store, guideId, 1);
+  assert.equal(listSnapshots(store, guideId).length, 1);
+  // The old screenshot was saved moments ago, so it stays for now.
+  assert.equal(sharedFiles(store, guideId).length, 2);
+  removeUnusedFiles(store, guideId, Date.now() + 60 * 60 * 1000);
+  assert.equal(sharedFiles(store, guideId).length, 1);
+  assert.equal(restoreSnapshot(store, guideId, listSnapshots(store, guideId).find((n) => n.includes('-new'))).title, 'Prune');
+});
+
+test('a snapshot missing a screenshot fails to restore and leaves the guide alone', (t) => {
+  const root = makeTmpDir('snap-missing');
+  t.after(() => rmrf(root));
+  const store = new GuideStore(root);
+  const { guideId } = store.createGuide({ title: 'Live' });
+  store.addStep(guideId, { title: 'keep me' }, bigShot(1), { width: 1, height: 1 });
+  const snap = createSnapshot(store, guideId, { label: 'good' });
+  const [sha] = sharedFiles(store, guideId);
+  fs.writeFileSync(path.join(store.guideDir(guideId), 'history', 'snapshot-files', sha), 'damaged');
+  assert.throws(() => restoreSnapshot(store, guideId, snap), /restore aborted.*missing or damaged/);
+  assert.equal(store.getGuide(guideId).stepsOrder.length, 1);
+});
+
+test('zip snapshots from earlier versions restore, and convert to shared screenshots', (t) => {
+  const root = makeTmpDir('snap-convert');
+  t.after(() => rmrf(root));
+  const store = new GuideStore(root);
+  const { guideId } = store.createGuide({ title: 'Zipped' });
+  store.addStep(guideId, { title: 'one' }, bigShot(1), { width: 1, height: 1 });
+  const dir = path.join(store.guideDir(guideId), 'history', 'snapshots');
+  fs.mkdirSync(dir, { recursive: true });
+  const zipOf = () => zipSync(fs.readdirSync(store.guideDir(guideId), { recursive: true })
+    .map((rel) => rel.split(path.sep).join('/'))
+    .filter((rel) => !rel.startsWith('history') && fs.statSync(path.join(store.guideDir(guideId), rel)).isFile())
+    .map((rel) => ({ name: rel, data: fs.readFileSync(path.join(store.guideDir(guideId), rel)) })));
+  fs.writeFileSync(path.join(dir, '2026-09-01T10-00-00-000Z-auto.zip'), zipOf());
+  store.saveGuide({ ...store.getGuide(guideId), title: 'Zipped 2' });
+  fs.writeFileSync(path.join(dir, '2026-09-02T10-00-00-000Z-auto.zip'), zipOf());
+  fs.writeFileSync(path.join(dir, '2026-09-03T10-00-00-000Z-auto.zip'), 'not a zip');
+
+  assert.equal(restoreSnapshot(store, guideId, '2026-09-01T10-00-00-000Z-auto.zip').title, 'Zipped');
+  assert.equal(convertZipSnapshots(store, guideId), 2);
+  const names = listSnapshots(store, guideId);
+  assert.ok(names.includes('2026-09-01T10-00-00-000Z-auto.snapshot'));
+  assert.ok(names.includes('2026-09-02T10-00-00-000Z-auto.snapshot'));
+  assert.ok(names.includes('2026-09-03T10-00-00-000Z-auto.zip'), 'an unreadable zip is left alone');
+  assert.equal(sharedFiles(store, guideId).length, 1, 'both zips held the same screenshot');
+  assert.equal(restoreSnapshot(store, guideId, '2026-09-02T10-00-00-000Z-auto.snapshot').title, 'Zipped 2');
+  assert.equal(convertZipSnapshots(store, guideId), 0, 'converting again does nothing');
+});
+
 // ---- atomic locks -----------------------------------------------------------
 
 test('another process holding a fresh lock is a conflict; release-by-token frees ours', (t) => {
@@ -270,7 +367,7 @@ test('autoSnapshotIfDue takes a snapshot every N saves and prunes', async (t) =>
   const s = { get: (k) => (k === 'backups' ? { automatic: true, everyNSaves: 3, keepLast: 2 } : null) };
 
   const dir = path.join(store.guideDir(guide.guideId), 'history', 'snapshots');
-  const count = () => (fs.existsSync(dir) ? fs.readdirSync(dir).filter((n) => n.endsWith('.zip')).length : 0);
+  const count = () => (fs.existsSync(dir) ? fs.readdirSync(dir).filter((n) => n.endsWith('.snapshot')).length : 0);
 
   assert.equal(await autoSnapshotIfDue(store, guide.guideId, s), null); // 1
   assert.equal(await autoSnapshotIfDue(store, guide.guideId, s), null); // 2

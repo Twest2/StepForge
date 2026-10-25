@@ -19,6 +19,13 @@ const { isValidOutline } = require('./step-outline');
 const ORIGINAL_FILE = 'original.png';
 const WORKING_FILE = 'working.png';
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** When a trashed guide was deleted (ms), from its `<guideId>-<ms>` name. */
+function trashStamp(name) {
+  return Number(name.match(/-(\d{10,})$/)?.[1]);
+}
+
 /**
  * Thrown by revision-aware saves when the on-disk revision no longer matches
  * the caller's expectation — i.e. someone else wrote in between. Callers that
@@ -223,10 +230,29 @@ class GuideStore {
   listTrashItems() {
     return this.listTrash().map((name) => {
       const guide = readJsonIfExists(path.join(this.trashDir, name, 'guide.json'), {});
-      const stamp = Number(name.match(/-(\d{10,})$/)?.[1]);
+      const stamp = trashStamp(name);
       return { name, title: guide.title || 'Untitled guide', stepCount: (guide.stepsOrder || []).length,
         deletedAt: Number.isFinite(stamp) ? new Date(stamp).toISOString() : null };
     }).sort((a, b) => String(b.deletedAt || '').localeCompare(String(a.deletedAt || '')));
+  }
+
+  /**
+   * Permanently delete trashed guides older than `days`. A guide's age
+   * counts from when it was deleted, or from `since` if that is later, so
+   * guides already in the trash when emptying was turned on get the full
+   * time. Guides with no deletion time are kept. Returns the names removed.
+   */
+  purgeExpiredTrash({ days, since = 0, now = Date.now() } = {}) {
+    if (!(days > 0) || !fs.existsSync(this.trashDir)) return [];
+    const removed = [];
+    for (const name of this.listTrash()) {
+      const stamp = trashStamp(name);
+      if (!Number.isFinite(stamp)) continue;
+      if (Math.max(stamp, since) + days * DAY_MS > now) continue;
+      fs.rmSync(path.join(this.trashDir, name), { recursive: true, force: true });
+      removed.push(name);
+    }
+    return removed;
   }
 
   purgeTrash() {

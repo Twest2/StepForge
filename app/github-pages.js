@@ -304,7 +304,7 @@ class GitHubPages {
       const verificationUri = device.verification_uri === 'https://github.com/login/device' ? device.verification_uri : 'https://github.com/login/device';
       const userCode = String(device.user_code).slice(0, 20);
       let copied = false;
-      try { if (this.copyText) { this.copyText(userCode); copied = true; } } catch { /* the code is still shown */ }
+      try { if (this.copyText) { await this.copyText(userCode); copied = true; } } catch { /* the code is still shown */ }
       if (stopped()) throw new Error(SIGN_IN_CANCELLED);
       this.pending = { userCode, verificationUri, copied };
       this.publishStatus();

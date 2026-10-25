@@ -93,14 +93,26 @@ function createConfluenceSession({ session, BrowserWindow, getParent = () => nul
     return chosen;
   };
 
-  /** For app.on('select-client-certificate'): handles only this session's requests. */
-  const onSelectCertificate = (event, webContents, url, list, callback) => {
-    if (webContents?.session !== ses) return;
-    event.preventDefault();
-    chooseCertificate(url, list).then((cert) => (cert ? callback(cert) : callback()), () => callback());
+  // Hosts this session's own fetches have asked for. Those requests come
+  // from the main process, so their certificate requests have no webContents.
+  const fetchedHosts = new Set();
+  const fetch = (url, init) => {
+    fetchedHosts.add(hostOf(url));
+    return ses.fetch(url, init);
   };
 
-  return { session: ses, fetch: (url, init) => ses.fetch(url, init), openHiddenPage, openLoginWindow, chooseCertificate, onSelectCertificate };
+  /**
+   * For app.on('select-client-certificate'): handles only this session's
+   * requests, and returns whether it did.
+   */
+  const onSelectCertificate = (event, webContents, url, list, callback) => {
+    if (webContents ? webContents.session !== ses : !fetchedHosts.has(hostOf(url))) return false;
+    event.preventDefault();
+    chooseCertificate(url, list).then((cert) => (cert ? callback(cert) : callback()), () => callback());
+    return true;
+  };
+
+  return { session: ses, fetch, openHiddenPage, openLoginWindow, chooseCertificate, onSelectCertificate };
 }
 
 module.exports = { createConfluenceSession, signInCertificates, hostOf };

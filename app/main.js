@@ -604,6 +604,17 @@ function emptyOldTrash() {
   }
 }
 
+// The clipboard's image, or an empty one. Electron's clipboard follows the
+// web Clipboard API, where an image is an image/png item.
+async function clipboardImage() {
+  for (const item of await clipboard.read()) {
+    if (!item.types.includes('image/png')) continue;
+    const blob = await item.getType('image/png');
+    return nativeImage.createFromBuffer(Buffer.from(await blob.arrayBuffer()));
+  }
+  return nativeImage.createEmpty();
+}
+
 // AI agents write guides from a separate `StepForge --mcp` process. Poll the
 // small file it updates after each write: reindex each changed guide and tell
 // the window, which reloads the guide if it's open.
@@ -845,8 +856,8 @@ function setupIpc() {
     const { width, height } = img.getSize();
     return store.resetWorkingImage(guideId, stepId, { width, height });
   }, { validate: (a) => c.id(a.guideId) && c.id(a.stepId) });
-  h('step:fromClipboard', ({ guideId, position }) => {
-    const img = clipboard.readImage();
+  h('step:fromClipboard', async ({ guideId, position }) => {
+    const img = await clipboardImage();
     if (img.isEmpty()) return { ok: false, reason: 'clipboard has no image' };
     const { width, height } = img.getSize();
     const step = store.addStep(guideId, {
@@ -999,9 +1010,9 @@ function setupIpc() {
     void Promise.resolve(shell.openExternal(cloudSignInLink)).catch(() => {});
     return { ok: true };
   }, { validate: (a) => Object.keys(a).length === 0 });
-  h('cloud:copySignInLink', () => {
+  h('cloud:copySignInLink', async () => {
     if (!cloudSignInLink) return { ok: false };
-    clipboard.writeText(cloudSignInLink);
+    await clipboard.writeText(cloudSignInLink);
     return { ok: true };
   }, { validate: (a) => Object.keys(a).length === 0 });
   h('cloud:disconnect', async () => {
@@ -1218,7 +1229,7 @@ function setupIpc() {
   h('github:copy', async ({ kind, slug }) => {
     const text = kind === 'code' ? githubPages.status().pending?.userCode : githubPages.linkFor(slug);
     if (!text) return { ok: false };
-    clipboard.writeText(text);
+    await clipboard.writeText(text);
     return { ok: true, text };
   }, { validate: (a) => c.oneOf(a.kind, ['code', 'link']) && c.optionalString(a.slug, 40) });
 
@@ -1268,8 +1279,8 @@ function setupIpc() {
     return result;
   }, { validate: (a) => c.id(a.guideId) });
   h('agents:setup', () => agentSetupTexts());
-  h('agents:copy', ({ kind }) => {
-    clipboard.writeText(agentSetupTexts()[kind]);
+  h('agents:copy', async ({ kind }) => {
+    await clipboard.writeText(agentSetupTexts()[kind]);
     return { ok: true };
   }, { validate: (a) => c.oneOf(a.kind, ['claude', 'codex', 'json']) });
   h('ai:fillGuide', async ({ guideId } = {}) => {
@@ -1651,7 +1662,13 @@ if (!gotLock) {
 
   // Only the Confluence session is handled here; everything else keeps
   // Electron's default.
-  app.on('select-client-certificate', (...args) => confluenceCertificates?.(...args));
+  app.on('select-client-certificate', (event, webContents, url, list, callback) => {
+    if (confluenceCertificates?.(event, webContents, url, list, callback)) return;
+    // Electron would otherwise send the first certificate in the store to any
+    // server that asks. Outside Confluence, StepForge sends none.
+    event.preventDefault();
+    callback();
+  });
 
   app.whenReady().then(() => {
     libraryLocation = libraryLocationFor(app.getPath('userData'));

@@ -14,6 +14,18 @@ const {
 const { sanitizeHtml } = require('./sanitize');
 const { isValidOutline } = require('./step-outline');
 
+// A step's screenshot is original.png. Cropping it writes working.png;
+// until then the working path is the original's, so there is one copy.
+const ORIGINAL_FILE = 'original.png';
+const WORKING_FILE = 'working.png';
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** When a trashed guide was deleted (ms), from its `<guideId>-<ms>` name. */
+function trashStamp(name) {
+  return Number(name.match(/-(\d{10,})$/)?.[1]);
+}
+
 /**
  * Thrown by revision-aware saves when the on-disk revision no longer matches
  * the caller's expectation — i.e. someone else wrote in between. Callers that
@@ -218,10 +230,29 @@ class GuideStore {
   listTrashItems() {
     return this.listTrash().map((name) => {
       const guide = readJsonIfExists(path.join(this.trashDir, name, 'guide.json'), {});
-      const stamp = Number(name.match(/-(\d{10,})$/)?.[1]);
+      const stamp = trashStamp(name);
       return { name, title: guide.title || 'Untitled guide', stepCount: (guide.stepsOrder || []).length,
         deletedAt: Number.isFinite(stamp) ? new Date(stamp).toISOString() : null };
     }).sort((a, b) => String(b.deletedAt || '').localeCompare(String(a.deletedAt || '')));
+  }
+
+  /**
+   * Permanently delete trashed guides older than `days`. A guide's age
+   * counts from when it was deleted, or from `since` if that is later, so
+   * guides already in the trash when emptying was turned on get the full
+   * time. Guides with no deletion time are kept. Returns the names removed.
+   */
+  purgeExpiredTrash({ days, since = 0, now = Date.now() } = {}) {
+    if (!(days > 0) || !fs.existsSync(this.trashDir)) return [];
+    const removed = [];
+    for (const name of this.listTrash()) {
+      const stamp = trashStamp(name);
+      if (!Number.isFinite(stamp)) continue;
+      if (Math.max(stamp, since) + days * DAY_MS > now) continue;
+      fs.rmSync(path.join(this.trashDir, name), { recursive: true, force: true });
+      removed.push(name);
+    }
+    return removed;
   }
 
   purgeTrash() {
@@ -270,8 +301,8 @@ class GuideStore {
 
   /**
    * Create a step and append it to the guide's order.
-   * `imageBuffer` (PNG bytes) is optional; when given it is stored as both
-   * original.png (immutable) and working.png (crop target).
+   * `imageBuffer` (PNG bytes) is optional; when given it is stored as
+   * original.png, which is never changed. A crop goes to working.png.
    */
   addStep(guideId, fields = {}, imageBuffer = null, imageSize = null, { position } = {}) {
     const guide = this.getGuide(guideId);
@@ -279,12 +310,11 @@ class GuideStore {
     if (imageBuffer) {
       const dir = this.stepDir(guideId, step.stepId);
       fs.mkdirSync(dir, { recursive: true });
-      atomicWriteFileSync(path.join(dir, 'original.png'), imageBuffer);
-      atomicWriteFileSync(path.join(dir, 'working.png'), imageBuffer);
+      atomicWriteFileSync(path.join(dir, ORIGINAL_FILE), imageBuffer);
       step.kind = 'image';
       step.image = {
-        originalPath: 'original.png',
-        workingPath: 'working.png',
+        originalPath: ORIGINAL_FILE,
+        workingPath: ORIGINAL_FILE,
         size: imageSize || { width: 0, height: 0 },
       };
     }
@@ -326,7 +356,7 @@ class GuideStore {
    * doesn't change what the guide shows (a private-detail check that found
    * nothing). Its revision still moves, so caches keyed on it refresh.
    */
-  saveStep(guideId, step, { expectedRevision = null, touch = true } = {}) {
+  saveStep(guideId, step, { expectedRevision = null, touch = true, imagePaths = false } = {}) {
     // Optimistic concurrency for background/AI/capture writes: refuse to
     // overwrite a step that changed since it was read. Direct user edits pass
     // no expectedRevision (last-write-wins — the user is the authority).
@@ -342,6 +372,9 @@ class GuideStore {
       }
     }
     const stored = normalizeStep(deepClone(step));
+    // Which files a screenshot uses is the store's to decide (a crop moves
+    // the working path), so a caller's copy of the step can't point it back.
+    if (!imagePaths) this.currentImagePaths(guideId, stored);
     stored.descriptionHtml = sanitizeHtml(stored.descriptionHtml);
     stored.revision = (Number.isInteger(stored.revision) ? stored.revision : 0) + 1;
     validateStep(stored);
@@ -376,8 +409,11 @@ class GuideStore {
     const dir = this.stepDir(guideId, restored.stepId);
     fs.mkdirSync(dir, { recursive: true });
     if (restored.image && images) {
-      if (images.original) atomicWriteFileSync(path.join(dir, restored.image.originalPath), images.original);
-      if (images.working) atomicWriteFileSync(path.join(dir, restored.image.workingPath), images.working);
+      const { originalPath, workingPath } = restored.image;
+      if (images.original) atomicWriteFileSync(path.join(dir, originalPath), images.original);
+      if (images.working && (workingPath !== originalPath || !images.original)) {
+        atomicWriteFileSync(path.join(dir, workingPath), images.working);
+      }
     }
     writeJsonSync(path.join(dir, 'step.json'), restored);
     const at = Number.isInteger(position) ? Math.min(position, guide.stepsOrder.length) : guide.stepsOrder.length;
@@ -433,44 +469,77 @@ class GuideStore {
     return path.join(this.stepDir(guideId, stepId), rel);
   }
 
+  /**
+   * Make `buffer` the step's working image. One with the original's
+   * bytes (an undone crop) uses the original's file; anything else is
+   * written to working.png. Returns the working file that is no longer used, to delete
+   * once step.json no longer names it.
+   */
+  placeWorkingImage(dir, image, buffer) {
+    const originalFile = path.join(dir, image.originalPath);
+    if (fs.existsSync(originalFile) && fs.readFileSync(originalFile).equals(buffer)) {
+      const unused = image.workingPath !== image.originalPath ? path.join(dir, image.workingPath) : null;
+      image.workingPath = image.originalPath;
+      return unused;
+    }
+    if (image.workingPath === image.originalPath) {
+      image.workingPath = image.originalPath === WORKING_FILE ? `crop-${WORKING_FILE}` : WORKING_FILE;
+    }
+    atomicWriteFileSync(path.join(dir, image.workingPath), buffer);
+    return null;
+  }
+
+  /** The image paths on disk, which a caller's copy of the step may predate. */
+  currentImagePaths(guideId, step) {
+    const onDisk = readJsonIfExists(path.join(this.stepDir(guideId, step.stepId), 'step.json'), null)?.image;
+    if (onDisk && step.image) Object.assign(step.image, { originalPath: onDisk.originalPath, workingPath: onDisk.workingPath });
+    return step;
+  }
+
   /** Replace the working image (crop result). The original is never touched. */
   setWorkingImage(guideId, stepId, pngBuffer, size, stepPatch = null) {
-    const step = stepPatch ? deepClone(stepPatch) : this.getStep(guideId, stepId);
+    const step = stepPatch ? this.currentImagePaths(guideId, deepClone(stepPatch)) : this.getStep(guideId, stepId);
     if (!step.image) throw new Error('step has no image');
-    atomicWriteFileSync(path.join(this.stepDir(guideId, stepId), step.image.workingPath), pngBuffer);
+    const unused = this.placeWorkingImage(this.stepDir(guideId, stepId), step.image, pngBuffer);
     step.image.size = size;
-    return this.saveStep(guideId, step);
+    const saved = this.saveStep(guideId, step, { imagePaths: true });
+    if (unused) fs.rmSync(unused, { force: true });
+    return saved;
   }
 
   /**
    * Replace a step's screenshot (Choose image…, and undoing it).
-   * `images.original` becomes original.png; `images.working` (or the
-   * original) becomes working.png. A step without a screenshot gets one.
+   * `images.original` becomes original.png; `images.working`, when it
+   * differs, becomes working.png. A step without a screenshot gets one.
    * `stepPatch` is saved with it, so text and annotations go in one write.
    */
   replaceImages(guideId, stepId, images, size, stepPatch = null) {
-    const step = stepPatch ? deepClone(stepPatch) : this.getStep(guideId, stepId);
+    const step = stepPatch ? this.currentImagePaths(guideId, deepClone(stepPatch)) : this.getStep(guideId, stepId);
     if (!images?.original && !images?.working) throw new Error('No screenshot to use.');
     if (!step.image) {
-      step.image = { originalPath: 'original.png', workingPath: 'working.png', size };
+      step.image = { originalPath: ORIGINAL_FILE, workingPath: ORIGINAL_FILE, size };
     }
     step.kind = 'image';
     const dir = this.stepDir(guideId, stepId);
     fs.mkdirSync(dir, { recursive: true });
     if (images.original) atomicWriteFileSync(path.join(dir, step.image.originalPath), images.original);
-    atomicWriteFileSync(path.join(dir, step.image.workingPath), images.working || images.original);
+    const unused = this.placeWorkingImage(dir, step.image, images.working || images.original);
     step.image.size = size;
-    return this.saveStep(guideId, step);
+    const saved = this.saveStep(guideId, step, { imagePaths: true });
+    if (unused) fs.rmSync(unused, { force: true });
+    return saved;
   }
 
-  /** Restore working.png from original.png (un-crop). */
+  /** Un-crop: the working image is the original again, and working.png goes. */
   resetWorkingImage(guideId, stepId, size) {
     const step = this.getStep(guideId, stepId);
     if (!step.image) throw new Error('step has no image');
-    const dir = this.stepDir(guideId, stepId);
-    fs.copyFileSync(path.join(dir, step.image.originalPath), path.join(dir, step.image.workingPath));
+    const { originalPath, workingPath } = step.image;
+    step.image.workingPath = originalPath;
     if (size) step.image.size = size;
-    return this.saveStep(guideId, step);
+    const saved = this.saveStep(guideId, step, { imagePaths: true });
+    if (workingPath !== originalPath) fs.rmSync(path.join(this.stepDir(guideId, stepId), workingPath), { force: true });
+    return saved;
   }
 
   // ---- folders & favorites ------------------------------------------------

@@ -2848,24 +2848,10 @@ class GuideEditor {
     return this.stepImageToBase64(step, 'working');
   }
 
+  // The stored bytes, unchanged, so putting an image back restores the same file.
   async stepImageToBase64(step, which = 'working') {
     if (!step || !step.image) return null;
-    const file = await api.step.imagePath({ guideId: this.guideId, stepId: step.stepId, which });
-    if (!file) return null;
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        canvas.width = img.naturalWidth || img.width;
-        canvas.height = img.naturalHeight || img.height;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0);
-        const data = canvas.toDataURL('image/png').split(',')[1];
-        resolve({ base64: data, size: { width: canvas.width, height: canvas.height } });
-      };
-      img.onerror = () => resolve(null);
-      img.src = file;
-    });
+    return api.step.imageData({ guideId: this.guideId, stepId: step.stepId, which });
   }
 
   /** Snapshot a step (and its images, if any) before deletion so it can be undone. */

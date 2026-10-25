@@ -20,6 +20,18 @@ function timeAgo(iso) {
   return new Date(then).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: new Date(then).getFullYear() === new Date().getFullYear() ? undefined : 'numeric' });
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** "Deleted for good in 12 days", from the trash settings; null when kept. */
+function trashCountdown(item, library = {}) {
+  const days = library.trashDays ?? 30;
+  const deleted = Date.parse(item.deletedAt);
+  if (!(days > 0) || !Number.isFinite(deleted)) return null;
+  const left = Math.ceil((Math.max(deleted, library.trashEmptyingSince || 0) + days * DAY_MS - Date.now()) / DAY_MS);
+  if (left <= 1) return 'Deleted for good within a day';
+  return `Deleted for good in ${left} days`;
+}
+
 class StepForgeApp {
   constructor() {
     this.view = document.getElementById('view');
@@ -676,12 +688,16 @@ class StepForgeApp {
   renderTrashView() {
     clearNode(this.domLibraryResults);
     if (!this.state.trash.length) {
-      this.domLibraryResults.append(this.emptyState('Trash is empty', 'Deleted guides stay here until you empty the trash.'));
+      const days = this.state.settings?.library?.trashDays ?? 30;
+      this.domLibraryResults.append(this.emptyState('Trash is empty', days > 0
+        ? `Deleted guides stay here for ${days} days, then are deleted for good. Change this in Settings → General.`
+        : 'Deleted guides stay here until you empty the trash.'));
       return;
     }
     const selectMode = this.state.selectMode;
     const items = this.state.trash.map((item) => {
       const selected = this.state.selectedTrash.has(item.name);
+      const countdown = trashCountdown(item, this.state.settings?.library);
       return el('div.guide-card.trash-card', {
         className: `guide-card trash-card${selected ? ' selected' : ''}${selectMode ? ' selecting' : ''}`,
         onClick: () => {
@@ -702,6 +718,7 @@ class StepForgeApp {
         this.toggleTrashSelection(item.name);
       }) : null,
       el('h4', {}, item.title),
+      countdown ? el('div.trash-countdown', {}, countdown) : null,
       el('div.card-footer', {},
         el('span', {}, `${item.stepCount} step${item.stepCount === 1 ? '' : 's'}`),
         item.deletedAt ? el('span', {}, `Deleted ${timeAgo(item.deletedAt)}`) : null,
@@ -1128,6 +1145,7 @@ class StepForgeApp {
         await api.settings.set({ keyPath: 'redaction', value: next.redaction });
         await api.settings.set({ keyPath: 'exports', value: next.exports });
         await api.settings.set({ keyPath: 'backups', value: next.backups });
+        await api.settings.set({ keyPath: 'library', value: next.library });
         await api.settings.setGlobalPlaceholders(next.placeholders || {});
         this.state.settings = await api.settings.all();
       },

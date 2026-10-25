@@ -402,6 +402,7 @@ body.platform-linux #capture-status button {
 .guide-card .card-updated { margin-left: auto; }
 .guide-card .card-restore { margin-left: auto; padding: 3px 10px; font-size: 12px; }
 .trash-card { min-height: 110px; }
+.trash-countdown { color: var(--muted); font-size: 12px; margin-top: 4px; }
 
 .bulk-bar {
   position: sticky;

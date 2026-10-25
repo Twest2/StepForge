@@ -148,6 +148,36 @@ test('delete moves guide to trash and restore brings it back intact', (t) => {
   assert.equal(store.listTrash().length, 0);
 });
 
+test('purgeExpiredTrash deletes only guides older than the limit, counting from `since`', (t) => {
+  const root = makeTmpDir('trash-expiry');
+  t.after(() => rmrf(root));
+  const store = new GuideStore(root);
+  const day = 24 * 60 * 60 * 1000;
+  const now = Date.parse('2026-10-24T12:00:00Z');
+  const trashGuide = (title, deletedAt) => {
+    const guide = store.createGuide({ title });
+    fs.renameSync(store.deleteGuide(guide.guideId), path.join(store.trashDir, `${guide.guideId}-${deletedAt}`));
+  };
+  trashGuide('Old', now - 40 * day);
+  trashGuide('Recent', now - 10 * day);
+  // A leftover with no deletion time is never purged.
+  fs.mkdirSync(path.join(store.trashDir, 'no-stamp'));
+  fs.writeFileSync(path.join(store.trashDir, 'no-stamp', 'guide.json'), JSON.stringify({ title: 'Undated' }));
+
+  // Emptying turned on 5 days ago: the 40-day-old guide still has 25 days.
+  assert.deepEqual(store.purgeExpiredTrash({ days: 30, since: now - 5 * day, now }), []);
+  // 0 days means keep everything.
+  assert.deepEqual(store.purgeExpiredTrash({ days: 0, now }), []);
+
+  const removed = store.purgeExpiredTrash({ days: 30, since: now - 31 * day, now });
+  assert.equal(removed.length, 1);
+  const titles = store.listTrashItems().map((item) => item.title).sort();
+  assert.deepEqual(titles, ['Recent', 'Undated']);
+
+  assert.equal(store.purgeExpiredTrash({ days: 7, since: 0, now }).length, 1);
+  assert.deepEqual(store.listTrashItems().map((item) => item.title), ['Undated']);
+});
+
 test('folders and favorites round-trip', (t) => {
   const root = makeTmpDir('folders');
   t.after(() => rmrf(root));

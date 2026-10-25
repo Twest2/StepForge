@@ -700,6 +700,12 @@ function showSettingsDialog({
     ]);
     const autoIntervalSec = makeInput(settings.capture?.autoIntervalSec ?? 5, 'number', { min: 1, step: 1 });
     const keepLast = makeInput(settings.backups?.keepLast ?? 10, 'number', { min: 0, step: 1 });
+    const trashDays = makeSelect(String(settings.library?.trashDays ?? 30), [
+      { value: '7', label: 'After 7 days' },
+      { value: '30', label: 'After 30 days' },
+      { value: '90', label: 'After 90 days' },
+      { value: '0', label: 'Never' },
+    ]);
     const aiEnabled = el('input', { type: 'checkbox', checked: Boolean(settings.ai?.enabled) });
     const aiAutoDoc = el('input', { type: 'checkbox', checked: Boolean(settings.ai?.autoDoc) });
     const ollamaHost = makeInput(settings.ai?.ollama?.host || 'http://127.0.0.1:11434');
@@ -832,7 +838,7 @@ function showSettingsDialog({
     }, 'Add placeholder');
 
     const sections = [
-      { id: 'general', label: 'General', description: 'Appearance, exports, and where your guides are stored.', content: [
+      { id: 'general', label: 'General', description: 'Appearance, exports, and where your guides and deleted guides are kept.', content: [
         settingsCard('Appearance',
           settingRow('Theme', 'Match your system, or always use light or dark.', appearance),
           settingRow('Spellcheck', 'Underline misspelled words while editing.', makeSwitch(spellcheck, 'Spellcheck'))),
@@ -844,6 +850,8 @@ function showSettingsDialog({
           el('div.settings-storage', {}, storagePath, storageNote),
           el('div.settings-actions', {}, chooseStorageBtn, resetStorageBtn, cancelStorageBtn),
           el('div.setting-desc', {}, 'Choose an empty folder. StepForge copies and verifies your library, then switches to it the next time it starts. The old library is kept as a backup.')),
+        settingsCard('Trash',
+          settingRow('Empty the trash', 'Deleted guides are removed for good after this long.', trashDays)),
       ] },
       { id: 'capture', label: 'Capture', description: 'How StepForge records steps.', content: [
         settingsCard('Recording',
@@ -984,6 +992,10 @@ function showSettingsDialog({
               backups: {
                 ...settings.backups,
                 keepLast: Number(keepLast.value || 0),
+              },
+              library: {
+                ...settings.library,
+                trashDays: Number(trashDays.value),
               },
               redaction: {
                 ...settings.redaction,

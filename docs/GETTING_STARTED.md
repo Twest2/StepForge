@@ -177,8 +177,9 @@ The library is your home screen.
 - **Favorites** (★) pin the guides you use most.
 - **Search** (top bar) looks through the titles and text of every guide and
   step.
-- **Trash** keeps deleted guides until you empty it, so a mistake is easy to
-  undo.
+- **Trash** keeps deleted guides for 30 days, so a mistake is easy to undo.
+  Each one shows how long it has left. To keep them longer, or until you empty
+  the trash yourself, use **Settings → General → Trash**.
 
 Guides live in your StepForge data folder. To keep them somewhere else, such
 as a larger drive, use **Settings → General → Guide storage**. StepForge copies

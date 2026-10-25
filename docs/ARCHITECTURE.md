@@ -49,7 +49,10 @@ Internal working storage is **folder-based**; sharing/backups use a
         step.json
         original.png              never mutated after capture
         working.png               only once cropped; annotations stay vector JSON
-      history/snapshots/*.zip     automated + manual backups
+      history/snapshots/*.snapshot  automated + manual backups: gzipped
+                                  manifests listing each file by SHA-256
+      history/snapshot-files/<sha>  screenshots, stored once and shared by
+                                  every snapshot that contains them
     index/search-index.json       inverted full-text index
   temp/                           previews; cleaned on close
   shared-links/                   linked-guide registry

@@ -36,7 +36,7 @@ const { agentChangesSince, agentChangesStamp } = require('../core/agent-changes'
 const { runExport, EXPORTERS, FORMAT_INFO, FORMAT_ORDER } = require('../exporters');
 const { runExportInWorker } = require('./export-runner');
 const { exportGuideArchive, importGuideArchive, saveLinkedGuide } = require('../core/archive');
-const { createSnapshot, listSnapshots, restoreSnapshot, autoSnapshotIfDue } = require('../core/snapshots');
+const { createSnapshot, listSnapshots, restoreSnapshot, autoSnapshotIfDue, convertZipSnapshots } = require('../core/snapshots');
 const { readLock } = require('../core/locks');
 const { resolveCodeStyle } = require('../core/code-highlight');
 const CaptureService = require('./platform/capture-service').captureServiceClass();
@@ -576,6 +576,32 @@ function registerHotkeys() {
   } catch {
     // invalid accelerator strings must not crash the app
   }
+}
+
+// Snapshots used to be whole zips, each with every screenshot. Convert them
+// to snapshots that share screenshots, one guide at a time after startup so
+// the window stays responsive. Converting again finds nothing to do.
+function convertOldSnapshots() {
+  let ids;
+  try {
+    ids = fs.readdirSync(store.guidesDir);
+  } catch {
+    return;
+  }
+  const next = () => {
+    const guideId = ids.shift();
+    if (!guideId) return;
+    try {
+      if (fs.existsSync(path.join(store.guideDir(guideId), 'history', 'snapshots'))) {
+        const converted = convertZipSnapshots(store, guideId);
+        if (converted) console.log(`[stepforge] converted ${converted} snapshot(s) of ${guideId} to shared screenshots`);
+      }
+    } catch (err) {
+      console.error(`[stepforge] converting snapshots of ${guideId} failed: ${err && err.message}`);
+    }
+    setTimeout(next, 250);
+  };
+  next();
 }
 
 // Permanently delete guides that have been in the trash longer than
@@ -1772,6 +1798,7 @@ if (!gotLock) {
     // Deleting a large trash can take a while, so not during startup.
     setTimeout(emptyOldTrash, 30 * 1000);
     setInterval(emptyOldTrash, TRASH_CHECK_MS);
+    setTimeout(convertOldSnapshots, 60 * 1000);
     templates = new TemplateManager(store.templatesDir);
     textIntel = new TextIntelService({
       store,

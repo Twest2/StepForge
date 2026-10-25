@@ -12,6 +12,7 @@
   },
   "scripts": {
     "start": "node scripts/start-electron.js",
+    "postinstall": "install-electron",
     "setup:google-dev": "node scripts/setup-dev-google-oauth.js",
     "test": "node scripts/run-unit-tests.js",
     "sample": "node scripts/make-sample-guide.js",
@@ -29,7 +30,7 @@
     "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
-    "electron": "^41.10.7",
+    "electron": "^44.9.3",
     "electron-builder": "^26.15.3"
   }
 }

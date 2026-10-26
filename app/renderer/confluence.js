@@ -222,7 +222,7 @@ function confluenceProgress(guideTitle) {
  * Publish one guide to Confluence. Resolves when the dialog closes, with
  * whether the guide changed (private-detail blurs may have been added).
  */
-async function showPublishToConfluenceDialog({ api, guideId, guideTitle, onOpenAccounts }) {
+async function showPublishToConfluenceDialog({ api, guideId, guideTitle, onOpenAccounts, onShowFinding }) {
   const status = await api.confluence.status();
   if (!status.connected) {
     return new Promise((resolve) => {
@@ -248,7 +248,9 @@ async function showPublishToConfluenceDialog({ api, guideId, guideTitle, onOpenA
     const body = el('div.gh-publish');
     const cancelBtn = el('button', { type: 'button', onClick: () => { close(); finish(); } }, 'Cancel');
     const publishBtn = el('button.primary', { type: 'button', disabled: true }, 'Publish');
-    const { close } = openModal({ title: 'Publish to Confluence', body, footer: [cancelBtn, publishBtn], onClose: finish });
+    const quality = el('div');
+    const { close } = openModal({ title: 'Publish to Confluence', body: el('div', {}, quality, body), footer: [cancelBtn, publishBtn], onClose: finish });
+    addQualityPanel(api, guideId, quality, (finding) => { close(); finish(); onShowFinding?.(finding); });
 
     const spaceSelect = el('select', { 'aria-label': 'Confluence space' }, el('option', { value: '' }, 'Loading spaces…'));
     let spaces = [];
@@ -393,6 +395,7 @@ async function showPublishToConfluenceDialog({ api, guideId, guideTitle, onOpenA
       const space = chosenSpace();
       if (!space || publishing) return;
       publishing = true;
+      quality.replaceChildren(); // too late to fix before this publish
       error.classList.add('hidden');
       const progress = confluenceProgress(guideTitle);
       body.replaceChildren(progress.node);

@@ -6,6 +6,7 @@ const api = window.stepforge;
 const dialogs = window.StepForgeDialogs || {};
 const shortcuts = window.StepForgeShortcuts || {};
 const outline = window.StepForgeOutline || {};
+const { stepNumberMap } = outline;
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
 
@@ -139,26 +140,6 @@ function nextBlockOrder(step) {
 
 function blockLabel(kind) {
   return kind === 'text' ? 'Text block' : kind === 'code' ? 'Code block' : 'Table';
-}
-
-function stepNumberMap(steps) {
-  const numbers = new Map();
-  const childCounts = new Map();
-  let top = 0;
-  for (const step of steps) {
-    let number;
-    if (step.parentStepId && numbers.has(step.parentStepId)) {
-      const parent = numbers.get(step.parentStepId);
-      const next = (childCounts.get(step.parentStepId) || 0) + 1;
-      childCounts.set(step.parentStepId, next);
-      number = `${parent}.${next}`;
-    } else {
-      top += 1;
-      number = String(top);
-    }
-    numbers.set(step.stepId, number);
-  }
-  return numbers;
 }
 
 function stepDepth(step, stepMap) {
@@ -2690,10 +2671,17 @@ class GuideEditor {
     const settings = await api.settings.all();
     // HTML exports can also be published to GitHub Pages (Settings → Accounts).
     const github = await api.github.status().catch(() => null);
+    // Check what's on screen, including edits still waiting to be saved.
+    if (this.pendingSave) await this.flushStep();
+    if (this.pendingGuideSave) await this.flushGuide();
+    const quality =await api.guide.quality({ guideId: this.guideId }).catch(() => []);
     let publishRequest = null;
+    let finding = null;
     await dialogs.showExportDialog({
       formats,
       templatesByFormat,
+      quality,
+      onShowFinding: (picked) => { finding = picked; },
       webPublish: github?.available ? {
         ready: Boolean(github.connected && github.repo && !github.needsSignIn),
         formats: ['html-simple', 'html-rich'],
@@ -2762,6 +2750,25 @@ class GuideEditor {
       await showPublishProgressDialog({ api, guideId: this.guideId, guideTitle: this.guide?.title || 'This guide', request: publishRequest });
       // Publishing blurs private details in screenshots that weren't checked yet.
       await this.reload();
+    }
+    if (finding) await this.showQualityFinding(finding);
+  }
+
+  /**
+   * Jump to a quality-check finding (app/renderer/quality.js): its step,
+   * with the title field focused when the title is what needs fixing, or
+   * the guide's placeholders for a finding in the guide itself.
+   */
+  async showQualityFinding(finding) {
+    if (!finding.stepId) {
+      await this.openGuidePlaceholders();
+      return;
+    }
+    if (!this.stepMap.has(finding.stepId)) return;
+    await this.selectStep(finding.stepId);
+    if (finding.kind === 'title') {
+      this.dom.titleInput.focus();
+      this.dom.titleInput.select();
     }
   }
 

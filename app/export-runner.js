@@ -11,7 +11,7 @@ const WORKER_PATH = path.join(__dirname, '..', 'core', 'export-worker.js');
  * process — and therefore never freezes the editor window — no matter how
  * large the guide is.
  */
-function runExportInWorker({ dataDir, guideId, format, options, outDir, globals, maxSteps, codeStyle }) {
+function runExportInWorker({ dataDir, guideId, format, options, outDir, globals, maxSteps, codeStyle, reviewDays }) {
   return new Promise((resolve, reject) => {
     const worker = fork(WORKER_PATH, [], {
       env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
@@ -35,7 +35,7 @@ function runExportInWorker({ dataDir, guideId, format, options, outDir, globals,
       finish(reject, new Error(`Export worker exited unexpectedly (code ${code}).`));
     });
 
-    worker.send({ dataDir, guideId, format, options, outDir, globals, maxSteps, codeStyle });
+    worker.send({ dataDir, guideId, format, options, outDir, globals, maxSteps, codeStyle, reviewDays });
   });
 }
 

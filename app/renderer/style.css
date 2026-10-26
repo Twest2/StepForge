@@ -400,6 +400,9 @@ body.platform-linux #capture-status button {
 .guide-card .card-folder { display: inline-flex; align-items: center; gap: 4px; }
 .guide-card .card-folder::before { content: ""; width: 6px; height: 6px; border-radius: 2px; background: color-mix(in srgb, var(--accent) 55%, var(--border)); }
 .guide-card .card-updated { margin-left: auto; }
+/* Sits just left of the date, so it takes over pushing the pair right. */
+.guide-card .review-badge { margin-left: auto; background: var(--warn); color: var(--text); white-space: nowrap; }
+.guide-card .review-badge + .card-updated { margin-left: 0; }
 .guide-card .card-restore { margin-left: auto; padding: 3px 10px; font-size: 12px; }
 .trash-card { min-height: 110px; }
 .trash-countdown { color: var(--muted); font-size: 12px; margin-top: 4px; }

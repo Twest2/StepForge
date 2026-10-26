@@ -21,6 +21,7 @@ const api = {
     duplicate: invoke('library:duplicate'),
     delete: invoke('library:delete'),
     setFavorite: invoke('library:setFavorite'),
+    markVerified: invoke('library:markVerified'),
     trashList: invoke('library:trash:list'),
     trashItems: invoke('library:trash:items'),
     trashRestore: invoke('library:trash:restore'),

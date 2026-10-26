@@ -7,6 +7,7 @@ const { guideSlug, renderAllImages, LEVEL_LABEL, stepContentGroups, codeBlockTex
 const { htmlToText } = require('../core/util');
 const { htmlToBlocks } = require('../core/htmlblocks');
 const { highlightCode } = require('../core/code-highlight');
+const { guideMetaLines } = require('./document-layout');
 
 const LIST_INDENT = 14;
 const QUOTE_INDENT = 10;
@@ -345,12 +346,7 @@ function exportPdf(ast, outDir, template = {}) {
     y += 10;
     pdf.rect(M, y, usableW, 3, { fill: tpl.accentColor });
     y += 16;
-    const meta = ast.guide.metadata || {};
-    const metaLines = [
-      meta.author && `Author: ${meta.author}`,
-      meta.coAuthors && `Co-authors: ${meta.coAuthors}`,
-      meta.organization && `Organization: ${meta.organization}`,
-    ].filter(Boolean);
+    const metaLines = guideMetaLines(ast);
     for (const line of metaLines) writeLines(line, { size: 11, color: [90, 90, 90] });
     if (metaLines.length) y += 8;
     if (ast.guide.descriptionHtml) writeDescription(ast.guide.descriptionHtml, { size: 12, color: [70, 70, 70] });

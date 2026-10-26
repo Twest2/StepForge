@@ -23,6 +23,9 @@ function guideMetaLines(ast) {
     meta.author && `Author: ${meta.author}`,
     meta.coAuthors && `Co-authors: ${meta.coAuthors}`,
     meta.organization && `Organization: ${meta.organization}`,
+    meta.softwareVersion && `Software version: ${meta.softwareVersion}`,
+    meta.lastVerified && `Last verified: ${meta.lastVerified}`,
+    meta.reviewAgainOn && `Review again on: ${meta.reviewAgainOn}`,
   ].filter(Boolean);
 }
 

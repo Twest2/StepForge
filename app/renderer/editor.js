@@ -2473,6 +2473,17 @@ class GuideEditor {
   async openBackupsDialog() {
     if (!this.guideId) return;
     const snapshots = await api.snapshots.list({ guideId: this.guideId });
+    const restore = async (name) => {
+      const ok = await confirmDialog(
+        `Restore "${name}"? Current state is snapshotted first, so this is undoable.`,
+        { okLabel: 'Restore' },
+      );
+      if (!ok) return false;
+      await api.snapshots.restore({ guideId: this.guideId, name });
+      await this.reload();
+      this.onToast('Snapshot restored.');
+      return true;
+    };
     await dialogs.showBackupsDialog({
       snapshots,
       onCreate: async () => {
@@ -2480,17 +2491,32 @@ class GuideEditor {
         this.onToast('Snapshot created.');
         return api.snapshots.list({ guideId: this.guideId });
       },
-      onRestore: async (name) => {
-        const ok = await confirmDialog(
-          `Restore "${name}"? Current state is snapshotted first, so this is undoable.`,
-          { okLabel: 'Restore' },
-        );
-        if (!ok) return false;
-        await api.snapshots.restore({ guideId: this.guideId, name });
-        await this.reload();
-        this.onToast('Snapshot restored.');
-        return true;
-      },
+      onRestore: restore,
+      onCompare: (name) => this.compareSnapshot(name, restore),
+    });
+  }
+
+  /**
+   * Show what changed since snapshot `name`. Pending edits are saved first,
+   * so "now" is exactly the guide on disk. Resolves true when the snapshot
+   * was restored from the Compare view.
+   */
+  async compareSnapshot(name, restore) {
+    if (this.pendingSave) await this.flushStep();
+    if (this.pendingGuideSave) await this.flushGuide();
+    let diff;
+    try {
+      diff = await api.snapshots.compare({ guideId: this.guideId, name });
+    } catch (err) {
+      this.onToast(`Could not compare with this snapshot: ${err.message || err}`, { error: true });
+      return false;
+    }
+    return window.StepForgeCompare.showSnapshotCompare({
+      label: dialogs.snapshotLabel(name),
+      diff,
+      loadImage: (side, file) => api.snapshots.compareImage({ guideId: this.guideId, name: side === 'before' ? name : null, file }),
+      onRestore: () => restore(name),
+      storageKey: `stepforge.compare.viewed.${this.guideId}.${name}`,
     });
   }
 

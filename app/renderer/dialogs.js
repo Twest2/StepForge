@@ -582,7 +582,7 @@ function makeUpdateCheck(api, { openLink, flushEdits = null }) {
         el('div.update-status-title', {}, `Version ${result.latestVersion} is available`),
         el('div.setting-desc', {}, `You have ${result.currentVersion}. ${result.hint || ''}`),
         el('div.settings-actions', {}, updateNow ? updateNow.button : null, download),
-        updateNow ? updateNow.note : null);
+        ...(updateNow ? [updateNow.note] : []));
     } else if (result.status === 'up-to-date') {
       updateStatus.classList.add('current');
       updateStatus.append(el('div.update-status-title', {}, 'You’re up to date'),

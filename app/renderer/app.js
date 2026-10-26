@@ -435,7 +435,8 @@ class StepForgeApp {
       el('span', { title: `Capture session — ${trigger}` }, `Recording - ${trigger}`),
       // Settings says Window but this desktop can only record the full screen:
       // say so before the first capture, since other windows will be in it.
-      s.modeNote ? el('span.capture-mode-note', { title: s.modeNote }, 'Full screen (window capture unavailable)') : null,
+      // Native append() prints null as "null", so leave the note out instead.
+      ...(s.modeNote ? [el('span.capture-mode-note', { title: s.modeNote }, 'Full screen (window capture unavailable)')] : []),
       pauseBtn,
     );
   }

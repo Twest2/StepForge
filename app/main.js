@@ -36,7 +36,9 @@ const { agentChangesSince, agentChangesStamp } = require('../core/agent-changes'
 const { runExport, EXPORTERS, FORMAT_INFO, FORMAT_ORDER } = require('../exporters');
 const { runExportInWorker } = require('./export-runner');
 const { exportGuideArchive, importGuideArchive, saveLinkedGuide } = require('../core/archive');
-const { createSnapshot, listSnapshots, restoreSnapshot, autoSnapshotIfDue, convertZipSnapshots } = require('../core/snapshots');
+const {
+  createSnapshot, listSnapshots, restoreSnapshot, autoSnapshotIfDue, convertZipSnapshots, compareSnapshot, snapshotFile,
+} = require('../core/snapshots');
 const { readLock } = require('../core/locks');
 const { resolveCodeStyle } = require('../core/code-highlight');
 const CaptureService = require('./platform/capture-service').captureServiceClass();
@@ -1454,6 +1456,29 @@ function setupIpc() {
     reindex(guideId);
     return guide;
   }, { validate: (a) => c.id(a.guideId) && c.fileName(a.name) });
+  h('snapshots:compare', ({ guideId, name }) => compareSnapshot(store, guideId, name),
+    { validate: (a) => c.id(a.guideId) && c.fileName(a.name) });
+  // A screenshot for the Compare view, as a data URL: from snapshot `name`,
+  // or from the guide as it is now when `name` is null.
+  h('snapshots:compareImage', ({ guideId, name, file }) => {
+    let data = null;
+    if (name) {
+      data = snapshotFile(store, guideId, name, file);
+    } else {
+      const guideDir = store.guideDir(guideId);
+      const abs = path.resolve(guideDir, file);
+      if (abs.startsWith(path.join(guideDir, 'steps') + path.sep) && fs.existsSync(abs)) data = fs.readFileSync(abs);
+    }
+    if (!data) return null;
+    const mime = data.toString('latin1', 1, 4) === 'PNG' ? 'image/png'
+      : data[0] === 0xff && data[1] === 0xd8 ? 'image/jpeg'
+        : data.toString('latin1', 8, 12) === 'WEBP' ? 'image/webp'
+          : data.toString('latin1', 0, 3) === 'GIF' ? 'image/gif' : null;
+    return mime ? `data:${mime};base64,${data.toString('base64')}` : null;
+  }, {
+    validate: (a) => c.id(a.guideId) && (a.name === null || c.fileName(a.name))
+      && c.string(a.file, 300) && /^steps\/[^/\\]+\/[^/\\]+$/.test(a.file) && !a.file.includes('..'),
+  });
 
   // recovery status: corrupt files quarantined this session and search index
   // health, so the UI can surface them instead of data silently vanishing.

@@ -4,8 +4,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { directoryEntries, extractZipSync, unzipSync, zipSync } = require('./zip');
 const { atomicWriteFileSync, readJsonSync } = require('./util');
-const { validateGuide } = require('./schema');
+const { validateGuide, normalizeGuide, normalizeStep } = require('./schema');
 const parts = require('./cloud-parts');
+const { diffGuides } = require('./guide-diff');
 
 /**
  * Snapshot backups of a guide directory (excluding history/), for automated
@@ -128,6 +129,72 @@ function snapshotZip(store, guideId, name) {
     if (!data || parts.sha256(data) !== sha) throw new Error('a screenshot the snapshot needs is missing or damaged');
     return data;
   }));
+}
+
+/**
+ * A snapshot's files without restoring it: entry name -> { sha, data }.
+ * `data` is null for a screenshot kept in snapshot-files/; snapshotFile()
+ * reads it.
+ */
+function snapshotEntries(store, guideId, name) {
+  name = path.basename(name);
+  const file = path.join(snapshotsDir(store, guideId), name);
+  if (!isSnapshotName(name) || !fs.existsSync(file)) throw new Error(`snapshot not found: ${name}`);
+  if (name.endsWith('.zip')) {
+    return new Map(unzipSync(fs.readFileSync(file)).map((entry) => [entry.name, { sha: parts.sha256(entry.data), data: entry.data }]));
+  }
+  let manifest;
+  try {
+    manifest = readManifest(store, guideId, name);
+  } catch {
+    throw new Error('the snapshot is damaged');
+  }
+  return new Map(manifest.entries.map((entry) => [entry.name, { sha: entry.sha, data: entry.data }]));
+}
+
+function entryData(store, guideId, entry) {
+  if (!entry) return null;
+  if (entry.data) return entry.data;
+  const file = path.join(filesDir(store, guideId), entry.sha);
+  const data = fs.existsSync(file) ? fs.readFileSync(file) : null;
+  return data && parts.sha256(data) === entry.sha ? data : null;
+}
+
+/** One file of snapshot `name` (e.g. "steps/<id>/original.png"), or null. */
+function snapshotFile(store, guideId, name, entryName) {
+  return entryData(store, guideId, snapshotEntries(store, guideId, name).get(entryName));
+}
+
+/**
+ * How the guide changed since snapshot `name`: the snapshot is the before
+ * side and the guide as saved now the after side (see core/guide-diff.js).
+ */
+function compareSnapshot(store, guideId, name) {
+  const entries = snapshotEntries(store, guideId, name);
+  const json = (entryName) => {
+    const data = entryData(store, guideId, entries.get(entryName));
+    if (!data) throw new Error('the snapshot is damaged');
+    return JSON.parse(data.toString('utf8'));
+  };
+  const before = {
+    guide: normalizeGuide(json('guide.json')),
+    steps: [...entries.keys()].filter((n) => /^steps\/[^/]+\/step\.json$/.test(n)).map((n) => normalizeStep(json(n))),
+    fileSha: (n) => entries.get(n)?.sha || null,
+  };
+  const guideDir = store.guideDir(guideId);
+  const hashes = new Map();
+  const after = {
+    guide: store.getGuide(guideId),
+    steps: [...store.listSteps(guideId).values()],
+    fileSha: (n) => {
+      if (!hashes.has(n)) {
+        const file = path.join(guideDir, n);
+        hashes.set(n, fs.existsSync(file) ? parts.sha256(fs.readFileSync(file)) : null);
+      }
+      return hashes.get(n);
+    },
+  };
+  return diffGuides(before, after);
 }
 
 /**
@@ -255,5 +322,5 @@ async function autoSnapshotIfDue(store, guideId, settings) {
 
 module.exports = {
   createSnapshot, listSnapshots, pruneSnapshots, restoreSnapshot, snapshotsDir,
-  autoSnapshotIfDue, convertZipSnapshots, removeUnusedFiles,
+  autoSnapshotIfDue, convertZipSnapshots, removeUnusedFiles, compareSnapshot, snapshotFile,
 };

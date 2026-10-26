@@ -189,6 +189,8 @@ const api = {
     list: invoke('snapshots:list'),
     create: invoke('snapshots:create'),
     restore: invoke('snapshots:restore'),
+    compare: invoke('snapshots:compare'),
+    compareImage: invoke('snapshots:compareImage'),
   },
   recovery: {
     status: invoke('recovery:status'),

@@ -1429,7 +1429,7 @@ function snapshotLabel(name) {
   return label ? `${when} · ${label.replace(/_/g, ' ')}` : when;
 }
 
-function showBackupsDialog({ snapshots = [], onCreate, onRestore } = {}) {
+function showBackupsDialog({ snapshots = [], onCreate, onRestore, onCompare } = {}) {
   return new Promise((resolve) => {
     let list = [...snapshots];
     const rows = el('div', { className: 'card-list' });
@@ -1441,8 +1441,23 @@ function showBackupsDialog({ snapshots = [], onCreate, onRestore } = {}) {
         return;
       }
       for (const name of list) {
+        const compareBtn = onCompare ? el('button', {
+          type: 'button',
+          title: 'See what changed between this snapshot and the guide now',
+          onClick: async () => {
+            setButtonLoading(compareBtn, true, 'Comparing…');
+            let restored = false;
+            try {
+              restored = await onCompare(name);
+            } finally {
+              if (compareBtn.isConnected) setButtonLoading(compareBtn, false);
+            }
+            if (restored) { close(); resolve(true); }
+          },
+        }, 'Compare') : null;
         rows.append(el('div.row', { style: { justifyContent: 'space-between', gap: '10px' } },
-          el('span', { style: { overflow: 'hidden', textOverflow: 'ellipsis' }, title: name }, snapshotLabel(name)),
+          el('span', { style: { overflow: 'hidden', textOverflow: 'ellipsis', flex: '1' }, title: name }, snapshotLabel(name)),
+          compareBtn,
           el('button', {
             type: 'button',
             onClick: async () => {
@@ -1469,7 +1484,7 @@ function showBackupsDialog({ snapshots = [], onCreate, onRestore } = {}) {
       title: 'Backups & snapshots',
       body: el('div', {},
         el('div.row', { style: { marginBottom: '10px' } }, createBtn,
-          el('span.muted', {}, 'Restores are undoable — the current state is snapshotted first.')),
+          el('span.muted', {}, 'Compare shows what changed since a snapshot. Restores are undoable — the current state is snapshotted first.')),
         rows,
       ),
       footer: [el('button', { onClick: () => { close(); resolve(true); } }, 'Close')],
@@ -1660,6 +1675,12 @@ const SHORTCUTS = [
     ['Ctrl+= / Ctrl+-', 'Zoom in / out'],
     ['Ctrl+0', 'Fit image to window'],
   ]],
+  ['Compare with a snapshot', [
+    ['N / Alt+↓', 'Next change'],
+    ['P / Alt+↑', 'Previous change'],
+    ['V', 'Mark the current change as viewed and go to the next one'],
+    ['Esc', 'Close the comparison'],
+  ]],
 ];
 
 function showShortcutsDialog() {
@@ -1720,6 +1741,7 @@ function showRecordingReminder({
 }
 
 window.StepForgeDialogs = {
+  snapshotLabel,
   promptText,
   showMoveStepDialog,
   showQuickActions,

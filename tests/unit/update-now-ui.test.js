@@ -25,9 +25,10 @@ function setup({ check, updateNow = async () => ({ ok: true }), confirm = true, 
       },
       get textContent() { return this._text ?? this.children.map((c) => (typeof c === 'object' ? c.textContent : String(c))).join(''); },
       set textContent(value) { this.children = []; this._text = String(value); },
+      // Like the DOM's append(): anything that isn't a node becomes text, so a stray null shows as "null".
       append(...items) {
         this._text = undefined;
-        for (const child of items.flat()) if (child != null && child !== false) this.children.push(child);
+        for (const child of items) this.children.push(child && typeof child === 'object' ? child : String(child));
       },
       addEventListener(type, fn) { this.listeners[type] = fn; },
     };
@@ -35,7 +36,7 @@ function setup({ check, updateNow = async () => ({ ok: true }), confirm = true, 
       if (key.startsWith('on') && typeof value === 'function') node.addEventListener(key.slice(2).toLowerCase(), value);
       else node[key] = value;
     }
-    node.append(...children);
+    node.append(...children.flat().filter((child) => child != null && child !== false));
     return node;
   }
   const calls = [];
@@ -76,6 +77,7 @@ test('without Chocolatey, only the download button is offered, as the main actio
   assert.deepEqual(u.buttons().map((b) => b.textContent), ['View release and download']);
   assert.equal(u.button('View release and download').classList.contains('primary'), true);
   assert.match(u.updateStatus.textContent, /You have 1\.4\. Some hint\./);
+  assert.doesNotMatch(u.updateStatus.textContent, /null/, 'no stray "null" after the download button');
 });
 
 test('a registered install gets Update now first, with download as the secondary action', async () => {

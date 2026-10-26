@@ -338,20 +338,21 @@ test('guide metadata: optional fields default to empty strings and round-trip vi
   t.after(() => rmrf(root));
   const store = new GuideStore(root);
   const guide = store.createGuide({ title: 'Metadata test' });
-  assert.deepEqual(guide.metadata, { author: '', coAuthors: '', organization: '' });
+  const empty = { author: '', coAuthors: '', organization: '', lastVerified: '', softwareVersion: '', reviewAfterDays: null };
+  assert.deepEqual(guide.metadata, empty);
 
   guide.metadata = { author: 'Jane Doe', coAuthors: 'Alex Lee, Sam Patel', organization: 'Acme Corp' };
   store.saveGuide(guide);
 
   const fresh = new GuideStore(root);
   const loaded = fresh.getGuide(guide.guideId);
-  assert.deepEqual(loaded.metadata, { author: 'Jane Doe', coAuthors: 'Alex Lee, Sam Patel', organization: 'Acme Corp' });
+  assert.deepEqual(loaded.metadata, { ...empty, author: 'Jane Doe', coAuthors: 'Alex Lee, Sam Patel', organization: 'Acme Corp' });
 
   // A guide saved before metadata existed normalizes to the same defaults.
   const legacy = fresh.getGuide(guide.guideId);
   delete legacy.metadata;
   store.saveGuide(legacy);
-  assert.deepEqual(fresh.getGuide(guide.guideId).metadata, { author: '', coAuthors: '', organization: '' });
+  assert.deepEqual(fresh.getGuide(guide.guideId).metadata, empty);
 
   loaded.metadata = 'not an object';
   assert.throws(() => store.saveGuide(loaded), /metadata must be an object/);

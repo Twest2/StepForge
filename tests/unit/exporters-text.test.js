@@ -54,7 +54,8 @@ test('render AST: guide metadata defaults to empty strings and expands placehold
 
   // Fixture guide has no metadata set: all fields default to ''.
   const noMeta = buildRenderAst(store, bare.guideId);
-  assert.deepEqual(noMeta.guide.metadata, { author: '', coAuthors: '', organization: '' });
+  const empty = { author: '', coAuthors: '', organization: '', lastVerified: '', softwareVersion: '', reviewAgainOn: '' };
+  assert.deepEqual(noMeta.guide.metadata, empty);
 
   // Set metadata with placeholders and re-check expansion against guide + global scope.
   const guide = store.getGuide(bare.guideId);
@@ -68,6 +69,7 @@ test('render AST: guide metadata defaults to empty strings and expands placehold
   const ast = buildRenderAst(store, guide.guideId, { globals: { CoAuthor: 'Sam Patel', Org: 'GlobalOrg' } });
   // Guide-level placeholder (Author -> Casey) wins over global; CoAuthor/Org fall back to globals.
   assert.deepEqual(ast.guide.metadata, {
+    ...empty,
     author: 'Casey',
     coAuthors: 'Alex Lee, Sam Patel',
     organization: 'GlobalOrg',

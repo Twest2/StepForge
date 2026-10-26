@@ -13,6 +13,7 @@ const {
 } = require('./schema');
 const { sanitizeHtml } = require('./sanitize');
 const { isValidOutline } = require('./step-outline');
+const { toDateOnly } = require('./review');
 
 // A step's screenshot is original.png. Cropping it writes working.png;
 // until then the working path is the original's, so there is one copy.
@@ -195,6 +196,17 @@ class GuideStore {
   setFavorite(guideId, favorite) {
     const guide = this.getGuide(guideId);
     guide.favorite = Boolean(favorite);
+    return this.saveGuide(guide, { touch: false });
+  }
+
+  /**
+   * Record that someone checked the guide still matches the software today.
+   * It restarts the review clock (core/review.js) without counting as an
+   * edit, so the library's "edited" time stays as it was.
+   */
+  markVerified(guideId, now = Date.now()) {
+    const guide = this.getGuide(guideId);
+    guide.metadata = { ...(guide.metadata || {}), lastVerified: toDateOnly(now) };
     return this.saveGuide(guide, { touch: false });
   }
 

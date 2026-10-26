@@ -3,6 +3,7 @@
 const { newId, nowIso } = require('./util');
 const { sanitizeHtml } = require('./sanitize');
 const { blockText } = require('./blocks');
+const { normalizeReviewDays, normalizeDateOnly } = require('./review');
 
 const SCHEMA_VERSION = 1;
 
@@ -39,6 +40,11 @@ function createGuide(fields = {}) {
       coAuthors: '',
       organization: '',
       ...(fields.metadata || {}),
+      // Review dates (see core/review.js). reviewAfterDays: null uses the
+      // default from Settings, 0 turns reviews off for this guide.
+      lastVerified: normalizeDateOnly(fields.metadata?.lastVerified),
+      softwareVersion: typeof fields.metadata?.softwareVersion === 'string' ? fields.metadata.softwareVersion.slice(0, 200) : '',
+      reviewAfterDays: normalizeReviewDays(fields.metadata?.reviewAfterDays),
     },
     flags: {
       focusedViewDefault: false,

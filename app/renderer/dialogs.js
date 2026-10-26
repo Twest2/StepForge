@@ -25,6 +25,9 @@ function makeSelect(value, options) {
 }
 
 /** Settings row: a title and optional description beside its control. */
+// Review dates (core/review.js, loaded with a script tag before this file).
+const review = window.StepForgeReview;
+
 const AI_GUIDE_URL = 'https://github.com/Twest2/StepForge/blob/main/docs/getting_started_with_ai.md';
 
 function settingRow(title, description, control) {
@@ -706,6 +709,13 @@ function showSettingsDialog({
       { value: '90', label: 'After 90 days' },
       { value: '0', label: 'Never' },
     ]);
+    const reviewAfterDays = review.normalizeReviewDays(settings.library?.reviewAfterDays) ?? review.DEFAULT_REVIEW_DAYS;
+    const reviewDefault = makeSelect(String(reviewAfterDays), [
+      ...review.REVIEW_INTERVALS.map((i) => ({ value: String(i.days), label: `After ${i.label}` })),
+      ...(reviewAfterDays > 0 && !review.REVIEW_INTERVALS.some((i) => i.days === reviewAfterDays)
+        ? [{ value: String(reviewAfterDays), label: `After ${review.intervalLabel(reviewAfterDays)}` }] : []),
+      { value: '0', label: 'Never' },
+    ]);
     const aiEnabled = el('input', { type: 'checkbox', checked: Boolean(settings.ai?.enabled) });
     const aiAutoDoc = el('input', { type: 'checkbox', checked: Boolean(settings.ai?.autoDoc) });
     const ollamaHost = makeInput(settings.ai?.ollama?.host || 'http://127.0.0.1:11434');
@@ -838,7 +848,7 @@ function showSettingsDialog({
     }, 'Add placeholder');
 
     const sections = [
-      { id: 'general', label: 'General', description: 'Appearance, exports, and where your guides and deleted guides are kept.', content: [
+      { id: 'general', label: 'General', description: 'Appearance, exports, where your guides and deleted guides are kept, and when guides are due for review.', content: [
         settingsCard('Appearance',
           settingRow('Theme', 'Match your system, or always use light or dark.', appearance),
           settingRow('Spellcheck', 'Underline misspelled words while editing.', makeSwitch(spellcheck, 'Spellcheck'))),
@@ -852,6 +862,8 @@ function showSettingsDialog({
           el('div.setting-desc', {}, 'Choose an empty folder. StepForge copies and verifies your library, then switches to it the next time it starts. The old library is kept as a backup.')),
         settingsCard('Trash',
           settingRow('Empty the trash', 'Deleted guides are removed for good after this long.', trashDays)),
+        settingsCard('Guide reviews',
+          settingRow('Flag guides for review', 'Guides that haven’t been saved or marked verified for this long show “May need review” in the library. Each guide can change this in Guide information.', reviewDefault)),
       ] },
       { id: 'capture', label: 'Capture', description: 'How StepForge records steps.', content: [
         settingsCard('Recording',
@@ -996,6 +1008,7 @@ function showSettingsDialog({
               library: {
                 ...settings.library,
                 trashDays: Number(trashDays.value),
+                reviewAfterDays: Number(reviewDefault.value),
               },
               redaction: {
                 ...settings.redaction,
@@ -1519,8 +1532,39 @@ function showPlaceholdersDialog({ title = 'Placeholders', hint = '', values = {}
  * shown at the top of the guide, below the title, and surfaced on the PDF
  * cover page and the top of other export formats.
  */
-function showGuideInfoDialog({ values = {}, onSave, onCloudSnapshots, onDeleteCloudSnapshots } = {}) {
+function showGuideInfoDialog({ values = {}, reviewDefaultDays, onSave, onCloudSnapshots, onDeleteCloudSnapshots } = {}) {
   return new Promise((resolve) => {
+    const versionInput = makeInput(values.softwareVersion || '', 'text', { placeholder: 'e.g. Windows 11 24H2', maxLength: 200 });
+    const verifiedInput = makeInput(review.normalizeDateOnly(values.lastVerified), 'date', { max: review.toDateOnly(Date.now()) });
+    const reviewDays = review.normalizeReviewDays(values.reviewAfterDays);
+    const defaultDays = review.normalizeReviewDays(reviewDefaultDays) ?? review.DEFAULT_REVIEW_DAYS;
+    const reviewSelect = makeSelect(reviewDays === null ? '' : String(reviewDays), [
+      { value: '', label: defaultDays > 0 ? `Use the default (${review.intervalLabel(defaultDays)})` : 'Use the default (off)' },
+      ...review.REVIEW_INTERVALS.map((i) => ({ value: String(i.days), label: `After ${i.label}` })),
+      // A custom interval set elsewhere (an agent, an older import) stays selectable.
+      ...(reviewDays > 0 && !review.REVIEW_INTERVALS.some((i) => i.days === reviewDays)
+        ? [{ value: String(reviewDays), label: `After ${review.intervalLabel(reviewDays)}` }] : []),
+      { value: '0', label: 'Never' },
+    ]);
+    const reviewHint = el('div.muted', { style: { marginTop: '-4px', marginBottom: '12px' } });
+    const readReviewDays = () => (reviewSelect.value === '' ? null : Number(reviewSelect.value));
+    // Saving restarts the clock, so the preview counts from now.
+    const updateReviewHint = () => {
+      const status = review.reviewStatus({
+        updatedAt: new Date().toISOString(),
+        metadata: { lastVerified: verifiedInput.value, reviewAfterDays: readReviewDays() },
+      }, defaultDays);
+      reviewHint.textContent = status
+        ? `After you save, “May need review” shows in the library on ${new Date(status.due).toLocaleDateString(undefined, { dateStyle: 'medium' })} unless the guide is saved or verified again first.`
+        : 'This guide is never flagged for review.';
+    };
+    const todayBtn = el('button', {
+      type: 'button',
+      onClick: () => { verifiedInput.value = review.toDateOnly(Date.now()); updateReviewHint(); },
+    }, 'Today');
+    verifiedInput.addEventListener('input', updateReviewHint);
+    reviewSelect.addEventListener('change', updateReviewHint);
+    updateReviewHint();
     const authorInput = makeInput(values.author || '', 'text', { placeholder: 'e.g. Jane Doe' });
     const coAuthorsInput = makeInput(values.coAuthors || '', 'text', { placeholder: 'e.g. Alex Lee, Sam Patel' });
     const organizationInput = makeInput(values.organization || '', 'text', { placeholder: 'e.g. Acme Corp' });
@@ -1541,6 +1585,11 @@ function showGuideInfoDialog({ values = {}, onSave, onCloudSnapshots, onDeleteCl
         labeledRow('Description', descriptionInput, { stacked: true }),
         el('div.muted', { style: { marginTop: '-4px' } },
           'Shown on the first page of the PDF and at the top of other export formats.'),
+        el('h3', { style: { margin: '14px 0 6px' } }, 'Review'),
+        labeledRow('Software version', versionInput),
+        labeledRow('Last verified', el('div.row', {}, verifiedInput, todayBtn)),
+        labeledRow('Review again', reviewSelect),
+        reviewHint,
         el('label.cloud-enable', {}, shareInput, ' Include this guide in cloud sync'),
         el('div.muted', { style: { marginTop: '-4px' } },
           'When off, this guide stays only on this device.'),
@@ -1555,6 +1604,9 @@ function showGuideInfoDialog({ values = {}, onSave, onCloudSnapshots, onDeleteCl
               author: authorInput.value.trim(),
               coAuthors: coAuthorsInput.value.trim(),
               organization: organizationInput.value.trim(),
+              softwareVersion: versionInput.value.trim(),
+              lastVerified: review.normalizeDateOnly(verifiedInput.value),
+              reviewAfterDays: readReviewDays(),
               description: descriptionInput.value.trim(),
               sharingEnabled: shareInput.checked,
             });

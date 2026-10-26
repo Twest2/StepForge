@@ -2516,6 +2516,7 @@ class GuideEditor {
         description: htmlToPlainText(this.guide.descriptionHtml || ''),
         sharingEnabled: this.guide.cloud?.sharingEnabled !== false,
       },
+      reviewDefaultDays: this.settings?.library?.reviewAfterDays,
       onSave: async ({ description, sharingEnabled, ...metadata }) => {
         this.guide.metadata = metadata;
         this.guide.descriptionHtml = textToHtml(description);

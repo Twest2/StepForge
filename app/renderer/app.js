@@ -4,6 +4,7 @@
 
 const api = window.stepforge;
 const dialogs = window.StepForgeDialogs || {};
+const review = window.StepForgeReview;
 
 /** "just now", "5 min ago", "3 hr ago", "yesterday", "4 days ago", else a short date. */
 function timeAgo(iso) {
@@ -21,6 +22,13 @@ function timeAgo(iso) {
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** The "May need review" pill's tooltip: why the guide is flagged. */
+function reviewBadgeTitle(status) {
+  const since = new Date(status.since).toLocaleDateString(undefined, { dateStyle: 'medium' });
+  const what = status.sinceKind === 'verified' ? `Last verified ${since}` : `Last saved ${since}`;
+  return `${what}, over ${review.intervalLabel(status.days)} ago. Open the guide to check it still matches the software, or right-click → Mark as verified.`;
+}
 
 /** "Deleted for good in 12 days", from the trash settings; null when kept. */
 function trashCountdown(item, library = {}) {
@@ -748,6 +756,7 @@ class StepForgeApp {
     const selected = this.state.selectedGuides.has(guide.guideId);
     const description = (guide.descriptionHtml || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
     const steps = guide.stepCount || 0;
+    const reviewState = review.reviewStatus(guide, this.state.settings?.library?.reviewAfterDays);
     return el('div.guide-card', {
       className: `guide-card${selected ? ' selected' : ''}${selectMode ? ' selecting' : ''}`,
       title: selectMode ? '' : 'Open guide · Ctrl-click to select',
@@ -786,6 +795,7 @@ class StepForgeApp {
       showFolder ? el('span.card-folder', {}, folder.name) : null,
       guide.linkedSource ? el('span.badge', { title: 'Saved to a linked .sfgz file' }, 'Linked') : null,
       guide.locked ? el('span.badge', { title: 'Open on another device' }, 'Locked') : null,
+      reviewState?.overdue ? el('span.badge.review-badge', { title: reviewBadgeTitle(reviewState) }, 'May need review') : null,
       el('span.card-updated', { title: fmtDate(guide.updatedAt) }, timeAgo(guide.updatedAt))));
   }
 
@@ -813,6 +823,7 @@ class StepForgeApp {
       { label: 'Open guide', action: () => this.openGuideAndArmCapture(guide.guideId) },
       { label: 'Rename guide…', action: () => this.renameGuide(guide) },
       { label: guide.favorite ? 'Unfavorite' : 'Favorite', action: () => this.toggleFavorite(guide) },
+      { label: 'Mark as verified', action: () => this.markVerified([guide.guideId]) },
       { label: 'Duplicate guide', action: () => this.duplicateGuide(guide.guideId) },
       { label: 'Export', action: () => this.openGuideExport(guide.guideId) },
       { label: 'Publish to the web…', action: () => this.publishToWeb(guide.guideId, guide.title) },
@@ -931,6 +942,7 @@ class StepForgeApp {
     this.domBulkBar.append(bar(n, guides.length, allSelected, () => (allSelected ? this.clearSelection() : this.selectAllGuides()), [
       el('button', { type: 'button', disabled: !n, onClick: () => this.bulkSetFavorite(!allFavorite) }, allFavorite ? 'Unfavorite' : 'Favorite'),
       el('button', { type: 'button', disabled: !n, onClick: (e) => this.openBulkMoveMenu(e) }, 'Move to ▾'),
+      el('button', { type: 'button', disabled: !n, title: 'Record that these guides still match the software today', onClick: () => this.markVerified([...this.state.selectedGuides]) }, 'Mark as verified'),
       el('button.danger', { type: 'button', disabled: !n, onClick: () => this.bulkDelete() }, 'Delete'),
     ]));
   }
@@ -1016,6 +1028,13 @@ class StepForgeApp {
   async moveGuideToFolder(guideId, folderId) {
     await api.folders.moveGuide({ guideId, folderId });
     await this.refreshLibrary();
+  }
+
+  async markVerified(guideIds) {
+    if (!guideIds.length) return;
+    await api.library.markVerified({ guideIds });
+    await this.refreshLibrary();
+    toast(guideIds.length === 1 ? 'Marked as verified today.' : `${guideIds.length} guides marked as verified today.`);
   }
 
   async toggleFavorite(guide) {

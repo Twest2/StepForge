@@ -14,9 +14,9 @@ const { runExport } = require('../exporters');
 process.on('message', (job) => {
   let payload;
   try {
-    const { dataDir, guideId, format, options, outDir, globals, maxSteps, codeStyle } = job;
+    const { dataDir, guideId, format, options, outDir, globals, maxSteps, codeStyle, reviewDays } = job;
     const store = new GuideStore(dataDir);
-    const ast = buildRenderAst(store, guideId, { globals, maxSteps, codeStyle });
+    const ast = buildRenderAst(store, guideId, { globals, maxSteps, codeStyle, reviewDays });
     const result = runExport(format, ast, outDir, options || {});
     payload = { ok: true, result };
   } catch (err) {

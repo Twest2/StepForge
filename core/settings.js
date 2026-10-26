@@ -108,6 +108,9 @@ const DEFAULT_SETTINGS = {
     sortBy: 'updatedAt',
     // Trashed guides are deleted for good after this many days; 0 keeps them.
     trashDays: 30,
+    // Guides not saved or verified for this many days show "May need
+    // review" in the library; 0 turns it off (see core/review.js).
+    reviewAfterDays: 180,
   },
   backups: {
     automatic: true,

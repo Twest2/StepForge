@@ -9,6 +9,7 @@ const { decodePng } = require('./png');
 const { renderAnnotations, applyFocusedView } = require('./raster');
 const { orderedBlocks, blockText } = require('./blocks');
 const { DEFAULT_CODE_STYLE } = require('./code-highlight');
+const { DEFAULT_REVIEW_DAYS, reviewStatus } = require('./review');
 
 /**
  * The Render AST is the single normalized document model every exporter
@@ -30,7 +31,7 @@ function screenshotAltText(number, title) {
   return clean ? `Screenshot for step ${number}: ${clean}` : `Screenshot for step ${number}`;
 }
 
-function buildRenderAst(store, guideId, { globals = {}, now = new Date(), maxSteps = 0, codeStyle = DEFAULT_CODE_STYLE } = {}) {
+function buildRenderAst(store, guideId, { globals = {}, now = new Date(), maxSteps = 0, codeStyle = DEFAULT_CODE_STYLE, reviewDays = DEFAULT_REVIEW_DAYS } = {}) {
   const guide = store.getGuide(guideId);
   const stepsMap = store.listSteps(guideId);
 
@@ -147,6 +148,11 @@ function buildRenderAst(store, guideId, { globals = {}, now = new Date(), maxSte
         author: expand(guide.metadata?.author || ''),
         coAuthors: expand(guide.metadata?.coAuthors || ''),
         organization: expand(guide.metadata?.organization || ''),
+        lastVerified: guide.metadata?.lastVerified || '',
+        softwareVersion: expand(guide.metadata?.softwareVersion || ''),
+        // Only for guides someone has verified, so other exports don't pick
+        // up a review date nobody chose.
+        reviewAgainOn: guide.metadata?.lastVerified ? reviewStatus(guide, reviewDays, now.getTime())?.dueDate || '' : '',
       },
     },
     steps: limited,

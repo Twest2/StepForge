@@ -187,6 +187,11 @@ function exportCodeStyle() {
   return resolveCodeStyle(settings.get('exports.codeTheme'));
 }
 
+/** The default review interval, for "Review again on" in exports. */
+function exportReviewDays() {
+  return settings.get('library.reviewAfterDays');
+}
+
 function dispatchZoomShortcut(kind) {
   sendToRenderer('editor:zoom-shortcut', kind);
 }
@@ -779,6 +784,10 @@ function setupIpc() {
   }, { validate: (a) => c.id(a.guideId) });
   h('library:setFavorite', ({ guideId, favorite }) => store.setFavorite(guideId, favorite),
     { validate: (a) => c.id(a.guideId) });
+  h('library:markVerified', ({ guideIds }) => {
+    for (const guideId of guideIds) store.markVerified(guideId);
+    return true;
+  }, { validate: (a) => Array.isArray(a.guideIds) && a.guideIds.length > 0 && a.guideIds.length <= 10000 && a.guideIds.every((id) => c.id(id)) });
   h('library:trash:list', () => store.listTrash());
   h('library:trash:items', () => store.listTrashItems());
   h('library:trash:restore', ({ name }) => {
@@ -1153,7 +1162,7 @@ function setupIpc() {
       await redactor.checkGuide(guideId, { onProgress: ({ done, total }) => progress({ stage: 'check', done, total }) });
       progress({ stage: 'export' });
       const result = await runExportInWorker({ dataDir: store.root, guideId, format: 'confluence',
-        options: { apiFiles: true, includeImages: true, toc: true }, outDir, globals: settings.getGlobalPlaceholders(), codeStyle: exportCodeStyle() });
+        options: { apiFiles: true, includeImages: true, toc: true }, outDir, globals: settings.getGlobalPlaceholders(), codeStyle: exportCodeStyle(), reviewDays: exportReviewDays() });
       return await confluence.publish({ guideId, space, parent, parentPicked, replace, onProgress: progress,
         page: pageFromExport(path.dirname(result.apiPage)) });
     } finally {
@@ -1192,7 +1201,7 @@ function setupIpc() {
       progress({ stage: 'export' });
       const assetFolder = `/${target}`;
       const result = await runExportInWorker({ dataDir: store.root, guideId, format: 'wikijs',
-        options: { includeImages: true, toc: false, frontMatter: false, assetFolder }, outDir, globals: settings.getGlobalPlaceholders() });
+        options: { includeImages: true, toc: false, frontMatter: false, assetFolder }, outDir, globals: settings.getGlobalPlaceholders(), reviewDays: exportReviewDays() });
       const description = htmlToText(store.getGuide(guideId).descriptionHtml || '').replace(/\s+/g, ' ').trim();
       return await wikijs.publish({ guideId, path: target, title, locale: language, description, replace, onProgress: progress,
         page: wikiPageFromExport(result.file, assetFolder) });
@@ -1235,7 +1244,7 @@ function setupIpc() {
         options,
         outDir,
         globals: settings.getGlobalPlaceholders(),
-        codeStyle: exportCodeStyle(),
+        codeStyle: exportCodeStyle(), reviewDays: exportReviewDays(),
       });
       const html = fs.readFileSync(result.file, 'utf8');
       // The exported title has placeholders filled in, matching the page.
@@ -1547,7 +1556,7 @@ function setupIpc() {
       options: options || {},
       outDir: dir,
       globals: settings.getGlobalPlaceholders(),
-      codeStyle: exportCodeStyle(),
+      codeStyle: exportCodeStyle(), reviewDays: exportReviewDays(),
     });
     producedFiles.add(result.file);
     if (settings.get('exports.openFolderAfterExport')) shell.showItemInFolder(result.file);
@@ -1579,7 +1588,7 @@ function setupIpc() {
     const ast = buildRenderAst(store, guideId, {
       globals: settings.getGlobalPlaceholders(),
       maxSteps: settings.get('exports.previewStepCount') || 3,
-      codeStyle: exportCodeStyle(),
+      codeStyle: exportCodeStyle(), reviewDays: exportReviewDays(),
     });
     const result = runExport(format, ast, previewDir, options || {});
     // Folder-style exports (image bundle, Confluence) preview as their folder.

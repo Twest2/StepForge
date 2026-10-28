@@ -27,6 +27,8 @@ const BRAND_PREVIEW_FORMATS = [
   { value: 'image-bundle', label: 'Image bundle' },
 ];
 
+const BRAND_CSS_GUIDE_URL = 'https://github.com/Twest2/StepForge/blob/main/docs/BRANDING.md#advanced-css';
+
 // What a profile changes in each export (the issue's support table).
 const BRAND_SUPPORT = [
   ['HTML (simple and rich)', 'Logo, banner, colors, fonts (uploaded fonts are embedded), cover style, footer text and your CSS.'],
@@ -209,7 +211,8 @@ function makeBrandingSettings(api, { activeProfileId = '' } = {}) {
           el('div.setting-desc', {}, 'Exports a short sample guide with this profile and opens it.')),
         el('div.row', {}, previewFormat, previewBtn)),
       status),
-    settingsCard('Where branding appears',
+    settingsCard(null,
+      el('h4.brand-card-heading', {}, 'Where branding appears'),
       el('dl.brand-support', {}, ...BRAND_SUPPORT.flatMap(([format, what]) => [el('dt', {}, format), el('dd', {}, what)])),
       el('p.setting-desc', {}, 'The Export dialog can pick a different profile, or none, for one export.')));
   void refresh();
@@ -460,7 +463,8 @@ function showBrandProfileEditor(api, data = null) {
         settingRow('Position', null, position),
         settingRow('Opacity', null, el('div.row.settings-range', {}, opacity, opacityLabel))),
       settingsCard('Advanced CSS',
-        el('p.setting-desc', {}, 'Used for HTML and GitHub Pages outputs only. Added after StepForge’s styles, so it wins. var(--brand-primary), var(--brand-accent) and var(--brand-text) hold your colors.'),
+        el('p.setting-desc', {}, 'Used for HTML and GitHub Pages outputs only. Added after StepForge’s styles, so it wins. var(--brand-primary), var(--brand-accent) and var(--brand-text) hold your colors. ',
+          el('a', { href: BRAND_CSS_GUIDE_URL, onClick: (e) => { e.preventDefault(); void api.shell.openExternal({ url: BRAND_CSS_GUIDE_URL }).catch(() => {}); } }, 'What you can style'), '.'),
         css,
         el('div.settings-actions', {}, loadCss)),
       status);

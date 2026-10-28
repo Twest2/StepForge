@@ -1134,6 +1134,9 @@ fieldset legend {
 .export-options .setting-control textarea { width: 260px; font-family: ui-monospace, monospace; font-size: 12px; }
 .export-format { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
 .export-format-desc { font-size: 12px; line-height: 1.4; }
+.export-publish-instead { display: flex; align-items: center; gap: 10px; line-height: 1.4; }
+.export-publish-instead[hidden] { display: none; }
+.export-publish-instead button { flex: none; }
 .placeholder-row { display: flex; gap: 8px; margin-bottom: 6px; }
 .placeholder-row input { flex: 1; }
 .card-list { display: flex; flex-direction: column; gap: 8px; }

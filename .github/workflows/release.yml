@@ -16,17 +16,29 @@ on:
         default: false
         type: boolean
 
-# Needed for the release job to create the tag and the GitHub Release.
+# Builds only need read access. Only the publishing job can create a release.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
+  authorize-release:
+    name: Verify release owner
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Only the repository owner can start or rerun releases
+        run: node scripts/check-release-access.js
+
   build-windows:
+    needs: authorize-release
     name: Build Windows installer
     runs-on: windows-latest
 
     steps:
       - uses: actions/checkout@v4
+      # Recheck on every job: rerunning failed jobs can reuse an earlier authorization.
+      - name: Verify release owner
+        run: node scripts/check-release-access.js
 
       - uses: actions/setup-node@v4
         with:
@@ -87,11 +99,15 @@ jobs:
 
 
   build-linux:
+    needs: authorize-release
     name: Build Ubuntu GNOME package
     runs-on: ubuntu-24.04
 
     steps:
       - uses: actions/checkout@v4
+      # Recheck on every job: rerunning failed jobs can reuse an earlier authorization.
+      - name: Verify release owner
+        run: node scripts/check-release-access.js
 
       - uses: actions/setup-node@v4
         with:
@@ -138,6 +154,7 @@ jobs:
 
 
   build-fedora:
+    needs: authorize-release
     name: Build Fedora 44 GNOME RPM
     runs-on: ubuntu-24.04
     container: fedora:44
@@ -155,6 +172,10 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
+
+      # Recheck on every job: rerunning failed jobs can reuse an earlier authorization.
+      - name: Verify release owner
+        run: node scripts/check-release-access.js
 
       - run: bash scripts/linux/dnf/install-build-deps.sh
 
@@ -200,6 +221,8 @@ jobs:
 
 
   release:
+    permissions:
+      contents: write
     name: Publish GitHub Release
     needs:
       - build-windows
@@ -210,6 +233,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+      # Recheck on every job: rerunning failed jobs can reuse an earlier authorization.
+      - name: Verify release owner
+        run: node scripts/check-release-access.js
 
       - name: Download build artifacts
         uses: actions/download-artifact@v4
@@ -493,6 +519,10 @@ jobs:
     runs-on: ubuntu-24.04
 
     steps:
+      - uses: actions/checkout@v4
+      # Recheck on every job: rerunning failed jobs can reuse an earlier authorization.
+      - name: Verify release owner
+        run: node scripts/check-release-access.js
       - uses: actions/download-artifact@v4
         with:
           name: linux-ubuntu
@@ -558,6 +588,10 @@ jobs:
     runs-on: ubuntu-24.04
 
     steps:
+      - uses: actions/checkout@v4
+      # Recheck on every job: rerunning failed jobs can reuse an earlier authorization.
+      - name: Verify release owner
+        run: node scripts/check-release-access.js
       - uses: actions/download-artifact@v4
         with:
           name: linux-fedora
@@ -612,6 +646,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+      # Recheck on every job: rerunning failed jobs can reuse an earlier authorization.
+      - name: Verify release owner
+        run: node scripts/check-release-access.js
 
       - uses: actions/download-artifact@v4
         with:

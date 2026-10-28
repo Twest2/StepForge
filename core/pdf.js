@@ -3,20 +3,33 @@
 const zlib = require('node:zlib');
 
 /**
- * Minimal PDF 1.4 writer: pages, Helvetica and Courier text (regular, bold,
- * oblique), rects/lines, deflated content streams, RGB images as XObjects,
- * and a simple outline (bookmarks). Coordinates passed in are top-left based in
- * points; converted to PDF's bottom-left space internally.
+ * Minimal PDF 1.4 writer: pages, Helvetica, Times and Courier text (regular,
+ * bold, italic), rects/lines, deflated content streams, RGB images (with an
+ * alpha soft mask when they have transparency) as XObjects, and a simple
+ * outline (bookmarks). Coordinates passed in are top-left based in points;
+ * converted to PDF's bottom-left space internally.
  */
 
 const FONTS = {
   F1: 'Helvetica', F2: 'Helvetica-Bold', F3: 'Courier', F4: 'Helvetica-Oblique', F5: 'Helvetica-BoldOblique',
   // Code-block styles: syntax themes set comments in italic and some tokens in bold.
   F6: 'Courier-Bold', F7: 'Courier-Oblique', F8: 'Courier-BoldOblique',
+  // For brand profiles whose fonts are serif.
+  F9: 'Times-Roman', F10: 'Times-Bold', F11: 'Times-Italic', F12: 'Times-BoldItalic',
 };
 // Approximate average glyph width factors (per 1pt font size) for wrapping.
 // Courier is monospaced: every glyph is exactly 0.6em in every style.
-const FONT_WIDTH_FACTOR = { F1: 0.51, F2: 0.55, F3: 0.6, F4: 0.51, F5: 0.55, F6: 0.6, F7: 0.6, F8: 0.6 };
+const FONT_WIDTH_FACTOR = {
+  F1: 0.51, F2: 0.55, F3: 0.6, F4: 0.51, F5: 0.55, F6: 0.6, F7: 0.6, F8: 0.6,
+  F9: 0.46, F10: 0.5, F11: 0.45, F12: 0.49,
+};
+
+/** Font resources per family and style, for text that follows a brand font. */
+const FONT_FAMILIES = {
+  sans: { regular: 'F1', bold: 'F2', italic: 'F4', boldItalic: 'F5' },
+  serif: { regular: 'F9', bold: 'F10', italic: 'F11', boldItalic: 'F12' },
+  mono: { regular: 'F3', bold: 'F6', italic: 'F7', boldItalic: 'F8' },
+};
 
 function esc(text) {
   return String(text).replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
@@ -83,6 +96,7 @@ class PdfBuilder {
     this.imageCache = new Map();
     this.bookmarks = []; // { title, pageIndex, y }
     this.links = []; // { pageIndex, x, yTop, w, h, target }
+    this.targetPage = null; // set by onPage()
   }
 
   addPage() {
@@ -92,7 +106,13 @@ class PdfBuilder {
 
   get currentPage() {
     if (!this.pages.length) this.addPage();
-    return this.pages[this.pages.length - 1];
+    return this.pages[this.targetPage ?? this.pages.length - 1];
+  }
+
+  /** Draw on an earlier page (headers and footers once every page exists). */
+  onPage(index, draw) {
+    this.targetPage = index;
+    try { draw(); } finally { this.targetPage = null; }
   }
 
   textWidth(text, size, font = 'F1') {
@@ -171,18 +191,25 @@ class PdfBuilder {
     );
   }
 
-  /** Draw an RGBA raster image; alpha is dropped (composited upstream). */
+  /**
+   * Draw an RGBA raster image. Screenshots are opaque; an image with
+   * transparency (a logo) keeps it through a soft mask.
+   */
   image(img, x, yTop, w, h) {
     let name = this.imageCache.get(img);
     if (!name) {
       name = `Im${this.images.length + 1}`;
-      const rgb = Buffer.alloc(img.width * img.height * 3);
-      for (let i = 0, n = img.width * img.height; i < n; i++) {
+      const n = img.width * img.height;
+      const rgb = Buffer.alloc(n * 3);
+      let alpha = null;
+      for (let i = 0; i < n; i++) {
         rgb[i * 3] = img.data[i * 4];
         rgb[i * 3 + 1] = img.data[i * 4 + 1];
         rgb[i * 3 + 2] = img.data[i * 4 + 2];
+        if (img.data[i * 4 + 3] !== 255 && !alpha) alpha = Buffer.alloc(n, 255);
+        if (alpha) alpha[i] = img.data[i * 4 + 3];
       }
-      this.images.push({ name, width: img.width, height: img.height, data: zlib.deflateSync(rgb) });
+      this.images.push({ name, width: img.width, height: img.height, data: zlib.deflateSync(rgb), smask: alpha ? zlib.deflateSync(alpha) : null });
       this.imageCache.set(img, name);
     }
     const y = this.pageHeight - yTop - h;
@@ -221,9 +248,14 @@ class PdfBuilder {
     }
     const imageIds = {};
     for (const img of this.images) {
+      const smaskId = img.smask ? addObj({
+        dict: `<< /Type /XObject /Subtype /Image /Width ${img.width} /Height ${img.height} ` +
+          `/ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode /Length ${img.smask.length} >>`,
+        stream: img.smask,
+      }) : 0;
       imageIds[img.name] = addObj({
         dict: `<< /Type /XObject /Subtype /Image /Width ${img.width} /Height ${img.height} ` +
-          `/ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode /Length ${img.data.length} >>`,
+          `/ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode${smaskId ? ` /SMask ${smaskId} 0 R` : ''} /Length ${img.data.length} >>`,
         stream: img.data,
       });
     }
@@ -327,4 +359,4 @@ class PdfBuilder {
   }
 }
 
-module.exports = { PdfBuilder, FONTS };
+module.exports = { PdfBuilder, FONTS, FONT_FAMILIES };

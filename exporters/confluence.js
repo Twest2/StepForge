@@ -7,6 +7,7 @@ const { encodePng } = require('../core/png');
 const { guideSlug, renderAllImages, stepContentGroups, codeBlockText } = require('./common');
 const { anchorFor, guideMetaLines } = require('./document-layout');
 const { buildConfluenceWord } = require('./confluence-word');
+const { scaledPng } = require('./branding');
 
 /**
  * Confluence export. Writes a folder containing:
@@ -289,7 +290,7 @@ function writeApiFiles(ast, dir, images, tpl) {
   fs.mkdirSync(dir, { recursive: true });
   // Clear screenshots from an earlier export so renamed steps don't linger.
   if (fs.existsSync(attachmentDir)) {
-    for (const f of fs.readdirSync(attachmentDir)) if (/^\d{3}-.*\.png$/.test(f)) fs.rmSync(path.join(attachmentDir, f));
+    for (const f of fs.readdirSync(attachmentDir)) if (/^(\d{3}-.*|brand-(logo|banner))\.png$/.test(f)) fs.rmSync(path.join(attachmentDir, f));
   }
   const attachmentNames = new Map();
   let n = 0;
@@ -303,13 +304,27 @@ function writeApiFiles(ast, dir, images, tpl) {
     attachmentNames.set(step.stepId, fileName);
   }
 
+  // The brand's banner and logo, attached like the screenshots.
+  const brand = ast.branding;
+  const align = brand?.cover === 'centered' ? ' ac:align="center"' : '';
+  const brandImage = (asset, name, maxW, maxH, attrs) => {
+    const png = asset ? scaledPng(asset, maxW, maxH) : null;
+    if (!png) return '';
+    fs.mkdirSync(attachmentDir, { recursive: true });
+    fs.writeFileSync(path.join(attachmentDir, name), png.data);
+    return `<p><ac:image${align}${attrs(png)}><ri:attachment ri:filename="${name}" /></ac:image></p>`;
+  };
   const count = ast.steps.length;
   const intro = [
+    brandImage(brand?.banner, 'brand-banner.png', 1600, 480, () => ` ac:width="${Math.max(100, Math.round(Number(tpl.imageWidth) || DEFAULT_TEMPLATE.imageWidth))}" ac:alt="Banner"`),
+    brandImage(brand?.logo, 'brand-logo.png', 480, 96, (png) => ` ac:height="${Math.min(48, png.height)}" ac:alt="Logo"`),
+    brand?.header.text ? `<p><em>${escapeXml(brand.header.text)}</em></p>` : '',
     ast.guide.descriptionHtml ? toStorage(ast.guide.descriptionHtml, ast) : '',
     `<p><em>${escapeXml([`${count} step${count === 1 ? '' : 's'}`, ...guideMetaLines(ast)].join(' · '))}</em></p>`,
     tpl.toc && count > 1 ? macro('toc', { maxLevel: '3', style: 'none' }) : '',
   ].filter(Boolean);
-  const body = [...intro, ...ast.steps.map((step) => renderStep(step, ast, attachmentNames, tpl))].join('\n');
+  const outro = brand?.footer.text ? [`<p><em>${escapeXml(brand.footer.text)}</em></p>`] : [];
+  const body = [...intro, ...ast.steps.map((step) => renderStep(step, ast, attachmentNames, tpl)), ...outro].join('\n');
 
   fs.writeFileSync(path.join(dir, 'page.xhtml'), `${body}\n`);
   const title = ast.guide.title || 'Untitled guide';

@@ -1129,6 +1129,7 @@ module.exports = {
   normalizeOllamaHost,
   isLoopbackHost,
   validateOllamaHost,
+  parseAiJson,
   normalizeAiPatch,
   normalizeGuidePatch,
   buildAiPrompt,

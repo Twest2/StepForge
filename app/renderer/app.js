@@ -128,6 +128,20 @@ class StepForgeApp {
     api.capture.onStepUpdated((payload) => this.onStepUpdated(payload));
     if (api.capture.onDiagnostic) api.capture.onDiagnostic((payload) => this.onCaptureDiagnostic(payload));
     api.guide.onChangedByAgent((payload) => this.onGuideChangedByAgent(payload));
+    api.branding.onChangedByAgent(() => this.onBrandingChangedByAgent());
+  }
+
+  /**
+   * An AI agent changed brand profiles: pick up the active profile (its
+   * annotation colors), and draw the PNG copies new SVG or JPG images need.
+   */
+  async onBrandingChangedByAgent() {
+    try {
+      this.state.settings = await api.settings.all();
+      this.editor.setSettings(this.state.settings);
+    } catch { /* the next refresh picks it up */ }
+    toast('An AI agent updated your brand profiles.');
+    await ensurePendingBrandRasters(api);
   }
 
   /** An AI agent rewrote a guide's text: show it without losing the user's unsaved edits. */
@@ -172,6 +186,8 @@ class StepForgeApp {
     } catch (err) {
       console.error(err);
     }
+    // Images an agent added while StepForge was closed.
+    void ensurePendingBrandRasters(api);
   }
 
   async refreshData() {
@@ -1183,6 +1199,7 @@ class StepForgeApp {
         await api.settings.set({ keyPath: 'ai', value: next.ai });
         await api.settings.set({ keyPath: 'redaction', value: next.redaction });
         await api.settings.set({ keyPath: 'exports', value: next.exports });
+        await api.settings.set({ keyPath: 'branding', value: next.branding });
         await api.settings.set({ keyPath: 'backups', value: next.backups });
         await api.settings.set({ keyPath: 'library', value: next.library });
         await api.settings.setGlobalPlaceholders(next.placeholders || {});

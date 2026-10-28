@@ -114,6 +114,27 @@ labels, GIF captions) is anti-aliased from the glyph atlases in `core/fonts/`
 (per-format settings persisted under `settings/templates/`, shareable as
 `.sfglt` zip files).
 
+Brand profiles (`core/branding.js`, under `settings/branding/`, shareable as
+`.sfbrand` zip files) hold a logo, banner, colors, fonts, cover style,
+header/footer text, watermark and HTML CSS. The main process resolves the
+active one (or the one the Export dialog picked) to file paths, and
+`core/renderast.js` loads it onto the AST as `ast.branding`; exporters use the
+helpers in `exporters/branding.js` and render exactly as before when it is
+null. Uploaded images are sniffed by content and SVGs rebuilt from an
+allowlist (`core/svg-sanitize.js`); the renderer draws SVG and JPG images to a
+PNG once at upload, since the export worker has no image decoders beyond PNG.
+Option precedence is exporter defaults, then the brand, then the template or
+Export dialog choice. In the profile editor, **Pick from logo** runs
+`core/brand-palette.js` on a small canvas drawing of the logo, and **Write
+with AI** asks Ollama for CSS (`core/ai-brand-css.js`, which also strips
+`@import` and remote `url()`s); it's shown only when `ai:status` reports AI on
+and the model installed. AI agents reach profiles through
+`core/agent-brand-tools.js`, behind `ai.agents.branding`. The `--mcp` process
+records each change in `agent-changes.json`; the running app saves an agent's
+choice of active profile itself (it holds Settings in memory) and has the
+renderer draw PNG copies of SVG or JPG images agents added
+(`branding:pendingRasters`).
+
 ## Shell / Core Boundary
 
 The renderer never touches the filesystem. `app/preload.js` exposes a typed

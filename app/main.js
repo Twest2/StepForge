@@ -30,6 +30,9 @@ const { createCredentialVault } = require('./credential-vault');
 const { SearchIndex } = require('../core/search');
 const { findMatches, applyReplacements, isMatchArg } = require('../core/find-replace');
 const { TemplateManager, FORMATS, FORMAT_LABELS } = require('../core/templates');
+const { BrandingStore, brandTemplateDefaults, checkFileSize, cssFromFile, MAX_CSS_CHARS } = require('../core/branding');
+const { MAX_REQUEST_CHARS: MAX_BRAND_CSS_REQUEST_CHARS } = require('../core/ai-brand-css');
+const { buildSampleAst } = require('../core/branding-sample');
 const { buildRenderAst } = require('../core/renderast');
 const { qualityFindings } = require('../core/quality');
 const { stepNumberMap } = require('../core/step-outline');
@@ -90,6 +93,7 @@ let libraryLocation;
 let settings;
 let searchIndex;
 let templates;
+let branding;
 let capture;
 let textIntel;
 // Finds and blurs private details in screenshots (app/redaction.js).
@@ -189,6 +193,22 @@ function applyTheme() {
 /** Code block colors for an export, from Settings → Exports. */
 function exportCodeStyle() {
   return resolveCodeStyle(settings.get('exports.codeTheme'));
+}
+
+/**
+ * The brand profile for an export, resolved for the export worker: the one
+ * the Export dialog picked ('' is no branding), else Settings → Branding's.
+ */
+function exportBranding(profileId) {
+  const id = profileId === undefined || profileId === null ? settings.get('branding.activeProfileId') : profileId;
+  return id ? branding.resolve(id) : null;
+}
+
+/** The active brand profile's own annotation colors, or null when it keeps StepForge's. */
+function activeAnnotationColors() {
+  const id = settings.get('branding.activeProfileId');
+  const annotations = id ? branding.get(id)?.annotations : null;
+  return annotations?.custom ? annotations : null;
 }
 
 /** The default review interval, for "Review again on" in exports. */
@@ -650,9 +670,9 @@ async function clipboardImage() {
   return nativeImage.createEmpty();
 }
 
-// AI agents write guides from a separate `StepForge --mcp` process. Poll the
-// small file it updates after each write: reindex each changed guide and tell
-// the window, which reloads the guide if it's open.
+// AI agents write guides and brand profiles from a separate `StepForge --mcp`
+// process. Poll the small file it updates after each write: reindex each
+// changed guide and tell the window, which reloads the guide if it's open.
 function watchAgentChanges() {
   let seenStamp = agentChangesStamp(store.libraryDir);
   let seenAt = Date.now();
@@ -671,6 +691,13 @@ function watchAgentChanges() {
       if (!store.guideExists(guideId)) continue;
       reindex(guideId);
       sendToRenderer('guide:changed-by-agent', { guideId });
+    }
+    if (changed.branding) {
+      // The agent saved its choice too, but this process holds Settings in
+      // memory and would write the old one back on its next save.
+      const id = changed.activeProfileId;
+      if (id !== undefined && (id === '' || branding.get(id))) settings.set('branding.activeProfileId', id);
+      sendToRenderer('branding:changed-by-agent', {});
     }
   }, 1500).unref();
 }
@@ -718,6 +745,9 @@ function setupIpc() {
     getMainWebContents: () => (mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents : null),
   });
   const c = security.check;
+  // A brand profile id; for exports also '' (no branding) or absent (Settings → Branding's).
+  const validBrandId = (v) => typeof v === 'string' && /^brand-[A-Za-z0-9-]{1,64}$/.test(v);
+  const validBrandChoice = (v) => v === undefined || v === '' || validBrandId(v);
 
   // The renderer reports whether the step editor (with a guide open) is the
   // visible screen, so Ctrl+=/Ctrl+-/Ctrl+0 can pick canvas zoom vs UI zoom.
@@ -1170,7 +1200,8 @@ function setupIpc() {
       await redactor.checkGuide(guideId, { onProgress: ({ done, total }) => progress({ stage: 'check', done, total }) });
       progress({ stage: 'export' });
       const result = await runExportInWorker({ dataDir: store.root, guideId, format: 'confluence',
-        options: { apiFiles: true, includeImages: true, toc: true }, outDir, globals: settings.getGlobalPlaceholders(), codeStyle: exportCodeStyle(), reviewDays: exportReviewDays() });
+        options: { apiFiles: true, includeImages: true, toc: true }, outDir, globals: settings.getGlobalPlaceholders(), codeStyle: exportCodeStyle(), reviewDays: exportReviewDays(),
+        branding: exportBranding() });
       return await confluence.publish({ guideId, space, parent, parentPicked, replace, onProgress: progress,
         page: pageFromExport(path.dirname(result.apiPage)) });
     } finally {
@@ -1209,7 +1240,8 @@ function setupIpc() {
       progress({ stage: 'export' });
       const assetFolder = `/${target}`;
       const result = await runExportInWorker({ dataDir: store.root, guideId, format: 'wikijs',
-        options: { includeImages: true, toc: false, frontMatter: false, assetFolder }, outDir, globals: settings.getGlobalPlaceholders(), reviewDays: exportReviewDays() });
+        options: { includeImages: true, toc: false, frontMatter: false, assetFolder }, outDir, globals: settings.getGlobalPlaceholders(), reviewDays: exportReviewDays(),
+        branding: exportBranding() });
       const description = htmlToText(store.getGuide(guideId).descriptionHtml || '').replace(/\s+/g, ' ').trim();
       return await wikijs.publish({ guideId, path: target, title, locale: language, description, replace, onProgress: progress,
         page: wikiPageFromExport(result.file, assetFolder) });
@@ -1230,7 +1262,7 @@ function setupIpc() {
   h('redact:hideText', ({ guideId, stepId }) => { redactor.hideText({ guideId, stepId }); reindex(guideId); return redactor.review(guideId); },
     { validate: (a) => c.id(a.guideId) && c.id(a.stepId) });
 
-  h('github:publish', async ({ guideId, days, format = 'html-rich', options = {} }) => {
+  h('github:publish', async ({ guideId, days, format = 'html-rich', options = {}, brandProfileId }) => {
     const guide = store.getGuide(guideId);
     if (!guide) throw new Error('Guide not found.');
     const progress = (update) => sendToRenderer('github:progress', { task: 'publish', guideId, ...update });
@@ -1253,6 +1285,7 @@ function setupIpc() {
         outDir,
         globals: settings.getGlobalPlaceholders(),
         codeStyle: exportCodeStyle(), reviewDays: exportReviewDays(),
+        branding: exportBranding(brandProfileId),
       });
       const html = fs.readFileSync(result.file, 'utf8');
       // The exported title has placeholders filled in, matching the page.
@@ -1271,7 +1304,7 @@ function setupIpc() {
   }, {
     validate: (a) => c.id(a.guideId) && c.oneOf(a.days, EXPIRY_DAYS)
       && (a.format === undefined || c.oneOf(a.format, ['html-rich', 'html-simple']))
-      && (a.options === undefined || security.isPlainArgs(a.options)),
+      && (a.options === undefined || security.isPlainArgs(a.options)) && validBrandChoice(a.brandProfileId),
   });
   h('github:unpublish', ({ slug }) => githubPages.unpublish({ slug }),
     { validate: (a) => c.string(a.slug, 40) });
@@ -1334,6 +1367,15 @@ function setupIpc() {
     if (result.ok) reindex(guideId);
     return result;
   }, { validate: (a) => c.id(a.guideId) });
+  // Whether to offer AI in Settings → Branding: AI is on and Ollama has the model.
+  h('ai:status', () => textIntel.aiStatus());
+  // Settings → Branding → Advanced CSS → Write with AI. Nothing is saved: the
+  // editor shows the CSS for the user to add or discard.
+  h('ai:brandCss', ({ request, css = '', profile = {} }) => textIntel.generateBrandCss({ request, css, profile }), {
+    validate: (a) => c.string(a.request, MAX_BRAND_CSS_REQUEST_CHARS) && a.request.trim() !== ''
+      && (a.css === undefined || c.string(a.css, MAX_CSS_CHARS))
+      && (a.profile === undefined || security.isPlainArgs(a.profile)),
+  });
   h('agents:setup', () => agentSetupTexts());
   h('agents:copy', async ({ kind }) => {
     await clipboard.writeText(agentSetupTexts()[kind]);
@@ -1542,9 +1584,10 @@ function setupIpc() {
     options: FORMAT_INFO[format]?.options || {},
     badge: FORMAT_INFO[format]?.badge || '',
   })));
-  h('export:defaults', ({ format }) => {
+  h('export:defaults', ({ format, brandProfileId }) => {
     // Exporter modules expose DEFAULT_TEMPLATE; the dialog renders editable
     // options from it (booleans -> checkbox, numbers -> number, strings -> text).
+    // The brand profile's colors replace the exporter's own.
     const mod = {
       json: '../exporters/json',
       markdown: '../exporters/markdown',
@@ -1559,9 +1602,9 @@ function setupIpc() {
       pptx: '../exporters/pptx',
     }[format];
     if (!mod) return {};
-    return { ...require(mod).DEFAULT_TEMPLATE };
-  }, { validate: (a) => c.string(a.format, 40) });
-  h('export:run', async ({ guideId, format, options, outDir }) => {
+    return { ...require(mod).DEFAULT_TEMPLATE, ...brandTemplateDefaults(format, exportBranding(brandProfileId)?.profile) };
+  }, { validate: (a) => c.string(a.format, 40) && validBrandChoice(a.brandProfileId) });
+  h('export:run', async ({ guideId, format, options, outDir, brandProfileId }) => {
     // The renderer may only nominate directories that came from this main
     // process: a dialog pick from this session or a remembered last-output
     // directory. Anything else is ignored and re-asked via the dialog.
@@ -1588,6 +1631,7 @@ function setupIpc() {
       outDir: dir,
       globals: settings.getGlobalPlaceholders(),
       codeStyle: exportCodeStyle(), reviewDays: exportReviewDays(),
+      branding: exportBranding(brandProfileId),
     });
     producedFiles.add(result.file);
     if (settings.get('exports.openFolderAfterExport')) shell.showItemInFolder(result.file);
@@ -1595,7 +1639,7 @@ function setupIpc() {
   }, {
     validate: (a) => c.id(a.guideId) && validFormat(a.format)
       && (a.options === undefined || security.isPlainArgs(a.options))
-      && c.optionalString(a.outDir, 1000),
+      && c.optionalString(a.outDir, 1000) && validBrandChoice(a.brandProfileId),
   });
   h('export:chooseImage', async () => {
     const res = await dialog.showOpenDialog(mainWindow, {
@@ -1613,13 +1657,14 @@ function setupIpc() {
     settings.set(`exports.lastOutputDirs.${format}`, res.filePaths[0]);
     return res.filePaths[0];
   }, { validate: (a) => validFormat(a.format) });
-  h('export:preview', ({ guideId, format, options }) => {
+  h('export:preview', ({ guideId, format, options, brandProfileId }) => {
     const previewDir = path.join(store.tempDir, `preview-${guideId}-${format}`);
     fs.rmSync(previewDir, { recursive: true, force: true });
     const ast = buildRenderAst(store, guideId, {
       globals: settings.getGlobalPlaceholders(),
       maxSteps: settings.get('exports.previewStepCount') || 3,
       codeStyle: exportCodeStyle(), reviewDays: exportReviewDays(),
+      branding: exportBranding(brandProfileId),
     });
     const result = runExport(format, ast, previewDir, options || {});
     // Folder-style exports (image bundle, Confluence) preview as their folder.
@@ -1628,8 +1673,89 @@ function setupIpc() {
     return { ok: true, file: target, fileUrl: pathToFileURL(target).href };
   }, {
     validate: (a) => c.id(a.guideId) && validFormat(a.format)
-      && (a.options === undefined || security.isPlainArgs(a.options)),
+      && (a.options === undefined || security.isPlainArgs(a.options)) && validBrandChoice(a.brandProfileId),
   });
+
+  // Brand profiles (core/branding.js; Settings → Branding). Files come in
+  // only through dialogs opened here; the renderer gets descriptions, and
+  // image data: URLs to show (and to draw SVG and JPG images as PNG).
+  const brandProfile = (id) => {
+    const profile = branding.get(id);
+    if (!profile) return null;
+    const assets = {};
+    for (const asset of [profile.logo, profile.banner, profile.fonts.heading.asset, profile.fonts.body.asset]) {
+      if (asset && !assets[asset]) assets[asset] = branding.describe(asset);
+    }
+    return { profile, assets };
+  };
+  const assetId = (v) => typeof v === 'string' && /^[a-f0-9]{32}$/.test(v);
+  const ASSET_FILTERS = {
+    image: { title: 'Choose an image', filters: [{ name: 'Images (PNG, JPG, SVG)', extensions: ['png', 'jpg', 'jpeg', 'svg'] }] },
+    font: { title: 'Choose a font file', filters: [{ name: 'Fonts (WOFF2, WOFF, TTF, OTF)', extensions: ['woff2', 'woff', 'ttf', 'otf'] }] },
+    css: { title: 'Choose a CSS file', filters: [{ name: 'CSS', extensions: ['css'] }] },
+  };
+  h('branding:list', () => branding.list());
+  h('branding:get', ({ id }) => brandProfile(id), { validate: (a) => validBrandId(a.id) });
+  h('branding:save', ({ profile }) => brandProfile(branding.save(profile).id),
+    { validate: (a) => security.isPlainArgs(a.profile) && (a.profile.id === undefined || a.profile.id === null || validBrandId(a.profile.id)) });
+  h('branding:delete', ({ id }) => {
+    branding.remove(id);
+    if (settings.get('branding.activeProfileId') === id) settings.set('branding.activeProfileId', '');
+    return branding.list();
+  }, { validate: (a) => validBrandId(a.id) });
+  h('branding:duplicate', ({ id }) => brandProfile(branding.duplicate(id).id), { validate: (a) => validBrandId(a.id) });
+  h('branding:chooseAsset', async ({ kind }) => {
+    const res = await dialog.showOpenDialog(mainWindow, { ...ASSET_FILTERS[kind], properties: ['openFile'] });
+    if (res.canceled) return null;
+    const file = res.filePaths[0];
+    // Too large is refused as soon as it's picked, before the file is read.
+    checkFileSize(kind, fs.statSync(file).size);
+    if (kind === 'css') return { css: cssFromFile(fs.readFileSync(file)) };
+    return branding.addAsset(fs.readFileSync(file), { kind, fileName: path.basename(file) });
+  }, { validate: (a) => c.oneOf(a.kind, ['image', 'font', 'css']) });
+  // Images an agent added (or an import brought) that still need a PNG drawing.
+  h('branding:pendingRasters', () => branding.pendingRasters());
+  // The renderer's PNG drawing of an SVG or JPG (exports other than HTML need PNG).
+  h('branding:setRaster', ({ id, png }) => branding.setRaster(id, Buffer.from(png, 'base64')),
+    { maxChars: 33 * 1024 * 1024, validate: (a) => assetId(a.id) && c.base64(a.png, 32 * 1024 * 1024) });
+  h('branding:export', async ({ id }) => {
+    const profile = branding.get(id);
+    if (!profile) throw new Error('That brand profile no longer exists.');
+    const res = await dialog.showSaveDialog(mainWindow, {
+      defaultPath: `${profile.name.replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'Brand profile'}.sfbrand`,
+      filters: [{ name: 'StepForge brand profile', extensions: ['sfbrand'] }],
+    });
+    if (res.canceled) return { ok: false };
+    branding.exportProfile(id, res.filePath);
+    return { ok: true };
+  }, { validate: (a) => validBrandId(a.id) });
+  h('branding:import', async () => {
+    const res = await dialog.showOpenDialog(mainWindow, {
+      filters: [{ name: 'StepForge brand profile', extensions: ['sfbrand'] }],
+      properties: ['openFile'],
+    });
+    if (res.canceled) return { ok: false };
+    return { ok: true, ...brandProfile(branding.importProfile(res.filePaths[0]).id) };
+  });
+  // Design preview: the sample guide (core/branding-sample.js) exported with a
+  // saved profile (`id`, '' for none) or the one being edited (`profile`).
+  h('branding:preview', ({ id = '', profile = null, format }) => {
+    const previewDir = path.join(store.tempDir, `preview-branding-${format}`);
+    fs.rmSync(previewDir, { recursive: true, force: true });
+    const ast = buildSampleAst({
+      dir: path.join(previewDir, 'library'),
+      branding: profile ? branding.resolveDraft(profile) : (id ? branding.resolve(id) : null),
+      codeStyle: exportCodeStyle(), reviewDays: exportReviewDays(),
+    });
+    const result = runExport(format, ast, path.join(previewDir, 'export'), {});
+    const target = result.previewFile || result.file;
+    producedFiles.add(target);
+    return { ok: true, file: target };
+  }, {
+    validate: (a) => (a.id === undefined || a.id === '' || validBrandId(a.id))
+      && (a.profile === undefined || a.profile === null || security.isPlainArgs(a.profile)) && validFormat(a.format),
+  });
+
   h('preview:cleanup', () => {
     for (const entry of fs.readdirSync(store.tempDir)) {
       if (entry.startsWith('preview-')) {
@@ -1840,6 +1966,7 @@ if (!gotLock) {
     setInterval(emptyOldTrash, TRASH_CHECK_MS);
     setTimeout(convertOldSnapshots, 60 * 1000);
     templates = new TemplateManager(store.templatesDir);
+    branding = new BrandingStore(store.settingsDir);
     textIntel = new TextIntelService({
       store,
       settings,
@@ -1926,6 +2053,7 @@ if (!gotLock) {
       notify: captureNotify,
       textIntel,
       powerPolicy: capturePowerPolicy,
+      markerColor: () => activeAnnotationColors()?.shapes,
     });
 
     // Deny-by-default permission policy. The only grant in the entire app is

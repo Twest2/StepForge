@@ -22,8 +22,9 @@ window opens, and nothing runs when no agent is connected.
 | Rewrite a guide's title and description | Change or delete screenshots |
 | Rewrite each step's title, description, and blocks, and add notes, warnings, tips, and code | Delete blocks, annotations, or placeholders |
 | Make a step a substep of an earlier step | Change a placeholder you already have |
-| Add guide and global placeholders, and use them as `[[Name]]` | Read anything outside your StepForge library |
-| Draw on screenshots: rectangles, ovals, lines, arrows, text, callouts, numbered badges, blurs, highlights, magnifiers, and cursors | |
+| Add guide and global placeholders, and use them as `[[Name]]` | Read anything outside your StepForge library, except an image or font file you ask it to add to a brand profile |
+| Draw on screenshots: rectangles, ovals, lines, arrows, text, callouts, numbered badges, blurs, highlights, magnifiers, and cursors | Delete brand profiles |
+| If you allow it: make and change [brand profiles](BRANDING.md#let-an-ai-agent-set-up-your-brand), add a logo, banner or font file you point it to, and choose the active profile | |
 
 Every step comes from a real capture, so an agent works around your
 screenshots: it writes the text, organizes the steps, and adds annotations on
@@ -38,6 +39,10 @@ top, but the screenshots themselves never change.
 
 Leave **Agents can see screenshots** on so the agent can see what you clicked.
 Turn it off to share step text only.
+
+To let agents set up your brand as well, turn on **Let AI agents edit brand
+profiles**. It's off by default. See
+[Let an AI agent set up your brand](BRANDING.md#let-an-ai-agent-set-up-your-brand).
 
 ## 2. Connect your agent
 
@@ -89,6 +94,7 @@ The [privacy policy](PRIVACY.md#optional-ai-agents) has the full details.
 | Problem | Fix |
 | --- | --- |
 | The agent says StepForge has agent access turned off | Turn on **Settings → AI → Let AI agents edit your guides** and save. |
+| The agent says it can't edit brand profiles | Turn on **Settings → AI → Let AI agents edit brand profiles** and save. |
 | The agent can't find StepForge's tools | Run the setup command again, then restart the agent. In Claude Code, `claude mcp list` shows whether `stepforge` is connected. |
 | The agent can't see screenshots | Turn on **Agents can see screenshots**, and use a model that can read images. |
 | The guide on screen didn't change | Close and reopen the guide. Changes appear within a couple of seconds when the guide is open. |

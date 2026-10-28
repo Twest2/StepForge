@@ -203,6 +203,8 @@ was recorded with StepForge.
   are syntax-highlighted on export, in Atom One Dark or seven other themes.
 - **Reusable content.** Placeholders (`[[Product]]`) and export templates keep
   a whole set of guides consistent.
+- **Your branding.** Brand profiles put your logo, colors, fonts, cover style,
+  header and footer on every export: HTML, PDF, Word, PowerPoint and the rest.
 - **Organized library.** Folders, favorites, full-text search across every
   guide, snapshots, and a trash you can restore from.
 
@@ -251,6 +253,7 @@ each optional feature sends.
 - [Google Drive sync](docs/GOOGLE_DRIVE.md) · [OneDrive, Dropbox or Nextcloud](docs/CLOUD_ACCOUNTS.md)
 - [Share guides on the web with GitHub Pages](docs/GITHUB_PAGES.md)
 - [Publish to Confluence](docs/CONFLUENCE.md) · [Publish to Wiki.js](docs/WIKIJS.md)
+- [Brand your exported guides](docs/BRANDING.md): logos, colors, fonts and Advanced CSS
 - [Privacy](docs/PRIVACY.md) and [security](docs/SECURITY.md)
 
 **Installing**

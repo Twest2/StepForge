@@ -203,6 +203,13 @@ function exportBranding(profileId) {
   return id ? branding.resolve(id) : null;
 }
 
+/** The active brand profile's own annotation colors, or null when it keeps StepForge's. */
+function activeAnnotationColors() {
+  const id = settings.get('branding.activeProfileId');
+  const annotations = id ? branding.get(id)?.annotations : null;
+  return annotations?.custom ? annotations : null;
+}
+
 /** The default review interval, for "Review again on" in exports. */
 function exportReviewDays() {
   return settings.get('library.reviewAfterDays');
@@ -2027,6 +2034,7 @@ if (!gotLock) {
       notify: captureNotify,
       textIntel,
       powerPolicy: capturePowerPolicy,
+      markerColor: () => activeAnnotationColors()?.shapes,
     });
 
     // Deny-by-default permission policy. The only grant in the entire app is

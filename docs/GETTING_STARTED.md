@@ -176,7 +176,8 @@ choose **Manage** to make a brand profile: a name, your logo (PNG, JPG or SVG)
 and an optional banner, primary, accent and text colors, heading and body
 fonts (upload a font file to embed it in HTML), a cover style, header and footer
 text with page numbers, an optional logo watermark for GIFs and image bundles,
-and extra CSS for HTML. Then pick it as the **Active brand profile**, and use
+optional colors for new annotations (shapes, number badges, tooltips), and
+extra CSS for HTML. Then pick it as the **Active brand profile**, and use
 **Design preview** to see a sample guide with it. HTML, GitHub Pages, PDF, Word
 and PowerPoint get the full treatment; Wiki.js, Confluence and Markdown get the
 logo, banner and header and footer text; JSON stays raw data. The Export dialog

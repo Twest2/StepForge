@@ -8,7 +8,7 @@ const zlib = require('node:zlib');
 
 const {
   BrandingStore, normalizeProfile, brandTemplateDefaults, fontFamilyName, familyFromFileName, FONT_SUGGESTIONS,
-  checkFileSize, cssFromFile, MAX_CSS_CHARS,
+  checkFileSize, cssFromFile, MAX_CSS_CHARS, DEFAULT_ANNOTATION_COLORS,
 } = require('../../core/branding');
 const { sanitizeSvg, svgSize } = require('../../core/svg-sanitize');
 const { buildSampleAst } = require('../../core/branding-sample');
@@ -168,6 +168,11 @@ test('branding: a profile is normalized: colors, fonts, choices and limits', () 
   assert.equal(p.html.colorScheme, 'light');
   assert.deepEqual(p.watermark, { enabled: false, position: 'bottom-right', opacity: 1 });
   assert.equal(normalizeProfile({}).name, 'Untitled brand');
+  // Annotation colors are an option: off, StepForge's own, until turned on.
+  assert.deepEqual(normalizeProfile({}).annotations, { custom: false, shapes: '#E5484D', numbers: '#1F6FEB', tooltips: '#111827' });
+  assert.deepEqual(normalizeProfile({ annotations: { custom: true, shapes: '#173f7a', numbers: 'blue', tooltips: '#fff' } }).annotations,
+    { custom: true, shapes: '#173F7A', numbers: '#1F6FEB', tooltips: '#FFFFFF' });
+  assert.equal(normalizeProfile({ annotations: { custom: 'yes' } }).annotations.custom, false);
   assert.equal(normalizeProfile({ header: {}, footer: {} }).footer.pageNumbers, true, 'page numbers default on');
 });
 
@@ -179,6 +184,8 @@ test('branding: profiles are saved, listed by name, duplicated and deleted', (t)
   assert.match(a.id, /^brand-[0-9a-f-]{36}$/);
   assert.equal(a.logo, null, 'a logo that was never uploaded is dropped');
   assert.deepEqual(brands.list().map((p) => p.name), ['alpha', 'Zeta']);
+  assert.deepEqual(brands.list()[0].annotations, DEFAULT_ANNOTATION_COLORS && { custom: false, ...DEFAULT_ANNOTATION_COLORS },
+    'the list carries annotation colors, which the editor reads');
   const renamed = brands.save({ ...b, name: 'Beta' });
   assert.equal(renamed.id, b.id, 'saving with an id updates that profile');
   assert.equal(renamed.createdAt, b.createdAt);
@@ -563,6 +570,9 @@ test('branding: Settings default to no branding, and every export path passes th
   for (const call of calls) assert.match(call, /branding: exportBranding\(/, call.slice(0, 120));
   assert.match(main, /h\('export:preview'[\s\S]{0,500}branding: exportBranding\(brandProfileId\)/);
   assert.match(read('core/export-worker.js'), /buildRenderAst\(store, guideId, \{[^}]*branding/);
+  // Recorded click markers follow the active profile's shape color, when it has its own.
+  assert.match(main, /new CaptureService\(\{[\s\S]{0,300}markerColor: \(\) => activeAnnotationColors\(\)\?\.shapes/);
+  assert.match(main, /return annotations\?\.custom \? annotations : null;/);
   assert.match(read('app/export-runner.js'), /worker\.send\(\{[^}]*branding/);
 });
 
@@ -571,6 +581,8 @@ test('branding: the renderer offers the same font suggestions and CSS limit as c
   const offered = JSON.parse(`[${src.match(/const BRAND_FONT_SUGGESTIONS = \[([\s\S]*?)\];/)[1].replace(/'/g, '"').replace(/,\s*$/, '')}]`);
   assert.deepEqual(offered, FONT_SUGGESTIONS);
   assert.equal(Number(src.match(/const BRAND_CSS_MAX_CHARS = (\d+);/)[1]), MAX_CSS_CHARS);
+  const annotationDefaults = src.match(/const BRAND_DEFAULT_ANNOTATION_COLORS = (\{[^}]*\});/)[1].replace(/(\w+):/g, '"$1":').replace(/'/g, '"');
+  assert.deepEqual(JSON.parse(annotationDefaults), DEFAULT_ANNOTATION_COLORS);
   const html = read('app/renderer/index.html');
   assert.ok(html.indexOf('<script src="branding.js">') > html.indexOf('<script src="util.js">'));
   assert.ok(html.indexOf('<script src="branding.js">') < html.indexOf('<script src="dialogs.js">'));

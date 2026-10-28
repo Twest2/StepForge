@@ -11,7 +11,8 @@ const { sanitizeSvg, svgSize } = require('./svg-sanitize');
 
 /**
  * Brand profiles: a company's logo, banner, colors, fonts, header/footer
- * text, cover style, watermark and HTML CSS, applied to every export.
+ * text, cover style, watermark and HTML CSS, applied to every export, and
+ * the colors new annotations start with in the editor.
  * Stored under settings/branding/:
  *   profiles/<id>.json       one profile each
  *   assets/<hash>.<ext>      uploaded images and fonts, named by content
@@ -26,6 +27,10 @@ const COVER_STYLES = ['standard', 'band', 'centered'];
 const WATERMARK_POSITIONS = ['bottom-right', 'bottom-left', 'top-right', 'top-left'];
 const COLOR_SCHEMES = ['light', 'auto'];
 const DEFAULT_COLORS = { primary: '#2563EB', accent: '#0EA5E9', text: '#18212B' };
+// StepForge's own annotation colors: red shapes and click markers, blue
+// number badges, near-black tooltips. A profile only changes them when its
+// `annotations.custom` is on.
+const DEFAULT_ANNOTATION_COLORS = { shapes: '#E5484D', numbers: '#1F6FEB', tooltips: '#111827' };
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const MAX_FONT_BYTES = 10 * 1024 * 1024;
@@ -129,6 +134,14 @@ function normalizeProfile(raw = {}, { id = raw.id, createdAt = raw.createdAt, up
     html: {
       css: String(raw.html?.css ?? '').replace(/\r\n?/g, '\n').slice(0, MAX_CSS_CHARS),
       colorScheme: oneOf(raw.html?.colorScheme, COLOR_SCHEMES, 'light'),
+    },
+    // Colors new annotations start with in the editor (and click markers),
+    // only when `custom` is on; otherwise StepForge's own.
+    annotations: {
+      custom: raw.annotations?.custom === true,
+      shapes: normalizeColor(raw.annotations?.shapes, DEFAULT_ANNOTATION_COLORS.shapes),
+      numbers: normalizeColor(raw.annotations?.numbers, DEFAULT_ANNOTATION_COLORS.numbers),
+      tooltips: normalizeColor(raw.annotations?.tooltips, DEFAULT_ANNOTATION_COLORS.tooltips),
     },
     watermark: {
       enabled: raw.watermark?.enabled === true,
@@ -257,14 +270,14 @@ class BrandingStore {
     return path.join(this.profilesDir, `${id}.json`);
   }
 
-  /** Every profile, by name: { id, name, updatedAt }. */
+  /** Every profile, by name: { id, name, updatedAt, annotations }. */
   list() {
     if (!fs.existsSync(this.profilesDir)) return [];
     return fs.readdirSync(this.profilesDir)
       .filter((f) => /^brand-[A-Za-z0-9-]+\.json$/.test(f))
       .map((f) => this.get(f.slice(0, -5)))
       .filter(Boolean)
-      .map(({ id, name, updatedAt }) => ({ id, name, updatedAt }))
+      .map(({ id, name, updatedAt, annotations }) => ({ id, name, updatedAt, annotations }))
       .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }) || a.id.localeCompare(b.id));
   }
 
@@ -606,6 +619,7 @@ module.exports = {
   WATERMARK_POSITIONS,
   COLOR_SCHEMES,
   DEFAULT_COLORS,
+  DEFAULT_ANNOTATION_COLORS,
   FONT_SUGGESTIONS,
   MAX_CSS_CHARS,
 };

@@ -14,6 +14,8 @@ const BRAND_FONT_SUGGESTIONS = [
 ];
 
 const BRAND_DEFAULT_COLORS = { primary: '#2563EB', accent: '#0EA5E9', text: '#18212B' };
+// Mirrors DEFAULT_ANNOTATION_COLORS in core/branding.js: StepForge's own, used until a profile turns its own on.
+const BRAND_DEFAULT_ANNOTATION_COLORS = { shapes: '#E5484D', numbers: '#1F6FEB', tooltips: '#111827' };
 
 // Mirrors MAX_CSS_CHARS in core/branding.js (a unit test keeps the two in step).
 const BRAND_CSS_MAX_CHARS = 200000;
@@ -44,6 +46,7 @@ const BRAND_SUPPORT = [
   ['Markdown', 'Logo, banner, header and footer text, and the accent bar color.'],
   ['GIF and image bundle', 'Logo on the title card, colors, and an optional logo watermark.'],
   ['JSON', 'Not branded: it keeps the raw guide data.'],
+  ['Editor', 'If the profile turns on its own annotation colors: new shapes, number badges, tooltips and click markers.'],
 ];
 
 const BRAND_COVER_STYLES = [
@@ -145,7 +148,10 @@ function brandSummary(data) {
     el('dt', {}, 'Cover style'), el('dd', {}, cover),
     el('dt', {}, 'Header'), el('dd', {}, [profile.header.logo && profile.logo ? 'Logo' : '', profile.header.text].filter(Boolean).join(' · ') || 'None'),
     el('dt', {}, 'Footer'), el('dd', {}, [profile.footer.text, profile.footer.pageNumbers ? 'Page numbers' : ''].filter(Boolean).join(' · ') || 'None'),
-    el('dt', {}, 'Watermark'), el('dd', {}, profile.watermark.enabled ? `Logo, ${BRAND_WATERMARK_POSITIONS.find((p) => p.value === profile.watermark.position)?.label.toLowerCase()}` : 'Off'))));
+    el('dt', {}, 'Watermark'), el('dd', {}, profile.watermark.enabled ? `Logo, ${BRAND_WATERMARK_POSITIONS.find((p) => p.value === profile.watermark.position)?.label.toLowerCase()}` : 'Off'),
+    el('dt', {}, 'Annotations'), el('dd', {}, profile.annotations?.custom
+      ? `Shapes ${profile.annotations.shapes} · Number badges ${profile.annotations.numbers} · Tooltips ${profile.annotations.tooltips}`
+      : 'StepForge’s colors'))));
   sections.push(section('Advanced CSS',
     el('p.setting-desc', {}, 'Used for HTML and GitHub Pages outputs only.'),
     profile.html.css.trim() ? el('pre.brand-css', {}, profile.html.css) : el('p.setting-desc', {}, 'None.')));
@@ -322,6 +328,7 @@ function showBrandProfileEditor(api, data = null) {
       cover: base?.cover || 'standard',
       html: { css: '', colorScheme: 'light', ...(base?.html || {}) },
       watermark: { enabled: false, position: 'bottom-right', opacity: 0.6, ...(base?.watermark || {}) },
+      annotations: { custom: false, ...BRAND_DEFAULT_ANNOTATION_COLORS, ...(base?.annotations || {}) },
     };
     // Errors from Preview and Save show in the footer beside those buttons.
     const footerStatus = el('span.brand-footer-status.error', { role: 'alert' });
@@ -365,19 +372,27 @@ function showBrandProfileEditor(api, data = null) {
         el('div.row', {}, choose, remove));
     };
 
-    // Colors
-    const colorRow = (key, title, desc) => {
-      const picker = el('input', { type: 'color', value: draft.colors[key].toLowerCase(), 'aria-label': `${title} color` });
-      const hex = el('input.brand-hex', { type: 'text', value: draft.colors[key], maxLength: 7, spellcheck: false, 'aria-label': `${title} color code` });
-      picker.addEventListener('input', () => { draft.colors[key] = picker.value.toUpperCase(); hex.value = draft.colors[key]; });
+    // Colors: a color picker and its hex code, kept in step, editing colors[key].
+    const colorRow = (colors, key, title, desc) => {
+      const picker = el('input', { type: 'color', value: colors[key].toLowerCase(), 'aria-label': `${title} color` });
+      const hex = el('input.brand-hex', { type: 'text', value: colors[key], maxLength: 7, spellcheck: false, 'aria-label': `${title} color code` });
+      picker.addEventListener('input', () => { colors[key] = picker.value.toUpperCase(); hex.value = colors[key]; });
       hex.addEventListener('input', () => {
         const v = hex.value.trim();
         const ok = /^#?[0-9a-f]{6}$/i.test(v);
         hex.classList.toggle('invalid', !ok);
-        if (ok) { draft.colors[key] = `#${v.replace('#', '')}`.toUpperCase(); picker.value = draft.colors[key].toLowerCase(); }
+        if (ok) { colors[key] = `#${v.replace('#', '')}`.toUpperCase(); picker.value = colors[key].toLowerCase(); }
       });
       return settingRow(title, desc, el('div.row', {}, picker, hex));
     };
+
+    // Annotation colors: StepForge's unless the profile turns its own on.
+    const ownAnnotations = el('input', { type: 'checkbox', checked: draft.annotations.custom });
+    const annotationRows = el('div', { hidden: !draft.annotations.custom },
+      colorRow(draft.annotations, 'shapes', 'Shapes', 'Rectangles, ovals, lines, arrows, text and magnifiers, and the marker on recorded clicks.'),
+      colorRow(draft.annotations, 'numbers', 'Number badges', 'Numbered step markers.'),
+      colorRow(draft.annotations, 'tooltips', 'Tooltips', 'The tooltip bubble. Its text turns black or white to stay readable.'));
+    ownAnnotations.addEventListener('change', () => { draft.annotations.custom = ownAnnotations.checked; annotationRows.hidden = !ownAnnotations.checked; });
 
     // Fonts
     const fontList = el('datalist', { id: 'brand-font-list' }, BRAND_FONT_SUGGESTIONS.map((f) => el('option', { value: f })));
@@ -468,9 +483,13 @@ function showBrandProfileEditor(api, data = null) {
         imageRow('logo', 'Company logo', 'PNG, JPG, or SVG (scripts and outside links are removed). On covers, page headers and slides.'),
         imageRow('banner', 'Banner', 'Optional. A wide image across the top of covers, web pages and wiki pages.')),
       settingsCard('Brand colors',
-        colorRow('primary', 'Primary', 'Title bars, step numbers, headings and accent lines.'),
-        colorRow('accent', 'Accent', 'Links and highlights.'),
-        colorRow('text', 'Text', 'Body text.')),
+        colorRow(draft.colors, 'primary', 'Primary', 'Title bars, step numbers, headings and accent lines.'),
+        colorRow(draft.colors, 'accent', 'Accent', 'Links and highlights.'),
+        colorRow(draft.colors, 'text', 'Text', 'Body text.')),
+      settingsCard('Annotation colors',
+        settingRow('Use your own annotation colors', 'Off keeps StepForge’s: red shapes, blue number badges, dark tooltips. New annotations start in these colors; ones already drawn keep theirs.',
+          makeSwitch(ownAnnotations, 'Use your own annotation colors')),
+        annotationRows),
       settingsCard('Fonts',
         fontRow('heading', 'Headings', 'Titles and step headings.'),
         fontRow('body', 'Body text', 'Everything else.'),

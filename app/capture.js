@@ -215,9 +215,12 @@ class CaptureService {
     screenApi = screen,
     textIntel = null,
     powerPolicy = null,
+    // The active brand profile's shape color, for click markers; null for none.
+    markerColor = () => null,
   }) {
     this.store = store;
     this.settings = settings;
+    this.markerColor = markerColor;
     this.getWindow = getWindow;
     this.notify = notify;
     // Single owner of OS power/throttling state for the capture lifecycle.
@@ -2147,7 +2150,7 @@ public static class SFHook {
           x: fx - d / 2, y: fy - (d * frame.size.width / frame.size.height) / 2,
           w: d, h: d * frame.size.width / frame.size.height,
           style: {
-            stroke: this.settings.get('capture.clickMarkerColor') || '#E5484D',
+            stroke: this.markerColor() || this.settings.get('capture.clickMarkerColor') || '#E5484D',
             strokeWidth: 4, fill: 'transparent',
           },
         });

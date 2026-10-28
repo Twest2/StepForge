@@ -31,6 +31,8 @@ const { SearchIndex } = require('../core/search');
 const { findMatches, applyReplacements, isMatchArg } = require('../core/find-replace');
 const { TemplateManager, FORMATS, FORMAT_LABELS } = require('../core/templates');
 const { buildRenderAst } = require('../core/renderast');
+const { qualityFindings } = require('../core/quality');
+const { stepNumberMap } = require('../core/step-outline');
 const { AI_TARGETS } = require('../core/text-intel');
 const { agentChangesSince, agentChangesStamp } = require('../core/agent-changes');
 const { runExport, EXPORTERS, FORMAT_INFO, FORMAT_ORDER } = require('../exporters');
@@ -825,6 +827,10 @@ function setupIpc() {
     guide: store.getGuide(guideId),
     steps: orderedSteps(guideId),
   }), { validate: (a) => c.id(a.guideId) });
+  // What to fix before exporting or publishing (core/quality.js).
+  h('guide:quality', ({ guideId }) => qualityFindings(buildRenderAst(store, guideId, {
+    globals: settings.getGlobalPlaceholders(), reviewDays: exportReviewDays(),
+  }), stepNumberMap(orderedSteps(guideId))), { validate: (a) => c.id(a.guideId) });
   h('guide:save', ({ guide }) => {
     const saved = store.saveGuide(guide);
     reindex(guide.guideId);

@@ -181,5 +181,29 @@
     return moveSubtree(order, parentOf, stepId, gap, depth);
   }
 
-  return { isValidOutline, withParent, parentMap, planSubsteps, depthOf, repairOutline, subtreeOf, moveSubtree, moveSubtreeBy };
+  /**
+   * The number the step list shows for each step ("2", "2.1"), by stepId.
+   * Hidden and skipped steps are counted, unlike in exports.
+   */
+  function stepNumberMap(steps) {
+    const numbers = new Map();
+    const childCounts = new Map();
+    let top = 0;
+    for (const step of steps) {
+      let number;
+      if (step.parentStepId && numbers.has(step.parentStepId)) {
+        const parent = numbers.get(step.parentStepId);
+        const next = (childCounts.get(step.parentStepId) || 0) + 1;
+        childCounts.set(step.parentStepId, next);
+        number = `${parent}.${next}`;
+      } else {
+        top += 1;
+        number = String(top);
+      }
+      numbers.set(step.stepId, number);
+    }
+    return numbers;
+  }
+
+  return { isValidOutline, withParent, parentMap, planSubsteps, depthOf, repairOutline, subtreeOf, moveSubtree, moveSubtreeBy, stepNumberMap };
 });

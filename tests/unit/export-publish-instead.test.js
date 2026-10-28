@@ -50,6 +50,7 @@ function ui() {
   const load = (file) => vm.runInContext(fs.readFileSync(path.join(__dirname, '../../app/renderer', file), 'utf8'), context);
   load('util.js');
   context.el = el;
+  load('quality.js');
   load('dialogs.js');
   const visible = (node) => { for (let n = node; n; n = n.parent) if (n.hidden) return false; return true; };
   const all = (node, out = []) => {
@@ -135,6 +136,7 @@ test('the editor opens the publish dialog after Export closes, and the app route
     templates: { list: async () => [] },
     settings: { all: async () => ({}) },
     github: { status: async () => null },
+    guide: { quality: async () => [] },
   };
   const dialogs = {
     showExportDialog: async (args) => { exportArgs = args; calls.push('export closed'); if (args.publishTargets.confluence) args.onPublishInstead('confluence'); return false; },

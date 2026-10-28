@@ -141,6 +141,13 @@ Publishing a guide on the web always runs this check first.
 
 Choose **Export**, pick a format, and choose where to save.
 
+If something looks unfinished, the Export dialog lists it at the top:
+placeholders with no value, steps with no screenshot, and steps with no title
+or one StepForge filled in automatically (such as "Screen capture"). Click an
+item to go to that step, or export anyway. The Publish dialogs show the same
+list. A step with no screenshot but its own text counts as a text-only step and
+isn't flagged.
+
 | Format | Best for |
 | --- | --- |
 | **PDF** | Sending or printing a polished, paged document |

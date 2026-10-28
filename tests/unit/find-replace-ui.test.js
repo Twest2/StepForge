@@ -33,7 +33,7 @@ function setupEditor(steps) {
   const shown = [];
   const dialogs = { showFindReplace: async (options) => { shown.push(options); } };
   const context = {
-    window: { stepforge: api, StepForgeDialogs: dialogs }, document: { activeElement: null },
+    window: { stepforge: api, StepForgeDialogs: dialogs, StepForgeOutline: require('../../core/step-outline') }, document: { activeElement: null },
     confirmDialog: async () => true, clearNode() {}, el() {},
   };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/editor.js'), 'utf8'), context);

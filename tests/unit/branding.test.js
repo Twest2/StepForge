@@ -587,3 +587,25 @@ test('branding: the renderer offers the same font suggestions and CSS limit as c
   assert.ok(html.indexOf('<script src="branding.js">') > html.indexOf('<script src="util.js">'));
   assert.ok(html.indexOf('<script src="branding.js">') < html.indexOf('<script src="dialogs.js">'));
 });
+
+
+test('large PNG assets are deferred to the renderer and oversized rasters are refused before decoding', (t) => {
+  const vm = require('node:vm');
+  const { createRequire } = require('node:module');
+  const file = path.join(ROOT, 'core/branding.js');
+  const realRequire = createRequire(file);
+  let decodes = 0;
+  const context = { Buffer, module: { exports: {} }, require: (name) => name === './png'
+    ? { decodePng() { decodes += 1; throw new Error('must not decode oversized images'); } }
+    : realRequire(name) };
+  vm.runInNewContext(fs.readFileSync(file, 'utf8'), context);
+  const store = new context.module.exports.BrandingStore(tmp(t, 'large-brand-image'));
+  const data = logoPng();
+  data.writeUInt32BE(32768, 16);
+  data.writeUInt32BE(32768, 20);
+  const asset = store.addAsset(data, { kind: 'image', fileName: 'large.png' });
+  assert.equal(asset.needsRaster, true);
+  assert.equal(decodes, 0, 'the renderer scales large originals before conversion');
+  assert.throws(() => store.setRaster(asset.id, data), /converted image is too large/);
+  assert.equal(decodes, 0, 'oversized raster rejected before PNG decode');
+});

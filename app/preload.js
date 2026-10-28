@@ -162,6 +162,8 @@ const api = {
     fillGuide: invoke('ai:fillGuide'),
     organizeGuide: invoke('ai:organizeGuide'),
     cancel: invoke('ai:cancel'),
+    status: invoke('ai:status'),
+    brandCss: invoke('ai:brandCss'),
   },
   agents: {
     setup: invoke('agents:setup'),
@@ -217,6 +219,9 @@ const api = {
     export: invoke('branding:export'),
     import: invoke('branding:import'),
     preview: invoke('branding:preview'),
+    pendingRasters: invoke('branding:pendingRasters'),
+    // An AI agent changed brand profiles through `StepForge --mcp`.
+    onChangedByAgent: (fn) => ipcRenderer.on('branding:changed-by-agent', (e, payload) => fn(payload)),
   },
   export: {
     formats: invoke('export:formats'),

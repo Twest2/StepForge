@@ -14,8 +14,8 @@ const vm = require('node:vm');
 
 function ui() {
   function el(spec, props = {}, ...children) {
-    const [tag, ...classes] = spec.split('.');
-    const classSet = new Set(classes);
+    const [tag, ...rest] = spec.split(/(?=[.#])/);
+    const classSet = new Set(rest.filter((p) => p.startsWith('.')).map((p) => p.slice(1)));
     const node = {
       tag, hidden: false, disabled: false, children: [], isConnected: true, dataset: {}, style: {}, value: '',
       get className() { return [...classSet].join(' '); },
@@ -85,16 +85,25 @@ function ui() {
 
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 
-function fakeApi(chooseAsset, overrides = {}) {
+function fakeApi(chooseAsset, overrides = {}, ai = {}) {
   const saved = [];
+  const cancelled = [];
   return {
     saved,
+    cancelled,
     branding: {
       chooseAsset,
       setRaster: async ({ id }) => ({ id, kind: 'image', needsRaster: false }),
       save: async ({ profile }) => { saved.push(JSON.parse(JSON.stringify(profile))); return { profile: { ...profile, id: 'brand-1' }, assets: {} }; },
       preview: async () => ({ file: '/tmp/x.html' }),
       ...overrides,
+    },
+    // Local AI is off unless a test turns it on.
+    ai: {
+      status: async () => ({ ready: false }),
+      brandCss: async () => ({ ok: false, reason: 'AI is off.' }),
+      cancel: async ({ guideId }) => { cancelled.push(guideId); return true; },
+      ...ai,
     },
     shell: { openProduced: async () => ({ ok: true }) },
   };
@@ -248,4 +257,171 @@ test('step editor: new shapes, number badges and tooltips start in the profile�
   editor.setSettings({ branding: { activeProfileId: '' } });
   await settle();
   assert.deepEqual(styles(), stepforge);
+});
+
+/** The profile editor with a name typed in, and helpers for the Advanced CSS card. */
+function openEditor({ ai = {}, data = null, chooseAsset = async () => null } = {}) {
+  const t = ui();
+  const api = fakeApi(chooseAsset, {}, ai);
+  let closed = null;
+  t.context.showBrandProfileEditor(api, data).then((value) => { closed = { value }; });
+  const name = t.all(t.root).find((n) => n['aria-label'] === 'Profile name');
+  name.value = 'Acme';
+  name.listeners.input();
+  const css = t.all(t.root).find((n) => n['aria-label'] === 'Advanced CSS');
+  const request = t.all(t.root).find((n) => n.classList.contains('brand-ai-request'));
+  const panel = t.all(t.root).find((n) => n.classList.contains('brand-ai'));
+  const result = t.all(t.root).find((n) => n.classList.contains('brand-ai-result'));
+  const visible = (node) => { for (let n = node; n; n = n.parent) if (n.hidden) return false; return true; };
+  const shown = (text) => t.buttons(t.root, text).filter(visible);
+  const type = (value) => { request.value = value; request.listeners.input(); };
+  return { t, api, css, request, panel, result, visible, shown, type, closed: () => closed };
+}
+
+test('editor: Write with AI is offered only when local AI is on and its model is installed', async () => {
+  const off = openEditor();
+  await settle();
+  assert.deepEqual(off.shown('Write with AI…'), [], 'AI off or not installed: no button at all');
+  assert.equal(off.visible(off.panel), false);
+
+  const on = openEditor({ ai: { status: async () => ({ ready: true, model: 'gemma3:4b' }) } });
+  assert.deepEqual(on.shown('Write with AI…'), [], 'not before the check answers');
+  await settle();
+  assert.equal(on.shown('Write with AI…').length, 1);
+  assert.ok(on.t.all(on.t.root).some((n) => n.classList.contains('brand-ai-model') && n.textContent === 'Written by gemma3:4b through Ollama.'));
+});
+
+test('editor: Write with AI shows the model’s CSS for review, and Add to CSS appends it under a comment', async () => {
+  const requests = [];
+  const e = openEditor({
+    ai: {
+      status: async () => ({ ready: true, model: 'gemma3:4b' }),
+      brandCss: async (args) => { requests.push(JSON.parse(JSON.stringify(args))); return { ok: true, css: '.step-num { border-radius: 4px; }' }; },
+    },
+  });
+  await settle();
+  e.css.value = 'body { font-size: 15px; }';
+  e.css.listeners.input();
+  e.t.click(e.shown('Write with AI…')[0]);
+  assert.equal(e.visible(e.panel), true);
+  assert.deepEqual(e.shown('Write with AI…'), [], 'the button gives way to the panel');
+  assert.equal(e.shown('Write CSS')[0].disabled, true, 'nothing to write yet');
+
+  e.type('Square step numbers');
+  assert.equal(e.shown('Write CSS')[0].disabled, false);
+  e.t.click(e.shown('Write CSS')[0]);
+  await settle();
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].request, 'Square step numbers');
+  assert.equal(requests[0].css, 'body { font-size: 15px; }', 'the model sees the CSS so far');
+  assert.deepEqual(requests[0].profile.colors, { primary: '#2563EB', accent: '#0EA5E9', text: '#18212B' });
+  assert.equal(e.visible(e.result), true);
+  assert.equal(e.result.textContent, '.step-num { border-radius: 4px; }');
+  assert.equal(e.css.value, 'body { font-size: 15px; }', 'nothing changes until it’s added');
+  assert.deepEqual(['Discard', 'Try again', 'Add to CSS'].map((label) => e.shown(label).length), [1, 1, 1]);
+
+  e.t.click(e.shown('Add to CSS')[0]);
+  assert.equal(e.css.value, 'body { font-size: 15px; }\n\n/* Square step numbers */\n.step-num { border-radius: 4px; }\n');
+  assert.equal(e.visible(e.panel), false);
+  assert.ok(e.t.all(e.t.root).some((n) => n.classList.contains('brand-css-note') && e.visible(n)));
+  await e.t.click(e.t.button(e.t.root, 'Save'));
+  assert.match(e.api.saved[0].html.css, /\/\* Square step numbers \*\/\n\.step-num/);
+});
+
+test('editor: Write with AI says what went wrong in its panel, and Discard keeps the CSS as it was', async () => {
+  let reply = { ok: false, reason: 'AI request timed out.' };
+  const e = openEditor({ ai: { status: async () => ({ ready: true, model: 'llama3.2:1b' }), brandCss: async () => reply } });
+  await settle();
+  e.t.click(e.shown('Write with AI…')[0]);
+  e.type('Navy step titles');
+  e.t.click(e.shown('Write CSS')[0]);
+  await settle();
+  assert.deepEqual(e.t.errors(), [{ text: 'AI request timed out.', part: 'Advanced CSS' }]);
+  assert.equal(e.shown('Write CSS').length, 1, 'ready to try again');
+
+  reply = { ok: true, css: '.step-head h2 { color: navy; }' };
+  e.t.click(e.shown('Write CSS')[0]);
+  await settle();
+  assert.deepEqual(e.t.errors(), []);
+  e.t.click(e.shown('Discard')[0]);
+  assert.equal(e.visible(e.result), false);
+  assert.equal(e.css.value, '');
+  e.t.click(e.shown('Cancel')[0]);
+  assert.equal(e.visible(e.panel), false);
+  assert.equal(e.shown('Write with AI…').length, 1);
+});
+
+test('editor: Stop, or closing the editor, cancels the model’s request and drops its answer', async () => {
+  let answer;
+  const e = openEditor({
+    ai: {
+      status: async () => ({ ready: true, model: 'gemma3:4b' }),
+      brandCss: () => new Promise((resolve) => { answer = resolve; }),
+    },
+  });
+  await settle();
+  e.t.click(e.shown('Write with AI…')[0]);
+  e.type('Bigger logo');
+  e.t.click(e.shown('Write CSS')[0]);
+  assert.equal(e.request.disabled, true);
+  e.t.click(e.shown('Stop')[0]);
+  assert.deepEqual(e.api.cancelled, ['branding-css']);
+  answer({ ok: true, css: '.brand-logo { max-height: 96px; }' });
+  await settle();
+  assert.equal(e.visible(e.result), false, 'a stopped answer is never shown');
+
+  // Write again, then leave with the editor's own Cancel while it's writing.
+  e.t.click(e.shown('Write CSS')[0]);
+  e.t.click(e.t.buttons(e.t.root, 'Cancel').at(-1));
+  await settle();
+  assert.deepEqual(e.api.cancelled, ['branding-css', 'branding-css']);
+  assert.equal(e.closed().value, null);
+});
+
+test('editor: Pick from logo appears with a logo, sets the three colors, and Undo puts them back', async () => {
+  const logo = { id: 'a'.repeat(32), kind: 'image', name: 'logo.svg', needsRaster: false, dataUrl: 'data:image/svg+xml;base64,AA==' };
+  const e = openEditor({ chooseAsset: async () => logo });
+  const palette = { primary: '#0B6E4F', accent: '#0A5C42', text: '#1A2B24' };
+  e.t.context.brandColorsFromLogo = async (asset) => { assert.equal(asset.id, logo.id); return palette; };
+  const hex = (key) => e.t.all(e.t.root).find((n) => n['aria-label'] === `${key} color code`);
+  assert.deepEqual(e.shown('Pick from logo'), [], 'no logo, nothing to pick from');
+
+  e.t.click(e.t.buttons(e.t.root, 'Choose…')[0]);
+  await settle();
+  assert.equal(e.shown('Pick from logo').length, 1);
+  await e.t.click(e.shown('Pick from logo')[0]);
+  assert.deepEqual(['Primary', 'Accent', 'Text'].map((k) => hex(k).value), ['#0B6E4F', '#0A5C42', '#1A2B24']);
+  assert.equal(e.shown('Undo').length, 1);
+  e.t.click(e.shown('Undo')[0]);
+  assert.deepEqual(['Primary', 'Accent', 'Text'].map((k) => hex(k).value), ['#2563EB', '#0EA5E9', '#18212B']);
+  assert.deepEqual(e.shown('Undo'), []);
+
+  // Changing a color by hand after picking drops the Undo; the picked colors are saved.
+  await e.t.click(e.shown('Pick from logo')[0]);
+  hex('Text').value = '#111111';
+  hex('Text').listeners.input();
+  assert.deepEqual(e.shown('Undo'), []);
+  await e.t.click(e.t.button(e.t.root, 'Save'));
+  assert.deepEqual(e.api.saved[0].colors, { primary: '#0B6E4F', accent: '#0A5C42', text: '#111111' });
+
+  // A white logo has nothing to pick; removing the logo takes the row away.
+  const white = openEditor({ chooseAsset: async () => logo });
+  white.t.context.brandColorsFromLogo = async () => null;
+  white.t.click(white.t.buttons(white.t.root, 'Choose…')[0]);
+  await settle();
+  await white.t.click(white.shown('Pick from logo')[0]);
+  assert.deepEqual(white.t.errors(), [{ text: 'This logo is white or light gray, so there are no colors to pick. Set them above.', part: 'Brand colors' }]);
+  white.t.click(white.t.buttons(white.t.root, 'Remove')[0]);
+  assert.deepEqual(white.shown('Pick from logo'), []);
+  assert.deepEqual(white.t.errors(), []);
+});
+
+test('Write with AI uses the ids and limits the main process does', () => {
+  const source = fs.readFileSync(path.join(__dirname, '../../app/renderer/branding.js'), 'utf8');
+  const { BRAND_CSS_REQUEST } = require('../../app/text-intel');
+  const { MAX_REQUEST_CHARS } = require('../../core/ai-brand-css');
+  assert.ok(source.includes(`const BRAND_AI_REQUEST = '${BRAND_CSS_REQUEST}';`));
+  assert.ok(source.includes(`const BRAND_AI_REQUEST_MAX_CHARS = ${MAX_REQUEST_CHARS};`));
+  const index = fs.readFileSync(path.join(__dirname, '../../app/renderer/index.html'), 'utf8');
+  assert.ok(index.indexOf('core/brand-palette.js') < index.indexOf('"branding.js"'), 'the palette loads before the editor uses it');
 });

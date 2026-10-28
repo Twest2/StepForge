@@ -34,6 +34,11 @@ const BRAND_PREVIEW_FORMATS = [
 
 const BRAND_CSS_GUIDE_URL = 'https://github.com/Twest2/StepForge/blob/main/docs/BRANDING.md#advanced-css';
 
+// Mirrors BRAND_CSS_REQUEST in app/text-intel.js: ai:cancel stops Write with AI by this id.
+const BRAND_AI_REQUEST = 'branding-css';
+// Mirrors MAX_REQUEST_CHARS in core/ai-brand-css.js.
+const BRAND_AI_REQUEST_MAX_CHARS = 500;
+
 // What a profile changes in each export (the issue's support table).
 const BRAND_SUPPORT = [
   ['HTML (simple and rich)', 'Logo, banner, colors, fonts (uploaded fonts are embedded), cover style, footer text and your CSS.'],
@@ -91,6 +96,30 @@ async function ensureBrandRaster(api, asset) {
   if (!asset || asset.kind !== 'image' || !asset.needsRaster) return asset;
   const png = await rasterizeBrandImage(asset);
   return { ...(await api.branding.setRaster({ id: asset.id, png })), dataUrl: asset.dataUrl };
+}
+
+/** Draw the PNG copies that images an AI agent added (or an import brought) still need. */
+async function ensurePendingBrandRasters(api) {
+  const pending = await api.branding.pendingRasters().catch(() => []);
+  // A failure is quiet: the next start, or opening the profile, tries again.
+  for (const asset of pending) await ensureBrandRaster(api, asset).catch(() => {});
+}
+
+/** A logo's brand colors (core/brand-palette.js), or null when it has none to use. */
+async function brandColorsFromLogo(asset) {
+  const img = new Image();
+  img.src = asset.dataUrl;
+  await img.decode();
+  const width = asset.width || img.naturalWidth || 256;
+  const height = asset.height || img.naturalHeight || 256;
+  // A small drawing has the same colors and is quick to read.
+  const scale = Math.min(1, 160 / Math.max(width, height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(width * scale));
+  canvas.height = Math.max(1, Math.round(height * scale));
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  return StepForgeBrandPalette.colorsFromPixels(ctx.getImageData(0, 0, canvas.width, canvas.height).data);
 }
 
 /** Open the sample guide exported with a profile (saved `id`, or the `profile` being edited). */
@@ -340,12 +369,12 @@ function showBrandProfileEditor(api, data = null) {
 
     // Images
     const imageMessages = {};
-    const imageRow = (key, title, desc) => {
+    const imageRow = (key, title, desc, onChange = () => {}) => {
       const thumb = el('div');
       const fileName = el('span.setting-desc');
       const message = brandRowMessage();
       imageMessages[key] = message;
-      const remove = el('button', { type: 'button', onClick: () => { draft[key] = null; message.clear(); show(); } }, 'Remove');
+      const remove = el('button', { type: 'button', onClick: () => { draft[key] = null; message.clear(); show(); onChange(); } }, 'Remove');
       const choose = el('button', { type: 'button' }, 'Choose…');
       const show = () => {
         const asset = draft[key] ? assets[draft[key]] : null;
@@ -363,6 +392,7 @@ function showBrandProfileEditor(api, data = null) {
           assets[asset.id] = asset;
           draft[key] = asset.id;
           show();
+          onChange();
         } catch (err) { message.show(err); } finally { setButtonLoading(choose, false); }
       });
       show();
@@ -372,18 +402,68 @@ function showBrandProfileEditor(api, data = null) {
     };
 
     // Colors: a color picker and its hex code, kept in step, editing colors[key].
-    const colorRow = (colors, key, title, desc) => {
+    // `setters[key]` sets both from code; `onInput` hears the user change it.
+    const colorRow = (colors, key, title, desc, { setters = null, onInput = () => {} } = {}) => {
       const picker = el('input', { type: 'color', value: colors[key].toLowerCase(), 'aria-label': `${title} color` });
       const hex = el('input.brand-hex', { type: 'text', value: colors[key], maxLength: 7, spellcheck: false, 'aria-label': `${title} color code` });
-      picker.addEventListener('input', () => { colors[key] = picker.value.toUpperCase(); hex.value = colors[key]; });
+      picker.addEventListener('input', () => { colors[key] = picker.value.toUpperCase(); hex.value = colors[key]; onInput(); });
       hex.addEventListener('input', () => {
         const v = hex.value.trim();
         const ok = /^#?[0-9a-f]{6}$/i.test(v);
         hex.classList.toggle('invalid', !ok);
-        if (ok) { colors[key] = `#${v.replace('#', '')}`.toUpperCase(); picker.value = colors[key].toLowerCase(); }
+        if (ok) { colors[key] = `#${v.replace('#', '')}`.toUpperCase(); picker.value = colors[key].toLowerCase(); onInput(); }
       });
+      if (setters) {
+        setters[key] = (value) => {
+          colors[key] = value;
+          picker.value = value.toLowerCase();
+          hex.value = value;
+          hex.classList.remove('invalid');
+        };
+      }
       return settingRow(title, desc, el('div.row', {}, picker, hex));
     };
+
+    // Match the logo: set the brand colors from the logo's own, with Undo.
+    // Offered only while the profile has a logo.
+    const colorSetters = {};
+    let colorsBeforePick = null;
+    const pickMessage = brandRowMessage();
+    const pickStatus = el('p.setting-desc.brand-pick-status', { role: 'status', hidden: true });
+    const forgetPick = () => { colorsBeforePick = null; pickStatus.hidden = true; };
+    const setBrandColors = (colors) => { for (const key of ['primary', 'accent', 'text']) colorSetters[key](colors[key]); };
+    const undoPick = el('button.link', { type: 'button', onClick: () => { if (colorsBeforePick) setBrandColors(colorsBeforePick); forgetPick(); } }, 'Undo');
+    const pickBtn = el('button', { type: 'button' }, 'Pick from logo');
+    pickBtn.addEventListener('click', async () => {
+      const logo = draft.logo ? assets[draft.logo] : null;
+      if (!logo?.dataUrl) return;
+      pickMessage.clear();
+      setButtonLoading(pickBtn, true, 'Picking…');
+      try {
+        const picked = await brandColorsFromLogo(logo);
+        if (!picked) {
+          pickMessage.show('This logo is white or light gray, so there are no colors to pick. Set them above.');
+          return;
+        }
+        const before = { ...draft.colors };
+        setBrandColors(picked);
+        colorsBeforePick = before;
+        pickStatus.replaceChildren('Colors picked from the logo. ', undoPick);
+        pickStatus.hidden = false;
+      } catch (err) {
+        pickMessage.show(`StepForge couldn’t read the logo’s colors: ${err.message || err}`);
+      } finally {
+        setButtonLoading(pickBtn, false);
+      }
+    });
+    const pickRow = el('div', {},
+      settingRow('Match the logo', 'Set Primary, Accent and Text from your logo’s colors. Accent and Text are darkened if needed so they’re easy to read.', pickBtn),
+      pickStatus, pickMessage.node);
+    const syncLogoTools = () => {
+      pickRow.hidden = !draft.logo;
+      if (!draft.logo) { forgetPick(); pickMessage.clear(); }
+    };
+    syncLogoTools();
 
     // Annotation colors: StepForge's unless the profile turns its own on.
     const ownAnnotations = el('input', { type: 'checkbox', checked: draft.annotations.custom });
@@ -465,26 +545,139 @@ function showBrandProfileEditor(api, data = null) {
       cssMessage.show(`This CSS is ${css.value.length.toLocaleString('en-US')} characters long. A profile can hold 200,000.`);
       return false;
     };
-    css.addEventListener('input', () => { draft.html.css = css.value; cssFits(); });
+    const cssNote = el('p.setting-desc.brand-css-note', { role: 'status', hidden: true });
+    css.addEventListener('input', () => { draft.html.css = css.value; cssNote.hidden = true; cssFits(); });
     const loadCss = el('button', { type: 'button', onClick: async () => {
       try {
         const picked = await api.branding.chooseAsset({ kind: 'css' });
         if (!picked) return;
         css.value = picked.css;
         draft.html.css = picked.css;
+        cssNote.hidden = true;
         cssFits();
       } catch (err) { cssMessage.show(err); }
     } }, 'Load .css file…');
 
+    // Write with AI: the local model (Settings → AI) writes CSS from a
+    // description, shown for review before it's added. Offered only when AI
+    // is on and Ollama has the chosen model.
+    const aiBtn = el('button', { type: 'button', hidden: true }, 'Write with AI…');
+    const aiRequest = el('textarea#brand-ai-request.brand-ai-request', {
+      rows: 2, maxLength: BRAND_AI_REQUEST_MAX_CHARS, spellcheck: true,
+      placeholder: 'For example: square step numbers, and step titles in the primary color',
+    });
+    const aiModel = el('span.setting-desc.brand-ai-model');
+    const aiMessage = brandRowMessage();
+    const aiResult = el('pre.brand-css.brand-ai-result', { hidden: true, 'aria-label': 'Suggested CSS' });
+    const aiCancel = el('button', { type: 'button' }, 'Cancel');
+    const aiWrite = el('button.primary', { type: 'button', disabled: true }, 'Write CSS');
+    const aiDiscard = el('button', { type: 'button' }, 'Discard');
+    const aiRetry = el('button', { type: 'button' }, 'Try again');
+    const aiAdd = el('button.primary', { type: 'button' }, 'Add to CSS');
+    const aiPanel = el('div.brand-ai', { hidden: true },
+      el('label.setting-title', { htmlFor: 'brand-ai-request' }, 'Describe the change'),
+      aiRequest, aiMessage.node, aiResult,
+      el('div.brand-ai-actions', {}, aiModel, el('div.row', {}, aiCancel, aiDiscard, aiRetry, aiWrite, aiAdd)));
+    let aiWriting = false;
+    let aiRun = 0;
+    let aiSuggestion = null;
+    // idle: describing; writing: waiting for the model; result: a suggestion to add or discard.
+    const aiState = (state) => {
+      aiWriting = state === 'writing';
+      aiRequest.disabled = aiWriting;
+      aiResult.hidden = state !== 'result';
+      aiCancel.hidden = state === 'result';
+      aiCancel.textContent = aiWriting ? 'Stop' : 'Cancel';
+      aiWrite.hidden = state === 'result';
+      if (aiWriting) setButtonLoading(aiWrite, true, 'Writing…');
+      else if (aiWrite.classList.contains('loading')) setButtonLoading(aiWrite, false);
+      aiWrite.disabled = aiWriting || !aiRequest.value.trim();
+      for (const btn of [aiDiscard, aiRetry, aiAdd]) btn.hidden = state !== 'result';
+    };
+    const stopAi = () => {
+      aiRun += 1;
+      if (aiWriting) void api.ai.cancel({ guideId: BRAND_AI_REQUEST }).catch(() => {});
+      aiState('idle');
+    };
+    const closeAi = () => {
+      stopAi();
+      aiSuggestion = null;
+      aiMessage.clear();
+      aiPanel.hidden = true;
+      aiBtn.hidden = false;
+    };
+    const writeCss = async () => {
+      const request = aiRequest.value.trim();
+      if (!request || aiWriting) return;
+      const run = ++aiRun;
+      aiMessage.clear();
+      aiState('writing');
+      try {
+        const result = await api.ai.brandCss({
+          request,
+          css: css.value.slice(0, BRAND_CSS_MAX_CHARS),
+          profile: { colors: { ...draft.colors }, fonts: { heading: { name: draft.fonts.heading.name }, body: { name: draft.fonts.body.name } } },
+        });
+        if (run !== aiRun) return; // stopped, or the editor closed
+        if (!result?.ok) {
+          aiMessage.show(result?.reason || 'AI couldn’t write the CSS.');
+          aiState('idle');
+          return;
+        }
+        aiSuggestion = { request, css: result.css };
+        aiResult.textContent = result.css;
+        aiState('result');
+      } catch (err) {
+        if (run !== aiRun) return;
+        aiMessage.show(err);
+        aiState('idle');
+      }
+    };
+    aiBtn.addEventListener('click', () => {
+      aiBtn.hidden = true;
+      aiPanel.hidden = false;
+      aiState('idle');
+      aiRequest.focus();
+    });
+    aiRequest.addEventListener('input', () => { if (!aiWriting) aiWrite.disabled = !aiRequest.value.trim(); });
+    aiRequest.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void writeCss(); }
+    });
+    aiCancel.addEventListener('click', () => { if (aiWriting) stopAi(); else closeAi(); });
+    aiWrite.addEventListener('click', () => void writeCss());
+    aiRetry.addEventListener('click', () => void writeCss());
+    aiDiscard.addEventListener('click', () => { aiSuggestion = null; aiState('idle'); aiRequest.focus(); });
+    aiAdd.addEventListener('click', () => {
+      if (!aiSuggestion) return;
+      // The request, as a comment, says what the added rules are for.
+      const label = aiSuggestion.request.replace(/\s+/g, ' ').replace(/\*\//g, '* /').slice(0, 120);
+      const existing = css.value.replace(/\s+$/, '');
+      css.value = `${existing ? `${existing}\n\n` : ''}/* ${label} */\n${aiSuggestion.css}\n`;
+      draft.html.css = css.value;
+      aiRequest.value = '';
+      closeAi();
+      if (cssFits()) {
+        cssNote.textContent = 'Added to your CSS. Choose Preview to see it.';
+        cssNote.hidden = false;
+      }
+      css.scrollTop = css.scrollHeight;
+    });
+    api.ai.status().then((status) => {
+      if (!status?.ready) return;
+      aiModel.textContent = `Written by ${status.model} through Ollama.`;
+      aiBtn.hidden = false;
+    }).catch(() => {});
+
     const body = el('div.brand-editor', {},
       settingsCard(null, settingRow('Profile name', 'Shown in the Active brand profile list.', name), nameMessage.node),
       settingsCard('Brand assets',
-        imageRow('logo', 'Company logo', 'PNG, JPG, or SVG (scripts and outside links are removed). On covers, page headers and slides.'),
+        imageRow('logo', 'Company logo', 'PNG, JPG, or SVG (scripts and outside links are removed). On covers, page headers and slides.', syncLogoTools),
         imageRow('banner', 'Banner', 'Optional. A wide image across the top of covers, web pages and wiki pages.')),
       settingsCard('Brand colors',
-        colorRow(draft.colors, 'primary', 'Primary', 'Title bars, step numbers, headings and accent lines.'),
-        colorRow(draft.colors, 'accent', 'Accent', 'Links and highlights.'),
-        colorRow(draft.colors, 'text', 'Text', 'Body text.')),
+        colorRow(draft.colors, 'primary', 'Primary', 'Title bars, step numbers, headings and accent lines.', { setters: colorSetters, onInput: forgetPick }),
+        colorRow(draft.colors, 'accent', 'Accent', 'Links and highlights.', { setters: colorSetters, onInput: forgetPick }),
+        colorRow(draft.colors, 'text', 'Text', 'Body text.', { setters: colorSetters, onInput: forgetPick }),
+        pickRow),
       settingsCard('Annotation colors',
         settingRow('Use your own annotation colors', 'Off keeps StepForge’s: red shapes, blue number badges, dark tooltips. New annotations start in these colors; ones already drawn keep theirs.',
           makeSwitch(ownAnnotations, 'Use your own annotation colors')),
@@ -511,7 +704,9 @@ function showBrandProfileEditor(api, data = null) {
           el('a', { href: BRAND_CSS_GUIDE_URL, onClick: (e) => { e.preventDefault(); void api.shell.openExternal({ url: BRAND_CSS_GUIDE_URL }).catch(() => {}); } }, 'What you can style'), '.'),
         css,
         cssMessage.node,
-        el('div.settings-actions', {}, loadCss)));
+        cssNote,
+        el('div.settings-actions', {}, loadCss, aiBtn),
+        aiPanel));
 
     const previewFormat = brandSelect('html-rich', BRAND_PREVIEW_FORMATS, { 'aria-label': 'Preview format' });
     const previewBtn = el('button', { type: 'button' }, 'Preview');
@@ -534,6 +729,7 @@ function showBrandProfileEditor(api, data = null) {
       setButtonLoading(saveBtn, true, 'Saving…');
       try {
         const saved = await api.branding.save({ profile: draft });
+        stopAi();
         close();
         resolve(saved);
       } catch (err) {
@@ -546,9 +742,9 @@ function showBrandProfileEditor(api, data = null) {
       title: base ? 'Edit brand profile' : 'New brand profile',
       body,
       footer: [previewFormat, previewBtn, footerStatus,
-        el('button', { type: 'button', onClick: () => { close(); resolve(null); } }, 'Cancel'), saveBtn],
+        el('button', { type: 'button', onClick: () => { stopAi(); close(); resolve(null); } }, 'Cancel'), saveBtn],
       wide: true,
-      onClose: () => resolve(null),
+      onClose: () => { stopAi(); resolve(null); },
     });
     // A profile imported before its images were drawn as PNG gets them now.
     for (const key of ['logo', 'banner']) {

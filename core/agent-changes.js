@@ -7,7 +7,8 @@ const { atomicWriteFileSync, readJsonIfExists } = require('./util');
 /**
  * AI agents edit guides from a separate `StepForge --mcp` process, so the app
  * can't see their writes. After each write the agent process records the guide
- * here, and the app watches this one small file to reload an open guide.
+ * (or a brand profile change) here, and the app watches this one small file to
+ * reload an open guide or pick up the brand change.
  */
 const KEEP_LAST = 50;
 
@@ -15,19 +16,39 @@ function agentChangesFile(libraryDir) {
   return path.join(libraryDir, 'agent-changes.json');
 }
 
-function recordAgentChange(libraryDir, guideId, now = Date.now()) {
+function record(libraryDir, change) {
   const file = agentChangesFile(libraryDir);
   const { changes = [] } = readJsonIfExists(file, {}) || {};
-  const next = [...(Array.isArray(changes) ? changes : []), { guideId, at: now }].slice(-KEEP_LAST);
+  const next = [...(Array.isArray(changes) ? changes : []), change].slice(-KEEP_LAST);
   atomicWriteFileSync(file, JSON.stringify({ changes: next }));
 }
 
-/** Guide ids changed by agents after `since` (ms), and the newest change time. */
+function recordAgentChange(libraryDir, guideId, now = Date.now()) {
+  record(libraryDir, { guideId, at: now });
+}
+
+/**
+ * An agent changed brand profiles; `activeProfileId` when it also chose the
+ * active one ('' for no branding), which the running app then saves.
+ */
+function recordBrandingChange(libraryDir, { activeProfileId } = {}, now = Date.now()) {
+  record(libraryDir, { branding: true, ...(typeof activeProfileId === 'string' ? { activeProfileId } : {}), at: now });
+}
+
+/**
+ * What agents changed after `since` (ms): guide ids, whether brand profiles
+ * changed, the active profile they chose last (undefined if none), and the
+ * newest change time.
+ */
 function agentChangesSince(libraryDir, since) {
   const { changes = [] } = readJsonIfExists(agentChangesFile(libraryDir), {}) || {};
-  const fresh = (Array.isArray(changes) ? changes : []).filter((c) => c && c.at > since && typeof c.guideId === 'string');
+  const fresh = (Array.isArray(changes) ? changes : []).filter((c) => c && c.at > since);
+  const brand = fresh.filter((c) => c.branding === true);
+  const chosen = brand.filter((c) => typeof c.activeProfileId === 'string').pop();
   return {
-    guideIds: [...new Set(fresh.map((c) => c.guideId))],
+    guideIds: [...new Set(fresh.filter((c) => typeof c.guideId === 'string').map((c) => c.guideId))],
+    branding: brand.length > 0,
+    activeProfileId: chosen ? chosen.activeProfileId : undefined,
     latest: fresh.reduce((max, c) => Math.max(max, c.at), since),
   };
 }
@@ -41,4 +62,4 @@ function agentChangesStamp(libraryDir) {
   }
 }
 
-module.exports = { agentChangesFile, recordAgentChange, agentChangesSince, agentChangesStamp };
+module.exports = { agentChangesFile, recordAgentChange, recordBrandingChange, agentChangesSince, agentChangesStamp };

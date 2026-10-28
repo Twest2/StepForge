@@ -369,7 +369,7 @@ class BrandingStore {
     if (!fs.existsSync(file)) atomicWriteFileSync(file, data);
     const known = this.assetMeta(id);
     if (known?.raster) meta.raster = known.raster;
-    else if (meta.mime === 'image/png') {
+    else if (meta.mime === 'image/png' && meta.width <= SELF_RASTER_DIM && meta.height <= SELF_RASTER_DIM) {
       // A PNG StepForge can decode at a sensible size is used as it is.
       try {
         const img = decodePng(data);
@@ -390,6 +390,12 @@ class BrandingStore {
   setRaster(id, png) {
     const meta = this.assetMeta(id);
     if (!meta || meta.kind !== 'image') throw new Error('Unknown image.');
+    // Check the header before decoding: a small compressed file can describe
+    // a huge image and otherwise allocate gigabytes in the main process.
+    if (imageType(png) === 'png') {
+      const size = pngSize(png);
+      if (size.width > MAX_RASTER_DIM || size.height > MAX_RASTER_DIM) throw new Error('The converted image is too large.');
+    }
     let img;
     try { img = decodePng(png); } catch { throw new Error('The image couldn’t be converted to PNG.'); }
     if (img.width > MAX_RASTER_DIM || img.height > MAX_RASTER_DIM) throw new Error('The converted image is too large.');
@@ -408,6 +414,19 @@ class BrandingStore {
     if (meta.kind === 'font') return { ...out, family: meta.family, format: meta.format };
     const data = fs.readFileSync(this.assetFile(meta));
     return { ...out, needsRaster: !meta.raster, dataUrl: `data:${meta.mime};base64,${data.toString('base64')}` };
+  }
+
+  /**
+   * Logos and banners in use that still need the renderer's PNG drawing:
+   * SVGs and JPGs an AI agent added, or an import without its drawing.
+   */
+  pendingRasters() {
+    const ids = new Set();
+    for (const { id } of this.list()) {
+      const profile = this.get(id);
+      for (const asset of [profile?.logo, profile?.banner]) if (asset) ids.add(asset);
+    }
+    return [...ids].map((id) => this.describe(id)).filter((d) => d && d.kind === 'image' && d.needsRaster);
   }
 
   /** Delete assets no profile uses, except recent uploads (a profile may still be being edited). */

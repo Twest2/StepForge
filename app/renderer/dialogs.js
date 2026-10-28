@@ -707,6 +707,7 @@ function showSettingsDialog({
     const aiScreenshots = el('input', { type: 'checkbox', checked: settings.ai?.attachScreenshots !== false });
     const agentsEnabled = el('input', { type: 'checkbox', checked: Boolean(settings.ai?.agents?.enabled) });
     const agentsScreenshots = el('input', { type: 'checkbox', checked: settings.ai?.agents?.screenshots !== false });
+    const agentsBranding = el('input', { type: 'checkbox', checked: Boolean(settings.ai?.agents?.branding) });
     // How Claude Code, Codex, or any MCP app starts StepForge for agents.
     const agentSetup = el('div.agent-setup', {}, el('div.setting-desc', {}, 'Loading the setup commands…'));
     const AGENT_SETUPS = [
@@ -891,6 +892,7 @@ function showSettingsDialog({
           el('div.setting-desc', {}, 'AI apps such as Claude and Codex can connect to StepForge and write your guides for you. They can rewrite text, make substeps, add placeholders, and draw on screenshots, but they can’t reorder steps or delete anything.'),
           settingRow('Let AI agents edit your guides', 'Turn off to cut off every connected agent at once.', makeSwitch(agentsEnabled, 'Let AI agents edit your guides')),
           settingRow('Agents can see screenshots', 'Blurred areas are filled in first. Turn off to share step text only.', makeSwitch(agentsScreenshots, 'Agents can see screenshots')),
+          settingRow('Let AI agents edit brand profiles', 'Agents can make and change brand profiles: logo, colors, fonts and CSS, and choose the one exports use. They can’t delete a profile.', makeSwitch(agentsBranding, 'Let AI agents edit brand profiles')),
           agentSetup),
       ] },
       { id: 'accounts', label: 'Accounts', description: 'Sync guides with Google Drive, OneDrive, Dropbox or Nextcloud, share them on the web with GitHub, or publish them to Confluence or Wiki.js.', content: [accountsPanel.node] },
@@ -1010,6 +1012,7 @@ function showSettingsDialog({
                   ...(settings.ai?.agents || {}),
                   enabled: agentsEnabled.checked,
                   screenshots: agentsScreenshots.checked,
+                  branding: agentsBranding.checked,
                 },
                 ollama: {
                   ...(settings.ai?.ollama || {}),

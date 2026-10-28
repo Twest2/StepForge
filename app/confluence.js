@@ -69,12 +69,16 @@ function pageFromExport(apiDir) {
   const request = JSON.parse(fs.readFileSync(path.join(apiDir, 'page-datacenter.json'), 'utf8'));
   let body = request.body.storage.value;
   const attachmentDir = path.join(apiDir, 'attachments');
-  const attachments = (fs.existsSync(attachmentDir) ? fs.readdirSync(attachmentDir) : [])
-    .filter((file) => /^\d{3}-.*\.png$/.test(file)).sort().map((file) => {
-      const name = `step-${file.slice(0, 3)}.png`;
-      body = body.split(`ri:filename="${escapeXml(file)}"`).join(`ri:filename="${name}"`);
-      return { name, data: fs.readFileSync(path.join(attachmentDir, file)) };
-    });
+  const files = fs.existsSync(attachmentDir) ? fs.readdirSync(attachmentDir).sort() : [];
+  const attachments = files.filter((file) => /^\d{3}-.*\.png$/.test(file)).map((file) => {
+    const name = `step-${file.slice(0, 3)}.png`;
+    body = body.split(`ri:filename="${escapeXml(file)}"`).join(`ri:filename="${name}"`);
+    return { name, data: fs.readFileSync(path.join(attachmentDir, file)) };
+  });
+  // A brand profile's logo and banner keep their names.
+  for (const file of files.filter((f) => /^brand-(logo|banner)\.png$/.test(f))) {
+    if (body.includes(`ri:filename="${file}"`)) attachments.push({ name: file, data: fs.readFileSync(path.join(attachmentDir, file)) });
+  }
   return { title: request.title, body, attachments };
 }
 

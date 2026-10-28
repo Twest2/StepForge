@@ -110,6 +110,10 @@ agents edit your guides** and connect an agent such as Claude Code or Codex
 - Agents can rewrite text, make substeps, add placeholders, and draw
   annotations. They can't reorder steps, change screenshots, or delete
   anything.
+- With **Let AI agents edit brand profiles** on (it's off by default), agents
+  can also read and change brand profiles, see the logo, and add an image or
+  font file they name on your computer to a profile. They can't delete a
+  profile.
 - Turning agent access off takes effect at the agent's next request.
 
 ## Optional Google Drive sync

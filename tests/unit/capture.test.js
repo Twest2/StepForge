@@ -1629,6 +1629,22 @@ test('a window frame with captureBounds gets a click marker placed inside those 
   assert.equal(mark.y + mark.h / 2, 0.5);
 });
 
+test('click markers use the brand profile’s shape color when it sets one, else the setting', async () => {
+  const frame = () => {
+    const bounds = { x: 0, y: 0, width: 400, height: 300 };
+    const f = makeFrame('win', 0, { mode: 'window', display: { bounds }, size: { width: 400, height: 300 } });
+    f.captureBounds = bounds;
+    return f;
+  };
+  const plain = markerService();
+  await plain.service.storeFrameAsStep('g', 'window', frame(), { x: 200, y: 150 });
+  assert.equal(plain.added[0].annotations[0].style.stroke, '#E5484D');
+  const branded = markerService();
+  branded.service.markerColor = () => '#173F7A';
+  await branded.service.storeFrameAsStep('g', 'window', frame(), { x: 200, y: 150 });
+  assert.equal(branded.added[0].annotations[0].style.stroke, '#173F7A');
+});
+
 test('a window frame without captureBounds gets no click marker', async () => {
   const { service, added } = markerService();
   const frame = makeFrame('win', 0, { mode: 'window' });

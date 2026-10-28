@@ -49,7 +49,7 @@ test('renderer api.* usage stays within the preload surface', () => {
 
   // Every api.<group>.<member>( call in renderer code must exist.
   const offenders = [];
-  for (const file of ['app.js', 'editor.js', 'dialogs.js']) {
+  for (const file of ['app.js', 'editor.js', 'dialogs.js', 'branding.js']) {
     const src = read(`app/renderer/${file}`);
     for (const m of src.matchAll(/\bapi\.(\w+)\.(\w+)\(/g)) {
       const [, group, member] = m;

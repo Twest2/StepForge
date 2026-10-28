@@ -10,6 +10,7 @@ const { ANNOTATION_TYPES, normalizeAnnotation } = require('./schema');
 const { BUILT_IN_NAMES, cleanPlaceholderName, isValidPlaceholderName } = require('./ai-placeholders');
 const { withParent, parentMap } = require('./step-outline');
 const { Settings } = require('./settings');
+const { createBrandTools, BRAND_INSTRUCTIONS } = require('./agent-brand-tools');
 const {
   normalizeAiBlock,
   mergeAiBlocks,
@@ -44,6 +45,7 @@ const INSTRUCTIONS = [
   'Placeholders: get_guide lists them. In descriptions and blocks, write [[Name]] where a placeholder\'s value would appear; keep titles in plain words. Create a placeholder only for a specific value that repeats, such as a product name, version, URL or course code.',
   'Annotations use pixel coordinates on the screenshot get_step returns. A red circle there is usually the person\'s click marker; don\'t duplicate it.',
   'Keep every [[placeholder]] token exactly as written. Polish text the person wrote rather than replacing its meaning.',
+  ...BRAND_INSTRUCTIONS,
 ].join('\n');
 
 class AgentError extends Error {}
@@ -192,7 +194,7 @@ function annotationFromAgent(item, shown, index) {
  * - `agentSettings()`: the current `ai.agents` settings, read fresh on every call.
  * - `onChange(guideId)`: called after each write, so the app can reload.
  */
-function createAgentTools({ store, agentSettings, onChange = () => {} }) {
+function createAgentTools({ store, agentSettings, onChange = () => {}, onBrandingChange = () => {} }) {
   const requireEnabled = () => {
     if (!agentSettings()?.enabled) {
       throw new AgentError('StepForge has AI agent access turned off. Ask the user to turn on Settings → AI → Let AI agents edit your guides, then try again.');
@@ -538,6 +540,7 @@ function createAgentTools({ store, agentSettings, onChange = () => {} }) {
         };
       },
     },
+    ...createBrandTools({ settingsDir: store.settingsDir, requireEnabled, agentSettings, onChange: onBrandingChange, AgentError, text }),
   ];
 
   return tools.map((tool) => ({

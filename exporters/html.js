@@ -7,6 +7,7 @@ const { highlightCode } = require('../core/code-highlight');
 const { encodePng } = require('../core/png');
 const { guideSlug, renderAllImages, LEVEL_LABEL, stepContentGroups, codeBlockText } = require('./common');
 const { anchorFor, tocEntries, guideMetaLines } = require('./document-layout');
+const { withBrand, imageDataUri, cssFontStack, textOn } = require('./branding');
 
 /**
  * HTML exporters. Both variants are fully self-contained single files:
@@ -74,9 +75,26 @@ function metaLine(ast) {
   ].filter(Boolean).map((part) => `<span>${escapeHtml(part)}</span>`).join('');
 }
 
+/** The brand's banner, logo and header text, above the title. */
+function brandHeader(brand) {
+  if (!brand) return '';
+  const parts = [];
+  if (brand.banner) {
+    parts.push(`<img class="brand-banner" src="${imageDataUri(brand.banner)}" alt=""${brand.banner.width ? ` width="${brand.banner.width}" height="${brand.banner.height}"` : ''}>`);
+  }
+  const logo = brand.logo
+    ? `<img class="brand-logo" src="${imageDataUri(brand.logo)}" alt="Logo"${brand.logo.width ? ` width="${brand.logo.width}" height="${brand.logo.height}"` : ''}>`
+    : '';
+  const tagline = brand.header.text ? `<p class="brand-tagline">${escapeHtml(brand.header.text)}</p>` : '';
+  if (logo || tagline) parts.push(`<div class="brand-bar">${logo}${tagline}</div>`);
+  return parts.join('\n  ');
+}
+
 function renderHeader(ast) {
+  const brand = ast.branding;
   return `
-<header class="doc-header">
+<header class="doc-header${brand ? ` cover-${brand.cover}` : ''}">
+  ${brandHeader(brand)}
   <div class="rule"></div>
   <h1>${escapeHtml(ast.guide.title || 'Untitled guide')}</h1>
   ${ast.guide.descriptionHtml ? `<div class="lede">${stepLinkRewrite(ast.guide.descriptionHtml, ast)}</div>` : ''}
@@ -155,7 +173,9 @@ function rootStyle(tpl) {
 }
 
 function footer(ast) {
-  return `<footer class="doc-footer">Made with StepForge · ${escapeHtml(String(ast.generatedAt || '').slice(0, 10))}</footer>`;
+  const date = escapeHtml(String(ast.generatedAt || '').slice(0, 10));
+  const text = ast.branding?.footer.text;
+  return `<footer class="doc-footer">${text ? `${escapeHtml(text)} · ${date}` : `Made with StepForge · ${date}`}</footer>`;
 }
 
 const BASE_CSS = `
@@ -172,15 +192,9 @@ const BASE_CSS = `
   --success: #0f8a5f; --success-bg: #ecf8f2;
   --warn: #b45309; --warn-bg: #fff8eb;
   --error: #c2362f; --error-bg: #fdf1f0;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #111418; --soft: #181c22; --text: #e6e9ee; --muted: #9aa4b1; --border: #2a313a;
-    --code-bg: #0b0e12; --info-bg: rgba(var(--accent-rgb), .14);
-    --success: #4cc79a; --success-bg: rgba(76,199,154,.12);
-    --warn: #f0b458; --warn-bg: rgba(240,180,88,.12);
-    --error: #f07b73; --error-bg: rgba(240,123,115,.12);
-  }
+  --link: var(--accent);
+  --font-body: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --font-heading: var(--font-body);
 }
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
@@ -188,9 +202,10 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font: 16px/1.65 "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  font: 16px/1.65 var(--font-body);
 }
-a { color: var(--accent); text-underline-offset: 2px; }
+h1, h2, h3, h4 { font-family: var(--font-heading); }
+a { color: var(--link); text-underline-offset: 2px; }
 .page { max-width: 880px; margin: 0 auto; padding: 56px 24px 48px; }
 .doc-header { margin-bottom: 36px; }
 .doc-header .rule { width: 56px; height: 4px; border-radius: 4px; background: var(--accent); margin-bottom: 20px; }
@@ -211,7 +226,7 @@ a { color: var(--accent); text-underline-offset: 2px; }
 .step-head h2 { flex: 1; min-width: 0; font-size: 1.3rem; line-height: 1.3; margin: 0; letter-spacing: -.01em; }
 .step-num {
   flex: none; display: inline-grid; place-items: center; min-width: 30px; height: 30px; padding: 0 8px;
-  border-radius: 999px; background: var(--accent); color: #fff; font-size: .85rem; font-weight: 700;
+  border-radius: 999px; background: var(--accent); color: var(--on-primary, #fff); font-size: .85rem; font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 .depth-1 .step-num, .depth-2 .step-num, .depth-3 .step-num { background: rgba(var(--accent-rgb), .12); color: var(--accent); }
@@ -261,6 +276,69 @@ tbody tr:last-child td { border-bottom: 0; }
   a { color: inherit; }
 }
 `;
+
+// Readers in dark mode get dark colors, unless a brand profile keeps its guides light.
+const DARK_CSS = `
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111418; --soft: #181c22; --text: #e6e9ee; --muted: #9aa4b1; --border: #2a313a;
+    --code-bg: #0b0e12; --info-bg: rgba(var(--accent-rgb), .14);
+    --success: #4cc79a; --success-bg: rgba(76,199,154,.12);
+    --warn: #f0b458; --warn-bg: rgba(240,180,88,.12);
+    --error: #f07b73; --error-bg: rgba(240,123,115,.12);
+  }
+}
+`;
+
+// Classes only a brand profile's header uses.
+const BRAND_CSS = `
+.brand-banner { display: block; width: 100%; height: auto; max-height: 240px; object-fit: cover; border-radius: 10px; margin-bottom: 24px; }
+.brand-bar { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+.brand-logo { display: block; width: auto; height: auto; max-width: 260px; max-height: 64px; }
+.brand-tagline { margin: 0; color: var(--muted); font-size: .9rem; }
+.doc-header.cover-band { background: var(--brand-primary); color: var(--on-primary); padding: 32px 32px 28px; border-radius: 12px; }
+.doc-header.cover-band .rule { background: var(--on-primary); opacity: .7; }
+.doc-header.cover-band .lede, .doc-header.cover-band .meta, .doc-header.cover-band .brand-tagline { color: var(--on-primary); opacity: .88; }
+.doc-header.cover-band a { color: inherit; }
+.doc-header.cover-centered { text-align: center; }
+.doc-header.cover-centered .rule, .doc-header.cover-centered .brand-logo, .doc-header.cover-centered .lede { margin-left: auto; margin-right: auto; }
+.doc-header.cover-centered .brand-bar { flex-direction: column; justify-content: center; }
+.doc-header.cover-centered .meta { justify-content: center; }
+@media print { .doc-header.cover-band { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+`;
+
+/**
+ * Keep author CSS inside its <style> element: "</style" would end the
+ * element early and let the rest of the text run as page markup.
+ */
+function styleText(css) {
+  return String(css || '').replace(/<\/(style)/gi, '<\\/$1');
+}
+
+/** The brand's colors, fonts and embedded font files, as CSS after the base styles. */
+function brandCss(brand) {
+  if (!brand) return DARK_CSS;
+  const { primary, accent, text } = brand.colors;
+  const faces = [];
+  const declared = new Set();
+  for (const role of ['heading', 'body']) {
+    const { name, file } = brand.fonts[role];
+    if (!name || !file || declared.has(name)) continue;
+    declared.add(name);
+    faces.push(`@font-face { font-family: "${name}"; src: url(data:${file.mime};base64,${file.data.toString('base64')}) format("${file.format}"); font-display: swap; }`);
+  }
+  const fonts = [
+    brand.fonts.body.name ? `--font-body: ${cssFontStack(brand.fonts.body.name)};` : '',
+    brand.fonts.heading.name ? `--font-heading: ${cssFontStack(brand.fonts.heading.name)};` : '',
+  ].join(' ');
+  const vars = `:root { --brand-primary: ${primary}; --brand-accent: ${accent}; --brand-text: ${text}; --on-primary: ${textOn(primary)}; --link: ${accent}; ${fonts} }`;
+  // A light-only profile keeps its own text color; one that follows the
+  // reader's dark mode uses it in light mode only.
+  const scheme = brand.html.colorScheme === 'auto'
+    ? `${DARK_CSS}@media (prefers-color-scheme: light) { :root { --text: ${text}; } }`
+    : `:root { color-scheme: light; --text: ${text}; }`;
+  return `\n${faces.join('\n')}\n${vars}\n${scheme}\n${BRAND_CSS}${styleText(brand.html.css)}\n`;
+}
 
 const RICH_CSS = `
 .page.rich { max-width: 1180px; display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 56px; align-items: start; }
@@ -454,7 +532,7 @@ function page(ast, tpl, css, body, script = '') {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="generator" content="StepForge">
 <title>${escapeHtml(ast.guide.title || 'Untitled guide')}</title>
-<style>${css}${tpl.customCss || ''}</style>
+<style>${css}${brandCss(ast.branding)}${styleText(tpl.customCss)}</style>
 </head>
 <body>
 ${body}
@@ -465,7 +543,7 @@ ${script ? `<script>${script}</script>` : ''}
 }
 
 function exportHtmlSimple(ast, outDir, template = {}) {
-  const tpl = { ...DEFAULT_TEMPLATE, ...template };
+  const tpl = withBrand('html-simple', DEFAULT_TEMPLATE, ast, template);
   fs.mkdirSync(outDir, { recursive: true });
   const images = tpl.includeImages ? renderAllImages(ast) : new Map();
   const toc = tpl.toc && ast.steps.length > 1
@@ -485,7 +563,7 @@ ${footer(ast)}
 }
 
 function exportHtmlRich(ast, outDir, template = {}) {
-  const tpl = { ...DEFAULT_TEMPLATE, ...template };
+  const tpl = withBrand('html-rich', DEFAULT_TEMPLATE, ast, template);
   fs.mkdirSync(outDir, { recursive: true });
   const images = tpl.includeImages ? renderAllImages(ast) : new Map();
   const storageKey = `stepforge-progress-${ast.guide.id}`;

@@ -10,7 +10,7 @@ const { GuideStore } = require('../core/store');
 const { Settings } = require('../core/settings');
 const { createMcpServer, serveStdio } = require('../core/mcp-server');
 const { createAgentTools, INSTRUCTIONS } = require('../core/agent-tools');
-const { recordAgentChange } = require('../core/agent-changes');
+const { recordAgentChange, recordBrandingChange } = require('../core/agent-changes');
 const { libraryLocationFor } = require('./data-dir');
 const pkg = require('../package.json');
 
@@ -49,6 +49,7 @@ async function main() {
     // Read on every call, so turning access off in Settings takes effect at once.
     agentSettings: () => new Settings(store.settingsDir).get('ai.agents') || {},
     onChange: (guideId) => recordAgentChange(store.libraryDir, guideId),
+    onBrandingChange: (change) => recordBrandingChange(store.libraryDir, change),
   });
   await serveStdio(createMcpServer({ name: 'stepforge', version: pkg.version, instructions: INSTRUCTIONS, tools }));
   if (app) app.exit(0);

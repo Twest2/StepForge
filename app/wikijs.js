@@ -118,6 +118,7 @@ function decodeToken(token) {
  * The page to publish, from a Wiki.js export (exporters/wikijs.js with
  * assetFolder set). Exported screenshots are named after step titles, which
  * can hold private details; on the wiki they're just step-001.png and so on.
+ * A brand profile's logo and banner keep their names (brand-logo.png).
  */
 function pageFromExport(file, assetFolder) {
   let content = fs.readFileSync(file, 'utf8');
@@ -131,6 +132,9 @@ function pageFromExport(file, assetFolder) {
       const name = `step-${image.slice(0, 3)}.png`;
       content = content.split(`(${folder}/${image})`).join(`(${folder}/${name})`);
       assets.push({ name, data: fs.readFileSync(path.join(full, image)) });
+    }
+    for (const image of fs.readdirSync(full).filter((name) => /^brand-(logo|banner)\.png$/.test(name)).sort()) {
+      if (content.includes(`(${folder}/${image})`)) assets.push({ name: image, data: fs.readFileSync(path.join(full, image)) });
     }
   }
   return { content, assets };

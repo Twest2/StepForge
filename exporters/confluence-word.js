@@ -7,6 +7,7 @@ const { htmlToBlocks } = require('../core/htmlblocks');
 const { LEVEL_LABEL, stepContentGroups, codeBlockText, wordCodeRuns, wordCodeShading } = require('./common');
 const { highlightCode } = require('../core/code-highlight');
 const { guideMetaLines } = require('./document-layout');
+const { fitSize } = require('./branding');
 
 /**
  * A Word document shaped for Confluence's "Import Word document" feature
@@ -145,12 +146,17 @@ class WordDocument {
   }
 
   image(img, alt) {
-    const name = `image${this.media.length + 1}.png`;
-    this.media.push({ name, data: encodePng(img) });
-    const id = this.rel('image', `media/${name}`);
     const scale = Math.min(1, MAX_IMAGE_PX / img.width);
-    const cx = Math.round(img.width * scale * EMU_PER_PX);
-    const cy = Math.round(img.height * scale * EMU_PER_PX);
+    return this.picture(encodePng(img), img.width * scale, img.height * scale, alt);
+  }
+
+  /** An inline PNG `widthPx` × `heightPx` (at 96 dpi) in a paragraph of its own. */
+  picture(png, widthPx, heightPx, alt, props = '') {
+    const name = `image${this.media.length + 1}.png`;
+    this.media.push({ name, data: png });
+    const id = this.rel('image', `media/${name}`);
+    const cx = Math.round(widthPx * EMU_PER_PX);
+    const cy = Math.round(heightPx * EMU_PER_PX);
     const docPrId = this.media.length;
     return paragraph('<w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0">'
       + `<wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="${docPrId}" name="${escapeXml(name)}" descr="${escapeXml(alt)}"/>`
@@ -160,7 +166,7 @@ class WordDocument {
       + `<pic:nvPicPr><pic:cNvPr id="${docPrId}" name="${escapeXml(name)}" descr="${escapeXml(alt)}"/><pic:cNvPicPr/></pic:nvPicPr>`
       + `<pic:blipFill><a:blip r:embed="${id}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>`
       + `<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>`
-      + '</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>');
+      + '</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>', props);
   }
 
   step(step, images, tpl) {
@@ -195,12 +201,25 @@ class WordDocument {
 
   build(images, tpl) {
     const ast = this.ast;
+    const brand = ast.branding;
     const intro = [];
+    // The brand's banner and logo open the page; its footer text closes it.
+    const jc = brand?.cover === 'centered' ? '<w:jc w:val="center"/>' : '';
+    if (brand?.banner?.png) {
+      const size = fitSize(brand.banner.width, brand.banner.height, MAX_IMAGE_PX, 220);
+      intro.push(this.picture(brand.banner.png, size.width, size.height, 'Banner', jc));
+    }
+    if (brand?.logo?.png) {
+      const size = fitSize(brand.logo.width, brand.logo.height, 240, 64);
+      intro.push(this.picture(brand.logo.png, size.width, size.height, 'Logo', jc));
+    }
+    if (brand?.header.text) intro.push(paragraph(runXml(brand.header.text, { italic: true }), jc));
     if (ast.guide.descriptionHtml) intro.push(this.richText(ast.guide.descriptionHtml));
     const count = ast.steps.length;
     const meta = [`${count} step${count === 1 ? '' : 's'}`, ...guideMetaLines(ast)].join(' · ');
     intro.push(paragraph(runXml(meta, { italic: true })));
-    const body = intro.join('') + ast.steps.map((s) => this.step(s, images, tpl)).join('');
+    const outro = brand?.footer.text ? paragraph(runXml(brand.footer.text, { italic: true })) : '';
+    const body = intro.join('') + ast.steps.map((s) => this.step(s, images, tpl)).join('') + outro;
 
     const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="${W_NS}" xmlns:r="${R_NS}" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">

@@ -35,6 +35,26 @@ function betaBadge(text = 'Beta') {
   return el('span.settings-chip.beta-badge', {}, text);
 }
 
+/** Settings row: a title and optional description beside its control. */
+function settingRow(title, description, control) {
+  return el('div.setting-row', {},
+    el('div.setting-text', {},
+      el('div.setting-title', {}, title),
+      description ? el('div.setting-desc', {}, description) : null),
+    el('div.setting-control', {}, control));
+}
+
+/** Wraps a checkbox as an on/off switch; the checkbox keeps its `checked` state. */
+function makeSwitch(input, label) {
+  input.classList.add('switch-input');
+  return el('label.switch', { title: label }, input, el('span.switch-track', { 'aria-hidden': 'true' }),
+    el('span.sr-only', {}, label));
+}
+
+function settingsCard(title, ...rows) {
+  return el('div.settings-card', {}, title ? el('div.settings-card-title', {}, title) : null, ...rows);
+}
+
 function clearNode(node) {
   while (node.firstChild) node.removeChild(node.firstChild);
 }

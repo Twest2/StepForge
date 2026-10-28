@@ -6,7 +6,8 @@ const { htmlToText } = require('../core/util');
 
 /**
  * Wiki.js markdown exporter. Same step/body structure as the generic
- * Markdown exporter, but written for Wiki.js 2: its own callout syntax,
+ * Markdown exporter (brand logo and banner included), but written for
+ * Wiki.js 2: its own callout syntax,
  * no raw-HTML decoration or repeated page title, Wiki.js's built-in page TOC instead of an inline
  * one, image links that can point at a wiki asset folder, and optional
  * page metadata for Git-synced wikis.
@@ -67,6 +68,8 @@ function exportWikiJs(ast, outDir, template = {}) {
     imageUrl: folder
       ? (relPath) => `${folder.startsWith('/') ? '' : '/'}${folder}/${relPath.split('/').pop()}`
       : (relPath) => relPath,
+    // Wiki.js can be set to strip HTML, so the logo and banner are Markdown images.
+    brandHtml: false,
   });
 }
 

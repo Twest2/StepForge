@@ -135,6 +135,7 @@ test('the editor opens the publish dialog after Export closes, and the app route
     export: { formats: async () => [{ id: 'confluence', label: 'Confluence' }] },
     templates: { list: async () => [] },
     settings: { all: async () => ({}) },
+    branding: { list: async () => [] },
     github: { status: async () => null },
     guide: { quality: async () => [] },
   };

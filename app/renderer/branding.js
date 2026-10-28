@@ -230,8 +230,7 @@ function makeBrandingSettings(api, { activeProfileId = '' } = {}) {
           el('div.setting-desc', {}, 'Exports a short sample guide with this profile and opens it.')),
         el('div.row', {}, previewFormat, previewBtn)),
       status),
-    settingsCard(null,
-      el('h4.brand-card-heading', {}, 'Where branding appears'),
+    settingsCard('Where branding appears',
       el('dl.brand-support', {}, ...BRAND_SUPPORT.flatMap(([format, what]) => [el('dt', {}, format), el('dd', {}, what)])),
       el('p.setting-desc', {}, 'The Export dialog can pick a different profile, or none, for one export.')));
   void refresh();

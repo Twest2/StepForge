@@ -1480,9 +1480,7 @@ fieldset legend {
 .settings-pane-head p { margin: 0; }
 
 .settings-card { border: 1px solid var(--border); border-radius: 12px; background: var(--panel-solid); padding: 4px 16px; }
-.settings-card-title {
-  padding: 12px 0 4px; font-size: 11px; font-weight: 650; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted);
-}
+.settings-card-title { padding: 14px 0 4px; font-size: 13px; font-weight: 650; }
 .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 12px 0; }
 .setting-row + .setting-row, .setting-row + div > .setting-row { border-top: 1px solid var(--border); }
 .setting-text { min-width: 0; flex: 1; }
@@ -1546,8 +1544,7 @@ fieldset legend {
 .brand-active-row { display: flex; gap: 8px; }
 .brand-active-row select { flex: 1; min-width: 0; }
 .brand-section { padding: 14px 0; border-top: 1px solid var(--border); }
-.brand-section h4, .brand-card-heading { margin: 0 0 10px; font-size: 13px; }
-.brand-card-heading { padding-top: 14px; }
+.brand-section h4 { margin: 0 0 10px; font-size: 13px; }
 .brand-none { padding: 4px 0 14px; margin: 0; }
 .brand-asset-row { display: grid; grid-template-columns: 168px minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 8px 0; }
 .brand-asset-row + .brand-asset-row { border-top: 1px solid var(--border); }

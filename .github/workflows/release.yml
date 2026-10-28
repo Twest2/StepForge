@@ -1,4 +1,5 @@
 name: Release
+run-name: Release ${{ inputs.version }} by @${{ github.actor }}
 
 # Manual release: all three platform packages build concurrently, followed by
 # one GitHub Release and concurrent ProGet publication for the Linux packages
@@ -7,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release tag, e.g. v0.4 or v0.4.0.1 (short numeric versions are normalized to x.y.0 for packages)'
+        description: 'Current release: v1.5.2. Enter a new tag, e.g. v1.5.3 or v1.5.3.1 (short numeric versions normalize to x.y.0 for packages).'
         required: true
         type: string
       prerelease:
@@ -16,17 +17,29 @@ on:
         default: false
         type: boolean
 
-# Needed for the release job to create the tag and the GitHub Release.
+# Builds only need read access. Only the publishing job can create a release.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
+  authorize-release:
+    name: Verify release owner
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Only the repository owner can start or rerun releases
+        run: node scripts/check-release-access.js
+
   build-windows:
+    needs: authorize-release
     name: Build Windows installer
     runs-on: windows-latest
 
     steps:
       - uses: actions/checkout@v4
+      # Recheck on every job: rerunning failed jobs can reuse an earlier authorization.
+      - name: Verify release owner
+        run: node scripts/check-release-access.js
 
       - uses: actions/setup-node@v4
         with:
@@ -87,11 +100,15 @@ jobs:
 
 
   build-linux:
+    needs: authorize-release
     name: Build Ubuntu GNOME package
     runs-on: ubuntu-24.04
 
     steps:
       - uses: actions/checkout@v4
+      # Recheck on every job: rerunning failed jobs can reuse an earlier authorization.
+      - name: Verify release owner
+        run: node scripts/check-release-access.js
 
       - uses: actions/setup-node@v4
         with:
@@ -138,6 +155,7 @@ jobs:
 
 
   build-fedora:
+    needs: authorize-release
     name: Build Fedora 44 GNOME RPM
     runs-on: ubuntu-24.04
     container: fedora:44
@@ -150,6 +168,9 @@ jobs:
       - run: dnf install -y git findutils tar gzip xz
 
       - uses: actions/checkout@v4
+      # Recheck on every job: rerunning failed jobs can reuse an earlier authorization.
+      - name: Verify release owner
+        run: node scripts/check-release-access.js
 
       - uses: actions/setup-node@v4
         with:
@@ -200,6 +221,8 @@ jobs:
 
 
   release:
+    permissions:
+      contents: write
     name: Publish GitHub Release
     needs:
       - build-windows
@@ -210,6 +233,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+      # Recheck on every job: rerunning failed jobs can reuse an earlier authorization.
+      - name: Verify release owner
+        run: node scripts/check-release-access.js
 
       - name: Download build artifacts
         uses: actions/download-artifact@v4
@@ -493,6 +519,10 @@ jobs:
     runs-on: ubuntu-24.04
 
     steps:
+      - uses: actions/checkout@v4
+      # Recheck on every job: rerunning failed jobs can reuse an earlier authorization.
+      - name: Verify release owner
+        run: node scripts/check-release-access.js
       - uses: actions/download-artifact@v4
         with:
           name: linux-ubuntu
@@ -558,6 +588,10 @@ jobs:
     runs-on: ubuntu-24.04
 
     steps:
+      - uses: actions/checkout@v4
+      # Recheck on every job: rerunning failed jobs can reuse an earlier authorization.
+      - name: Verify release owner
+        run: node scripts/check-release-access.js
       - uses: actions/download-artifact@v4
         with:
           name: linux-fedora
@@ -612,6 +646,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+      # Recheck on every job: rerunning failed jobs can reuse an earlier authorization.
+      - name: Verify release owner
+        run: node scripts/check-release-access.js
 
       - uses: actions/download-artifact@v4
         with:

@@ -68,6 +68,7 @@ function ui({ realLoading = false } = {}) {
   context.toast = (message, options) => { toasts.push([message, options?.error === true]); };
   load('cloud.js');
   load('privacy.js');
+  load('quality.js');
   load('confluence.js');
   load('wikijs.js');
   load('github.js');
@@ -1204,4 +1205,60 @@ test('the guide menus offer Publish to Wiki.js beside Confluence, both marked Be
   ui2.context.contextMenu(0, 0, [{ label: 'Publish to Wiki.js…', badge: 'Beta', action() {} }]);
   const chip = ui2.all(appended[0]).find((n) => n.classList?.contains('beta-badge'));
   assert.ok(chip && chip.classList.contains('settings-chip'));
+});
+
+// Guide quality checks (app/renderer/quality.js) sit at the top of the
+// Export and Publish dialogs. A finding is a button: the dialog closes and
+// the caller jumps to it. Nothing is blocked.
+const qualityFinding = { kind: 'title', stepId: 'step-2', stepNumber: '2', detail: 'empty' };
+
+test('the Publish dialog lists quality findings, and clicking one closes it and reports which', async () => {
+  const u = ui();
+  const api = fakeApi({ connected: true, login: 'octo', repo: 'octo/guides', pagesReady: true });
+  api.guide = { quality: async (args) => { api.calls.push(['quality', args]); return [qualityFinding]; } };
+  const shown = [];
+  const done = u.context.showPublishToWebDialog({ api, guideId: 'guide-1', guideTitle: 'G', onShowFinding: (f) => shown.push(f) });
+  await settle();
+  await settle();
+  const modal = u.root.children.at(-1);
+  assert.match(modal.textContent, /1 thing to check before sharing/);
+  assert.match(modal.textContent, /Shared guides are public\./, 'the rest of the dialog is still there');
+  u.click(u.find(modal, 'No title'));
+  assert.deepEqual(JSON.parse(JSON.stringify(shown)), [qualityFinding]);
+  assert.equal(u.root.children.includes(modal), false, 'the dialog closed');
+  assert.equal(await done, false);
+});
+
+test('the quality findings go away once publishing starts', async () => {
+  const u = ui();
+  const api = fakeApi({ connected: true, login: 'octo', repo: 'octo/guides', pagesReady: true });
+  api.guide = { quality: async () => [qualityFinding] };
+  u.context.showPublishToWebDialog({ api, guideId: 'guide-1', guideTitle: 'G' });
+  await settle();
+  await settle();
+  const modal = u.root.children.at(-1);
+  const consent = u.all(modal).find((n) => n.tag === 'input' && n.type === 'checkbox');
+  consent.checked = true;
+  consent.listeners.change();
+  await u.find(modal, 'Publish').listeners.click();
+  assert.doesNotMatch(modal.textContent, /to check before sharing/);
+});
+
+test('Export shows quality findings above the options, and a clicked one closes the dialog without exporting', async () => {
+  const u = ui();
+  const shown = [];
+  const done = u.context.window.StepForgeDialogs.showExportDialog({
+    formats: [{ id: 'pdf', label: 'PDF' }],
+    defaultFormat: 'pdf',
+    onLoadDefaults: async () => ({}),
+    onExport: async () => { throw new Error('should not export'); },
+    quality: [qualityFinding, { kind: 'placeholder', stepId: null, stepNumber: null, names: ['Team'] }],
+    onShowFinding: (f) => shown.push(f),
+  });
+  await settle();
+  const modal = u.root.children.at(-1);
+  assert.match(modal.textContent, /2 things to check before sharing · you can still export as it is/);
+  u.click(u.find(modal, '[[Team]] has no value'));
+  assert.deepEqual(JSON.parse(JSON.stringify(shown)), [{ kind: 'placeholder', stepId: null, stepNumber: null, names: ['Team'] }]);
+  assert.equal(await done, false);
 });

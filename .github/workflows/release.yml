@@ -1,5 +1,4 @@
 name: Release
-run-name: Release ${{ inputs.version }} by @${{ github.actor }}
 
 # Manual release: all three platform packages build concurrently, followed by
 # one GitHub Release and concurrent ProGet publication for the Linux packages
@@ -8,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Current release: v1.5.2. Enter a new tag, e.g. v1.5.3 or v1.5.3.1 (short numeric versions normalize to x.y.0 for packages).'
+        description: 'Release tag, e.g. v0.4 or v0.4.0.1 (short numeric versions are normalized to x.y.0 for packages)'
         required: true
         type: string
       prerelease:

@@ -99,6 +99,11 @@ background.
 Requests take a few seconds per step, longer on slower hardware. Closing the
 guide stops any request that's still running.
 
+**Brand CSS.** With AI on, **Settings → Branding → Manage → Advanced CSS** also
+has **Write with AI…**: describe a change to how your HTML exports look, and
+the model writes the CSS for you to review. See
+[Write CSS with AI](BRANDING.md#write-css-with-ai).
+
 ## Recommended models
 
 All of these are small enough for an ordinary computer. A model runs fastest
@@ -147,7 +152,8 @@ October 2026; newer models appear in the
   `localhost`) and refuses any other address by default.
 - What's sent: the step screenshot (vision models only), the step text, and
   the capture details StepForge recorded, such as the window title and the
-  text near your click.
+  text near your click. For **Write with AI** in a brand profile: your
+  description, the brand colors and fonts, and the profile's CSS.
 - Screenshots are sent with your blurs already filled in, so the model never
   sees what you hid. For steps with blurs, the text near your click isn't
   sent either.

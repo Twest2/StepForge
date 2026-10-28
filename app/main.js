@@ -30,7 +30,8 @@ const { createCredentialVault } = require('./credential-vault');
 const { SearchIndex } = require('../core/search');
 const { findMatches, applyReplacements, isMatchArg } = require('../core/find-replace');
 const { TemplateManager, FORMATS, FORMAT_LABELS } = require('../core/templates');
-const { BrandingStore, brandTemplateDefaults, checkFileSize, cssFromFile } = require('../core/branding');
+const { BrandingStore, brandTemplateDefaults, checkFileSize, cssFromFile, MAX_CSS_CHARS } = require('../core/branding');
+const { MAX_REQUEST_CHARS: MAX_BRAND_CSS_REQUEST_CHARS } = require('../core/ai-brand-css');
 const { buildSampleAst } = require('../core/branding-sample');
 const { buildRenderAst } = require('../core/renderast');
 const { qualityFindings } = require('../core/quality');
@@ -669,9 +670,9 @@ async function clipboardImage() {
   return nativeImage.createEmpty();
 }
 
-// AI agents write guides from a separate `StepForge --mcp` process. Poll the
-// small file it updates after each write: reindex each changed guide and tell
-// the window, which reloads the guide if it's open.
+// AI agents write guides and brand profiles from a separate `StepForge --mcp`
+// process. Poll the small file it updates after each write: reindex each
+// changed guide and tell the window, which reloads the guide if it's open.
 function watchAgentChanges() {
   let seenStamp = agentChangesStamp(store.libraryDir);
   let seenAt = Date.now();
@@ -690,6 +691,13 @@ function watchAgentChanges() {
       if (!store.guideExists(guideId)) continue;
       reindex(guideId);
       sendToRenderer('guide:changed-by-agent', { guideId });
+    }
+    if (changed.branding) {
+      // The agent saved its choice too, but this process holds Settings in
+      // memory and would write the old one back on its next save.
+      const id = changed.activeProfileId;
+      if (id !== undefined && (id === '' || branding.get(id))) settings.set('branding.activeProfileId', id);
+      sendToRenderer('branding:changed-by-agent', {});
     }
   }, 1500).unref();
 }
@@ -1359,6 +1367,15 @@ function setupIpc() {
     if (result.ok) reindex(guideId);
     return result;
   }, { validate: (a) => c.id(a.guideId) });
+  // Whether to offer AI in Settings → Branding: AI is on and Ollama has the model.
+  h('ai:status', () => textIntel.aiStatus());
+  // Settings → Branding → Advanced CSS → Write with AI. Nothing is saved: the
+  // editor shows the CSS for the user to add or discard.
+  h('ai:brandCss', ({ request, css = '', profile = {} }) => textIntel.generateBrandCss({ request, css, profile }), {
+    validate: (a) => c.string(a.request, MAX_BRAND_CSS_REQUEST_CHARS) && a.request.trim() !== ''
+      && (a.css === undefined || c.string(a.css, MAX_CSS_CHARS))
+      && (a.profile === undefined || security.isPlainArgs(a.profile)),
+  });
   h('agents:setup', () => agentSetupTexts());
   h('agents:copy', async ({ kind }) => {
     await clipboard.writeText(agentSetupTexts()[kind]);
@@ -1696,6 +1713,8 @@ function setupIpc() {
     if (kind === 'css') return { css: cssFromFile(fs.readFileSync(file)) };
     return branding.addAsset(fs.readFileSync(file), { kind, fileName: path.basename(file) });
   }, { validate: (a) => c.oneOf(a.kind, ['image', 'font', 'css']) });
+  // Images an agent added (or an import brought) that still need a PNG drawing.
+  h('branding:pendingRasters', () => branding.pendingRasters());
   // The renderer's PNG drawing of an SVG or JPG (exports other than HTML need PNG).
   h('branding:setRaster', ({ id, png }) => branding.setRaster(id, Buffer.from(png, 'base64')),
     { maxChars: 33 * 1024 * 1024, validate: (a) => assetId(a.id) && c.base64(a.png, 32 * 1024 * 1024) });

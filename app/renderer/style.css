@@ -1584,6 +1584,17 @@ fieldset legend {
 .settings-card > .brand-row-error { margin: -6px 0 12px; }
 .brand-footer-status { flex: 1; min-width: 0; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--danger); }
 .modal > footer select { width: auto; }
+.brand-editor button.link { border: 0; background: transparent; color: var(--accent-strong); padding: 0; font: inherit; text-decoration: underline; }
+.settings-card .brand-pick-status { margin: -6px 0 12px; }
+.brand-css-note { margin: 6px 0 0; }
+/* Advanced CSS → Write with AI. */
+.brand-ai { display: flex; flex-direction: column; gap: 8px; margin: 0 0 14px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel-2); }
+.brand-ai[hidden] { display: none; }
+.brand-ai-request { width: 100%; resize: vertical; min-height: 54px; }
+.brand-ai .brand-ai-result { margin: 0; max-height: 220px; background: var(--panel-solid); border: 1px solid var(--border); }
+.brand-ai .brand-row-error { margin: 0; }
+.brand-ai-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.brand-ai-model { margin: 0; min-width: 0; }
 
 @media (max-width: 720px) {
   .settings-layout { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }

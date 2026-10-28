@@ -51,8 +51,11 @@ function makeLibrary(t, agents = { enabled: true, screenshots: true }) {
 
 test('agents get read, rewrite and add tools only: nothing deletes, reorders, or creates steps', (t) => {
   const { tools } = makeLibrary(t);
-  assert.deepEqual(tools.map((tool) => tool.name),
-    ['list_guides', 'get_guide', 'get_step', 'update_guide', 'update_step', 'create_placeholder', 'add_annotations']);
+  assert.deepEqual(tools.map((tool) => tool.name), [
+    'list_guides', 'get_guide', 'get_step', 'update_guide', 'update_step', 'create_placeholder', 'add_annotations',
+    // Behind their own switch (tests/unit/agent-brand-tools.test.js).
+    'list_brand_profiles', 'get_brand_profile', 'create_brand_profile', 'update_brand_profile', 'set_brand_file', 'set_active_brand_profile',
+  ]);
   for (const tool of tools) {
     assert.equal(tool.inputSchema.type, 'object');
     assert.ok(!/delete|remove|add_step|create_guide|create_step|reorder/i.test(tool.name));
@@ -177,8 +180,8 @@ test('the app learns which guides agents changed since it last looked', (t) => {
   recordAgentChange(dir, 'g1', 1000);
   recordAgentChange(dir, 'g2', 2000);
   recordAgentChange(dir, 'g1', 3000);
-  assert.deepEqual(agentChangesSince(dir, 1500), { guideIds: ['g2', 'g1'], latest: 3000 });
-  assert.deepEqual(agentChangesSince(dir, 3000), { guideIds: [], latest: 3000 });
+  assert.deepEqual(agentChangesSince(dir, 1500), { guideIds: ['g2', 'g1'], branding: false, activeProfileId: undefined, latest: 3000 });
+  assert.deepEqual(agentChangesSince(dir, 3000), { guideIds: [], branding: false, activeProfileId: undefined, latest: 3000 });
 });
 
 test('`--mcp` serves the library over stdin and stdout', async (t) => {

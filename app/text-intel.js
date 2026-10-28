@@ -17,13 +17,18 @@ const {
   applyAiPatchToStep,
   applyGuidePatch,
   normalizeWhitespace,
+  parseAiJson,
 } = require('../core/text-intel');
 const { renderScreenshotForAi } = require('../core/ai-image');
 const { usablePlaceholders, substitutePlaceholders } = require('../core/ai-placeholders');
 const { buildOrganizePrompt, planOrganize } = require('../core/ai-organize');
+const { buildBrandCssPrompt, normalizeBrandCss } = require('../core/ai-brand-css');
 const { parentMap } = require('../core/step-outline');
 const { systemPlaceholders } = require('../core/placeholders');
 const { OcrPool } = require('./ocr-pool');
+
+// Brand CSS requests aren't for a guide; ai:cancel stops them by this id.
+const BRAND_CSS_REQUEST = 'branding-css';
 
 const DEFAULT_TITLE_VALUES = new Set(Object.values(DEFAULT_CAPTURE_TITLES).concat(['Capture']));
 
@@ -793,6 +798,30 @@ class TextIntelService {
     }
   }
 
+  /**
+   * Whether AI features can be offered: AI is on, and Ollama answers with the
+   * chosen model installed. No request is made while AI is off.
+   */
+  async aiStatus() {
+    const config = this.aiConfig();
+    if (!config.enabled) return { ready: false };
+    const result = await this.testAiConnection().catch(() => ({ ok: false }));
+    return result.ok && result.installed ? { ready: true, model: result.model } : { ready: false };
+  }
+
+  /** CSS for a brand profile's HTML exports, written from `request` (core/ai-brand-css.js). */
+  async generateBrandCss({ request, css = '', profile = {} }) {
+    try {
+      const ready = this.readyAiConfig();
+      if (!ready.ok) return ready;
+      const { systemPrompt, prompt } = buildBrandCssPrompt({ request, css, profile });
+      const raw = await this.callOllama({ host: ready.host, model: ready.model, prompt, systemPrompt, guideId: BRAND_CSS_REQUEST });
+      return { ok: true, css: normalizeBrandCss(parseAiJson(raw)) };
+    } catch (err) {
+      return { ok: false, reason: err && err.message ? err.message : 'AI couldn’t write the CSS.' };
+    }
+  }
+
   clickPointFromStep(step, image = null) {
     const marker = (step.annotations || []).find((ann) => ann.type === 'oval' && Number.isFinite(ann.x) && Number.isFinite(ann.y) && Number.isFinite(ann.w) && Number.isFinite(ann.h));
     if (!marker) return null;
@@ -805,4 +834,4 @@ class TextIntelService {
   }
 }
 
-module.exports = { TextIntelService };
+module.exports = { TextIntelService, BRAND_CSS_REQUEST };

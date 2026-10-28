@@ -14,6 +14,10 @@ extra CSS for web pages. Set it up once and every guide uses it.
      banner is a wide image across the top of covers and web pages.
    - **Brand colors**: **Primary** (title bars, step numbers, headings and
      accent lines), **Accent** (links and highlights) and **Text** (body text).
+     Once the profile has a logo, **Pick from logo** sets all three from the
+     logo's own colors, and **Undo** puts yours back. Primary is the logo's
+     main color. Accent and Text are darkened if needed so they're easy to
+     read on white.
    - **Fonts**: one for headings and one for body text. Type any font name or
      pick a suggestion. **Upload font…** adds a font file (WOFF2, WOFF, TTF or
      OTF) that HTML exports carry with them, so the page looks right on
@@ -86,6 +90,29 @@ one-off change to a single export.
 
 Type CSS in the box or choose **Load .css file…**. Use **Preview** in the
 profile editor to check it before saving.
+
+### Write CSS with AI
+
+If you use AI on your own computer through Ollama
+([setup](getting_started_with_ai.md)), the Advanced CSS card also has
+**Write with AI…**. It's there only when **Settings → AI → Enable AI** is on
+and Ollama has the model you chose.
+
+1. Choose **Write with AI…** and describe the change, for example "square
+   step numbers, and step titles in the primary color".
+2. Choose **Write CSS** (or press Ctrl+Enter). The model is given your brand
+   colors and fonts, the CSS you already have, and the
+   [variables](#variables-you-can-use) and [selectors](#what-you-can-style)
+   below.
+3. Read what it wrote. **Add to CSS** adds it to the end of the box, under a
+   comment with your request. **Try again** asks for another version, and
+   **Discard** drops it.
+4. Choose **Preview** to check the result before you save. Small models can
+   get CSS wrong.
+
+Your request goes only to your Ollama. StepForge removes `@import` rules and
+web addresses from what the model writes, so the page still never reaches
+the internet.
 
 ### Variables you can use
 
@@ -212,6 +239,32 @@ With **Follow light or dark mode**, change something only in dark mode:
   `<style>` element early is neutralized, so it can't add markup or scripts to
   the page.
 - **Limit:** 200,000 characters.
+
+## Let an AI agent set up your brand
+
+AI agents such as Claude Code and Codex ([setup](AI_AGENTS.md)) can make and
+change brand profiles too. This is **off by default**, separately from guide
+access. To allow it, turn on **Settings → AI → Let AI agents edit your
+guides** and **Let AI agents edit brand profiles**, then **Save**.
+
+Then ask your agent, for example:
+
+> Make a StepForge brand profile called "Acme" from the logo at
+> C:\Brand\acme.svg. Pick colors that match the logo, use Georgia for
+> headings, put "© Acme Corp. Internal use only." in the footer, and make it
+> the active profile.
+
+An agent can:
+
+- list and read your profiles, and see the logo
+- make a profile and change any of its settings, including Advanced CSS
+- add a logo, banner or font file from your computer, checked exactly like
+  a file you upload
+- choose the active profile
+
+It can't delete a profile. An SVG or JPG image an agent adds works in HTML
+exports at once. The other exports need a PNG copy, which StepForge draws
+within a few seconds while it's open, or the next time it starts.
 
 ## Share a profile
 

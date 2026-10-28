@@ -1077,6 +1077,8 @@ function showExportDialog({
   webPublish = null,   // { ready, formats, expiryDays, defaultExpiryDays }: offer publishing HTML exports
   publishTargets = {}, // format -> site name, for formats the Share menu can publish directly
   onPublishInstead,    // (format) => called after the dialog closes to publish instead of exporting
+  quality = [],        // findings from api.guide.quality, shown above the options
+  onShowFinding,       // (finding) => jump to it; runs after the dialog closes
 } = {}) {
   return new Promise((resolve) => {
     const formatOptions = (formats || []).map((f) => {
@@ -1276,6 +1278,7 @@ function showExportDialog({
     }, 'Manage…');
 
     const body = el('div.export-dialog', {},
+      qualityPanel(quality, (finding) => { close(); resolve(false); onShowFinding?.(finding); }),
       labeledRow('Format', el('div.export-format', {}, formatSelect, formatDesc, publishInsteadNote)),
       labeledRow('Template', el('div.row', {}, templateSelect, saveTplBtn, manageBtn)),
       labeledRow('Output folder', el('div.row', {}, outDirInput, el('button', {

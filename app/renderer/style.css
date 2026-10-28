@@ -1391,6 +1391,16 @@ fieldset legend {
 .privacy-kind { flex: none; min-width: 56px; font-size: 12px; font-weight: 600; color: var(--muted); }
 .privacy-label { flex: 1; min-width: 0; font-size: 13px; }
 .privacy-actions { flex: none; display: flex; gap: 6px; }
+
+/* Guide quality checks before exporting or publishing (quality.js) */
+.quality-panel { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; padding: 10px 12px; border-radius: 8px;
+  background: color-mix(in srgb, #F59E0B 14%, var(--panel-solid)); }
+.quality-head { font-size: 13px; font-weight: 600; }
+.quality-head .muted { font-weight: 400; }
+.quality-list { display: flex; flex-direction: column; gap: 4px; max-height: 30vh; overflow: auto; }
+.quality-item { display: flex; align-items: baseline; gap: 10px; width: 100%; padding: 6px 8px; text-align: left; font-size: 13px; }
+.quality-where { flex: none; min-width: 56px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.quality-label { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .redact-terms { width: 100%; min-width: 260px; font-family: inherit; }
 .gh-publish p { margin: 0; }
 .gh-field { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-weight: 550; }

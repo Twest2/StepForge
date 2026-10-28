@@ -6,7 +6,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 function editor() {
-  const context = { window: {},
+  const context = { window: { StepForgeOutline: require('../../core/step-outline') },
     el: (tag, props, ...children) => ({ tag, props, children }),
     clearNode: (node) => { node.children = []; },
   };

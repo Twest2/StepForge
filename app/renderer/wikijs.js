@@ -298,7 +298,7 @@ function wikiJsAddress(site, locale, path) {
  * Publish one guide to Wiki.js. Resolves when the dialog closes, with
  * whether the guide changed (private-detail blurs may have been added).
  */
-async function showPublishToWikiJsDialog({ api, guideId, guideTitle, onOpenAccounts }) {
+async function showPublishToWikiJsDialog({ api, guideId, guideTitle, onOpenAccounts, onShowFinding }) {
   const status = await api.wikijs.status();
   if (!status.connected) {
     return new Promise((resolve) => {
@@ -324,7 +324,9 @@ async function showPublishToWikiJsDialog({ api, guideId, guideTitle, onOpenAccou
     const body = el('div.gh-publish.wikijs-publish');
     const cancelBtn = el('button', { type: 'button', onClick: () => { close(); finish(); } }, 'Cancel');
     const publishBtn = el('button.primary', { type: 'button', disabled: true }, 'Publish');
-    const { close } = openModal({ title: 'Publish to Wiki.js', body, footer: [cancelBtn, publishBtn], onClose: finish });
+    const quality = el('div');
+    const { close } = openModal({ title: 'Publish to Wiki.js', body: el('div', {}, quality, body), footer: [cancelBtn, publishBtn], onClose: finish });
+    addQualityPanel(api, guideId, quality, (finding) => { close(); finish(); onShowFinding?.(finding); });
 
     const pathInput = el('input', { type: 'text', spellcheck: false, 'aria-label': 'Page path', placeholder: 'guides/my-guide' });
     const titleInput = el('input', { type: 'text', 'aria-label': 'Page title', value: guideTitle });
@@ -410,6 +412,7 @@ async function showPublishToWikiJsDialog({ api, guideId, guideTitle, onOpenAccou
     const publish = async (replace = false) => {
       if (!canPublish() && !replace) return;
       publishing = true;
+      quality.replaceChildren(); // too late to fix before this publish
       error.classList.add('hidden');
       const progress = wikiJsProgress(guideTitle);
       body.replaceChildren(progress.node);

@@ -114,6 +114,16 @@ const ANNOTATION_TYPE_LABELS = {
   cursor: 'Cursor',
 };
 
+/** White or near-black text, whichever reads better on a badge or tooltip of color `hex`. */
+function readableTextOn(hex) {
+  const n = Number.parseInt(String(hex).slice(1), 16);
+  const [r, g, b] = [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff].map((c) => {
+    const s = c / 255;
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.36 ? '#111111' : '#ffffff';
+}
+
 function blockText(block) {
   for (const key of ['code', 'text', 'body', 'value', 'content']) {
     const value = block && block[key];
@@ -252,6 +262,21 @@ class GuideEditor {
 
   setSettings(settings) {
     this.settings = settings || {};
+    void this.loadBrandAnnotations();
+  }
+
+  /**
+   * The active brand profile's annotation colors when it sets its own
+   * (Settings → Branding), else null for StepForge's. New shapes start in them.
+   */
+  async loadBrandAnnotations() {
+    const id = this.settings?.branding?.activeProfileId;
+    try {
+      const profile = id ? (await api.branding.list()).find((p) => p.id === id) : null;
+      this.brandAnnotations = profile?.annotations?.custom ? profile.annotations : null;
+    } catch {
+      this.brandAnnotations = null;
+    }
   }
 
   isAiEnabled() {
@@ -1501,13 +1526,19 @@ class GuideEditor {
   }
 
   defaultStyleForTool(tool) {
+    // A brand profile's own colors for shapes, number badges and tooltips.
+    const brand = this.brandAnnotations;
     switch (tool) {
       case 'highlight': return { fill: '#ffe066', stroke: '#ffbf00', strokeWidth: 1 };
-      case 'tooltip': return { fill: '#111827', textColor: '#ffffff', stroke: '#111827', tail: 'bottom' };
-      case 'number': return { fill: '#1f6feb', stroke: '#1f6feb', textColor: '#ffffff' };
+      case 'tooltip': return brand
+        ? { fill: brand.tooltips, textColor: readableTextOn(brand.tooltips), stroke: brand.tooltips, tail: 'bottom' }
+        : { fill: '#111827', textColor: '#ffffff', stroke: '#111827', tail: 'bottom' };
+      case 'number': return brand
+        ? { fill: brand.numbers, stroke: brand.numbers, textColor: readableTextOn(brand.numbers) }
+        : { fill: '#1f6feb', stroke: '#1f6feb', textColor: '#ffffff' };
       case 'blur': return { fill: 'transparent', stroke: '#9ca3af', strokeWidth: 2 };
       case 'cursor': return { fill: '#ffffff', stroke: '#111827', strokeWidth: 2 };
-      default: return { fill: 'transparent', stroke: '#E5484D', strokeWidth: 3, textColor: '#ffffff' };
+      default: return { fill: 'transparent', stroke: brand?.shapes || '#E5484D', strokeWidth: 3, textColor: '#ffffff' };
     }
   }
 

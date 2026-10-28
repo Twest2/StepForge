@@ -26,6 +26,13 @@ extra CSS for web pages. Set it up once and every guide uses it.
    - **Header text**, **Logo in page header**, **Footer text** and **Page
      numbers**.
    - **Watermark screenshots with the logo**, with its corner and opacity.
+   - **Annotation colors**: off by default, so annotations keep StepForge's
+     colors (red shapes, blue number badges, dark tooltips). Turn on **Use
+     your own annotation colors** to pick colors for **Shapes** (rectangles,
+     ovals, lines, arrows, text and magnifiers, and the marker on recorded
+     clicks), **Number badges** and **Tooltips**. New annotations start in
+     these colors; ones already drawn keep theirs, and you can still change
+     any annotation's color in the editor. Highlights stay yellow.
    - **Advanced CSS**: see [below](#advanced-css).
 3. Choose **Preview** at the bottom to see a sample guide with your changes,
    then **Save**.
@@ -53,6 +60,7 @@ there, or one saved in an export template, takes their place.
 | Markdown | Logo, banner, header and footer text, and the color of the accent line |
 | GIF, image bundle | Logo on the GIF title card, your colors, and the logo as a watermark if you turn it on |
 | JSON | Nothing. JSON keeps the raw guide data |
+| The editor | With **Use your own annotation colors** on: new shapes, number badges, tooltips and click markers start in the profile's colors |
 
 A few things to know:
 

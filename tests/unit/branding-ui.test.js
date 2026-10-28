@@ -185,3 +185,67 @@ test('editor: a missing name is said under the name; a failed save is said besid
   await t.click(t.button(t.root, 'Save'));
   assert.equal(t.footerStatus(), 'StepForge couldn’t save the profile.');
 });
+
+test('editor: annotation colors are off until turned on, and then saved with the profile', async () => {
+  const open = () => {
+    const t = ui();
+    const api = fakeApi(async () => null);
+    void t.context.showBrandProfileEditor(api);
+    const name = t.all(t.root).find((n) => n['aria-label'] === 'Profile name');
+    name.value = 'Acme';
+    name.listeners.input();
+    const own = t.all(t.root).find((n) => n.tag === 'label' && n.title === 'Use your own annotation colors').children[0];
+    const shapes = t.all(t.root).find((n) => n['aria-label'] === 'Shapes color code');
+    return { t, api, own, shapes };
+  };
+  const visible = (node) => { for (let n = node; n; n = n.parent) if (n.hidden) return false; return true; };
+
+  const untouched = open();
+  assert.equal(untouched.own.checked, false);
+  assert.equal(visible(untouched.shapes), false, 'no color pickers until the option is on');
+  assert.equal(untouched.shapes.value, '#E5484D', 'they start at StepForge’s colors');
+  await untouched.t.click(untouched.t.button(untouched.t.root, 'Save'));
+  assert.deepEqual(untouched.api.saved[0].annotations, { custom: false, shapes: '#E5484D', numbers: '#1F6FEB', tooltips: '#111827' });
+
+  const turnedOn = open();
+  turnedOn.own.checked = true;
+  turnedOn.own.listeners.change();
+  assert.equal(visible(turnedOn.shapes), true);
+  turnedOn.shapes.value = '#173f7a';
+  turnedOn.shapes.listeners.input();
+  await turnedOn.t.click(turnedOn.t.button(turnedOn.t.root, 'Save'));
+  assert.deepEqual(turnedOn.api.saved[0].annotations, { custom: true, shapes: '#173F7A', numbers: '#1F6FEB', tooltips: '#111827' });
+});
+
+test('step editor: new shapes, number badges and tooltips start in the profile’s colors only when it sets its own', async () => {
+  const profiles = [];
+  const api = { branding: { list: async () => profiles } };
+  const context = { window: { stepforge: api, StepForgeDialogs: {} }, document: { activeElement: null }, setTimeout, clearTimeout };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/editor.js'), 'utf8'), context);
+  const editor = Object.create(context.window.GuideEditor.prototype);
+  const styles = () => JSON.parse(JSON.stringify(['rect', 'oval', 'arrow', 'text', 'number', 'tooltip', 'highlight'].map((tool) => editor.defaultStyleForTool(tool))));
+
+  editor.setSettings({});
+  await settle();
+  const stepforge = styles();
+  assert.equal(stepforge[0].stroke, '#E5484D');
+  assert.equal(stepforge[4].fill, '#1f6feb');
+
+  profiles.push({ id: 'brand-1', annotations: { custom: false, shapes: '#173F7A', numbers: '#F5D90A', tooltips: '#FFFFFF' } });
+  editor.setSettings({ branding: { activeProfileId: 'brand-1' } });
+  await settle();
+  assert.deepEqual(styles(), stepforge, 'a profile that keeps StepForge’s colors changes nothing');
+
+  profiles[0].annotations.custom = true;
+  editor.setSettings({ branding: { activeProfileId: 'brand-1' } });
+  await settle();
+  const [rect, oval, arrow, text, number, tooltip, highlight] = styles();
+  for (const shape of [rect, oval, arrow, text]) assert.equal(shape.stroke, '#173F7A');
+  assert.deepEqual(number, { fill: '#F5D90A', stroke: '#F5D90A', textColor: '#111111' }, 'dark numbers on a light badge');
+  assert.deepEqual(tooltip, { fill: '#FFFFFF', textColor: '#111111', stroke: '#FFFFFF', tail: 'bottom' });
+  assert.deepEqual(highlight, stepforge[6], 'highlights stay yellow');
+
+  editor.setSettings({ branding: { activeProfileId: '' } });
+  await settle();
+  assert.deepEqual(styles(), stepforge);
+});

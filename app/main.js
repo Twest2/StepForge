@@ -30,7 +30,7 @@ const { createCredentialVault } = require('./credential-vault');
 const { SearchIndex } = require('../core/search');
 const { findMatches, applyReplacements, isMatchArg } = require('../core/find-replace');
 const { TemplateManager, FORMATS, FORMAT_LABELS } = require('../core/templates');
-const { BrandingStore, brandTemplateDefaults, MAX_CSS_CHARS } = require('../core/branding');
+const { BrandingStore, brandTemplateDefaults, checkFileSize, cssFromFile } = require('../core/branding');
 const { buildSampleAst } = require('../core/branding-sample');
 const { buildRenderAst } = require('../core/renderast');
 const { qualityFindings } = require('../core/quality');
@@ -1684,8 +1684,9 @@ function setupIpc() {
     const res = await dialog.showOpenDialog(mainWindow, { ...ASSET_FILTERS[kind], properties: ['openFile'] });
     if (res.canceled) return null;
     const file = res.filePaths[0];
-    if (fs.statSync(file).size > 12 * 1024 * 1024) throw new Error('That file is too large. Choose one smaller than 10 MB.');
-    if (kind === 'css') return { css: fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '').slice(0, MAX_CSS_CHARS) };
+    // Too large is refused as soon as it's picked, before the file is read.
+    checkFileSize(kind, fs.statSync(file).size);
+    if (kind === 'css') return { css: cssFromFile(fs.readFileSync(file)) };
     return branding.addAsset(fs.readFileSync(file), { kind, fileName: path.basename(file) });
   }, { validate: (a) => c.oneOf(a.kind, ['image', 'font', 'css']) });
   // The renderer's PNG drawing of an SVG or JPG (exports other than HTML need PNG).

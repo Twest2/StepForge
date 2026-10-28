@@ -1583,6 +1583,9 @@ fieldset legend {
 .brand-font-file { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 0 12px; }
 .brand-css-input { width: 100%; min-height: 120px; resize: vertical; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; margin-top: 8px; }
 .brand-editor input.invalid { border-color: var(--danger); }
+.brand-row-error { margin: 4px 0 0; }
+.settings-card > .brand-row-error { margin: -6px 0 12px; }
+.brand-footer-status { flex: 1; min-width: 0; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--danger); }
 .modal > footer select { width: auto; }
 
 @media (max-width: 720px) {

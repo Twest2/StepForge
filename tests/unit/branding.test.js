@@ -8,6 +8,7 @@ const zlib = require('node:zlib');
 
 const {
   BrandingStore, normalizeProfile, brandTemplateDefaults, fontFamilyName, familyFromFileName, FONT_SUGGESTIONS,
+  checkFileSize, cssFromFile, MAX_CSS_CHARS,
 } = require('../../core/branding');
 const { sanitizeSvg, svgSize } = require('../../core/svg-sanitize');
 const { buildSampleAst } = require('../../core/branding-sample');
@@ -213,7 +214,7 @@ test('branding: images are sniffed by content; PNGs StepForge can read are their
 
   assert.throws(() => brands.addAsset(Buffer.from('GIF89a......'), { kind: 'image' }), /PNG, JPG or SVG/);
   assert.throws(() => brands.addAsset(Buffer.from('<html><svg></svg></html>'), { kind: 'image' }), /PNG, JPG or SVG/);
-  assert.throws(() => brands.addAsset(Buffer.alloc(11 * 1024 * 1024, 1), { kind: 'image' }), /smaller than 10 MB/);
+  assert.throws(() => brands.addAsset(Buffer.alloc(11 * 1024 * 1024, 1), { kind: 'image' }), /larger than 10 MB/);
   assert.equal(brands.addAsset(logoPng(), { kind: 'image' }).id, png.id, 'the same file is stored once');
 });
 
@@ -230,6 +231,25 @@ test('branding: font files are checked and named from their name table', (t) => 
   assert.deepEqual([named.family, named.format], ['BrandGrotesk', 'woff2'], 'WOFF2 falls back to the file name');
   assert.equal(familyFromFileName('my_font.otf'), 'my');
   assert.throws(() => brands.addAsset(Buffer.from('ttcf0000000000'), { kind: 'font' }), /WOFF2, WOFF, TTF or OTF/);
+});
+
+test('branding: files over the limit are refused before they are read, and CSS is never cut short', () => {
+  const MB = 1024 * 1024;
+  assert.doesNotThrow(() => checkFileSize('image', 10 * MB));
+  assert.throws(() => checkFileSize('image', 10 * MB + 1), /This image is larger than 10 MB/);
+  assert.throws(() => checkFileSize('font', 10 * MB + 1), /This font file is larger than 10 MB.*WOFF2/);
+  assert.doesNotThrow(() => checkFileSize('css', MAX_CSS_CHARS));
+  assert.throws(() => checkFileSize('css', MAX_CSS_CHARS * 4 + 1), /longer than 200,000 characters/);
+  assert.equal(cssFromFile(Buffer.from('\uFEFFa { color: red; }')), 'a { color: red; }');
+  assert.equal(cssFromFile(Buffer.from('a'.repeat(MAX_CSS_CHARS))).length, MAX_CSS_CHARS);
+  assert.throws(() => cssFromFile(Buffer.from('a'.repeat(MAX_CSS_CHARS + 1))), /longer than 200,000 characters/);
+
+  // The file picker checks the size first, and loads CSS whole or not at all.
+  const main = read('app/main.js');
+  const handler = main.slice(main.indexOf("h('branding:chooseAsset'"), main.indexOf("h('branding:setRaster'"));
+  assert.ok(handler.indexOf('checkFileSize(kind, fs.statSync(file).size)') < handler.indexOf('fs.readFileSync(file)'));
+  assert.match(handler, /cssFromFile\(fs\.readFileSync\(file\)\)/);
+  assert.doesNotMatch(handler, /\.slice\(/);
 });
 
 test('branding: unused assets are removed after a day, used and recent ones are kept', (t) => {
@@ -546,10 +566,11 @@ test('branding: Settings default to no branding, and every export path passes th
   assert.match(read('app/export-runner.js'), /worker\.send\(\{[^}]*branding/);
 });
 
-test('branding: the renderer offers the same font suggestions as core/branding.js, and loads before dialogs.js', () => {
+test('branding: the renderer offers the same font suggestions and CSS limit as core/branding.js, and loads before dialogs.js', () => {
   const src = read('app/renderer/branding.js');
   const offered = JSON.parse(`[${src.match(/const BRAND_FONT_SUGGESTIONS = \[([\s\S]*?)\];/)[1].replace(/'/g, '"').replace(/,\s*$/, '')}]`);
   assert.deepEqual(offered, FONT_SUGGESTIONS);
+  assert.equal(Number(src.match(/const BRAND_CSS_MAX_CHARS = (\d+);/)[1]), MAX_CSS_CHARS);
   const html = read('app/renderer/index.html');
   assert.ok(html.indexOf('<script src="branding.js">') > html.indexOf('<script src="util.js">'));
   assert.ok(html.indexOf('<script src="branding.js">') < html.indexOf('<script src="dialogs.js">'));

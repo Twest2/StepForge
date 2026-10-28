@@ -58,6 +58,27 @@ const FONT_SUGGESTIONS = [
   'Palatino Linotype', 'Roboto', 'Segoe UI', 'Source Sans 3', 'Tahoma', 'Times New Roman', 'Trebuchet MS', 'Verdana',
 ];
 
+// The largest file of each kind, and what StepForge says about one that's bigger.
+// CSS is limited by characters; a UTF-8 file under 4 bytes a character can't fit.
+const MAX_FILE_BYTES = { image: MAX_IMAGE_BYTES, font: MAX_FONT_BYTES, css: MAX_CSS_CHARS * 4 };
+const TOO_LARGE = {
+  image: 'This image is larger than 10 MB. Choose a smaller one.',
+  font: 'This font file is larger than 10 MB. Choose a smaller one, such as its WOFF2 version.',
+  css: 'This CSS file is longer than 200,000 characters, the most a profile can hold. Shorten it and load it again.',
+};
+
+/** Refuse a file that's too large for its kind (image, font or css) before it's read. */
+function checkFileSize(kind, bytes) {
+  if (bytes > MAX_FILE_BYTES[kind]) throw new Error(TOO_LARGE[kind]);
+}
+
+/** The text of a loaded .css file; one over the limit is refused, never cut short. */
+function cssFromFile(data) {
+  const css = data.toString('utf8').replace(/^\uFEFF/, '');
+  if (css.length > MAX_CSS_CHARS) throw new Error(TOO_LARGE.css);
+  return css;
+}
+
 function oneOf(value, values, fallback) {
   return values.includes(value) ? value : fallback;
 }
@@ -308,7 +329,7 @@ class BrandingStore {
     let data = bytes;
     let meta;
     if (kind === 'image') {
-      if (bytes.length > MAX_IMAGE_BYTES) throw new Error('Choose an image smaller than 10 MB.');
+      checkFileSize('image', bytes.length);
       const type = imageType(bytes);
       if (!type) throw new Error('Choose a PNG, JPG or SVG image.');
       let size;
@@ -321,7 +342,7 @@ class BrandingStore {
       if (!(size.width > 0 && size.height > 0) && type !== 'svg') throw new Error('StepForge couldn’t read the size of that image.');
       meta = { kind, ...IMAGE_TYPES[type], width: size.width || 0, height: size.height || 0 };
     } else if (kind === 'font') {
-      if (bytes.length > MAX_FONT_BYTES) throw new Error('Choose a font file smaller than 10 MB.');
+      checkFileSize('font', bytes.length);
       const type = fontType(bytes);
       if (!type) throw new Error('Choose a WOFF2, WOFF, TTF or OTF font file.');
       meta = { kind, ...FONT_TYPES[type], family: fontFamilyName(bytes) || familyFromFileName(fileName) };
@@ -575,6 +596,8 @@ module.exports = {
   normalizeProfile,
   loadBranding,
   brandTemplateDefaults,
+  checkFileSize,
+  cssFromFile,
   fontFamilyName,
   familyFromFileName,
   cleanFontName,

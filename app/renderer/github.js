@@ -737,7 +737,7 @@ function showPublishProgressDialog({ api, guideId, guideTitle, request }) {
  * Publish one guide to the user's GitHub Pages site. Resolves when the dialog
  * closes. `onOpenAccounts` opens Settings → Accounts → GitHub.
  */
-async function showPublishToWebDialog({ api, guideId, guideTitle, onOpenAccounts }) {
+async function showPublishToWebDialog({ api, guideId, guideTitle, onOpenAccounts, onShowFinding }) {
   const status = await api.github.status();
   if (!status.connected || !status.repo || status.needsSignIn) {
     return new Promise((resolve) => {
@@ -772,11 +772,19 @@ async function showPublishToWebDialog({ api, guideId, guideTitle, onOpenAccounts
     const cancelBtn = el('button', { type: 'button', onClick: () => { open = false; close(); resolveAfterCheck(publishing); } }, 'Cancel');
     const removeBtn = el('button.danger.hidden', { type: 'button' }, 'Remove from the web');
     const publishBtn = el('button.primary', { type: 'button', disabled: true }, 'Publish');
+    // The body is replaced as the dialog loads, so the quality check sits outside it.
+    const quality = el('div');
     const { close } = openModal({
       title: 'Publish to the web',
-      body,
+      body: el('div', {}, quality, body),
       footer: [cancelBtn, removeBtn, publishBtn],
       onClose: () => { open = false; resolveAfterCheck(publishing); },
+    });
+    addQualityPanel(api, guideId, quality, (finding) => {
+      open = false;
+      close();
+      resolveAfterCheck(publishing);
+      onShowFinding?.(finding);
     });
 
     const days = el('select', { 'aria-label': 'How long to keep the guide online' },
@@ -823,6 +831,7 @@ async function showPublishToWebDialog({ api, guideId, guideTitle, onOpenAccounts
     publishBtn.addEventListener('click', async () => {
       if (!canPublish() || publishing) return;
       publishing = true;
+      quality.replaceChildren(); // too late to fix before this publish
       error.classList.add('hidden');
       const progress = githubPublishProgress(guideTitle);
       body.replaceChildren(progress.node);

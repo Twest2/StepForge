@@ -1074,14 +1074,17 @@ class StepForgeApp {
     if (!guideId) return;
     // Publish what the user sees, including edits still waiting to be saved.
     if (this.state.view === 'editor' && this.editor.guideId === guideId) await this.editor.saveAll();
+    let finding = null;
     await showPublishToWebDialog({
       api,
       guideId,
       guideTitle: title || 'Untitled guide',
       onOpenAccounts: () => this.openSettings('github'),
+      onShowFinding: (picked) => { finding = picked; },
     });
     // Checking for private details may have added blurs to the open guide.
     if (this.state.view === 'editor' && this.editor.guideId === guideId) await this.editor.reload();
+    if (finding) await this.showQualityFinding(guideId, finding);
   }
 
   /** Publish a guide as a Confluence page (Settings → Accounts → Confluence). */
@@ -1089,14 +1092,17 @@ class StepForgeApp {
     if (!guideId) return;
     const inEditor = this.state.view === 'editor' && this.editor.guideId === guideId;
     if (inEditor) await this.editor.saveAll();
+    let finding = null;
     const changed = await showPublishToConfluenceDialog({
       api,
       guideId,
       guideTitle: title || 'Untitled guide',
       onOpenAccounts: () => this.openSettings('confluence'),
+      onShowFinding: (picked) => { finding = picked; },
     });
     // Checking for private details may have added blurs to the open guide.
     if (changed && inEditor) await this.editor.reload();
+    if (finding) await this.showQualityFinding(guideId, finding);
   }
 
   /** Publish a guide as a Wiki.js page (Settings → Accounts → Wiki.js). */
@@ -1104,14 +1110,23 @@ class StepForgeApp {
     if (!guideId) return;
     const inEditor = this.state.view === 'editor' && this.editor.guideId === guideId;
     if (inEditor) await this.editor.saveAll();
+    let finding = null;
     const changed = await showPublishToWikiJsDialog({
       api,
       guideId,
       guideTitle: title || 'Untitled guide',
       onOpenAccounts: () => this.openSettings('wikijs'),
+      onShowFinding: (picked) => { finding = picked; },
     });
     // Checking for private details may have added blurs to the open guide.
     if (changed && inEditor) await this.editor.reload();
+    if (finding) await this.showQualityFinding(guideId, finding);
+  }
+
+  /** Open a guide (publishing also works from the library) at a quality-check finding. */
+  async showQualityFinding(guideId, finding) {
+    if (this.state.view !== 'editor' || this.editor.guideId !== guideId) await this.openGuide(guideId);
+    await this.editor.showQualityFinding(finding);
   }
 
   async openGuideExport(guideId) {

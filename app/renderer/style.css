@@ -1549,13 +1549,14 @@ fieldset legend {
 .brand-section h4, .brand-card-heading { margin: 0 0 10px; font-size: 13px; }
 .brand-card-heading { padding-top: 14px; }
 .brand-none { padding: 4px 0 14px; margin: 0; }
-.brand-asset-row { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 8px 0; }
+.brand-asset-row { display: grid; grid-template-columns: 168px minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 8px 0; }
 .brand-asset-row + .brand-asset-row { border-top: 1px solid var(--border); }
+/* Wide enough to show a wordmark logo at a readable size. */
 .brand-thumb {
-  width: 56px; height: 56px; display: grid; place-items: center; border-radius: 8px;
+  width: 168px; height: 64px; display: grid; place-items: center; border-radius: 8px;
   border: 1px solid var(--border); background: var(--panel-2); overflow: hidden;
 }
-.brand-thumb img { max-width: 48px; max-height: 48px; object-fit: contain; }
+.brand-thumb img { max-width: 148px; max-height: 44px; object-fit: contain; }
 .brand-thumb-empty { color: var(--muted); }
 .brand-swatches { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .brand-swatch { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
@@ -1590,7 +1591,7 @@ fieldset legend {
   .settings-nav-item { width: auto; white-space: nowrap; }
   .setting-row { flex-direction: column; align-items: stretch; gap: 8px; }
   .setting-control { max-width: none; justify-content: flex-start; }
-  .brand-asset-row { grid-template-columns: 56px minmax(0, 1fr); }
+  .brand-asset-row { grid-template-columns: 168px minmax(0, 1fr); }
   .brand-asset-row > .row { grid-column: 1 / -1; }
   .brand-facts, .brand-support { grid-template-columns: 1fr; }
 }

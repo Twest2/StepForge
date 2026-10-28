@@ -15,6 +15,9 @@ const BRAND_FONT_SUGGESTIONS = [
 
 const BRAND_DEFAULT_COLORS = { primary: '#2563EB', accent: '#0EA5E9', text: '#18212B' };
 
+// Mirrors MAX_CSS_CHARS in core/branding.js (a unit test keeps the two in step).
+const BRAND_CSS_MAX_CHARS = 200000;
+
 // Formats Design preview can show, most useful first.
 const BRAND_PREVIEW_FORMATS = [
   { value: 'html-rich', label: 'HTML (rich)' },
@@ -91,6 +94,16 @@ async function ensureBrandRaster(api, asset) {
 async function openBrandPreview(api, { id = '', profile = null, format }) {
   const result = await api.branding.preview(profile ? { profile, format } : { id, format });
   if (result?.file) await api.shell.openProduced({ target: result.file });
+}
+
+/** An error line shown under one part of the editor, so it appears beside what was clicked. */
+function brandRowMessage() {
+  const node = el('p.setting-desc.error.brand-row-error', { role: 'alert', hidden: true });
+  return {
+    node,
+    show(err) { node.textContent = err?.message || String(err); node.hidden = false; },
+    clear() { node.textContent = ''; node.hidden = true; },
+  };
 }
 
 function brandThumb(asset, label) {
@@ -310,19 +323,23 @@ function showBrandProfileEditor(api, data = null) {
       html: { css: '', colorScheme: 'light', ...(base?.html || {}) },
       watermark: { enabled: false, position: 'bottom-right', opacity: 0.6, ...(base?.watermark || {}) },
     };
-    const status = el('p.setting-desc', { role: 'status' });
-    const fail = (err) => { status.textContent = err.message || String(err); status.classList.add('error'); };
-    const note = (text) => { status.textContent = text; status.classList.remove('error'); };
+    // Errors from Preview and Save show in the footer beside those buttons.
+    const footerStatus = el('span.brand-footer-status.error', { role: 'alert' });
+    const fail = (err) => { footerStatus.textContent = err.message || String(err); footerStatus.title = footerStatus.textContent; };
 
     // Name
     const name = el('input', { type: 'text', value: draft.name, maxLength: 80, placeholder: 'Company Default', 'aria-label': 'Profile name' });
-    name.addEventListener('input', () => { draft.name = name.value; name.classList.remove('invalid'); });
+    const nameMessage = brandRowMessage();
+    name.addEventListener('input', () => { draft.name = name.value; name.classList.remove('invalid'); nameMessage.clear(); });
 
     // Images
+    const imageMessages = {};
     const imageRow = (key, title, desc) => {
       const thumb = el('div');
       const fileName = el('span.setting-desc');
-      const remove = el('button', { type: 'button', onClick: () => { draft[key] = null; show(); } }, 'Remove');
+      const message = brandRowMessage();
+      imageMessages[key] = message;
+      const remove = el('button', { type: 'button', onClick: () => { draft[key] = null; message.clear(); show(); } }, 'Remove');
       const choose = el('button', { type: 'button' }, 'Choose…');
       const show = () => {
         const asset = draft[key] ? assets[draft[key]] : null;
@@ -335,16 +352,16 @@ function showBrandProfileEditor(api, data = null) {
         try {
           const picked = await api.branding.chooseAsset({ kind: 'image' });
           if (!picked) return;
+          message.clear();
           const asset = await ensureBrandRaster(api, picked);
           assets[asset.id] = asset;
           draft[key] = asset.id;
-          note('');
           show();
-        } catch (err) { fail(err); } finally { setButtonLoading(choose, false); }
+        } catch (err) { message.show(err); } finally { setButtonLoading(choose, false); }
       });
       show();
       return el('div.brand-asset-row', {}, thumb,
-        el('div.setting-text', {}, el('div.setting-title', {}, title), el('div.setting-desc', {}, desc), fileName),
+        el('div.setting-text', {}, el('div.setting-title', {}, title), el('div.setting-desc', {}, desc), fileName, message.node),
         el('div.row', {}, choose, remove));
     };
 
@@ -368,7 +385,8 @@ function showBrandProfileEditor(api, data = null) {
       const f = draft.fonts[role];
       const input = el('input', { type: 'text', value: f.name, maxLength: 80, placeholder: 'StepForge default', list: 'brand-font-list', 'aria-label': `${title} font` });
       const file = el('span.setting-desc');
-      const remove = el('button', { type: 'button', onClick: () => { f.asset = null; show(); } }, 'Remove file');
+      const message = brandRowMessage();
+      const remove = el('button', { type: 'button', onClick: () => { f.asset = null; message.clear(); show(); } }, 'Remove file');
       const upload = el('button', { type: 'button' }, 'Upload font…');
       const show = () => {
         const asset = f.asset ? assets[f.asset] : null;
@@ -381,18 +399,18 @@ function showBrandProfileEditor(api, data = null) {
         try {
           const picked = await api.branding.chooseAsset({ kind: 'font' });
           if (!picked) return;
+          message.clear();
           assets[picked.id] = picked;
           f.asset = picked.id;
           // The file's own family name, unless one was typed on purpose.
           if (!f.name.trim() || BRAND_FONT_SUGGESTIONS.includes(f.name.trim())) { f.name = picked.family; input.value = picked.family; }
-          note('');
           show();
-        } catch (err) { fail(err); } finally { setButtonLoading(upload, false); }
+        } catch (err) { message.show(err); } finally { setButtonLoading(upload, false); }
       });
       show();
       return el('div.brand-font-row', {},
         settingRow(title, desc, input),
-        el('div.brand-font-file', {}, file, el('div.row', {}, upload, remove)));
+        el('div.brand-font-file', {}, el('div', {}, file, message.node), el('div.row', {}, upload, remove)));
     };
 
     // Layout
@@ -426,18 +444,26 @@ function showBrandProfileEditor(api, data = null) {
     // Advanced CSS
     const css = el('textarea.brand-css-input', { rows: 7, spellcheck: false, placeholder: '.doc-header { padding: 2rem; }\n.step-head h2 { color: var(--brand-primary); }', 'aria-label': 'Advanced CSS' });
     css.value = draft.html.css;
-    css.addEventListener('input', () => { draft.html.css = css.value; });
+    const cssMessage = brandRowMessage();
+    // Over the limit is said as it's typed or pasted, and stops Save, rather than being cut short.
+    const cssFits = () => {
+      if (css.value.length <= BRAND_CSS_MAX_CHARS) { cssMessage.clear(); return true; }
+      cssMessage.show(`This CSS is ${css.value.length.toLocaleString('en-US')} characters long. A profile can hold 200,000.`);
+      return false;
+    };
+    css.addEventListener('input', () => { draft.html.css = css.value; cssFits(); });
     const loadCss = el('button', { type: 'button', onClick: async () => {
       try {
         const picked = await api.branding.chooseAsset({ kind: 'css' });
         if (!picked) return;
         css.value = picked.css;
         draft.html.css = picked.css;
-      } catch (err) { fail(err); }
+        cssFits();
+      } catch (err) { cssMessage.show(err); }
     } }, 'Load .css file…');
 
     const body = el('div.brand-editor', {},
-      settingsCard(null, settingRow('Profile name', 'Shown in the Active brand profile list.', name)),
+      settingsCard(null, settingRow('Profile name', 'Shown in the Active brand profile list.', name), nameMessage.node),
       settingsCard('Brand assets',
         imageRow('logo', 'Company logo', 'PNG, JPG, or SVG (scripts and outside links are removed). On covers, page headers and slides.'),
         imageRow('banner', 'Banner', 'Optional. A wide image across the top of covers, web pages and wiki pages.')),
@@ -466,12 +492,14 @@ function showBrandProfileEditor(api, data = null) {
         el('p.setting-desc', {}, 'Used for HTML and GitHub Pages outputs only. Added after StepForge’s styles, so it wins. var(--brand-primary), var(--brand-accent) and var(--brand-text) hold your colors. ',
           el('a', { href: BRAND_CSS_GUIDE_URL, onClick: (e) => { e.preventDefault(); void api.shell.openExternal({ url: BRAND_CSS_GUIDE_URL }).catch(() => {}); } }, 'What you can style'), '.'),
         css,
-        el('div.settings-actions', {}, loadCss)),
-      status);
+        cssMessage.node,
+        el('div.settings-actions', {}, loadCss)));
 
     const previewFormat = brandSelect('html-rich', BRAND_PREVIEW_FORMATS, { 'aria-label': 'Preview format' });
     const previewBtn = el('button', { type: 'button' }, 'Preview');
     previewBtn.addEventListener('click', async () => {
+      if (!cssFits()) { css.focus(); return; }
+      footerStatus.textContent = '';
       setButtonLoading(previewBtn, true, 'Preparing…');
       try { await openBrandPreview(api, { profile: draft, format: previewFormat.value }); } catch (err) { fail(err); } finally { setButtonLoading(previewBtn, false); }
     });
@@ -479,10 +507,12 @@ function showBrandProfileEditor(api, data = null) {
     saveBtn.addEventListener('click', async () => {
       if (!draft.name.trim()) {
         name.classList.add('invalid');
+        nameMessage.show('Give the profile a name.');
         name.focus();
-        fail(new Error('Give the profile a name.'));
         return;
       }
+      if (!cssFits()) { css.focus(); return; }
+      footerStatus.textContent = '';
       setButtonLoading(saveBtn, true, 'Saving…');
       try {
         const saved = await api.branding.save({ profile: draft });
@@ -497,15 +527,16 @@ function showBrandProfileEditor(api, data = null) {
     const { close } = openModal({
       title: base ? 'Edit brand profile' : 'New brand profile',
       body,
-      footer: [previewFormat, previewBtn, el('span.spacer'),
+      footer: [previewFormat, previewBtn, footerStatus,
         el('button', { type: 'button', onClick: () => { close(); resolve(null); } }, 'Cancel'), saveBtn],
       wide: true,
       onClose: () => resolve(null),
     });
     // A profile imported before its images were drawn as PNG gets them now.
-    for (const id of [draft.logo, draft.banner]) {
+    for (const key of ['logo', 'banner']) {
+      const id = draft[key];
       if (id && assets[id]?.needsRaster) {
-        ensureBrandRaster(api, assets[id]).then((asset) => { assets[id] = asset; }).catch(fail);
+        ensureBrandRaster(api, assets[id]).then((asset) => { assets[id] = asset; }).catch((err) => imageMessages[key].show(err));
       }
     }
     name.focus();

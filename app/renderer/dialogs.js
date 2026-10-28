@@ -1075,6 +1075,8 @@ function showExportDialog({
   onManageTemplates,   // async (format) => refreshed template name list
   onChooseImage,       // async () => picked image path or null
   webPublish = null,   // { ready, formats, expiryDays, defaultExpiryDays }: offer publishing HTML exports
+  publishTargets = {}, // format -> site name, for formats the Share menu can publish directly
+  onPublishInstead,    // (format) => called after the dialog closes to publish instead of exporting
 } = {}) {
   return new Promise((resolve) => {
     const formatOptions = (formats || []).map((f) => {
@@ -1215,7 +1217,29 @@ function showExportDialog({
     }
     publishInput.addEventListener('change', () => refreshPublish());
 
-    formatSelect.addEventListener('change', () => { refreshFormatDesc(); refreshTemplates(); refreshOptions(); refreshPublish(); });
+    // Confluence and Wiki.js: publishing makes the page for you, so point to
+    // it. The export still works for people who upload by hand.
+    const publishInsteadBtn = el('button', { type: 'button' });
+    const publishInsteadNote = el('p.gh-note.export-publish-instead', { role: 'note' });
+    function refreshPublishInstead() {
+      const site = publishTargets[formatSelect.value];
+      publishInsteadNote.hidden = !site || typeof onPublishInstead !== 'function';
+      if (publishInsteadNote.hidden) return;
+      publishInsteadBtn.textContent = `Publish to ${site}…`;
+      publishInsteadNote.replaceChildren(
+        el('span', {}, el('strong', {}, `Publishing to ${site} is easier. `),
+          `Share → Publish to ${site}… creates the page for you, uploads its screenshots and updates the same page when you publish again. Export only if you’d rather upload the files yourself.`),
+        publishInsteadBtn);
+    }
+    publishInsteadBtn.addEventListener('click', () => {
+      const format = formatSelect.value;
+      close();
+      resolve(false);
+      onPublishInstead(format);
+    });
+
+    formatSelect.addEventListener('change', () => { refreshFormatDesc(); refreshPublishInstead(); refreshTemplates(); refreshOptions(); refreshPublish(); });
+    refreshPublishInstead();
     refreshFormatDesc();
     templateSelect.addEventListener('change', () => refreshOptions());
     refreshTemplates();
@@ -1252,7 +1276,7 @@ function showExportDialog({
     }, 'Manage…');
 
     const body = el('div.export-dialog', {},
-      labeledRow('Format', el('div.export-format', {}, formatSelect, formatDesc)),
+      labeledRow('Format', el('div.export-format', {}, formatSelect, formatDesc, publishInsteadNote)),
       labeledRow('Template', el('div.row', {}, templateSelect, saveTplBtn, manageBtn)),
       labeledRow('Output folder', el('div.row', {}, outDirInput, el('button', {
         type: 'button',

@@ -198,11 +198,12 @@ function zoomShortcutFromEvent(e) {
 }
 
 class GuideEditor {
-  constructor({ root, onMetaChange = () => {}, onToast = toast, onBack = () => {} } = {}) {
+  constructor({ root, onMetaChange = () => {}, onToast = toast, onBack = () => {}, onPublish = null } = {}) {
     this.root = root;
     this.onMetaChange = onMetaChange;
     this.onToast = onToast;
     this.onBack = onBack;
+    this.onPublish = onPublish; // (format) => Share → Publish to Confluence/Wiki.js for this guide
 
     this.guideId = null;
     this.guide = null;
@@ -2691,9 +2692,12 @@ class GuideEditor {
     // HTML exports can also be published to GitHub Pages (Settings → Accounts).
     const github = await api.github.status().catch(() => null);
     let publishRequest = null;
+    let publishInstead = null;
     await dialogs.showExportDialog({
       formats,
       templatesByFormat,
+      publishTargets: this.onPublish ? { confluence: 'Confluence', wikijs: 'Wiki.js' } : {},
+      onPublishInstead: (format) => { publishInstead = format; },
       webPublish: github?.available ? {
         ready: Boolean(github.connected && github.repo && !github.needsSignIn),
         formats: ['html-simple', 'html-rich'],
@@ -2758,6 +2762,10 @@ class GuideEditor {
         return true;
       },
     });
+    if (publishInstead) {
+      await this.onPublish(publishInstead);
+      return;
+    }
     if (publishRequest) {
       await showPublishProgressDialog({ api, guideId: this.guideId, guideTitle: this.guide?.title || 'This guide', request: publishRequest });
       // Publishing blurs private details in screenshots that weren't checked yet.

@@ -9,12 +9,14 @@ const raster = require('../core/raster');
 const text = require('../core/text-raster');
 const { decodePng, encodePng } = require('../core/png');
 const { zipSync } = require('../core/zip');
+const { withBrand, brandRaster, overlayWatermark, hexToRgb } = require('./branding');
 
 /**
  * Image bundle exporter: a folder with one annotated PNG per image step,
  * named in step order, plus an index.json describing the guide. Optionally
  * burns a caption (step number + title) under each image, overlays a
- * watermark, and packages the folder as a .zip.
+ * watermark (a chosen PNG, or the brand profile's logo when its watermark is
+ * on), and packages the folder as a .zip.
  */
 
 const DEFAULT_TEMPLATE = {
@@ -38,7 +40,7 @@ function fileNumber(number) {
   return String(number).split('.').map((part, i) => (i === 0 ? part.padStart(2, '0') : part)).join('.');
 }
 
-function addCaption(img, step, accent) {
+function addCaption(img, step, accent, ink = [24, 33, 43, 255]) {
   const W = img.width;
   const h = Math.round(Math.max(40, Math.min(96, W * 0.045)));
   const out = raster.createImage(W, img.height + h, [255, 255, 255, 255]);
@@ -55,43 +57,35 @@ function addCaption(img, step, accent) {
   const size = Math.round(h * 0.36);
   const tx = pad + badgeW + Math.round(h * 0.28);
   const title = text.fitText(step.title || 'Untitled step', size, W - tx - pad, { weight: 'bold' });
-  text.drawTextCentered(out, tx + text.lineWidth(title, size, 'bold') / 2, img.height + h / 2, title, size, [24, 33, 43, 255], { weight: 'bold' });
+  text.drawTextCentered(out, tx + text.lineWidth(title, size, 'bold') / 2, img.height + h / 2, title, size, ink, { weight: 'bold' });
   return out;
 }
 
-function addWatermark(img, mark, opacity) {
-  // Keep the mark to at most a fifth of the image width.
-  const maxW = Math.max(16, Math.round(img.width * 0.2));
-  const scaled = mark.width > maxW
-    ? raster.resize(mark, maxW, Math.max(1, Math.round((mark.height * maxW) / mark.width)))
-    : raster.cloneImage(mark);
-  const alpha = Math.round(255 * Math.max(0, Math.min(1, opacity)));
-  for (let i = 3; i < scaled.data.length; i += 4) {
-    scaled.data[i] = Math.round((scaled.data[i] * alpha) / 255);
-  }
-  const margin = Math.max(6, Math.round(img.width * 0.02));
-  raster.drawImage(img, scaled, Math.max(0, img.width - scaled.width - margin), Math.max(0, img.height - scaled.height - margin));
-}
-
 function exportImageBundle(ast, outDir, template = {}) {
-  const tpl = { ...DEFAULT_TEMPLATE, ...template };
+  const tpl = withBrand('image-bundle', DEFAULT_TEMPLATE, ast, template);
+  const brand = ast.branding;
   const name = `${guideSlug(ast)}-images`;
   const folder = path.join(outDir, name);
   fs.mkdirSync(folder, { recursive: true });
   // Clear images from an earlier export so renamed steps don't linger.
   for (const f of fs.readdirSync(folder)) if (/^step-.*\.png$/.test(f)) fs.rmSync(path.join(folder, f));
 
-  const mark = tpl.watermarkPath && fs.existsSync(tpl.watermarkPath)
+  // A watermark chosen in the Export dialog wins over the brand's.
+  const chosen = tpl.watermarkPath && fs.existsSync(tpl.watermarkPath)
     ? decodePng(fs.readFileSync(tpl.watermarkPath))
     : null;
+  const brandMark = !chosen && brand?.watermark.enabled ? brandRaster(brand.logo) : null;
+  const mark = chosen || brandMark;
+  const markStyle = chosen ? { position: 'bottom-right', opacity: tpl.watermarkOpacity } : brand?.watermark;
+  const ink = brand ? [...hexToRgb(brand.colors.text), 255] : undefined;
   const accent = raster.parseColor(tpl.accentColor, [37, 99, 235, 255]);
   const rendered = renderAllImages(ast);
   const files = new Map();
   for (const step of ast.steps) {
     let img = rendered.get(step.stepId);
     if (!img) continue;
-    if (mark) addWatermark(img, mark, tpl.watermarkOpacity);
-    if (tpl.captions) img = addCaption(img, step, accent);
+    if (mark) overlayWatermark(img, mark, markStyle);
+    if (tpl.captions) img = addCaption(img, step, accent, ink);
     const fileName = `step-${fileNumber(step.number)}-${slugify(step.title || step.stepId, 'step')}.png`;
     fs.writeFileSync(path.join(folder, fileName), encodePng(img));
     files.set(step.stepId, { fileName, width: img.width, height: img.height });

@@ -24,30 +24,10 @@ function makeSelect(value, options) {
   );
 }
 
-/** Settings row: a title and optional description beside its control. */
 // Review dates (core/review.js, loaded with a script tag before this file).
 const review = window.StepForgeReview;
 
 const AI_GUIDE_URL = 'https://github.com/Twest2/StepForge/blob/main/docs/getting_started_with_ai.md';
-
-function settingRow(title, description, control) {
-  return el('div.setting-row', {},
-    el('div.setting-text', {},
-      el('div.setting-title', {}, title),
-      description ? el('div.setting-desc', {}, description) : null),
-    el('div.setting-control', {}, control));
-}
-
-/** Wraps a checkbox as an on/off switch; the checkbox keeps its `checked` state. */
-function makeSwitch(input, label) {
-  input.classList.add('switch-input');
-  return el('label.switch', { title: label }, input, el('span.switch-track', { 'aria-hidden': 'true' }),
-    el('span.sr-only', {}, label));
-}
-
-function settingsCard(title, ...rows) {
-  return el('div.settings-card', {}, title ? el('div.settings-card-title', {}, title) : null, ...rows);
-}
 
 // Settings → Exports → Code theme. Mirrors CODE_THEME_CHOICES in
 // core/code-highlight.js (a unit test keeps the two in step).
@@ -612,6 +592,7 @@ function showSettingsDialog({
     const accountView = ['drive', 'onedrive', 'dropbox', 'webdav', 'github', 'confluence', 'wikijs'].includes(initialSection) ? initialSection : null;
     if (accountView) initialSection = 'accounts';
     const accountsPanel = makeAccountsSettings(api, { view: accountView, onPublishToWeb });
+    const brandingPanel = makeBrandingSettings(api, { activeProfileId: settings.branding?.activeProfileId || '' });
     const storagePath = el('code.settings-path', {}, 'Checking guide storage location…');
     const storageNote = el('div.setting-desc', {}, '');
     const showStorageError = (message) => { storageNote.textContent = message; storageNote.classList.add('error'); };
@@ -865,6 +846,7 @@ function showSettingsDialog({
         settingsCard('Guide reviews',
           settingRow('Flag guides for review', 'Guides that haven’t been saved or marked verified for this long show “May need review” in the library. Each guide can change this in Guide information.', reviewDefault)),
       ] },
+      { id: 'branding', label: 'Branding', description: 'Customize how exported guides appear.', content: [brandingPanel.node] },
       { id: 'capture', label: 'Capture', description: 'How StepForge records steps.', content: [
         settingsCard('Recording',
           settingRow('Default mode', 'Record the whole screen or the active window. For a region, use Capture → Capture region….', captureMode),
@@ -995,6 +977,10 @@ function showSettingsDialog({
                 ...settings.editor,
                 focusedViewDefaultForNewSteps: focusedDefault.checked,
               },
+              branding: {
+                ...settings.branding,
+                activeProfileId: brandingPanel.value(),
+              },
               exports: {
                 ...settings.exports,
                 previewStepCount: Number(previewCount.value || 3),
@@ -1077,6 +1063,7 @@ function showExportDialog({
   webPublish = null,   // { ready, formats, expiryDays, defaultExpiryDays }: offer publishing HTML exports
   quality = [],        // findings from api.guide.quality, shown above the options
   onShowFinding,       // (finding) => jump to it; runs after the dialog closes
+  branding = null,     // { profiles: [{ id, name }], activeId }: brand profile choice (Settings → Branding)
 } = {}) {
   return new Promise((resolve) => {
     const formatOptions = (formats || []).map((f) => {
@@ -1096,6 +1083,15 @@ function showExportDialog({
     const templateSelect = makeSelect('', [{ value: '', label: 'Default template' }]);
     const outDirInput = makeInput(defaultOutDir, 'text', { placeholder: 'Choose an output folder' });
     const optionsHost = el('div', { className: 'export-options' });
+    // Branding: the active profile unless another (or none) is picked for this export.
+    const brandProfiles = branding?.profiles || [];
+    const brandChoice = makeSelect(brandProfiles.some((p) => p.id === branding?.activeId) ? branding.activeId : '',
+      [{ value: '', label: 'No branding' }, ...brandProfiles.map((p) => ({ value: p.id, label: p.name }))]);
+    brandChoice.setAttribute('aria-label', 'Branding');
+    const brandNote = el('span.muted');
+    const refreshBrandNote = () => {
+      brandNote.textContent = formatSelect.value === 'json' ? 'JSON exports keep the raw data and aren’t branded.' : 'Change the default in Settings → Branding.';
+    };
 
     // The effective option set shown to (and edited by) the user.
     let defaults = {};
@@ -1170,7 +1166,7 @@ function showExportDialog({
     }
 
     async function refreshOptions() {
-      defaults = (await onLoadDefaults?.(formatSelect.value)) || {};
+      defaults = (await onLoadDefaults?.(formatSelect.value, brandChoice.value)) || {};
       const saved = templateSelect.value
         ? (await onLoadTemplate?.(formatSelect.value, templateSelect.value)) || {}
         : {};
@@ -1217,7 +1213,10 @@ function showExportDialog({
     }
     publishInput.addEventListener('change', () => refreshPublish());
 
-    formatSelect.addEventListener('change', () => { refreshFormatDesc(); refreshTemplates(); refreshOptions(); refreshPublish(); });
+    formatSelect.addEventListener('change', () => { refreshFormatDesc(); refreshTemplates(); refreshOptions(); refreshPublish(); refreshBrandNote(); });
+    // The brand's colors are the options' defaults.
+    brandChoice.addEventListener('change', () => refreshOptions());
+    refreshBrandNote();
     refreshFormatDesc();
     templateSelect.addEventListener('change', () => refreshOptions());
     refreshTemplates();
@@ -1257,6 +1256,7 @@ function showExportDialog({
       qualityPanel(quality, (finding) => { close(); resolve(false); onShowFinding?.(finding); }),
       labeledRow('Format', el('div.export-format', {}, formatSelect, formatDesc)),
       labeledRow('Template', el('div.row', {}, templateSelect, saveTplBtn, manageBtn)),
+      branding ? labeledRow('Branding', el('div.row', {}, brandChoice, brandNote)) : null,
       labeledRow('Output folder', el('div.row', {}, outDirInput, el('button', {
         type: 'button',
         disabled: typeof onChooseDir !== 'function',
@@ -1276,6 +1276,7 @@ function showExportDialog({
       options: effectiveOptions(),
       outDir: outDirInput.value.trim() || null,
       publish: publishing() ? { days: Number(publishDays.value) } : null,
+      brandProfileId: branding ? brandChoice.value : undefined,
     });
 
     const cancelBtn = el('button', { onClick: () => { close(); resolve(false); } }, 'Cancel');

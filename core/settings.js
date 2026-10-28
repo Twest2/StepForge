@@ -97,6 +97,9 @@ const DEFAULT_SETTINGS = {
       screenshots: true,
     },
   },
+  // Settings → Branding: the brand profile (core/branding.js) every export
+  // uses unless the Export dialog picks another; '' for no branding.
+  branding: { activeProfileId: '' },
   exports: {
     previewStepCount: 3,
     openFolderAfterExport: true,

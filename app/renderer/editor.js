@@ -2651,6 +2651,7 @@ class GuideEditor {
         await api.settings.set({ keyPath: 'ai', value: next.ai });
         await api.settings.set({ keyPath: 'redaction', value: next.redaction });
         await api.settings.set({ keyPath: 'exports', value: next.exports });
+        await api.settings.set({ keyPath: 'branding', value: next.branding });
         await api.settings.set({ keyPath: 'backups', value: next.backups });
         await api.settings.setGlobalPlaceholders(next.placeholders || {});
       },
@@ -2669,6 +2670,7 @@ class GuideEditor {
       templatesByFormat[format.id] = await api.templates.list({ format: format.id });
     }
     const settings = await api.settings.all();
+    const brandProfiles = await api.branding.list().catch(() => []);
     // HTML exports can also be published to GitHub Pages (Settings → Accounts).
     const github = await api.github.status().catch(() => null);
     // Check what's on screen, including edits still waiting to be saved.
@@ -2688,11 +2690,12 @@ class GuideEditor {
         expiryDays: github.expiryDays,
         defaultExpiryDays: github.defaultExpiryDays,
       } : null,
+      branding: { profiles: brandProfiles, activeId: settings.branding?.activeProfileId || '' },
       defaultFormat: 'pdf',
       defaultOutDir: settings.exports?.lastOutputDirs?.pdf || '',
       onChooseDir: async (format) => api.export.chooseDir({ format }),
       onChooseImage: async () => api.export.chooseImage(),
-      onLoadDefaults: async (format) => api.export.defaults({ format }),
+      onLoadDefaults: async (format, brandProfileId) => api.export.defaults({ format, brandProfileId }),
       onLoadTemplate: async (format, name) => api.templates.load({ format, name }),
       onSaveTemplate: async (format, name, options) => {
         await api.templates.save({ format, name, options });
@@ -2728,21 +2731,21 @@ class GuideEditor {
         }
         return api.templates.list({ format });
       },
-      onPreview: async ({ format, options }) => {
-        const preview = await api.export.preview({ guideId: this.guideId, format, options });
+      onPreview: async ({ format, options, brandProfileId }) => {
+        const preview = await api.export.preview({ guideId: this.guideId, format, options, brandProfileId });
         if (preview && preview.file) {
           await api.shell.openProduced({ target: preview.file }); // open in default viewer
           this.onToast('Preview opened (first steps only).');
         }
         return true;
       },
-      onExport: async ({ format, options, outDir, publish }) => {
-        const result = await api.export.run({ guideId: this.guideId, format, options, outDir });
+      onExport: async ({ format, options, outDir, publish, brandProfileId }) => {
+        const result = await api.export.run({ guideId: this.guideId, format, options, outDir, brandProfileId });
         if (result && result.ok === false) return false;
         if (result && result.file) this.onToast(`Exported ${format}.`);
         // Published after the Export dialog closes, in a dialog that shows
         // progress. The local export is done either way.
-        if (publish) publishRequest = { days: publish.days, format, options };
+        if (publish) publishRequest = { days: publish.days, format, options, brandProfileId };
         return true;
       },
     });

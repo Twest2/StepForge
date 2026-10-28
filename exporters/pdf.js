@@ -2,12 +2,13 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { PdfBuilder } = require('../core/pdf');
+const { PdfBuilder, FONT_FAMILIES } = require('../core/pdf');
 const { guideSlug, renderAllImages, LEVEL_LABEL, stepContentGroups, codeBlockText } = require('./common');
 const { htmlToText } = require('../core/util');
 const { htmlToBlocks } = require('../core/htmlblocks');
 const { highlightCode } = require('../core/code-highlight');
 const { guideMetaLines } = require('./document-layout');
+const { withBrand, brandRaster, fitSize, fontKind, textOn, hexToRgb } = require('./branding');
 
 const LIST_INDENT = 14;
 const QUOTE_INDENT = 10;
@@ -80,19 +81,19 @@ function layoutCode(block, codeStyle, width) {
   return { background, rows };
 }
 
-function fontForRun(run) {
+function fontForRun(run, fonts = FONT_FAMILIES.sans) {
   if (run.code) return 'F3';
-  if (run.bold && run.italic) return 'F5';
-  if (run.bold) return 'F2';
-  if (run.italic) return 'F4';
-  return 'F1';
+  if (run.bold && run.italic) return fonts.boldItalic;
+  if (run.bold) return fonts.bold;
+  if (run.italic) return fonts.italic;
+  return fonts.regular;
 }
 
 /** Split formatted runs into words (font/link tagged) and greedily wrap to maxWidth. */
-function wrapRuns(pdf, runs, size, maxWidth) {
+function wrapRuns(pdf, runs, size, maxWidth, fonts) {
   const words = [];
   for (const run of runs) {
-    const font = fontForRun(run);
+    const font = fontForRun(run, fonts);
     for (const part of run.text.split(/(\s+)/)) {
       if (part === '') continue;
       words.push({ text: part, font, href: run.href });
@@ -123,7 +124,7 @@ function wrapRuns(pdf, runs, size, maxWidth) {
  * Returns { items, height }; items: { kind: 'hr', width } | { kind: 'text',
  * lines, size, lineHeight, indent, prefix, muted }.
  */
-function layoutDescription(pdf, html, maxWidth, baseSize) {
+function layoutDescription(pdf, html, maxWidth, baseSize, fonts = FONT_FAMILIES.sans) {
   const items = [];
   let height = 0;
   for (const block of htmlToBlocks(html || '')) {
@@ -150,7 +151,7 @@ function layoutDescription(pdf, html, maxWidth, baseSize) {
       indent += QUOTE_INDENT;
       muted = true;
     }
-    const lines = wrapRuns(pdf, runs, size, maxWidth - indent);
+    const lines = wrapRuns(pdf, runs, size, maxWidth - indent, fonts);
     const lineHeight = size * 1.35;
     items.push({ kind: 'text', lines, size, lineHeight, indent, prefix, muted });
     height += lines.length * lineHeight + 4;
@@ -181,7 +182,14 @@ const DEFAULT_TEMPLATE = {
 };
 
 function exportPdf(ast, outDir, template = {}) {
-  const tpl = { ...DEFAULT_TEMPLATE, ...template };
+  const tpl = withBrand('pdf', DEFAULT_TEMPLATE, ast, template);
+  // A brand profile sets the text and link colors, and the closest built-in
+  // fonts to its own (Helvetica, Times or Courier).
+  const brand = ast.branding;
+  const bodyFonts = FONT_FAMILIES[brand ? fontKind(brand.fonts.body.name) : 'sans'];
+  const headFonts = FONT_FAMILIES[brand ? fontKind(brand.fonts.heading.name) : 'sans'];
+  const ink = brand ? hexToRgb(brand.colors.text) : [0, 0, 0];
+  const linkColor = brand ? hexToRgb(brand.colors.accent) : tpl.accentColor;
   const size = PAGE_SIZES[tpl.pageSize] || PAGE_SIZES.a4;
   const pdf = new PdfBuilder({
     pageWidth: size.width,
@@ -204,7 +212,7 @@ function exportPdf(ast, outDir, template = {}) {
       y = M;
     }
   };
-  const writeLines = (text, { size: fs_ = 10.5, font = 'F1', color = [0, 0, 0], leading = 1.35, indent = 0 } = {}) => {
+  const writeLines = (text, { size: fs_ = 10.5, font = bodyFonts.regular, color = ink, leading = 1.35, indent = 0 } = {}) => {
     for (const line of pdf.wrapText(text, fs_, usableW - indent, font)) {
       ensure(fs_ * leading);
       pdf.text(line, M + indent, y, { size: fs_, font, color });
@@ -212,8 +220,8 @@ function exportPdf(ast, outDir, template = {}) {
     }
   };
   /** Render laid-out description items, preserving bold/italic/links/lists. */
-  const writeDescription = (html, { size: baseSize = 10.5, color = [0, 0, 0], indent: indentBase = 0 } = {}) => {
-    const { items } = layoutDescription(pdf, html, usableW - indentBase, baseSize);
+  const writeDescription = (html, { size: baseSize = 10.5, color = ink, indent: indentBase = 0 } = {}) => {
+    const { items } = layoutDescription(pdf, html, usableW - indentBase, baseSize, bodyFonts);
     for (const item of items) {
       if (item.kind === 'hr') {
         ensure(12);
@@ -224,11 +232,11 @@ function exportPdf(ast, outDir, template = {}) {
       item.lines.forEach((line, idx) => {
         ensure(item.lineHeight);
         const textX = M + indentBase + item.indent;
-        if (idx === 0 && item.prefix) pdf.text(item.prefix, textX - LIST_INDENT, y, { size: item.size, font: 'F1', color });
+        if (idx === 0 && item.prefix) pdf.text(item.prefix, textX - LIST_INDENT, y, { size: item.size, font: bodyFonts.regular, color });
         const parts = line.map((word) => ({
           text: word.text,
           font: word.font,
-          color: word.href ? tpl.accentColor : (item.muted ? [100, 100, 100] : color),
+          color: word.href ? linkColor : (item.muted ? [100, 100, 100] : color),
         }));
         pdf.textRun(parts, textX, y, item.size);
         y += item.lineHeight;
@@ -240,7 +248,7 @@ function exportPdf(ast, outDir, template = {}) {
   /** Height a callout block (emitBlock) will occupy, including its trailing gap. */
   const measureBlock = (tb) => {
     const { height: bodyH } = tb.descriptionHtml
-      ? layoutDescription(pdf, tb.descriptionHtml, usableW - 18, 9.5)
+      ? layoutDescription(pdf, tb.descriptionHtml, usableW - 18, 9.5, bodyFonts)
       : { height: 0 };
     return 16 + bodyH + 6;
   };
@@ -309,7 +317,7 @@ function exportPdf(ast, outDir, template = {}) {
   const measureStep = (step) => {
     const headSize = step.depth > 0 ? 12 : 14;
     const titleText = `${step.number}. ${step.title || 'Untitled step'}${step.skipped ? '  (skipped)' : ''}`;
-    const titleLines = pdf.wrapText(titleText, headSize, usableW, 'F2');
+    const titleLines = pdf.wrapText(titleText, headSize, usableW, headFonts.bold);
     let head = Math.max(40, titleLines.length * headSize * 1.35 + 8);
 
     const {
@@ -324,7 +332,7 @@ function exportPdf(ast, outDir, template = {}) {
     for (const tb of [...beforeTitle, ...afterTitle, ...beforeDescription, ...afterDescription, ...beforeImage, ...afterImage]) {
       head += measureBlock(tb);
     }
-    if (step.descriptionHtml) head += layoutDescription(pdf, step.descriptionHtml, usableW, 10.5).height;
+    if (step.descriptionHtml) head += layoutDescription(pdf, step.descriptionHtml, usableW, 10.5, bodyFonts).height;
     head += measureImage(step.stepId);
 
     let restHeight = 0;
@@ -339,19 +347,72 @@ function exportPdf(ast, outDir, template = {}) {
 
   pdf.addPage();
 
+  const logo = brand ? brandRaster(brand.logo) : null;
+  const banner = brand ? brandRaster(brand.banner) : null;
+
+  /**
+   * The cover's banner, logo, title and accent rule. Standard puts the logo
+   * above a left-aligned title; Centered centers them; Band sets them on a
+   * full-width block of the brand's primary color.
+   */
+  const drawCoverHead = () => {
+    const style = brand?.cover || 'standard';
+    const titleSize = 28;
+    const lineH = titleSize * 1.35;
+    if (banner) {
+      let w = usableW;
+      let h = (banner.height / banner.width) * w;
+      if (h > 170) { h = 170; w = (banner.width / banner.height) * h; }
+      pdf.image(banner, M + (usableW - w) / 2, y, w, h);
+      y += h + 18;
+    }
+    const logoBox = logo ? fitSize(logo.width, logo.height, 200, 56) : null;
+    const titleLines = pdf.wrapText(ast.guide.title, titleSize, usableW, headFonts.bold);
+    if (style === 'band') {
+      const top = banner ? y - 8 : 0;
+      const padTop = banner ? 24 : M;
+      const height = padTop + (logoBox ? logoBox.height + 18 : 0) + titleLines.length * lineH + 28;
+      const onBand = hexToRgb(textOn(brand.colors.primary));
+      pdf.rect(0, top, size.width, height, { fill: hexToRgb(brand.colors.primary) });
+      y = top + padTop;
+      if (logoBox) { pdf.image(logo, M, y, logoBox.width, logoBox.height); y += logoBox.height + 18; }
+      for (const line of titleLines) { pdf.text(line, M, y, { size: titleSize, font: headFonts.bold, color: onBand }); y += lineH; }
+      y = top + height + 22;
+      return;
+    }
+    const centered = style === 'centered';
+    const xFor = (w) => (centered ? M + (usableW - w) / 2 : M);
+    if (logoBox) { pdf.image(logo, xFor(logoBox.width), y, logoBox.width, logoBox.height); y += logoBox.height + 18; }
+    for (const line of titleLines) {
+      ensure(lineH);
+      pdf.text(line, xFor(pdf.textWidth(line, titleSize, headFonts.bold)), y, { size: titleSize, font: headFonts.bold, color: ink });
+      y += lineH;
+    }
+    y += 10;
+    const ruleW = centered ? 120 : usableW;
+    pdf.rect(xFor(ruleW), y, ruleW, 3, { fill: tpl.accentColor });
+    y += 16;
+  };
+
   if (tpl.includeCover) {
     // Keep the cover title near the top edge instead of vertically centering it.
     y = M;
-    writeLines(ast.guide.title, { size: 28, font: 'F2' });
-    y += 10;
-    pdf.rect(M, y, usableW, 3, { fill: tpl.accentColor });
-    y += 16;
+    drawCoverHead();
     const metaLines = guideMetaLines(ast);
-    for (const line of metaLines) writeLines(line, { size: 11, color: [90, 90, 90] });
+    // Centered covers center the short lines too; the description stays a paragraph.
+    const coverLine = (text, opts) => {
+      if (brand?.cover !== 'centered') { writeLines(text, opts); return; }
+      for (const line of pdf.wrapText(text, opts.size, usableW, bodyFonts.regular)) {
+        ensure(opts.size * 1.35);
+        pdf.text(line, M + (usableW - pdf.textWidth(line, opts.size, bodyFonts.regular)) / 2, y, { ...opts, font: bodyFonts.regular });
+        y += opts.size * 1.35;
+      }
+    };
+    for (const line of metaLines) coverLine(line, { size: 11, color: [90, 90, 90] });
     if (metaLines.length) y += 8;
     if (ast.guide.descriptionHtml) writeDescription(ast.guide.descriptionHtml, { size: 12, color: [70, 70, 70] });
     y += 14;
-    writeLines(`${ast.steps.length} steps — generated ${ast.generatedAt.slice(0, 10)}`, { size: 10, color: [120, 120, 120] });
+    coverLine(`${ast.steps.length} steps — generated ${ast.generatedAt.slice(0, 10)}`, { size: 10, color: [120, 120, 120] });
     pdf.addPage();
     y = M;
   }
@@ -361,7 +422,7 @@ function exportPdf(ast, outDir, template = {}) {
   const tocTargets = new Map(); // stepId -> { pageIndex }
 
   if (tpl.includeToc && ast.steps.length > 1) {
-    writeLines('Contents', { size: 16, font: 'F2' });
+    writeLines('Contents', { size: 16, font: headFonts.bold });
     y += 4;
     const tocSize = 10.5;
     const lineH = tocSize * 1.35;
@@ -369,9 +430,9 @@ function exportPdf(ast, outDir, template = {}) {
       const indent = 14 * step.depth;
       const target = {};
       tocTargets.set(step.stepId, target);
-      for (const line of pdf.wrapText(`${step.number}.  ${step.title || 'Untitled step'}`, tocSize, usableW - indent, 'F1')) {
+      for (const line of pdf.wrapText(`${step.number}.  ${step.title || 'Untitled step'}`, tocSize, usableW - indent, bodyFonts.regular)) {
         ensure(lineH);
-        pdf.text(line, M + indent, y, { size: tocSize, color: tpl.accentColor });
+        pdf.text(line, M + indent, y, { size: tocSize, font: bodyFonts.regular, color: tpl.accentColor });
         pdf.linkRect(M + indent, y, usableW - indent, lineH, target);
         y += lineH;
       }
@@ -412,7 +473,7 @@ function exportPdf(ast, outDir, template = {}) {
     } = stepContentGroups(step);
     for (const tb of beforeTitle) emitBlock(tb);
     const headSize = step.depth > 0 ? 12 : 14;
-    writeLines(`${step.number}. ${step.title || 'Untitled step'}${step.skipped ? '  (skipped)' : ''}`, { size: headSize, font: 'F2' });
+    writeLines(`${step.number}. ${step.title || 'Untitled step'}${step.skipped ? '  (skipped)' : ''}`, { size: headSize, font: headFonts.bold });
     pdf.rect(M, y, usableW, 0.8, { fill: [225, 228, 232] });
     y += 8;
 
@@ -450,7 +511,7 @@ function exportPdf(ast, outDir, template = {}) {
           pdf.rect(M, y, usableW, rowH, { stroke: [200, 204, 210], lineWidth: 0.6 });
           for (let c = 0; c < cols; c++) {
             pdf.text(String(block.rows[r][c] ?? '').slice(0, Math.floor(colW / 5)), M + c * colW + 4, y + 3, {
-              size: 9, font: r === 0 ? 'F2' : 'F1',
+              size: 9, font: r === 0 ? bodyFonts.bold : bodyFonts.regular, color: ink,
             });
           }
           y += rowH;
@@ -466,14 +527,14 @@ function exportPdf(ast, outDir, template = {}) {
   function emitBlock(tb) {
     const label = `${LEVEL_LABEL[tb.level] || 'Note'}${tb.title ? `: ${tb.title}` : ''}`;
     const { items, height: bodyH } = tb.descriptionHtml
-      ? layoutDescription(pdf, tb.descriptionHtml, usableW - 18, 9.5)
+      ? layoutDescription(pdf, tb.descriptionHtml, usableW - 18, 9.5, bodyFonts)
       : { items: [], height: 0 };
     const blockH = 16 + bodyH;
     const style = LEVEL_STYLE[tb.level] || LEVEL_STYLE.info;
     ensure(blockH + 4);
     pdf.rect(M, y, usableW, blockH, { fill: style.tint });
     pdf.rect(M, y, 3, blockH, { fill: style.accent });
-    pdf.text(label, M + 10, y + 2, { size: 9.5, font: 'F2', color: style.accent });
+    pdf.text(label, M + 10, y + 2, { size: 9.5, font: bodyFonts.bold, color: style.accent });
     let by = y + 16;
     for (const item of items) {
       if (item.kind === 'hr') {
@@ -483,11 +544,11 @@ function exportPdf(ast, outDir, template = {}) {
       }
       item.lines.forEach((line, idx) => {
         const textX = M + 10 + item.indent;
-        if (idx === 0 && item.prefix) pdf.text(item.prefix, textX - LIST_INDENT, by, { size: item.size, font: 'F1' });
+        if (idx === 0 && item.prefix) pdf.text(item.prefix, textX - LIST_INDENT, by, { size: item.size, font: bodyFonts.regular, color: ink });
         const parts = line.map((word) => ({
           text: word.text,
           font: word.font,
-          color: word.href ? tpl.accentColor : (item.muted ? [100, 100, 100] : [0, 0, 0]),
+          color: word.href ? linkColor : (item.muted ? [100, 100, 100] : ink),
         }));
         pdf.textRun(parts, textX, by, item.size);
         by += item.lineHeight;
@@ -495,6 +556,29 @@ function exportPdf(ast, outDir, template = {}) {
       by += 4;
     }
     y += blockH + 6;
+  }
+
+  if (brand) {
+    // The brand's header (logo, text) and footer (text, page numbers) in the
+    // margins of every page but the cover, which shows the logo already.
+    const muted = [110, 116, 124];
+    const total = pdf.pages.length;
+    const headLogo = brand.header.logo && logo ? fitSize(logo.width, logo.height, 120, Math.max(8, Math.min(20, M - 16))) : null;
+    const rightAlign = (text, font) => size.width - M - pdf.textWidth(text, 8, font);
+    for (let i = tpl.includeCover ? 1 : 0; i < total; i++) {
+      pdf.onPage(i, () => {
+        if (headLogo) pdf.image(logo, M, (M - headLogo.height) / 2, headLogo.width, headLogo.height);
+        if (brand.header.text) {
+          pdf.text(brand.header.text, rightAlign(brand.header.text, bodyFonts.regular), (M - 8) / 2, { size: 8, font: bodyFonts.regular, color: muted });
+        }
+        const footY = size.height - M / 2 - 4;
+        if (brand.footer.text) pdf.text(brand.footer.text, M, footY, { size: 8, font: bodyFonts.regular, color: muted });
+        if (brand.footer.pageNumbers) {
+          const label = `Page ${i + 1} of ${total}`;
+          pdf.text(label, rightAlign(label, bodyFonts.regular), footY, { size: 8, font: bodyFonts.regular, color: muted });
+        }
+      });
+    }
   }
 
   fs.mkdirSync(outDir, { recursive: true });

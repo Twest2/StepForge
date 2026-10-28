@@ -206,6 +206,18 @@ const api = {
     export: invoke('templates:export'),
     import: invoke('templates:import'),
   },
+  branding: {
+    list: invoke('branding:list'),
+    get: invoke('branding:get'),
+    save: invoke('branding:save'),
+    delete: invoke('branding:delete'),
+    duplicate: invoke('branding:duplicate'),
+    chooseAsset: invoke('branding:chooseAsset'),
+    setRaster: invoke('branding:setRaster'),
+    export: invoke('branding:export'),
+    import: invoke('branding:import'),
+    preview: invoke('branding:preview'),
+  },
   export: {
     formats: invoke('export:formats'),
     defaults: invoke('export:defaults'),

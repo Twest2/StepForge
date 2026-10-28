@@ -1179,6 +1179,7 @@ class StepForgeApp {
         await api.settings.set({ keyPath: 'ai', value: next.ai });
         await api.settings.set({ keyPath: 'redaction', value: next.redaction });
         await api.settings.set({ keyPath: 'exports', value: next.exports });
+        await api.settings.set({ keyPath: 'branding', value: next.branding });
         await api.settings.set({ keyPath: 'backups', value: next.backups });
         await api.settings.set({ keyPath: 'library', value: next.library });
         await api.settings.setGlobalPlaceholders(next.placeholders || {});

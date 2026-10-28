@@ -167,14 +167,15 @@ jobs:
       - run: dnf install -y git findutils tar gzip xz
 
       - uses: actions/checkout@v4
-      # Recheck on every job: rerunning failed jobs can reuse an earlier authorization.
-      - name: Verify release owner
-        run: node scripts/check-release-access.js
 
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
           cache: npm
+
+      # Recheck on every job: rerunning failed jobs can reuse an earlier authorization.
+      - name: Verify release owner
+        run: node scripts/check-release-access.js
 
       - run: bash scripts/linux/dnf/install-build-deps.sh
 

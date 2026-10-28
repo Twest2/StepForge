@@ -253,6 +253,7 @@ each optional feature sends.
 - [Google Drive sync](docs/GOOGLE_DRIVE.md) · [OneDrive, Dropbox or Nextcloud](docs/CLOUD_ACCOUNTS.md)
 - [Share guides on the web with GitHub Pages](docs/GITHUB_PAGES.md)
 - [Publish to Confluence](docs/CONFLUENCE.md) · [Publish to Wiki.js](docs/WIKIJS.md)
+- [Brand your exported guides](docs/BRANDING.md): logos, colors, fonts and Advanced CSS
 - [Privacy](docs/PRIVACY.md) and [security](docs/SECURITY.md)
 
 **Installing**

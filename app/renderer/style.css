@@ -1546,7 +1546,8 @@ fieldset legend {
 .brand-active-row { display: flex; gap: 8px; }
 .brand-active-row select { flex: 1; min-width: 0; }
 .brand-section { padding: 14px 0; border-top: 1px solid var(--border); }
-.brand-section h4 { margin: 0 0 10px; font-size: 13px; }
+.brand-section h4, .brand-card-heading { margin: 0 0 10px; font-size: 13px; }
+.brand-card-heading { padding-top: 14px; }
 .brand-none { padding: 4px 0 14px; margin: 0; }
 .brand-asset-row { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 8px 0; }
 .brand-asset-row + .brand-asset-row { border-top: 1px solid var(--border); }

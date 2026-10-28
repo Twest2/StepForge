@@ -181,7 +181,8 @@ and extra CSS for HTML. Then pick it as the **Active brand profile**, and use
 and PowerPoint get the full treatment; Wiki.js, Confluence and Markdown get the
 logo, banner and header and footer text; JSON stays raw data. The Export dialog
 can choose a different profile, or none, for one export. Profiles can be shared
-as `.sfbrand` files.
+as `.sfbrand` files. [Brand your exported guides](BRANDING.md) has the details,
+including what Advanced CSS can style.
 
 Exported screenshots get alt text built from the step title (for example
 "Screenshot for step 3: Click Save") in the HTML, Word, PowerPoint, Markdown

@@ -1536,12 +1536,59 @@ fieldset legend {
 .update-status .update-now-note { margin-top: 8px; }
 .settings-about-name { font-size: 18px; font-weight: 700; }
 
+/* Settings → Branding (app/renderer/branding.js). */
+.brand-settings { display: flex; flex-direction: column; gap: 14px; }
+.brand-active { display: flex; flex-direction: column; gap: 6px; padding: 14px 0 12px; }
+.brand-active > label { font-size: 12px; font-weight: 600; color: var(--muted); }
+.brand-active-row { display: flex; gap: 8px; }
+.brand-active-row select { flex: 1; min-width: 0; }
+.brand-section { padding: 14px 0; border-top: 1px solid var(--border); }
+.brand-section h4 { margin: 0 0 10px; font-size: 13px; }
+.brand-none { padding: 4px 0 14px; margin: 0; }
+.brand-asset-row { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 8px 0; }
+.brand-asset-row + .brand-asset-row { border-top: 1px solid var(--border); }
+.brand-thumb {
+  width: 56px; height: 56px; display: grid; place-items: center; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--panel-2); overflow: hidden;
+}
+.brand-thumb img { max-width: 48px; max-height: 48px; object-fit: contain; }
+.brand-thumb-empty { color: var(--muted); }
+.brand-swatches { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.brand-swatch { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.brand-swatch-color { display: block; height: 34px; border-radius: 6px; border: 1px solid color-mix(in srgb, var(--text) 12%, transparent); margin-bottom: 4px; }
+.brand-swatch strong { font-size: 12px; }
+.brand-swatch code { font-size: 11px; color: var(--muted); }
+.brand-facts, .brand-support { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 6px 14px; margin: 0; font-size: 12px; }
+.brand-facts dt, .brand-support dt { color: var(--muted); }
+.brand-facts dd, .brand-support dd { margin: 0; }
+.brand-support { padding: 8px 0 12px; }
+.brand-css {
+  margin: 8px 0 0; padding: 10px 12px; border-radius: 6px; background: var(--panel-2); max-height: 160px; overflow: auto;
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; word-break: break-word;
+}
+.brand-preview-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 0; border-top: 1px solid var(--border); }
+.brand-settings .settings-card > .setting-desc[role="status"]:empty { display: none; }
+.brand-profile-row { justify-content: space-between; gap: 8px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; }
+.brand-profile-name { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.brand-editor { display: flex; flex-direction: column; gap: 14px; }
+.brand-editor .brand-asset-row .setting-desc + .setting-desc { margin-top: 4px; }
+.setting-control .brand-hex { width: 96px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.brand-editor input[type="color"] { width: 40px; height: 30px; padding: 2px; }
+.brand-font-row + .brand-font-row { border-top: 1px solid var(--border); }
+.brand-font-file { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 0 12px; }
+.brand-css-input { width: 100%; min-height: 120px; resize: vertical; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; margin-top: 8px; }
+.brand-editor input.invalid { border-color: var(--danger); }
+.modal > footer select { width: auto; }
+
 @media (max-width: 720px) {
   .settings-layout { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
   .settings-nav { flex-direction: row; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--border); padding: 8px; }
   .settings-nav-item { width: auto; white-space: nowrap; }
   .setting-row { flex-direction: column; align-items: stretch; gap: 8px; }
   .setting-control { max-width: none; justify-content: flex-start; }
+  .brand-asset-row { grid-template-columns: 56px minmax(0, 1fr); }
+  .brand-asset-row > .row { grid-column: 1 / -1; }
+  .brand-facts, .brand-support { grid-template-columns: 1fr; }
 }
 #capture-status .capture-mode-note { padding: 1px 7px; border-radius: 999px; background: rgba(255, 255, 255, 0.2); font-weight: 600; }
 

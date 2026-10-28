@@ -114,6 +114,18 @@ labels, GIF captions) is anti-aliased from the glyph atlases in `core/fonts/`
 (per-format settings persisted under `settings/templates/`, shareable as
 `.sfglt` zip files).
 
+Brand profiles (`core/branding.js`, under `settings/branding/`, shareable as
+`.sfbrand` zip files) hold a logo, banner, colors, fonts, cover style,
+header/footer text, watermark and HTML CSS. The main process resolves the
+active one (or the one the Export dialog picked) to file paths, and
+`core/renderast.js` loads it onto the AST as `ast.branding`; exporters use the
+helpers in `exporters/branding.js` and render exactly as before when it is
+null. Uploaded images are sniffed by content and SVGs rebuilt from an
+allowlist (`core/svg-sanitize.js`); the renderer draws SVG and JPG images to a
+PNG once at upload, since the export worker has no image decoders beyond PNG.
+Option precedence is exporter defaults, then the brand, then the template or
+Export dialog choice.
+
 ## Shell / Core Boundary
 
 The renderer never touches the filesystem. `app/preload.js` exposes a typed

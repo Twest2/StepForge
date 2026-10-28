@@ -3,10 +3,11 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { escapeHtml } = require('../core/util');
-const { guideSlug, writeStepImages, LEVEL_LABEL, stepContentGroups, codeBlockText } = require('./common');
+const { guideSlug, imagesDirName, writeStepImages, LEVEL_LABEL, stepContentGroups, codeBlockText } = require('./common');
 const { markdownFenceLanguage } = require('../core/code-highlight');
 const { htmlToMarkdown } = require('./htmlmd');
 const { tocEntries, guideMetaLines, guideSummary } = require('./document-layout');
+const { scaledPng } = require('./branding');
 
 const DEFAULT_TEMPLATE = {
   toc: true,
@@ -74,6 +75,48 @@ function emitBlock(lines, tb, { alertStyle = 'gfm' } = {}) {
   lines.push('');
 }
 
+/** Plain text that Markdown shouldn't read as formatting. */
+function markdownText(text) {
+  return String(text || '').replace(/[\\`*_[\]<>#|]/g, '\\$&');
+}
+
+const BRAND_FILES = ['brand-banner.png', 'brand-logo.png'];
+
+/**
+ * The brand's banner and logo as PNGs beside the screenshots, and the lines
+ * that show them. `html` writes <img> tags sized for a sharp logo (GitHub,
+ * GitLab and Azure DevOps render them); otherwise plain Markdown images at
+ * their own size, for wikis that don't allow HTML.
+ */
+function brandImageLines(ast, outDir, { html, imageUrl }) {
+  const brand = ast.branding;
+  const dir = path.join(outDir, imagesDirName(ast));
+  if (!brand) {
+    // An earlier branded export into this folder shouldn't leave its logo behind.
+    for (const name of BRAND_FILES) fs.rmSync(path.join(dir, name), { force: true });
+    return [];
+  }
+  const lines = [];
+  const align = brand.cover === 'centered' ? ' align="center"' : '';
+  const write = (name, png) => {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, name), png.data);
+    return imageUrl(`${imagesDirName(ast)}/${name}`);
+  };
+  const banner = brand.banner ? scaledPng(brand.banner, 1600, 480) : null;
+  if (banner) {
+    const url = write('brand-banner.png', banner);
+    lines.push(html ? `<p${align}><img src="${escapeHtml(url)}" alt="" width="100%"></p>` : `![](${url})`, '');
+  }
+  const logo = brand.logo ? scaledPng(brand.logo, html ? 480 : 320, html ? 96 : 64) : null;
+  if (logo) {
+    const url = write('brand-logo.png', logo);
+    lines.push(html ? `<p${align}><img src="${escapeHtml(url)}" alt="Logo" height="${Math.min(48, logo.height)}"></p>` : `![Logo](${url})`, '');
+  }
+  if (brand.header.text) lines.push(`*${markdownText(brand.header.text)}*`, '');
+  return lines;
+}
+
 function renderMarkdownGuide(ast, outDir, template = {}, {
   defaults = DEFAULT_TEMPLATE,
   alertStyle = 'gfm',
@@ -83,6 +126,7 @@ function renderMarkdownGuide(ast, outDir, template = {}, {
   titleHeading = true,
   frontMatter = null, // (ast) => lines, written before the body
   imageUrl = (relPath) => relPath,
+  brandHtml = true, // show the brand's logo and banner with <img> tags
 } = {}) {
   const tpl = { ...defaults, ...template };
   fs.mkdirSync(outDir, { recursive: true });
@@ -90,8 +134,10 @@ function renderMarkdownGuide(ast, outDir, template = {}, {
   const lines = frontMatter ? frontMatter(ast) : [];
   const withToc = tpl.toc && ast.steps.length > 1;
 
+  lines.push(...brandImageLines(ast, outDir, { html: brandHtml, imageUrl }));
   if (titleHeading) lines.push(`# ${ast.guide.title}`, '');
-  if (accentBar) lines.push('<div style="height:4px;background:#2563eb;border-radius:999px;margin:12px 0 18px;"></div>', '');
+  const accent = ast.branding ? ast.branding.colors.primary.toLowerCase() : '#2563eb';
+  if (accentBar) lines.push(`<div style="height:4px;background:${accent};border-radius:999px;margin:12px 0 18px;"></div>`, '');
   const metaLines = guideMetaLines(ast);
   if (metaLines.length) lines.push(metaLines.join(' · '), '');
   lines.push(`*${guideSummary(ast)}*`, '');
@@ -153,6 +199,8 @@ function renderMarkdownGuide(ast, outDir, template = {}, {
       }
     }
   }
+
+  if (ast.branding?.footer.text) lines.push('---', '', `*${markdownText(ast.branding.footer.text)}*`);
 
   const file = path.join(outDir, `${guideSlug(ast)}${fileExt}`);
   let text = lines.join('\n').replace(/\n{3,}/g, '\n\n');

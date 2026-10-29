@@ -8,10 +8,15 @@ const { mergeValue } = require('./guide-merge');
  * have their own operations, and may have changed in the agent process since
  * the editor loaded its copy.
  */
-function saveGuideFromEditor(store, guide) {
+function saveGuideFromEditor(store, guide, baseGuide = null) {
   if (!store.guideExists(guide.guideId)) throw new Error('This guide was moved to the Trash.');
   const current = store.getGuide(guide.guideId);
-  return store.saveGuide({ ...guide, revision: current.revision, stepsOrder: current.stepsOrder });
+  const stale = guide.revision !== current.revision;
+  if (stale && (!baseGuide || baseGuide.guideId !== guide.guideId || baseGuide.revision !== guide.revision)) {
+    throw new Error('This guide changed outside the editor. Your unsaved edits are kept; reopen the guide after copying any text you want to keep.');
+  }
+  const content = stale ? mergeValue(baseGuide, [guide, current], { conflicts: 0 }) : guide;
+  return store.saveGuide({ ...content, revision: current.revision, stepsOrder: current.stepsOrder, linkedSource: current.linkedSource });
 }
 
 function saveStepFromEditor(store, guideId, step, baseStep = null) {

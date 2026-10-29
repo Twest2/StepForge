@@ -1200,8 +1200,9 @@ class StepForgeApp {
     const title = await dialogs.promptText({ title: t('Rename guide'), label: t('Title'), value: guide.title });
     if (title == null || !title.trim()) return;
     const fullGuide = (await api.guide.get({ guideId: guide.guideId })).guide;
+    const baseGuide = JSON.parse(JSON.stringify(fullGuide));
     fullGuide.title = title.trim();
-    await api.guide.save({ guide: fullGuide });
+    await api.guide.save({ guide: fullGuide, baseGuide });
     if (this.state.view === 'editor' && this.editor.guideId === fullGuide.guideId) {
       await this.editor.reload(this.editor.selectedStepId);
     }

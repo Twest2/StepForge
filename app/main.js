@@ -902,11 +902,12 @@ function setupIpc() {
   }), stepNumberMap(orderedSteps(guideId))), { validate: (a) => c.id(a.guideId) });
   // An AI agent may have moved the guide to the Trash meanwhile; a late save
   // from the editor must not recreate it, which would also block its restore.
-  h('guide:save', ({ guide }) => {
-    const saved = saveGuideFromEditor(store, guide);
+  h('guide:save', ({ guide, baseGuide }) => {
+    const saved = saveGuideFromEditor(store, guide, baseGuide);
     reindex(guide.guideId);
     return saved;
-  }, { validate: (a) => security.isPlainArgs(a.guide) && a.guide && c.id(a.guide.guideId) });
+  }, { validate: (a) => security.isPlainArgs(a.guide) && a.guide && c.id(a.guide.guideId)
+    && (a.baseGuide == null || (security.isPlainArgs(a.baseGuide) && a.baseGuide.guideId === a.guide.guideId)) });
   h('step:add', ({ guideId, fields, imageBase64, size, position }) => {
     const buf = imageBase64 ? Buffer.from(imageBase64, 'base64') : null;
     const step = store.addStep(guideId, fields || {}, buf, size || null, { position });

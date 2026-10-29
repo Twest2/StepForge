@@ -110,3 +110,44 @@ test('AI ▾ sits right before More ▾, asks the editor for its menu, and shows
   assert.ok(busy, 'expected the AI button to show progress');
   assert.equal(busy.className, 'ai-busy');
 });
+
+test('successful AI edits report success for every target and retain undo', async () => {
+  for (const target of ['step', 'title', 'description', 'blocks']) {
+    for (const applied of [true, false]) {
+      const notices = [];
+      const { editor } = editorContext({ api: { ai: { fillStep: async () => ({ ok: true, step: { stepId: 's1' } }) } } });
+      editor.setSettings({ ai: { enabled: true } });
+      editor.emitMeta = () => {};
+      editor.applyAiStep = () => applied;
+      editor.multiStepRecord = () => ({ type: 'steps' });
+      let undo = 0;
+      editor.pushCanvasHistory = () => { undo++; };
+      editor.onToast = (message, options) => notices.push({ message, options });
+      await editor.writeStepWithAi(target);
+      assert.equal(notices.length, 1);
+      assert.match(notices[0].message, /^AI wrote /);
+      assert.equal(notices[0].options?.error, undefined);
+      assert.equal(notices[0].message.includes('Ctrl+Z'), applied);
+      assert.equal(undo, applied ? 1 : 0);
+      assert.equal(editor.aiRun, null);
+    }
+  }
+});
+
+test('Settings opened from the editor saves a language choice after flushing edits', async () => {
+  for (const saveFails of [false, true]) {
+    const events = [];
+    const settings = { language: 'en', ai: { enabled: true } };
+    const { editor } = editorContext({
+      api: {
+        settings: { all: async () => settings, globalPlaceholders: async () => ({}), set: async () => {}, setGlobalPlaceholders: async () => {} },
+        app: { setLanguage: async ({ language }) => { events.push(language); return { reloaded: true }; } },
+      },
+      dialogs: { showSettingsDialog: async ({ onSave }) => onSave({ ...settings, language: 'fr' }) },
+    });
+    editor.pendingSave = true;
+    editor.saveAll = async () => { events.push('save'); editor.pendingSave = saveFails; };
+    await editor.openSettings();
+    assert.deepEqual(events, saveFails ? ['save'] : ['save', 'fr']);
+  }
+});

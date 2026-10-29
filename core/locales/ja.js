@@ -5,6 +5,10 @@
   if (typeof module !== 'undefined' && module.exports) module.exports = messages;
   if (root) (root.StepForgeLocales = root.StepForgeLocales || {})['ja'] = messages;
 })(typeof window !== 'undefined' ? window : null, {
+  "AI wrote this step.": "AI がこのステップを作成しました。",
+  "AI wrote the title.": "AI がタイトルを作成しました。",
+  "AI wrote the description.": "AI が説明を作成しました。",
+  "AI wrote the blocks.": "AI がブロックを作成しました。",
   'Import images as steps': '画像をステップとして読み込む',
   'Choose a screenshot for this step': 'このステップのスクリーンショットを選択',
   'Choose guide storage folder': 'ガイドの保存フォルダーを選択',

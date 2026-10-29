@@ -5,6 +5,10 @@
   if (typeof module !== 'undefined' && module.exports) module.exports = messages;
   if (root) (root.StepForgeLocales = root.StepForgeLocales || {})['zh-CN'] = messages;
 })(typeof window !== 'undefined' ? window : null, {
+  "AI wrote this step.": "AI 已编写此步骤。",
+  "AI wrote the title.": "AI 已编写标题。",
+  "AI wrote the description.": "AI 已编写说明。",
+  "AI wrote the blocks.": "AI 已编写内容块。",
   'Import images as steps': '将图片导入为步骤',
   'Choose a screenshot for this step': '为此步骤选择截图',
   'Choose guide storage folder': '选择指南存储文件夹',

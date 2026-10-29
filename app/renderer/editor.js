@@ -348,6 +348,10 @@ class GuideEditor {
       step: t('AI could not write this step.'), title: t('AI could not write the title.'),
       description: t('AI could not write the description.'), blocks: t('AI could not write the blocks.'),
     }[target];
+    const success = {
+      step: t('AI wrote this step.'), title: t('AI wrote the title.'),
+      description: t('AI wrote the description.'), blocks: t('AI wrote the blocks.'),
+    }[target];
     const run = { cancelled: false, progress: '' };
     this.aiRun = run;
     this.emitMeta();
@@ -361,9 +365,9 @@ class GuideEditor {
       }
       if (this.applyAiStep(result.step)) {
         this.pushCanvasHistory(this.multiStepRecord([before], [result.step]));
-        this.onToast(`AI wrote ${what}. Press Ctrl+Z to undo.`);
+        this.onToast(`${success} ${t('Press Ctrl+Z to undo.')}`);
       } else {
-        this.onToast(`AI wrote ${what}.`);
+        this.onToast(success);
       }
     } catch (err) {
       if (!run.cancelled) this.onToast(err.message || failure, { error: true });
@@ -2661,6 +2665,7 @@ class GuideEditor {
   async openSettings(section) {
     const settings = await api.settings.all();
     const placeholders = await api.settings.globalPlaceholders();
+    let newLanguage = null;
     await dialogs.showSettingsDialog({
       api,
       settings,
@@ -2686,8 +2691,21 @@ class GuideEditor {
         await api.settings.set({ keyPath: 'branding', value: next.branding });
         await api.settings.set({ keyPath: 'backups', value: next.backups });
         await api.settings.setGlobalPlaceholders(next.placeholders || {});
+        if (next.language !== settings.language) newLanguage = next.language;
       },
     });
+    // The quick-actions and AI menus open Settings here too. A language
+    // reload must wait for the guide to be saved, just as in the app toolbar.
+    if (newLanguage) {
+      try {
+        if (this.pendingSave || this.pendingGuideSave) await this.saveAll();
+      } catch {
+        return;
+      }
+      if (this.pendingSave || this.pendingGuideSave) return;
+      const result = await api.app.setLanguage({ language: newLanguage });
+      if (result.reloaded) return;
+    }
     this.setSettings(await api.settings.all());
   }
 

@@ -5,6 +5,10 @@
   if (typeof module !== 'undefined' && module.exports) module.exports = messages;
   if (root) (root.StepForgeLocales = root.StepForgeLocales || {})['es'] = messages;
 })(typeof window !== 'undefined' ? window : null, {
+  "AI wrote this step.": "La IA ha redactado este paso.",
+  "AI wrote the title.": "La IA ha redactado el título.",
+  "AI wrote the description.": "La IA ha redactado la descripción.",
+  "AI wrote the blocks.": "La IA ha redactado los bloques.",
   'Import images as steps': 'Importar imágenes como pasos',
   'Choose a screenshot for this step': 'Elegir una captura de pantalla para este paso',
   'Choose guide storage folder': 'Elegir la carpeta de almacenamiento de guías',

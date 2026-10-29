@@ -350,7 +350,7 @@
   'AI guide': 'AI 指南',
   'Recommended models': '推荐模型',
   'AI agents (Claude, Codex)': 'AI 代理（Claude、Codex）',
-  "AI apps such as Claude and Codex can connect to StepForge and edit your guides. They can create and delete guides and steps, reorder steps, replace or remove screenshots, edit text, add placeholders, and add or delete annotations except blurs. StepForge saves snapshots before structural or destructive changes; restore them from More → Backups & snapshots. Deleted guides go to the Trash.": "Claude 和 Codex 等 AI 应用可以连接到 StepForge 并编辑您的指南。它们可以创建和删除指南及步骤、调整步骤顺序、替换或移除截图、编辑文字、添加占位符，以及添加或删除模糊遮盖以外的标注。StepForge 会在更改结构或执行破坏性操作前保存快照；您可以通过“更多 → 备份与快照”恢复。删除的指南会移入回收站。",
+  "AI apps such as Claude and Codex can connect to StepForge and edit your guides. They can create and delete guides and steps, reorder steps, replace or remove screenshots, edit text, add placeholders, and add or delete annotations except blurs. StepForge saves snapshots before step creation, moves, deletions and screenshot changes; restore them from More → Backups & snapshots. Deleted guides go to the Trash.": "Claude 和 Codex 等 AI 应用可以连接到 StepForge 并编辑您的指南。它们可以创建和删除指南及步骤、调整步骤顺序、替换或移除截图、编辑文字、添加占位符，以及添加或删除模糊遮盖以外的标注。StepForge 会在创建或移动步骤、删除内容以及更改截图之前保存快照；您可以通过“更多 → 备份与快照”恢复。删除的指南会移入回收站。",
   'AI apps such as Claude and Codex can connect to StepForge and write your guides for you. They can rewrite text, make substeps, add placeholders, and draw on screenshots, but they can’t reorder steps or delete anything.': 'Claude 和 Codex 等 AI 应用可以连接到 StepForge 并为你撰写指南。它们可以改写文本、创建子步骤、添加占位符并在截图上绘制，但不能重新排序步骤或删除任何内容。',
   'Let AI agents edit your guides': '允许 AI 代理编辑你的指南',
   'Turn off to cut off every connected agent at once.': '关闭后会立即断开所有已连接的代理。',

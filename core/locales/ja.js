@@ -349,6 +349,7 @@
   'AI guide': 'AI ガイド',
   'Recommended models': 'おすすめのモデル',
   'AI agents (Claude, Codex)': 'AI エージェント（Claude、Codex）',
+  "AI apps such as Claude and Codex can connect to StepForge and edit your guides. They can create and delete guides and steps, reorder steps, replace or remove screenshots, edit text, add placeholders, and add or delete annotations except blurs. StepForge saves snapshots before structural or destructive changes; restore them from More → Backups & snapshots. Deleted guides go to the Trash.": "Claude や Codex などの AI アプリは StepForge に接続してガイドを編集できます。ガイドやステップの作成と削除、ステップの並べ替え、スクリーンショットの差し替えと削除、テキストの編集、プレースホルダーの追加、ぼかし以外の注釈の追加と削除ができます。StepForge は構成の変更や削除などの操作前にスナップショットを保存します。「その他 → バックアップとスナップショット」から復元できます。削除されたガイドはゴミ箱に移動します。",
   'AI apps such as Claude and Codex can connect to StepForge and write your guides for you. They can rewrite text, make substeps, add placeholders, and draw on screenshots, but they can’t reorder steps or delete anything.': 'Claude や Codex などの AI アプリは StepForge に接続して、ガイドを代わりに作成できます。テキストの書き直し、サブステップの作成、プレースホルダーの追加、スクリーンショットへの描画はできますが、ステップの並べ替えや削除はできません。',
   'Let AI agents edit your guides': 'AI エージェントにガイドの編集を許可',
   'Turn off to cut off every connected agent at once.': 'オフにすると、接続しているすべてのエージェントを一度に切断します。',

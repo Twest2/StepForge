@@ -588,4 +588,7 @@ test('IPC arguments are checked before anything runs', () => {
   assert.match(main, /h\('wikijs:connect'[\s\S]{0,300}validate: validWikiConnectArgs/);
   assert.match(main, /h\('wikijs:publish'[\s\S]*?\}, \{ validate: validWikiPublishArgs \}\);/);
   assert.match(main, /h\('wikijs:publish'[\s\S]*?redactor\.checkGuide[\s\S]*?runExportInWorker\([\s\S]*?format: 'wikijs'[\s\S]*?wikijs\.publish\(/, 'the privacy check runs before the export and publish');
+  // Placeholders are filled in the page's title and description, as in its content (#176).
+  assert.match(main, /h\('wikijs:defaults'[\s\S]{0,400}buildRenderAst\([\s\S]{0,200}wikijs\.defaultsFor\(guideId, guide\.title\)/);
+  assert.match(main, /h\('wikijs:publish'[\s\S]*?wikijs\.publish\(\{[^}]*description: result\.description/);
 });

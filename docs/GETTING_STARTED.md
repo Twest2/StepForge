@@ -193,7 +193,8 @@ properties. They are not tagged PDFs.
 
 **Placeholders** keep repeated text consistent. Define one in
 **Settings → Placeholders** (for example `Product` → `Admin Portal`) and type
-`[[Product]]` in any title or description. It's replaced when you export.
+`[[Product]]` in any title, description or table cell. It's replaced when you
+export or publish. Code blocks are left as written.
 Guides can also have their own placeholders under **More → Guide placeholders…**.
 
 ## 5. Organize your library

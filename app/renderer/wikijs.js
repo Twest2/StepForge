@@ -392,6 +392,8 @@ async function showPublishToWikiJsDialog({ api, guideId, guideTitle, onOpenAccou
     Promise.all([api.wikijs.defaults({ guideId }), guideUpdatedTimes(api)]).then(([defaults, updated]) => {
       if (!open) return;
       pathInput.value = defaults.path;
+      // The guide's title with its placeholders filled in, unless already edited.
+      if (titleInput.value === guideTitle) titleInput.value = defaults.title;
       localeInput.value = defaults.locale || 'en';
       ready = true;
       refresh();

@@ -350,6 +350,17 @@ test('branding: export options are the exporter defaults, then the brand, then w
   assert.equal(textOn('#F5D90A'), '#111111');
 });
 
+test('branding: header and footer text can use placeholders', (t) => {
+  const { ast, profile, brands } = brandFixture(t, 'brand-placeholders', {
+    header: { text: '[[Product]] help · [[Nobody]]', logo: true },
+    footer: { text: '© [[Year]] [[Team]]', pageNumbers: true },
+  });
+  assert.equal(ast.branding.header.text, 'AcmeSync help · [[Nobody]]');
+  assert.equal(ast.branding.footer.text, '© 2026 [[Team]]');
+  // The saved profile keeps its tokens, for the next guide.
+  assert.equal(brands.get(profile.id).footer.text, '© [[Year]] [[Team]]');
+});
+
 test('branding: HTML exports carry the logo, banner, colors, fonts, footer and the profile’s CSS', (t) => {
   const { root, ast, plain, logo } = brandFixture(t, 'brand-html', { html: { css: '.x{}</style><script>alert(1)</script>' } });
   for (const exporter of [exportHtmlSimple, exportHtmlRich]) {

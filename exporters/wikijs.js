@@ -35,8 +35,13 @@ function yamlString(value) {
   return JSON.stringify(String(value || ''));
 }
 
+/** The guide description as one line of text, with placeholders filled in. */
+function pageDescription(ast) {
+  return htmlToText(ast.guide.descriptionHtml || '').replace(/\s+/g, ' ').trim();
+}
+
 function frontMatterLines(ast) {
-  const description = htmlToText(ast.guide.descriptionHtml || '').replace(/\s+/g, ' ').trim() || guideSummary(ast);
+  const description = pageDescription(ast) || guideSummary(ast);
   const date = new Date(ast.generatedAt || Date.now()).toISOString();
   return [
     '---',
@@ -55,7 +60,7 @@ function frontMatterLines(ast) {
 function exportWikiJs(ast, outDir, template = {}) {
   const tpl = { ...WIKIJS_TEMPLATE, ...template };
   const folder = String(tpl.assetFolder || '').trim().replace(/\\/g, '/').replace(/\/+$/, '');
-  return renderMarkdownGuide(ast, outDir, tpl, {
+  const result = renderMarkdownGuide(ast, outDir, tpl, {
     defaults: WIKIJS_TEMPLATE,
     alertStyle: 'wikijs',
     tocTitle: 'Contents',
@@ -71,6 +76,8 @@ function exportWikiJs(ast, outDir, template = {}) {
     // Wiki.js can be set to strip HTML, so the logo and banner are Markdown images.
     brandHtml: false,
   });
+  // Publishing sends the description on its own, as the page's description.
+  return { ...result, description: pageDescription(ast) };
 }
 
 module.exports = { exportWikiJs, DEFAULT_TEMPLATE: WIKIJS_TEMPLATE, OPTION_INFO };

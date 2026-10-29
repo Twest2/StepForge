@@ -37,8 +37,8 @@ Internal working storage is **folder-based**; sharing/backups use a
 
 ```text
 <data root>/                      (~/.local/share/stepforge, %APPDATA%/stepforge,
-  settings/                        Documents/StepForge for a Microsoft Store
-                                   install, or $STEPFORGE_DATA_DIR)
+  settings/                        %USERPROFILE%/StepForge for a Microsoft
+                                   Store install, or $STEPFORGE_DATA_DIR)
     app-settings.json
     placeholders.json             global placeholders
     templates/<format>/<name>.template.json

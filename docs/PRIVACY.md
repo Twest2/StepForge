@@ -278,7 +278,7 @@ computer.
 
 | System | Location |
 | --- | --- |
-| Windows (Microsoft Store) | `Documents\StepForge` |
+| Windows (Microsoft Store) | `%USERPROFILE%\StepForge` (`C:\Users\<you>\StepForge`) |
 | Windows (`.exe` installer or Chocolatey) | `%APPDATA%\stepforge` |
 | Linux | `~/.local/share/stepforge` (or `$XDG_DATA_HOME/stepforge`) |
 

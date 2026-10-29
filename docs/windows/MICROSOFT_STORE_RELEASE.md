@@ -158,7 +158,8 @@ Add-AppxPackage -Register "$dir\AppxManifest.xml"
 
 StepForge then runs as it would from the Store. Check that:
 
-- **Settings → About** shows the library in `Documents\StepForge`.
+- **Settings → About** shows the library in `%USERPROFILE%\StepForge`, not
+  under `AppData` or `Documents`.
 - **Check for updates** offers **Open Microsoft Store** for a newer release,
   and never **Update now**.
 - `stepforge.exe --mcp` starts from a new terminal, and **Settings → AI → AI

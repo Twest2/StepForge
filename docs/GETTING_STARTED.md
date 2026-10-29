@@ -262,7 +262,7 @@ with the hotkey or on a timer instead.
 
 | System | Location |
 | --- | --- |
-| Windows (Microsoft Store) | `Documents\StepForge` |
+| Windows (Microsoft Store) | `%USERPROFILE%\StepForge` |
 | Windows (`.exe` installer or Chocolatey) | `%APPDATA%\stepforge` |
 | Linux | `~/.local/share/stepforge` |
 

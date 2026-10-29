@@ -16,8 +16,9 @@ to install it:
 2. Click **Get**, then **Open**.
 
 That's it. The Store keeps StepForge up to date, and your guides are kept in
-`Documents\StepForge`. Switching from the `.exe` installer, or want the
-details? See [Install StepForge from the Microsoft Store](windows/microsoft-store.md).
+a **StepForge** folder in your user folder (`%USERPROFILE%\StepForge`).
+Switching from the `.exe` installer, or want the details? See
+[Install StepForge from the Microsoft Store](windows/microsoft-store.md).
 
 ## Or use the .exe installer
 

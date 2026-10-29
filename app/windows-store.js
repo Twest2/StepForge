@@ -6,8 +6,10 @@
  *
  * A Store install differs from the .exe installer in three ways:
  * - Windows redirects new files under %APPDATA% into a private folder that it
- *   deletes with the app, so the guide library defaults to Documents\StepForge
- *   instead (app/data-dir.js).
+ *   deletes with the app, so the guide library defaults to %USERPROFILE%\StepForge
+ *   instead (app/data-dir.js). Not Documents: OneDrive, Dropbox and Google
+ *   Drive often back that up, which would upload every guide and fight
+ *   StepForge's own sync.
  * - The Store installs updates. Chocolatey's Update now is never offered;
  *   Settings → About opens StepForge in the Store instead.
  * - The exe sits in a WindowsApps folder named after its version, so AI agents
@@ -30,9 +32,13 @@ function isStoreInstall({ platform = process.platform, windowsStore = process.wi
   return windowsStore === true || /\\WindowsApps\\/i.test(String(execPath || ''));
 }
 
-/** The default library of a Store install: Documents\StepForge, which Windows keeps when the app is uninstalled. */
-function storeLibraryDir(documentsDir) {
-  return win32.join(documentsDir, LIBRARY_FOLDER);
+/**
+ * The default library of a Store install: StepForge in the user's home folder.
+ * Windows keeps it when the app is uninstalled, and OneDrive's folder backup
+ * (Desktop, Documents, Pictures) doesn't include it.
+ */
+function storeLibraryDir(homeDir) {
+  return win32.join(homeDir, LIBRARY_FOLDER);
 }
 
 /** The execution alias agents run: %LOCALAPPDATA%\Microsoft\WindowsApps\stepforge.exe, which Windows keeps on PATH. */

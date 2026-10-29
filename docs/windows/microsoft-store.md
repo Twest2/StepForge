@@ -36,11 +36,17 @@ yourself.
 
 ## Where your guides are kept
 
-A Store install keeps your guides in **`Documents\StepForge`**, not in
-`%APPDATA%\stepforge` like the `.exe` installer. Windows deletes everything a
-Store app saves under `%APPDATA%` when the app is uninstalled, and your guides
-should survive that. The exact folder is shown in **Settings → About**, and you
-can move it under **Settings → General → Guide storage**.
+A Store install keeps your guides in a **StepForge** folder in your user
+folder: **`C:\Users\<your name>\StepForge`** (`%USERPROFILE%\StepForge`). The
+`.exe` installer uses `%APPDATA%\stepforge` instead, but Windows deletes
+everything a Store app saves under `%APPDATA%` when the app is uninstalled, and
+your guides should survive that. The exact folder is shown in **Settings →
+About**, and you can move it under **Settings → General → Guide storage**.
+
+The folder isn't in **Documents** on purpose. OneDrive, and the Dropbox and
+Google Drive apps, often back up Documents, which would upload every guide and
+screenshot to that service whether or not you turned on sync. To keep guides in
+step across computers, use StepForge's own sync under **Settings → Accounts**.
 
 Settings that belong to this computer, such as cloud sign-ins, are kept in the
 app's own data, and Windows removes them when you uninstall.
@@ -53,8 +59,9 @@ all of them:
 
 1. In the StepForge you have now, open **Settings → General → Guide storage**,
    click **Choose folder…**, and create and choose an empty folder named
-   **StepForge** in **Documents**. Close StepForge and open it again: it copies
-   your library there, checks the copy, and switches to it.
+   **StepForge** in your user folder (`C:\Users\<your name>`). Close StepForge
+   and open it again: it copies your library there, checks the copy, and
+   switches to it.
 2. Uninstall that StepForge: **Settings → Apps → Installed apps → StepForge →
    Uninstall** in Windows, or `choco uninstall stepforge -y` if you installed it
    with Chocolatey.
@@ -73,8 +80,8 @@ update. See [Let Claude or Codex write your guides](../AI_AGENTS.md).
 
 Open **Settings → Apps → Installed apps** in Windows, find **StepForge**, and
 choose **Uninstall** (or right-click StepForge in the Start menu and choose
-**Uninstall**). Your guides stay in `Documents\StepForge`. Delete that folder if
-you want them gone too.
+**Uninstall**). Your guides stay in `%USERPROFILE%\StepForge`. Delete that
+folder if you want them gone too.
 
 ## Troubleshooting
 
@@ -82,4 +89,4 @@ you want them gone too.
 | --- | --- |
 | StepForge isn't found in the Store | Check that you're on Windows 10 version 1809 or later, 64-bit. On a work or school PC, the Store may be turned off by your organization; use the [Windows installer](../windows_installation.md) instead. |
 | **Check for updates** shows a newer version, but the Store has no update yet | Microsoft checks each release before the Store offers it, which can take a day or two. Try again later. |
-| My guides are missing after switching from the `.exe` installer | They're still in `%APPDATA%\stepforge`. Reinstall the `.exe` version, move the library to `Documents\StepForge` as described in [Switching](#switching-from-the-exe-installer-or-chocolatey), then uninstall it again. |
+| My guides are missing after switching from the `.exe` installer | They're still in `%APPDATA%\stepforge`. Reinstall the `.exe` version, move the library to `%USERPROFILE%\StepForge` as described in [Switching](#switching-from-the-exe-installer-or-chocolatey), then uninstall it again. |

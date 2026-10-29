@@ -30,18 +30,18 @@ test('a Store install is recognized from Electron, or from the WindowsApps path 
   assert.equal(isStoreInstall({ platform: 'linux', windowsStore: true, execPath: STORE_EXE }), false);
 });
 
-test('a Store install keeps its library in Documents, which Windows keeps on uninstall', (t) => {
-  if (process.platform !== 'win32') {
-    // resolveDataDir follows the real platform; check the folder it would use.
-    assert.equal(storeLibraryDir('D:\\OneDrive\\Documents'), 'D:\\OneDrive\\Documents\\StepForge');
-    return;
-  }
+test('a Store install keeps its library in the home folder, outside OneDrive\'s backup and the app\'s own data', (t) => {
+  // Not under AppData, which Windows deletes with the app, and not under
+  // Documents, which OneDrive, Dropbox and Google Drive often back up.
+  assert.equal(storeLibraryDir('C:\\Users\\Casey'), 'C:\\Users\\Casey\\StepForge');
+  if (process.platform !== 'win32') return; // resolveDataDir follows the real platform
   const saved = process.env.STEPFORGE_DATA_DIR;
   delete process.env.STEPFORGE_DATA_DIR;
   t.after(() => { if (saved !== undefined) process.env.STEPFORGE_DATA_DIR = saved; });
-  assert.equal(resolveDataDir({ store: true, documentsDir: 'D:\\OneDrive\\Documents' }), 'D:\\OneDrive\\Documents\\StepForge');
-  assert.match(resolveDataDir({ store: false, documentsDir: 'D:\\OneDrive\\Documents' }), /\\stepforge$/);
-  assert.doesNotMatch(resolveDataDir({ store: false, documentsDir: 'D:\\OneDrive\\Documents' }), /Documents/);
+  assert.equal(resolveDataDir({ store: true, homeDir: 'C:\\Users\\Casey' }), 'C:\\Users\\Casey\\StepForge');
+  const installer = resolveDataDir({ store: false, homeDir: 'C:\\Users\\Casey' });
+  assert.match(installer, /\\stepforge$/);
+  assert.doesNotMatch(installer, /^C:\\Users\\Casey\\StepForge$/);
 });
 
 test('the default library outside Windows is unchanged by the Store setting', (t) => {
@@ -49,7 +49,7 @@ test('the default library outside Windows is unchanged by the Store setting', (t
   const saved = process.env.STEPFORGE_DATA_DIR;
   delete process.env.STEPFORGE_DATA_DIR;
   t.after(() => { if (saved !== undefined) process.env.STEPFORGE_DATA_DIR = saved; });
-  assert.equal(resolveDataDir({ store: true, documentsDir: '/home/casey/Documents' }), resolveDataDir({ store: false }));
+  assert.equal(resolveDataDir({ store: true, homeDir: '/home/casey' }), resolveDataDir({ store: false }));
 });
 
 test('STEPFORGE_DATA_DIR still wins over the Store default, and a moved library stays where it was moved', (t) => {
@@ -59,10 +59,10 @@ test('STEPFORGE_DATA_DIR still wins over the Store default, and a moved library 
   t.after(() => { if (saved === undefined) delete process.env.STEPFORGE_DATA_DIR; else process.env.STEPFORGE_DATA_DIR = saved; });
 
   process.env.STEPFORGE_DATA_DIR = tmp;
-  assert.equal(resolveDataDir({ store: true, documentsDir: 'D:\\Docs' }), tmp);
+  assert.equal(resolveDataDir({ store: true, homeDir: 'C:\\Users\\Casey' }), tmp);
 
   delete process.env.STEPFORGE_DATA_DIR;
-  const location = libraryLocationFor(tmp, { store: true, documentsDir: 'D:\\Docs' });
+  const location = libraryLocationFor(tmp, { store: true, homeDir: 'C:\\Users\\Casey' });
   location.state = { current: '/somewhere/chosen' };
   assert.equal(location.status().current, '/somewhere/chosen');
 });

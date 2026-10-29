@@ -1889,7 +1889,7 @@ if (!gotLock) {
   });
 
   app.whenReady().then(() => {
-    libraryLocation = libraryLocationFor(app.getPath('userData'), { documentsDir: app.getPath('documents') });
+    libraryLocation = libraryLocationFor(app.getPath('userData'));
     const dataDir = libraryLocation.applyPending();
     store = new GuideStore(dataDir);
     settings = new Settings(store.settingsDir);

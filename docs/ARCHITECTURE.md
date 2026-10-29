@@ -247,10 +247,14 @@ opt-in and off by default:
   profiles with the assets they use, the active profile and the language
   travel as one `settings-v1` archive per version, versioned and pruned like
   a guide, with the same parents, heads and `merged` property. Placeholders,
-  settings and profiles merge three ways by key (newest side wins a conflict,
-  a profile by its `updatedAt`, and an edit beats a deletion); assets are
-  content-addressed, so they follow the profiles. Settings left at their
-  default aren't stored, so a new computer's defaults never win a merge.
+  settings and profile fields merge three ways by key (newest edit wins a
+  conflict, and an edit beats a deletion); assets are content-addressed, so
+  they follow the profiles. Untouched default settings aren't stored, so a
+  new computer's defaults never win a merge.
+  Per-value edit times travel in `settings.json.modifiedAt`; their local
+  copy is `settings/shared-settings-times.json`, updated only when that value
+  changes. Older archives fall back to their version time. Profile field
+  conflicts compare the profile's `updatedAt`.
   The base is `cloud/settings-base.json`. Incoming settings wait while the
   Settings dialog is open, and every image and font is re-checked by
   `BrandingStore.addAsset`.

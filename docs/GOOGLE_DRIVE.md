@@ -89,14 +89,22 @@ Everything else in Settings, such as capture options, shortcuts, AI and guide
 storage, stays on each computer.
 
 They're combined the same way as guides: changes to different placeholders or
-profiles on different computers all survive, a placeholder or profile deleted
-on one computer is deleted on the others, and when both computers changed the
-same one, the most recent change is kept. A computer syncing for the first
-time adds its placeholders and profiles to the ones already in the cloud,
-and its default settings never replace a choice made on another computer.
+fields within a brand profile on different computers all survive. A placeholder
+or profile deleted on one computer is deleted on the others unless another
+computer edited it. When both computers changed the same value, the most recent
+edit to that value is kept; changing capture options or another placeholder
+doesn't make an older choice newer. A computer syncing for the first time adds
+its placeholders and profiles to the ones already in the cloud. Conflicting
+explicit choices use the same newest-edit rule, including a deliberate reset
+to a default. Its untouched defaults never replace a choice made on another computer.
 
 Changes from another computer wait while **Settings** is open, so saving it
 can't undo them, and arrive when you close it.
+
+If a settings version is damaged or needs a newer StepForge, settings sync
+shows an error and leaves the saved settings alone. Guide sync continues.
+StepForge doesn't skip that settings version, because publishing a merge
+without it could discard values it couldn't read.
 
 ## Manage what's in Drive
 

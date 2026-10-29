@@ -15,9 +15,10 @@ const { contentHash } = require('./cloud-parts');
  *
  * Cloud sync (core/cloud-sync.js) keeps them as one archive:
  *   placeholders.json                global placeholders, by name
- *   settings.json                    language and activeProfileId, each only
- *                                    when it isn't the default, so a new
- *                                    computer's defaults never win a merge
+ *   settings.json                    language and activeProfileId, omitting
+ *                                    untouched defaults, with per-value
+ *                                    edit times (modifiedAt), so unrelated
+ *                                    saves can't promote an older choice
  *   branding/profiles/<id>.json      one brand profile each
  *   branding/assets/<id>.json        an asset's kind, extension and file name
  *   branding/assets/<id>.<ext>       the image or font
@@ -25,8 +26,8 @@ const { contentHash } = require('./cloud-parts');
  * Only assets a profile uses are included.
  *
  * Merging works like guides (core/guide-merge.js): each placeholder, setting
- * and profile is compared with the version every side started from. Changes
- * to different ones combine; when sides changed the same one differently,
+ * and profile field is compared with the version every side started from.
+ * Changes to different ones combine; when sides changed the same one differently,
  * the newest wins, and an edit beats a deletion. Without a base nothing is
  * treated as deleted.
  */
@@ -64,7 +65,7 @@ function checkKnownFields(raw, shape) {
 const textOf = (entry) => (Buffer.isBuffer(entry.data) ? entry.data.toString('utf8') : String(entry.data));
 
 function emptyModel() {
-  return { placeholders: {}, settings: {}, profiles: {}, assets: {} };
+  return { placeholders: {}, settings: {}, profiles: {}, assets: {}, modifiedAt: {} };
 }
 
 /** A placeholder value as StepForge stores it, or undefined for anything else. */
@@ -99,7 +100,7 @@ function toEntries(model) {
   const json = (value) => JSON.stringify(value, null, 2);
   const entries = [
     { name: 'placeholders.json', data: json(sortedObject(model.placeholders)) },
-    { name: 'settings.json', data: json(sortedObject(model.settings)) },
+    { name: 'settings.json', data: json({ ...sortedObject(model.settings), ...(Object.keys(model.modifiedAt || {}).length ? { modifiedAt: sortedObject(model.modifiedAt) } : {}) }) },
   ];
   const used = new Set();
   for (const id of Object.keys(model.profiles).sort(compareText)) {
@@ -143,8 +144,18 @@ function fromEntries(entries) {
     } else if (entry.name === 'settings.json') {
       const raw = parse(entry);
       if (!plainObject(raw)) throw damaged();
-      checkKnownFields(raw, SHARED_KEYS);
-      model.settings = cleanSettings(raw);
+      const { modifiedAt = {}, ...values } = raw;
+      checkKnownFields(values, SHARED_KEYS);
+      if (!plainObject(modifiedAt) || Object.entries(modifiedAt).some(([key, time]) =>
+        !(/^(setting:(language|activeProfileId)|placeholder:[A-Za-z0-9_ .-]{1,200})$/.test(key))
+        || typeof time !== 'string' || !Number.isFinite(Date.parse(time)))) throw damaged();
+      model.modifiedAt = modifiedAt;
+      model.settings = cleanSettings(values);
+      // A deliberate reset has an edit clock; a new computer's untouched
+      // defaults have none. Keep the former as a value, not a deletion.
+      for (const key of Object.keys(SHARED_KEYS)) {
+        if (Object.hasOwn(values, key) && same(values[key], DEFAULTS[key]) && modifiedAt[`setting:${key}`]) model.settings[key] = values[key];
+      }
     } else if (PROFILE_ENTRY.test(entry.name)) {
       const id = PROFILE_ENTRY.exec(entry.name)[1];
       if (!PROFILE_ID.test(id)) throw damaged();
@@ -175,27 +186,31 @@ function fromEntries(entries) {
 
 /**
  * Three-way merge of one kind of item (placeholders, settings, profiles).
- * `sides` run oldest to newest; `rank` orders two edits before side order.
+ * `sides` run oldest to newest; `rank(value, sideIndex, key)` orders
+ * conflicting edits before side order.
  */
-function mergeItems(base, sides, rank = () => '') {
+function mergeItems(base, sides, rank = () => '', changedSinceBase = (value, _index, _key, before) => !same(value, before)) {
   const out = {};
   let conflicts = 0;
+  const chosen = {};
   const keys = new Set([...Object.keys(base), ...sides.flatMap((side) => Object.keys(side))]);
   for (const key of [...keys].sort(compareText)) {
     const before = Object.hasOwn(base, key) ? base[key] : undefined;
     const changed = sides.map((side, order) => ({ value: Object.hasOwn(side, key) ? side[key] : undefined, order }))
-      .filter(({ value }) => !same(value, before));
+      .filter(({ value, order }) => changedSinceBase(value, order, key, before));
     let value = before;
     if (changed.length) {
       if (changed.some(({ value: v }) => !same(v, changed[0].value))) conflicts += 1;
       const edits = changed.filter(({ value: v }) => v !== undefined);
-      value = edits.length
-        ? edits.reduce((best, edit) => (compareText(rank(edit.value), rank(best.value)) >= 0 ? edit : best)).value
-        : undefined;
+      const winner = edits.length
+        ? edits.reduce((best, edit) => (compareText(rank(edit.value, edit.order, key), rank(best.value, best.order, key)) >= 0 ? edit : best))
+        : null;
+      value = winner?.value;
+      if (winner) chosen[key] = winner.order;
     }
     if (value !== undefined) out[key] = value;
   }
-  return { items: out, conflicts };
+  return { items: out, conflicts, chosen };
 }
 
 /**
@@ -205,13 +220,47 @@ function mergeItems(base, sides, rank = () => '') {
  */
 function mergeSharedSettings({ base = null, sides }) {
   const before = base ? fromEntries(base) : emptyModel();
-  const models = sides.map((side) => ({ model: fromEntries(side.entries), time: String(side.time || ''), hash: side.hash || '' }))
-    .sort((a, b) => compareText(a.time, b.time) || compareText(a.hash, b.hash))
-    .map(({ model }) => model);
-  const placeholders = mergeItems(before.placeholders, models.map((m) => m.placeholders));
-  const settings = mergeItems(before.settings, models.map((m) => m.settings));
+  const ranked = sides.map((side) => ({ model: fromEntries(side.entries), time: String(side.time || ''), hash: side.hash || '' }))
+    .sort((a, b) => compareText(a.time, b.time) || compareText(a.hash, b.hash));
+  const models = ranked.map(({ model }) => model);
+  const stamp = (prefix, index, key) => models[index].modifiedAt[`${prefix}:${key}`] || ranked[index].time;
+  const valueChanged = (prefix) => (value, index, key, baseValue) => !same(value, baseValue)
+    || (value !== undefined && models[index].modifiedAt[`${prefix}:${key}`]
+      && models[index].modifiedAt[`${prefix}:${key}`] !== before.modifiedAt[`${prefix}:${key}`]);
+  const placeholders = mergeItems(before.placeholders, models.map((m) => m.placeholders), (_value, index, key) => stamp('placeholder', index, key), valueChanged('placeholder'));
+  const settings = mergeItems(before.settings, models.map((m) => m.settings), (_value, index, key) => stamp('setting', index, key), valueChanged('setting'));
   const profiles = mergeItems(before.profiles, models.map((m) => m.profiles), (profile) => profile.updatedAt || '');
-  const merged = { placeholders: placeholders.items, settings: settings.items, profiles: profiles.items, assets: {} };
+  // First decide whether a profile survives a deletion. For profiles with a
+  // common base, merge fields from the surviving edits so changing a logo on
+  // one computer doesn't discard a color changed on another.
+  for (const id of Object.keys(profiles.items)) {
+    if (!before.profiles[id]) continue;
+    const present = models.map((m) => m.profiles[id]).filter(Boolean);
+    const flatten = (value, prefix = '', out = {}) => {
+      for (const [key, item] of Object.entries(value)) {
+        const name = prefix ? `${prefix}.${key}` : key;
+        if (plainObject(item)) flatten(item, name, out); else out[name] = item;
+      }
+      return out;
+    };
+    const fields = mergeItems(flatten(before.profiles[id]), present.map((profile) => flatten(profile)), (_value, index) => present[index].updatedAt || '');
+    const profile = {};
+    for (const [name, value] of Object.entries(fields.items)) {
+      const path = name.split('.');
+      let object = profile;
+      for (const key of path.slice(0, -1)) object = object[key] ||= {};
+      object[path.at(-1)] = value;
+    }
+    profiles.items[id] = profile;
+  }
+  const merged = { placeholders: placeholders.items, settings: settings.items, profiles: profiles.items, assets: {}, modifiedAt: {} };
+  for (const [prefix, result] of [['placeholder', placeholders], ['setting', settings]]) {
+    for (const key of Object.keys(result.items)) {
+      const index = result.chosen[key];
+      const time = index === undefined ? before.modifiedAt[`${prefix}:${key}`] : stamp(prefix, index, key);
+      if (time) merged.modifiedAt[`${prefix}:${key}`] = time;
+    }
+  }
   // Assets are named by their content, so any side's copy will do; the
   // newest side's is used, with the newest PNG drawing any side has.
   for (const profile of Object.values(merged.profiles)) {
@@ -235,6 +284,13 @@ class SharedSettings {
     const model = emptyModel();
     model.placeholders = cleanPlaceholders(this.settings.getGlobalPlaceholders());
     model.settings = cleanSettings(Object.fromEntries(Object.entries(SHARED_KEYS).map(([key, keyPath]) => [key, this.settings.get(keyPath)])));
+    const times = this.settings.getSharedChangeTimes();
+    for (const [key, keyPath] of Object.entries(SHARED_KEYS)) {
+      if (same(this.settings.get(keyPath), DEFAULTS[key]) && times[`setting:${key}`]) model.settings[key] = DEFAULTS[key];
+    }
+    for (const [prefix, values] of [['placeholder', model.placeholders], ['setting', model.settings]]) {
+      for (const key of Object.keys(values)) if (times[`${prefix}:${key}`]) model.modifiedAt[`${prefix}:${key}`] = times[`${prefix}:${key}`];
+    }
     for (const { id } of this.branding.list()) {
       const profile = this.branding.get(id);
       if (profile) model.profiles[id] = profile;
@@ -257,7 +313,7 @@ class SharedSettings {
     const stat = (file) => {
       try { const s = fs.statSync(file); return `${file}:${s.size}:${s.mtimeMs}:${s.ino}`; } catch { return `${file}:-`; }
     };
-    const lines = [JSON.stringify(Object.values(SHARED_KEYS).map((keyPath) => this.settings.get(keyPath) ?? null)), stat(this.settings.globalPlaceholdersFile)];
+    const lines = [JSON.stringify(Object.values(SHARED_KEYS).map((keyPath) => this.settings.get(keyPath) ?? null)), stat(this.settings.globalPlaceholdersFile), stat(this.settings.sharedTimesFile)];
     for (const dir of [this.branding.profilesDir, this.branding.assetsDir]) {
       let names = [];
       try { names = fs.readdirSync(dir).sort(compareText); } catch { /* none yet */ }
@@ -268,12 +324,9 @@ class SharedSettings {
 
   /** When shared settings last changed here, for merges where both computers changed the same thing. */
   modifiedAt() {
-    let newest = 0;
-    const files = [this.settings.file, this.settings.globalPlaceholdersFile];
-    try { files.push(...fs.readdirSync(this.branding.profilesDir).map((name) => path.join(this.branding.profilesDir, name))); } catch { /* none yet */ }
-    for (const file of files) {
-      try { newest = Math.max(newest, fs.statSync(file).mtimeMs); } catch { /* not saved yet */ }
-    }
+    const times = Object.values(this.settings.getSharedChangeTimes());
+    for (const { updatedAt } of this.branding.list()) times.push(updatedAt);
+    const newest = Math.max(0, ...times.map((time) => Date.parse(time) || 0));
     return newest ? new Date(newest).toISOString() : '';
   }
 
@@ -353,6 +406,7 @@ class SharedSettings {
       this.settings.set(SHARED_KEYS.language, language);
       changes.push('language');
     }
+    this.settings.setSharedChangeTimes(next.modifiedAt);
     return changes;
   }
 }

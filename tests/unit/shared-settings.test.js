@@ -6,7 +6,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { GuideStore } = require('../../core/store');
 const { CloudSync } = require('../../core/cloud-sync');
-const { Settings } = require('../../core/settings');
+const { Settings, DEFAULT_SETTINGS } = require('../../core/settings');
 const { BrandingStore } = require('../../core/branding');
 const { SharedSettings, mergeSharedSettings, toEntries, fromEntries } = require('../../core/shared-settings');
 const { zipSync, unzipSync } = require('../../core/zip');
@@ -64,6 +64,7 @@ async function synced(sync) { const status = await sync.sync(); assert.notEqual(
 function changedLongAgo(d) {
   const old = new Date(Date.UTC(2020, 0, 1));
   for (const file of [d.settings.file, d.settings.globalPlaceholdersFile]) if (fs.existsSync(file)) fs.utimesSync(file, old, old);
+  d.settings.setSharedChangeTimes(Object.fromEntries(Object.keys(d.settings.getSharedChangeTimes()).map((key) => [key, old.toISOString()])));
 }
 
 test('global placeholders, brand profiles with their files, the active profile and language reach another computer', async (t) => {
@@ -336,4 +337,125 @@ test('synced language changes use the language reload handler only after open ed
       assert.deepEqual(events, [], 'other synced settings never reload the window');
     }
   }
+});
+
+
+const setSharedTime = (device, key, time) => device.settings.setSharedChangeTimes({ ...device.settings.getSharedChangeTimes(), [key]: time });
+
+test('unrelated settings and placeholder edits cannot promote an older conflicting language choice', async (t) => {
+  const { device } = setup(t);
+  const a = device('a'); const b = device('b');
+  a.settings.set('language', 'fr');
+  setSharedTime(a, 'setting:language', '2020-01-01T00:00:00.000Z');
+  await synced(a.sync); await synced(b.sync);
+  a.settings.set('language', 'de');
+  setSharedTime(a, 'setting:language', '2021-01-01T00:00:00.000Z');
+  b.settings.set('language', 'ja');
+  setSharedTime(b, 'setting:language', '2022-01-01T00:00:00.000Z');
+  a.settings.set('appearance', 'dark');
+  a.settings.set('capture.delayMs', 500);
+  a.settings.setGlobalPlaceholders({ New: 'A later placeholder edit' });
+  setSharedTime(a, 'placeholder:New', '2023-01-01T00:00:00.000Z');
+  // The unsynced choice was made before upload, not at upload time.
+  fs.utimesSync(b.settings.file, new Date('2024-01-01'), new Date('2024-01-01'));
+  await synced(a.sync); await synced(b.sync); await synced(a.sync);
+  assert.equal(a.settings.get('language'), 'ja');
+  assert.equal(b.settings.get('language'), 'ja');
+  assert.deepEqual(b.settings.getGlobalPlaceholders(), { New: 'A later placeholder edit' });
+});
+
+test('shared value clocks survive reloads and ignore saves that do not change shared values', (t) => {
+  const { device } = setup(t);
+  const a = device('a');
+  a.settings.set('language', 'fr');
+  a.settings.setGlobalPlaceholders({ Company: 'Acme' });
+  const before = a.sync.shared.snapshot();
+  a.settings.set('appearance', 'dark');
+  a.settings.set('capture.delayMs', 500);
+  a.settings.set('language', 'fr');
+  a.settings.setGlobalPlaceholders({ Company: 'Acme' });
+  const after = a.sync.shared.snapshot();
+  assert.equal(after.hash, before.hash);
+  assert.equal(after.time, before.time);
+  assert.deepEqual(new Settings(a.store.settingsDir).getSharedChangeTimes(), a.settings.getSharedChangeTimes());
+});
+
+test('first sync preserves newer explicit local choices and combines nonconflicting placeholders', async (t) => {
+  const { device } = setup(t);
+  const a = device('a'); const b = device('b');
+  a.settings.set('language', 'fr');
+  a.settings.setGlobalPlaceholders({ Remote: 'A', Company: 'Old company' });
+  for (const key of Object.keys(a.settings.getSharedChangeTimes())) setSharedTime(a, key, '2020-01-01T00:00:00.000Z');
+  await synced(a.sync);
+  b.settings.set('language', 'ja');
+  b.settings.setGlobalPlaceholders({ Local: 'B', Company: 'New company' });
+  for (const key of Object.keys(b.settings.getSharedChangeTimes())) setSharedTime(b, key, '2021-01-01T00:00:00.000Z');
+  for (const file of [b.settings.file, b.settings.globalPlaceholdersFile]) fs.utimesSync(file, new Date('2021-01-01'), new Date('2021-01-01'));
+  await synced(b.sync); await synced(a.sync);
+  for (const d of [a, b]) {
+    assert.equal(d.settings.get('language'), 'ja');
+    assert.deepEqual(d.settings.getGlobalPlaceholders(), { Remote: 'A', Local: 'B', Company: 'New company' });
+  }
+});
+
+test('edits to different fields in the same brand profile combine across computers', async (t) => {
+  const { device } = setup(t);
+  const a = device('a'); const b = device('b');
+  const profile = a.branding.save({ name: 'Acme', colors: { primary: '#112233' }, header: { text: 'Original' } });
+  await synced(a.sync); await synced(b.sync);
+  a.branding.save({ ...a.branding.get(profile.id), colors: { ...profile.colors, primary: '#FF0000' } });
+  b.branding.save({ ...b.branding.get(profile.id), header: { text: 'New header' } });
+  await synced(a.sync); await synced(b.sync); await synced(a.sync);
+  for (const d of [a, b]) {
+    assert.equal(d.branding.get(profile.id).colors.primary, '#FF0000');
+    assert.equal(d.branding.get(profile.id).header.text, 'New header');
+  }
+});
+
+test('a malformed settings head stops settings sync without blocking guides or discarding local settings', async (t) => {
+  const { device, drive, files } = setup(t);
+  const a = device('a');
+  const guide = a.store.createGuide({ title: 'A valid guide' });
+  a.settings.setGlobalPlaceholders({ Mine: 'kept' });
+  const entries = [{ name: 'settings.json', data: 'not json' }];
+  const remote = await drive.upload({ data: zipSync(entries), name: 'Broken settings', properties: { stepforge: 'settings-v1', hash: parts.contentHash(entries) } });
+  for (let attempt = 0; attempt < 2; attempt++) {
+    assert.equal((await a.sync.sync()).phase, 'error');
+    assert.deepEqual(a.settings.getGlobalPlaceholders(), { Mine: 'kept' });
+    assert.deepEqual(settingsFiles(files).map((file) => file.id), [remote.id]);
+    assert.ok((await drive.listVersions()).some((file) => file.appProperties.guideId === guide.guideId));
+  }
+});
+
+
+test('an explicit change back to the base language is still a newer edit', async (t) => {
+  const { device } = setup(t);
+  const a = device('a'); const b = device('b');
+  a.settings.set('language', 'fr');
+  setSharedTime(a, 'setting:language', '2020-01-01T00:00:00.000Z');
+  await synced(a.sync); await synced(b.sync);
+  b.settings.set('language', 'ja');
+  setSharedTime(b, 'setting:language', '2021-01-01T00:00:00.000Z');
+  a.settings.set('language', 'de');
+  a.settings.set('language', 'fr');
+  setSharedTime(a, 'setting:language', '2022-01-01T00:00:00.000Z');
+  await synced(b.sync); await synced(a.sync); await synced(b.sync);
+  assert.equal(a.settings.get('language'), 'fr');
+  assert.equal(b.settings.get('language'), 'fr');
+});
+
+
+test('a deliberate reset to the default language is newer than a conflicting older choice', async (t) => {
+  const { device } = setup(t);
+  const a = device('a'); const b = device('b');
+  a.settings.set('language', 'fr');
+  setSharedTime(a, 'setting:language', '2020-01-01T00:00:00.000Z');
+  await synced(a.sync); await synced(b.sync);
+  b.settings.set('language', 'ja');
+  setSharedTime(b, 'setting:language', '2021-01-01T00:00:00.000Z');
+  a.settings.set('language', DEFAULT_SETTINGS.language);
+  setSharedTime(a, 'setting:language', '2022-01-01T00:00:00.000Z');
+  await synced(a.sync); await synced(b.sync); await synced(a.sync);
+  assert.equal(a.settings.get('language'), DEFAULT_SETTINGS.language);
+  assert.equal(b.settings.get('language'), DEFAULT_SETTINGS.language);
 });

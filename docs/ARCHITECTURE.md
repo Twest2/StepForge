@@ -50,8 +50,10 @@ Internal working storage is **folder-based**; sharing/backups use a
         step.json
         original.png              never mutated after capture
         working.png               only once cropped; annotations stay vector JSON
-      history/snapshots/*.snapshot  automated + manual backups: gzipped
-                                  manifests listing each file by SHA-256
+      history/snapshots/*.snapshot  automated, manual and agent backups:
+                                  gzipped manifests listing each file by
+                                  SHA-256. Agent ones (*-before_agent_*) are
+                                  pruned apart from the rest, to the newest 50
       history/snapshot-files/<sha>  screenshots, stored once and shared by
                                   every snapshot that contains them
     index/search-index.json       inverted full-text index
@@ -129,7 +131,9 @@ Export dialog choice. In the profile editor, **Pick from logo** runs
 `core/brand-palette.js` on a small canvas drawing of the logo, and **Write
 with AI** asks Ollama for CSS (`core/ai-brand-css.js`, which also strips
 `@import` and remote `url()`s); it's shown only when `ai:status` reports AI on
-and the model installed. AI agents reach profiles through
+and the model installed. AI agents edit guides through `core/agent-tools.js`;
+each tool that deletes, moves or replaces something first calls
+`createAgentSnapshot` (`core/snapshots.js`). AI agents reach profiles through
 `core/agent-brand-tools.js`, behind `ai.agents.branding`. The `--mcp` process
 records each change in `agent-changes.json`; the running app saves an agent's
 choice of active profile itself (it holds Settings in memory) and has the

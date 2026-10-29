@@ -527,7 +527,18 @@ class GuideEditor {
    * Pending edits are saved first, so the user's own unsaved work always wins.
    */
   async reloadAfterOutsideChange() {
-    if (this.pendingSave) await this.flushStep();
+    if (this.pendingSave) {
+      const { guide } = await api.guide.get({ guideId: this.guideId });
+      if (!guide.stepsOrder.includes(this.selectedStepId)) {
+        this.saveStepDebounced.cancel();
+        this.pendingSave = false;
+        this.saveError = null;
+        this.onToast('An AI agent deleted the step you were editing. Its saved version is in Backups & snapshots.');
+      } else {
+        await this.flushStep();
+        if (this.pendingSave) return; // Keep unsaved edits if the write failed.
+      }
+    }
     if (this.pendingGuideSave) await this.flushGuide();
     await this.reload(this.selectedStepId);
   }
@@ -537,8 +548,10 @@ class GuideEditor {
     const { guide, steps } = await api.guide.get({ guideId: this.guideId });
     if (token !== this.stepLoadToken) return;
     this.guide = guide;
+    this.savedGuideBaseline = clone(guide);
     this.steps = steps;
     this.stepMap = new Map(steps.map((step) => [step.stepId, step]));
+    this.savedStepBaselines = new Map(steps.map((step) => [step.stepId, clone(step)]));
     this.selectedSteps = new Set([...this.selectedSteps].filter((id) => this.stepMap.has(id)));
     if (!this.stepMap.has(this.stepSelectionAnchor)) this.stepSelectionAnchor = null;
     if (!this.shellMounted) this.mountShell();
@@ -1739,6 +1752,9 @@ class GuideEditor {
   async restoreHistoryRecord(record) {
     if (!record || !record.step) return;
     const step = clone(record.step);
+    // Undo is an intentional new edit of the current copy, not an autosave
+    // based on the old revision captured in the history record.
+    step.revision = this.stepMap.get(step.stepId)?.revision ?? step.revision;
     this.selectedStepId = step.stepId;
     this.beforeCanvasSnapshot = null;
     this.saveStepDebounced.cancel();
@@ -1867,7 +1883,7 @@ class GuideEditor {
     // surface it, and retry on the next edit or explicit save.
     let saved;
     try {
-      saved = await api.step.save({ guideId: this.guideId, step });
+      saved = await api.step.save({ guideId: this.guideId, step, baseStep: this.savedStepBaselines?.get(step.stepId) });
     } catch (err) {
       this.pendingSave = true;
       this.saveError = (err && err.message) || 'Save failed';
@@ -1877,7 +1893,9 @@ class GuideEditor {
     }
     this.pendingSave = false;
     this.saveError = null;
-    const committed = this.commitSavedStep(saved);
+    const mergedOutsideChange = saved.revision > (step.revision || 0) + 1;
+    const committed = this.commitSavedStep(saved, { replaceBlocks: mergedOutsideChange });
+    if (mergedOutsideChange) this.renderAll();
     if (this.selectedStepId === committed.stepId) {
       this.renderStepList();
       this.syncStepFields();
@@ -1894,6 +1912,8 @@ class GuideEditor {
 
   commitSavedStep(saved, { replaceBlocks = false } = {}) {
     if (!saved || !saved.stepId) return saved;
+    this.savedStepBaselines ||= new Map();
+    this.savedStepBaselines.set(saved.stepId, clone(saved));
     const existing = this.stepMap.get(saved.stepId);
     if (!existing || existing === saved) {
       this.stepMap.set(saved.stepId, saved);
@@ -1920,11 +1940,20 @@ class GuideEditor {
     return existing;
   }
 
+  async saveGuideEdits() {
+    const saved = await api.guide.save({ guide: this.guide, baseGuide: this.savedGuideBaseline });
+    if (saved?.guideId) {
+      this.guide = saved;
+      this.savedGuideBaseline = clone(saved);
+    }
+    return saved;
+  }
+
   async flushGuide() {
     while (this.linkedSaveInFlight) await this.linkedSaveInFlight; // see flushStep
     if (!this.guide) return;
     try {
-      await api.guide.save({ guide: this.guide });
+      await this.saveGuideEdits();
     } catch (err) {
       this.pendingGuideSave = true;
       this.saveError = (err && err.message) || 'Save failed';
@@ -2541,7 +2570,7 @@ class GuideEditor {
       values: this.guide.placeholders || {},
       onSave: async (values) => {
         this.guide.placeholders = values;
-        await api.guide.save({ guide: this.guide });
+        await this.saveGuideEdits();
         this.onToast('Placeholders saved.');
       },
     });
@@ -2560,7 +2589,7 @@ class GuideEditor {
         this.guide.metadata = metadata;
         this.guide.descriptionHtml = textToHtml(description);
         this.guide.cloud = { ...(this.guide.cloud || {}), sharingEnabled };
-        await api.guide.save({ guide: this.guide });
+        await this.saveGuideEdits();
         this.onToast('Guide information saved.');
       },
       onCloudSnapshots: async () => {

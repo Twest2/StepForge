@@ -24,6 +24,11 @@ const SNAPSHOT_EXT = '.snapshot';
 // A file saved for a snapshot whose manifest isn't written yet is this new;
 // cleanup leaves files this young alone.
 const FRESH_FILE_MS = 10 * 60 * 1000;
+// Snapshots taken before an AI agent's change start their label with this.
+// Pruning the others leaves them alone, so a run of agent changes can always
+// be undone back to its start; only the newest AGENT_KEEP_LAST are kept.
+const AGENT_LABEL = 'before_agent_';
+const AGENT_KEEP_LAST = 50;
 
 function snapshotsDir(store, guideId) {
   return path.join(store.guideDir(guideId), 'history', 'snapshots');
@@ -34,6 +39,7 @@ function filesDir(store, guideId) {
 }
 
 const isSnapshotName = (name) => name.endsWith(SNAPSHOT_EXT) || name.endsWith('.zip');
+const isAgentSnapshot = (name) => name.includes(`Z-${AGENT_LABEL}`);
 const notHistory = (rel) => rel !== 'history' && !rel.startsWith('history/');
 
 let lastSnapshotMs = 0;
@@ -75,6 +81,20 @@ function createSnapshot(store, guideId, { label = '', keepLast = 0, background =
   return take();
 }
 
+/**
+ * Snapshot a guide before an AI agent changes it in a way the user may want
+ * to undo, labeled with what the agent is about to do ("deletes step 3").
+ */
+function createAgentSnapshot(store, guideId, action) {
+  const name = createSnapshot(store, guideId, { label: `${AGENT_LABEL}${action}` });
+  const agents = listSnapshots(store, guideId).filter(isAgentSnapshot);
+  if (agents.length > AGENT_KEEP_LAST) {
+    for (const old of agents.slice(AGENT_KEEP_LAST)) fs.rmSync(path.join(snapshotsDir(store, guideId), old), { force: true });
+    removeUnusedFiles(store, guideId);
+  }
+  return name;
+}
+
 function listSnapshots(store, guideId) {
   const dir = snapshotsDir(store, guideId);
   if (!fs.existsSync(dir)) return [];
@@ -105,8 +125,9 @@ function removeUnusedFiles(store, guideId, now = Date.now()) {
   }
 }
 
+/** Keep the newest `keepLast` snapshots, not counting agent ones (see createAgentSnapshot). */
 function pruneSnapshots(store, guideId, keepLast) {
-  const all = listSnapshots(store, guideId);
+  const all = listSnapshots(store, guideId).filter((name) => !isAgentSnapshot(name));
   for (const name of all.slice(keepLast)) {
     fs.rmSync(path.join(snapshotsDir(store, guideId), name), { force: true });
   }
@@ -321,6 +342,6 @@ async function autoSnapshotIfDue(store, guideId, settings) {
 }
 
 module.exports = {
-  createSnapshot, listSnapshots, pruneSnapshots, restoreSnapshot, snapshotsDir,
+  createSnapshot, createAgentSnapshot, listSnapshots, pruneSnapshots, restoreSnapshot, snapshotsDir,
   autoSnapshotIfDue, convertZipSnapshots, removeUnusedFiles, compareSnapshot, snapshotFile,
 };

@@ -11,6 +11,7 @@ const {
 const { GuideStore } = require('../core/store');
 const { libraryLocationFor } = require('./data-dir');
 const { Settings } = require('../core/settings');
+const { saveGuideFromEditor, saveStepFromEditor } = require('../core/editor-save');
 const { GoogleDrive } = require('./google-drive');
 const { OneDrive } = require('./onedrive');
 const { Dropbox } = require('./dropbox');
@@ -868,12 +869,8 @@ function setupIpc() {
   }), stepNumberMap(orderedSteps(guideId))), { validate: (a) => c.id(a.guideId) });
   // An AI agent may have moved the guide to the Trash meanwhile; a late save
   // from the editor must not recreate it, which would also block its restore.
-  const requireGuide = (guideId) => {
-    if (!store.guideExists(guideId)) throw new Error('This guide was moved to the Trash.');
-  };
   h('guide:save', ({ guide }) => {
-    requireGuide(guide.guideId);
-    const saved = store.saveGuide(guide);
+    const saved = saveGuideFromEditor(store, guide);
     reindex(guide.guideId);
     return saved;
   }, { validate: (a) => security.isPlainArgs(a.guide) && a.guide && c.id(a.guide.guideId) });
@@ -887,8 +884,7 @@ function setupIpc() {
     validate: (a) => c.id(a.guideId) && c.optionalBase64(a.imageBase64) && c.optionalNumber(a.position, 0, 100000),
   });
   h('step:save', ({ guideId, step }) => {
-    requireGuide(guideId);
-    const saved = store.saveStep(guideId, step);
+    const saved = saveStepFromEditor(store, guideId, step);
     reindex(guideId);
     return saved;
   }, { validate: (a) => c.id(a.guideId) && security.isPlainArgs(a.step) && a.step && c.id(a.step.stepId) });

@@ -527,7 +527,18 @@ class GuideEditor {
    * Pending edits are saved first, so the user's own unsaved work always wins.
    */
   async reloadAfterOutsideChange() {
-    if (this.pendingSave) await this.flushStep();
+    if (this.pendingSave) {
+      const { guide } = await api.guide.get({ guideId: this.guideId });
+      if (!guide.stepsOrder.includes(this.selectedStepId)) {
+        this.saveStepDebounced.cancel();
+        this.pendingSave = false;
+        this.saveError = null;
+        this.onToast('An AI agent deleted the step you were editing. Its saved version is in Backups & snapshots.');
+      } else {
+        await this.flushStep();
+        if (this.pendingSave) return; // Keep unsaved edits if the write failed.
+      }
+    }
     if (this.pendingGuideSave) await this.flushGuide();
     await this.reload(this.selectedStepId);
   }

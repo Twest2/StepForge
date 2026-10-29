@@ -527,3 +527,44 @@ test('automatic pruning keeps agent snapshots, which keep their own newest 50', 
   assert.equal(agents.length, 50);
   assert.match(agents[0], /deletes_step_5\.snapshot$/, 'the oldest go first');
 });
+
+test('screenshot imports cannot expose raw library images, including through a symbolic link', async (t) => {
+  const { call, guide, first, store } = makeLibrary(t);
+  const original = store.stepImagePath(guide.guideId, first.stepId, 'original');
+  const outside = makeTmpDir('agent-protected-image');
+  t.after(() => rmrf(outside));
+  const inputs = [original];
+  const link = path.join(outside, 'linked.png');
+  try { fs.symlinkSync(original, link); inputs.push(link); } catch (error) {
+    if (!['EPERM', 'EACCES'].includes(error.code)) throw error;
+  }
+  for (const image_path of inputs) {
+    for (const tool of ['create_step', 'set_screenshot']) {
+      const result = await call(tool, { guide_id: guide.guideId, step_id: first.stepId, image_path });
+      assert.equal(result.isError, true);
+      assert.match(result.content[0].text, /outside the StepForge library/);
+    }
+  }
+  assert.equal(agentSnapshots(store, guide.guideId).length, 0, 'refused imports do not take snapshots');
+  assert.equal(store.getGuide(guide.guideId).stepsOrder.length, 2);
+});
+
+test('replacing a screenshot preserves automatic private-detail blurs too', async (t) => {
+  const { call, guide, first, store } = makeLibrary(t);
+  const step = store.getStep(guide.guideId, first.stepId);
+  step.annotations[0].redact = { kind: 'secret', key: 'secret-key' };
+  step.redaction = { checked: 'old-check' };
+  store.saveStep(guide.guideId, step);
+  const replacement = pngFile(t, 20, 10, [0, 0, 255, 255]);
+  fs.copyFileSync(store.stepImagePath(guide.guideId, first.stepId, 'original'), replacement);
+  await call('set_screenshot', { guide_id: guide.guideId, step_id: first.stepId, image_path: replacement });
+  const saved = store.getStep(guide.guideId, first.stepId);
+  assert.equal(saved.annotations.length, 1);
+  assert.equal(saved.annotations[0].type, 'blur');
+  assert.equal(saved.redaction?.checked || '', '');
+  assert.equal(saved.annotations[0].redact.key, 'secret-key');
+  const read = await call('get_step', { guide_id: guide.guideId, step_id: first.stepId });
+  const png = decodePng(Buffer.from(read.content.find((part) => part.type === 'image').data, 'base64'));
+  const p = (5 * png.width + 5) * 4;
+  assert.notDeepEqual([...png.data.subarray(p, p + 3)], [255, 0, 0], 'private pixels remain hidden');
+});

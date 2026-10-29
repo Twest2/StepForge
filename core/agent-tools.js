@@ -267,11 +267,17 @@ function createAgentTools({ store, agentSettings, onChange = () => {}, onBrandin
     if (typeof filePath !== 'string' || !path.isAbsolute(filePath)) {
       throw new AgentError('image_path must be the full path to a PNG file on this computer.');
     }
-    let stat;
-    try { stat = fs.statSync(filePath); } catch { throw new AgentError(`There's no file at ${filePath}.`); }
+    let stat, resolved;
+    try { resolved = fs.realpathSync(filePath); stat = fs.statSync(resolved); } catch { throw new AgentError(`There's no file at ${filePath}.`); }
+    // Raw library images include originals hidden by blurs, old snapshots and
+    // Trash. Importing one as a new step would expose those pixels to get_step.
+    const relative = path.relative(fs.realpathSync(store.root), resolved);
+    if (!relative || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))) {
+      throw new AgentError('Use a PNG file outside the StepForge library. Library screenshots can only be read through get_step, with blurs filled in.');
+    }
     if (!stat.isFile()) throw new AgentError(`${filePath} isn't a file.`);
     if (stat.size > MAX_SCREENSHOT_BYTES) throw new AgentError(`${filePath} is larger than ${MAX_SCREENSHOT_BYTES / 1024 / 1024} MB.`);
-    const png = fs.readFileSync(filePath);
+    const png = fs.readFileSync(resolved);
     let image;
     try {
       image = decodePng(png);
@@ -722,8 +728,9 @@ function createAgentTools({ store, agentSettings, onChange = () => {}, onBrandin
         const { png, size } = readScreenshot(imagePath);
         const note = snapshotBefore(guideId, `replaces the screenshot of step ${numberOf(guide, stepId)}`);
         const step = store.getStep(guideId, stepId);
-        // Private-detail blurs matched the old screenshot; the new one is checked again.
-        forgetScreenshotChecks(step);
+        // Agents cannot remove any blur, including one added by a private-detail
+        // check. Even a replacement can contain the same private pixels.
+        if (step.redaction) step.redaction = { ...step.redaction, checked: '' };
         const saved = store.replaceImages(guideId, stepId, { original: png }, size, step);
         onChange(guideId);
         return { content: [text(stepForAgent(saved, numberOf(guide, stepId))), text(note)] };

@@ -405,6 +405,7 @@ class GuideStore {
     for (const [, step] of steps) {
       if (step.parentStepId === stepId) {
         step.parentStepId = parentId;
+        step.revision = (Number.isInteger(step.revision) ? step.revision : 0) + 1;
         writeJsonSync(path.join(this.stepDir(guideId, step.stepId), 'step.json'), step);
       }
     }

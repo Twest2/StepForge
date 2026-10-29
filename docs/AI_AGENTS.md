@@ -84,8 +84,11 @@ Record a guide in StepForge as usual, then ask your agent, for example:
 
 The agent finds the guide, looks at each step's screenshot, and rewrites the
 text. It uses your placeholders where their values would appear, and can add
-new ones for values that repeat, such as a course code or product name. If the guide is open in StepForge, it updates on screen within a couple
-of seconds. If you're typing in the same step at that moment, your edit wins.
+new ones for values that repeat, such as a course code or product name. If
+the guide is open in StepForge, it updates on screen within a couple of
+seconds. If you're typing in the same step at that moment, your edit wins. If
+the agent deleted that step, StepForge drops its pending save and shows the
+remaining steps instead of recreating it.
 
 Before you share the guide, read what the agent wrote. To undo a big rewrite,
 use **More → Backups & snapshots**. Annotations an agent drew can be moved or
@@ -100,7 +103,10 @@ its AI provider**, such as Anthropic for Claude or OpenAI for Codex. Their
 privacy terms apply to that data.
 
 - Screenshots are shared with your blurs filled in, so the agent never sees
-  what you hid. Agents can't delete blurs.
+  what you hid. Agents can't delete blurs. Screenshot imports must come from
+  outside the library; raw originals, Trash and snapshot files cannot be
+  imported to bypass the blurs. Replacing a screenshot keeps its blurs,
+  including those added by Find private details.
 - An agent reads a file outside your library only when it uses one as a
   screenshot or adds one to a brand profile, and only the file it names.
 - Agents never get the text you typed while recording, field values, or the

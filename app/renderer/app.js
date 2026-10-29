@@ -66,6 +66,7 @@ class StepForgeApp {
     this.cloudStatus.addEventListener('click', () => this.openSettings(!this.cloudProvider || this.cloudProvider === 'google' ? 'drive' : this.cloudProvider));
     api.cloud.onStatus((status) => this.renderCloudStatus(status));
     api.cloud.onLibraryChanged(() => this.refreshLibrary().catch(console.error));
+    api.cloud.onSettingsChanged(() => this.onSettingsSynced().catch(console.error));
     api.cloud.status().then((status) => this.renderCloudStatus(status)).catch(console.error);
     this.libraryRenderToken = 0;
 
@@ -129,6 +130,17 @@ class StepForgeApp {
     if (api.capture.onDiagnostic) api.capture.onDiagnostic((payload) => this.onCaptureDiagnostic(payload));
     api.guide.onChangedByAgent((payload) => this.onGuideChangedByAgent(payload));
     api.branding.onChangedByAgent(() => this.onBrandingChangedByAgent());
+  }
+
+  /**
+   * Global placeholders, branding or language arrived from another
+   * computer: pick up the active brand profile, and draw the PNG copies any
+   * new SVG or JPG images need.
+   */
+  async onSettingsSynced() {
+    this.state.settings = await api.settings.all();
+    this.editor.setSettings(this.state.settings);
+    await ensurePendingBrandRasters(api);
   }
 
   /**

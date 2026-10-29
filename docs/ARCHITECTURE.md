@@ -243,6 +243,17 @@ opt-in and off by default:
   time in a background worker shared with linked-archive writes and
   automatic backups. See [GOOGLE_DRIVE.md](GOOGLE_DRIVE.md) and
   [SECURITY.md](SECURITY.md).
+- **Synced settings** (`core/shared-settings.js`): global placeholders, brand
+  profiles with the assets they use, the active profile and the language
+  travel as one `settings-v1` archive per version, versioned and pruned like
+  a guide, with the same parents, heads and `merged` property. Placeholders,
+  settings and profiles merge three ways by key (newest side wins a conflict,
+  a profile by its `updatedAt`, and an edit beats a deletion); assets are
+  content-addressed, so they follow the profiles. Settings left at their
+  default aren't stored, so a new computer's defaults never win a merge.
+  The base is `cloud/settings-base.json`. Incoming settings wait while the
+  Settings dialog is open, and every image and font is re-checked by
+  `BrandingStore.addAsset`.
 - **OneDrive, Dropbox and Nextcloud/WebDAV** (`app/onedrive.js`,
   `app/dropbox.js`, `app/webdav.js` on `app/cloud-account.js`) plug into the
   same `CloudSync`. These services have no per-file properties, so

@@ -2,7 +2,8 @@
 
 Google Drive sync keeps your StepForge library the same on every computer you
 use. Sign in once on each machine and your guides, including screenshots,
-annotations, and descriptions, follow you.
+annotations, and descriptions, follow you, along with the
+[settings guides depend on](#settings-that-sync).
 
 Sync is **optional and off by default**. StepForge works fully offline without it.
 
@@ -76,6 +77,27 @@ or open the Drive settings, to see the guide's name and the transfer speed.
 - **Going offline is fine.** Local edits are kept and sync resumes when you're
   back online.
 
+### Settings that sync
+
+So a guide exports the same on every computer, these settings sync with it:
+
+- **Global placeholders** (**Settings → Placeholders**)
+- **Brand profiles**, with their logos, banners and fonts, and which profile
+  is active (**Settings → Branding**)
+
+Everything else in Settings, such as capture options, shortcuts, AI and guide
+storage, stays on each computer.
+
+They're combined the same way as guides: changes to different placeholders or
+profiles on different computers all survive, a placeholder or profile deleted
+on one computer is deleted on the others, and when both computers changed the
+same one, the most recent change is kept. A computer syncing for the first
+time adds its placeholders and profiles to the ones already in the cloud,
+and its default settings never replace a choice made on another computer.
+
+Changes from another computer wait while **Settings** is open, so saving it
+can't undo them, and arrive when you close it.
+
 ## Manage what's in Drive
 
 **Settings → Accounts → Google Drive** also lets you see and tidy up your Drive storage.
@@ -134,7 +156,7 @@ If your computers have drifted apart and you want one of them to win, use
 
 1. Deletes everything StepForge has stored in Drive, including all versions
    and recovery copies.
-2. Uploads the guides on this computer.
+2. Uploads the guides and [settings](#settings-that-sync) on this computer.
 3. Tells your other computers to move any guide that isn't on this computer
    to their trash, and to update the rest to this computer's version.
    Unsynced edits on those computers are combined with this computer's version.

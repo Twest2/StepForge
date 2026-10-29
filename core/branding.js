@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const zlib = require('node:zlib');
+const { isDeepStrictEqual } = require('node:util');
 const { newId, nowIso, writeJsonSync, readJsonIfExists, atomicWriteFileSync } = require('./util');
 const { zipSync, unzipSync } = require('./zip');
 const { decodePng } = require('./png');
@@ -305,6 +306,28 @@ class BrandingStore {
 
   remove(id) {
     fs.rmSync(this.profileFile(id), { force: true });
+    this.collectGarbage();
+  }
+
+  /**
+   * Make the saved profiles exactly `profiles` (cloud sync). Unlike save(),
+   * each keeps its own timestamps, so the same profiles synced back aren't a
+   * change. Asset references that don't exist are dropped.
+   */
+  replaceProfiles(profiles) {
+    const keep = new Set();
+    for (const raw of profiles) {
+      const profile = normalizeProfile(raw, { id: raw.id });
+      const file = this.profileFile(profile.id);
+      const exists = (asset) => (asset && this.assetMeta(asset) ? asset : null);
+      profile.logo = exists(profile.logo);
+      profile.banner = exists(profile.banner);
+      profile.fonts.heading.asset = exists(profile.fonts.heading.asset);
+      profile.fonts.body.asset = exists(profile.fonts.body.asset);
+      if (!isDeepStrictEqual(readJsonIfExists(file, null), profile)) writeJsonSync(file, profile);
+      keep.add(profile.id);
+    }
+    for (const { id } of this.list()) if (!keep.has(id)) fs.rmSync(this.profileFile(id), { force: true });
     this.collectGarbage();
   }
 
@@ -626,6 +649,7 @@ function brandTemplateDefaults(format, profile) {
 module.exports = {
   BrandingStore,
   normalizeProfile,
+  profileAssetIds,
   loadBranding,
   brandTemplateDefaults,
   checkFileSize,

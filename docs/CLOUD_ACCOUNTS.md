@@ -27,8 +27,9 @@ an operating-system credential store, make sure a keyring is installed and
 unlocked, then restart StepForge.
 
 Sync works the same way on every service: versions, restoring, combining
-edits from different computers, recently deleted guides, and **Free up space**
-are all described in
+edits from different computers, the [settings that sync](GOOGLE_DRIVE.md#settings-that-sync)
+with your guides, recently deleted guides, and **Free up space** are all
+described in
 [Google Drive sync](GOOGLE_DRIVE.md). Every service stores only what changed
 between versions, so a screenshot that appears in many versions is stored once.
 

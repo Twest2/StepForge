@@ -25,6 +25,7 @@ const { GitHubPages } = require('./github-pages');
 const { EXPIRY_DAYS, titleFromHtml } = require('../core/pages-site');
 const { TransferMeter } = require('../core/transfer-meter');
 const { CloudSync } = require('../core/cloud-sync');
+const { SharedSettings } = require('../core/shared-settings');
 const { createCredentialVault } = require('./credential-vault');
 const { SearchIndex } = require('../core/search');
 const { findMatches, applyReplacements, isMatchArg } = require('../core/find-replace');
@@ -114,6 +115,8 @@ let cloudSync;
 let cloudConnecting = false;
 let cloudTesting = false;
 let cloudEditorDirty = false;
+// Synced settings wait while Settings is open, so saving it can't undo them.
+let settingsOpen = false;
 
 // The sync services, in the order Settings → Accounts lists them.
 const CLOUD_LABELS = { google: 'Google Drive', onedrive: 'OneDrive', dropbox: 'Dropbox', webdav: 'Nextcloud' };
@@ -279,6 +282,8 @@ function createWindow() {
   // away from it and every popup is denied, so no other document can run
   // with this window's preload bridge.
   security.installWindowSecurity(mainWindow, 'main');
+  // A reload closes Settings without saying so.
+  mainWindow.webContents.on('did-start-loading', () => { settingsOpen = false; });
   mainWindow.webContents.on('before-input-event', (event, input) => {
     // Electron reports both the key-down and key-up as separate
     // before-input-event calls; only act on the down edge or every tap
@@ -757,6 +762,13 @@ function setupIpc() {
 
   ipcMain.on('cloud:editor-dirty', (event, dirty) => {
     if (trustedSender(event)) cloudEditorDirty = Boolean(dirty);
+  });
+
+  // Whatever was changed in Settings syncs as soon as it closes.
+  ipcMain.on('cloud:settings-open', (event, open) => {
+    if (!trustedSender(event)) return;
+    settingsOpen = Boolean(open);
+    if (!settingsOpen) cloudSync?.markSharedChanged();
   });
 
   const IMAGE_BUDGET = 256 * 1024 * 1024; // channels that carry base64 PNGs
@@ -1880,6 +1892,7 @@ if (!gotLock) {
     const dataDir = libraryLocation.applyPending();
     store = new GuideStore(dataDir);
     settings = new Settings(store.settingsDir);
+    branding = new BrandingStore(store.settingsDir);
     // Dev builds keep their sign-in to their own data folder instead of
     // sharing (and possibly clearing) the release build's OS backup.
     const cloudVault = (slot) => (devBuild ? null : createCredentialVault({ slot }));
@@ -1947,6 +1960,9 @@ if (!gotLock) {
         sendToRenderer('cloud:library-changed', { guideId });
       },
       onStatus: () => sendToRenderer('cloud:status', cloudStatus()),
+      shared: new SharedSettings({ settings, branding }),
+      sharedReady: () => !settingsOpen,
+      onSharedChange: (changes) => sendToRenderer('cloud:settings-changed', { changes }),
     });
     searchIndex = new SearchIndex(store.indexDir);
     // Rebuild/reconcile the index against the library at startup so a missing,
@@ -1966,7 +1982,6 @@ if (!gotLock) {
     setInterval(emptyOldTrash, TRASH_CHECK_MS);
     setTimeout(convertOldSnapshots, 60 * 1000);
     templates = new TemplateManager(store.templatesDir);
-    branding = new BrandingStore(store.settingsDir);
     textIntel = new TextIntelService({
       store,
       settings,

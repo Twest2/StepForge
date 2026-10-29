@@ -585,7 +585,10 @@ function showSettingsDialog({
   flushEdits = null,
   section: initialSection = 'general',
 } = {}) {
-  return new Promise((resolve) => {
+  return new Promise((done) => {
+    // Synced settings wait while this is open, so Save can't undo them.
+    api.cloud?.setSettingsOpen?.(true);
+    const resolve = (saved) => { api.cloud?.setSettingsOpen?.(false); done(saved); };
     const form = el('form', { className: 'settings-form' });
     // A service's id ("drive", "onedrive", "dropbox", "webdav", "github")
     // opens Accounts with that service's panel showing.

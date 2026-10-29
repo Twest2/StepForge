@@ -933,7 +933,7 @@ class CloudSync {
           if (parts.contentHash(entries) !== tip.appProperties.hash) throw new Error('Synced settings failed their integrity check. Settings here are unchanged.');
           sides.push({ entries, hash: tip.appProperties.hash, time: tip.createdTime || '' });
         }
-        let incoming = sides[0].entries;
+        let incoming = mergeSharedSettings({ sides: [sides[0]] }).entries;
         if (merging) {
           // A computer that never synced shares no history with the cloud:
           // merge without a base, so nothing counts as deleted.

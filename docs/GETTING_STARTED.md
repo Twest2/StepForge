@@ -209,6 +209,12 @@ The library is your home screen.
   Each one shows how long it has left. To keep them longer, or until you empty
   the trash yourself, use **Settings → General → Trash**.
 
+StepForge shows its menus and messages in your system's language when it has
+it: English, French, Spanish, Russian, Simplified Chinese or Japanese. The
+translations other than English are in beta. To pick a different language,
+use **Settings → General → Language**; StepForge reloads its window in the new
+language, after saving your open guide. Exported guides stay in English.
+
 Guides live in your StepForge data folder. To keep them somewhere else, such
 as a larger drive, use **Settings → General → Guide storage**. StepForge copies
 and verifies your library before switching to the new location.

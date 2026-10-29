@@ -253,7 +253,8 @@ opt-in and off by default:
   automatic backups. See [GOOGLE_DRIVE.md](GOOGLE_DRIVE.md) and
   [SECURITY.md](SECURITY.md).
 - **Synced settings** (`core/shared-settings.js`): global placeholders, brand
-  profiles with the assets they use, the active profile and the language
+  profiles with the assets they use, the active profile, the language and
+  configurable recording shortcuts
   travel as one `settings-v1` archive per version, versioned and pruned like
   a guide, with the same parents, heads and `merged` property. Placeholders,
   settings and profile fields merge three ways by key (newest edit wins a
@@ -265,7 +266,8 @@ opt-in and off by default:
   changes. Older archives fall back to their version time. Profile field
   conflicts compare the profile's `updatedAt`.
   The base is `cloud/settings-base.json`. Incoming settings wait while the
-  Settings dialog is open, and every image and font is re-checked by
+  Settings dialog is open. Incoming recording shortcuts re-register the running
+  app’s global hotkeys immediately. Every image and font is re-checked by
   `BrandingStore.addAsset`.
 - **OneDrive, Dropbox and Nextcloud/WebDAV** (`app/onedrive.js`,
   `app/dropbox.js`, `app/webdav.js` on `app/cloud-account.js`) plug into the

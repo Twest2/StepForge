@@ -129,23 +129,32 @@ const DEFAULT_SETTINGS = {
   },
 };
 
+// Values that sync independently; changing a whole capture/branding object
+// still records clocks only for the shared fields that actually changed.
+const SHARED_SETTING_PATHS = Object.freeze({
+  language: 'language', activeProfileId: 'branding.activeProfileId',
+  hotkeyCapture: 'capture.hotkeyCapture', hotkeyPauseResume: 'capture.hotkeyPauseResume',
+});
+const valueAt = (data, keyPath) => keyPath.split('.').reduce((value, key) => value?.[key], data);
+const sharedValues = (data) => Object.fromEntries(Object.entries(SHARED_SETTING_PATHS)
+  .map(([key, keyPath]) => [key, valueAt(data, keyPath)]));
+
 class Settings {
   constructor(settingsDir) {
     this.file = path.join(settingsDir, 'app-settings.json');
     this.globalPlaceholdersFile = path.join(settingsDir, 'placeholders.json');
     this.sharedTimesFile = path.join(settingsDir, 'shared-settings-times.json');
     this.data = this.load();
-    // Seed legacy values before any unrelated setting can change the file's
-    // time. New edits below get their own per-value clocks.
-    if (!fs.existsSync(this.sharedTimesFile)) {
+    // Seed legacy values (including newly shared keys) before an unrelated
+    // save changes the file's time. Existing per-value clocks stay intact.
+    {
       const time = (file) => { try { return fs.statSync(file).mtime.toISOString(); } catch { return ''; } };
-      const times = {};
-      for (const [key, value, fallback] of [
-        ['language', this.data.language, DEFAULT_SETTINGS.language],
-        ['activeProfileId', this.data.branding?.activeProfileId, DEFAULT_SETTINGS.branding.activeProfileId],
-      ]) if (value !== fallback && time(this.file)) times[`setting:${key}`] = time(this.file);
+      const times = this.getSharedChangeTimes();
+      for (const [key, keyPath] of Object.entries(SHARED_SETTING_PATHS)) {
+        if (!Object.hasOwn(times, `setting:${key}`) && !isDeepStrictEqual(this.get(keyPath), valueAt(DEFAULT_SETTINGS, keyPath)) && time(this.file)) times[`setting:${key}`] = time(this.file);
+      }
       for (const name of Object.keys(this.getGlobalPlaceholders() || {})) {
-        if (time(this.globalPlaceholdersFile)) times[`placeholder:${name}`] = time(this.globalPlaceholdersFile);
+        if (!Object.hasOwn(times, `placeholder:${name}`) && time(this.globalPlaceholdersFile)) times[`placeholder:${name}`] = time(this.globalPlaceholdersFile);
       }
       if (Object.keys(times).length) this.setSharedChangeTimes(times);
     }
@@ -176,7 +185,7 @@ class Settings {
   }
 
   set(keyPath, value) {
-    const before = { language: this.data.language, activeProfileId: this.data.branding?.activeProfileId };
+    const before = sharedValues(this.data);
     const keys = keyPath.split('.');
     let obj = this.data;
     for (const k of keys.slice(0, -1)) {
@@ -185,7 +194,7 @@ class Settings {
     }
     obj[keys[keys.length - 1]] = value;
     const saved = this.save();
-    const after = { language: this.data.language, activeProfileId: this.data.branding?.activeProfileId };
+    const after = sharedValues(this.data);
     const times = this.getSharedChangeTimes();
     for (const key of Object.keys(before)) {
       if (!isDeepStrictEqual(before[key], after[key])) times[`setting:${key}`] = new Date().toISOString();
@@ -221,4 +230,4 @@ function mergeDeep(base, extra) {
   return base;
 }
 
-module.exports = { Settings, DEFAULT_SETTINGS };
+module.exports = { Settings, DEFAULT_SETTINGS, SHARED_SETTING_PATHS };

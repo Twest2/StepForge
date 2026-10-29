@@ -79,14 +79,15 @@ or open the Drive settings, to see the guide's name and the transfer speed.
 
 ### Settings that sync
 
-So a guide exports the same on every computer, these settings sync with it:
+These settings follow your guides across computers:
 
 - **Global placeholders** (**Settings → Placeholders**)
 - **Brand profiles**, with their logos, banners and fonts, and which profile
   is active (**Settings → Branding**)
+- **Recording shortcuts**: Capture and Pause/resume (**Settings → Capture → Hotkeys**).
+  Cleared shortcuts stay disabled; incoming changes take effect immediately.
 
-Everything else in Settings, such as capture options, shortcuts, AI and guide
-storage, stays on each computer.
+Other capture options, AI and guide storage stay on each computer.
 
 They're combined the same way as guides: changes to different placeholders or
 fields within a brand profile on different computers all survive. A placeholder

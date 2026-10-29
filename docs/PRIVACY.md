@@ -141,7 +141,8 @@ Drive sync is **off by default**. When you sign in
   other Drive files.
 - **Your whole library is uploaded**: screenshots, text, annotations,
   placeholders, and the capture details listed above, along with your global
-  placeholders and brand profiles (with their logos, banners and fonts). It
+  placeholders, brand profiles (with their logos, banners and fonts), and
+  configured Capture and Pause/resume keyboard shortcuts. It
   goes to that private folder in *your* Google Drive,
   not to StepForge or anyone else. The rest of Settings isn't uploaded.
   Screenshots are stored once and shared between versions, labelled with a

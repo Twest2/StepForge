@@ -459,3 +459,88 @@ test('a deliberate reset to the default language is newer than a conflicting old
   assert.equal(a.settings.get('language'), DEFAULT_SETTINGS.language);
   assert.equal(b.settings.get('language'), DEFAULT_SETTINGS.language);
 });
+
+test('recording shortcuts sync immediately, including disabled bindings, while other capture options stay local', async (t) => {
+  const { device, files } = setup(t);
+  const a = device('a'), b = device('b');
+  a.settings.set('capture', { ...a.settings.get('capture'), hotkeyCapture: 'CommandOrControl+Shift+7', hotkeyPauseResume: '', delayMs: 750, mode: 'window' });
+  b.settings.set('capture.delayMs', 250);
+  await synced(a.sync); await synced(b.sync);
+  assert.equal(b.settings.get('capture.hotkeyCapture'), 'CommandOrControl+Shift+7');
+  assert.equal(b.settings.get('capture.hotkeyPauseResume'), '', 'a cleared shortcut stays disabled');
+  assert.equal(b.settings.get('capture.delayMs'), 250);
+  assert.equal(b.settings.get('capture.mode'), 'fullscreen');
+  assert.ok(b.changes.some((changes) => changes.includes('shortcuts')));
+  const count = settingsFiles(files).length;
+  await synced(a.sync); await synced(b.sync);
+  assert.equal(settingsFiles(files).length, count, 'matching shortcuts do not trigger repeated uploads');
+});
+
+test('shortcut edits merge independently, and a newer explicit default reset wins a conflict', async (t) => {
+  const { device } = setup(t);
+  const a = device('a'), b = device('b');
+  a.settings.set('capture.hotkeyCapture', 'Alt+1');
+  setSharedTime(a, 'setting:hotkeyCapture', '2020-01-01T00:00:00.000Z');
+  await synced(a.sync); await synced(b.sync);
+  a.settings.set('capture.hotkeyCapture', 'Alt+3');
+  setSharedTime(a, 'setting:hotkeyCapture', '2021-01-01T00:00:00.000Z');
+  b.settings.set('capture.hotkeyPauseResume', 'Alt+4');
+  await synced(a.sync); await synced(b.sync); await synced(a.sync);
+  for (const d of [a, b]) {
+    assert.equal(d.settings.get('capture.hotkeyCapture'), 'Alt+3');
+    assert.equal(d.settings.get('capture.hotkeyPauseResume'), 'Alt+4');
+  }
+  b.settings.set('capture.hotkeyCapture', 'Alt+5');
+  setSharedTime(b, 'setting:hotkeyCapture', '2022-01-01T00:00:00.000Z');
+  a.settings.set('capture.hotkeyCapture', DEFAULT_SETTINGS.capture.hotkeyCapture);
+  setSharedTime(a, 'setting:hotkeyCapture', '2023-01-01T00:00:00.000Z');
+  a.settings.set('capture.delayMs', 900);
+  await synced(b.sync); await synced(a.sync); await synced(b.sync);
+  for (const d of [a, b]) assert.equal(d.settings.get('capture.hotkeyCapture'), DEFAULT_SETTINGS.capture.hotkeyCapture);
+});
+
+test('new computer defaults do not overwrite shortcuts, and unrelated capture saves do not change their clocks', async (t) => {
+  const { device } = setup(t);
+  const a = device('a'), b = device('b');
+  a.settings.set('capture.hotkeyCapture', 'Alt+8');
+  const clocks = a.settings.getSharedChangeTimes();
+  a.settings.set('capture', { ...a.settings.get('capture'), delayMs: 150 });
+  assert.deepEqual(a.settings.getSharedChangeTimes(), clocks);
+  await synced(a.sync); await synced(b.sync);
+  assert.equal(b.settings.get('capture.hotkeyCapture'), 'Alt+8');
+  const before = a.sync.shared.snapshot().hash;
+  a.settings.set('capture.delayMs', 1000);
+  assert.equal(a.sync.shared.snapshot().hash, before);
+  // Upgrading from a version whose clock file tracked only language.
+  a.settings.setSharedChangeTimes({ 'setting:language': '2020-01-01T00:00:00.000Z' });
+  const loaded = new Settings(a.store.settingsDir);
+  assert.ok(loaded.getSharedChangeTimes()['setting:hotkeyCapture']);
+  assert.equal(loaded.getSharedChangeTimes()['setting:language'], '2020-01-01T00:00:00.000Z');
+});
+
+test('incoming shortcut changes re-register the running app hotkeys before notifying the renderer', () => {
+  const source = fs.readFileSync(path.join(__dirname, '../../app/main.js'), 'utf8');
+  const hook = source.match(/onSharedChange: (\(changes\) => \{[\s\S]*?\n      \}),/)[1];
+  const events = [];
+  const onSharedChange = vm.runInNewContext(`(${hook})`, {
+    registerHotkeys: () => events.push('register'), sendToRenderer: (name, payload) => events.push([name, [...payload.changes]]),
+  });
+  onSharedChange(['shortcuts']);
+  assert.deepEqual(events, ['register', ['cloud:settings-changed', ['shortcuts']]]);
+  events.length = 0;
+  onSharedChange(['branding']);
+  assert.deepEqual(events, [['cloud:settings-changed', ['branding']]]);
+  assert.match(source, /keyPath === 'capture' \|\| keyPath\.startsWith\('capture\.hotkey'\)/);
+});
+
+test('malformed shortcut values are refused before applying synced settings', (t) => {
+  const { device } = setup(t);
+  const a = device('a');
+  const shared = a.sync.shared;
+  for (const value of [null, 42, 'Alt+\nA', 'A'.repeat(257)]) {
+    const entries = shared.snapshot().entries.map((entry) => entry.name === 'settings.json'
+      ? { ...entry, data: JSON.stringify({ hotkeyCapture: value }) } : entry);
+    assert.throws(() => shared.apply(entries), /damaged/);
+    assert.equal(a.settings.get('capture.hotkeyCapture'), DEFAULT_SETTINGS.capture.hotkeyCapture);
+  }
+});

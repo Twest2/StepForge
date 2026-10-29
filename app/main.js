@@ -1396,7 +1396,7 @@ function setupIpc() {
       settings.set('library.trashEmptyingSince', Date.now());
     }
     if (keyPath === 'appearance') applyTheme();
-    if (keyPath.startsWith('capture.hotkey')) registerHotkeys();
+    if (keyPath === 'capture' || keyPath.startsWith('capture.hotkey')) registerHotkeys();
     return settings.data;
   }, { validate: (a) => c.settingsKeyPath(a.keyPath) });
   h('ai:test', async ({ enabled = null, ollama = null } = {}) => {
@@ -2023,7 +2023,10 @@ if (!gotLock) {
       onStatus: () => sendToRenderer('cloud:status', cloudStatus()),
       shared: new SharedSettings({ settings, branding }),
       sharedReady: () => !settingsOpen,
-      onSharedChange: (changes) => sendToRenderer('cloud:settings-changed', { changes }),
+      onSharedChange: (changes) => {
+        if (changes.includes('shortcuts')) registerHotkeys();
+        sendToRenderer('cloud:settings-changed', { changes });
+      },
     });
     searchIndex = new SearchIndex(store.indexDir);
     // Rebuild/reconcile the index against the library at startup so a missing,

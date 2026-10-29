@@ -45,11 +45,13 @@ test('every Windows install keeps its library in the home folder, outside AppDat
 
 test('the default library outside Windows is unchanged', (t) => {
   if (process.platform === 'win32') return;
+  const userData = makeTmpDir('store-default-library');
+  t.after(() => rmrf(userData));
   const saved = process.env.STEPFORGE_DATA_DIR;
   delete process.env.STEPFORGE_DATA_DIR;
   t.after(() => { if (saved !== undefined) process.env.STEPFORGE_DATA_DIR = saved; });
   assert.equal(resolveDataDir({ homeDir: '/home/casey' }), path.join(process.env.XDG_DATA_HOME || '/home/casey/.local/share', 'stepforge'));
-  assert.equal(libraryLocationFor('/tmp/x', { homeDir: '/home/casey' }).legacyPath, null, 'nothing to move on Linux');
+  assert.equal(libraryLocationFor(userData, { homeDir: '/home/casey' }).legacyPath, null, 'nothing to move on Linux');
 });
 
 test('STEPFORGE_DATA_DIR still wins, and a chosen library stays where it was chosen', (t) => {

@@ -1894,10 +1894,6 @@ if (!gotLock) {
     // now, copied and checked before it's used (app/data-dir.js).
     libraryLocation.scheduleMigration();
     const dataDir = libraryLocation.applyPending();
-    // The old copy goes after a month. A Store app leaves it: it belongs to
-    // the installer version.
-    try { libraryLocation.removeMigratedCopy({ allowDelete: !windowsStore.isStoreInstall() }); }
-    catch (error) { console.warn('Could not remove the old library copy:', error.message); }
     store = new GuideStore(dataDir);
     settings = new Settings(store.settingsDir);
     // Dev builds keep their sign-in to their own data folder instead of

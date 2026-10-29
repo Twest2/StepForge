@@ -120,8 +120,9 @@ from then on. Your guides and settings are kept either way.
 
 Earlier versions kept guides in `%APPDATA%\stepforge`. The first time
 a new version starts, it moves them to `%USERPROFILE%\StepForge` by itself:
-it copies them, checks the copy, and only then switches. The old copy is
-deleted 30 days later. You don't need to do anything.
+it copies them, checks the copy, and only then switches. The old copy stays
+in place until you remove it yourself. Keep it if another installation still
+uses that folder; StepForge never deletes it automatically.
 
 **To uninstall,** open **Settings → Apps → Installed apps**, find
 **StepForge**, and choose **Uninstall**. Your guides stay in

@@ -299,8 +299,9 @@ Windows deletes when you uninstall it.
 
 Older Windows versions kept the library in `%APPDATA%\stepforge`. A new
 version copies it to `%USERPROFILE%\StepForge` on its first start, checks the
-copy, and deletes the old one 30 days later. The Microsoft Store version
-leaves the old folder alone, because it belongs to the installer version.
+copy, and keeps the old folder as a backup until you remove it yourself.
+StepForge never deletes it automatically: another installation may still use
+that folder.
 
 **Keep the library out of folders that OneDrive, Dropbox, Google Drive or
 Nextcloud sync,** such as a Documents folder that OneDrive backs up. Those apps

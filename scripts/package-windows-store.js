@@ -27,6 +27,7 @@ const MANIFEST_TEMPLATE = path.join(STORE_DIR, 'appxmanifest.xml');
 // Stands in for the Partner Center identity in CI build checks. Partner
 // Center rejects a package with any other identity than the reserved one.
 const TEST_IDENTITY = {
+  displayName: 'StepForge',
   identityName: 'StepForge.BuildCheck',
   publisher: 'CN=StepForge Build Check',
   publisherDisplayName: 'StepForge build check',
@@ -34,12 +35,14 @@ const TEST_IDENTITY = {
 };
 
 /**
- * The identity Partner Center assigned when the name was reserved (Product
+ * The name reserved in Partner Center, which the Store requires as the app's
+ * display name, and the identity Partner Center assigned with it (Product
  * management → Product identity). Throws with what is missing or malformed.
  */
 function validateStoreIdentity(identity) {
   const problems = [];
   const value = (key) => (identity && typeof identity[key] === 'string' ? identity[key].trim() : '');
+  if (!value('displayName') || value('displayName').length > 256 || /[<>&]/.test(value('displayName'))) problems.push('displayName (the app name you reserved)');
   if (!/^[A-Za-z0-9.-]{3,50}$/.test(value('identityName'))) problems.push('identityName (Package/Identity/Name)');
   if (!/^CN=[^<>&']+$/.test(value('publisher'))) problems.push('publisher (Package/Identity/Publisher, starts with "CN=")');
   if (!value('publisherDisplayName') || /[<>&]/.test(value('publisherDisplayName'))) problems.push('publisherDisplayName (Package/Properties/PublisherDisplayName)');
@@ -48,6 +51,7 @@ function validateStoreIdentity(identity) {
     throw new Error(`packaging/windows/store/identity.json is missing or has an invalid ${problems.join(', ')}. Copy the values from Partner Center → Product management → Product identity.`);
   }
   return {
+    displayName: value('displayName'),
     identityName: value('identityName'),
     publisher: value('publisher'),
     publisherDisplayName: value('publisherDisplayName'),
@@ -103,7 +107,8 @@ function createStorePackageConfig(outputDir, { identity, manifestPath }) {
       publisherDisplayName: identity.publisherDisplayName,
       // Fixed: changing it would unpin StepForge from users' Start menus.
       applicationId: 'StepForge',
-      displayName: 'StepForge',
+      // Must be a name reserved in Partner Center, or certification fails.
+      displayName: identity.displayName,
       backgroundColor: 'transparent',
       languages: ['en-US'],
       minVersion: '10.0.17763.0',

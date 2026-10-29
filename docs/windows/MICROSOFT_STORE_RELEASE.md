@@ -31,24 +31,27 @@ when the account is ready.
 3. Enter **StepForge**, choose **Check availability**, then **Reserve product
    name**.
 
-If StepForge is taken, reserve another name and tell the person working on the
-code. The package can keep "StepForge" as its display name only if the
-reserved name matches.
+If **StepForge** is already taken, reserve a close variant such as **StepForge
+Guides**. The Store shows that name in the listing and the Start menu, and the
+package has to use exactly the name you reserved, so you enter it in the next
+step. Only the name changes: the app, its data and its updates work the same.
 
 ### 3. Copy the identity into the repository
 
-In Partner Center, open StepForge, then **Product management → Product
-identity**. Copy these into `packaging/windows/store/identity.json`:
+Put the name you reserved, and the values Partner Center assigned with it, into
+`packaging/windows/store/identity.json`. For the last four, open the app in
+Partner Center, then **Product management → Product identity**:
 
-| `identity.json` key | Partner Center field | Looks like |
+| `identity.json` key | Where it comes from | Looks like |
 | --- | --- | --- |
+| `displayName` | The name you reserved in step 2 | `StepForge` |
 | `identityName` | Package/Identity/Name | `12345YourName.StepForge` |
 | `publisher` | Package/Identity/Publisher | `CN=1A2B3C4D-…` |
 | `publisherDisplayName` | Package/Properties/PublisherDisplayName | your publisher display name |
 | `productId` | Store ID | `9N…`, 12 characters |
 
 Commit the file. These values aren't secret: they're in the manifest of every
-installed copy. `npm test` checks the file. While all four are empty, the
+installed copy. `npm test` checks the file. While all five are empty, the
 release workflow skips the Store package.
 
 The Store ID also lets **Settings → About → Open Microsoft Store** open
@@ -65,7 +68,7 @@ listing exists. Once the listing is live, you can swap
 
 ## Each release
 
-1. Run the **Release** workflow as usual. After it fills in `identity.json`,
+1. Run the **Release** workflow as usual. Once `identity.json` is filled in,
    the **Build Windows installer** job also uploads an artifact named
    **microsoft-store-package**. It holds `StepForge <version> Microsoft
    Store.appx`, built from the same stamped checkout as the `.exe`. It isn't
@@ -173,7 +176,8 @@ can't submit it, and it shows the repository's unreleased version number.
 
 | Problem | What to do |
 | --- | --- |
-| The build says `identity.json` is missing or has an invalid value | Copy the values again from **Product management → Product identity**. All four must be filled in, except `productId`, which may be empty. |
+| The build says `identity.json` is missing or has an invalid value | Copy the values again from **Product management → Product identity**. All five must be filled in, except `productId`, which may be empty. |
 | Partner Center says the package identity or publisher doesn't match | `identityName`, `publisher` and `publisherDisplayName` must match Product identity exactly, including case. |
+| Partner Center says the display name isn't reserved | `displayName` must be exactly a name reserved for this app, including case and spaces. Reserved names are listed under **Product management → Manage app names**. |
 | Partner Center says the version must be higher | Every submission needs a new StepForge version. Rebuilding the same version gives the same Store version. |
 | The submission fails certification | Partner Center's report lists each failed test. Fix it, release a new version, and submit again. |

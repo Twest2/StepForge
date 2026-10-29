@@ -31,6 +31,7 @@ const root = path.resolve(__dirname, '../..');
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 
 const IDENTITY = {
+  displayName: 'StepForge',
   identityName: '12345CaseyExample.StepForge',
   publisher: 'CN=0A1B2C3D-4E5F-6071-8293-A4B5C6D7E8F9',
   publisherDisplayName: 'Casey Example',
@@ -64,6 +65,8 @@ test('the identity must be the one Partner Center reserved, with a clear message
   assert.deepEqual(validateStoreIdentity({ ...IDENTITY, identityName: ` ${IDENTITY.identityName} ` }).identityName, IDENTITY.identityName);
 
   for (const [overrides, mentions] of [
+    [{ displayName: '' }, /displayName \(the app name you reserved\)/],
+    [{ displayName: 'Step<Forge>' }, /displayName/],
     [{ identityName: '' }, /identityName/],
     [{ identityName: 'Step Forge' }, /identityName/],
     [{ publisher: '0A1B2C3D' }, /publisher \(/],
@@ -83,16 +86,16 @@ test('the identity must be the one Partner Center reserved, with a clear message
 
 test('the committed identity file is either unfilled or a valid Partner Center identity', () => {
   const identity = JSON.parse(fs.readFileSync(IDENTITY_FILE, 'utf8'));
-  assert.deepEqual(Object.keys(identity).sort(), ['identityName', 'productId', 'publisher', 'publisherDisplayName']);
+  assert.deepEqual(Object.keys(identity).sort(), ['displayName', 'identityName', 'productId', 'publisher', 'publisherDisplayName']);
   if (isUnconfigured(identity)) return;
   validateStoreIdentity(identity);
 });
 
 test('--if-configured skips the build only while nothing is filled in', () => {
-  assert.equal(isUnconfigured({ identityName: '', publisher: '', publisherDisplayName: '', productId: '' }), true);
+  assert.equal(isUnconfigured({ displayName: '', identityName: '', publisher: '', publisherDisplayName: '', productId: '' }), true);
   assert.equal(isUnconfigured({ ...IDENTITY, productId: '' }), false);
   // Half filled in is a mistake to report, not a reason to skip.
-  assert.equal(isUnconfigured({ identityName: IDENTITY.identityName, publisher: '', publisherDisplayName: '', productId: '' }), false);
+  assert.equal(isUnconfigured({ displayName: '', identityName: IDENTITY.identityName, publisher: '', publisherDisplayName: '', productId: '' }), false);
 });
 
 test('the manifest carries the Store version and the stepforge.exe alias', () => {
@@ -129,6 +132,11 @@ test('the Store package is the installer app with the Store identity, unsigned, 
   assert.equal(config.appx.publisher, IDENTITY.publisher);
   assert.equal(config.appx.publisherDisplayName, IDENTITY.publisherDisplayName);
   assert.equal(config.appx.applicationId, 'StepForge');
+  // The Store shows the reserved name, whatever it is.
+  assert.equal(config.appx.displayName, 'StepForge');
+  const renamed = createStorePackageConfig('/tmp/out', { identity: { ...IDENTITY, displayName: 'StepForge Guides' }, manifestPath: '/tmp/m.xml' });
+  assert.equal(renamed.appx.displayName, 'StepForge Guides');
+  assert.equal(renamed.appx.applicationId, 'StepForge', 'the application id never changes');
   assert.equal(config.appx.customManifestPath, '/tmp/work/appxmanifest.xml');
   assert.ok(fs.existsSync(path.join(root, config.appx.customExtensionsPath)));
   assert.deepEqual(config.extraMetadata, { microsoftStore: { productId: '9NBLGGH4R32N' } });

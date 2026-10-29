@@ -140,3 +140,14 @@ test('the storage handlers report syncedBy, and Guide storage shows the warning'
   const dialogs = fs.readFileSync(path.join(__dirname, '../../app/renderer/dialogs.js'), 'utf8');
   assert.match(dialogs, /el\('div\.settings-storage', \{\}, storagePath, storageNote\),\n\s+storageWarningNote,/);
 });
+
+
+test('folders beginning with two dots still trigger the sync warning', () => {
+  assert.equal(syncServiceFor('/home/casey/Dropbox/..guides/library', {
+    platform: 'linux', folders: [{ service: 'Dropbox', folder: '/home/casey/Dropbox' }],
+  }), 'Dropbox');
+  assert.equal(syncServiceFor('C:/Users/Casey/OneDrive/..guides/library', {
+    platform: 'win32', folders: [{ service: 'OneDrive', folder: 'C:/Users/Casey/OneDrive' }],
+  }), 'OneDrive');
+  assert.equal(isInside('/home/casey/Dropbox/../elsewhere', '/home/casey/Dropbox', 'linux'), false);
+});

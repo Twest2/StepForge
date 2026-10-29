@@ -90,7 +90,7 @@ function isInside(folder, root, platform) {
     return platform === 'win32' ? resolved.toLowerCase() : resolved;
   };
   const relative = p.relative(norm(root), norm(folder));
-  return relative === '' || (!relative.startsWith('..') && !p.isAbsolute(relative));
+  return relative === '' || (relative !== '..' && !relative.startsWith(`..${p.sep}`) && !p.isAbsolute(relative));
 }
 
 /**

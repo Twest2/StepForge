@@ -274,6 +274,12 @@ with the hotkey or on a timer instead.
 The exact folder is shown in **Settings → About**. Older Windows versions used
 `%APPDATA%\stepforge`; a new version moves your guides from there by itself.
 
+The exact folder is shown in **Settings → About**. You can move it under
+**Settings → General → Guide storage**. Avoid folders that OneDrive, Dropbox,
+Google Drive or Nextcloud sync; Guide storage warns you if you pick one. Use
+StepForge's own sync (**Settings → Accounts**) to keep guides in step across
+computers.
+
 Still stuck? [Open an issue](https://github.com/Twest2/StepForge/issues/new/choose)
 and include your operating system, StepForge version (from **Settings → About**),
 and what you expected to happen.

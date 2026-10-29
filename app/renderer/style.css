@@ -1325,12 +1325,13 @@ fieldset legend {
 .account-back { align-self: flex-start; }
 
 /* GitHub Pages sharing panel and the Publish to the web dialog. */
-.gh-warning {
+.gh-warning, .storage-warning {
   display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 10px; font-size: 12px;
   border: 1px solid color-mix(in srgb, var(--caution) 55%, var(--border));
   background: color-mix(in srgb, var(--caution) 12%, var(--panel-solid));
 }
-.gh-warning p { margin: 6px 0 0; }
+.gh-warning p, .storage-warning p { margin: 6px 0 0; }
+.storage-warning[hidden] { display: none; }
 .gh-warning-icon {
   flex: none; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%;
   font-weight: 800; font-size: 12px; color: #fff; background: var(--caution);

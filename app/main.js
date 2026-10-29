@@ -54,6 +54,7 @@ const { linuxPasswordStore } = require('./platform/linux/password-store');
 const windowsStore = require('./windows-store');
 const i18n = require('../core/i18n');
 const LOCALES = require('../core/locales');
+const { syncedFolders, syncServiceFor } = require('./synced-folders');
 const PACKAGE_JSON = require(path.join(__dirname, '..', 'package.json'));
 // Linux packages launch the bundled Electron against /opt/stepforge, so
 // app.isPackaged is false there too. Only a source checkout is a dev build.
@@ -1344,18 +1345,24 @@ function setupIpc() {
 
   // settings + placeholders
   h('settings:all', () => settings.data);
-  h('storage:status', () => libraryLocation.status());
+  // `syncedBy` names the OneDrive, Dropbox, Google Drive or Nextcloud app that
+  // uploads the library or the folder it's moving to, so Settings can warn.
+  const storageStatus = (status) => {
+    const folders = syncedFolders();
+    return { ...status, syncedBy: { current: syncServiceFor(status.current, { folders }), pending: syncServiceFor(status.pending, { folders }) } };
+  };
+  h('storage:status', () => storageStatus(libraryLocation.status()));
   h('storage:choose', async () => {
     if (libraryLocation.status().locked) throw new Error('STEPFORGE_DATA_DIR controls this session. Remove that override before changing storage.');
     const result = await dialog.showOpenDialog(mainWindow, {
       title: t('Choose guide storage folder'),
       properties: ['openDirectory', 'createDirectory'],
     });
-    if (result.canceled || !result.filePaths[0]) return { cancelled: true, ...libraryLocation.status() };
-    return libraryLocation.schedule(result.filePaths[0]);
+    if (result.canceled || !result.filePaths[0]) return { cancelled: true, ...storageStatus(libraryLocation.status()) };
+    return storageStatus(libraryLocation.schedule(result.filePaths[0]));
   });
-  h('storage:reset', () => libraryLocation.schedule(libraryLocation.defaultPath));
-  h('storage:cancelMove', () => libraryLocation.cancel());
+  h('storage:reset', () => storageStatus(libraryLocation.schedule(libraryLocation.defaultPath)));
+  h('storage:cancelMove', () => storageStatus(libraryLocation.cancel()));
   h('settings:set', ({ keyPath, value }) => {
     if (keyPath === 'cloud' || keyPath.startsWith('cloud.')) throw new Error('Use the cloud sync controls in Settings → Accounts.');
     if (keyPath === 'language') throw new Error('Use Settings → General → Language.');

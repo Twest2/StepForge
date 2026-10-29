@@ -6,7 +6,11 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { GuideStore } = require('../../core/store');
 const { saveGuideFromEditor, saveStepFromEditor } = require('../../core/editor-save');
-const { makeTmpDir, rmrf, rendererI18n } = require('./helpers');
+const { makeTmpDir, rmrf, rendererI18n, TINY_PNG } = require('./helpers');
+const { Settings } = require('../../core/settings');
+const { createAgentTools } = require('../../core/agent-tools');
+const { encodePng } = require('../../core/png');
+const { createImage } = require('../../core/raster');
 
 function library(t) {
   const root = makeTmpDir('agent-editor');
@@ -71,4 +75,52 @@ test('a dirty step save preserves the parent changed by an agent move or deletio
   assert.equal(saved.revision, revision + 1);
   assert.equal(saved.title, 'Unsaved user text');
   assert.equal(saved.parentStepId, null, 'do not restore a deleted parent');
+});
+
+
+test('stale text saves preserve screenshots removed, replaced or added by an agent', async (t) => {
+  const { store, guideId, a } = library(t);
+  const dir = makeTmpDir('agent-editor-image');
+  t.after(() => rmrf(dir));
+  const png = path.join(dir, 'replacement.png');
+  fs.writeFileSync(png, encodePng(createImage(40, 30, [0, 128, 0, 255])));
+  const settings = new Settings(store.settingsDir);
+  settings.set('ai.agents', { enabled: true });
+  const tools = createAgentTools({ store, agentSettings: () => settings.get('ai.agents') });
+  const call = (name, args = {}) => tools.find((tool) => tool.name === name).handler({ guide_id: guideId, step_id: a.stepId, ...args });
+  store.replaceImages(guideId, a.stepId, { original: TINY_PNG }, { width: 1, height: 1 });
+
+  const beforeRemoval = store.getStep(guideId, a.stepId);
+  beforeRemoval.title = 'User kept typing';
+  beforeRemoval.redaction = { checked: 'check-of-the-old-image' };
+  await call('remove_screenshot');
+  const removed = saveStepFromEditor(store, guideId, beforeRemoval);
+  assert.equal(removed.title, 'User kept typing');
+  assert.equal(removed.image, null, 'a text save cannot recreate the removed screenshot');
+  assert.equal(removed.kind, 'content');
+  assert.deepEqual(removed.annotations, []);
+  assert.equal(removed.redaction, null);
+  assert.equal(store.stepImagePath(guideId, a.stepId), null);
+
+  const beforeAddition = store.getStep(guideId, a.stepId);
+  beforeAddition.title = 'Typed while an image was added';
+  await call('set_screenshot', { image_path: png });
+  const added = saveStepFromEditor(store, guideId, beforeAddition);
+  assert.equal(added.title, beforeAddition.title);
+  assert.equal(added.kind, 'image');
+  assert.deepEqual(added.image.size, { width: 40, height: 30 });
+
+  const beforeReplacement = store.getStep(guideId, a.stepId);
+  beforeReplacement.title = 'Typed during replacement';
+  beforeReplacement.annotations = [{ id: 'old', type: 'rect', x: 0, y: 0, w: 1, h: 1 }];
+  beforeReplacement.redaction = { checked: 'stale-check' };
+  fs.writeFileSync(png, TINY_PNG);
+  await call('set_screenshot', { image_path: png });
+  const replacement = store.getStep(guideId, a.stepId);
+  const saved = saveStepFromEditor(store, guideId, beforeReplacement);
+  assert.equal(saved.title, beforeReplacement.title);
+  assert.deepEqual(saved.image, replacement.image, 'keep new dimensions and paths');
+  assert.deepEqual(saved.annotations, replacement.annotations, 'do not restore annotations for the old geometry');
+  assert.deepEqual(saved.redaction, replacement.redaction, 'do not restore a check for the old pixels');
+  assert.deepEqual(saved.image.size, { width: 1, height: 1 });
 });

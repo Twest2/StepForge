@@ -78,6 +78,7 @@ const api = {
   },
   cloud: {
     setEditorDirty: (dirty) => ipcRenderer.send('cloud:editor-dirty', Boolean(dirty)),
+    setSettingsOpen: (open) => ipcRenderer.send('cloud:settings-open', Boolean(open)),
     status: invoke('cloud:status'),
     // Only the service and, for WebDAV, the server and login cross IPC. App
     // registrations stay in the main process.
@@ -102,6 +103,8 @@ const api = {
     test: invoke('cloud:test'),
     onStatus: (fn) => { const listener = (e, payload) => fn(payload); ipcRenderer.on('cloud:status', listener); return () => ipcRenderer.removeListener('cloud:status', listener); },
     onLibraryChanged: (fn) => ipcRenderer.on('cloud:library-changed', (e, payload) => fn(payload)),
+    // Global placeholders, branding or language arrived from another computer.
+    onSettingsChanged: (fn) => ipcRenderer.on('cloud:settings-changed', (e, payload) => fn(payload)),
   },
   github: {
     status: invoke('github:status'),

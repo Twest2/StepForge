@@ -348,6 +348,7 @@ class CloudAccount {
 
   listVersions() { return this.storage.listVersions(); }
   listDeletions() { return this.storage.listDeletions(); }
+  listSettings() { return this.storage.listSettings(); }
   listParts() { return this.storage.listParts(); }
   upload(file) { return this.storage.upload(file); }
   download(id, options) { return this.storage.download(id, options); }

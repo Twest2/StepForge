@@ -43,7 +43,7 @@ function account(backend, root, name) {
   });
 }
 
-test('versions, deletion records and parts round-trip with their properties', async (t) => {
+test('versions, deletion records, settings and parts round-trip with their properties', async (t) => {
   const root = makeTmpDir('folder-storage');
   t.after(() => rmrf(root));
   const backend = memoryBackend();
@@ -64,6 +64,10 @@ test('versions, deletion records and parts round-trip with their properties', as
   assert.match(versions[0].createdTime, /^\d{4}-\d\d-\d\dT/);
   assert.deepEqual((await storage.listDeletions()).map((file) => file.appProperties.state), ['deleted']);
   assert.deepEqual((await storage.listParts()).map((file) => [file.id, file.appProperties.sha, file.size]), [[part.id, sha, '4']]);
+  assert.deepEqual(await storage.listSettings(), []);
+  const settings = await storage.upload({ data: Buffer.from('zip'), name: 'StepForge settings', properties: { stepforge: 'settings-v1', hash: 'c'.repeat(64) } });
+  assert.deepEqual((await storage.listSettings()).map((file) => [file.id, file.appProperties.hash]), [[settings.id, 'c'.repeat(64)]]);
+  assert.equal((await storage.listVersions()).length, 1, 'settings aren’t guide versions');
 
   assert.deepEqual(await storage.download(version.id), big);
   assert.deepEqual((await storage.download(marker.id)).toString(), '{}');

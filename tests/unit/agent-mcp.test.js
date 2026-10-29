@@ -6,7 +6,7 @@ const { spawn } = require('node:child_process');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { makeTmpDir, rmrf } = require('./helpers');
+const { makeTmpDir, rmrf, TINY_PNG } = require('./helpers');
 const { GuideStore } = require('../../core/store');
 const { Settings } = require('../../core/settings');
 const { encodePng, decodePng } = require('../../core/png');
@@ -14,6 +14,7 @@ const { createImage, fillRect } = require('../../core/raster');
 const { createMcpServer, PROTOCOL_VERSIONS } = require('../../core/mcp-server');
 const { createAgentTools, INSTRUCTIONS } = require('../../core/agent-tools');
 const { recordAgentChange, agentChangesSince } = require('../../core/agent-changes');
+const { listSnapshots, restoreSnapshot, pruneSnapshots, createSnapshot, createAgentSnapshot } = require('../../core/snapshots');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 
@@ -49,18 +50,22 @@ function makeLibrary(t, agents = { enabled: true, screenshots: true }) {
   return { dir, store, settings, guide, first, second, tools, call, json, changes };
 }
 
-test('agents get read, rewrite and add tools only: nothing deletes, reorders, or creates steps', (t) => {
+test('agents get every guide tool except changing or deleting placeholders', (t) => {
   const { tools } = makeLibrary(t);
   assert.deepEqual(tools.map((tool) => tool.name), [
-    'list_guides', 'get_guide', 'get_step', 'update_guide', 'update_step', 'create_placeholder', 'add_annotations',
+    'list_guides', 'get_guide', 'get_step', 'create_guide', 'update_guide', 'delete_guide',
+    'create_step', 'update_step', 'move_step', 'delete_step', 'delete_blocks', 'set_screenshot', 'remove_screenshot',
+    'create_placeholder', 'add_annotations', 'delete_annotations',
     // Behind their own switch (tests/unit/agent-brand-tools.test.js).
     'list_brand_profiles', 'get_brand_profile', 'create_brand_profile', 'update_brand_profile', 'set_brand_file', 'set_active_brand_profile',
   ]);
   for (const tool of tools) {
     assert.equal(tool.inputSchema.type, 'object');
-    assert.ok(!/delete|remove|add_step|create_guide|create_step|reorder/i.test(tool.name));
+    assert.ok(!/placeholder/.test(tool.name) || tool.name === 'create_placeholder');
+    assert.equal(tool.annotations.destructiveHint === true, /^(delete|remove|set_screenshot)/.test(tool.name), tool.name);
   }
-  assert.match(INSTRUCTIONS, /cannot reorder steps, or create or delete guides, steps/);
+  assert.match(INSTRUCTIONS, /snapshots the guide before each of these/);
+  assert.match(INSTRUCTIONS, /cannot change or delete placeholders/);
 });
 
 test('every tool refuses, with a fix the user can act on, while agent access is off', async (t) => {
@@ -106,7 +111,7 @@ test('a step screenshot comes with its blurs filled, and not at all when screens
   assert.match(textOnly.content[1].text, /Screenshots are turned off/);
 });
 
-test('agents rewrite step and guide text; blocks merge by id and are never deleted', async (t) => {
+test('agents rewrite step and guide text; update_step merges blocks by id and never deletes them', async (t) => {
   const { call, json, guide, first, store, changes } = makeLibrary(t);
   const before = store.getStep(guide.guideId, first.stepId);
   const result = json(await call('update_step', {
@@ -328,4 +333,197 @@ test('on Windows, `--mcp` reruns StepForge as plain Node so piped stdin works', 
   assert.deepEqual(run({ platform: 'linux', electron: true }).required, ['./mcp']);
   assert.deepEqual(run({ platform: 'win32', electron: false }).required, ['./mcp']);
   assert.deepEqual(run({ platform: 'win32', electron: true, argv: ['StepForge.exe'] }).required, ['./main']);
+});
+
+/** The guide's agent snapshots, oldest first. */
+const agentSnapshots = (store, guideId) => listSnapshots(store, guideId).filter((name) => name.includes('before_agent_')).reverse();
+
+/** A PNG file of `width` x `height` in `color`, in a fresh folder outside the library. */
+function pngFile(t, width, height, color) {
+  const dir = makeTmpDir('agent-png');
+  t.after(() => rmrf(dir));
+  const file = path.join(dir, 'shot.png');
+  fs.writeFileSync(file, encodePng(createImage(width, height, color)));
+  return file;
+}
+
+test('agents create guides and steps, nested where they land, with a snapshot before each step', async (t) => {
+  const { call, json, store, changes } = makeLibrary(t);
+  const made = json(await call('create_guide', { title: '  Reset a  password ', description: 'For **staff**.' }));
+  assert.equal(made.title, 'Reset a password');
+  assert.equal(store.getGuide(made.guide_id).descriptionHtml, '<p>For <strong>staff</strong>.</p>');
+  assert.match((await call('create_guide', { title: ' ' })).content[0].text, /Give the guide a title/);
+
+  const id = made.guide_id;
+  const shot = pngFile(t, 30, 20, [0, 128, 0, 255]);
+  const first = json(await call('create_step', { guide_id: id, title: 'Open Settings', image_path: shot }));
+  assert.equal(first.number, '1');
+  assert.deepEqual(first.screenshot_size, { width: 30, height: 20 });
+  assert.ok(store.getStep(id, first.step_id).image, 'the PNG became the screenshot');
+  assert.ok(decodePng(fs.readFileSync(store.stepImagePath(id, first.step_id, 'original'))).width === 30);
+  const sub = json(await call('create_step', { guide_id: id, title: 'Choose Security', parent_step_id: first.step_id }));
+  assert.equal(sub.number, '1.1');
+  assert.equal(store.getStep(id, sub.step_id).kind, 'content', 'a text-only step');
+  // Right after a step whose substeps follow, a new step goes under it.
+  assert.equal(json(await call('create_step', { guide_id: id, title: 'Sign in', after_step_id: first.step_id })).number, '1.1');
+  // After the last substep, it's another substep; at the top, a top-level step.
+  assert.equal(json(await call('create_step', { guide_id: id, title: 'Save', after_step_id: sub.step_id })).number, '1.3');
+  assert.equal(json(await call('create_step', { guide_id: id, title: 'Go to the portal', after_step_id: null })).number, '1');
+
+  const broken = await call('create_step', { guide_id: id, title: 'x', after_step_id: null, parent_step_id: first.step_id });
+  assert.match(broken.content[0].text, /break the step numbering/);
+  assert.match((await call('create_step', { guide_id: id, title: 'x', image_path: 'shot.png' })).content[0].text, /full path/);
+  const notPng = path.join(path.dirname(shot), 'notes.txt');
+  fs.writeFileSync(notPng, 'hello');
+  assert.match((await call('create_step', { guide_id: id, title: 'x', image_path: notPng })).content[0].text, /can't read .* as a PNG/);
+
+  // One snapshot per step added, none for refused calls or the new guide.
+  const snaps = agentSnapshots(store, id);
+  assert.equal(snaps.length, 5);
+  assert.ok(snaps.every((name) => name.endsWith('-before_agent_adds_a_step.snapshot')));
+  restoreSnapshot(store, id, snaps[0]);
+  assert.deepEqual(store.getGuide(id).stepsOrder, [], 'the first snapshot is the empty guide');
+  assert.ok(changes.every((changed) => changed === id));
+});
+
+test('agents delete steps after a snapshot that brings them back, screenshot and all', async (t) => {
+  const { call, guide, first, second, store, changes } = makeLibrary(t);
+  const id = guide.guideId;
+  const third = store.addStep(id, { title: 'Grandchild' });
+  await call('update_step', { guide_id: id, step_id: second.stepId, parent_step_id: first.stepId });
+  await call('update_step', { guide_id: id, step_id: third.stepId, parent_step_id: second.stepId });
+
+  const result = await call('delete_step', { guide_id: id, step_id: second.stepId });
+  assert.match(result.content[0].text, /Deleted "Paste the answer"\. StepForge saved a snapshot/);
+  assert.deepEqual(store.getGuide(id).stepsOrder, [first.stepId, third.stepId]);
+  assert.equal(store.getStep(id, third.stepId).parentStepId, first.stepId, 'its substep moves up one level, not to the top');
+
+  await call('delete_step', { guide_id: id, step_id: first.stepId });
+  assert.equal(fs.existsSync(store.stepDir(id, first.stepId)), false);
+  const [beforeSecond, beforeFirst] = agentSnapshots(store, id);
+  assert.match(beforeSecond, /before_agent_deletes_step_1_1\.snapshot$/);
+  assert.match(beforeFirst, /before_agent_deletes_step_1\.snapshot$/);
+
+  restoreSnapshot(store, id, beforeFirst);
+  assert.deepEqual(store.getGuide(id).stepsOrder, [first.stepId, third.stepId]);
+  assert.equal(store.getStep(id, first.stepId).title, 'Screen capture');
+  assert.ok(fs.existsSync(store.stepImagePath(id, first.stepId, 'original')), 'the screenshot is back');
+  assert.ok(changes.length >= 2);
+});
+
+test('agents move steps with their substeps, with a snapshot before each move', async (t) => {
+  const { call, json, guide, first, second, store } = makeLibrary(t);
+  const id = guide.guideId;
+  const third = store.addStep(id, { title: 'Third' });
+  await call('update_step', { guide_id: id, step_id: second.stepId, parent_step_id: first.stepId });
+
+  // Step 1 (with 1.1) goes after step 2.
+  const moved = json(await call('move_step', { guide_id: id, step_id: first.stepId, after_step_id: third.stepId }));
+  assert.deepEqual(moved.steps.map((s) => [s.step_id, s.number]), [[third.stepId, '1'], [first.stepId, '2'], [second.stepId, '2.1']]);
+  // A substep goes to the top, made top-level.
+  json(await call('move_step', { guide_id: id, step_id: second.stepId, after_step_id: null, parent_step_id: null }));
+  assert.deepEqual(store.getGuide(id).stepsOrder, [second.stepId, third.stepId, first.stepId]);
+  assert.equal(store.getStep(id, second.stepId).parentStepId, null);
+
+  assert.match((await call('move_step', { guide_id: id, step_id: first.stepId })).content[0].text, /Give after_step_id/);
+  assert.match((await call('move_step', { guide_id: id, step_id: first.stepId, after_step_id: first.stepId })).content[0].text, /own substeps/);
+  assert.match((await call('move_step', { guide_id: id, step_id: third.stepId, after_step_id: null, parent_step_id: first.stepId })).content[0].text, /break the step numbering/);
+
+  const snaps = agentSnapshots(store, id);
+  assert.equal(snaps.length, 2);
+  restoreSnapshot(store, id, snaps[0]);
+  assert.deepEqual(store.getGuide(id).stepsOrder, [first.stepId, second.stepId, third.stepId]);
+  assert.equal(store.getStep(id, second.stepId).parentStepId, first.stepId);
+});
+
+test('agents replace and remove screenshots, and a snapshot gets the old one back', async (t) => {
+  const { call, json, guide, first, second, store } = makeLibrary(t);
+  const id = guide.guideId;
+  const oldBytes = fs.readFileSync(store.stepImagePath(id, first.stepId, 'original'));
+  await call('add_annotations', { guide_id: id, step_id: first.stepId, annotations: [{ type: 'rect', x: 12, y: 2, width: 4, height: 4 }] });
+
+  const replaced = json(await call('set_screenshot', { guide_id: id, step_id: first.stepId, image_path: pngFile(t, 40, 30, [0, 0, 0, 255]) }));
+  assert.deepEqual(replaced.screenshot_size, { width: 40, height: 30 });
+  assert.equal(replaced.title, 'Screen capture', 'the text stays');
+  assert.deepEqual(replaced.annotations.map((a) => a.type), ['blur', 'rect'], 'drawn annotations stay');
+  // A step without a screenshot gets one.
+  assert.equal(json(await call('set_screenshot', { guide_id: id, step_id: second.stepId, image_path: pngFile(t, 8, 8, [9, 9, 9, 255]) })).has_screenshot, true);
+  assert.equal(store.getStep(id, second.stepId).kind, 'image');
+
+  const removed = json(await call('remove_screenshot', { guide_id: id, step_id: first.stepId }));
+  assert.equal(removed.has_screenshot, false);
+  assert.equal(removed.annotations, undefined);
+  const bare = store.getStep(id, first.stepId);
+  assert.deepEqual([bare.image, bare.annotations, bare.kind], [null, [], 'content']);
+  assert.deepEqual(fs.readdirSync(store.stepDir(id, first.stepId)), ['step.json']);
+  assert.match((await call('remove_screenshot', { guide_id: id, step_id: first.stepId })).content[0].text, /no screenshot/);
+  assert.match((await call('set_screenshot', { guide_id: id, step_id: first.stepId, image_path: '/no/such/file.png' })).content[0].text, /There's no file/);
+
+  const snaps = agentSnapshots(store, id);
+  assert.equal(snaps.length, 3);
+  assert.match(snaps[2], /before_agent_removes_the_screenshot_of_step_1\.snapshot$/);
+  restoreSnapshot(store, id, snaps[0]);
+  const back = store.getStep(id, first.stepId);
+  assert.ok(fs.readFileSync(store.stepImagePath(id, first.stepId, 'original')).equals(oldBytes));
+  assert.deepEqual(back.annotations.map((a) => a.type), ['blur', 'rect']);
+});
+
+test('agents delete blocks and annotations, but never blurs, with a snapshot first', async (t) => {
+  const { call, json, guide, first, store } = makeLibrary(t);
+  const id = guide.guideId;
+  await call('update_step', { guide_id: id, step_id: first.stepId, blocks: [{ kind: 'code', code: 'ls' }] });
+  const drawn = json(await call('add_annotations', {
+    guide_id: id, step_id: first.stepId,
+    annotations: [{ type: 'rect', x: 12, y: 2, width: 4, height: 4 }, { type: 'arrow', from: [0, 0], to: [10, 5] }],
+  })).added;
+  const codeId = store.getStep(id, first.stepId).codeBlocks[0].id;
+
+  const afterBlocks = json(await call('delete_blocks', { guide_id: id, step_id: first.stepId, block_ids: ['tb1'] }));
+  assert.deepEqual(afterBlocks.blocks.map((b) => b.id), [codeId]);
+  assert.match((await call('delete_blocks', { guide_id: id, step_id: first.stepId, block_ids: ['tb1'] })).content[0].text, /has no block "tb1"/);
+
+  const blurRefused = await call('delete_annotations', { guide_id: id, step_id: first.stepId, annotation_ids: [drawn[0].id, 'b1'] });
+  assert.equal(blurRefused.isError, true);
+  assert.match(blurRefused.content[0].text, /"b1" is a blur/);
+  assert.equal(store.getStep(id, first.stepId).annotations.length, 3, 'nothing is deleted when one is a blur');
+  const afterAnnotations = json(await call('delete_annotations', { guide_id: id, step_id: first.stepId, annotation_ids: [drawn[0].id] }));
+  assert.equal(afterAnnotations.annotations_on_step, 2);
+  assert.deepEqual(store.getStep(id, first.stepId).annotations.map((a) => a.type), ['blur', 'arrow']);
+
+  // Refused calls take no snapshot.
+  const snaps = agentSnapshots(store, id);
+  assert.equal(snaps.length, 2);
+  restoreSnapshot(store, id, snaps[0]);
+  const back = store.getStep(id, first.stepId);
+  assert.deepEqual(back.textBlocks.map((b) => b.id), ['tb1']);
+  assert.equal(back.annotations.length, 3);
+});
+
+test('agents move guides to the Trash with a snapshot, and the app hears about it', async (t) => {
+  const { call, guide, store, changes } = makeLibrary(t);
+  const result = await call('delete_guide', { guide_id: guide.guideId });
+  assert.match(result.content[0].text, /Moved "Lab 5" to the Trash/);
+  assert.equal(store.guideExists(guide.guideId), false);
+  assert.deepEqual(changes, [guide.guideId]);
+  const [trashed] = store.listTrash();
+  assert.equal(store.restoreFromTrash(trashed), guide.guideId);
+  assert.equal(agentSnapshots(store, guide.guideId).length, 1, 'the snapshot comes back with the guide');
+  assert.equal(store.getGuide(guide.guideId).stepsOrder.length, 2);
+  assert.match((await call('delete_guide', { guide_id: 'nope' })).content[0].text, /No guide with id/);
+});
+
+test('automatic pruning keeps agent snapshots, which keep their own newest 50', (t) => {
+  const dir = makeTmpDir('agent-snapshots');
+  t.after(() => rmrf(dir));
+  const store = new GuideStore(dir);
+  const { guideId } = store.createGuide({ title: 'G' });
+  store.addStep(guideId, { title: 'S' }, TINY_PNG, { width: 1, height: 1 });
+  createAgentSnapshot(store, guideId, 'deletes step 1');
+  for (let i = 0; i < 3; i++) createSnapshot(store, guideId, { label: 'auto' });
+  pruneSnapshots(store, guideId, 1);
+  assert.equal(listSnapshots(store, guideId).length, 2, 'one automatic snapshot and the agent one');
+  for (let i = 0; i < 55; i++) createAgentSnapshot(store, guideId, `deletes step ${i}`);
+  const agents = agentSnapshots(store, guideId);
+  assert.equal(agents.length, 50);
+  assert.match(agents[0], /deletes_step_5\.snapshot$/, 'the oldest go first');
 });

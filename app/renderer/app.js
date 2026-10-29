@@ -144,10 +144,25 @@ class StepForgeApp {
     await ensurePendingBrandRasters(api);
   }
 
-  /** An AI agent rewrote a guide's text: show it without losing the user's unsaved edits. */
+  /** An AI agent changed a guide: show it without losing the user's unsaved edits. */
   async onGuideChangedByAgent(payload) {
     if (!payload || !payload.guideId) return;
-    if (this.state.view === 'editor' && this.editor.guideId === payload.guideId) {
+    const open = this.state.view === 'editor' && this.editor.guideId === payload.guideId;
+    if (payload.deleted) {
+      if (open) {
+        // Saving now would write into a guide that is in the Trash.
+        this.editor.saveStepDebounced.cancel();
+        this.editor.saveGuideDebounced.cancel();
+        this.editor.pendingSave = false;
+        this.editor.pendingGuideSave = false;
+        await this.showLibrary();
+        toast('An AI agent moved this guide to the Trash. You can restore it from there.', { ms: 6000 });
+      } else if (this.state.view === 'library') {
+        await this.refreshLibrary();
+      }
+      return;
+    }
+    if (open) {
       await this.editor.reloadAfterOutsideChange();
       toast('An AI agent updated this guide.');
     } else if (this.state.view === 'library') {

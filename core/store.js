@@ -398,10 +398,13 @@ class GuideStore {
 
   deleteStep(guideId, stepId) {
     const guide = this.getGuide(guideId);
-    // Re-parent substeps of the deleted step to the top level.
-    for (const [, step] of this.listSteps(guideId)) {
+    // Substeps of the deleted step move up a level, to its parent (or the
+    // top level), so the outline still reads top to bottom.
+    const steps = this.listSteps(guideId);
+    const parentId = steps.get(stepId)?.parentStepId || null;
+    for (const [, step] of steps) {
       if (step.parentStepId === stepId) {
-        step.parentStepId = null;
+        step.parentStepId = parentId;
         writeJsonSync(path.join(this.stepDir(guideId, step.stepId), 'step.json'), step);
       }
     }

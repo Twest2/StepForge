@@ -687,7 +687,13 @@ function watchAgentChanges() {
     }
     seenAt = changed.latest;
     for (const guideId of changed.guideIds) {
-      if (!store.guideExists(guideId)) continue;
+      if (!store.guideExists(guideId)) {
+        // The agent moved it to the Trash. Like any local Trash, that stays
+        // on this computer: cloud sync neither deletes nor restores it.
+        searchIndex.removeGuide(guideId);
+        sendToRenderer('guide:changed-by-agent', { guideId, deleted: true });
+        continue;
+      }
       reindex(guideId);
       sendToRenderer('guide:changed-by-agent', { guideId });
     }
@@ -860,7 +866,13 @@ function setupIpc() {
   h('guide:quality', ({ guideId }) => qualityFindings(buildRenderAst(store, guideId, {
     globals: settings.getGlobalPlaceholders(), reviewDays: exportReviewDays(),
   }), stepNumberMap(orderedSteps(guideId))), { validate: (a) => c.id(a.guideId) });
+  // An AI agent may have moved the guide to the Trash meanwhile; a late save
+  // from the editor must not recreate it, which would also block its restore.
+  const requireGuide = (guideId) => {
+    if (!store.guideExists(guideId)) throw new Error('This guide was moved to the Trash.');
+  };
   h('guide:save', ({ guide }) => {
+    requireGuide(guide.guideId);
     const saved = store.saveGuide(guide);
     reindex(guide.guideId);
     return saved;
@@ -875,6 +887,7 @@ function setupIpc() {
     validate: (a) => c.id(a.guideId) && c.optionalBase64(a.imageBase64) && c.optionalNumber(a.position, 0, 100000),
   });
   h('step:save', ({ guideId, step }) => {
+    requireGuide(guideId);
     const saved = store.saveStep(guideId, step);
     reindex(guideId);
     return saved;

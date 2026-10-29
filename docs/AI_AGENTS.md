@@ -17,18 +17,36 @@ window opens, and nothing runs when no agent is connected.
 
 | An agent can | An agent can't |
 | --- | --- |
-| List and read your guides | Create or delete guides or steps |
-| See each step's screenshot, with your blurs already filled in | Reorder steps |
-| Rewrite a guide's title and description | Change or delete screenshots |
-| Rewrite each step's title, description, and blocks, and add notes, warnings, tips, and code | Delete blocks, annotations, or placeholders |
-| Make a step a substep of an earlier step | Change a placeholder you already have |
-| Add guide and global placeholders, and use them as `[[Name]]` | Read anything outside your StepForge library, except an image or font file you ask it to add to a brand profile |
-| Draw on screenshots: rectangles, ovals, lines, arrows, text, callouts, numbered badges, blurs, highlights, magnifiers, and cursors | Delete brand profiles |
+| List and read your guides | Change a placeholder you already have, or delete one |
+| See each step's screenshot, with your blurs already filled in | Delete blurs, or see what they hide |
+| Create guides, and move them to the Trash | Delete brand profiles |
+| Rewrite a guide's title and description | Read anything outside your StepForge library, except a PNG you ask it to use as a screenshot, or an image or font file you ask it to add to a brand profile |
+| Add, delete, and reorder steps, and make a step a substep of an earlier step | |
+| Rewrite each step's title, description, and blocks, add notes, warnings, tips, and code, and delete blocks | |
+| Replace a step's screenshot with a PNG file you point it to, or remove the screenshot | |
+| Add guide and global placeholders, and use them as `[[Name]]` | |
+| Draw on screenshots: rectangles, ovals, lines, arrows, text, callouts, numbered badges, blurs, highlights, magnifiers, and cursors. Delete what's drawn, except blurs | |
 | If you allow it: make and change [brand profiles](BRANDING.md#let-an-ai-agent-set-up-your-brand), add a logo, banner or font file you point it to, and choose the active profile | |
 
-Every step comes from a real capture, so an agent works around your
-screenshots: it writes the text, organizes the steps, and adds annotations on
-top, but the screenshots themselves never change.
+Most of the time an agent works around your screenshots: it writes the text,
+organizes the steps, and adds annotations on top. When it does more than that,
+StepForge keeps a way back.
+
+### Undoing what an agent did
+
+Before an agent deletes, moves, or adds a step, replaces or removes a
+screenshot, or deletes blocks or annotations, StepForge saves a snapshot of the
+guide. To undo the change, open the guide and choose **More → Backups &
+snapshots**. Each agent snapshot is named for what the agent was about to do,
+for example "before agent deletes step 3". **Restore** the one from just before
+the change you want to undo. Restoring snapshots the guide first, so a restore
+can be undone too.
+
+Automatic backups don't push agent snapshots out. StepForge keeps the newest 50
+agent snapshots of each guide.
+
+A guide an agent deletes goes to the Trash, like one you delete. Restore it
+from there.
 
 ## 1. Turn on agent access
 
@@ -71,7 +89,8 @@ of seconds. If you're typing in the same step at that moment, your edit wins.
 
 Before you share the guide, read what the agent wrote. To undo a big rewrite,
 use **More → Backups & snapshots**. Annotations an agent drew can be moved or
-deleted like your own.
+deleted like your own. If you have the guide open when an agent moves it to
+the Trash, StepForge takes you back to the library.
 
 ## Privacy
 
@@ -81,7 +100,9 @@ its AI provider**, such as Anthropic for Claude or OpenAI for Codex. Their
 privacy terms apply to that data.
 
 - Screenshots are shared with your blurs filled in, so the agent never sees
-  what you hid.
+  what you hid. Agents can't delete blurs.
+- An agent reads a file outside your library only when it uses one as a
+  screenshot or adds one to a brand profile, and only the file it names.
 - Agents never get the text you typed while recording, field values, or the
   text StepForge read from the screen.
 - Turning off **Let AI agents edit your guides** cuts off every connected

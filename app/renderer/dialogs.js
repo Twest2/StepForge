@@ -607,6 +607,24 @@ function makeUpdateCheck(api, { openLink, flushEdits = null }) {
   return { checkUpdatesBtn, updateStatus };
 }
 
+/**
+ * Settings → Guide storage: the warning for a library, or a pending move, in
+ * a folder that OneDrive, Dropbox, Google Drive or Nextcloud syncs
+ * (`syncedBy` from storage:status, app/synced-folders.js). Null when there's
+ * nothing to warn about.
+ */
+function storageWarning(info) {
+  const syncedBy = (info && info.syncedBy) || {};
+  const service = info && info.pending ? syncedBy.pending : syncedBy.current;
+  if (!service) return null;
+  const subject = info.pending ? 'The folder you chose is' : 'Your guides are';
+  return {
+    title: `${subject} in a folder that ${service} syncs`,
+    text: `${service} uploads every guide and screenshot in it, even with StepForge’s sync turned off, and the two can get in each other’s way if you use both. `
+      + `Choose a folder ${service} doesn’t sync. To keep guides in step across computers, use StepForge’s own sync in Settings → Accounts.`,
+  };
+}
+
 function showSettingsDialog({
   api,
   settings,
@@ -630,6 +648,7 @@ function showSettingsDialog({
     const chooseStorageBtn = el('button', { type: 'button' }, 'Choose folder…');
     const resetStorageBtn = el('button', { type: 'button' }, 'Use default');
     const cancelStorageBtn = el('button', { type: 'button', hidden: true }, 'Cancel pending move');
+    const storageWarningNote = el('div.storage-warning', { role: 'note', hidden: true });
     let storageInfo = null;
     const refreshStorage = async () => {
       try {
@@ -642,6 +661,12 @@ function showSettingsDialog({
         if (storageInfo.error) notes.push(storageInfo.error);
         storageNote.textContent = notes.join(' ');
         storageNote.classList.toggle('error', Boolean(storageInfo.error));
+        const warning = storageWarning(storageInfo);
+        storageWarningNote.hidden = !warning;
+        storageWarningNote.replaceChildren(...(warning ? [
+          el('span.gh-warning-icon', { 'aria-hidden': 'true' }, '!'),
+          el('div', {}, el('strong', {}, warning.title), el('p', {}, warning.text)),
+        ] : []));
         chooseStorageBtn.disabled = storageInfo.locked;
         resetStorageBtn.disabled = storageInfo.locked || storageInfo.current === storageInfo.defaultPath;
         cancelStorageBtn.hidden = !storageInfo.pending;
@@ -871,6 +896,7 @@ function showSettingsDialog({
           settingRow('Code theme', 'Syntax colors for code blocks in PDF, Word, HTML and Confluence exports.', codeTheme)),
         settingsCard('Guide storage',
           el('div.settings-storage', {}, storagePath, storageNote),
+          storageWarningNote,
           el('div.settings-actions', {}, chooseStorageBtn, resetStorageBtn, cancelStorageBtn),
           el('div.setting-desc', {}, 'Choose an empty folder. StepForge copies and verifies your library, then switches to it the next time it starts. The old library is kept as a backup.')),
         settingsCard('Trash',
@@ -1810,6 +1836,7 @@ window.StepForgeDialogs = {
   showFindReplace,
   showSettingsDialog,
   makeUpdateCheck,
+  storageWarning,
   showExportDialog,
   showLinkedGuideDialog,
   showInfoDialog,

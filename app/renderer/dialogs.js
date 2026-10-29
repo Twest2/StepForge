@@ -683,10 +683,17 @@ function showSettingsDialog({
     ]);
     const spellcheck = el('input', { type: 'checkbox', checked: Boolean(settings.spellcheck) });
     // Each language is listed in its own name, so anyone can find theirs.
+    // Translations are new, so every language but English is marked Beta.
     const language = makeSelect(settings.language || 'system', [
       { value: 'system', label: t('System default') },
-      ...StepForgeI18n.LANGUAGES.map((l) => ({ value: l.code, label: l.name })),
+      ...StepForgeI18n.LANGUAGES.map((l) => ({ value: l.code, label: l.code === 'en' ? l.name : `${l.name} (${t('Beta')})` })),
     ]);
+    const languageBeta = betaBadge();
+    const syncLanguageBeta = () => {
+      languageBeta.hidden = StepForgeI18n.resolveLanguage(language.value, navigator.languages) === 'en';
+    };
+    language.addEventListener('change', syncLanguageBeta);
+    syncLanguageBeta();
     const delayMs = makeInput(settings.capture?.delayMs ?? 0, 'number', { min: 0, step: 50 });
     // An older settings file may still hold 'region', which recording always
     // treated as fullscreen. Show what actually happens.
@@ -885,7 +892,8 @@ function showSettingsDialog({
         settingsCard(t('Guide reviews'),
           settingRow(t('Flag guides for review'), t('Guides that haven’t been saved or marked verified for this long show “May need review” in the library. Each guide can change this in Guide information.'), reviewDefault)),
         settingsCard(t('Language'),
-          settingRow(t('Language'), t('The language of StepForge’s menus, buttons and messages. Exported guides stay in English.'), language)),
+          settingRow(t('Language'), t('The language of StepForge’s menus, buttons and messages. Exported guides stay in English.'),
+            el('div.row', {}, language, languageBeta))),
       ] },
       { id: 'branding', label: t('Branding'), description: t('Customize how exported guides appear.'), content: [brandingPanel.node] },
       { id: 'capture', label: t('Capture'), description: t('How StepForge records steps.'), content: [

@@ -8,10 +8,8 @@ const { readJsonIfExists, writeJsonSync } = require('./util');
 // old default folder (%APPDATA%\stepforge) is also Electron's profile, whose
 // browser files must stay. temp/ and the ocr/ cache are rebuilt as needed.
 const LIBRARY_ENTRIES = ['settings', 'library', 'shared-links', 'cloud'];
-// After the automatic move off the old Windows default, its copy is kept this
-// long in case anything went wrong, then removed.
-const MIGRATED_COPY_DAYS = 30;
-const DAY_MS = 24 * 60 * 60 * 1000;
+// The old copy stays until the user removes it: another install may still
+// be writing there, so its age cannot make automatic deletion safe.
 
 const hasLibrary = (dir) => Boolean(dir) && ['library', 'settings'].some((name) => fs.existsSync(path.join(dir, name)));
 const samePath = (a, b) => {
@@ -53,29 +51,12 @@ class LibraryLocation {
     this.state = { ...this.state, pending: { source: this.legacyPath, target: this.defaultPath, automatic: true } };
     return true;
   }
-  /**
-   * Removes the old default folder's copy once the automatic move is
-   * MIGRATED_COPY_DAYS old, and only StepForge's own entries in it. With
-   * `allowDelete` false (the Microsoft Store app, whose old folder belongs to
-   * the installer version) it's left alone.
-   */
-  removeMigratedCopy({ now = Date.now(), allowDelete = true } = {}) {
-    const migrated = this.state.migrated;
-    if (!migrated || !allowDelete || this.override) return false;
-    if (now - Date.parse(migrated.at) < MIGRATED_COPY_DAYS * DAY_MS) return false;
-    if (!migrated.from || samePath(migrated.from, this.status().current)) return false;
-    for (const name of [...LIBRARY_ENTRIES, 'temp', 'ocr']) fs.rmSync(path.join(migrated.from, name), { recursive: true, force: true });
-    const { migrated: _done, ...rest } = this.state;
-    this.state = rest;
-    writeJsonSync(this.file, this.state);
-    return true;
-  }
-  validate(source, target) {
+  validate(source, target, { allowNonEmpty = false } = {}) {
     fs.mkdirSync(target, { recursive: true });
     const from = fs.realpathSync(source), to = fs.realpathSync(target);
     const nested = (a, b) => { const rel = path.relative(a, b); return !rel || (!rel.startsWith(`..${path.sep}`) && rel !== '..' && !path.isAbsolute(rel)); };
     if (nested(from, to) || nested(to, from)) throw new Error('Choose a separate folder outside the current library.');
-    if (fs.readdirSync(to).length) throw new Error('Choose an empty folder. Existing files will not be overwritten.');
+    if (!allowNonEmpty && fs.readdirSync(to).length) throw new Error('Choose an empty folder. Existing files will not be overwritten.');
     fs.accessSync(to, fs.constants.W_OK);
     return { source: from, target: to };
   }
@@ -112,25 +93,46 @@ class LibraryLocation {
   applyPending() {
     if (this.override || !this.state.pending) return this.status().current;
     const automatic = this.state.pending.automatic === true;
-    let holder;
+    let holder, installedTarget;
     try {
-      const { source, target } = this.validate(this.state.pending.source, this.state.pending.target);
+      const remembered = automatic && typeof this.state.pending.copiedManifest === 'string'
+        ? this.state.pending.copiedManifest : null;
+      const { source, target } = this.validate(this.state.pending.source, this.state.pending.target, { allowNonEmpty: remembered !== null });
       const before = this.manifest(source);
-      // Copy into a folder that doesn't exist yet: newer Node versions refuse
-      // to copy onto an existing directory, even an empty one, with
-      // errorOnExist. The temporary holder keeps the name unique.
-      holder = fs.mkdtempSync(path.join(path.dirname(target), '.stepforge-move-'));
-      const staging = path.join(holder, 'library');
-      fs.mkdirSync(staging);
-      for (const name of LIBRARY_ENTRIES) {
-        if (fs.existsSync(path.join(source, name))) fs.cpSync(path.join(source, name), path.join(staging, name), { recursive: true, force: false, errorOnExist: true });
+      const recoverCopy = remembered !== null && fs.readdirSync(target).length > 0;
+      if (recoverCopy) {
+        // A previous attempt installed its verified copy, but could neither
+        // commit the location file nor move the copy back. Adopt it only if
+        // neither side has changed since that attempt.
+        if (before !== remembered || this.manifest(target) !== remembered) {
+          throw Object.assign(new Error('A previous migration left two different library copies. Both have been kept; choose an empty folder in Guide storage or combine the copies manually before trying again.'), { code: 'MIGRATION_DIVERGED' });
+        }
+      } else {
+        // Copy into a new staging folder, on the destination's filesystem.
+        holder = fs.mkdtempSync(path.join(path.dirname(target), '.stepforge-move-'));
+        const staging = path.join(holder, 'library');
+        fs.mkdirSync(staging);
+        for (const name of LIBRARY_ENTRIES) {
+          if (fs.existsSync(path.join(source, name))) fs.cpSync(path.join(source, name), path.join(staging, name), { recursive: true, force: false, errorOnExist: true });
+        }
+        if (before !== this.manifest(staging) || before !== this.manifest(source)) throw new Error('Library verification failed; the original is unchanged.');
+        if (automatic) {
+          // Record ownership and exact content before installing the copy,
+          // so a failed rollback (or interrupted startup) can be recovered.
+          this.state = { ...this.state, pending: { ...this.state.pending, copiedManifest: before } };
+          writeJsonSync(this.file, this.state);
+        }
+        fs.rmdirSync(target); fs.renameSync(staging, target); installedTarget = target;
       }
-      if (before !== this.manifest(staging) || before !== this.manifest(source)) throw new Error('Library verification failed; the original is unchanged.');
-      fs.rmdirSync(target); fs.renameSync(staging, target); fs.rmdirSync(holder); holder = null;
       const previous = this.state;
-      this.state = automatic ? { current: target, migrated: { from: source, at: new Date().toISOString() } } : { current: target, backup: source };
+      this.state = automatic ? { current: target, backup: source, migrated: { from: source, at: new Date().toISOString() } } : { current: target, backup: source };
       try { writeJsonSync(this.file, this.state); }
       catch (error) { this.state = previous; throw error; }
+      // The switch is durable now. A staging-directory cleanup failure must
+      // not turn a successful move into a reported failure.
+      installedTarget = null;
+      try { if (holder) fs.rmdirSync(holder); } catch { /* an empty staging directory can be removed later */ }
+      holder = null;
       if (automatic) return target;
       // Keep one clearly named backup after the verified move; never purge data.
       // Not when this bookkeeping file lives in the old folder (Windows keeps
@@ -144,13 +146,24 @@ class LibraryLocation {
       }
       return target;
     } catch (error) {
-      if (holder) fs.rmSync(holder, { recursive: true, force: true });
+      // If the location file could not be committed, the old library is
+      // still authoritative. Restore an empty destination so the next start
+      // can retry, rather than refusing our own verified copy as another
+      // installation's library.
+      if (installedTarget) {
+        try {
+          fs.renameSync(installedTarget, path.join(holder, 'library'));
+          fs.mkdirSync(installedTarget);
+        } catch { /* preserve both copies if rolling back is unavailable */ }
+      }
+      try { if (holder) fs.rmSync(holder, { recursive: true, force: true }); } catch { /* preserve a locked staging copy */ }
       if (automatic) {
-        // Nothing changed: the old folder stays current, and the next start
-        // tries again.
+        // The old folder stays current. A durable checkpoint lets the next
+        // start retry safely, including after an unsuccessful rollback.
         const { source } = this.state.pending;
         delete this.state.pending;
-        this.error = `Your guides are still in ${source}: StepForge couldn't move them to ${this.defaultPath} (${error.message}). It tries again the next time it starts.`;
+        const recoveryNeeded = error.code === 'MIGRATION_DIVERGED';
+        this.error = `Your guides are still in ${source}: StepForge couldn't move them to ${this.defaultPath} (${error.message}).${recoveryNeeded ? '' : ' It tries again the next time it starts.'}`;
         return this.status().current;
       }
       this.error = `The library was not moved: ${error.message}`;
@@ -158,4 +171,4 @@ class LibraryLocation {
     }
   }
 }
-module.exports = { LibraryLocation, LIBRARY_ENTRIES, MIGRATED_COPY_DAYS };
+module.exports = { LibraryLocation, LIBRARY_ENTRIES };

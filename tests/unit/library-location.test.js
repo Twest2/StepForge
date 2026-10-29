@@ -179,28 +179,60 @@ test('a move that fails its check changes nothing and is tried again at the next
   assert.equal(next.applyPending(), home);
 });
 
-test('the old copy is removed after 30 days, only StepForge’s entries, and never by the Store app', t => {
+test('an old migrated copy stays available even when another installation changes it', t => {
   const { legacy, home, file, open } = windowsLayout(t);
   const location = open();
   location.scheduleMigration();
   location.applyPending();
-  const at = Date.parse(location.state.migrated.at);
-  const day = 24 * 60 * 60 * 1000;
+  location.state.migrated.at = '2000-01-01T00:00:00.000Z';
+  fs.writeFileSync(file, JSON.stringify(location.state));
+  const oldGuide = path.join(legacy, 'library', 'guides', 'g1', 'guide.json');
+  fs.writeFileSync(oldGuide, 'edits from the older installation');
 
-  assert.equal(open().removeMigratedCopy({ now: at + 29 * day }), false);
-  assert.ok(fs.existsSync(path.join(legacy, 'library')));
-  assert.equal(open().removeMigratedCopy({ now: at + 31 * day, allowDelete: false }), false, 'the Store app leaves the installer’s folder');
-  assert.ok(fs.existsSync(path.join(legacy, 'library')));
+  const next = open();
+  assert.equal(next.scheduleMigration(), false);
+  assert.equal(next.applyPending(), home);
+  assert.equal(next.status().backup, legacy);
+  assert.equal(fs.readFileSync(oldGuide, 'utf8'), 'edits from the older installation');
+  assert.equal(fs.readFileSync(path.join(home, 'library', 'guides', 'g1', 'guide.json'), 'utf8'), '{"title":"Install the VPN"}');
+  assert.ok(fs.existsSync(path.join(legacy, 'Cache', 'data_0')), 'Electron’s profile stays too');
+});
 
-  const later = open();
-  assert.equal(later.removeMigratedCopy({ now: at + 31 * day }), true);
-  assert.deepEqual(fs.readdirSync(legacy).sort(), ['Cache', 'Local State', 'library-location.json']);
-  assert.ok(fs.existsSync(path.join(home, 'library', 'guides', 'g1', 'guide.json')), 'the library itself is untouched');
-  const after = open();
-  assert.equal(after.status().current, home);
-  assert.equal(after.state.migrated, undefined);
-  assert.equal(after.removeMigratedCopy({ now: at + 60 * day }), false, 'only once');
-  assert.ok(fs.existsSync(file));
+test('a location-file write failure rolls back the copy so automatic migration can retry', t => {
+  const { legacy, home, file, open } = windowsLayout(t);
+  const location = open();
+  location.scheduleMigration();
+  const rename = fs.renameSync;
+  let writes = 0;
+  const failure = t.mock.method(fs, 'renameSync', (from, to) => {
+    if (to === file && ++writes === 2) throw Object.assign(new Error('location file is locked'), { code: 'EACCES' });
+    return rename(from, to);
+  });
+  assert.equal(location.applyPending(), legacy);
+  assert.match(location.status().error, /location file is locked/);
+  assert.deepEqual(fs.readdirSync(home), [], 'the uncommitted copy must not block the next attempt');
+  assert.ok(fs.existsSync(path.join(legacy, 'library', 'guides', 'g1', 'guide.json')));
+  failure.mock.restore();
+
+  const next = open();
+  assert.equal(next.scheduleMigration(), false, 'the durable checkpoint already schedules the retry');
+  assert.equal(next.applyPending(), home);
+  assert.equal(open().status().current, home);
+});
+
+test('a leftover empty staging directory does not undo a committed migration', t => {
+  const { home, open } = windowsLayout(t);
+  const location = open();
+  location.scheduleMigration();
+  const rmdir = fs.rmdirSync;
+  const cleanupFailure = t.mock.method(fs, 'rmdirSync', (dir, ...args) => {
+    if (typeof dir === 'string' && path.basename(dir).startsWith('.stepforge-move-')) throw new Error('temporary folder is locked');
+    return rmdir(dir, ...args);
+  });
+  assert.equal(location.applyPending(), home);
+  assert.equal(location.status().error, null);
+  assert.equal(open().status().current, home);
+  cleanupFailure.mock.restore();
 });
 
 test('a move the user chooses also takes only StepForge’s entries and leaves a folder holding this file in place', t => {
@@ -216,3 +248,36 @@ test('a move the user chooses also takes only StepForge’s entries and leaves a
   assert.ok(fs.existsSync(file));
   assert.equal(restarted.status().backup, legacy);
 });
+
+for (const diverged of [false, true]) {
+  test(`a failed rollback ${diverged ? 'keeps divergent copies and explains recovery' : 'recovers its verified copy at the next startup'}`, t => {
+    const { legacy, home, file, open } = windowsLayout(t);
+    const location = open();
+    location.scheduleMigration();
+    const rename = fs.renameSync;
+    let writes = 0;
+    const failures = t.mock.method(fs, 'renameSync', (from, to) => {
+      if (to === file && ++writes === 2) throw new Error('location file is locked');
+      if (from === home && path.basename(to) === 'library') throw new Error('rollback is locked');
+      return rename(from, to);
+    });
+    assert.equal(location.applyPending(), legacy);
+    assert.ok(fs.existsSync(path.join(home, 'library', 'guides', 'g1', 'guide.json')), 'the installed copy survives a failed rollback');
+    assert.equal(typeof JSON.parse(fs.readFileSync(file, 'utf8')).pending.copiedManifest, 'string', 'recovery checkpoint is durable');
+    failures.mock.restore();
+    const oldGuide = path.join(legacy, 'library', 'guides', 'g1', 'guide.json');
+    if (diverged) fs.writeFileSync(oldGuide, 'new work in the old install');
+
+    const next = open();
+    assert.equal(next.applyPending(), diverged ? legacy : home);
+    if (diverged) {
+      assert.match(next.status().error, /two different library copies.*choose an empty folder/);
+      assert.doesNotMatch(next.status().error, /tries again the next time/);
+      assert.equal(fs.readFileSync(oldGuide, 'utf8'), 'new work in the old install');
+      assert.equal(fs.readFileSync(path.join(home, 'library', 'guides', 'g1', 'guide.json'), 'utf8'), '{"title":"Install the VPN"}');
+    } else {
+      assert.equal(next.status().error, null);
+      assert.equal(open().status().current, home);
+    }
+  });
+}

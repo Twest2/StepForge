@@ -11,6 +11,7 @@ const {
 const { GuideStore } = require('../core/store');
 const { libraryLocationFor } = require('./data-dir');
 const { Settings } = require('../core/settings');
+const { saveGuideFromEditor, saveStepFromEditor } = require('../core/editor-save');
 const { GoogleDrive } = require('./google-drive');
 const { OneDrive } = require('./onedrive');
 const { Dropbox } = require('./dropbox');
@@ -51,6 +52,7 @@ const { keepProcessesResponsive } = require('./win-power');
 const { zoomShortcutFromInputEvent } = require('./shortcut-utils');
 const security = require('./security');
 const { linuxPasswordStore } = require('./platform/linux/password-store');
+const { syncedFolders, syncServiceFor } = require('./synced-folders');
 const windowsStore = require('./windows-store');
 const i18n = require('../core/i18n');
 const LOCALES = require('../core/locales');
@@ -705,7 +707,13 @@ function watchAgentChanges() {
     }
     seenAt = changed.latest;
     for (const guideId of changed.guideIds) {
-      if (!store.guideExists(guideId)) continue;
+      if (!store.guideExists(guideId)) {
+        // The agent moved it to the Trash. Like any local Trash, that stays
+        // on this computer: cloud sync neither deletes nor restores it.
+        searchIndex.removeGuide(guideId);
+        sendToRenderer('guide:changed-by-agent', { guideId, deleted: true });
+        continue;
+      }
       reindex(guideId);
       sendToRenderer('guide:changed-by-agent', { guideId });
     }
@@ -880,11 +888,14 @@ function setupIpc() {
   h('guide:quality', ({ guideId }) => qualityFindings(buildRenderAst(store, guideId, {
     globals: settings.getGlobalPlaceholders(), reviewDays: exportReviewDays(),
   }), stepNumberMap(orderedSteps(guideId))), { validate: (a) => c.id(a.guideId) });
-  h('guide:save', ({ guide }) => {
-    const saved = store.saveGuide(guide);
+  // An AI agent may have moved the guide to the Trash meanwhile; a late save
+  // from the editor must not recreate it, which would also block its restore.
+  h('guide:save', ({ guide, baseGuide }) => {
+    const saved = saveGuideFromEditor(store, guide, baseGuide);
     reindex(guide.guideId);
     return saved;
-  }, { validate: (a) => security.isPlainArgs(a.guide) && a.guide && c.id(a.guide.guideId) });
+  }, { validate: (a) => security.isPlainArgs(a.guide) && a.guide && c.id(a.guide.guideId)
+    && (a.baseGuide == null || (security.isPlainArgs(a.baseGuide) && a.baseGuide.guideId === a.guide.guideId)) });
   h('step:add', ({ guideId, fields, imageBase64, size, position }) => {
     const buf = imageBase64 ? Buffer.from(imageBase64, 'base64') : null;
     const step = store.addStep(guideId, fields || {}, buf, size || null, { position });
@@ -894,11 +905,12 @@ function setupIpc() {
     maxChars: IMAGE_BUDGET,
     validate: (a) => c.id(a.guideId) && c.optionalBase64(a.imageBase64) && c.optionalNumber(a.position, 0, 100000),
   });
-  h('step:save', ({ guideId, step }) => {
-    const saved = store.saveStep(guideId, step);
+  h('step:save', ({ guideId, step, baseStep }) => {
+    const saved = saveStepFromEditor(store, guideId, step, baseStep);
     reindex(guideId);
     return saved;
-  }, { validate: (a) => c.id(a.guideId) && security.isPlainArgs(a.step) && a.step && c.id(a.step.stepId) });
+  }, { validate: (a) => c.id(a.guideId) && security.isPlainArgs(a.step) && a.step && c.id(a.step.stepId)
+    && (a.baseStep == null || (security.isPlainArgs(a.baseStep) && a.baseStep.stepId === a.step.stepId)) });
   h('step:delete', ({ guideId, stepId }) => {
     store.deleteStep(guideId, stepId);
     reindex(guideId);
@@ -1344,18 +1356,24 @@ function setupIpc() {
 
   // settings + placeholders
   h('settings:all', () => settings.data);
-  h('storage:status', () => libraryLocation.status());
+  // `syncedBy` names the OneDrive, Dropbox, Google Drive or Nextcloud app that
+  // uploads the library or the folder it's moving to, so Settings can warn.
+  const storageStatus = (status) => {
+    const folders = syncedFolders();
+    return { ...status, syncedBy: { current: syncServiceFor(status.current, { folders }), pending: syncServiceFor(status.pending, { folders }) } };
+  };
+  h('storage:status', () => storageStatus(libraryLocation.status()));
   h('storage:choose', async () => {
     if (libraryLocation.status().locked) throw new Error('STEPFORGE_DATA_DIR controls this session. Remove that override before changing storage.');
     const result = await dialog.showOpenDialog(mainWindow, {
       title: t('Choose guide storage folder'),
       properties: ['openDirectory', 'createDirectory'],
     });
-    if (result.canceled || !result.filePaths[0]) return { cancelled: true, ...libraryLocation.status() };
-    return libraryLocation.schedule(result.filePaths[0]);
+    if (result.canceled || !result.filePaths[0]) return { cancelled: true, ...storageStatus(libraryLocation.status()) };
+    return storageStatus(libraryLocation.schedule(result.filePaths[0]));
   });
-  h('storage:reset', () => libraryLocation.schedule(libraryLocation.defaultPath));
-  h('storage:cancelMove', () => libraryLocation.cancel());
+  h('storage:reset', () => storageStatus(libraryLocation.schedule(libraryLocation.defaultPath)));
+  h('storage:cancelMove', () => storageStatus(libraryLocation.cancel()));
   h('settings:set', ({ keyPath, value }) => {
     if (keyPath === 'cloud' || keyPath.startsWith('cloud.')) throw new Error('Use the cloud sync controls in Settings → Accounts.');
     if (keyPath === 'language') throw new Error('Use Settings → General → Language.');
@@ -1846,9 +1864,9 @@ function setupIpc() {
   }, { validate: (a) => c.oneOf(a.language, ['system', ...i18n.LANGUAGES.map((l) => l.code)]) });
   // Settings → About "Open Microsoft Store" (Store installs): StepForge's Store
   // page, where Update installs the new version. The URL is built here.
-  h('app:openStore', () => {
+  h('app:openStore', async () => {
     if (!windowsStore.isStoreInstall()) return { ok: false, reason: 'not a Microsoft Store install' };
-    shell.openExternal(windowsStore.storeUpdateUrl(PACKAGE_JSON.microsoftStore?.productId));
+    await shell.openExternal(windowsStore.storeUpdateUrl(PACKAGE_JSON.microsoftStore?.productId));
     return { ok: true };
   }, { validate: (a) => Object.keys(a).length === 0 });
   // Settings → About "Update now" (Windows, registered with Chocolatey). Takes
@@ -1921,10 +1939,6 @@ if (!gotLock) {
     // now, copied and checked before it's used (app/data-dir.js).
     libraryLocation.scheduleMigration();
     const dataDir = libraryLocation.applyPending();
-    // The old copy goes after a month. A Store app leaves it: it belongs to
-    // the installer version.
-    try { libraryLocation.removeMigratedCopy({ allowDelete: !windowsStore.isStoreInstall() }); }
-    catch (error) { console.warn('Could not remove the old library copy:', error.message); }
     store = new GuideStore(dataDir);
     settings = new Settings(store.settingsDir);
     // Dev builds keep their sign-in to their own data folder instead of

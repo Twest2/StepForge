@@ -7,8 +7,8 @@
  * A Store install differs from the .exe installer in three ways:
  * - Windows redirects new files under %APPDATA% into a private folder that it
  *   deletes with the app. The guide library isn't there (app/data-dir.js), and
- *   the old installer folder's copy isn't removed after the automatic move,
- *   because it belongs to the installer version.
+ *   the old folder's copy stays after the automatic move, because another
+ *   installation may still use it.
  * - The Store installs updates. Chocolatey's Update now is never offered;
  *   Settings → About opens StepForge in the Store instead.
  * - The exe sits in a WindowsApps folder named after its version, so AI agents

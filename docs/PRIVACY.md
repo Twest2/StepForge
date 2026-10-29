@@ -114,9 +114,15 @@ agents edit your guides** and connect an agent such as Claude Code or Codex
 - Screenshots are shared with your blurs filled in. Agents never get the text
   you typed while recording, field values, or the text StepForge read from the
   screen.
-- Agents can rewrite text, make substeps, add placeholders, and draw
-  annotations. They can't reorder steps, change screenshots, or delete
-  anything.
+- Agents can rewrite text, add placeholders, draw annotations, create guides
+  and steps, reorder steps, replace or remove screenshots, delete steps,
+  blocks and annotations, and move guides to the Trash. StepForge snapshots a
+  guide before each change that deletes, moves or replaces something, and keeps
+  those snapshots in the guide's folder. Agents can't change or delete
+  placeholders, or delete blurs.
+- To use a PNG file as a screenshot, an agent names it by its full path, and
+  StepForge copies it into the guide. StepForge reads no other file outside
+  your library for an agent, apart from brand files (below).
 - With **Let AI agents edit brand profiles** on (it's off by default), agents
   can also read and change brand profiles, see the logo, and add an image or
   font file they name on your computer to a profile. They can't delete a
@@ -290,8 +296,20 @@ Windows deletes when you uninstall it.
 
 Older Windows versions kept the library in `%APPDATA%\stepforge`. A new
 version copies it to `%USERPROFILE%\StepForge` on its first start, checks the
-copy, and deletes the old one 30 days later. The Microsoft Store version
-leaves the old folder alone, because it belongs to the installer version.
+copy, and keeps the old folder as a backup until you remove it yourself.
+StepForge never deletes it automatically: another installation may still use
+that folder.
+
+**Keep the library out of folders that OneDrive, Dropbox, Google Drive or
+Nextcloud sync,** such as a Documents folder that OneDrive backs up. Those apps
+upload everything in their folders, screenshots included, whether or not you
+turned on StepForge's sync. Guide storage warns you when the library, or a
+folder you're moving it to, is in one. To find those folders, StepForge reads
+the sync apps' own settings on your computer: OneDrive's environment variables,
+Dropbox's `info.json`, Nextcloud's `nextcloud.cfg`, and the Linux OneDrive
+client's `config`. Google Drive is recognized by its **My Drive** folder name.
+Nothing is sent anywhere. To keep guides in step across computers, use
+StepForge's own sync instead.
 
 ## Questions
 

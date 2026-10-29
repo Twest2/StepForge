@@ -3,6 +3,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
+const fs = require('node:fs');
+const vm = require('node:vm');
 
 const {
   isStoreInstall,
@@ -81,4 +83,27 @@ test('Settings → About opens StepForge in the Store, or the Store updates page
   assert.equal(storeUpdateUrl(undefined), UPDATES_PAGE);
   assert.equal(storeUpdateUrl('9NBLGGH4R32N&x=1'), UPDATES_PAGE, 'nothing else is ever put in the URL');
   assert.equal(UPDATES_PAGE, 'ms-windows-store://downloadsandupdates');
+});
+
+test('the Store IPC reports success only after Windows opens the Store and propagates launch failures', async () => {
+  const main = fs.readFileSync(path.join(__dirname, '../../app/main.js'), 'utf8');
+  const start = main.indexOf("  h('app:openStore',");
+  const end = main.indexOf('\n  // Settings → About "Update now"', start);
+  assert.ok(start >= 0 && end > start);
+  let handler, finish;
+  let launch = () => new Promise((resolve) => { finish = resolve; });
+  vm.runInNewContext(main.slice(start, end), {
+    h: (_name, fn) => { handler = fn; },
+    windowsStore: { isStoreInstall: () => true, storeUpdateUrl },
+    shell: { openExternal: (url) => { assert.equal(url, storeUpdateUrl('9NBLGGH4R32N')); return launch(); } },
+    PACKAGE_JSON: { microsoftStore: { productId: '9NBLGGH4R32N' } },
+  });
+  let settled = false;
+  const pending = handler().then((result) => { settled = true; return result; });
+  await Promise.resolve();
+  assert.equal(settled, false, 'the renderer must not see success before openExternal settles');
+  finish();
+  assert.equal((await pending).ok, true);
+  launch = async () => { throw new Error('Store protocol is unavailable'); };
+  await assert.rejects(handler(), /Store protocol is unavailable/);
 });

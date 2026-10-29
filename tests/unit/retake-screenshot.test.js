@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const CaptureService = require('../../app/capture');
+const { rendererI18n } = require('./helpers');
 
 function makeService() {
   return new CaptureService({
@@ -123,7 +124,7 @@ test('the real hide, countdown and grab path: hidden first, grab after the count
 });
 
 function editor(api) {
-  const context = { window: { stepforge: api }, el: () => ({}), clearNode() {}, setTimeout, clearTimeout };
+  const context = { ...rendererI18n(), window: { stepforge: api }, el: () => ({}), clearNode() {}, setTimeout, clearTimeout };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/editor.js'), 'utf8'), context);
   const instance = Object.create(context.window.GuideEditor.prototype);
   const step = { stepId: 's1', title: 'Old', image: { size: { width: 10, height: 10 } }, annotations: [{ type: 'arrow' }] };

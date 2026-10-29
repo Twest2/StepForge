@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { rendererI18n } = require('./helpers');
 
 /**
  * Export → Confluence or Wiki.js recommends Share → Publish instead (#171):
@@ -41,7 +42,7 @@ function ui() {
     return node;
   }
   const root = el('div');
-  const context = {
+  const context = { ...rendererI18n(),
     document: { activeElement: null, getElementById: () => root, addEventListener() {}, removeEventListener() {} },
     window: { addEventListener() {}, removeEventListener() {} },
     setTimeout, clearTimeout, console,
@@ -142,7 +143,7 @@ test('the editor opens the publish dialog after Export closes, and the app route
   const dialogs = {
     showExportDialog: async (args) => { exportArgs = args; calls.push('export closed'); if (args.publishTargets.confluence) args.onPublishInstead('confluence'); return false; },
   };
-  const context = { window: { stepforge: api, StepForgeDialogs: dialogs }, document: { activeElement: null }, setTimeout, clearTimeout };
+  const context = { ...rendererI18n(), window: { stepforge: api, StepForgeDialogs: dialogs }, document: { activeElement: null }, setTimeout, clearTimeout };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/editor.js'), 'utf8'), context);
   const editor = Object.create(context.window.GuideEditor.prototype);
   editor.guideId = 'g1';

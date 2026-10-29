@@ -19,4 +19,14 @@ const TINY_PNG = Buffer.from(
   'base64'
 );
 
-module.exports = { makeTmpDir, rmrf, TINY_PNG };
+/**
+ * The globals renderer scripts translate with, for a vm context: what
+ * index.html's script tags and util.js give them in the app.
+ */
+function rendererI18n(language = 'en') {
+  const StepForgeI18n = require('../../core/i18n');
+  const { t, tn } = StepForgeI18n.createTranslator(language, require('../../core/locales'));
+  return { StepForgeI18n, URLSearchParams, location: { search: `?lang=${language}` }, t, tn, uiLanguage: language, dateLocale: undefined };
+}
+
+module.exports = { makeTmpDir, rmrf, TINY_PNG, rendererI18n };

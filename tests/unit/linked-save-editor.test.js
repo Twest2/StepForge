@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { rendererI18n } = require('./helpers');
 
 /**
  * The editor during a linked save that merges another session's changes:
@@ -32,7 +33,7 @@ function setup(steps) {
     },
     archive: {},
   };
-  const context = { window: { stepforge: api }, document: { activeElement: null }, confirmDialog: async () => true, clearNode() {}, el() {}, setTimeout, clearTimeout };
+  const context = { ...rendererI18n(), window: { stepforge: api }, document: { activeElement: null }, confirmDialog: async () => true, clearNode() {}, el() {}, setTimeout, clearTimeout };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/editor.js'), 'utf8'), context);
   const editor = Object.create(context.window.GuideEditor.prototype);
   const toasts = [];

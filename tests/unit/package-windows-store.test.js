@@ -141,6 +141,8 @@ test('the Store package is the installer app with the Store identity, unsigned, 
   assert.ok(fs.existsSync(path.join(root, config.appx.customExtensionsPath)));
   assert.deepEqual(config.extraMetadata, { microsoftStore: { productId: '9NBLGGH4R32N' } });
   assert.match(config.appx.artifactName, /\.\$\{ext\}$/);
+  // The Store lists the languages StepForge's interface comes in, English first.
+  assert.deepEqual(config.appx.languages, ['en-US', 'fr-FR', 'es-ES', 'ru-RU', 'zh-CN', 'ja-JP']);
 
   const options = createStorePackageBuildOptions('/tmp/out', { identity: TEST_IDENTITY, manifestPath: '/tmp/m.xml' });
   assert.equal(options.publish, 'never');

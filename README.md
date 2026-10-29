@@ -223,6 +223,10 @@ was recorded with StepForge.
 - **Publish to Confluence** (beta) on Confluence Cloud or your organization's
   Data Center site, including sites that need a smart card (CAC).
 - **Publish to Wiki.js** (beta), with the screenshots uploaded to the wiki.
+- **Six languages.** English, plus French, Spanish, Russian, Simplified
+  Chinese and Japanese (beta). StepForge follows your system language, or
+  pick one in **Settings → General → Language**. Exported guides stay in
+  English.
 
 **Optional, and off until you turn them on**
 

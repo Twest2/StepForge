@@ -4,9 +4,10 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { rendererI18n } = require('./helpers');
 
 function indicator() {
-  const context = vm.createContext({ window: {}, document: { addEventListener() {} } });
+  const context = vm.createContext({ ...rendererI18n(), window: {}, document: { addEventListener() {} } });
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/util.js'), 'utf8'), context);
   const source = fs.readFileSync(path.join(__dirname, '../../app/renderer/app.js'), 'utf8');
   vm.runInContext(source.replace('\nboot();', '\n'), context);

@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { rendererI18n } = require('./helpers');
 
 /**
  * Settings → About: "Check for updates" and, for Windows installs registered
@@ -41,7 +42,7 @@ function setup({ check, updateNow = async () => ({ ok: true }), openStore = asyn
   }
   const calls = [];
   const confirms = [];
-  const context = {
+  const context = { ...rendererI18n(),
     window: {}, setTimeout, el,
     clearNode: (node) => { node.children = []; node._text = undefined; },
     setButtonLoading: (button, loading, label) => { button.disabled = loading; button.loadingLabel = loading ? label : undefined; },

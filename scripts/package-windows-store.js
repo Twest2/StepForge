@@ -18,6 +18,7 @@ const path = require('node:path');
 
 const { build, Platform, Arch } = require('electron-builder');
 const { APP_ID, BUILD_VERSION, createWindowsInstallerConfig } = require('./package-windows');
+const { LANGUAGES } = require('../core/i18n');
 
 const ROOT_DIR = path.resolve(__dirname, '..');
 const STORE_DIR = path.join(ROOT_DIR, 'packaging', 'windows', 'store');
@@ -110,7 +111,9 @@ function createStorePackageConfig(outputDir, { identity, manifestPath }) {
       // Must be a name reserved in Partner Center, or certification fails.
       displayName: identity.displayName,
       backgroundColor: 'transparent',
-      languages: ['en-US'],
+      // Every interface language, so the Store lists them and Partner Center
+      // offers a Store listing in each. The first is the default.
+      languages: LANGUAGES.map((l) => l.store),
       minVersion: '10.0.17763.0',
       maxVersionTested: '10.0.26100.0',
       customManifestPath: manifestPath,

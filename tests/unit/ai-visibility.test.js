@@ -5,10 +5,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const { Settings } = require('../../core/settings');
-const { makeTmpDir, rmrf } = require('./helpers');
+const { makeTmpDir, rmrf, rendererI18n } = require('./helpers');
 
 function editorContext({ api = {}, dialogs = {} } = {}) {
-  const context = { window: { stepforge: api, StepForgeDialogs: dialogs } };
+  const context = { ...rendererI18n(), window: { stepforge: api, StepForgeDialogs: dialogs } };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/editor.js'), 'utf8'), context);
   const editor = Object.create(context.window.GuideEditor.prototype);
   const step = { stepId: 's1', title: 'Click Save' };
@@ -79,7 +79,7 @@ test('focus defaults are enabled but explicit saved choices remain disabled', t 
 
 test('AI ▾ sits right before More ▾, asks the editor for its menu, and shows progress while writing', () => {
   let items;
-  const context = {
+  const context = { ...rendererI18n(),
     window: {}, document: { addEventListener() {} }, clearNode: node => { node.children = []; },
     el: (selector, attrs, ...children) => ({ selector, ...attrs, children }),
     contextMenu: (x, y, next) => { items = next; },
@@ -109,4 +109,45 @@ test('AI ▾ sits right before More ▾, asks the editor for its menu, and shows
   const busy = app.topbarContext.children.find((node) => node.children?.[0] === 'AI · 4/9');
   assert.ok(busy, 'expected the AI button to show progress');
   assert.equal(busy.className, 'ai-busy');
+});
+
+test('successful AI edits report success for every target and retain undo', async () => {
+  for (const target of ['step', 'title', 'description', 'blocks']) {
+    for (const applied of [true, false]) {
+      const notices = [];
+      const { editor } = editorContext({ api: { ai: { fillStep: async () => ({ ok: true, step: { stepId: 's1' } }) } } });
+      editor.setSettings({ ai: { enabled: true } });
+      editor.emitMeta = () => {};
+      editor.applyAiStep = () => applied;
+      editor.multiStepRecord = () => ({ type: 'steps' });
+      let undo = 0;
+      editor.pushCanvasHistory = () => { undo++; };
+      editor.onToast = (message, options) => notices.push({ message, options });
+      await editor.writeStepWithAi(target);
+      assert.equal(notices.length, 1);
+      assert.match(notices[0].message, /^AI wrote /);
+      assert.equal(notices[0].options?.error, undefined);
+      assert.equal(notices[0].message.includes('Ctrl+Z'), applied);
+      assert.equal(undo, applied ? 1 : 0);
+      assert.equal(editor.aiRun, null);
+    }
+  }
+});
+
+test('Settings opened from the editor saves a language choice after flushing edits', async () => {
+  for (const saveFails of [false, true]) {
+    const events = [];
+    const settings = { language: 'en', ai: { enabled: true } };
+    const { editor } = editorContext({
+      api: {
+        settings: { all: async () => settings, globalPlaceholders: async () => ({}), set: async () => {}, setGlobalPlaceholders: async () => {} },
+        app: { setLanguage: async ({ language }) => { events.push(language); return { reloaded: true }; } },
+      },
+      dialogs: { showSettingsDialog: async ({ onSave }) => onSave({ ...settings, language: 'fr' }) },
+    });
+    editor.pendingSave = true;
+    editor.saveAll = async () => { events.push('save'); editor.pendingSave = saveFails; };
+    await editor.openSettings();
+    assert.deepEqual(events, saveFails ? ['save'] : ['save', 'fr']);
+  }
 });

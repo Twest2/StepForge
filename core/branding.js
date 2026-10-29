@@ -257,6 +257,37 @@ function familyFromFileName(fileName) {
   return cleanFontName(base.split(/[-_]/)[0] || base) || 'Brand font';
 }
 
+/** Validate and normalize an image or font without writing to the library. */
+function prepareAsset(bytes, { kind, fileName = '' }) {
+  if (!Buffer.isBuffer(bytes) || !bytes.length) throw new Error('That file is empty.');
+  let data = bytes;
+  let meta;
+  if (kind === 'image') {
+    checkFileSize('image', bytes.length);
+    const type = imageType(bytes);
+    if (!type) throw new Error('Choose a PNG, JPG or SVG image.');
+    let size;
+    if (type === 'svg') {
+      data = Buffer.from(sanitizeSvg(bytes), 'utf8');
+      size = svgSize(data.toString('utf8'));
+    } else {
+      size = type === 'png' ? pngSize(bytes) : jpegSize(bytes);
+    }
+    if (!(size.width > 0 && size.height > 0) && type !== 'svg') throw new Error('StepForge couldn’t read the size of that image.');
+    meta = { kind, ...IMAGE_TYPES[type], width: size.width || 0, height: size.height || 0 };
+  } else if (kind === 'font') {
+    checkFileSize('font', bytes.length);
+    const type = fontType(bytes);
+    if (!type) throw new Error('Choose a WOFF2, WOFF, TTF or OTF font file.');
+    meta = { kind, ...FONT_TYPES[type], family: fontFamilyName(bytes) || familyFromFileName(fileName) };
+  } else {
+    throw new Error('Unknown asset kind.');
+  }
+  const id = crypto.createHash('sha256').update(data).digest('hex').slice(0, 32);
+  meta = { id, ...meta, name: cleanText(path.basename(String(fileName)), 160), addedAt: nowIso() };
+  return { data, meta };
+}
+
 // ---- store ---------------------------------------------------------------------
 
 class BrandingStore {
@@ -361,32 +392,9 @@ class BrandingStore {
    * `needsRaster` means the renderer should draw it to a PNG (setRaster).
    */
   addAsset(bytes, { kind, fileName = '' }) {
-    if (!Buffer.isBuffer(bytes) || !bytes.length) throw new Error('That file is empty.');
-    let data = bytes;
-    let meta;
-    if (kind === 'image') {
-      checkFileSize('image', bytes.length);
-      const type = imageType(bytes);
-      if (!type) throw new Error('Choose a PNG, JPG or SVG image.');
-      let size;
-      if (type === 'svg') {
-        data = Buffer.from(sanitizeSvg(bytes), 'utf8');
-        size = svgSize(data.toString('utf8'));
-      } else {
-        size = type === 'png' ? pngSize(bytes) : jpegSize(bytes);
-      }
-      if (!(size.width > 0 && size.height > 0) && type !== 'svg') throw new Error('StepForge couldn’t read the size of that image.');
-      meta = { kind, ...IMAGE_TYPES[type], width: size.width || 0, height: size.height || 0 };
-    } else if (kind === 'font') {
-      checkFileSize('font', bytes.length);
-      const type = fontType(bytes);
-      if (!type) throw new Error('Choose a WOFF2, WOFF, TTF or OTF font file.');
-      meta = { kind, ...FONT_TYPES[type], family: fontFamilyName(bytes) || familyFromFileName(fileName) };
-    } else {
-      throw new Error('Unknown asset kind.');
-    }
-    const id = crypto.createHash('sha256').update(data).digest('hex').slice(0, 32);
-    meta = { id, ...meta, name: cleanText(path.basename(String(fileName)), 160), addedAt: nowIso() };
+    const { data, meta: prepared } = prepareAsset(bytes, { kind, fileName });
+    let meta = prepared;
+    const { id } = meta;
     fs.mkdirSync(this.assetsDir, { recursive: true });
     const file = this.assetFile(meta);
     if (!fs.existsSync(file)) atomicWriteFileSync(file, data);
@@ -650,6 +658,7 @@ module.exports = {
   BrandingStore,
   normalizeProfile,
   profileAssetIds,
+  prepareAsset,
   loadBranding,
   brandTemplateDefaults,
   checkFileSize,

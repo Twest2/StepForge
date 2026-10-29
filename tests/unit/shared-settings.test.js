@@ -3,12 +3,14 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
 const { GuideStore } = require('../../core/store');
 const { CloudSync } = require('../../core/cloud-sync');
 const { Settings } = require('../../core/settings');
 const { BrandingStore } = require('../../core/branding');
 const { SharedSettings, mergeSharedSettings, toEntries, fromEntries } = require('../../core/shared-settings');
 const { zipSync, unzipSync } = require('../../core/zip');
+const { encodePng } = require('../../core/png');
 const parts = require('../../core/cloud-parts');
 const { makeTmpDir, rmrf, TINY_PNG } = require('./helpers');
 
@@ -222,4 +224,116 @@ test('the archive round-trips and only includes files a profile uses', (t) => {
     [`branding/assets/${used.id}.json`, `branding/assets/${used.id}.png`, `branding/assets/${used.id}.raster.png`]);
   const again = toEntries(fromEntries(unzipSync(zipSync(entries))));
   assert.equal(parts.contentHash(again), shared.snapshot().hash);
+});
+
+test('newer settings fields and brand schemas are refused before they can be merged away', async (t) => {
+  const { device, drive, files } = setup(t);
+  const d = device('local');
+  d.settings.setGlobalPlaceholders({ Mine: 'keep' });
+  const profile = d.branding.save({ name: 'Keep my brand' });
+  const shared = d.sync.shared;
+  for (const alter of [
+    (model) => { model.settings.futureSetting = true; },
+    (model) => { model.profiles[profile.id].schemaVersion = 2; },
+    (model) => { model.profiles[profile.id].fonts.heading.futureFeature = true; },
+  ]) {
+    const model = shared.read();
+    model.placeholders = { Theirs: 'incoming' };
+    alter(model);
+    const entries = toEntries(model);
+    const file = await drive.upload({ data: zipSync(entries), name: 'Settings', properties: { stepforge: 'settings-v1', hash: parts.contentHash(entries) } });
+    assert.equal((await d.sync.sync()).phase, 'error');
+    assert.deepEqual(d.settings.getGlobalPlaceholders(), { Mine: 'keep' });
+    assert.equal(d.branding.get(profile.id).name, 'Keep my brand');
+    assert.equal(settingsFiles(files).length, 1, 'no replacement version uploaded');
+    await drive.deleteFile(file.id);
+  }
+});
+
+test('invalid or missing synced brand assets leave local settings and profiles intact', async (t) => {
+  const { device, drive, files } = setup(t);
+  const d = device('local');
+  d.settings.setGlobalPlaceholders({ Mine: 'keep' });
+  const kept = d.branding.save({ name: 'Keep my brand' });
+  const assetId = 'a'.repeat(32);
+  for (const data of [Buffer.from('not an image'), null]) {
+    const model = d.sync.shared.read();
+    model.placeholders = { Theirs: 'incoming' };
+    model.profiles[kept.id].name = 'Incoming brand';
+    model.profiles[kept.id].updatedAt = '2099-01-01T00:00:00.000Z';
+    model.profiles[kept.id].logo = assetId;
+    if (data) model.assets[assetId] = { kind: 'image', ext: 'png', name: 'logo.png', data };
+    const entries = toEntries(model);
+    const remote = await drive.upload({ data: zipSync(entries), name: 'Settings', properties: { stepforge: 'settings-v1', hash: parts.contentHash(entries) } });
+    const status = await d.sync.sync();
+    assert.equal(status.phase, 'error');
+    assert.match(status.message, /brand asset/);
+    assert.deepEqual(d.settings.getGlobalPlaceholders(), { Mine: 'keep' });
+    assert.equal(d.branding.get(kept.id).name, 'Keep my brand');
+    assert.equal(settingsFiles(files).length, 1, 'the damaged settings were not republished');
+    await drive.deleteFile(remote.id);
+  }
+});
+
+test('the same image uploaded with different names converges without repeated uploads', async (t) => {
+  const { device, files } = setup(t);
+  const a = device('a'); const b = device('b');
+  const one = a.branding.addAsset(TINY_PNG, { kind: 'image', fileName: 'logo.png' });
+  const two = b.branding.addAsset(TINY_PNG, { kind: 'image', fileName: 'company.png' });
+  assert.equal(one.id, two.id);
+  // Independently rendered PNG copies can differ across computers too.
+  a.branding.setRaster(one.id, encodePng({ width: 1, height: 1, data: Buffer.from([255, 0, 0, 255]) }));
+  b.branding.setRaster(two.id, encodePng({ width: 1, height: 1, data: Buffer.from([0, 0, 255, 255]) }));
+  a.branding.save({ name: 'A', logo: one.id });
+  b.branding.save({ name: 'B', logo: two.id });
+  await synced(a.sync); await synced(b.sync); await synced(a.sync); await synced(b.sync);
+  assert.equal(a.sync.shared.snapshot().hash, b.sync.shared.snapshot().hash);
+  assert.equal(a.branding.assetMeta(one.id).name, b.branding.assetMeta(one.id).name);
+  assert.deepEqual(fs.readFileSync(a.branding.rasterFile(a.branding.assetMeta(one.id))),
+    fs.readFileSync(b.branding.rasterFile(b.branding.assetMeta(one.id))));
+  const count = settingsFiles(files).length;
+  await synced(a.sync); await synced(b.sync);
+  assert.equal(settingsFiles(files).length, count);
+});
+
+test('an empty cloud settings listing republishes the local settings instead of retaining a missing head', async (t) => {
+  const { device, files, drive } = setup(t);
+  const a = device('a');
+  a.settings.setGlobalPlaceholders({ Company: 'Acme' });
+  await synced(a.sync);
+  const oldHead = a.sync.state.settings.head;
+  for (const file of [...settingsFiles(files)]) await drive.deleteFile(file.id);
+  await synced(a.sync);
+  assert.equal(settingsFiles(files).length, 1);
+  assert.notEqual(a.sync.state.settings.head, oldHead);
+  const b = device('b');
+  await synced(b.sync);
+  assert.deepEqual(b.settings.getGlobalPlaceholders(), { Company: 'Acme' });
+});
+
+
+test('synced language changes use the language reload handler only after open edits are saved', async () => {
+  for (const available of [false, true]) {
+    for (const saved of [false, true]) {
+      const events = [];
+      const settings = { language: 'fr' };
+      const api = { settings: { all: async () => settings }, app: {} };
+      if (available) api.app.setLanguage = async ({ language }) => { events.push(`language:${language}`); };
+      const context = {
+        window: { stepforge: api }, document: { addEventListener() {} },
+        ensurePendingBrandRasters: async () => {},
+      };
+      const source = fs.readFileSync(path.join(__dirname, '../../app/renderer/app.js'), 'utf8');
+      vm.runInNewContext(source.replace('\nboot();', '\n'), context);
+      const app = Object.create(context.window.StepForgeApp.prototype);
+      app.state = {};
+      app.editor = { setSettings(value) { assert.equal(value, settings); } };
+      app.flushEditorBeforeNavigation = async () => { events.push('saved'); return saved; };
+      await app.onSettingsSynced(['language']);
+      assert.deepEqual(events, available ? (saved ? ['saved', 'language:fr'] : ['saved']) : []);
+      events.length = 0;
+      await app.onSettingsSynced(['placeholders']);
+      assert.deepEqual(events, [], 'other synced settings never reload the window');
+    }
+  }
 });

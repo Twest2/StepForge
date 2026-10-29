@@ -910,7 +910,7 @@ class CloudSync {
     if (record?.head && !versions.some((file) => file.id === record.head)) {
       // As for guides: removed from the cloud, pruned or replaced, or a
       // listing that hasn't caught up with this computer's own upload yet.
-      if (!versions.length) record = null;
+      if (!versions.length) { record = null; delete this.state.settings; }
       else if (Date.now() - (record.syncedAt || 0) > STALE_HEAD_MS || versions.some((file) => parentsOf(file).includes(record.head))) record = { hash: record.hash };
       else return { pending: true };
     }

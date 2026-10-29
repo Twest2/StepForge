@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { isDeepStrictEqual } = require('node:util');
 const { DEFAULT_SETTINGS } = require('./settings');
-const { normalizeProfile, profileAssetIds } = require('./branding');
+const { normalizeProfile, profileAssetIds, prepareAsset } = require('./branding');
 const { contentHash } = require('./cloud-parts');
 
 /*
@@ -50,6 +50,17 @@ const UNZIP_LIMITS = { maxEntries: 5000, maxTotalUncompressed: 1024 * 1024 * 102
 const compareText = (a, b) => a < b ? -1 : a > b ? 1 : 0;
 const same = (a, b) => isDeepStrictEqual(a, b);
 const sortedObject = (obj) => Object.fromEntries(Object.keys(obj).sort(compareText).map((key) => [key, obj[key]]));
+const newerSettings = () => new Error('These settings were synced by a newer StepForge. Update StepForge on this computer.');
+const plainObject = (value) => value && typeof value === 'object' && !Array.isArray(value);
+
+// Refuse fields an older client would silently strip when publishing a merge.
+function checkKnownFields(raw, shape) {
+  for (const [key, value] of Object.entries(raw)) {
+    if (!Object.hasOwn(shape, key)) throw newerSettings();
+    if (plainObject(value) && plainObject(shape[key])) checkKnownFields(value, shape[key]);
+  }
+}
+
 const textOf = (entry) => (Buffer.isBuffer(entry.data) ? entry.data.toString('utf8') : String(entry.data));
 
 function emptyModel() {
@@ -117,24 +128,42 @@ function fromEntries(entries) {
     try { return JSON.parse(textOf(entry)); } catch { throw damaged(); }
   };
   const files = new Map();
+  const names = new Set();
   for (const entry of entries) {
+    if (names.has(entry.name)) throw damaged();
+    names.add(entry.name);
     if (entry.name === 'manifest.json') continue;
-    if (entry.name === 'placeholders.json') model.placeholders = cleanPlaceholders(parse(entry));
-    else if (entry.name === 'settings.json') model.settings = cleanSettings(parse(entry));
-    else if (PROFILE_ENTRY.test(entry.name)) {
+    if (entry.name === 'placeholders.json') {
+      const raw = parse(entry);
+      if (!plainObject(raw)) throw damaged();
+      for (const value of Object.values(raw)) {
+        if (plainObject(value)) checkKnownFields(value, { text: '', format: '' });
+      }
+      model.placeholders = cleanPlaceholders(raw);
+    } else if (entry.name === 'settings.json') {
+      const raw = parse(entry);
+      if (!plainObject(raw)) throw damaged();
+      checkKnownFields(raw, SHARED_KEYS);
+      model.settings = cleanSettings(raw);
+    } else if (PROFILE_ENTRY.test(entry.name)) {
       const id = PROFILE_ENTRY.exec(entry.name)[1];
       if (!PROFILE_ID.test(id)) throw damaged();
       const raw = parse(entry);
-      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw damaged();
+      if (!plainObject(raw)) throw damaged();
+      if (raw.schemaVersion !== undefined && raw.schemaVersion !== 1) throw newerSettings();
+      checkKnownFields(raw, normalizeProfile({}, { id, createdAt: 'schema', updatedAt: 'schema' }));
       model.profiles[id] = normalizeProfile(raw, { id });
     } else if (ASSET_ENTRY.test(entry.name)) files.set(entry.name, entry);
-    else throw new Error('These settings were synced by a newer StepForge. Update StepForge on this computer.');
+    else throw newerSettings();
   }
+  if (!names.has('placeholders.json') || !names.has('settings.json')) throw damaged();
   for (const [name, entry] of files) {
     const [, id, suffix] = ASSET_ENTRY.exec(name);
     if (suffix !== '.json') continue;
     const meta = parse(entry);
-    if (meta?.id !== id || !ASSET_EXTS[meta.kind]?.includes(meta.ext)) throw damaged();
+    if (!plainObject(meta)) throw damaged();
+    checkKnownFields(meta, { id: '', kind: '', ext: '', name: '' });
+    if (meta.id !== id || !Object.hasOwn(ASSET_EXTS, meta.kind) || !ASSET_EXTS[meta.kind].includes(meta.ext)) throw damaged();
     const data = files.get(`branding/assets/${id}.${meta.ext}`);
     const raster = files.get(`branding/assets/${id}.raster.png`);
     if (!data) throw damaged();
@@ -266,27 +295,44 @@ class SharedSettings {
   apply(entries) {
     const next = fromEntries(entries);
     const now = this.read();
-    const changes = [];
-    if (!same(next.placeholders, now.placeholders)) {
-      this.settings.setGlobalPlaceholders(next.placeholders);
-      changes.push('placeholders');
+    // Validate every required asset before changing placeholders or profiles.
+    // Otherwise a refused image could be turned into a deleted logo and synced
+    // back to every other computer as a successful settings version.
+    const prepared = new Map();
+    for (const [id, asset] of Object.entries(next.assets)) {
+      try { prepared.set(id, prepareAsset(asset.data, { kind: asset.kind, fileName: asset.name })); }
+      catch (error) { throw new Error(`Synced brand asset ${id} could not be read: ${error.message}`); }
     }
+    for (const profile of Object.values(next.profiles)) {
+      for (const id of profileAssetIds(profile)) {
+        if (!prepared.has(id)) throw new Error(`Synced brand asset ${id} is missing. Settings here are unchanged.`);
+      }
+    }
+    const changes = [];
     // An asset that comes out with another id (a sanitized SVG) is renamed in the profiles.
     const renamed = new Map();
     for (const [id, asset] of Object.entries(next.assets)) {
-      if (this.branding.assetMeta(id)) {
-        if (asset.raster && !this.branding.assetMeta(id).raster) {
-          try { this.branding.setRaster(id, asset.raster); } catch { /* drawn again later */ }
-        }
-        continue;
+      const { data, meta } = prepared.get(id);
+      const known = this.branding.assetMeta(meta.id);
+      // Names are part of the archive too: an existing content-addressed asset
+      // must adopt the merged name, or two devices continually undo each other.
+      if (!known || known.name !== meta.name || known.kind !== meta.kind || known.ext !== meta.ext
+          || !fs.readFileSync(this.branding.assetFile(known)).equals(data)) {
+        this.branding.addAsset(asset.data, { kind: asset.kind, fileName: asset.name });
       }
-      try {
-        const added = this.branding.addAsset(asset.data, { kind: asset.kind, fileName: asset.name });
-        if (added.id !== id) renamed.set(id, added.id);
-        if (asset.raster && added.needsRaster) {
-          try { this.branding.setRaster(added.id, asset.raster); } catch { /* drawn again later */ }
+      if (meta.id !== id) renamed.set(id, meta.id);
+      if (asset.raster) {
+        const stored = this.branding.assetMeta(meta.id);
+        let raster = null;
+        if (stored.raster) { try { raster = fs.readFileSync(this.branding.rasterFile(stored)); } catch { /* replace missing raster */ } }
+        if (!raster?.equals(asset.raster)) {
+          try { this.branding.setRaster(meta.id, asset.raster); } catch { /* drawn again later */ }
         }
-      } catch { /* refused; profiles that use it go without */ }
+      }
+    }
+    if (!same(next.placeholders, now.placeholders)) {
+      this.settings.setGlobalPlaceholders(next.placeholders);
+      changes.push('placeholders');
     }
     const rename = (id) => (id ? renamed.get(id) || id : id);
     const profiles = Object.values(next.profiles).map((profile) => ({

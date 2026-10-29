@@ -43,7 +43,8 @@ async function main() {
   if (app) app.disableHardwareAcceleration();
 
   // Read where the library is; never apply a pending library move from here.
-  const store = new GuideStore(libraryLocationFor(userDataDir(app)).status().current);
+  const documentsDir = app ? app.getPath('documents') : null;
+  const store = new GuideStore(libraryLocationFor(userDataDir(app), { documentsDir }).status().current);
   const tools = createAgentTools({
     store,
     // Read on every call, so turning access off in Settings takes effect at once.

@@ -306,6 +306,7 @@ test('on Windows, `--mcp` reruns StepForge as plain Node so piped stdin works', 
     const fakeRequire = (name) => {
       if (name === 'node:child_process') return { spawn: (...args) => { calls.spawn = args; return child; } };
       if (name === 'node:path') return path.win32;
+      if (name === 'electron') return { app: { getPath: (which) => (which === 'documents' ? 'D:\\OneDrive\\Documents' : null) } };
       calls.required.push(name);
       return { main() {} };
     };
@@ -322,6 +323,8 @@ test('on Windows, `--mcp` reruns StepForge as plain Node so piped stdin works', 
   assert.deepEqual([...win.spawn[1]], ['C:\\Program Files\\StepForge\\resources\\app.asar\\app\\mcp.js']);
   assert.equal(win.spawn[2].stdio, 'inherit');
   assert.equal(win.spawn[2].env.ELECTRON_RUN_AS_NODE, '1');
+  // Plain Node can't ask Electron where Documents is; a Store install's library is there.
+  assert.equal(win.spawn[2].env.STEPFORGE_DOCUMENTS_DIR, 'D:\\OneDrive\\Documents');
   assert.deepEqual(win.required, []);
   // The Node-mode child, Linux, and plain Node serve directly; no --mcp starts the app.
   assert.deepEqual(run({ platform: 'win32', electron: true, runAsNode: '1' }).required, ['./mcp']);

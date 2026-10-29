@@ -114,15 +114,19 @@ page and hands you a link to send. It's usually online in under a minute.
 
 | Platform | Recommended | Guide |
 | --- | --- | --- |
-| **Windows 10 / 11** (64-bit) | Chocolatey, or the `.exe` (which can set up Chocolatey updates for you) | [Chocolatey](docs/windows/chocolatey.md) · [Windows](docs/windows_installation.md) |
+| **Windows 10 / 11** (64-bit) | Microsoft Store: no warnings, automatic updates. Or Chocolatey, or the `.exe` | [Microsoft Store](docs/windows/microsoft-store.md) · [Chocolatey](docs/windows/chocolatey.md) · [Windows](docs/windows_installation.md) |
 | **Ubuntu 26.04** | APT repository | [Ubuntu](docs/linux/apt.md) |
 | **Fedora 44 Workstation** | DNF repository | [Fedora](docs/linux/dnf.md) |
 | **Other Linux** | Portable `.tar.gz` | [Linux overview](docs/linux/linux_install.md) |
 
 Every build is also on the [Releases page](https://github.com/Twest2/StepForge/releases/latest).
-Installing through Chocolatey, APT or DNF keeps StepForge up to date with the
-rest of your system, and on Windows **Settings → About → Update now** installs
-a new version in one click.
+The Microsoft Store updates StepForge automatically. Installing through
+Chocolatey, APT or DNF keeps StepForge up to date with the rest of your system,
+and with Chocolatey, **Settings → About → Update now** installs a new version
+in one click.
+
+**Windows:** open [StepForge in the Microsoft Store](https://apps.microsoft.com/search?query=StepForge)
+and click **Get**.
 
 <details>
 <summary><strong>Windows (Chocolatey)</strong> commands</summary>
@@ -258,7 +262,7 @@ each optional feature sends.
 
 **Installing**
 
-- [Windows installer](docs/windows_installation.md) · [Chocolatey](docs/windows/chocolatey.md)
+- [Microsoft Store](docs/windows/microsoft-store.md) · [Windows installer](docs/windows_installation.md) · [Chocolatey](docs/windows/chocolatey.md)
 - [Linux overview](docs/linux/linux_install.md) · [Ubuntu](docs/linux/apt.md) · [Fedora](docs/linux/dnf.md)
 
 **Contributing**

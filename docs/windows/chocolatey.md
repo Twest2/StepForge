@@ -1,11 +1,13 @@
 # Install StepForge on Windows with Chocolatey
 
-[Chocolatey](https://chocolatey.org) is the recommended way to install
-StepForge on **Windows 10 and Windows 11 (64-bit)**. After a one-time setup,
-one command keeps StepForge up to date, with no installers to download and no
-SmartScreen prompts.
+[Chocolatey](https://chocolatey.org) installs StepForge on **Windows 10 and
+Windows 11 (64-bit)** from the command line. After a one-time setup, one
+command keeps StepForge up to date, with no installers to download and no
+SmartScreen prompts. It suits PCs you already manage with Chocolatey.
 
-Prefer a regular installer? See the [Windows installation guide](../windows_installation.md).
+For most people, the [Microsoft Store](microsoft-store.md) is simpler: no
+administrator rights or command line, and updates are automatic. Prefer a
+regular installer? See the [Windows installation guide](../windows_installation.md).
 
 ## Before you start
 

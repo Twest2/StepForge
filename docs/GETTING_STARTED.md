@@ -262,7 +262,8 @@ with the hotkey or on a timer instead.
 
 | System | Location |
 | --- | --- |
-| Windows | `%APPDATA%\stepforge` |
+| Windows (Microsoft Store) | `Documents\StepForge` |
+| Windows (`.exe` installer or Chocolatey) | `%APPDATA%\stepforge` |
 | Linux | `~/.local/share/stepforge` |
 
 The exact folder is shown in **Settings → About**.

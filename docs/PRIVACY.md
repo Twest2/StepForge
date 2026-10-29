@@ -63,6 +63,13 @@ Chocolatey) runs `choco upgrade stepforge -y`, so Chocolatey downloads the new
 version from the StepForge package feed and its configured sources, as it
 does when you run the command yourself.
 
+If you installed StepForge from the Microsoft Store, the Store downloads and
+installs updates, under the
+[Microsoft Privacy Statement](https://privacy.microsoft.com/privacystatement),
+as it does for every Store app. StepForge sends nothing to Microsoft itself:
+**Open Microsoft Store** in Settings → About only opens StepForge's page in the
+Store app.
+
 The Ubuntu `.deb` and Fedora `.rpm` add the StepForge APT or DNF repository
 (`packages.twestbrook.com`) to your system's software sources, as installing
 from the repository does. That traffic comes from your package manager, not
@@ -271,13 +278,16 @@ computer.
 
 | System | Location |
 | --- | --- |
-| Windows | `%APPDATA%\stepforge` |
+| Windows (Microsoft Store) | `Documents\StepForge` |
+| Windows (`.exe` installer or Chocolatey) | `%APPDATA%\stepforge` |
 | Linux | `~/.local/share/stepforge` (or `$XDG_DATA_HOME/stepforge`) |
 
 You can move your library under **Settings → General → Guide storage**, or
 override the location with the `STEPFORGE_DATA_DIR` environment variable.
 Uninstalling StepForge leaves this folder in place. Delete it to remove all of
-your guides and settings.
+your guides and settings. A Microsoft Store install also keeps a few
+computer-specific settings, such as cloud sign-ins, in its app data, which
+Windows deletes when you uninstall it.
 
 ## Questions
 

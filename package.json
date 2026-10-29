@@ -18,6 +18,7 @@
     "sample": "node scripts/make-sample-guide.js",
     "icons": "node scripts/make-icons.js",
     "package:windows": "node scripts/package-windows.js",
+    "package:windows:store": "node scripts/package-windows-store.js",
     "package:linux:deb": "bash packaging/linux/debian/package.sh",
     "package:linux:rpm": "bash packaging/linux/fedora/package.sh",
     "build": "bash scripts/build-release.sh",

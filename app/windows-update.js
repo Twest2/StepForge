@@ -83,10 +83,12 @@ function chocolateyStatus({ env = process.env, fs = nodeFs } = {}) {
 /**
  * Whether Settings → About offers Update now at all: a packaged StepForge on
  * Windows that Chocolatey has registered. A development build runs from
- * electron.exe, which must not be "reopened" after updating the installed app.
+ * electron.exe, which must not be "reopened" after updating the installed app,
+ * and a Microsoft Store install is updated by the Store, even when Chocolatey
+ * has registered an installer copy too.
  */
-function updateNowAvailable({ platform = process.platform, packaged = true, env, fs } = {}) {
-  return platform === 'win32' && packaged === true && chocolateyStatus({ env, fs }).registered;
+function updateNowAvailable({ platform = process.platform, packaged = true, store = false, env, fs } = {}) {
+  return platform === 'win32' && packaged === true && store !== true && chocolateyStatus({ env, fs }).registered;
 }
 
 /**
@@ -315,6 +317,7 @@ function launchElevated(command, { spawnImpl = spawn, env = process.env } = {}) 
 async function updateNow({
   platform = process.platform,
   packaged = true,
+  store = false,
   env = process.env,
   fs = nodeFs,
   lastCheck = null,
@@ -324,6 +327,9 @@ async function updateNow({
 } = {}) {
   if (platform !== 'win32' || packaged !== true) {
     return { ok: false, reason: 'unsupported', message: 'Update now is only available in the Windows app.' };
+  }
+  if (store === true) {
+    return { ok: false, reason: 'unsupported', message: 'The Microsoft Store installs StepForge updates. Open StepForge in the Store to update it.' };
   }
   const status = chocolateyStatus({ env, fs });
   if (!status.registered) {

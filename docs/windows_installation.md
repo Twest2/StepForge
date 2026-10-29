@@ -1,14 +1,34 @@
 # Install StepForge on Windows
 
-StepForge runs on **Windows 10 and Windows 11 (64-bit)**. Installing takes
-about two minutes.
+StepForge runs on **Windows 10 and Windows 11 (64-bit)**. There are three ways
+to install it:
+
+| | Updates | Windows warning | Administrator rights |
+| --- | --- | --- | --- |
+| **[Microsoft Store](windows/microsoft-store.md)** (recommended) | Automatic, from the Store | None | Not needed |
+| **[Chocolatey](windows/chocolatey.md)** | **Update now** in Settings → About, or `choco upgrade stepforge` | None | Needed |
+| **The `.exe` installer** (this page) | **Update now**, if you let it set up Chocolatey | **Windows protected your PC**, the first time | Needed for Chocolatey updates or an all-users install |
+
+## Recommended: the Microsoft Store
+
+1. Open [StepForge in the Microsoft Store](https://apps.microsoft.com/search?query=StepForge),
+   or search for **StepForge** in the **Microsoft Store** app.
+2. Click **Get**, then **Open**.
+
+That's it. The Store keeps StepForge up to date, and your guides are kept in
+`Documents\StepForge`. Switching from the `.exe` installer, or want the
+details? See [Install StepForge from the Microsoft Store](windows/microsoft-store.md).
+
+## Or use the .exe installer
+
+Use the installer if the Microsoft Store isn't available, for example on a
+work PC where your organization has turned it off. Installing takes about two
+minutes.
 
 > [!TIP]
-> **Prefer automatic updates?** Install with [Chocolatey](windows/chocolatey.md)
-> instead, which skips the SmartScreen prompt below. Or keep using this
-> installer: its **Updates** page (checked by default) sets up Chocolatey for
-> you, so **Settings → About → Check for updates → Update now** and
-> `choco upgrade stepforge` work afterwards.
+> The installer's **Updates** page (checked by default) sets up
+> [Chocolatey](windows/chocolatey.md) for you, so **Settings → About → Check
+> for updates → Update now** and `choco upgrade stepforge` work afterwards.
 
 *These instructions were recorded and exported with StepForge itself. The
 red circles mark where to click.*
@@ -82,6 +102,10 @@ first Chocolatey update.
 - StepForge appears in the Start menu as **StepForge**.
 
 ## Updating and uninstalling
+
+These are for the `.exe` installer. For the Store version, see
+[Updates](windows/microsoft-store.md#updates) and
+[Uninstall](windows/microsoft-store.md#uninstall).
 
 **To update,** open **Settings → About** and press **Check for updates**. If
 you left the Chocolatey option on during setup, press **Update now**: StepForge

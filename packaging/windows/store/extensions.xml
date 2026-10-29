@@ -1,0 +1,10 @@
+
+        <!-- "stepforge.exe" on the user's PATH (%LOCALAPPDATA%\Microsoft\WindowsApps).
+             The packaged exe lives in a folder named after its version, so AI
+             agents start the MCP server through this alias instead
+             (agentSetupCommand in app/main.js). -->
+        <uap3:Extension Category="windows.appExecutionAlias" Executable="app\StepForge.exe" EntryPoint="Windows.FullTrustApplication">
+          <uap3:AppExecutionAlias>
+            <desktop:ExecutionAlias Alias="stepforge.exe" />
+          </uap3:AppExecutionAlias>
+        </uap3:Extension>

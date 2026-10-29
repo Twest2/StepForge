@@ -37,7 +37,8 @@ Internal working storage is **folder-based**; sharing/backups use a
 
 ```text
 <data root>/                      (~/.local/share/stepforge, %APPDATA%/stepforge,
-  settings/                        or $STEPFORGE_DATA_DIR)
+  settings/                        Documents/StepForge for a Microsoft Store
+                                   install, or $STEPFORGE_DATA_DIR)
     app-settings.json
     placeholders.json             global placeholders
     templates/<format>/<name>.template.json
@@ -220,7 +221,10 @@ opt-in and off by default:
   PowerShell window, after a UAC prompt, that waits for StepForge to quit and
   runs `choco upgrade stepforge -y`. The script is built in the main process
   from StepForge's own PID and paths, never from renderer input, and passed
-  with `-EncodedCommand` rather than as a file.
+  with `-EncodedCommand` rather than as a file. A Microsoft Store install
+  (`app/windows-store.js`) never offers Update now: the Store updates it, and
+  **Open Microsoft Store** opens an `ms-windows-store:` URL built in the main
+  process.
 
 - **AI** (`app/text-intel.js`, `core/text-intel.js`) talks to a user-configured
   Ollama endpoint. Non-loopback hosts are refused unless

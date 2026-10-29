@@ -60,6 +60,19 @@ jobs:
       - name: Run unit tests
         run: npm test
 
+      # The Store package only builds on Windows (makeappx), so check it here,
+      # with a placeholder identity in place of the Partner Center one.
+      - name: Build Microsoft Store package
+        if: runner.os == 'Windows'
+        run: npm run package:windows:store -- --test-identity
+
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Windows'
+        with:
+          name: microsoft-store-test-package
+          path: releases/*.appx
+          if-no-files-found: error
+
       # The installer runs the Chocolatey helper, and Update now its elevated
       # script, with Windows PowerShell 5.1, not the pwsh that npm test finds,
       # so check them there too.

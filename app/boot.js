@@ -10,9 +10,12 @@ if (!process.argv.includes('--mcp')) {
   // StepForge working as plain Node; it inherits the agent's stdin/stdout.
   const { spawn } = require('node:child_process');
   const path = require('node:path');
+  // Plain Node can't ask Electron for the Documents folder, which a Microsoft
+  // Store install keeps its library in (app/data-dir.js).
+  const { app } = require('electron');
   const child = spawn(process.execPath, [path.join(__dirname, 'mcp.js')], {
     stdio: 'inherit',
-    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', STEPFORGE_DOCUMENTS_DIR: app.getPath('documents') },
     windowsHide: true,
   });
   child.on('exit', (code) => process.exit(code ?? 0));

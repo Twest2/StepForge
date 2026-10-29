@@ -164,6 +164,7 @@ on every Fedora PR run.
 | Target | Command | Output |
 | --- | --- | --- |
 | Windows installer | `npm run package:windows` (or `pwsh scripts/package-windows.ps1`) | `releases/` |
+| Microsoft Store `.appx` (Windows only) | `npm run package:windows:store` (add `-- --test-identity` before the app is reserved); see [the release guide](windows/MICROSOFT_STORE_RELEASE.md) | `releases/` |
 | Ubuntu `.deb` + portable `.tar.gz` | `npm run package:linux:deb` | `build/artifacts/` |
 | Fedora `.rpm` | `npm run package:linux:rpm` | `build/artifacts/x86_64/` |
 | Unpacked app folder | `bash scripts/build-release.sh` | `build/` |

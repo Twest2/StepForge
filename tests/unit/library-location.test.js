@@ -203,6 +203,42 @@ test('the old copy is removed after 30 days, only StepForge’s entries, and nev
   assert.ok(fs.existsSync(file));
 });
 
+test('a location-file write failure rolls back the copy so automatic migration can retry', t => {
+  const { legacy, home, file, open } = windowsLayout(t);
+  const location = open();
+  location.scheduleMigration();
+  const rename = fs.renameSync;
+  const failure = t.mock.method(fs, 'renameSync', (from, to) => {
+    if (to === file) throw Object.assign(new Error('location file is locked'), { code: 'EACCES' });
+    return rename(from, to);
+  });
+  assert.equal(location.applyPending(), legacy);
+  assert.match(location.status().error, /location file is locked/);
+  assert.deepEqual(fs.readdirSync(home), [], 'the uncommitted copy must not block the next attempt');
+  assert.ok(fs.existsSync(path.join(legacy, 'library', 'guides', 'g1', 'guide.json')));
+  failure.mock.restore();
+
+  const next = open();
+  assert.equal(next.scheduleMigration(), true);
+  assert.equal(next.applyPending(), home);
+  assert.equal(open().status().current, home);
+});
+
+test('a leftover empty staging directory does not undo a committed migration', t => {
+  const { home, open } = windowsLayout(t);
+  const location = open();
+  location.scheduleMigration();
+  const rmdir = fs.rmdirSync;
+  const cleanupFailure = t.mock.method(fs, 'rmdirSync', (dir, ...args) => {
+    if (path.basename(dir).startsWith('.stepforge-move-')) throw new Error('temporary folder is locked');
+    return rmdir(dir, ...args);
+  });
+  assert.equal(location.applyPending(), home);
+  assert.equal(location.status().error, null);
+  assert.equal(open().status().current, home);
+  cleanupFailure.mock.restore();
+});
+
 test('a move the user chooses also takes only StepForge’s entries and leaves a folder holding this file in place', t => {
   const { legacy, root, file, open } = windowsLayout(t);
   const chosen = path.join(root, 'Guides');

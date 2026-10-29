@@ -112,7 +112,7 @@ class LibraryLocation {
   applyPending() {
     if (this.override || !this.state.pending) return this.status().current;
     const automatic = this.state.pending.automatic === true;
-    let holder;
+    let holder, installedTarget;
     try {
       const { source, target } = this.validate(this.state.pending.source, this.state.pending.target);
       const before = this.manifest(source);
@@ -126,11 +126,16 @@ class LibraryLocation {
         if (fs.existsSync(path.join(source, name))) fs.cpSync(path.join(source, name), path.join(staging, name), { recursive: true, force: false, errorOnExist: true });
       }
       if (before !== this.manifest(staging) || before !== this.manifest(source)) throw new Error('Library verification failed; the original is unchanged.');
-      fs.rmdirSync(target); fs.renameSync(staging, target); fs.rmdirSync(holder); holder = null;
+      fs.rmdirSync(target); fs.renameSync(staging, target); installedTarget = target;
       const previous = this.state;
       this.state = automatic ? { current: target, migrated: { from: source, at: new Date().toISOString() } } : { current: target, backup: source };
       try { writeJsonSync(this.file, this.state); }
       catch (error) { this.state = previous; throw error; }
+      // The switch is durable now. A staging-directory cleanup failure must
+      // not turn a successful move into a reported failure.
+      installedTarget = null;
+      try { fs.rmdirSync(holder); } catch { /* an empty staging directory can be removed later */ }
+      holder = null;
       if (automatic) return target;
       // Keep one clearly named backup after the verified move; never purge data.
       // Not when this bookkeeping file lives in the old folder (Windows keeps
@@ -144,6 +149,16 @@ class LibraryLocation {
       }
       return target;
     } catch (error) {
+      // If the location file could not be committed, the old library is
+      // still authoritative. Restore an empty destination so the next start
+      // can retry, rather than refusing our own verified copy as another
+      // installation's library.
+      if (installedTarget) {
+        try {
+          fs.renameSync(installedTarget, path.join(holder, 'library'));
+          fs.mkdirSync(installedTarget);
+        } catch { /* preserve both copies if rolling back is unavailable */ }
+      }
       if (holder) fs.rmSync(holder, { recursive: true, force: true });
       if (automatic) {
         // Nothing changed: the old folder stays current, and the next start

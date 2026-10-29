@@ -1819,9 +1819,9 @@ function setupIpc() {
   });
   // Settings → About "Open Microsoft Store" (Store installs): StepForge's Store
   // page, where Update installs the new version. The URL is built here.
-  h('app:openStore', () => {
+  h('app:openStore', async () => {
     if (!windowsStore.isStoreInstall()) return { ok: false, reason: 'not a Microsoft Store install' };
-    shell.openExternal(windowsStore.storeUpdateUrl(PACKAGE_JSON.microsoftStore?.productId));
+    await shell.openExternal(windowsStore.storeUpdateUrl(PACKAGE_JSON.microsoftStore?.productId));
     return { ok: true };
   }, { validate: (a) => Object.keys(a).length === 0 });
   // Settings → About "Update now" (Windows, registered with Chocolatey). Takes

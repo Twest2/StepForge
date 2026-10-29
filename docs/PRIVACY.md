@@ -114,9 +114,15 @@ agents edit your guides** and connect an agent such as Claude Code or Codex
 - Screenshots are shared with your blurs filled in. Agents never get the text
   you typed while recording, field values, or the text StepForge read from the
   screen.
-- Agents can rewrite text, make substeps, add placeholders, and draw
-  annotations. They can't reorder steps, change screenshots, or delete
-  anything.
+- Agents can rewrite text, add placeholders, draw annotations, create guides
+  and steps, reorder steps, replace or remove screenshots, delete steps,
+  blocks and annotations, and move guides to the Trash. StepForge snapshots a
+  guide before each change that deletes, moves or replaces something, and keeps
+  those snapshots in the guide's folder. Agents can't change or delete
+  placeholders, or delete blurs.
+- To use a PNG file as a screenshot, an agent names it by its full path, and
+  StepForge copies it into the guide. StepForge reads no other file outside
+  your library for an agent, apart from brand files (below).
 - With **Let AI agents edit brand profiles** on (it's off by default), agents
   can also read and change brand profiles, see the logo, and add an image or
   font file they name on your computer to a profile. They can't delete a

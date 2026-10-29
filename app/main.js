@@ -11,6 +11,7 @@ const {
 const { GuideStore } = require('../core/store');
 const { libraryLocationFor } = require('./data-dir');
 const { Settings } = require('../core/settings');
+const { saveGuideFromEditor, saveStepFromEditor } = require('../core/editor-save');
 const { GoogleDrive } = require('./google-drive');
 const { OneDrive } = require('./onedrive');
 const { Dropbox } = require('./dropbox');
@@ -706,7 +707,13 @@ function watchAgentChanges() {
     }
     seenAt = changed.latest;
     for (const guideId of changed.guideIds) {
-      if (!store.guideExists(guideId)) continue;
+      if (!store.guideExists(guideId)) {
+        // The agent moved it to the Trash. Like any local Trash, that stays
+        // on this computer: cloud sync neither deletes nor restores it.
+        searchIndex.removeGuide(guideId);
+        sendToRenderer('guide:changed-by-agent', { guideId, deleted: true });
+        continue;
+      }
       reindex(guideId);
       sendToRenderer('guide:changed-by-agent', { guideId });
     }
@@ -881,8 +888,10 @@ function setupIpc() {
   h('guide:quality', ({ guideId }) => qualityFindings(buildRenderAst(store, guideId, {
     globals: settings.getGlobalPlaceholders(), reviewDays: exportReviewDays(),
   }), stepNumberMap(orderedSteps(guideId))), { validate: (a) => c.id(a.guideId) });
+  // An AI agent may have moved the guide to the Trash meanwhile; a late save
+  // from the editor must not recreate it, which would also block its restore.
   h('guide:save', ({ guide }) => {
-    const saved = store.saveGuide(guide);
+    const saved = saveGuideFromEditor(store, guide);
     reindex(guide.guideId);
     return saved;
   }, { validate: (a) => security.isPlainArgs(a.guide) && a.guide && c.id(a.guide.guideId) });
@@ -896,7 +905,7 @@ function setupIpc() {
     validate: (a) => c.id(a.guideId) && c.optionalBase64(a.imageBase64) && c.optionalNumber(a.position, 0, 100000),
   });
   h('step:save', ({ guideId, step }) => {
-    const saved = store.saveStep(guideId, step);
+    const saved = saveStepFromEditor(store, guideId, step);
     reindex(guideId);
     return saved;
   }, { validate: (a) => c.id(a.guideId) && security.isPlainArgs(a.step) && a.step && c.id(a.step.stepId) });

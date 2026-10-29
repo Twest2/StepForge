@@ -102,7 +102,7 @@ jobs:
       # (docs/windows/MICROSOFT_STORE_RELEASE.md). Skipped until
       # packaging/windows/store/identity.json is filled in.
       - name: Package Microsoft Store .appx
-        run: npm run package:windows:store -- --if-configured
+        run: node scripts/package-windows-store.js --if-configured
 
       - uses: actions/upload-artifact@v4
         with:

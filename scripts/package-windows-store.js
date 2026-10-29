@@ -5,9 +5,12 @@
 // Center. The Store signs it, so it is never signed here. Needs Windows (the
 // Windows SDK's makeappx), so it runs in CI; see docs/windows/MICROSOFT_STORE_RELEASE.md.
 //
-//   npm run package:windows:store                      # the identity in packaging/windows/store/identity.json
-//   npm run package:windows:store -- --if-configured   # the same, skipped while identity.json is unfilled
-//   npm run package:windows:store -- --test-identity   # a placeholder identity, to check the build
+//   npm run package:windows:store                            # the identity in packaging/windows/store/identity.json
+//   node scripts/package-windows-store.js --if-configured    # the same, skipped while identity.json is unfilled
+//   npm run package:windows:store:test                       # a placeholder identity, to check the build
+//
+// The flags are passed in package.json or straight to node: PowerShell drops
+// the "--" in "npm run x -- --flag", and npm then takes the flag for itself.
 
 const fs = require('node:fs');
 const os = require('node:os');

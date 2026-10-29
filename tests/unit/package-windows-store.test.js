@@ -166,9 +166,12 @@ test('the Store tiles are committed at the sizes the manifest names', () => {
 test('npm scripts and the release workflow build the Store package', () => {
   const pkg = JSON.parse(read('package.json'));
   assert.equal(pkg.scripts['package:windows:store'], 'node scripts/package-windows-store.js');
+  assert.equal(pkg.scripts['package:windows:store:test'], 'node scripts/package-windows-store.js --test-identity');
   const job = read('.github/workflows/release.yml').split('  build-windows:')[1].split('\n  build-linux:')[0];
-  assert.match(job, /npm run package:windows:store -- --if-configured\n/);
+  // Not "npm run ... -- --flag": the Windows runners' PowerShell drops the "--".
+  assert.match(job, /node scripts\/package-windows-store\.js --if-configured\n/);
   assert.match(job, /releases\/\*\.appx/);
   const ci = read('.github/workflows/ci.yml');
-  assert.match(ci, /npm run package:windows:store -- --test-identity/);
+  assert.match(ci, /npm run package:windows:store:test\n/);
+  assert.doesNotMatch(`${job}\n${ci}`, /package:windows:store -- /);
 });

@@ -64,7 +64,7 @@ jobs:
       # with a placeholder identity in place of the Partner Center one.
       - name: Build Microsoft Store package
         if: runner.os == 'Windows'
-        run: npm run package:windows:store -- --test-identity
+        run: npm run package:windows:store:test
 
       - uses: actions/upload-artifact@v4
         if: runner.os == 'Windows'

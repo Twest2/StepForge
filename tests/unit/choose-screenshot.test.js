@@ -6,7 +6,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { GuideStore } = require('../../core/store');
 const { forgetScreenshotChecks } = require('../../core/redaction');
-const { makeTmpDir, rmrf, TINY_PNG } = require('./helpers');
+const { makeTmpDir, rmrf, TINY_PNG, rendererI18n } = require('./helpers');
 
 const OTHER_PNG = Buffer.concat([TINY_PNG, Buffer.from('different bytes')]);
 
@@ -58,7 +58,7 @@ test('private-detail blurs for the old screenshot are removed, and the step is c
 });
 
 function editor(api) {
-  const context = { window: { stepforge: api }, el: () => ({}), clearNode() {}, setTimeout, clearTimeout };
+  const context = { ...rendererI18n(), window: { stepforge: api }, el: () => ({}), clearNode() {}, setTimeout, clearTimeout };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/editor.js'), 'utf8'), context);
   const instance = Object.create(context.window.GuideEditor.prototype);
   const step = { stepId: 's1', title: 'Old', image: { size: { width: 10, height: 10 } }, annotations: [{ type: 'arrow' }] };
@@ -115,5 +115,5 @@ test('cancelling the file picker changes nothing', async () => {
 
 test('the step menu offers Choose image…', () => {
   const source = fs.readFileSync(path.join(__dirname, '../../app/renderer/editor.js'), 'utf8');
-  assert.match(source, /label: 'Choose image…', action: \(\) => this\.chooseScreenshot\(step\.stepId\)/);
+  assert.match(source, /label: t\('Choose image…'\), action: \(\) => this\.chooseScreenshot\(step\.stepId\)/);
 });

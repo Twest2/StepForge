@@ -16,6 +16,7 @@
     "setup:google-dev": "node scripts/setup-dev-google-oauth.js",
     "test": "node scripts/run-unit-tests.js",
     "sample": "node scripts/make-sample-guide.js",
+    "translations": "node scripts/check-translations.js",
     "icons": "node scripts/make-icons.js",
     "package:windows": "node scripts/package-windows.js",
     "package:windows:store": "node scripts/package-windows-store.js",

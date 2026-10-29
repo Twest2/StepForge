@@ -125,7 +125,7 @@ test('themes: eight of them, each with valid colors and a dark flag that matches
 test('the settings dialog offers exactly the code themes core knows', () => {
   const src = fs.readFileSync(path.join(__dirname, '../../app/renderer/dialogs.js'), 'utf8');
   const block = src.match(/const CODE_THEME_CHOICES = \[([\s\S]*?)\];/)[1];
-  const offered = [...block.matchAll(/value: '([^']+)', label: '([^']+)'/g)].map((m) => ({ value: m[1], label: m[2] }));
+  const offered = [...block.matchAll(/value: '([^']+)', label: (?:t\()?'([^']+)'/g)].map((m) => ({ value: m[1], label: m[2] }));
   assert.deepEqual(offered, CODE_THEME_CHOICES);
 });
 

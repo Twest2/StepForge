@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { rendererI18n } = require('./helpers');
 
 /**
  * The brand profile editor (app/renderer/branding.js) in a small DOM stand-in:
@@ -51,7 +52,7 @@ function ui() {
   }
   const focused = [];
   const root = el('div');
-  const context = {
+  const context = { ...rendererI18n(),
     document: { activeElement: null, getElementById: () => root, addEventListener() {}, removeEventListener() {} },
     window: {}, setTimeout, clearTimeout, console,
   };
@@ -229,7 +230,7 @@ test('editor: annotation colors are off until turned on, and then saved with the
 test('step editor: new shapes, number badges and tooltips start in the profile’s colors only when it sets its own', async () => {
   const profiles = [];
   const api = { branding: { list: async () => profiles } };
-  const context = { window: { stepforge: api, StepForgeDialogs: {} }, document: { activeElement: null }, setTimeout, clearTimeout };
+  const context = { ...rendererI18n(), window: { stepforge: api, StepForgeDialogs: {} }, document: { activeElement: null }, setTimeout, clearTimeout };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/editor.js'), 'utf8'), context);
   const editor = Object.create(context.window.GuideEditor.prototype);
   const styles = () => JSON.parse(JSON.stringify(['rect', 'oval', 'arrow', 'text', 'number', 'tooltip', 'highlight'].map((tool) => editor.defaultStyleForTool(tool))));

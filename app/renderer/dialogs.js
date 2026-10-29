@@ -40,7 +40,7 @@ const CODE_THEME_CHOICES = [
   { value: 'monokai', label: 'Monokai' },
   { value: 'solarized-light', label: 'Solarized Light' },
   { value: 'nord', label: 'Nord' },
-  { value: 'plain', label: 'Plain (no highlighting)' },
+  { value: 'plain', label: t('Plain (no highlighting)') },
 ];
 
 const HOTKEY_LABELS = {
@@ -108,7 +108,7 @@ function makeHotkeyInput(value = '') {
   const keys = el('div.hotkey-keys');
   const clearBtn = el('button.hotkey-clear', {
     type: 'button',
-    title: 'Clear shortcut',
+    title: t('Clear shortcut'),
     onClick: (e) => {
       e.stopPropagation();
       current = '';
@@ -116,7 +116,7 @@ function makeHotkeyInput(value = '') {
     },
   }, '×');
 
-  const wrap = el('div.hotkey-input', { tabindex: '0', role: 'button', title: 'Click, then press a key combination' },
+  const wrap = el('div.hotkey-input', { tabindex: '0', role: 'button', title: t('Click, then press a key combination') },
     keys, clearBtn);
 
   function renderKeys(parts) {
@@ -129,12 +129,12 @@ function makeHotkeyInput(value = '') {
 
   function render() {
     if (wrap.classList.contains('recording')) {
-      keys.replaceChildren(el('span.hotkey-placeholder', {}, 'Press a key combination…'));
+      keys.replaceChildren(el('span.hotkey-placeholder', {}, t('Press a key combination…')));
       clearBtn.hidden = true;
       return;
     }
     if (!current) {
-      keys.replaceChildren(el('span.hotkey-placeholder', {}, 'Click to set shortcut'));
+      keys.replaceChildren(el('span.hotkey-placeholder', {}, t('Click to set shortcut')));
       clearBtn.hidden = true;
       return;
     }
@@ -193,9 +193,9 @@ function makeHotkeyInput(value = '') {
  * there. `positions` is [{ value, label, current?, levels: [{ value, label }] }];
  * resolves { gap, depth } (the chosen values) or null.
  */
-function showMoveStepDialog({ title = 'Move step', hint = '', positions = [], currentDepth = 0 } = {}) {
+function showMoveStepDialog({ title = t('Move step'), hint = '', positions = [], currentDepth = 0 } = {}) {
   return new Promise((resolve) => {
-    const where = el('select', {}, positions.map((p) => el('option', { value: p.value }, p.current ? `${p.label} (current place)` : p.label)));
+    const where = el('select', {}, positions.map((p) => el('option', { value: p.value }, p.current ? t('{place} (current place)', { place: p.label }) : p.label)));
     const level = el('select', {});
     const fillLevels = () => {
       const position = positions.find((p) => p.value === where.value) || positions[0];
@@ -215,12 +215,12 @@ function showMoveStepDialog({ title = 'Move step', hint = '', positions = [], cu
       title,
       body: el('div', {},
         hint ? el('div.muted', { style: { marginBottom: '8px' } }, hint) : null,
-        labeledRow('Place', where),
-        labeledRow('Level', level),
+        labeledRow(t('Place'), where),
+        labeledRow(t('Level'), level),
       ),
       footer: [
-        el('button', { onClick: () => done(null) }, 'Cancel'),
-        el('button.primary', { onClick: () => done({ gap: where.value, depth: level.value }) }, 'Move'),
+        el('button', { onClick: () => done(null) }, t('Cancel')),
+        el('button.primary', { onClick: () => done({ gap: where.value, depth: level.value }) }, t('Move')),
       ],
       onClose: () => resolve(null),
     });
@@ -245,8 +245,8 @@ async function promptText({
       title,
       body: labeledRow(label, field, { stacked: multiline }),
       footer: [
-        el('button', { onClick: () => { close(); resolve(null); } }, 'Cancel'),
-        el('button.primary', { onClick: () => { close(); resolve(field.value); } }, 'OK'),
+        el('button', { onClick: () => { close(); resolve(null); } }, t('Cancel')),
+        el('button.primary', { onClick: () => { close(); resolve(field.value); } }, t('OK')),
       ],
       onClose: () => resolve(null),
     });
@@ -276,12 +276,12 @@ function showQuickActions({ query = '', commands = [], searchFn, onOpenItem, onC
     const input = el('input', {
       type: 'search',
       value: query,
-      placeholder: 'Search guides, steps, and commands',
+      placeholder: t('Search guides, steps, and commands'),
       autocomplete: 'off',
       spellcheck: false,
     });
     const results = el('div.qa-results');
-    const hint = el('div.muted', {}, 'Type to search, arrows to move, Enter to open.');
+    const hint = el('div.muted', {}, t('Type to search, arrows to move, Enter to open.'));
     let items = [];
     let active = 0;
 
@@ -292,7 +292,7 @@ function showQuickActions({ query = '', commands = [], searchFn, onOpenItem, onC
     function renderItems() {
       clearNode(results);
       if (!items.length) {
-        results.append(el('div.muted', { style: { padding: '8px 2px' } }, 'No matches.'));
+        results.append(el('div.muted', { style: { padding: '8px 2px' } }, t('No matches.')));
         return;
       }
       items.forEach((item, idx) => {
@@ -332,7 +332,7 @@ function showQuickActions({ query = '', commands = [], searchFn, onOpenItem, onC
     }
 
     const { close } = openModal({
-      title: 'Quick Actions',
+      title: t('Quick Actions'),
       body: el('div.quick-actions', {},
         input,
         hint,
@@ -340,7 +340,7 @@ function showQuickActions({ query = '', commands = [], searchFn, onOpenItem, onC
       ),
       wide: true,
       footer: [
-        el('button', { onClick: () => { close(); resolve(null); } }, 'Close'),
+        el('button', { onClick: () => { close(); resolve(null); } }, t('Close')),
       ],
       onClose: () => {
         if (onClose) onClose();
@@ -370,13 +370,13 @@ function showQuickActions({ query = '', commands = [], searchFn, onOpenItem, onC
  */
 function showFindReplace({ stepNumbers = {}, find, replace } = {}) {
   return new Promise((resolve) => {
-    const query = el('input', { type: 'search', placeholder: 'Find', autocomplete: 'off', spellcheck: false });
-    const replacement = el('input', { type: 'text', placeholder: 'Replace with', autocomplete: 'off', spellcheck: false });
+    const query = el('input', { type: 'search', placeholder: t('Find'), autocomplete: 'off', spellcheck: false });
+    const replacement = el('input', { type: 'text', placeholder: t('Replace with'), autocomplete: 'off', spellcheck: false });
     const matchCase = el('input', { type: 'checkbox' });
     const wholeWord = el('input', { type: 'checkbox' });
     const summary = el('span.muted');
     const list = el('div.qa-results.fr-results');
-    const replaceButton = el('button.primary', { disabled: true }, 'Replace');
+    const replaceButton = el('button.primary', { disabled: true }, t('Replace'));
     let matches = [];
     let unticked = new Set(); // ids the user unticked; everything else is ticked
     let lastSearch = '';
@@ -392,12 +392,14 @@ function showFindReplace({ stepNumbers = {}, find, replace } = {}) {
     function updateSummary() {
       const n = chosen().length;
       const blocked = matches.filter((m) => m.blocked).length;
-      summary.textContent = !query.value ? 'Type something to find.'
-        : stale ? 'Searching…'
-          : !matches.length ? 'No matches.'
-            : `${matches.length} match${matches.length === 1 ? '' : 'es'}, ${n} selected${blocked ? `, ${blocked} cannot take this replacement` : ''}.`;
+      summary.textContent = !query.value ? t('Type something to find.')
+        : stale ? t('Searching…')
+          : !matches.length ? t('No matches.')
+            : blocked ? tn(matches.length, '{count} match, {selected} selected, {blocked} cannot take this replacement.',
+              '{count} matches, {selected} selected, {blocked} cannot take this replacement.', { selected: n, blocked })
+              : tn(matches.length, '{count} match, {selected} selected.', '{count} matches, {selected} selected.', { selected: n });
       replaceButton.disabled = busy || stale || n === 0;
-      replaceButton.textContent = n ? `Replace ${n}` : 'Replace';
+      replaceButton.textContent = n ? t('Replace {count}', { count: n }) : t('Replace');
     }
 
     function renderList(truncated) {
@@ -411,12 +413,12 @@ function showFindReplace({ stepNumbers = {}, find, replace } = {}) {
         list.append(el('label.qa-item.fr-item', { title: m.blocked || '' },
           box,
           el('div', {},
-            el('div.snippet', {}, el('b', {}, `Step ${stepNumbers[m.stepId] || m.stepIndex + 1}`), ` · ${m.where}`),
+            el('div.snippet', {}, el('b', {}, t('Step {number}', { number: stepNumbers[m.stepId] || m.stepIndex + 1 })), ` · ${m.where}`),
             el('div', {}, m.before, el('mark', {}, m.matched), m.after),
             m.blocked ? el('div.muted', {}, m.blocked) : null,
           )));
       }
-      if (truncated) list.append(el('div.muted', { style: { padding: '8px 2px' } }, `Showing the first ${matches.length} matches. Narrow the search to see the rest.`));
+      if (truncated) list.append(el('div.muted', { style: { padding: '8px 2px' } }, t('Showing the first {count} matches. Narrow the search to see the rest.', { count: matches.length })));
       updateSummary();
     }
 
@@ -460,12 +462,12 @@ function showFindReplace({ stepNumbers = {}, find, replace } = {}) {
         resolve(true);
       } catch (err) {
         busy = false;
-        summary.textContent = `Could not replace: ${(err && err.message) || err}`;
+        summary.textContent = t('Could not replace: {error}', { error: (err && err.message) || err });
       }
     }
 
     const { close } = openModal({
-      title: 'Find and replace',
+      title: t('Find and replace'),
       wide: true,
       body: el('div.quick-actions', {},
         query,
@@ -477,10 +479,10 @@ function showFindReplace({ stepNumbers = {}, find, replace } = {}) {
           summary),
         list,
         el('div.muted', { style: { marginTop: '8px' } },
-          'Searches step titles and descriptions, text, code and table blocks, and annotation labels. Screenshots are not changed. Ctrl+Z undoes the whole replacement.'),
+          t('Searches step titles and descriptions, text, code and table blocks, and annotation labels. Screenshots are not changed. Ctrl+Z undoes the whole replacement.')),
       ),
       footer: [
-        el('button', { onClick: () => { close(); resolve(false); } }, 'Close'),
+        el('button', { onClick: () => { close(); resolve(false); } }, t('Close')),
         replaceButton,
       ],
       onClose: () => resolve(false),
@@ -508,35 +510,35 @@ function showFindReplace({ stepNumbers = {}, find, replace } = {}) {
  */
 function makeUpdateCheck(api, { openLink, flushEdits = null }) {
   const updateStatus = el('div.update-status', { role: 'status', 'aria-live': 'polite' });
-  const checkUpdatesBtn = el('button', { type: 'button' }, 'Check for updates');
+  const checkUpdatesBtn = el('button', { type: 'button' }, t('Check for updates'));
 
   const updateNowButton = (result) => {
-    const button = el('button.primary', { type: 'button' }, 'Update now');
+    const button = el('button.primary', { type: 'button' }, t('Update now'));
     const note = el('div.setting-desc.update-now-note', {});
     button.addEventListener('click', async () => {
-      const ok = await confirmDialog(`StepForge will close to install version ${result.latestVersion}. Continue?`, { okLabel: 'Update now' });
+      const ok = await confirmDialog(`StepForge will close to install version ${result.latestVersion}. Continue?`, { okLabel: t('Update now') });
       if (!ok) return;
       note.textContent = '';
       note.classList.remove('error');
-      setButtonLoading(button, true, 'Starting…');
+      setButtonLoading(button, true, t('Starting…'));
       let outcome;
       try {
         if (flushEdits && !await flushEdits()) {
-          outcome = { ok: false, message: 'Your latest changes couldn’t be saved, so the update didn’t start.' };
+          outcome = { ok: false, message: t('Your latest changes couldn’t be saved, so the update didn’t start.') };
         } else {
           outcome = await api.app.updateNow();
         }
       } catch {
-        outcome = { ok: false, message: 'Couldn’t start the update. Try again, or download the new installer.' };
+        outcome = { ok: false, message: t('Couldn’t start the update. Try again, or download the new installer.') };
       }
       if (outcome && outcome.ok) {
         // StepForge quits on its own; keep the button off until it does.
-        setButtonLoading(button, true, 'Closing StepForge…');
-        note.textContent = 'An administrator window will install the update and reopen StepForge.';
+        setButtonLoading(button, true, t('Closing StepForge…'));
+        note.textContent = t('An administrator window will install the update and reopen StepForge.');
         return;
       }
       setButtonLoading(button, false);
-      note.textContent = (outcome && outcome.message) || 'Couldn’t start the update.';
+      note.textContent = (outcome && outcome.message) || t('Couldn’t start the update.');
       note.classList.toggle('error', outcome?.reason !== 'declined');
     });
     return { button, note };
@@ -544,7 +546,7 @@ function makeUpdateCheck(api, { openLink, flushEdits = null }) {
 
   // The Store installs the update; this only opens StepForge's Store page.
   const storeButton = () => {
-    const button = el('button.primary', { type: 'button' }, 'Open Microsoft Store');
+    const button = el('button.primary', { type: 'button' }, t('Open Microsoft Store'));
     const note = el('div.setting-desc.update-now-note', {});
     button.addEventListener('click', async () => {
       note.textContent = '';
@@ -556,7 +558,7 @@ function makeUpdateCheck(api, { openLink, flushEdits = null }) {
         outcome = null;
       }
       if (!outcome || !outcome.ok) {
-        note.textContent = 'Couldn’t open the Microsoft Store. Open it from the Start menu, then choose Library → Get updates.';
+        note.textContent = t('Couldn’t open the Microsoft Store. Open it from the Start menu, then choose Library → Get updates.');
         note.classList.add('error');
       }
     });
@@ -564,14 +566,14 @@ function makeUpdateCheck(api, { openLink, flushEdits = null }) {
   };
 
   checkUpdatesBtn.addEventListener('click', async () => {
-    setButtonLoading(checkUpdatesBtn, true, 'Checking…');
+    setButtonLoading(checkUpdatesBtn, true, t('Checking…'));
     clearNode(updateStatus);
     updateStatus.className = 'update-status';
     let result;
     try {
       result = await api.app.checkForUpdates();
     } catch {
-      result = { status: 'error', message: 'Couldn’t check for updates. Try again later.' };
+      result = { status: 'error', message: t('Couldn’t check for updates. Try again later.') };
     } finally {
       setButtonLoading(checkUpdatesBtn, false);
     }
@@ -580,28 +582,28 @@ function makeUpdateCheck(api, { openLink, flushEdits = null }) {
       if (result.store) {
         const store = storeButton();
         updateStatus.append(
-          el('div.update-status-title', {}, `Version ${result.latestVersion} is available`),
-          el('div.setting-desc', {}, `You have ${result.currentVersion}. ${result.hint || ''}`),
+          el('div.update-status-title', {}, t('Version {version} is available', { version: result.latestVersion })),
+          el('div.setting-desc', {}, `${t('You have {version}.', { version: result.currentVersion })} ${result.hint || ''}`),
           el('div.settings-actions', {}, store.button),
           store.note);
         return;
       }
       // With Update now, downloading stays available as the secondary action.
       const updateNow = result.updateNow ? updateNowButton(result) : null;
-      const download = el(updateNow ? 'button' : 'button.primary', { type: 'button', onClick: openLink(result.releaseUrl) }, 'View release and download');
+      const download = el(updateNow ? 'button' : 'button.primary', { type: 'button', onClick: openLink(result.releaseUrl) }, t('View release and download'));
       updateStatus.append(
-        el('div.update-status-title', {}, `Version ${result.latestVersion} is available`),
-        el('div.setting-desc', {}, `You have ${result.currentVersion}. ${result.hint || ''}`),
+        el('div.update-status-title', {}, t('Version {version} is available', { version: result.latestVersion })),
+        el('div.setting-desc', {}, `${t('You have {version}.', { version: result.currentVersion })} ${result.hint || ''}`),
         el('div.settings-actions', {}, updateNow ? updateNow.button : null, download),
         ...(updateNow ? [updateNow.note] : []));
     } else if (result.status === 'up-to-date') {
       updateStatus.classList.add('current');
-      updateStatus.append(el('div.update-status-title', {}, 'You’re up to date'),
-        el('div.setting-desc', {}, `Version ${result.currentVersion} is the latest release.`));
+      updateStatus.append(el('div.update-status-title', {}, t('You’re up to date')),
+        el('div.setting-desc', {}, t('Version {version} is the latest release.', { version: result.currentVersion })));
     } else {
       updateStatus.classList.add('error');
-      updateStatus.append(el('div.setting-desc', {}, result.message || 'Couldn’t check for updates.'));
-      checkUpdatesBtn.textContent = 'Try again';
+      updateStatus.append(el('div.setting-desc', {}, result.message || t('Couldn’t check for updates.')));
+      checkUpdatesBtn.textContent = t('Try again');
     }
   });
   return { checkUpdatesBtn, updateStatus };
@@ -624,21 +626,21 @@ function showSettingsDialog({
     if (accountView) initialSection = 'accounts';
     const accountsPanel = makeAccountsSettings(api, { view: accountView, onPublishToWeb });
     const brandingPanel = makeBrandingSettings(api, { activeProfileId: settings.branding?.activeProfileId || '' });
-    const storagePath = el('code.settings-path', {}, 'Checking guide storage location…');
+    const storagePath = el('code.settings-path', {}, t('Checking guide storage location…'));
     const storageNote = el('div.setting-desc', {}, '');
     const showStorageError = (message) => { storageNote.textContent = message; storageNote.classList.add('error'); };
-    const chooseStorageBtn = el('button', { type: 'button' }, 'Choose folder…');
-    const resetStorageBtn = el('button', { type: 'button' }, 'Use default');
-    const cancelStorageBtn = el('button', { type: 'button', hidden: true }, 'Cancel pending move');
+    const chooseStorageBtn = el('button', { type: 'button' }, t('Choose folder…'));
+    const resetStorageBtn = el('button', { type: 'button' }, t('Use default'));
+    const cancelStorageBtn = el('button', { type: 'button', hidden: true }, t('Cancel pending move'));
     let storageInfo = null;
     const refreshStorage = async () => {
       try {
         storageInfo = await api.storage.status();
         storagePath.textContent = storageInfo.current;
         storagePath.title = storageInfo.current;
-        const notes = [storageInfo.current === storageInfo.defaultPath ? 'Default location.' : `Default: ${storageInfo.defaultPath}`];
-        if (storageInfo.pending) notes.push(`Moving to ${storageInfo.pending} the next time StepForge starts.`);
-        if (storageInfo.locked) notes.push('Set by STEPFORGE_DATA_DIR for this session.');
+        const notes = [storageInfo.current === storageInfo.defaultPath ? t('Default location.') : t('Default: {path}', { path: storageInfo.defaultPath })];
+        if (storageInfo.pending) notes.push(t('Moving to {path} the next time StepForge starts.', { path: storageInfo.pending }));
+        if (storageInfo.locked) notes.push(t('Set by STEPFORGE_DATA_DIR for this session.'));
         if (storageInfo.error) notes.push(storageInfo.error);
         storageNote.textContent = notes.join(' ');
         storageNote.classList.toggle('error', Boolean(storageInfo.error));
@@ -646,14 +648,14 @@ function showSettingsDialog({
         resetStorageBtn.disabled = storageInfo.locked || storageInfo.current === storageInfo.defaultPath;
         cancelStorageBtn.hidden = !storageInfo.pending;
       } catch (error) {
-        showStorageError(error.message || 'Could not read guide storage location.');
+        showStorageError(error.message || t('Could not read guide storage location.'));
       }
     };
     chooseStorageBtn.addEventListener('click', async () => {
-      try { await api.storage.choose(); await refreshStorage(); } catch (error) { showStorageError(error.message || 'Could not schedule the library move.'); }
+      try { await api.storage.choose(); await refreshStorage(); } catch (error) { showStorageError(error.message || t('Could not schedule the library move.')); }
     });
     resetStorageBtn.addEventListener('click', async () => {
-      try { await api.storage.reset(); await refreshStorage(); } catch (error) { showStorageError(error.message || 'Could not schedule the library move.'); }
+      try { await api.storage.reset(); await refreshStorage(); } catch (error) { showStorageError(error.message || t('Could not schedule the library move.')); }
     });
     cancelStorageBtn.addEventListener('click', async () => { await api.storage.cancelMove(); await refreshStorage(); });
     void refreshStorage();
@@ -663,43 +665,48 @@ function showSettingsDialog({
     const dataDirLabel = el('code.settings-path', {}, '—');
     api.app.info().then((info) => {
       versionLabel.textContent = info.buildVersion || info.version;
-      buildLabel.textContent = info.devBuild ? 'Development build' : 'Release';
+      buildLabel.textContent = info.devBuild ? t('Development build') : t('Release');
       buildLabel.classList.toggle('dev', Boolean(info.devBuild));
       licenseLabel.textContent = info.license || '—';
       dataDirLabel.textContent = info.dataDir || '—';
       dataDirLabel.title = info.dataDir || '';
-    }).catch(() => { versionLabel.textContent = 'Unavailable'; });
+    }).catch(() => { versionLabel.textContent = t('Unavailable'); });
     const openLink = (url) => () => { void api.shell.openExternal({ url }).catch(() => {}); };
     // An inline link in a setting's description; opens in the browser.
     const docLink = (label, url) => el('a', { href: url, onClick: (e) => { e.preventDefault(); openLink(url)(); } }, label);
     const { checkUpdatesBtn, updateStatus } = makeUpdateCheck(api, { openLink, flushEdits });
 
     const appearance = makeSelect(settings.appearance || 'system', [
-      { value: 'system', label: 'System' },
-      { value: 'light', label: 'Light' },
-      { value: 'dark', label: 'Dark' },
+      { value: 'system', label: t('System') },
+      { value: 'light', label: t('Light') },
+      { value: 'dark', label: t('Dark') },
     ]);
     const spellcheck = el('input', { type: 'checkbox', checked: Boolean(settings.spellcheck) });
+    // Each language is listed in its own name, so anyone can find theirs.
+    const language = makeSelect(settings.language || 'system', [
+      { value: 'system', label: t('System default') },
+      ...StepForgeI18n.LANGUAGES.map((l) => ({ value: l.code, label: l.name })),
+    ]);
     const delayMs = makeInput(settings.capture?.delayMs ?? 0, 'number', { min: 0, step: 50 });
     // An older settings file may still hold 'region', which recording always
     // treated as fullscreen. Show what actually happens.
     const captureMode = makeSelect(settings.capture?.mode === 'window' ? 'window' : 'fullscreen', [
-      { value: 'fullscreen', label: 'Fullscreen' },
-      { value: 'window', label: 'Window' },
+      { value: 'fullscreen', label: t('Fullscreen') },
+      { value: 'window', label: t('Window') },
     ]);
     const smartCropping = el('input', { type: 'checkbox', checked: settings.capture?.smartCropping !== false });
     const redactOnCapture = el('input', { type: 'checkbox', checked: settings.redaction?.onCapture === true });
-    const redactTerms = el('textarea.redact-terms', { rows: 4, spellcheck: false, placeholder: 'One per line, for example a name or project code',
-      'aria-label': 'Words to always hide' });
+    const redactTerms = el('textarea.redact-terms', { rows: 4, spellcheck: false, placeholder: t('One per line, for example a name or project code'),
+      'aria-label': t('Words to always hide') });
     redactTerms.value = (settings.redaction?.terms || []).join('\n');
     const focusValue = Number(settings.capture?.focusAmount ?? 1.25);
     const focusAmount = el('input', { type: 'range', min: 1, max: 2, step: 0.05,
-      'aria-label': 'Default focus amount', value: Number.isFinite(focusValue) ? Math.max(1, Math.min(2, focusValue)) : 1.25 });
+      'aria-label': t('Default focus amount'), value: Number.isFinite(focusValue) ? Math.max(1, Math.min(2, focusValue)) : 1.25 });
     const focusLabel = el('output', {}, `${Number(focusAmount.value).toFixed(2)}×`);
     focusAmount.addEventListener('input', () => { focusLabel.textContent = `${Number(focusAmount.value).toFixed(2)}×`; });
     const focusControl = el('div.row.settings-range', {}, focusAmount, focusLabel, el('button', { type: 'button', onClick: () => {
       focusAmount.value = '1.25'; focusLabel.textContent = '1.25×';
-    } }, 'Reset'));
+    } }, t('Reset')));
     const clickMarker = el('input', { type: 'checkbox', checked: Boolean(settings.capture?.clickMarker) });
     const captureHotkey = makeHotkeyInput(settings.capture?.hotkeyCapture || '');
     const pauseHotkey = makeHotkeyInput(settings.capture?.hotkeyPauseResume || '');
@@ -710,23 +717,23 @@ function showSettingsDialog({
       CODE_THEME_CHOICES);
     const captureOutside = el('input', { type: 'checkbox', checked: Boolean(settings.capture?.captureOutsideClicks) });
     const fallbackTrigger = makeSelect(settings.capture?.fallbackTrigger === 'interval' ? 'interval' : 'hotkey', [
-      { value: 'hotkey', label: 'Hotkey' },
-      { value: 'interval', label: 'Timed interval' },
+      { value: 'hotkey', label: t('Hotkey') },
+      { value: 'interval', label: t('Timed interval') },
     ]);
     const autoIntervalSec = makeInput(settings.capture?.autoIntervalSec ?? 5, 'number', { min: 1, step: 1 });
     const keepLast = makeInput(settings.backups?.keepLast ?? 10, 'number', { min: 0, step: 1 });
     const trashDays = makeSelect(String(settings.library?.trashDays ?? 30), [
-      { value: '7', label: 'After 7 days' },
-      { value: '30', label: 'After 30 days' },
-      { value: '90', label: 'After 90 days' },
-      { value: '0', label: 'Never' },
+      { value: '7', label: t('After 7 days') },
+      { value: '30', label: t('After 30 days') },
+      { value: '90', label: t('After 90 days') },
+      { value: '0', label: t('Never') },
     ]);
     const reviewAfterDays = review.normalizeReviewDays(settings.library?.reviewAfterDays) ?? review.DEFAULT_REVIEW_DAYS;
     const reviewDefault = makeSelect(String(reviewAfterDays), [
-      ...review.REVIEW_INTERVALS.map((i) => ({ value: String(i.days), label: `After ${i.label}` })),
+      ...review.REVIEW_INTERVALS.map((i) => ({ value: String(i.days), label: t('After {interval}', { interval: intervalText(i.days) }) })),
       ...(reviewAfterDays > 0 && !review.REVIEW_INTERVALS.some((i) => i.days === reviewAfterDays)
-        ? [{ value: String(reviewAfterDays), label: `After ${review.intervalLabel(reviewAfterDays)}` }] : []),
-      { value: '0', label: 'Never' },
+        ? [{ value: String(reviewAfterDays), label: t('After {interval}', { interval: intervalText(reviewAfterDays) }) }] : []),
+      { value: '0', label: t('Never') },
     ]);
     const aiEnabled = el('input', { type: 'checkbox', checked: Boolean(settings.ai?.enabled) });
     const aiAutoDoc = el('input', { type: 'checkbox', checked: Boolean(settings.ai?.autoDoc) });
@@ -740,11 +747,11 @@ function showSettingsDialog({
     const agentsScreenshots = el('input', { type: 'checkbox', checked: settings.ai?.agents?.screenshots !== false });
     const agentsBranding = el('input', { type: 'checkbox', checked: Boolean(settings.ai?.agents?.branding) });
     // How Claude Code, Codex, or any MCP app starts StepForge for agents.
-    const agentSetup = el('div.agent-setup', {}, el('div.setting-desc', {}, 'Loading the setup commands…'));
+    const agentSetup = el('div.agent-setup', {}, el('div.setting-desc', {}, t('Loading the setup commands…')));
     const AGENT_SETUPS = [
-      ['claude', 'Claude Code', 'Run this in a terminal once.'],
-      ['codex', 'Codex', 'Run this in a terminal once.'],
-      ['json', 'Claude Desktop, Cursor, and other apps', 'Add this to the app’s MCP servers settings.'],
+      ['claude', 'Claude Code', t('Run this in a terminal once.')],
+      ['codex', 'Codex', t('Run this in a terminal once.')],
+      ['json', t('Claude Desktop, Cursor, and other apps'), t('Add this to the app’s MCP servers settings.')],
     ];
     api.agents.setup().then((texts) => {
       agentSetup.replaceChildren(...AGENT_SETUPS.map(([kind, label, hint]) => {
@@ -752,20 +759,20 @@ function showSettingsDialog({
           type: 'button',
           onClick: async () => {
             await api.agents.copy({ kind });
-            copy.textContent = 'Copied';
-            setTimeout(() => { copy.textContent = 'Copy'; }, 1500);
+            copy.textContent = t('Copied');
+            setTimeout(() => { copy.textContent = t('Copy'); }, 1500);
           },
-        }, 'Copy');
+        }, t('Copy'));
         return el('div.agent-setup-row', {},
           el('div.setting-text', {}, el('div.setting-title', {}, label), el('div.setting-desc', {}, hint)),
           el('pre.agent-command', {}, texts[kind]),
           copy);
       }));
     }).catch((err) => {
-      agentSetup.replaceChildren(el('div.setting-desc.error', {}, `Could not build the setup commands: ${err.message || err}`));
+      agentSetup.replaceChildren(el('div.setting-desc.error', {}, t('Could not build the setup commands: {error}', { error: err.message || err })));
     });
-    const aiStatus = el('div', { className: 'ai-status' }, 'Not tested yet. Vision-capable models can also inspect each step’s screenshot.');
-    const testAiBtn = el('button', { type: 'button' }, 'Test connection');
+    const aiStatus = el('div', { className: 'ai-status' }, t('Not tested yet. Vision-capable models can also inspect each step’s screenshot.'));
+    const testAiBtn = el('button', { type: 'button' }, t('Test connection'));
     const persistOllamaModel = debounce(() => {
       const model = ollamaModel.value.trim();
       // Keep the last model choice even if the dialog is dismissed without a full save.
@@ -787,8 +794,8 @@ function showSettingsDialog({
     };
 
     const testAiConnection = async () => {
-      setButtonLoading(testAiBtn, true, 'Testing…');
-      updateAiStatus('Checking Ollama at the configured host…');
+      setButtonLoading(testAiBtn, true, t('Testing…'));
+      updateAiStatus(t('Checking Ollama at the configured host…'));
       try {
         const result = await api.ai.test({
           ollama: {
@@ -797,22 +804,22 @@ function showSettingsDialog({
           },
         });
         if (!result.ok) {
-          updateAiStatus(result.reason || 'Could not connect to Ollama.', { error: true });
+          updateAiStatus(result.reason || t('Could not connect to Ollama.'), { error: true });
           return;
         }
         ollamaModels.replaceChildren(...(result.models || []).map((model) => el('option', { value: model })));
         if (result.installed) {
           updateAiStatus(result.vision
-            ? `Connected to ${result.host} with ${result.model}. It can inspect screenshots.`
-            : `Connected to ${result.host} with ${result.model}. This model is text-only, so StepForge will use OCR and metadata only.`, { ok: true });
+            ? t('Connected to {host} with {model}. It can inspect screenshots.', { host: result.host, model: result.model })
+            : t('Connected to {host} with {model}. This model is text-only, so StepForge will use OCR and metadata only.', { host: result.host, model: result.model }), { ok: true });
         } else {
           const installed = (result.models || []).join(', ');
           updateAiStatus(installed
-            ? `Connected to ${result.host}, but ${result.model || 'that model'} isn’t installed. Installed models: ${installed}.`
-            : `Connected to ${result.host}, but it has no models yet. Run “ollama pull gemma3” first.`, { error: true });
+            ? t('Connected to {host}, but {model} isn’t installed. Installed models: {installed}.', { host: result.host, model: result.model || t('that model'), installed })
+            : t('Connected to {host}, but it has no models yet. Run “ollama pull gemma3” first.', { host: result.host }), { error: true });
         }
       } catch (err) {
-        updateAiStatus(err.message || 'Could not connect to Ollama.', { error: true });
+        updateAiStatus(err.message || t('Could not connect to Ollama.'), { error: true });
       } finally {
         setButtonLoading(testAiBtn, false);
       }
@@ -821,19 +828,19 @@ function showSettingsDialog({
     ollamaModel.addEventListener('blur', () => persistOllamaModel.flush());
 
     const placeholderHeader = el('div.global-placeholder-header.hidden', {},
-      el('span', {}, 'Placeholder name'), el('span', {}, 'Content'));
+      el('span', {}, t('Placeholder name')), el('span', {}, t('Content')));
     const placeholderRows = el('div', { className: 'placeholder-rows global-placeholder-rows' }, placeholderHeader);
     const rows = [];
     const addPlaceholderRow = (key = '', value = '') => {
-      const keyInput = el('textarea.global-placeholder-name', { rows: 4, 'aria-label': 'Placeholder name', placeholder: '[[placeholder-name]]' }, key);
+      const keyInput = el('textarea.global-placeholder-name', { rows: 4, 'aria-label': t('Placeholder name'), placeholder: '[[placeholder-name]]' }, key);
       keyInput.addEventListener('keydown', (event) => { if (event.key === 'Enter') event.preventDefault(); });
       keyInput.addEventListener('input', () => { keyInput.value = keyInput.value.replace(/[\r\n]/g, ''); });
-      const valueInput = el('textarea.global-placeholder-value', { rows: 4, 'aria-label': 'Placeholder content', placeholder: 'Markdown or regular text' }, typeof value === 'object' ? value.text || '' : value);
+      const valueInput = el('textarea.global-placeholder-value', { rows: 4, 'aria-label': t('Placeholder content'), placeholder: t('Markdown or regular text') }, typeof value === 'object' ? value.text || '' : value);
       const valueCell = el('div.placeholder-markdown-content', {}, valueInput);
 
       const removeBtn = el('button.icon', {
         type: 'button',
-        title: 'Remove placeholder',
+        title: t('Remove placeholder'),
         onClick: () => {
           row.remove();
           rows.splice(rows.indexOf(row), 1);
@@ -858,94 +865,96 @@ function showSettingsDialog({
     const addPlaceholderBtn = el('button', {
       type: 'button',
       onClick: () => addPlaceholderRow(),
-    }, 'Add placeholder');
+    }, t('Add placeholder'));
 
     const sections = [
-      { id: 'general', label: 'General', description: 'Appearance, exports, where your guides and deleted guides are kept, and when guides are due for review.', content: [
-        settingsCard('Appearance',
-          settingRow('Theme', 'Match your system, or always use light or dark.', appearance),
-          settingRow('Spellcheck', 'Underline misspelled words while editing.', makeSwitch(spellcheck, 'Spellcheck'))),
-        settingsCard('Exports',
-          settingRow('Open folder after export', 'Show the exported file in your file manager.', makeSwitch(openFolder, 'Open folder after export')),
-          settingRow('Preview step count', 'How many steps the export preview renders.', previewCount),
-          settingRow('Code theme', 'Syntax colors for code blocks in PDF, Word, HTML and Confluence exports.', codeTheme)),
-        settingsCard('Guide storage',
+      { id: 'general', label: t('General'), description: t('Appearance, exports, where your guides and deleted guides are kept, and when guides are due for review.'), content: [
+        settingsCard(t('Appearance'),
+          settingRow(t('Theme'), t('Match your system, or always use light or dark.'), appearance),
+          settingRow(t('Spellcheck'), t('Underline misspelled words while editing.'), makeSwitch(spellcheck, t('Spellcheck')))),
+        settingsCard(t('Exports'),
+          settingRow(t('Open folder after export'), t('Show the exported file in your file manager.'), makeSwitch(openFolder, t('Open folder after export'))),
+          settingRow(t('Preview step count'), t('How many steps the export preview renders.'), previewCount),
+          settingRow(t('Code theme'), t('Syntax colors for code blocks in PDF, Word, HTML and Confluence exports.'), codeTheme)),
+        settingsCard(t('Guide storage'),
           el('div.settings-storage', {}, storagePath, storageNote),
           el('div.settings-actions', {}, chooseStorageBtn, resetStorageBtn, cancelStorageBtn),
-          el('div.setting-desc', {}, 'Choose an empty folder. StepForge copies and verifies your library, then switches to it the next time it starts. The old library is kept as a backup.')),
-        settingsCard('Trash',
-          settingRow('Empty the trash', 'Deleted guides are removed for good after this long.', trashDays)),
-        settingsCard('Guide reviews',
-          settingRow('Flag guides for review', 'Guides that haven’t been saved or marked verified for this long show “May need review” in the library. Each guide can change this in Guide information.', reviewDefault)),
+          el('div.setting-desc', {}, t('Choose an empty folder. StepForge copies and verifies your library, then switches to it the next time it starts. The old library is kept as a backup.'))),
+        settingsCard(t('Trash'),
+          settingRow(t('Empty the trash'), t('Deleted guides are removed for good after this long.'), trashDays)),
+        settingsCard(t('Guide reviews'),
+          settingRow(t('Flag guides for review'), t('Guides that haven’t been saved or marked verified for this long show “May need review” in the library. Each guide can change this in Guide information.'), reviewDefault)),
+        settingsCard(t('Language'),
+          settingRow(t('Language'), t('The language of StepForge’s menus, buttons and messages. Exported guides stay in English.'), language)),
       ] },
-      { id: 'branding', label: 'Branding', description: 'Customize how exported guides appear.', content: [brandingPanel.node] },
-      { id: 'capture', label: 'Capture', description: 'How StepForge records steps.', content: [
-        settingsCard('Recording',
-          settingRow('Default mode', 'Record the whole screen or the active window. For a region, use Capture → Capture region….', captureMode),
-          settingRow('Delay', 'Milliseconds to wait before each screenshot.', delayMs),
-          settingRow('Click marker', 'Draw a marker where you clicked.', makeSwitch(clickMarker, 'Click marker')),
-          settingRow('Capture outside clicks', 'Record clicks in other apps while a capture session is running.', makeSwitch(captureOutside, 'Capture outside clicks'))),
-        settingsCard('When clicks can’t be detected',
-          settingRow('Capture with', 'Some desktops don’t report clicks. Choose how steps are captured instead.', fallbackTrigger),
-          (intervalRow.append(settingRow('Timer interval', 'Seconds between timed captures.', autoIntervalSec)), intervalRow)),
-        settingsCard('Hotkeys',
-          settingRow('Capture', 'Take a step. Also used when clicks can’t be detected.', captureHotkey),
-          settingRow('Pause / resume', 'Pause or resume the capture session.', pauseHotkey)),
+      { id: 'branding', label: t('Branding'), description: t('Customize how exported guides appear.'), content: [brandingPanel.node] },
+      { id: 'capture', label: t('Capture'), description: t('How StepForge records steps.'), content: [
+        settingsCard(t('Recording'),
+          settingRow(t('Default mode'), t('Record the whole screen or the active window. For a region, use Capture → Capture region….'), captureMode),
+          settingRow(t('Delay'), t('Milliseconds to wait before each screenshot.'), delayMs),
+          settingRow(t('Click marker'), t('Draw a marker where you clicked.'), makeSwitch(clickMarker, t('Click marker'))),
+          settingRow(t('Capture outside clicks'), t('Record clicks in other apps while a capture session is running.'), makeSwitch(captureOutside, t('Capture outside clicks')))),
+        settingsCard(t('When clicks can’t be detected'),
+          settingRow(t('Capture with'), t('Some desktops don’t report clicks. Choose how steps are captured instead.'), fallbackTrigger),
+          (intervalRow.append(settingRow(t('Timer interval'), t('Seconds between timed captures.'), autoIntervalSec)), intervalRow)),
+        settingsCard(t('Hotkeys'),
+          settingRow(t('Capture'), t('Take a step. Also used when clicks can’t be detected.'), captureHotkey),
+          settingRow(t('Pause / resume'), t('Pause or resume the capture session.'), pauseHotkey)),
       ] },
-      { id: 'editor', label: 'Editor', description: 'Defaults for new steps and automatic backups.', content: [
-        settingsCard('New steps',
-          settingRow('Focus recorded clicks', 'Zoom new screenshots toward where you clicked.', makeSwitch(smartCropping, 'Focus recorded clicks')),
-          settingRow('Default focus amount', 'More context (1×) to closer focus (2×). Applies to new captures only.', focusControl),
-          settingRow('Focused view for new steps', 'Open new steps in focused view.', makeSwitch(focusedDefault, 'Focused view for new steps'))),
-        settingsCard('Backups',
-          settingRow('Snapshots to keep', 'Older backup snapshots of each guide are removed. 0 keeps all of them.', keepLast)),
+      { id: 'editor', label: t('Editor'), description: t('Defaults for new steps and automatic backups.'), content: [
+        settingsCard(t('New steps'),
+          settingRow(t('Focus recorded clicks'), t('Zoom new screenshots toward where you clicked.'), makeSwitch(smartCropping, t('Focus recorded clicks'))),
+          settingRow(t('Default focus amount'), t('More context (1×) to closer focus (2×). Applies to new captures only.'), focusControl),
+          settingRow(t('Focused view for new steps'), t('Open new steps in focused view.'), makeSwitch(focusedDefault, t('Focused view for new steps')))),
+        settingsCard(t('Backups'),
+          settingRow(t('Snapshots to keep'), t('Older backup snapshots of each guide are removed. 0 keeps all of them.'), keepLast)),
       ] },
-      { id: 'privacy', label: 'Privacy', description: 'Blur private details in screenshots. Everything is checked on this computer.', content: [
-        settingsCard('Private details',
-          el('div.setting-desc', {}, 'Before a guide goes on the web, StepForge reads its screenshots and blurs email addresses, phone and card numbers, Social Security numbers, IP addresses, passwords, keys, and links with private tokens. You can review every blur and undo any that aren’t needed.'),
-          settingRow('Blur while recording', 'Check each new capture as soon as it’s taken, instead of waiting until you publish.', makeSwitch(redactOnCapture, 'Blur while recording')),
-          settingRow('Always hide these words', 'Names, project codes, or anything else to blur wherever it appears. One per line.', redactTerms)),
+      { id: 'privacy', label: t('Privacy'), description: t('Blur private details in screenshots. Everything is checked on this computer.'), content: [
+        settingsCard(t('Private details'),
+          el('div.setting-desc', {}, t('Before a guide goes on the web, StepForge reads its screenshots and blurs email addresses, phone and card numbers, Social Security numbers, IP addresses, passwords, keys, and links with private tokens. You can review every blur and undo any that aren’t needed.')),
+          settingRow(t('Blur while recording'), t('Check each new capture as soon as it’s taken, instead of waiting until you publish.'), makeSwitch(redactOnCapture, t('Blur while recording'))),
+          settingRow(t('Always hide these words'), t('Names, project codes, or anything else to blur wherever it appears. One per line.'), redactTerms)),
       ] },
-      { id: 'ai', label: 'AI', description: 'Let AI write your guides: a model on your own computer through Ollama, or an AI agent such as Claude or Codex.', content: [
+      { id: 'ai', label: t('AI'), description: t('Let AI write your guides: a model on your own computer through Ollama, or an AI agent such as Claude or Codex.'), content: [
         settingsCard(null,
-          settingRow('Enable AI', 'Turn on the AI ▾ menu in the guide toolbar: write a whole guide, a step, or one field.', makeSwitch(aiEnabled, 'Enable AI')),
-          settingRow('Auto-document captures', 'Write a title and description for each new capture as you record. Turn off to use AI only when you ask.', makeSwitch(aiAutoDoc, 'Auto-document captures')),
-          settingRow('Let the model see screenshots', 'Models that can read images see each step’s screenshot, with blurred areas already hidden. Turn off to send text only.', makeSwitch(aiScreenshots, 'Let the model see screenshots'))),
-        settingsCard('Ollama',
-          el('div.setting-desc', {}, 'Runs on your computer, so your screenshots and text stay here.'),
-          settingRow('Host', 'Where Ollama is running.', ollamaHost),
-          settingRow('Model', el('span', {},
-            'Any installed model. Choose Test connection to list them. See the ',
-            docLink('AI guide', AI_GUIDE_URL), ' and ', docLink('recommended models', `${AI_GUIDE_URL}#recommended-models`), '.'),
+          settingRow(t('Enable AI'), t('Turn on the AI ▾ menu in the guide toolbar: write a whole guide, a step, or one field.'), makeSwitch(aiEnabled, t('Enable AI'))),
+          settingRow(t('Auto-document captures'), t('Write a title and description for each new capture as you record. Turn off to use AI only when you ask.'), makeSwitch(aiAutoDoc, t('Auto-document captures'))),
+          settingRow(t('Let the model see screenshots'), t('Models that can read images see each step’s screenshot, with blurred areas already hidden. Turn off to send text only.'), makeSwitch(aiScreenshots, t('Let the model see screenshots')))),
+        settingsCard(t('Ollama'),
+          el('div.setting-desc', {}, t('Runs on your computer, so your screenshots and text stay here.')),
+          settingRow(t('Host'), t('Where Ollama is running.'), ollamaHost),
+          settingRow(t('Model'), el('span', {},
+            t('Any installed model. Choose Test connection to list them.'), ' ',
+            docLink(t('AI guide'), AI_GUIDE_URL), ' · ', docLink(t('Recommended models'), `${AI_GUIDE_URL}#recommended-models`)),
           ollamaModel),
           el('div.settings-test', {}, aiStatus, testAiBtn, ollamaModels)),
-        settingsCard('AI agents (Claude, Codex)',
-          el('div.setting-desc', {}, 'AI apps such as Claude and Codex can connect to StepForge and write your guides for you. They can rewrite text, make substeps, add placeholders, and draw on screenshots, but they can’t reorder steps or delete anything.'),
-          settingRow('Let AI agents edit your guides', 'Turn off to cut off every connected agent at once.', makeSwitch(agentsEnabled, 'Let AI agents edit your guides')),
-          settingRow('Agents can see screenshots', 'Blurred areas are filled in first. Turn off to share step text only.', makeSwitch(agentsScreenshots, 'Agents can see screenshots')),
-          settingRow('Let AI agents edit brand profiles', 'Agents can make and change brand profiles: logo, colors, fonts and CSS, and choose the one exports use. They can’t delete a profile.', makeSwitch(agentsBranding, 'Let AI agents edit brand profiles')),
+        settingsCard(t('AI agents (Claude, Codex)'),
+          el('div.setting-desc', {}, t('AI apps such as Claude and Codex can connect to StepForge and write your guides for you. They can rewrite text, make substeps, add placeholders, and draw on screenshots, but they can’t reorder steps or delete anything.')),
+          settingRow(t('Let AI agents edit your guides'), t('Turn off to cut off every connected agent at once.'), makeSwitch(agentsEnabled, t('Let AI agents edit your guides'))),
+          settingRow(t('Agents can see screenshots'), t('Blurred areas are filled in first. Turn off to share step text only.'), makeSwitch(agentsScreenshots, t('Agents can see screenshots'))),
+          settingRow(t('Let AI agents edit brand profiles'), t('Agents can make and change brand profiles: logo, colors, fonts and CSS, and choose the one exports use. They can’t delete a profile.'), makeSwitch(agentsBranding, t('Let AI agents edit brand profiles'))),
           agentSetup),
       ] },
-      { id: 'accounts', label: 'Accounts', description: 'Sync guides with Google Drive, OneDrive, Dropbox or Nextcloud, share them on the web with GitHub, or publish them to Confluence or Wiki.js.', content: [accountsPanel.node] },
-      { id: 'placeholders', label: 'Placeholders', description: 'Reusable text for every guide. Type [[name]] in a guide to insert it.', content: [
+      { id: 'accounts', label: t('Accounts'), description: t('Sync guides with Google Drive, OneDrive, Dropbox or Nextcloud, share them on the web with GitHub, or publish them to Confluence or Wiki.js.'), content: [accountsPanel.node] },
+      { id: 'placeholders', label: t('Placeholders'), description: t('Reusable text for every guide. Type [[name]] in a guide to insert it.'), content: [
         settingsCard(null, placeholderRows, el('div.settings-actions', {}, addPlaceholderBtn)),
       ] },
-      { id: 'about', label: 'About', description: '', content: [
+      { id: 'about', label: t('About'), description: '', content: [
         el('div.settings-about', {},
           el('img.settings-about-mark', { src: '../assets/stepforge.png', alt: '', width: 56, height: 56 }),
           el('div', {}, el('div.settings-about-name', {}, 'StepForge'),
-            el('div.setting-desc', {}, 'Local-first step-by-step guides.'))),
+            el('div.setting-desc', {}, t('Local-first step-by-step guides.')))),
         settingsCard(null,
-          settingRow('Version', null, el('div.row', {}, versionLabel, buildLabel)),
-          settingRow('License', null, licenseLabel),
-          settingRow('Data folder', null, dataDirLabel)),
+          settingRow(t('Version'), null, el('div.row', {}, versionLabel, buildLabel)),
+          settingRow(t('License'), null, licenseLabel),
+          settingRow(t('Data folder'), null, dataDirLabel)),
         settingsCard(null,
-          settingRow('Updates', 'Checks GitHub for a newer release. StepForge only connects when you press the button.', checkUpdatesBtn),
+          settingRow(t('Updates'), t('Checks GitHub for a newer release. StepForge only connects when you press the button.'), checkUpdatesBtn),
           updateStatus),
         el('div.settings-actions', {},
-          el('button', { type: 'button', onClick: openLink('https://github.com/Twest2/StepForge') }, 'Project on GitHub'),
-          el('button', { type: 'button', onClick: openLink('https://github.com/Twest2/StepForge/releases') }, 'Release notes'),
-          el('button', { type: 'button', onClick: openLink('https://github.com/Twest2/StepForge/issues') }, 'Report an issue')),
+          el('button', { type: 'button', onClick: openLink('https://github.com/Twest2/StepForge') }, t('Project on GitHub')),
+          el('button', { type: 'button', onClick: openLink('https://github.com/Twest2/StepForge/releases') }, t('Release notes')),
+          el('button', { type: 'button', onClick: openLink('https://github.com/Twest2/StepForge/issues') }, t('Report an issue'))),
       ] },
     ];
     const navButtons = new Map();
@@ -958,7 +967,7 @@ function showSettingsDialog({
       for (const [key, pane] of panes) pane.hidden = key !== id;
       content.scrollTop = 0;
     };
-    const nav = el('nav.settings-nav', { role: 'tablist', 'aria-label': 'Settings sections' });
+    const nav = el('nav.settings-nav', { role: 'tablist', 'aria-label': t('Settings sections') });
     const content = el('div.settings-content');
     for (const item of sections) {
       const button = el('button.settings-nav-item', { type: 'button', role: 'tab', onClick: () => {
@@ -981,17 +990,18 @@ function showSettingsDialog({
     showSection(navButtons.has(initialSection) ? initialSection : 'general');
 
     const { close } = openModal({
-      title: 'Settings',
+      title: t('Settings'),
       body: form,
       wide: true,
       footer: [
-        el('button', { type: 'button', onClick: () => { accountsPanel.dispose(); close(); resolve(false); } }, 'Cancel'),
+        el('button', { type: 'button', onClick: () => { accountsPanel.dispose(); close(); resolve(false); } }, t('Cancel')),
         el('button.primary', {
           type: 'submit',
           onClick: async (e) => {
             e.preventDefault();
             const next = {
               appearance: appearance.value,
+              language: language.value,
               spellcheck: spellcheck.checked,
               capture: {
                 ...settings.capture,
@@ -1064,7 +1074,7 @@ function showSettingsDialog({
             close();
             resolve(true);
           },
-        }, 'Save'),
+        }, t('Save')),
       ],
       onClose: () => { accountsPanel.dispose(); resolve(false); },
     });
@@ -1075,7 +1085,7 @@ function showSettingsDialog({
       updateAiStatus(
         aiEnabled.checked
           ? 'Save, then use the AI ▾ menu in a guide. Test connection checks that Ollama is ready.'
-          : 'AI is off. These settings are kept for later.',
+          : t('AI is off. These settings are kept for later.'),
       );
     });
   });
@@ -1116,17 +1126,17 @@ function showExportDialog({
     // A list option can only hold text, so the badge goes in its label too.
     const formatSelect = makeSelect(defaultFormat, formatOptions.map((f) => ({ ...f, label: f.badge ? `${f.label} (${f.badge})` : f.label })));
     const formatDesc = el('div.muted.export-format-desc');
-    const templateSelect = makeSelect('', [{ value: '', label: 'Default template' }]);
-    const outDirInput = makeInput(defaultOutDir, 'text', { placeholder: 'Choose an output folder' });
+    const templateSelect = makeSelect('', [{ value: '', label: t('Default template') }]);
+    const outDirInput = makeInput(defaultOutDir, 'text', { placeholder: t('Choose an output folder') });
     const optionsHost = el('div', { className: 'export-options' });
     // Branding: the active profile unless another (or none) is picked for this export.
     const brandProfiles = branding?.profiles || [];
     const brandChoice = makeSelect(brandProfiles.some((p) => p.id === branding?.activeId) ? branding.activeId : '',
-      [{ value: '', label: 'No branding' }, ...brandProfiles.map((p) => ({ value: p.id, label: p.name }))]);
+      [{ value: '', label: t('No branding') }, ...brandProfiles.map((p) => ({ value: p.id, label: p.name }))]);
     brandChoice.setAttribute('aria-label', 'Branding');
     const brandNote = el('span.muted');
     const refreshBrandNote = () => {
-      brandNote.textContent = formatSelect.value === 'json' ? 'JSON exports keep the raw data and aren’t branded.' : 'Change the default in Settings → Branding.';
+      brandNote.textContent = formatSelect.value === 'json' ? t('JSON exports keep the raw data and aren’t branded.') : t('Change the default in Settings → Branding.');
     };
 
     // The effective option set shown to (and edited by) the user.
@@ -1168,14 +1178,14 @@ function showExportDialog({
         return input;
       }
       if (info.type === 'file') {
-        const input = makeInput(value, 'text', { readOnly: true, placeholder: 'None' });
+        const input = makeInput(value, 'text', { readOnly: true, placeholder: t('None') });
         const clear = el('button', { type: 'button', disabled: !value,
-          onClick: () => { input.value = ''; clear.disabled = true; set(''); } }, 'Clear');
+          onClick: () => { input.value = ''; clear.disabled = true; set(''); } }, t('Clear'));
         const choose = el('button', { type: 'button', disabled: typeof onChooseImage !== 'function',
           onClick: async () => {
             const picked = await onChooseImage?.();
             if (picked) { input.value = picked; clear.disabled = false; set(picked); }
-          } }, 'Choose…');
+          } }, t('Choose…'));
         return el('div.row', {}, input, choose, clear);
       }
       const input = makeInput(value, 'text', { placeholder: info.placeholder || '' });
@@ -1190,7 +1200,7 @@ function showExportDialog({
         .filter(([key, v]) => ['boolean', 'number', 'string'].includes(typeof v) && !meta[key]?.hidden)
         .filter(([key]) => !meta[key]?.dependsOn || (current[meta[key].dependsOn] ?? defaults[meta[key].dependsOn]));
       if (!entries.length) {
-        optionsHost.append(el('div.muted', {}, 'This format has no adjustable options.'));
+        optionsHost.append(el('div.muted', {}, t('This format has no adjustable options.')));
         return;
       }
       for (const [key, defVal] of entries) {
@@ -1212,7 +1222,7 @@ function showExportDialog({
 
     function refreshTemplates(list = templatesByFormat[formatSelect.value] || []) {
       clearNode(templateSelect);
-      templateSelect.append(el('option', { value: '' }, 'Default template'));
+      templateSelect.append(el('option', { value: '' }, t('Default template')));
       for (const name of list) templateSelect.append(el('option', { value: name }, name));
     }
 
@@ -1225,18 +1235,18 @@ function showExportDialog({
     // site (Settings → Accounts → GitHub), using the options chosen here.
     const publishInput = el('input', { type: 'checkbox', disabled: !webPublish?.ready });
     const publishDays = makeSelect(String(webPublish?.defaultExpiryDays || 7),
-      (webPublish?.expiryDays || []).map((days) => ({ value: String(days), label: days === 1 ? '1 day' : `${days} days` })));
-    const publishDaysRow = settingRow('Keep it online for', 'The guide is removed from the web after this.', publishDays);
+      (webPublish?.expiryDays || []).map((days) => ({ value: String(days), label: tn(days, '{count} day', '{count} days') })));
+    const publishDaysRow = settingRow(t('Keep it online for'), t('The guide is removed from the web after this.'), publishDays);
     const publishWarning = el('p.gh-note', { role: 'note' },
-      el('strong', {}, 'Published guides are public. '),
-      'Anyone with the link can open it, and anyone who looks at your GitHub repository can find it. Blur passwords and other private details before you export.');
+      el('strong', {}, t('Published guides are public.')), ' ',
+      t('Anyone with the link can open it, and anyone who looks at your GitHub repository can find it. Blur passwords and other private details before you export.'));
     const publishBox = el('fieldset.export-publish', {},
-      el('legend', {}, 'Publish on the web'),
-      settingRow('Publish on the web',
+      el('legend', {}, t('Publish on the web')),
+      settingRow(t('Publish on the web'),
         webPublish?.ready
-          ? 'After exporting, also put this guide on your GitHub Pages site and get a link to share.'
-          : 'Connect GitHub in Settings → Accounts → GitHub to publish guides on the web.',
-        makeSwitch(publishInput, 'Publish on the web')),
+          ? t('After exporting, also put this guide on your GitHub Pages site and get a link to share.')
+          : t('Connect GitHub in Settings → Accounts → GitHub to publish guides on the web.'),
+        makeSwitch(publishInput, t('Publish on the web'))),
       publishDaysRow,
       publishWarning);
     const publishing = () => Boolean(webPublish?.ready && publishInput.checked && (webPublish.formats || []).includes(formatSelect.value));
@@ -1245,7 +1255,7 @@ function showExportDialog({
       publishDaysRow.hidden = !publishing();
       publishWarning.hidden = !publishing();
       // Runs only after the footer buttons exist; leaves a busy button alone.
-      if (!exportBtn.disabled) exportBtn.textContent = publishing() ? 'Export and publish' : 'Export';
+      if (!exportBtn.disabled) exportBtn.textContent = publishing() ? t('Export and publish') : t('Export');
     }
     publishInput.addEventListener('change', () => refreshPublish());
 
@@ -1257,10 +1267,10 @@ function showExportDialog({
       const site = publishTargets[formatSelect.value];
       publishInsteadNote.hidden = !site || typeof onPublishInstead !== 'function';
       if (publishInsteadNote.hidden) return;
-      publishInsteadBtn.textContent = `Publish to ${site}…`;
+      publishInsteadBtn.textContent = t('Publish to {site}…', { site });
       publishInsteadNote.replaceChildren(
-        el('span', {}, el('strong', {}, `Publishing to ${site} is easier. `),
-          `Share → Publish to ${site}… creates the page for you, uploads its screenshots and updates the same page when you publish again. Export only if you’d rather upload the files yourself.`),
+        el('span', {}, el('strong', {}, t('Publishing to {site} is easier.', { site })), ' ',
+          t('Share → Publish to {site}… creates the page for you, uploads its screenshots and updates the same page when you publish again. Export only if you’d rather upload the files yourself.', { site })),
         publishInsteadBtn);
     }
     publishInsteadBtn.addEventListener('click', () => {
@@ -1292,14 +1302,14 @@ function showExportDialog({
     const saveTplBtn = el('button', {
       type: 'button',
       onClick: async () => {
-        const name = await promptText({ title: 'Save template', label: 'Template name', value: templateSelect.value || '' });
+        const name = await promptText({ title: t('Save template'), label: t('Template name'), value: templateSelect.value || '' });
         if (!name || !name.trim()) return;
         await onSaveTemplate?.(formatSelect.value, name.trim(), effectiveOptions());
         const list = await onManageTemplates?.(formatSelect.value, null);
         refreshTemplates(list || []);
         templateSelect.value = name.trim();
       },
-    }, 'Save as template…');
+    }, t('Save as template…'));
 
     const manageBtn = el('button', {
       type: 'button',
@@ -1308,14 +1318,14 @@ function showExportDialog({
         refreshTemplates(list || []);
         refreshOptions();
       },
-    }, 'Manage…');
+    }, t('Manage…'));
 
     const body = el('div.export-dialog', {},
       qualityPanel(quality, (finding) => { close(); resolve(false); onShowFinding?.(finding); }),
-      labeledRow('Format', el('div.export-format', {}, formatSelect, formatDesc, publishInsteadNote)),
-      labeledRow('Template', el('div.row', {}, templateSelect, saveTplBtn, manageBtn)),
-      branding ? labeledRow('Branding', el('div.row', {}, brandChoice, brandNote)) : null,
-      labeledRow('Output folder', el('div.row', {}, outDirInput, el('button', {
+      labeledRow(t('Format'), el('div.export-format', {}, formatSelect, formatDesc, publishInsteadNote)),
+      labeledRow(t('Template'), el('div.row', {}, templateSelect, saveTplBtn, manageBtn)),
+      branding ? labeledRow(t('Branding'), el('div.row', {}, brandChoice, brandNote)) : null,
+      labeledRow(t('Output folder'), el('div.row', {}, outDirInput, el('button', {
         type: 'button',
         disabled: typeof onChooseDir !== 'function',
         onClick: async () => {
@@ -1323,8 +1333,8 @@ function showExportDialog({
           const chosen = await onChooseDir(formatSelect.value);
           if (chosen) outDirInput.value = chosen;
         },
-      }, 'Choose…'))),
-      el('fieldset', {}, el('legend', {}, 'Options'), optionsHost),
+      }, t('Choose…')))),
+      el('fieldset', {}, el('legend', {}, t('Options')), optionsHost),
       publishBox,
     );
 
@@ -1337,24 +1347,24 @@ function showExportDialog({
       brandProfileId: branding ? brandChoice.value : undefined,
     });
 
-    const cancelBtn = el('button', { onClick: () => { close(); resolve(false); } }, 'Cancel');
+    const cancelBtn = el('button', { onClick: () => { close(); resolve(false); } }, t('Cancel'));
     const previewBtn = el('button', {
       onClick: async () => {
         if (typeof onPreview !== 'function') return;
-        setButtonLoading(previewBtn, true, 'Preview…');
+        setButtonLoading(previewBtn, true, t('Preview…'));
         try {
           await onPreview(payload()); // keep dialog open so settings can be tweaked
         } finally {
           setButtonLoading(previewBtn, false);
         }
       },
-    }, 'Preview');
+    }, t('Preview'));
     const exportBtn = el('button.primary', {
       onClick: async () => {
         if (typeof onExport !== 'function') return;
         cancelBtn.disabled = true;
         previewBtn.disabled = true;
-        setButtonLoading(exportBtn, true, 'Exporting…');
+        setButtonLoading(exportBtn, true, t('Exporting…'));
         try {
           const ok = await onExport(payload());
           if (ok !== false) {
@@ -1369,11 +1379,11 @@ function showExportDialog({
           refreshPublish();
         }
       },
-    }, 'Export');
+    }, t('Export'));
     refreshPublish();
 
     const { close } = openModal({
-      title: 'Export',
+      title: t('Export'),
       body,
       footer: [cancelBtn, previewBtn, exportBtn],
       wide: true,
@@ -1391,7 +1401,7 @@ function showTemplateManager({ format, names = [], onRename, onDuplicate, onDele
     function renderRows() {
       clearNode(rows);
       if (!list.length) {
-        rows.append(el('div.muted', {}, 'No templates saved for this format yet.'));
+        rows.append(el('div.muted', {}, t('No templates saved for this format yet.')));
         return;
       }
       for (const name of list) {
@@ -1401,16 +1411,16 @@ function showTemplateManager({ format, names = [], onRename, onDuplicate, onDele
             el('button', {
               type: 'button',
               onClick: async () => {
-                const next = await promptText({ title: 'Rename template', label: 'Name', value: name });
+                const next = await promptText({ title: t('Rename template'), label: t('Name'), value: name });
                 if (next && next.trim() && next.trim() !== name) {
                   list = await onRename(name, next.trim());
                   renderRows();
                 }
               },
-            }, 'Rename'),
-            el('button', { type: 'button', onClick: async () => { list = await onDuplicate(name); renderRows(); } }, 'Duplicate'),
-            el('button', { type: 'button', onClick: async () => { await onExport(name); } }, 'Share…'),
-            el('button.danger', { type: 'button', onClick: async () => { list = await onDelete(name); renderRows(); } }, 'Delete'),
+            }, t('Rename')),
+            el('button', { type: 'button', onClick: async () => { list = await onDuplicate(name); renderRows(); } }, t('Duplicate')),
+            el('button', { type: 'button', onClick: async () => { await onExport(name); } }, t('Share…')),
+            el('button.danger', { type: 'button', onClick: async () => { list = await onDelete(name); renderRows(); } }, t('Delete')),
           ),
         ));
       }
@@ -1420,12 +1430,12 @@ function showTemplateManager({ format, names = [], onRename, onDuplicate, onDele
       title: `Templates — ${format}`,
       body: el('div', {},
         el('div.row', { style: { marginBottom: '10px' } },
-          el('button', { type: 'button', onClick: async () => { list = await onImport(); renderRows(); } }, 'Import .sfglt…'),
-          el('span.muted', {}, 'Templates are shareable as .sfglt files.'),
+          el('button', { type: 'button', onClick: async () => { list = await onImport(); renderRows(); } }, t('Import .sfglt…')),
+          el('span.muted', {}, t('Templates are shareable as .sfglt files.')),
         ),
         rows,
       ),
-      footer: [el('button.primary', { onClick: () => { close(); resolve(list); } }, 'Done')],
+      footer: [el('button.primary', { onClick: () => { close(); resolve(list); } }, t('Done'))],
       wide: true,
       onClose: () => resolve(list),
     });
@@ -1439,42 +1449,42 @@ function showLinkedGuideDialog({ guide, lock, onSave, onForceSave, onOpenArchive
     const conflict = lock && !lock.acquired;
     const conflictInfo = lock && lock.conflict ? lock.conflict : {};
     const lockInfo = conflict
-      ? `Locked by ${conflictInfo.user || 'another user'}@${conflictInfo.host || 'another host'}`
-      : 'No active conflict';
+      ? t('Locked by {user}@{host}', { user: conflictInfo.user || t('another user'), host: conflictInfo.host || t('another host') })
+      : t('No active conflict');
 
     const body = el('div', { className: 'linked-guide' },
       el('div', { className: 'card-list' },
-        el('div.row', {}, el('span.muted', {}, 'Archive'), el('strong', {}, linked.path || 'Not linked')),
-        el('div.row', {}, el('span.muted', {}, 'Opened'), el('span', {}, fmtDate(linked.openedAt) || 'Unknown')),
-        el('div.row', {}, el('span.muted', {}, 'Last saved'), el('span', {}, fmtDate(linked.lastSavedAt) || 'Never')),
-        el('div.row', {}, el('span.muted', {}, 'Lock'), el('span', {}, lockInfo)),
+        el('div.row', {}, el('span.muted', {}, t('Archive')), el('strong', {}, linked.path || t('Not linked'))),
+        el('div.row', {}, el('span.muted', {}, t('Opened')), el('span', {}, fmtDate(linked.openedAt) || t('Unknown'))),
+        el('div.row', {}, el('span.muted', {}, t('Last saved')), el('span', {}, fmtDate(linked.lastSavedAt) || t('Never'))),
+        el('div.row', {}, el('span.muted', {}, t('Lock')), el('span', {}, lockInfo)),
       ),
-      conflict ? el('div', { className: 'warn-banner' }, 'Another editor has the archive locked. You can force-save if you intend to overwrite it.') : null,
+      conflict ? el('div', { className: 'warn-banner' }, t('Another editor has the archive locked. You can force-save if you intend to overwrite it.')) : null,
     );
 
     const { close } = openModal({
-      title: 'Linked Guide',
+      title: t('Linked Guide'),
       body,
       footer: [
-        el('button', { onClick: () => { close(); resolve(false); } }, 'Close'),
+        el('button', { onClick: () => { close(); resolve(false); } }, t('Close')),
         el('button', {
           onClick: async () => {
             await onOpenArchive?.(guide);
           },
-        }, 'Show file'),
+        }, t('Show file')),
         conflict ? el('button.primary', {
           onClick: async () => {
             await onForceSave?.(guide);
             close();
             resolve(true);
           },
-        }, 'Force save') : el('button.primary', {
+        }, t('Force save')) : el('button.primary', {
           onClick: async () => {
             await onSave?.(guide);
             close();
             resolve(true);
           },
-        }, 'Save now'),
+        }, t('Save now')),
       ],
       wide: true,
       onClose: () => resolve(false),
@@ -1487,7 +1497,7 @@ function snapshotLabel(name) {
   const match = name.match(/^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z(?:-(.+?))?\.(?:zip|snapshot)$/);
   if (!match) return name;
   const [, day, h, m, sec, ms, label] = match;
-  const when = new Date(`${day}T${h}:${m}:${sec}.${ms}Z`).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  const when = new Date(`${day}T${h}:${m}:${sec}.${ms}Z`).toLocaleString(dateLocale, { dateStyle: 'medium', timeStyle: 'short' });
   return label ? `${when} · ${label.replace(/_/g, ' ')}` : when;
 }
 
@@ -1499,15 +1509,15 @@ function showBackupsDialog({ snapshots = [], onCreate, onRestore, onCompare } = 
     function renderRows() {
       clearNode(rows);
       if (!list.length) {
-        rows.append(el('div.muted', {}, 'No snapshots yet. Automatic snapshots are created as you work; create one manually any time.'));
+        rows.append(el('div.muted', {}, t('No snapshots yet. Automatic snapshots are created as you work; create one manually any time.')));
         return;
       }
       for (const name of list) {
         const compareBtn = onCompare ? el('button', {
           type: 'button',
-          title: 'See what changed between this snapshot and the guide now',
+          title: t('See what changed between this snapshot and the guide now'),
           onClick: async () => {
-            setButtonLoading(compareBtn, true, 'Comparing…');
+            setButtonLoading(compareBtn, true, t('Comparing…'));
             let restored = false;
             try {
               restored = await onCompare(name);
@@ -1516,7 +1526,7 @@ function showBackupsDialog({ snapshots = [], onCreate, onRestore, onCompare } = 
             }
             if (restored) { close(); resolve(true); }
           },
-        }, 'Compare') : null;
+        }, t('Compare')) : null;
         rows.append(el('div.row', { style: { justifyContent: 'space-between', gap: '10px' } },
           el('span', { style: { overflow: 'hidden', textOverflow: 'ellipsis', flex: '1' }, title: name }, snapshotLabel(name)),
           compareBtn,
@@ -1526,7 +1536,7 @@ function showBackupsDialog({ snapshots = [], onCreate, onRestore, onCompare } = 
               const restored = await onRestore?.(name);
               if (restored) close();
             },
-          }, 'Restore'),
+          }, t('Restore')),
         ));
       }
     }
@@ -1540,16 +1550,16 @@ function showBackupsDialog({ snapshots = [], onCreate, onRestore, onCompare } = 
           renderRows();
         }
       },
-    }, 'Create snapshot');
+    }, t('Create snapshot'));
 
     const { close } = openModal({
-      title: 'Backups & snapshots',
+      title: t('Backups & snapshots'),
       body: el('div', {},
         el('div.row', { style: { marginBottom: '10px' } }, createBtn,
-          el('span.muted', {}, 'Compare shows what changed since a snapshot. Restores are undoable — the current state is snapshotted first.')),
+          el('span.muted', {}, t('Compare shows what changed since a snapshot. Restores are undoable — the current state is snapshotted first.'))),
         rows,
       ),
-      footer: [el('button', { onClick: () => { close(); resolve(true); } }, 'Close')],
+      footer: [el('button', { onClick: () => { close(); resolve(true); } }, t('Close'))],
       wide: true,
       onClose: () => resolve(true),
     });
@@ -1562,11 +1572,11 @@ function showPlaceholdersDialog({ title = 'Placeholders', hint = '', values = {}
     const rowsHost = el('div', { className: 'placeholder-rows' });
     const rows = [];
     const addRow = (key = '', value = '') => {
-      const keyInput = makeInput(key, 'text', { placeholder: 'Name' });
-      const valueInput = makeInput(value, 'text', { placeholder: 'Value' });
+      const keyInput = makeInput(key, 'text', { placeholder: t('Name') });
+      const valueInput = makeInput(value, 'text', { placeholder: t('Value') });
       const row = el('div.placeholder-row', {}, keyInput, valueInput,
         el('button.icon', {
-          type: 'button', title: 'Remove',
+          type: 'button', title: t('Remove'),
           onClick: () => { row.remove(); rows.splice(rows.indexOf(row), 1); },
         }, '−'));
       rows.push(row);
@@ -1581,10 +1591,10 @@ function showPlaceholdersDialog({ title = 'Placeholders', hint = '', values = {}
         hint ? el('div.muted', { style: { marginBottom: '10px' } }, hint) : null,
         rowsHost,
         el('div.row', { style: { marginTop: '8px' } },
-          el('button', { type: 'button', onClick: () => addRow() }, 'Add placeholder')),
+          el('button', { type: 'button', onClick: () => addRow() }, t('Add placeholder'))),
       ),
       footer: [
-        el('button', { onClick: () => { close(); resolve(false); } }, 'Cancel'),
+        el('button', { onClick: () => { close(); resolve(false); } }, t('Cancel')),
         el('button.primary', {
           onClick: async () => {
             const next = rows.reduce((acc, row) => {
@@ -1597,7 +1607,7 @@ function showPlaceholdersDialog({ title = 'Placeholders', hint = '', values = {}
             close();
             resolve(true);
           },
-        }, 'Save'),
+        }, t('Save')),
       ],
       onClose: () => resolve(false),
     });
@@ -1611,17 +1621,17 @@ function showPlaceholdersDialog({ title = 'Placeholders', hint = '', values = {}
  */
 function showGuideInfoDialog({ values = {}, reviewDefaultDays, onSave, onCloudSnapshots, onDeleteCloudSnapshots } = {}) {
   return new Promise((resolve) => {
-    const versionInput = makeInput(values.softwareVersion || '', 'text', { placeholder: 'e.g. Windows 11 24H2', maxLength: 200 });
+    const versionInput = makeInput(values.softwareVersion || '', 'text', { placeholder: t('e.g. Windows 11 24H2'), maxLength: 200 });
     const verifiedInput = makeInput(review.normalizeDateOnly(values.lastVerified), 'date', { max: review.toDateOnly(Date.now()) });
     const reviewDays = review.normalizeReviewDays(values.reviewAfterDays);
     const defaultDays = review.normalizeReviewDays(reviewDefaultDays) ?? review.DEFAULT_REVIEW_DAYS;
     const reviewSelect = makeSelect(reviewDays === null ? '' : String(reviewDays), [
-      { value: '', label: defaultDays > 0 ? `Use the default (${review.intervalLabel(defaultDays)})` : 'Use the default (off)' },
-      ...review.REVIEW_INTERVALS.map((i) => ({ value: String(i.days), label: `After ${i.label}` })),
+      { value: '', label: defaultDays > 0 ? t('Use the default ({interval})', { interval: intervalText(defaultDays) }) : t('Use the default (off)') },
+      ...review.REVIEW_INTERVALS.map((i) => ({ value: String(i.days), label: t('After {interval}', { interval: intervalText(i.days) }) })),
       // A custom interval set elsewhere (an agent, an older import) stays selectable.
       ...(reviewDays > 0 && !review.REVIEW_INTERVALS.some((i) => i.days === reviewDays)
-        ? [{ value: String(reviewDays), label: `After ${review.intervalLabel(reviewDays)}` }] : []),
-      { value: '0', label: 'Never' },
+        ? [{ value: String(reviewDays), label: t('After {interval}', { interval: intervalText(reviewDays) }) }] : []),
+      { value: '0', label: t('Never') },
     ]);
     const reviewHint = el('div.muted', { style: { marginTop: '-4px', marginBottom: '12px' } });
     const readReviewDays = () => (reviewSelect.value === '' ? null : Number(reviewSelect.value));
@@ -1632,49 +1642,50 @@ function showGuideInfoDialog({ values = {}, reviewDefaultDays, onSave, onCloudSn
         metadata: { lastVerified: verifiedInput.value, reviewAfterDays: readReviewDays() },
       }, defaultDays);
       reviewHint.textContent = status
-        ? `After you save, “May need review” shows in the library on ${new Date(status.due).toLocaleDateString(undefined, { dateStyle: 'medium' })} unless the guide is saved or verified again first.`
-        : 'This guide is never flagged for review.';
+        ? t('After you save, “May need review” shows in the library on {date} unless the guide is saved or verified again first.',
+          { date: new Date(status.due).toLocaleDateString(dateLocale, { dateStyle: 'medium' }) })
+        : t('This guide is never flagged for review.');
     };
     const todayBtn = el('button', {
       type: 'button',
       onClick: () => { verifiedInput.value = review.toDateOnly(Date.now()); updateReviewHint(); },
-    }, 'Today');
+    }, t('Today'));
     verifiedInput.addEventListener('input', updateReviewHint);
     reviewSelect.addEventListener('change', updateReviewHint);
     updateReviewHint();
-    const authorInput = makeInput(values.author || '', 'text', { placeholder: 'e.g. Jane Doe' });
-    const coAuthorsInput = makeInput(values.coAuthors || '', 'text', { placeholder: 'e.g. Alex Lee, Sam Patel' });
-    const organizationInput = makeInput(values.organization || '', 'text', { placeholder: 'e.g. Acme Corp' });
+    const authorInput = makeInput(values.author || '', 'text', { placeholder: t('e.g. Jane Doe') });
+    const coAuthorsInput = makeInput(values.coAuthors || '', 'text', { placeholder: t('e.g. Alex Lee, Sam Patel') });
+    const organizationInput = makeInput(values.organization || '', 'text', { placeholder: t('e.g. Acme Corp') });
     const descriptionInput = el('textarea', {
       rows: 4,
-      placeholder: 'A short summary of this guide.',
+      placeholder: t('A short summary of this guide.'),
     }, values.description || '');
     const shareInput = el('input', { type: 'checkbox', checked: values.sharingEnabled !== false });
 
     const { close } = openModal({
-      title: 'Guide information',
+      title: t('Guide information'),
       body: el('div', {},
         el('div.muted', { style: { marginBottom: '10px' } },
-          'All fields are optional. They appear below the title on the guide and on the PDF cover page.'),
-        labeledRow('Author', authorInput),
-        labeledRow('Co-authors', coAuthorsInput),
-        labeledRow('Organization', organizationInput),
-        labeledRow('Description', descriptionInput, { stacked: true }),
+          t('All fields are optional. They appear below the title on the guide and on the PDF cover page.')),
+        labeledRow(t('Author'), authorInput),
+        labeledRow(t('Co-authors'), coAuthorsInput),
+        labeledRow(t('Organization'), organizationInput),
+        labeledRow(t('Description'), descriptionInput, { stacked: true }),
         el('div.muted', { style: { marginTop: '-4px' } },
-          'Shown on the first page of the PDF and at the top of other export formats.'),
-        el('h3', { style: { margin: '14px 0 6px' } }, 'Review'),
-        labeledRow('Software version', versionInput),
-        labeledRow('Last verified', el('div.row', {}, verifiedInput, todayBtn)),
-        labeledRow('Review again', reviewSelect),
+          t('Shown on the first page of the PDF and at the top of other export formats.')),
+        el('h3', { style: { margin: '14px 0 6px' } }, t('Review')),
+        labeledRow(t('Software version'), versionInput),
+        labeledRow(t('Last verified'), el('div.row', {}, verifiedInput, todayBtn)),
+        labeledRow(t('Review again'), reviewSelect),
         reviewHint,
-        el('label.cloud-enable', {}, shareInput, ' Include this guide in cloud sync'),
+        el('label.cloud-enable', {}, shareInput, ' ', t('Include this guide in cloud sync')),
         el('div.muted', { style: { marginTop: '-4px' } },
-          'When off, this guide stays only on this device.'),
+          t('When off, this guide stays only on this device.')),
       ),
       footer: [
-        el('button', { type: 'button', onClick: () => onCloudSnapshots?.() }, 'Cloud snapshots'),
-        el('button', { type: 'button', className: 'danger', onClick: () => onDeleteCloudSnapshots?.() }, 'Remove cloud copies'),
-        el('button', { onClick: () => { close(); resolve(false); } }, 'Cancel'),
+        el('button', { type: 'button', onClick: () => onCloudSnapshots?.() }, t('Cloud snapshots')),
+        el('button', { type: 'button', className: 'danger', onClick: () => onDeleteCloudSnapshots?.() }, t('Remove cloud copies')),
+        el('button', { onClick: () => { close(); resolve(false); } }, t('Cancel')),
         el('button.primary', {
           onClick: async () => {
             await onSave?.({
@@ -1690,7 +1701,7 @@ function showGuideInfoDialog({ values = {}, reviewDefaultDays, onSave, onCloudSn
             close();
             resolve(true);
           },
-        }, 'Save'),
+        }, t('Save')),
       ],
       onClose: () => resolve(false),
     });
@@ -1701,47 +1712,47 @@ function showCloudSnapshotsDialog({ snapshots = [], onRestore } = {}) {
   return new Promise((resolve) => {
     const list = snapshots.length
       ? el('div', {}, ...snapshots.map((snapshot, index) => el('div.form-row', {},
-        el('div', {}, index === 0 ? 'Current cloud snapshot' : `Previous snapshot ${index}`, snapshot.createdTime ? el('div.muted', {}, new Date(snapshot.createdTime).toLocaleString()) : null),
-        index === 0 ? el('span.muted', {}, 'Current') : el('button', { type: 'button', onClick: async () => { await onRestore?.(snapshot); close(); resolve(true); } }, 'Restore'),
+        el('div', {}, index === 0 ? t('Current cloud snapshot') : t('Previous snapshot {number}', { number: index }), snapshot.createdTime ? el('div.muted', {}, new Date(snapshot.createdTime).toLocaleString(dateLocale)) : null),
+        index === 0 ? el('span.muted', {}, t('Current')) : el('button', { type: 'button', onClick: async () => { await onRestore?.(snapshot); close(); resolve(true); } }, t('Restore')),
       )))
-      : el('div.muted', {}, 'No cloud snapshots are available for this guide.');
+      : el('div.muted', {}, t('No cloud snapshots are available for this guide.'));
     const { close } = openModal({
-      title: 'Cloud snapshots', body: el('div', {},
-        el('div.muted', { style: { marginBottom: '10px' } }, 'The current snapshot and up to two previous snapshots are retained.'), list),
-      footer: [el('button.primary', { onClick: () => { close(); resolve(false); } }, 'Close')],
+      title: t('Cloud snapshots'), body: el('div', {},
+        el('div.muted', { style: { marginBottom: '10px' } }, t('The current snapshot and up to two previous snapshots are retained.')), list),
+      footer: [el('button.primary', { onClick: () => { close(); resolve(false); } }, t('Close'))],
       onClose: () => resolve(false),
     });
   });
 }
 
 const SHORTCUTS = [
-  ['Capture & steps', [
-    ['Ctrl+S', 'Save (writes linked archive when guide is linked)'],
-    ['Ctrl+/', 'Quick actions palette'],
-    ['Ctrl+H', 'Find and replace across the guide'],
-    ['PageUp / PageDown', 'Previous / next step'],
-    ['Alt+↑ / Alt+↓', 'Move step (and its substeps) up / down'],
-    ['Ctrl+Delete', 'Delete current step'],
-    ['Ctrl+Z / Ctrl+Shift+Z', 'Undo / redo (including step moves, deleting steps and AI writes)'],
-    ['Ctrl+V', 'Paste annotation, or clipboard image as new step'],
+  [t('Capture & steps'), [
+    ['Ctrl+S', t('Save (writes linked archive when guide is linked)')],
+    ['Ctrl+/', t('Quick actions palette')],
+    ['Ctrl+H', t('Find and replace across the guide')],
+    ['PageUp / PageDown', t('Previous / next step')],
+    ['Alt+↑ / Alt+↓', t('Move step (and its substeps) up / down')],
+    ['Ctrl+Delete', t('Delete current step')],
+    ['Ctrl+Z / Ctrl+Shift+Z', t('Undo / redo (including step moves, deleting steps and AI writes)')],
+    ['Ctrl+V', t('Paste annotation, or clipboard image as new step')],
   ]],
-  ['Canvas tools', [
-    ['S R O L A T', 'Select · Rectangle · Oval · Line · Arrow · Text'],
-    ['G N B H M U C', 'Tooltip · Number · Blur · Highlight · Magnify · Cursor · Crop'],
-    ['Ctrl+C', 'Copy selected annotation (in step-select mode, paste it onto many steps)'],
-    ['Delete', 'Delete selected annotation'],
-    ['Esc', 'Deselect annotation'],
-    ['Arrows / Shift+Arrows', 'Nudge selection by 1 px / 10 px'],
+  [t('Canvas tools'), [
+    ['S R O L A T', t('Select · Rectangle · Oval · Line · Arrow · Text')],
+    ['G N B H M U C', t('Tooltip · Number · Blur · Highlight · Magnify · Cursor · Crop')],
+    ['Ctrl+C', t('Copy selected annotation (in step-select mode, paste it onto many steps)')],
+    ['Delete', t('Delete selected annotation')],
+    ['Esc', t('Deselect annotation')],
+    ['Arrows / Shift+Arrows', t('Nudge selection by 1 px / 10 px')],
   ]],
-  ['View', [
-    ['Ctrl+= / Ctrl+-', 'Zoom in / out'],
-    ['Ctrl+0', 'Fit image to window'],
+  [t('View'), [
+    ['Ctrl+= / Ctrl+-', t('Zoom in / out')],
+    ['Ctrl+0', t('Fit image to window')],
   ]],
-  ['Compare with a snapshot', [
-    ['N / Alt+↓', 'Next change'],
-    ['P / Alt+↑', 'Previous change'],
-    ['V', 'Mark the current change as viewed and go to the next one'],
-    ['Esc', 'Close the comparison'],
+  [t('Compare with a snapshot'), [
+    ['N / Alt+↓', t('Next change')],
+    ['P / Alt+↑', t('Previous change')],
+    ['V', t('Mark the current change as viewed and go to the next one')],
+    ['Esc', t('Close the comparison')],
   ]],
 ];
 
@@ -1757,9 +1768,9 @@ function showShortcutsDialog() {
       ),
     ));
     const { close } = openModal({
-      title: 'Keyboard shortcuts',
+      title: t('Keyboard shortcuts'),
       body: el('div', {}, ...sections),
-      footer: [el('button.primary', { onClick: () => { close(); resolve(true); } }, 'Close')],
+      footer: [el('button.primary', { onClick: () => { close(); resolve(true); } }, t('Close'))],
       onClose: () => resolve(true),
     });
   });
@@ -1770,26 +1781,26 @@ function showInfoDialog(title, bodyText) {
     const { close } = openModal({
       title,
       body: el('div', {}, bodyText),
-      footer: [el('button.primary', { onClick: () => { close(); resolve(true); } }, 'OK')],
+      footer: [el('button.primary', { onClick: () => { close(); resolve(true); } }, t('OK'))],
       onClose: () => resolve(false),
     });
   });
 }
 
 function showRecordingReminder({
-  actionLabel = 'Continue',
-  headline = 'StepForge will hide after you continue.',
+  actionLabel = t('Continue'),
+  headline = t('StepForge will hide after you continue.'),
 } = {}) {
   return new Promise((resolve) => {
     const { close } = openModal({
-      title: 'Before recording starts',
+      title: t('Before recording starts'),
       body: el('div.recording-notice', {},
-        el('div.recording-notice__badge', {}, 'Recording tip'),
+        el('div.recording-notice__badge', {}, t('Recording tip')),
         el('div.recording-notice__title', {}, headline),
         el('div.recording-notice__text', {},
           document.body.classList.contains('platform-linux')
-            ? 'To stop, use StepForge REC in the GNOME top panel, or restore StepForge from the dock.'
-            : 'When you want to pause or stop, use the red tray icon in the system tray.',
+            ? t('To stop, use StepForge REC in the GNOME top panel, or restore StepForge from the dock.')
+            : t('When you want to pause or stop, use the red tray icon in the system tray.'),
         ),
       ),
       footer: [

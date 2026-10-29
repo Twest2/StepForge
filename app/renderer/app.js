@@ -11,23 +11,24 @@ function timeAgo(iso) {
   const then = Date.parse(iso);
   if (!Number.isFinite(then)) return '';
   const minutes = Math.round((Date.now() - then) / 60000);
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes} min ago`;
+  if (minutes < 1) return t('just now');
+  if (minutes < 60) return t('{count} min ago', { count: minutes });
   const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours} hr ago`;
+  if (hours < 24) return t('{count} hr ago', { count: hours });
   const days = Math.round(hours / 24);
-  if (days === 1) return 'yesterday';
-  if (days < 7) return `${days} days ago`;
-  return new Date(then).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: new Date(then).getFullYear() === new Date().getFullYear() ? undefined : 'numeric' });
+  if (days === 1) return t('yesterday');
+  if (days < 7) return tn(days, '{count} day ago', '{count} days ago');
+  return new Date(then).toLocaleDateString(dateLocale, { month: 'short', day: 'numeric', year: new Date(then).getFullYear() === new Date().getFullYear() ? undefined : 'numeric' });
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** The "May need review" pill's tooltip: why the guide is flagged. */
 function reviewBadgeTitle(status) {
-  const since = new Date(status.since).toLocaleDateString(undefined, { dateStyle: 'medium' });
-  const what = status.sinceKind === 'verified' ? `Last verified ${since}` : `Last saved ${since}`;
-  return `${what}, over ${review.intervalLabel(status.days)} ago. Open the guide to check it still matches the software, or right-click → Mark as verified.`;
+  const since = new Date(status.since).toLocaleDateString(dateLocale, { dateStyle: 'medium' });
+  const what = status.sinceKind === 'verified' ? t('Last verified {date}', { date: since }) : t('Last saved {date}', { date: since });
+  return t('{since}, over {interval} ago. Open the guide to check it still matches the software, or right-click → Mark as verified.',
+    { since: what, interval: intervalText(status.days) });
 }
 
 /** "Deleted for good in 12 days", from the trash settings; null when kept. */
@@ -36,8 +37,8 @@ function trashCountdown(item, library = {}) {
   const deleted = Date.parse(item.deletedAt);
   if (!(days > 0) || !Number.isFinite(deleted)) return null;
   const left = Math.ceil((Math.max(deleted, library.trashEmptyingSince || 0) + days * DAY_MS - Date.now()) / DAY_MS);
-  if (left <= 1) return 'Deleted for good within a day';
-  return `Deleted for good in ${left} days`;
+  if (left <= 1) return t('Deleted for good within a day');
+  return tn(left, 'Deleted for good in {count} day', 'Deleted for good in {count} days');
 }
 
 class StepForgeApp {
@@ -140,7 +141,7 @@ class StepForgeApp {
       this.state.settings = await api.settings.all();
       this.editor.setSettings(this.state.settings);
     } catch { /* the next refresh picks it up */ }
-    toast('An AI agent updated your brand profiles.');
+    toast(t('An AI agent updated your brand profiles.'));
     await ensurePendingBrandRasters(api);
   }
 
@@ -149,7 +150,7 @@ class StepForgeApp {
     if (!payload || !payload.guideId) return;
     if (this.state.view === 'editor' && this.editor.guideId === payload.guideId) {
       await this.editor.reloadAfterOutsideChange();
-      toast('An AI agent updated this guide.');
+      toast(t('An AI agent updated this guide.'));
     } else if (this.state.view === 'library') {
       await this.refreshLibrary();
     }
@@ -162,8 +163,8 @@ class StepForgeApp {
       if (currentStep && currentStep.stepId === payload.step.stepId) {
         await this.editor.reload(payload.step.stepId);
         toast(payload.reason === 'redaction'
-          ? `Blurred ${payload.added} possible private detail${payload.added === 1 ? '' : 's'} in this step.`
-          : 'Documentation generated.');
+          ? tn(payload.added, 'Blurred {count} possible private detail in this step.', 'Blurred {count} possible private details in this step.')
+          : t('Documentation generated.'));
       }
     }
   }
@@ -268,7 +269,7 @@ class StepForgeApp {
       el('div.welcome', {},
         el('div.welcome-title', {},
           el('h1', {}, 'StepForge'),
-          el('p.muted', {}, 'Capture, annotate, and export step-by-step guides.'),
+          el('p.muted', {}, t('Capture, annotate, and export step-by-step guides.')),
         ),
         this.renderRecentGuides(),
         el('div.welcome-actions', {},
@@ -276,22 +277,22 @@ class StepForgeApp {
             type: 'button',
             onClick: () => this.startNewCapture(),
           },
-          el('span.welcome-btn-label', {}, 'New Capture'),
-          el('span.welcome-btn-hint', {}, 'Start a guide and capture your screen'),
+          el('span.welcome-btn-label', {}, t('New Capture')),
+          el('span.welcome-btn-hint', {}, t('Start a guide and capture your screen')),
           ),
           el('button.welcome-btn', {
             type: 'button',
             onClick: () => this.openExistingWorkspace(),
           },
-          el('span.welcome-btn-label', {}, 'Existing Workspace'),
-          el('span.welcome-btn-hint', {}, 'Browse your guide library'),
+          el('span.welcome-btn-label', {}, t('Existing Workspace')),
+          el('span.welcome-btn-hint', {}, t('Browse your guide library')),
           ),
           el('button.welcome-btn', {
             type: 'button',
             onClick: () => this.openSettings(),
           },
-          el('span.welcome-btn-label', {}, 'Settings'),
-          el('span.welcome-btn-hint', {}, 'Theme, capture, and export options'),
+          el('span.welcome-btn-label', {}, t('Settings')),
+          el('span.welcome-btn-hint', {}, t('Theme, capture, and export options')),
           ),
         ),
       ),
@@ -303,7 +304,7 @@ class StepForgeApp {
     const guides = this.state.library.guides.slice(0, 3);
     if (!guides.length) return null;
     return el('section.welcome-recent', { 'aria-labelledby': 'recent-guides-heading' },
-      el('h2#recent-guides-heading', {}, 'Recent guides'),
+      el('h2#recent-guides-heading', {}, t('Recent guides')),
       el('ul', {}, guides.map((guide) => el('li', {},
         el('button.welcome-recent-guide', {
           type: 'button',
@@ -321,7 +322,7 @@ class StepForgeApp {
   }
 
   async startNewCapture() {
-    const guide = await api.library.create({ title: 'Untitled capture', captureDraft: true });
+    const guide = await api.library.create({ title: t('Untitled capture'), captureDraft: true });
     await this.refreshData();
     await this.openGuide(guide.guideId);
     await this.armCaptureSession(guide.guideId);
@@ -382,10 +383,10 @@ class StepForgeApp {
     this.cloudProvider = status.provider || 'google';
     const short = status.providerShort || 'Drive';
     const name = status.providerLabel || 'Google Drive';
-    const labels = { synced: 'synced', syncing: 'syncing…', pending: 'pending', error: 'needs attention' };
+    const labels = { synced: t('synced'), syncing: t('syncing…'), pending: t('pending'), error: t('needs attention') };
     const transfer = status.transfer ? describeTransfer(status.transfer) : null;
     this.cloudStatus.textContent = transfer ? `${short}: ${transfer.arrow} ${transfer.compact}` : labels[status.phase] ? `${short}: ${labels[status.phase]}` : name;
-    this.cloudStatus.title = transfer?.detail || status.error || status.message || `${name} settings`;
+    this.cloudStatus.title = transfer?.detail || status.error || status.message || t('{service} settings', { service: name });
     this.cloudStatus.classList.toggle('transferring', Boolean(transfer));
     this.cloudStatus.style.setProperty('--transfer-progress', `${transfer?.percent || 0}%`);
     this.cloudStatus.setAttribute('aria-label', this.cloudStatus.title);
@@ -419,11 +420,11 @@ class StepForgeApp {
     // No active session: show a button to start a new one for the open guide.
     if (!s.active) {
       this.captureStatus.append(
-        el('span', {}, 'Recording - stopped'),
+        el('span', {}, t('Recording - stopped')),
         el('button', {
           type: 'button',
           onClick: () => this.armCaptureSession(this.editor.guideId),
-        }, 'New recording'),
+        }, t('New recording')),
       );
       return;
     }
@@ -432,16 +433,16 @@ class StepForgeApp {
 
     // What is currently triggering captures, so the user knows what to do.
     const notStarted = s.paused && !s.count;
-    const trigger = s.gnomeRequired && s.warmingUp ? 'waiting for screen sharing'
-      : notStarted ? 'ready'
-      : s.paused ? 'paused'
-        : s.clickCapture ? 'on click'
-          : s.intervalSec > 0 ? `every ${s.intervalSec}s`
-            : 'hotkey only';
+    const trigger = s.gnomeRequired && s.warmingUp ? t('waiting for screen sharing')
+      : notStarted ? t('ready')
+      : s.paused ? t('paused')
+        : s.clickCapture ? t('on click')
+          : s.intervalSec > 0 ? t('every {seconds}s', { seconds: s.intervalSec })
+            : t('hotkey only');
 
     const pauseBtn = el('button', {
       type: 'button',
-      title: notStarted ? 'StepForge tucks away and starts capturing' : '',
+      title: notStarted ? t('StepForge tucks away and starts capturing') : '',
       onClick: async () => {
         if (notStarted) {
           const acknowledged = await dialogs.showRecordingReminder();
@@ -449,14 +450,14 @@ class StepForgeApp {
         }
         send({ action: s.paused ? 'resume' : 'pause' });
       },
-    }, s.paused ? 'Start recording' : 'Stop recording');
+    }, s.paused ? t('Start recording') : t('Stop recording'));
 
     this.captureStatus.append(
-      el('span', { title: `Capture session — ${trigger}` }, `Recording - ${trigger}`),
+      el('span', { title: t('Capture session — {trigger}', { trigger }) }, t('Recording - {trigger}', { trigger })),
       // Settings says Window but this desktop can only record the full screen:
       // say so before the first capture, since other windows will be in it.
       // Native append() prints null as "null", so leave the note out instead.
-      ...(s.modeNote ? [el('span.capture-mode-note', { title: s.modeNote }, 'Full screen (window capture unavailable)')] : []),
+      ...(s.modeNote ? [el('span.capture-mode-note', { title: s.modeNote }, t('Full screen (window capture unavailable)'))] : []),
       pauseBtn,
     );
   }
@@ -466,60 +467,60 @@ class StepForgeApp {
     if (this.state.view === 'welcome') return;
     if (this.state.view === 'library') {
       // Library actions live in the library header; only app-wide ones here.
-      this.topbarContext.append(el('button', { type: 'button', onClick: () => this.openSettings() }, 'Settings'));
+      this.topbarContext.append(el('button', { type: 'button', onClick: () => this.openSettings() }, t('Settings')));
       return;
     }
 
     const guide = this.editorMeta?.guide;
     this.topbarContext.append(
-      el('button', { type: 'button', onClick: () => this.showLibrary() }, 'Library'),
+      el('button', { type: 'button', onClick: () => this.showLibrary() }, t('Library')),
       el('button.primary', {
         type: 'button',
-        title: 'Capture a screenshot step',
+        title: t('Capture a screenshot step'),
         onClick: (e) => this.editor.openCaptureMenu(e),
-      }, 'Capture ▾'),
-      el('button', { type: 'button', onClick: () => this.editor.saveAll() }, 'Save'),
-      el('button', { type: 'button', onClick: () => this.editor.openExportDialog() }, 'Export'),
+      }, t('Capture ▾')),
+      el('button', { type: 'button', onClick: () => this.editor.saveAll() }, t('Save')),
+      el('button', { type: 'button', onClick: () => this.editor.openExportDialog() }, t('Export')),
       el('button', {
         type: 'button',
-        title: 'Share this guide as a file or on the web',
+        title: t('Share this guide as a file or on the web'),
         onClick: (e) => {
           const rect = e.currentTarget.getBoundingClientRect();
           contextMenu(rect.left, rect.bottom + 4, [
-            { label: 'Save as a .sfgz file…', action: () => this.editor.shareAsFile() },
-            { label: 'Publish to the web…', action: () => this.publishToWeb(guide?.guideId || this.editor.guideId, guide?.title) },
-            { label: 'Publish to Confluence…', badge: 'Beta', action: () => this.publishToConfluence(guide?.guideId || this.editor.guideId, guide?.title) },
-            { label: 'Publish to Wiki.js…', badge: 'Beta', action: () => this.publishToWikiJs(guide?.guideId || this.editor.guideId, guide?.title) },
+            { label: t('Save as a .sfgz file…'), action: () => this.editor.shareAsFile() },
+            { label: t('Publish to the web…'), action: () => this.publishToWeb(guide?.guideId || this.editor.guideId, guide?.title) },
+            { label: t('Publish to Confluence…'), badge: 'Beta', action: () => this.publishToConfluence(guide?.guideId || this.editor.guideId, guide?.title) },
+            { label: t('Publish to Wiki.js…'), badge: 'Beta', action: () => this.publishToWikiJs(guide?.guideId || this.editor.guideId, guide?.title) },
           ]);
         },
-      }, 'Share ▾'),
+      }, t('Share ▾')),
       el('button', {
         type: 'button',
         className: this.editorMeta?.aiProgress ? 'ai-busy' : '',
-        title: this.editorMeta?.aiProgress ? 'AI is writing. Click to stop.' : 'Let AI write this guide',
+        title: this.editorMeta?.aiProgress ? t('AI is writing. Click to stop.') : t('Let AI write this guide'),
         onClick: (e) => {
           const rect = e.currentTarget.getBoundingClientRect();
           contextMenu(rect.left, rect.bottom + 4, this.editor.aiMenuItems());
         },
-      }, this.editorMeta?.aiProgress ? `AI · ${this.editorMeta.aiProgress}` : 'AI ▾'),
+      }, this.editorMeta?.aiProgress ? `AI · ${this.editorMeta.aiProgress}` : t('AI ▾')),
       el('button', {
         type: 'button',
         onClick: (e) => {
           const rect = e.target.getBoundingClientRect();
           contextMenu(rect.left, rect.bottom + 4, [
-            { label: 'Rename guide…', action: () => this.renameGuide() },
-            { label: 'Guide information…', action: () => this.editor.openGuideInfo() },
-            { label: 'Guide placeholders…', action: () => this.editor.openGuidePlaceholders() },
-            { label: 'Backups & snapshots…', action: () => this.editor.openBackupsDialog() },
-            { label: 'Find private details…', action: () => this.editor.findPrivateDetails() },
-            { label: guide && guide.linkedSource ? 'Linked guide…' : 'Linked guide (not linked)', action: () => this.editor.openLinkedGuide() },
+            { label: t('Rename guide…'), action: () => this.renameGuide() },
+            { label: t('Guide information…'), action: () => this.editor.openGuideInfo() },
+            { label: t('Guide placeholders…'), action: () => this.editor.openGuidePlaceholders() },
+            { label: t('Backups & snapshots…'), action: () => this.editor.openBackupsDialog() },
+            { label: t('Find private details…'), action: () => this.editor.findPrivateDetails() },
+            { label: guide && guide.linkedSource ? t('Linked guide…') : t('Linked guide (not linked)'), action: () => this.editor.openLinkedGuide() },
             'sep',
-            { label: 'Keyboard shortcuts…', action: () => this.editor.openShortcutsHelp() },
-            { label: 'Quick actions  (Ctrl+/)', action: () => this.editor.openQuickActions() },
-            { label: 'Settings…', action: () => this.openSettings() },
+            { label: t('Keyboard shortcuts…'), action: () => this.editor.openShortcutsHelp() },
+            { label: t('Quick actions  (Ctrl+/)'), action: () => this.editor.openQuickActions() },
+            { label: t('Settings…'), action: () => this.openSettings() },
           ]);
         },
-      }, 'More ▾'),
+      }, t('More ▾')),
       el('span.muted', { style: { marginLeft: '8px' } }, guide ? `${guide.title} · ${this.editorMeta?.stepCount || 0} steps` : ''),
     );
   }
@@ -539,20 +540,21 @@ class StepForgeApp {
       this.state.selectedTrash = new Set();
     }
     const count = trash ? this.state.trash.length : this.state.library.guides.filter((guide) => this.scopeGuide(guide)).length;
-    const subtitle = q ? `Results for “${q}”` : trash ? `${count} deleted guide${count === 1 ? '' : 's'}` : `${count} guide${count === 1 ? '' : 's'}`;
+    const subtitle = q ? t('Results for “{query}”', { query: q })
+      : trash ? tn(count, '{count} deleted guide', '{count} deleted guides') : tn(count, '{count} guide', '{count} guides');
     const folders = this.renderFolderItems(this.state.library.folders || [], null, 0);
     const body = el('div.library', {},
       el('aside.lib-side', {},
         el('div.lib-side-section', {},
-          this.libraryNavItem('all', 'All guides', this.state.library.guides.length),
-          this.libraryNavItem('favorites', 'Favorites', this.state.library.guides.filter((g) => g.favorite).length),
+          this.libraryNavItem('all', t('All guides'), this.state.library.guides.length),
+          this.libraryNavItem('favorites', t('Favorites'), this.state.library.guides.filter((g) => g.favorite).length),
         ),
         el('div.lib-side-head', {},
-          el('h3', {}, 'Folders'),
-          el('button.icon.lib-add-folder', { type: 'button', title: 'New folder', 'aria-label': 'New folder', onClick: () => this.createFolder() }, '+'),
+          el('h3', {}, t('Folders')),
+          el('button.icon.lib-add-folder', { type: 'button', title: t('New folder'), 'aria-label': t('New folder'), onClick: () => this.createFolder() }, '+'),
         ),
-        el('div.lib-side-section', {}, ...(folders.length ? folders : [el('div.lib-side-empty', {}, 'No folders yet')])),
-        el('div.lib-side-footer', {}, this.libraryNavItem('trash', 'Trash', this.state.trash.length)),
+        el('div.lib-side-section', {}, ...(folders.length ? folders : [el('div.lib-side-empty', {}, t('No folders yet'))])),
+        el('div.lib-side-footer', {}, this.libraryNavItem('trash', t('Trash'), this.state.trash.length)),
       ),
       el('main.lib-main', {},
         el('header.lib-header', {},
@@ -566,10 +568,10 @@ class StepForgeApp {
               className: this.state.selectMode ? 'primary' : '',
               'aria-pressed': String(this.state.selectMode),
               onClick: () => this.toggleSelectMode(),
-            }, 'Select') : null,
-            trash && count && !this.state.selectMode ? el('button.danger', { type: 'button', onClick: () => this.purgeTrashItem() }, 'Empty trash') : null,
-            trash ? null : el('button', { type: 'button', onClick: (e) => this.openImportMenu(e) }, 'Import ▾'),
-            trash ? null : el('button.primary', { type: 'button', onClick: () => this.createGuide() }, 'New guide'),
+            }, t('Select')) : null,
+            trash && count && !this.state.selectMode ? el('button.danger', { type: 'button', onClick: () => this.purgeTrashItem() }, t('Empty trash')) : null,
+            trash ? null : el('button', { type: 'button', onClick: (e) => this.openImportMenu(e) }, t('Import ▾')),
+            trash ? null : el('button.primary', { type: 'button', onClick: () => this.createGuide() }, t('New guide')),
           ),
         ),
         this.domBulkBar = el('div', {}),
@@ -592,8 +594,8 @@ class StepForgeApp {
   openImportMenu(event) {
     const rect = event.currentTarget.getBoundingClientRect();
     contextMenu(rect.left, rect.bottom + 4, [
-      { label: 'Import a copy of a guide (.sfgz)…', action: () => this.importArchive('copy') },
-      { label: 'Open a linked guide (.sfgz)…', action: () => this.importArchive('linked') },
+      { label: t('Import a copy of a guide (.sfgz)…'), action: () => this.importArchive('copy') },
+      { label: t('Open a linked guide (.sfgz)…'), action: () => this.importArchive('linked') },
     ]);
   }
 
@@ -644,17 +646,17 @@ class StepForgeApp {
     const folder = (this.state.library.folders || []).find((f) => f.id === folderId);
     if (!folder) return;
     contextMenu(event.clientX, event.clientY, [
-      { label: 'Rename folder', action: () => this.renameFolder(folderId) },
-      { label: 'Delete folder', danger: true, action: () => this.deleteFolder(folderId) },
+      { label: t('Rename folder'), action: () => this.renameFolder(folderId) },
+      { label: t('Delete folder'), danger: true, action: () => this.deleteFolder(folderId) },
     ]);
   }
 
   filterLabel() {
-    if (this.state.folderFilter === 'all') return 'All guides';
-    if (this.state.folderFilter === 'favorites') return 'Favorites';
-    if (this.state.folderFilter === 'trash') return 'Trash';
+    if (this.state.folderFilter === 'all') return t('All guides');
+    if (this.state.folderFilter === 'favorites') return t('Favorites');
+    if (this.state.folderFilter === 'trash') return t('Trash');
     const folder = (this.state.library.folders || []).find((f) => f.id === this.state.folderFilter);
-    return folder ? folder.name : 'All guides';
+    return folder ? folder.name : t('All guides');
   }
 
   scopeGuide(guide) {
@@ -676,7 +678,7 @@ class StepForgeApp {
     });
     clearNode(this.domLibraryResults);
     if (!filtered.length) {
-      this.domLibraryResults.append(el('div.empty-state', {}, el('div.big', {}, 'Search'), 'No results for this query.'));
+      this.domLibraryResults.append(el('div.empty-state', {}, el('div.big', {}, t('Search')), t('No results for this query.')));
       return;
     }
     this.domLibraryResults.append(
@@ -704,11 +706,11 @@ class StepForgeApp {
     if (!guides.length) {
       const filter = this.state.folderFilter;
       this.domLibraryResults.append(filter === 'all'
-        ? this.emptyState('No guides yet', 'Create a guide and start capturing steps, or import one someone shared with you.',
-          el('button.primary', { type: 'button', onClick: () => this.createGuide() }, 'New guide'))
+        ? this.emptyState(t('No guides yet'), t('Create a guide and start capturing steps, or import one someone shared with you.'),
+          el('button.primary', { type: 'button', onClick: () => this.createGuide() }, t('New guide')))
         : filter === 'favorites'
-          ? this.emptyState('No favorites', 'Star a guide to keep it here.')
-          : this.emptyState('This folder is empty', 'Right-click a guide, or select guides, to move them here.'));
+          ? this.emptyState(t('No favorites'), t('Star a guide to keep it here.'))
+          : this.emptyState(t('This folder is empty'), t('Right-click a guide, or select guides, to move them here.')));
       return;
     }
     this.domLibraryResults.append(el('div.guide-grid', {}, ...guides.map((guide) => this.guideCard(guide))));
@@ -718,9 +720,10 @@ class StepForgeApp {
     clearNode(this.domLibraryResults);
     if (!this.state.trash.length) {
       const days = this.state.settings?.library?.trashDays ?? 30;
-      this.domLibraryResults.append(this.emptyState('Trash is empty', days > 0
-        ? `Deleted guides stay here for ${days} days, then are deleted for good. Change this in Settings → General.`
-        : 'Deleted guides stay here until you empty the trash.'));
+      this.domLibraryResults.append(this.emptyState(t('Trash is empty'), days > 0
+        ? tn(days, 'Deleted guides stay here for {count} day, then are deleted for good. Change this in Settings → General.',
+          'Deleted guides stay here for {count} days, then are deleted for good. Change this in Settings → General.')
+        : t('Deleted guides stay here until you empty the trash.')));
       return;
     }
     const selectMode = this.state.selectMode;
@@ -736,9 +739,9 @@ class StepForgeApp {
           e.preventDefault();
           if (selectMode) return;
           contextMenu(e.clientX, e.clientY, [
-            { label: 'Restore', action: () => this.restoreTrashItem(item.name) },
+            { label: t('Restore'), action: () => this.restoreTrashItem(item.name) },
             'sep',
-            { label: 'Empty trash', danger: true, action: () => this.purgeTrashItem() },
+            { label: t('Empty trash'), danger: true, action: () => this.purgeTrashItem() },
           ]);
         },
       },
@@ -750,8 +753,8 @@ class StepForgeApp {
       countdown ? el('div.trash-countdown', {}, countdown) : null,
       el('div.card-footer', {},
         el('span', {}, `${item.stepCount} step${item.stepCount === 1 ? '' : 's'}`),
-        item.deletedAt ? el('span', {}, `Deleted ${timeAgo(item.deletedAt)}`) : null,
-        el('button.card-restore', { type: 'button', onClick: (e) => { e.stopPropagation(); this.restoreTrashItem(item.name); } }, 'Restore')));
+        item.deletedAt ? el('span', {}, t('Deleted {when}', { when: timeAgo(item.deletedAt) })) : null,
+        el('button.card-restore', { type: 'button', onClick: (e) => { e.stopPropagation(); this.restoreTrashItem(item.name); } }, t('Restore'))));
     });
     this.domLibraryResults.append(el('div.guide-grid', {}, ...items));
   }
@@ -762,8 +765,8 @@ class StepForgeApp {
       className: `select-check${selected ? ' on' : ''}`,
       role: 'checkbox',
       'aria-checked': String(selected),
-      'aria-label': selected ? 'Deselect' : 'Select',
-      title: selected ? 'Deselect' : 'Select',
+      'aria-label': selected ? t('Deselect') : t('Select'),
+      title: selected ? t('Deselect') : t('Select'),
       onClick,
     }, selected ? '✓' : '');
   }
@@ -780,7 +783,7 @@ class StepForgeApp {
     const reviewState = review.reviewStatus(guide, this.state.settings?.library?.reviewAfterDays);
     return el('div.guide-card', {
       className: `guide-card${selected ? ' selected' : ''}${selectMode ? ' selecting' : ''}`,
-      title: selectMode ? '' : 'Open guide · Ctrl-click to select',
+      title: selectMode ? '' : t('Open guide · Ctrl-click to select'),
       onClick: (e) => {
         // Ctrl/Cmd-click starts or extends a selection; Shift-click selects a range.
         if (selectMode || e.ctrlKey || e.metaKey || e.shiftKey) this.selectGuideFromClick(guide.guideId, e);
@@ -799,8 +802,8 @@ class StepForgeApp {
     el('button.fav', {
       type: 'button',
       className: `fav${guide.favorite ? ' on' : ''}`,
-      title: guide.favorite ? 'Remove from favorites' : 'Add to favorites',
-      'aria-label': guide.favorite ? 'Remove from favorites' : 'Add to favorites',
+      title: guide.favorite ? t('Remove from favorites') : t('Add to favorites'),
+      'aria-label': guide.favorite ? t('Remove from favorites') : t('Add to favorites'),
       'aria-pressed': String(Boolean(guide.favorite)),
       onClick: async (e) => {
         e.stopPropagation();
@@ -809,14 +812,14 @@ class StepForgeApp {
         await this.refreshLibrary();
       },
     }, '★'),
-    el('h4', {}, guide.title || 'Untitled guide'),
+    el('h4', {}, guide.title || t('Untitled guide')),
     description ? el('div.snippet', {}, description) : null,
     el('div.card-footer', {},
       el('span', {}, `${steps} step${steps === 1 ? '' : 's'}`),
       showFolder ? el('span.card-folder', {}, folder.name) : null,
-      guide.linkedSource ? el('span.badge', { title: 'Saved to a linked .sfgz file' }, 'Linked') : null,
-      guide.locked ? el('span.badge', { title: 'Open on another device' }, 'Locked') : null,
-      reviewState?.overdue ? el('span.badge.review-badge', { title: reviewBadgeTitle(reviewState) }, 'May need review') : null,
+      guide.linkedSource ? el('span.badge', { title: t('Saved to a linked .sfgz file') }, t('Linked')) : null,
+      guide.locked ? el('span.badge', { title: t('Open on another device') }, t('Locked')) : null,
+      reviewState?.overdue ? el('span.badge.review-badge', { title: reviewBadgeTitle(reviewState) }, t('May need review')) : null,
       el('span.card-updated', { title: fmtDate(guide.updatedAt) }, timeAgo(guide.updatedAt))));
   }
 
@@ -827,7 +830,7 @@ class StepForgeApp {
     isStep ? el('div.card-eyebrow', {}, guide.title) : null,
     el('h4', {}, result.title || guide.title),
     result.snippet ? el('div.snippet', {}, result.snippet) : null,
-    el('div.card-footer', {}, el('span.badge', {}, isStep ? 'Step' : 'Guide')));
+    el('div.card-footer', {}, el('span.badge', {}, isStep ? t('Step') : t('Guide'))));
   }
 
   guideContextMenu(event, guide) {
@@ -835,24 +838,24 @@ class StepForgeApp {
     const folderItems = (this.state.library.folders || [])
       .filter((folder) => folder.id !== currentFolderId)
       .map((folder) => ({
-        label: `Move to ${folder.name}`,
+        label: t('Move to {folder}', { folder: folder.name }),
         action: () => this.moveGuideToFolder(guide.guideId, folder.id),
       }));
-    if (currentFolderId) folderItems.push({ label: 'Move to no folder', action: () => this.moveGuideToFolder(guide.guideId, null) });
+    if (currentFolderId) folderItems.push({ label: t('Move to no folder'), action: () => this.moveGuideToFolder(guide.guideId, null) });
     const moveItems = folderItems.length ? ['sep', ...folderItems] : [];
     contextMenu(event.clientX, event.clientY, [
-      { label: 'Open guide', action: () => this.openGuideAndArmCapture(guide.guideId) },
-      { label: 'Rename guide…', action: () => this.renameGuide(guide) },
-      { label: guide.favorite ? 'Unfavorite' : 'Favorite', action: () => this.toggleFavorite(guide) },
-      { label: 'Mark as verified', action: () => this.markVerified([guide.guideId]) },
-      { label: 'Duplicate guide', action: () => this.duplicateGuide(guide.guideId) },
-      { label: 'Export', action: () => this.openGuideExport(guide.guideId) },
-      { label: 'Publish to the web…', action: () => this.publishToWeb(guide.guideId, guide.title) },
-      { label: 'Publish to Confluence…', badge: 'Beta', action: () => this.publishToConfluence(guide.guideId, guide.title) },
-      { label: 'Publish to Wiki.js…', badge: 'Beta', action: () => this.publishToWikiJs(guide.guideId, guide.title) },
+      { label: t('Open guide'), action: () => this.openGuideAndArmCapture(guide.guideId) },
+      { label: t('Rename guide…'), action: () => this.renameGuide(guide) },
+      { label: guide.favorite ? t('Unfavorite') : t('Favorite'), action: () => this.toggleFavorite(guide) },
+      { label: t('Mark as verified'), action: () => this.markVerified([guide.guideId]) },
+      { label: t('Duplicate guide'), action: () => this.duplicateGuide(guide.guideId) },
+      { label: t('Export'), action: () => this.openGuideExport(guide.guideId) },
+      { label: t('Publish to the web…'), action: () => this.publishToWeb(guide.guideId, guide.title) },
+      { label: t('Publish to Confluence…'), badge: 'Beta', action: () => this.publishToConfluence(guide.guideId, guide.title) },
+      { label: t('Publish to Wiki.js…'), badge: 'Beta', action: () => this.publishToWikiJs(guide.guideId, guide.title) },
       ...moveItems,
       'sep',
-      { label: 'Delete guide', danger: true, action: () => this.deleteGuide(guide.guideId) },
+      { label: t('Delete guide'), danger: true, action: () => this.deleteGuide(guide.guideId) },
     ]);
   }
 
@@ -929,7 +932,7 @@ class StepForgeApp {
   async bulkPurgeTrash() {
     const names = [...this.state.selectedTrash];
     if (!names.length) return;
-    const ok = await confirmDialog(`Permanently delete ${names.length} item${names.length === 1 ? '' : 's'}? This cannot be undone.`, { danger: true, okLabel: 'Delete forever' });
+    const ok = await confirmDialog(tn(names.length, 'Permanently delete {count} item? This cannot be undone.', 'Permanently delete {count} items? This cannot be undone.'), { danger: true, okLabel: t('Delete forever') });
     if (!ok) return;
     await api.library.trashPurge({ names });
     this.state.selectedTrash = new Set();
@@ -940,9 +943,9 @@ class StepForgeApp {
     if (!this.domBulkBar) return;
     clearNode(this.domBulkBar);
     if (!this.state.selectMode) return;
-    const bar = (n, total, allSelected, onToggleAll, actions) => el('div.bulk-bar', { role: 'toolbar', 'aria-label': 'Selection actions' },
-      el('span.bulk-count', {}, n ? `${n} of ${total} selected` : 'Click guides to select them'),
-      el('button.link', { type: 'button', onClick: onToggleAll }, allSelected ? 'Clear' : 'Select all'),
+    const bar = (n, total, allSelected, onToggleAll, actions) => el('div.bulk-bar', { role: 'toolbar', 'aria-label': t('Selection actions') },
+      el('span.bulk-count', {}, n ? t('{count} of {total} selected', { count: n, total }) : t('Click guides to select them')),
+      el('button.link', { type: 'button', onClick: onToggleAll }, allSelected ? t('Clear') : t('Select all')),
       el('span.spacer', {}),
       ...actions);
     if (this.state.folderFilter === 'trash') {
@@ -950,8 +953,8 @@ class StepForgeApp {
       const total = this.state.trash.length;
       const allSelected = total > 0 && n === total;
       this.domBulkBar.append(bar(n, total, allSelected, () => (allSelected ? this.clearTrashSelection() : this.selectAllTrash()), [
-        el('button', { type: 'button', disabled: !n, onClick: () => this.bulkRestoreTrash() }, 'Restore'),
-        el('button.danger', { type: 'button', disabled: !n, onClick: () => this.bulkPurgeTrash() }, 'Delete forever'),
+        el('button', { type: 'button', disabled: !n, onClick: () => this.bulkRestoreTrash() }, t('Restore')),
+        el('button.danger', { type: 'button', disabled: !n, onClick: () => this.bulkPurgeTrash() }, t('Delete forever')),
       ]));
       return;
     }
@@ -961,10 +964,10 @@ class StepForgeApp {
     const selected = guides.filter((g) => this.state.selectedGuides.has(g.guideId));
     const allFavorite = selected.length > 0 && selected.every((g) => g.favorite);
     this.domBulkBar.append(bar(n, guides.length, allSelected, () => (allSelected ? this.clearSelection() : this.selectAllGuides()), [
-      el('button', { type: 'button', disabled: !n, onClick: () => this.bulkSetFavorite(!allFavorite) }, allFavorite ? 'Unfavorite' : 'Favorite'),
-      el('button', { type: 'button', disabled: !n, onClick: (e) => this.openBulkMoveMenu(e) }, 'Move to ▾'),
-      el('button', { type: 'button', disabled: !n, title: 'Record that these guides still match the software today', onClick: () => this.markVerified([...this.state.selectedGuides]) }, 'Mark as verified'),
-      el('button.danger', { type: 'button', disabled: !n, onClick: () => this.bulkDelete() }, 'Delete'),
+      el('button', { type: 'button', disabled: !n, onClick: () => this.bulkSetFavorite(!allFavorite) }, allFavorite ? t('Unfavorite') : t('Favorite')),
+      el('button', { type: 'button', disabled: !n, onClick: (e) => this.openBulkMoveMenu(e) }, t('Move to ▾')),
+      el('button', { type: 'button', disabled: !n, title: t('Record that these guides still match the software today'), onClick: () => this.markVerified([...this.state.selectedGuides]) }, t('Mark as verified')),
+      el('button.danger', { type: 'button', disabled: !n, onClick: () => this.bulkDelete() }, t('Delete')),
     ]));
   }
 
@@ -975,7 +978,7 @@ class StepForgeApp {
       action: () => this.bulkMoveToFolder(folder.id),
     }));
     contextMenu(rect.left, rect.bottom + 4, [
-      { label: 'No folder', action: () => this.bulkMoveToFolder(null) },
+      { label: t('No folder'), action: () => this.bulkMoveToFolder(null) },
       ...(folderItems.length ? ['sep', ...folderItems] : []),
     ]);
   }
@@ -997,7 +1000,9 @@ class StepForgeApp {
   async bulkDelete() {
     const ids = [...this.state.selectedGuides];
     if (!ids.length) return;
-    const ok = await confirmDialog(`Delete ${ids.length} guide${ids.length === 1 ? '' : 's'}? They'll move to Trash. Guides that sync to the cloud are also removed from your other devices, with one cloud recovery snapshot retained.`, { danger: true, okLabel: 'Delete' });
+    const ok = await confirmDialog(tn(ids.length,
+      'Delete {count} guide? It moves to Trash. If it syncs to the cloud, it is also removed from your other devices, with one cloud recovery snapshot retained.',
+      'Delete {count} guides? They’ll move to Trash. Guides that sync to the cloud are also removed from your other devices, with one cloud recovery snapshot retained.'), { danger: true, okLabel: t('Delete') });
     if (!ok) return;
     await Promise.all(ids.map((guideId) => api.library.delete({ guideId })));
     this.state.selectedGuides = new Set();
@@ -1006,13 +1011,13 @@ class StepForgeApp {
 
   async createGuide() {
     const title = await dialogs.promptText({
-      title: 'New Guide',
-      label: 'Title',
-      value: 'Untitled guide',
-      placeholder: 'Untitled guide',
+      title: t('New Guide'),
+      label: t('Title'),
+      value: t('Untitled guide'),
+      placeholder: t('Untitled guide'),
     });
     if (title == null) return;
-    const guide = await api.library.create({ title: title.trim() || 'Untitled guide', captureDraft: !title.trim() || title.trim() === 'Untitled guide' });
+    const guide = await api.library.create({ title: title.trim() || t('Untitled guide'), captureDraft: !title.trim() || title.trim() === t('Untitled guide') });
     await this.refreshLibrary();
     // Arm a (paused) capture session like every other open path, so the
     // "Start recording" bar appears and actually controls this new guide.
@@ -1022,7 +1027,7 @@ class StepForgeApp {
   }
 
   async createFolder() {
-    const name = await dialogs.promptText({ title: 'New folder', label: 'Folder name', value: '' });
+    const name = await dialogs.promptText({ title: t('New folder'), label: t('Folder name'), value: '' });
     if (name == null || !name.trim()) return;
     await api.folders.create({ name: name.trim(), parentId: null });
     await this.refreshLibrary();
@@ -1031,7 +1036,7 @@ class StepForgeApp {
   async renameFolder(folderId) {
     const folder = (this.state.library.folders || []).find((f) => f.id === folderId);
     if (!folder) return;
-    const name = await dialogs.promptText({ title: 'Rename folder', label: 'Folder name', value: folder.name });
+    const name = await dialogs.promptText({ title: t('Rename folder'), label: t('Folder name'), value: folder.name });
     if (name == null || !name.trim()) return;
     await api.folders.rename({ folderId, name: name.trim() });
     await this.refreshLibrary();
@@ -1040,7 +1045,7 @@ class StepForgeApp {
   async deleteFolder(folderId) {
     const folder = (this.state.library.folders || []).find((f) => f.id === folderId);
     if (!folder) return;
-    const ok = await confirmDialog(`Delete the folder “${folder.name}”? Guides stay in the library.`);
+    const ok = await confirmDialog(t('Delete the folder “{folder}”? Guides stay in the library.', { folder: folder.name }));
     if (!ok) return;
     await api.folders.delete({ folderId });
     await this.refreshLibrary();
@@ -1055,7 +1060,7 @@ class StepForgeApp {
     if (!guideIds.length) return;
     await api.library.markVerified({ guideIds });
     await this.refreshLibrary();
-    toast(guideIds.length === 1 ? 'Marked as verified today.' : `${guideIds.length} guides marked as verified today.`);
+    toast(guideIds.length === 1 ? t('Marked as verified today.') : t('{count} guides marked as verified today.', { count: guideIds.length }));
   }
 
   async toggleFavorite(guide) {
@@ -1071,7 +1076,7 @@ class StepForgeApp {
   async deleteGuide(guideId) {
     const guide = this.state.library.guides.find((g) => g.guideId === guideId);
     if (!guide) return;
-    const ok = await confirmDialog(`Delete “${guide.title}”? It moves to Trash. If it syncs to the cloud, it is also removed from your other devices and one cloud recovery snapshot is retained.`, { danger: true, okLabel: 'Delete' });
+    const ok = await confirmDialog(t('Delete “{title}”? It moves to Trash. If it syncs to the cloud, it is also removed from your other devices and one cloud recovery snapshot is retained.', { title: guide.title }), { danger: true, okLabel: t('Delete') });
     if (!ok) return;
     await api.library.delete({ guideId });
     await this.refreshLibrary();
@@ -1083,7 +1088,7 @@ class StepForgeApp {
   }
 
   async purgeTrashItem() {
-    const ok = await confirmDialog('Permanently empty the trash?', { danger: true, okLabel: 'Empty trash' });
+    const ok = await confirmDialog(t('Permanently empty the trash?'), { danger: true, okLabel: t('Empty trash') });
     if (!ok) return;
     await api.library.trashPurge();
     await this.refreshLibrary();
@@ -1098,7 +1103,7 @@ class StepForgeApp {
     await showPublishToWebDialog({
       api,
       guideId,
-      guideTitle: title || 'Untitled guide',
+      guideTitle: title || t('Untitled guide'),
       onOpenAccounts: () => this.openSettings('github'),
       onShowFinding: (picked) => { finding = picked; },
     });
@@ -1116,7 +1121,7 @@ class StepForgeApp {
     const changed = await showPublishToConfluenceDialog({
       api,
       guideId,
-      guideTitle: title || 'Untitled guide',
+      guideTitle: title || t('Untitled guide'),
       onOpenAccounts: () => this.openSettings('confluence'),
       onShowFinding: (picked) => { finding = picked; },
     });
@@ -1134,7 +1139,7 @@ class StepForgeApp {
     const changed = await showPublishToWikiJsDialog({
       api,
       guideId,
-      guideTitle: title || 'Untitled guide',
+      guideTitle: title || t('Untitled guide'),
       onOpenAccounts: () => this.openSettings('wikijs'),
       onShowFinding: (picked) => { finding = picked; },
     });
@@ -1160,7 +1165,7 @@ class StepForgeApp {
 
   async renameGuide(guide = this.editorMeta?.guide) {
     if (!guide) return;
-    const title = await dialogs.promptText({ title: 'Rename guide', label: 'Title', value: guide.title });
+    const title = await dialogs.promptText({ title: t('Rename guide'), label: t('Title'), value: guide.title });
     if (title == null || !title.trim()) return;
     const fullGuide = (await api.guide.get({ guideId: guide.guideId })).guide;
     fullGuide.title = title.trim();
@@ -1182,6 +1187,7 @@ class StepForgeApp {
   async openSettings(section) {
     const settings = await api.settings.all();
     const placeholders = await api.settings.globalPlaceholders();
+    let newLanguage = null;
     await dialogs.showSettingsDialog({
       api,
       settings,
@@ -1204,8 +1210,14 @@ class StepForgeApp {
         await api.settings.set({ keyPath: 'library', value: next.library });
         await api.settings.setGlobalPlaceholders(next.placeholders || {});
         this.state.settings = await api.settings.all();
+        if (next.language !== settings.language) newLanguage = next.language;
       },
     });
+    // A new language reloads the window in it, so open edits are saved first.
+    if (newLanguage && await this.flushEditorBeforeNavigation()) {
+      const result = await api.app.setLanguage({ language: newLanguage });
+      if (result.reloaded) return;
+    }
     await this.refreshData();
     this.renderTopbar();
     if (this.state.view === 'library') this.renderLibrary();
@@ -1217,11 +1229,11 @@ class StepForgeApp {
       return;
     }
     const commands = [
-      { kind: 'cmd', label: 'New guide', description: 'Create a blank guide', action: () => this.createGuide() },
-      { kind: 'cmd', label: 'Import archive', description: 'Open a .sfgz guide archive', action: () => this.importArchive('copy') },
-      { kind: 'cmd', label: 'Open linked archive', description: 'Import a linked guide from .sfgz', action: () => this.importArchive('linked') },
-      { kind: 'cmd', label: 'Settings', description: 'Open application settings', action: () => this.openSettings() },
-      { kind: 'cmd', label: 'Refresh library', description: 'Reload guides and folders', action: () => this.refreshLibrary() },
+      { kind: 'cmd', label: t('New guide'), description: t('Create a blank guide'), action: () => this.createGuide() },
+      { kind: 'cmd', label: t('Import archive'), description: t('Open a .sfgz guide archive'), action: () => this.importArchive('copy') },
+      { kind: 'cmd', label: t('Open linked archive'), description: t('Import a linked guide from .sfgz'), action: () => this.importArchive('linked') },
+      { kind: 'cmd', label: t('Settings'), description: t('Open application settings'), action: () => this.openSettings() },
+      { kind: 'cmd', label: t('Refresh library'), description: t('Reload guides and folders'), action: () => this.refreshLibrary() },
     ];
     await dialogs.showQuickActions({
       commands,
@@ -1259,6 +1271,11 @@ document.addEventListener('click', (e) => {
 }, true);
 
 function boot() {
+  // index.html's own text, in the interface language.
+  document.documentElement.lang = uiLanguage;
+  for (const node of document.querySelectorAll('[data-i18n-title]')) node.title = t(node.title);
+  for (const node of document.querySelectorAll('[data-i18n-placeholder]')) node.placeholder = t(node.placeholder);
+  for (const node of document.querySelectorAll('[data-i18n-label]')) node.setAttribute('aria-label', t(node.getAttribute('aria-label')));
   const app = new StepForgeApp();
   app.init();
   window.stepforgeApp = app;

@@ -244,6 +244,7 @@ const api = {
     checkForUpdates: invoke('app:checkForUpdates'),
     updateNow: invoke('app:updateNow'),
     openStore: invoke('app:openStore'),
+    setLanguage: invoke('app:setLanguage'),
     platformCapabilities: invoke('platform:capabilities'),
   },
 };

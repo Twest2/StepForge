@@ -5,10 +5,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const { Settings } = require('../../core/settings');
-const { makeTmpDir, rmrf } = require('./helpers');
+const { makeTmpDir, rmrf, rendererI18n } = require('./helpers');
 
 function editorContext({ api = {}, dialogs = {} } = {}) {
-  const context = { window: { stepforge: api, StepForgeDialogs: dialogs } };
+  const context = { ...rendererI18n(), window: { stepforge: api, StepForgeDialogs: dialogs } };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/editor.js'), 'utf8'), context);
   const editor = Object.create(context.window.GuideEditor.prototype);
   const step = { stepId: 's1', title: 'Click Save' };
@@ -79,7 +79,7 @@ test('focus defaults are enabled but explicit saved choices remain disabled', t 
 
 test('AI ▾ sits right before More ▾, asks the editor for its menu, and shows progress while writing', () => {
   let items;
-  const context = {
+  const context = { ...rendererI18n(),
     window: {}, document: { addEventListener() {} }, clearNode: node => { node.children = []; },
     el: (selector, attrs, ...children) => ({ selector, ...attrs, children }),
     contextMenu: (x, y, next) => { items = next; },

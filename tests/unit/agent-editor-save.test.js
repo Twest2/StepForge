@@ -6,7 +6,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { GuideStore } = require('../../core/store');
 const { saveGuideFromEditor, saveStepFromEditor } = require('../../core/editor-save');
-const { makeTmpDir, rmrf } = require('./helpers');
+const { makeTmpDir, rmrf, rendererI18n } = require('./helpers');
 
 function library(t) {
   const root = makeTmpDir('agent-editor');
@@ -45,7 +45,7 @@ test('a late editor save cannot recreate a deleted step or a trashed guide', (t)
 });
 
 test('agent reload cancels an unsaved deleted step rather than saving it onto another step', async () => {
-  const context = { window: { stepforge: { guide: { get: async () => ({ guide: { stepsOrder: ['remaining'] } }) } } } };
+  const context = { ...(rendererI18n ? rendererI18n() : {}), window: { stepforge: { guide: { get: async () => ({ guide: { stepsOrder: ['remaining'] } }) } } } };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/editor.js'), 'utf8'), context);
   const editor = Object.create(context.window.GuideEditor.prototype);
   let cancelled = false, reloaded = false;

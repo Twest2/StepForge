@@ -1,5 +1,7 @@
 'use strict';
 
+const { isDeepStrictEqual } = require('node:util');
+
 /**
  * Renderer saves edit existing content. Step creation, deletion and ordering
  * have their own operations, and may have changed in the agent process since
@@ -18,8 +20,17 @@ function saveStepFromEditor(store, guideId, step) {
   const current = store.getStep(guideId, step.stepId); // Refuse vanished files.
   // A dirty text edit must not undo an agent's move or the promotion of a
   // deleted parent's children. A fresh edit may still choose a new parent.
-  const fields = step.revision !== current.revision
-    ? { ...step, parentStepId: current.parentStepId } : step;
+  const stale = step.revision !== current.revision;
+  const imageChanged = !isDeepStrictEqual(step.image, current.image);
+  // Screenshot operations have dedicated routes. A normal save cannot add
+  // back a removed image, overwrite its dimensions, or restore its old kind.
+  const fields = { ...step, image: current.image, kind: current.kind };
+  if (stale) {
+    fields.parentStepId = current.parentStepId;
+    fields.redaction = current.redaction;
+  }
+  // Coordinates and privacy state belong to the current screenshot.
+  if (imageChanged || !current.image) fields.annotations = current.annotations;
   return store.saveStep(guideId, { ...fields, revision: current.revision });
 }
 

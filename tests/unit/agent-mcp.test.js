@@ -64,7 +64,7 @@ test('agents get every guide tool except changing or deleting placeholders', (t)
     assert.ok(!/placeholder/.test(tool.name) || tool.name === 'create_placeholder');
     assert.equal(tool.annotations.destructiveHint === true, /^(delete|remove|set_screenshot)/.test(tool.name), tool.name);
   }
-  assert.match(INSTRUCTIONS, /snapshots the guide before each of these/);
+  assert.match(INSTRUCTIONS, /snapshots existing guides before deletions, create_step, move_step and screenshot changes/);
   assert.match(INSTRUCTIONS, /cannot change or delete placeholders/);
 });
 

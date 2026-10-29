@@ -550,6 +550,7 @@ class GuideEditor {
     this.guide = guide;
     this.steps = steps;
     this.stepMap = new Map(steps.map((step) => [step.stepId, step]));
+    this.savedStepBaselines = new Map(steps.map((step) => [step.stepId, clone(step)]));
     this.selectedSteps = new Set([...this.selectedSteps].filter((id) => this.stepMap.has(id)));
     if (!this.stepMap.has(this.stepSelectionAnchor)) this.stepSelectionAnchor = null;
     if (!this.shellMounted) this.mountShell();
@@ -1750,6 +1751,9 @@ class GuideEditor {
   async restoreHistoryRecord(record) {
     if (!record || !record.step) return;
     const step = clone(record.step);
+    // Undo is an intentional new edit of the current copy, not an autosave
+    // based on the old revision captured in the history record.
+    step.revision = this.stepMap.get(step.stepId)?.revision ?? step.revision;
     this.selectedStepId = step.stepId;
     this.beforeCanvasSnapshot = null;
     this.saveStepDebounced.cancel();
@@ -1878,7 +1882,7 @@ class GuideEditor {
     // surface it, and retry on the next edit or explicit save.
     let saved;
     try {
-      saved = await api.step.save({ guideId: this.guideId, step });
+      saved = await api.step.save({ guideId: this.guideId, step, baseStep: this.savedStepBaselines?.get(step.stepId) });
     } catch (err) {
       this.pendingSave = true;
       this.saveError = (err && err.message) || 'Save failed';
@@ -1888,7 +1892,9 @@ class GuideEditor {
     }
     this.pendingSave = false;
     this.saveError = null;
-    const committed = this.commitSavedStep(saved);
+    const mergedOutsideChange = saved.revision > (step.revision || 0) + 1;
+    const committed = this.commitSavedStep(saved, { replaceBlocks: mergedOutsideChange });
+    if (mergedOutsideChange) this.renderAll();
     if (this.selectedStepId === committed.stepId) {
       this.renderStepList();
       this.syncStepFields();
@@ -1905,6 +1911,8 @@ class GuideEditor {
 
   commitSavedStep(saved, { replaceBlocks = false } = {}) {
     if (!saved || !saved.stepId) return saved;
+    this.savedStepBaselines ||= new Map();
+    this.savedStepBaselines.set(saved.stepId, clone(saved));
     const existing = this.stepMap.get(saved.stepId);
     if (!existing || existing === saved) {
       this.stepMap.set(saved.stepId, saved);

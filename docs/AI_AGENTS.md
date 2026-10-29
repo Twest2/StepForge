@@ -43,7 +43,10 @@ the change you want to undo. Restoring snapshots the guide first, so a restore
 can be undone too.
 
 Automatic backups don't push agent snapshots out. StepForge keeps the newest 50
-agent snapshots of each guide.
+agent snapshots of each guide. Text rewrites, changing substep nesting with
+`update_step`, adding placeholders and drawing annotations do not create agent
+snapshots; create a manual snapshot first if you want a recovery point before
+those edits.
 
 A guide an agent deletes goes to the Trash, like one you delete. Restore it
 from there.
@@ -88,7 +91,9 @@ new ones for values that repeat, such as a course code or product name. If
 the guide is open in StepForge, it updates on screen within a couple of
 seconds. If you're typing in the same step at that moment, your edit wins. If
 the agent deleted that step, StepForge drops its pending save and shows the
-remaining steps instead of recreating it.
+remaining steps instead of recreating it. For a surviving step, changes to
+different fields, blocks or annotations combine; your edit wins when both
+sides changed the same field.
 
 Before you share the guide, read what the agent wrote. To undo a big rewrite,
 use **More → Backups & snapshots**. Annotations an agent drew can be moved or

@@ -889,7 +889,7 @@ function showSettingsDialog({
           ollamaModel),
           el('div.settings-test', {}, aiStatus, testAiBtn, ollamaModels)),
         settingsCard('AI agents (Claude, Codex)',
-          el('div.setting-desc', {}, 'AI apps such as Claude and Codex can connect to StepForge and edit your guides. They can create and delete guides and steps, reorder steps, replace or remove screenshots, edit text, add placeholders, and add or delete annotations except blurs. StepForge saves snapshots before structural or destructive changes; restore them from More → Backups & snapshots. Deleted guides go to the Trash.'),
+          el('div.setting-desc', {}, 'AI apps such as Claude and Codex can connect to StepForge and edit your guides. They can create and delete guides and steps, reorder steps, replace or remove screenshots, edit text, add placeholders, and add or delete annotations except blurs. StepForge saves snapshots before step creation, moves, deletions and screenshot changes; restore them from More → Backups & snapshots. Deleted guides go to the Trash.'),
           settingRow('Let AI agents edit your guides', 'Turn off to cut off every connected agent at once.', makeSwitch(agentsEnabled, 'Let AI agents edit your guides')),
           settingRow('Agents can see screenshots', 'Blurred areas are filled in first. Turn off to share step text only.', makeSwitch(agentsScreenshots, 'Agents can see screenshots')),
           settingRow('Let AI agents edit brand profiles', 'Agents can make and change brand profiles: logo, colors, fonts and CSS, and choose the one exports use. They can’t delete a profile.', makeSwitch(agentsBranding, 'Let AI agents edit brand profiles')),

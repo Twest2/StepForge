@@ -279,6 +279,17 @@ override the location with the `STEPFORGE_DATA_DIR` environment variable.
 Uninstalling StepForge leaves this folder in place. Delete it to remove all of
 your guides and settings.
 
+**Keep the library out of folders that OneDrive, Dropbox, Google Drive or
+Nextcloud sync,** such as a Documents folder that OneDrive backs up. Those apps
+upload everything in their folders, screenshots included, whether or not you
+turned on StepForge's sync. Guide storage warns you when the library, or a
+folder you're moving it to, is in one. To find those folders, StepForge reads
+the sync apps' own settings on your computer: OneDrive's environment variables,
+Dropbox's `info.json`, Nextcloud's `nextcloud.cfg`, and the Linux OneDrive
+client's `config`. Google Drive is recognized by its **My Drive** folder name.
+Nothing is sent anywhere. To keep guides in step across computers, use
+StepForge's own sync instead.
+
 ## Questions
 
 Email `git@twestbrook.com` with any privacy question.

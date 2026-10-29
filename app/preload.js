@@ -243,6 +243,7 @@ const api = {
     info: invoke('app:info'),
     checkForUpdates: invoke('app:checkForUpdates'),
     updateNow: invoke('app:updateNow'),
+    openStore: invoke('app:openStore'),
     platformCapabilities: invoke('platform:capabilities'),
   },
 };

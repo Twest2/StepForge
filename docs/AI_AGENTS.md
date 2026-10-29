@@ -47,8 +47,10 @@ profiles**. It's off by default. See
 ## 2. Connect your agent
 
 Use the setup shown in **Settings → AI → AI agents**. It's made for this
-computer, with StepForge's exact location. Choose **Copy** next to the agent
-you use, then:
+computer, with StepForge's exact location. (From the
+[Microsoft Store](windows/microsoft-store.md), it uses the `stepforge.exe`
+command instead, which stays the same when the Store updates StepForge.)
+Choose **Copy** next to the agent you use, then:
 
 - **Claude Code or Codex:** paste the command into a terminal and run it once.
 - **Claude Desktop, Cursor, and other MCP apps:** paste the JSON into the

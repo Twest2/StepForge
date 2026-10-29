@@ -93,6 +93,8 @@ test('Update now is offered only in the packaged Windows app', () => {
   assert.equal(updateNowAvailable({ platform: 'linux', packaged: true, env, fs: fsImpl }), false);
   assert.equal(updateNowAvailable({ platform: 'win32', packaged: false, env, fs: fsImpl }), false, 'not from a development build');
   assert.equal(updateNowAvailable({ platform: 'win32', packaged: true, env, fs: fakeFs([]) }), false);
+  assert.equal(updateNowAvailable({ platform: 'win32', packaged: true, store: true, env, fs: fsImpl }), false,
+    'a Microsoft Store install is updated by the Store, even beside a registered installer copy');
 });
 
 test('PowerShell literals double every kind of single quote', () => {
@@ -246,6 +248,7 @@ test('app:updateNow refuses off Windows, in a development build, and when not re
     [{ platform: 'linux' }, 'unsupported'],
     [{ platform: 'darwin' }, 'unsupported'],
     [{ packaged: false }, 'unsupported'],
+    [{ store: true }, 'unsupported'],
     [{ fs: fakeFs([]) }, 'not-registered'],
     [{ env: { ChocolateyInstall: 'D:\\elsewhere' } }, 'not-registered'],
     [{ lastCheck: null }, 'no-update'],
@@ -286,7 +289,7 @@ test('main.js wires app:updateNow without renderer input and quits only once the
   const handler = main.slice(start, main.indexOf('\n  });', start) + 60);
   assert.match(handler, /^h\('app:updateNow', async \(\) => \{/, 'the handler ignores its arguments');
   assert.match(handler, /validate: \(a\) => Object\.keys\(a\)\.length === 0/);
-  assert.match(handler, /platform: process\.platform,\s+packaged: app\.isPackaged,\s+lastCheck: lastUpdateCheck,/);
+  assert.match(handler, /platform: process\.platform,\s+packaged: app\.isPackaged,\s+store: windowsStore\.isStoreInstall\(\),\s+lastCheck: lastUpdateCheck,/);
   assert.match(handler, /if \(result\.ok\) setTimeout\(\(\) => app\.quit\(\), \d+\);/, 'the normal quit path, which drains pending writes');
   assert.doesNotMatch(handler, /app\.exit|process\.exit|kill/);
   const preload = fs.readFileSync(path.join(__dirname, '../../app/preload.js'), 'utf8');

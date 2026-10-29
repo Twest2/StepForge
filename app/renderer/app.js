@@ -1198,6 +1198,10 @@ class StepForgeApp {
       // Update now closes StepForge; save the open guide first.
       flushEdits: () => this.flushEditorBeforeNavigation(),
       onSave: async (next) => {
+        if (next.language !== settings.language && !await this.flushEditorBeforeNavigation()) {
+          toast(t('Your guide could not be saved. Your language choice is still selected; try Save again.'), { error: true });
+          return false;
+        }
         await api.settings.set({ keyPath: 'appearance', value: next.appearance });
         await api.settings.set({ keyPath: 'spellcheck', value: next.spellcheck });
         await api.settings.set({ keyPath: 'capture', value: next.capture });

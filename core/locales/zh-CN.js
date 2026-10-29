@@ -9,6 +9,7 @@
   "AI wrote the title.": "AI 已编写标题。",
   "AI wrote the description.": "AI 已编写说明。",
   "AI wrote the blocks.": "AI 已编写内容块。",
+  "Your guide could not be saved. Your language choice is still selected; try Save again.": "无法保存指南。您选择的语言仍处于选中状态；请再次尝试保存。",
   'Import images as steps': '将图片导入为步骤',
   'Choose a screenshot for this step': '为此步骤选择截图',
   'Choose guide storage folder': '选择指南存储文件夹',

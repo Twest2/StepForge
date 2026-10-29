@@ -9,6 +9,7 @@
   "AI wrote the title.": "AI がタイトルを作成しました。",
   "AI wrote the description.": "AI が説明を作成しました。",
   "AI wrote the blocks.": "AI がブロックを作成しました。",
+  "Your guide could not be saved. Your language choice is still selected; try Save again.": "ガイドを保存できませんでした。選択した言語はそのままです。もう一度「保存」を試してください。",
   'Import images as steps': '画像をステップとして読み込む',
   'Choose a screenshot for this step': 'このステップのスクリーンショットを選択',
   'Choose guide storage folder': 'ガイドの保存フォルダーを選択',

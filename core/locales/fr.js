@@ -9,6 +9,7 @@
   "AI wrote the title.": "L’IA a rédigé le titre.",
   "AI wrote the description.": "L’IA a rédigé la description.",
   "AI wrote the blocks.": "L’IA a rédigé les blocs.",
+  "Your guide could not be saved. Your language choice is still selected; try Save again.": "Votre guide n’a pas pu être enregistré. La langue choisie reste sélectionnée ; réessayez avec Enregistrer.",
   'Import images as steps': 'Importer des images comme étapes',
   'Choose a screenshot for this step': 'Choisir une capture d’écran pour cette étape',
   'Choose guide storage folder': 'Choisir le dossier de stockage des guides',

@@ -9,6 +9,7 @@
   "AI wrote the title.": "La IA ha redactado el título.",
   "AI wrote the description.": "La IA ha redactado la descripción.",
   "AI wrote the blocks.": "La IA ha redactado los bloques.",
+  "Your guide could not be saved. Your language choice is still selected; try Save again.": "No se pudo guardar la guía. El idioma elegido sigue seleccionado; vuelve a pulsar Guardar.",
   'Import images as steps': 'Importar imágenes como pasos',
   'Choose a screenshot for this step': 'Elegir una captura de pantalla para este paso',
   'Choose guide storage folder': 'Elegir la carpeta de almacenamiento de guías',

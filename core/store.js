@@ -369,6 +369,9 @@ class GuideStore {
    * nothing). Its revision still moves, so caches keyed on it refresh.
    */
   saveStep(guideId, step, { expectedRevision = null, touch = true, imagePaths = false } = {}) {
+    // A capture/image/background operation can finish after an agent trashed
+    // the guide. Refuse before creating any files in the old location.
+    const guide = this.getGuide(guideId);
     // Optimistic concurrency for background/AI/capture writes: refuse to
     // overwrite a step that changed since it was read. Direct user edits pass
     // no expectedRevision (last-write-wins — the user is the authority).
@@ -391,7 +394,6 @@ class GuideStore {
     stored.revision = (Number.isInteger(stored.revision) ? stored.revision : 0) + 1;
     validateStep(stored);
     writeJsonSync(path.join(this.stepDir(guideId, step.stepId), 'step.json'), stored);
-    const guide = this.getGuide(guideId);
     this.saveGuide(guide, { touch }); // bump updatedAt
     return stored;
   }
@@ -514,7 +516,10 @@ class GuideStore {
 
   /** Replace the working image (crop result). The original is never touched. */
   setWorkingImage(guideId, stepId, pngBuffer, size, stepPatch = null) {
-    const step = stepPatch ? this.currentImagePaths(guideId, deepClone(stepPatch)) : this.getStep(guideId, stepId);
+    this.getGuide(guideId);
+    const current = this.getStep(guideId, stepId);
+    const step = stepPatch ? this.currentImagePaths(guideId, deepClone(stepPatch)) : current;
+    step.revision = current.revision;
     if (!step.image) throw new Error('step has no image');
     const unused = this.placeWorkingImage(this.stepDir(guideId, stepId), step.image, pngBuffer);
     step.image.size = size;
@@ -530,7 +535,10 @@ class GuideStore {
    * `stepPatch` is saved with it, so text and annotations go in one write.
    */
   replaceImages(guideId, stepId, images, size, stepPatch = null) {
-    const step = stepPatch ? this.currentImagePaths(guideId, deepClone(stepPatch)) : this.getStep(guideId, stepId);
+    this.getGuide(guideId);
+    const current = this.getStep(guideId, stepId);
+    const step = stepPatch ? this.currentImagePaths(guideId, deepClone(stepPatch)) : current;
+    step.revision = current.revision;
     if (!images?.original && !images?.working) throw new Error('No screenshot to use.');
     if (!step.image) {
       step.image = { originalPath: ORIGINAL_FILE, workingPath: ORIGINAL_FILE, size };

@@ -29,7 +29,7 @@ const {
  * Agents read guides, rewrite their text, make substeps, add placeholders and
  * draw annotations. They can also create and delete guides and steps, move
  * steps, replace or remove screenshots, and delete blocks and annotations;
- * before each of those StepForge snapshots the guide, so the user can undo it.
+ * the deletion, step creation/move and screenshot tools snapshot the guide first.
  * They can't change or delete placeholders, or delete blurs.
  */
 
@@ -48,7 +48,7 @@ const INSTRUCTIONS = [
   'StepForge holds step-by-step guides a person recorded: each step is a screenshot of one click, with a marker where they clicked.',
   'You can read guides and rewrite their text: the guide title and description, and each step\'s title, description and blocks (notes, warnings, tips, code, tables).',
   'You can also make a step a substep of an earlier step (update_step parent_step_id), add placeholders (create_placeholder), and draw annotations such as rectangles, arrows and callouts on a screenshot (add_annotations).',
-  'You can also create and delete guides and steps (create_guide, delete_guide, create_step, delete_step), move steps (move_step), replace or remove a step\'s screenshot with a PNG file on this computer (set_screenshot, remove_screenshot), and delete blocks and annotations (delete_blocks, delete_annotations). StepForge snapshots the guide before each of these, so the user can undo it.',
+  'You can also create and delete guides and steps (create_guide, delete_guide, create_step, delete_step), move steps (move_step), replace or remove a step\'s screenshot with a PNG file on this computer (set_screenshot, remove_screenshot), and delete blocks and annotations (delete_blocks, delete_annotations). StepForge snapshots existing guides before deletions, create_step, move_step and screenshot changes. Creating a guide, rewriting text, changing nesting with update_step, adding placeholders and drawing annotations do not create agent snapshots.',
   'Steps normally come from a real capture, so prefer rewriting what is there over deleting it. You cannot change or delete placeholders, or delete blurs.',
   'To write a guide: call get_guide, then get_step for each step to see its screenshot, then update_step. Finish with update_guide for the guide\'s title and description.',
   'Step titles are short imperative actions ("Click Save", "Open Settings"). Descriptions are Markdown, 1–2 sentences per step.',

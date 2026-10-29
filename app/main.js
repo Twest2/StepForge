@@ -916,11 +916,12 @@ function setupIpc() {
     maxChars: IMAGE_BUDGET,
     validate: (a) => c.id(a.guideId) && c.optionalBase64(a.imageBase64) && c.optionalNumber(a.position, 0, 100000),
   });
-  h('step:save', ({ guideId, step }) => {
-    const saved = saveStepFromEditor(store, guideId, step);
+  h('step:save', ({ guideId, step, baseStep }) => {
+    const saved = saveStepFromEditor(store, guideId, step, baseStep);
     reindex(guideId);
     return saved;
-  }, { validate: (a) => c.id(a.guideId) && security.isPlainArgs(a.step) && a.step && c.id(a.step.stepId) });
+  }, { validate: (a) => c.id(a.guideId) && security.isPlainArgs(a.step) && a.step && c.id(a.step.stepId)
+    && (a.baseStep == null || (security.isPlainArgs(a.baseStep) && a.baseStep.stepId === a.step.stepId)) });
   h('step:delete', ({ guideId, stepId }) => {
     store.deleteStep(guideId, stepId);
     reindex(guideId);

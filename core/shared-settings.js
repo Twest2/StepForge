@@ -3,20 +3,21 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { isDeepStrictEqual } = require('node:util');
-const { DEFAULT_SETTINGS } = require('./settings');
+const { DEFAULT_SETTINGS, SHARED_SETTING_PATHS } = require('./settings');
 const { normalizeProfile, profileAssetIds, prepareAsset } = require('./branding');
 const { contentHash } = require('./cloud-parts');
 
 /*
  * Settings that follow you to every computer that syncs: global
  * placeholders, brand profiles (with their logos, banners and fonts), the
- * active brand profile, and the interface language. The rest of Settings
- * describes one computer (capture, hotkeys, storage, AI) and stays on it.
+ * active brand profile, the interface language and configurable recording
+ * shortcuts. Other capture options, storage and AI stay on each computer.
  *
  * Cloud sync (core/cloud-sync.js) keeps them as one archive:
  *   placeholders.json                global placeholders, by name
- *   settings.json                    language and activeProfileId, omitting
- *                                    untouched defaults, with per-value
+ *   settings.json                    language, activeProfileId and recording
+ *                                    shortcuts, omitting untouched defaults,
+ *                                    with per-value
  *                                    edit times (modifiedAt), so unrelated
  *                                    saves can't promote an older choice
  *   branding/profiles/<id>.json      one brand profile each
@@ -32,8 +33,11 @@ const { contentHash } = require('./cloud-parts');
  * treated as deleted.
  */
 
-const SHARED_KEYS = { language: 'language', activeProfileId: 'branding.activeProfileId' };
-const DEFAULTS = { language: DEFAULT_SETTINGS.language, activeProfileId: DEFAULT_SETTINGS.branding.activeProfileId };
+const SHARED_KEYS = SHARED_SETTING_PATHS;
+const DEFAULTS = Object.fromEntries(Object.entries(SHARED_KEYS).map(([key, keyPath]) =>
+  [key, keyPath.split('.').reduce((value, part) => value[part], DEFAULT_SETTINGS)]));
+const HOTKEYS = ['hotkeyCapture', 'hotkeyPauseResume'];
+const validShortcut = (value) => typeof value === 'string' && value.length <= 256 && !/[\u0000-\u001f\u007f]/.test(value);
 
 const PLACEHOLDER_NAME = /^[A-Za-z0-9_ .-]{1,200}$/;
 const LANGUAGE = /^(system|[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8}){0,3})$/;
@@ -92,6 +96,9 @@ function cleanSettings(raw) {
   const out = {};
   if (typeof raw?.language === 'string' && LANGUAGE.test(raw.language) && raw.language !== DEFAULTS.language) out.language = raw.language;
   if (typeof raw?.activeProfileId === 'string' && PROFILE_ID.test(raw.activeProfileId)) out.activeProfileId = raw.activeProfileId;
+  for (const key of HOTKEYS) {
+    if (validShortcut(raw?.[key]) && raw[key] !== DEFAULTS[key]) out[key] = raw[key];
+  }
   return out;
 }
 
@@ -146,8 +153,9 @@ function fromEntries(entries) {
       if (!plainObject(raw)) throw damaged();
       const { modifiedAt = {}, ...values } = raw;
       checkKnownFields(values, SHARED_KEYS);
+      for (const key of HOTKEYS) if (Object.hasOwn(values, key) && !validShortcut(values[key])) throw damaged();
       if (!plainObject(modifiedAt) || Object.entries(modifiedAt).some(([key, time]) =>
-        !(/^(setting:(language|activeProfileId)|placeholder:[A-Za-z0-9_ .-]{1,200})$/.test(key))
+        !(key.startsWith('setting:') ? Object.hasOwn(SHARED_KEYS, key.slice(8)) : /^placeholder:[A-Za-z0-9_ .-]{1,200}$/.test(key))
         || typeof time !== 'string' || !Number.isFinite(Date.parse(time)))) throw damaged();
       model.modifiedAt = modifiedAt;
       model.settings = cleanSettings(values);
@@ -343,7 +351,7 @@ class SharedSettings {
   /**
    * Save synced settings on this computer. Every incoming image and font is
    * checked again as if uploaded. Returns what changed: any of
-   * 'placeholders', 'branding', 'language'.
+   * 'placeholders', 'branding', 'language', 'shortcuts'.
    */
   apply(entries) {
     const next = fromEntries(entries);
@@ -405,6 +413,13 @@ class SharedSettings {
     if (this.settings.get(SHARED_KEYS.language) !== language) {
       this.settings.set(SHARED_KEYS.language, language);
       changes.push('language');
+    }
+    for (const key of HOTKEYS) {
+      const shortcut = next.settings[key] ?? DEFAULTS[key];
+      if (this.settings.get(SHARED_KEYS[key]) !== shortcut) {
+        this.settings.set(SHARED_KEYS[key], shortcut);
+        if (!changes.includes('shortcuts')) changes.push('shortcuts');
+      }
     }
     this.settings.setSharedChangeTimes(next.modifiedAt);
     return changes;

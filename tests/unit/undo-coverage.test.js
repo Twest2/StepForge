@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const { isValidOutline } = require('../../core/step-outline');
+const { rendererI18n } = require('./helpers');
 
 /**
  * The editor's undo history for step moves, bulk edits and single-step AI
@@ -51,7 +52,7 @@ function setup({ steps, confirm = async () => true }) {
       });
     }
   }
-  const context = { window: { stepforge: api, StepForgeOutline: require('../../core/step-outline') }, document: { activeElement: null }, confirmDialog: confirm, clearNode() {}, el() {}, Image, setImmediate };
+  const context = { ...rendererI18n(), window: { stepforge: api, StepForgeOutline: require('../../core/step-outline') }, document: { activeElement: null }, confirmDialog: confirm, clearNode() {}, el() {}, Image, setImmediate };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/editor.js'), 'utf8'), context);
   const editor = Object.create(context.window.GuideEditor.prototype);
   Object.assign(editor, {

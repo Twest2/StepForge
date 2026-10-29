@@ -3,7 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { GuideStore } = require('../../core/store');
 const { SearchIndex } = require('../../core/search');
-const { makeTmpDir, rmrf } = require('./helpers');
+const { makeTmpDir, rmrf, rendererI18n } = require('./helpers');
 
 function setup(t) {
   const root = makeTmpDir('capture-drafts');
@@ -88,7 +88,7 @@ test('navigation waits for pending edits and refreshes the library after draft p
   const fs = require('node:fs');
   const path = require('node:path');
   const vm = require('node:vm');
-  const context = { window: {}, document: { addEventListener() {} } };
+  const context = { ...rendererI18n(), window: {}, document: { addEventListener() {} } };
   const source = fs.readFileSync(path.join(__dirname, '../../app/renderer/app.js'), 'utf8');
   vm.runInNewContext(source.replace('\nboot();', '\n'), context);
   const app = Object.create(context.window.StepForgeApp.prototype);

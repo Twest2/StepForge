@@ -2,6 +2,13 @@
 
 /* Small DOM + app helpers shared by all renderer modules. */
 
+// Interface text in the language the main process loaded this page in
+// (?lang=, Settings → General → Language). core/i18n.js explains t and tn.
+const { t, tn, language: uiLanguage } = StepForgeI18n.createTranslator(
+  new URLSearchParams(location.search).get('lang'), globalThis.StepForgeLocales);
+// Dates follow the interface language; in English, the system's date format.
+const dateLocale = uiLanguage === 'en' ? undefined : uiLanguage;
+
 /** Element builder: el('div.cls#id', {attrs/on*}, ...children) */
 function el(spec, props = {}, ...children) {
   const [tag, ...rest] = spec.split(/(?=[.#])/);
@@ -32,7 +39,7 @@ function el(spec, props = {}, ...children) {
 
 /** The "Beta" chip beside features that are new and may still change (AI, Confluence, Wiki.js). */
 function betaBadge(text = 'Beta') {
-  return el('span.settings-chip.beta-badge', {}, text);
+  return el('span.settings-chip.beta-badge', {}, t(text));
 }
 
 /** Settings row: a title and optional description beside its control. */
@@ -135,7 +142,7 @@ function openModal({ title, body, footer, wide = false, onClose }) {
   };
   document.addEventListener('keydown', escHandler, true);
   const modal = el('div.modal', { className: `modal${wide ? ' wide' : ''}` },
-    el('header', {}, title, el('span.close', { onClick: dismiss, title: 'Close (Esc)' }, '✕')),
+    el('header', {}, title, el('span.close', { onClick: dismiss, title: t('Close (Esc)') }, '✕')),
     el('div.body', {}, body),
     footer ? el('footer', {}, footer) : null,
   );
@@ -148,13 +155,13 @@ function openModal({ title, body, footer, wide = false, onClose }) {
 }
 
 /** Simple confirm dialog returning a promise<boolean>. */
-function confirmDialog(message, { danger = false, okLabel = 'OK' } = {}) {
+function confirmDialog(message, { danger = false, okLabel = t('OK') } = {}) {
   return new Promise((resolve) => {
     const { close } = openModal({
-      title: 'Confirm',
+      title: t('Confirm'),
       body: el('div', {}, message),
       footer: [
-        el('button', { onClick: () => { close(); resolve(false); } }, 'Cancel'),
+        el('button', { onClick: () => { close(); resolve(false); } }, t('Cancel')),
         el('button', {
           className: `primary${danger ? ' danger' : ''}`,
           onClick: () => { close(); resolve(true); },
@@ -165,11 +172,19 @@ function confirmDialog(message, { danger = false, okLabel = 'OK' } = {}) {
   });
 }
 
+/** A review interval from core/review.js ("3 months") in the interface language. */
+function intervalText(days) {
+  const known = window.StepForgeReview.REVIEW_INTERVALS.some((i) => i.days === days);
+  if (known && days % 365 === 0) return tn(days / 365, '{count} year', '{count} years');
+  if (known) return tn(days / 30, '{count} month', '{count} months');
+  return tn(days, '{count} day', '{count} days');
+}
+
 /** "Oct 20", with the year when it isn't this year; '' for no date. */
 function shortDate(iso) {
   const date = new Date(iso || '');
   if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: date.getFullYear() === new Date().getFullYear() ? undefined : 'numeric' });
+  return date.toLocaleDateString(dateLocale, { month: 'short', day: 'numeric', year: date.getFullYear() === new Date().getFullYear() ? undefined : 'numeric' });
 }
 
 /**
@@ -198,7 +213,7 @@ function confirmReplaceEdits(api, edited, { where, history }) {
   });
 }
 
-function promptDialog(title, { value = '', label = 'Name' } = {}) {
+function promptDialog(title, { value = '', label = t('Name') } = {}) {
   return new Promise((resolve) => {
     const input = el('input', { type: 'text', value });
     const done = (v) => { close(); resolve(v); };
@@ -206,8 +221,8 @@ function promptDialog(title, { value = '', label = 'Name' } = {}) {
       title,
       body: el('div.form-row', {}, el('label', {}, label), input),
       footer: [
-        el('button', { onClick: () => done(null) }, 'Cancel'),
-        el('button.primary', { onClick: () => done(input.value.trim() || null) }, 'OK'),
+        el('button', { onClick: () => done(null) }, t('Cancel')),
+        el('button.primary', { onClick: () => done(input.value.trim() || null) }, t('OK')),
       ],
       onClose: () => resolve(null),
     });
@@ -240,7 +255,7 @@ function contextMenu(x, y, items) {
           const subItems = typeof item.submenu === 'function' ? item.submenu() : item.submenu;
           const sub = el('div.ctx-menu.ctx-submenu');
           if (!subItems.length) {
-            sub.append(el('div.mi.disabled', {}, 'Nothing else to choose'));
+            sub.append(el('div.mi.disabled', {}, t('Nothing else to choose')));
           }
           for (const subItem of subItems) {
             if (subItem === 'sep') { sub.append(el('hr')); continue; }

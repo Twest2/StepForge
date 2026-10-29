@@ -10,17 +10,23 @@
 <body>
 <div id="app">
   <header id="topbar">
-    <div class="brand" id="btn-home" title="Guide library">StepForge</div>
+    <div class="brand" id="btn-home" title="Guide library" data-i18n-title>StepForge</div>
     <div id="topbar-context"></div>
     <div class="spacer"></div>
-    <button id="cloud-status" class="tool muted hidden" type="button" aria-label="Cloud sync status"></button>
+    <button id="cloud-status" class="tool muted hidden" type="button" aria-label="Cloud sync status" data-i18n-label></button>
     <div id="capture-status" class="hidden"></div>
-    <input id="global-search" type="search" placeholder="Search guides…  (Ctrl+/ for quick actions)">
+    <input id="global-search" type="search" placeholder="Search guides…  (Ctrl+/ for quick actions)" data-i18n-placeholder>
   </header>
   <main id="view"></main>
 </div>
 <div id="modal-root"></div>
 <div id="toast-root"></div>
+<script src="../../core/i18n.js"></script>
+<script src="../../core/locales/fr.js"></script>
+<script src="../../core/locales/es.js"></script>
+<script src="../../core/locales/ru.js"></script>
+<script src="../../core/locales/zh-CN.js"></script>
+<script src="../../core/locales/ja.js"></script>
 <script src="util.js"></script>
 <script src="../shortcut-utils.js"></script>
 <script src="../../core/blur-fill.js"></script>

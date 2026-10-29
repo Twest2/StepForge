@@ -25,7 +25,7 @@ function githubExpiryLabel(days) {
 function githubWhen(iso) {
   const date = new Date(iso);
   return Number.isNaN(date.getTime()) ? 'an unknown date'
-    : date.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    : date.toLocaleString(dateLocale, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
 function githubTimeLeft(iso) {

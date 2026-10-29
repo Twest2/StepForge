@@ -13,7 +13,8 @@ app/              Electron shell: main process, preload bridge, renderer UI,
                   capture, Google Drive client, AI (Ollama) client
 core/             Dependency-free domain logic (schema, store, archive, search,
                   placeholders, render AST, png/gif/pdf/zip primitives, locks,
-                  snapshots, settings, cloud sync engine)
+                  snapshots, settings, cloud sync engine, interface
+                  languages: i18n.js and the translations in locales/)
 exporters/        One module per output format, all consuming the Render AST
 gnome-extension/  GNOME Shell extension used for click capture on Wayland
 packaging/        Windows (NSIS, Chocolatey) and Linux (deb, rpm, Launchpad)

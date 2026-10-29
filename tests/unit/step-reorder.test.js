@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const { isValidOutline } = require('../../core/step-outline');
+const { rendererI18n } = require('./helpers');
 
 /**
  * Moving steps in the editor (Alt+Up/Down, drag and drop, Move to…) always
@@ -40,7 +41,7 @@ function setup({ steps, pick = async () => null }) {
     },
     ai: {},
   };
-  const context = { setTimeout, window: { stepforge: api, StepForgeOutline: require('../../core/step-outline'), StepForgeDialogs: { showMoveStepDialog: (options) => { dialogOptions.push(options); return pick(options); } } }, document: { activeElement: null }, confirmDialog: async () => true, clearNode() {}, el() {} };
+  const context = { ...rendererI18n(), setTimeout, window: { stepforge: api, StepForgeOutline: require('../../core/step-outline'), StepForgeDialogs: { showMoveStepDialog: (options) => { dialogOptions.push(options); return pick(options); } } }, document: { activeElement: null }, confirmDialog: async () => true, clearNode() {}, el() {} };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/editor.js'), 'utf8'), context);
   const editor = Object.create(context.window.GuideEditor.prototype);
   Object.assign(editor, {

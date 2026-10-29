@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { rendererI18n } = require('./helpers');
 
 function ui() {
   const nodes = [];
@@ -24,7 +25,7 @@ function ui() {
   }
   const root = el('root');
   const keys = new Set();
-  const context = { document: { activeElement: null, getElementById: () => root,
+  const context = { ...rendererI18n(), document: { activeElement: null, getElementById: () => root,
     addEventListener(type, fn) { if (type === 'keydown') keys.add(fn); },
     removeEventListener(type, fn) { if (type === 'keydown') keys.delete(fn); },
   }, window: {}, setTimeout, clearTimeout };

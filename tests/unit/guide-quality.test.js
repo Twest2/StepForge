@@ -8,7 +8,7 @@ const { buildRenderAst } = require('../../core/renderast');
 const { qualityFindings } = require('../../core/quality');
 const { stepNumberMap } = require('../../core/step-outline');
 const { buildFixtureGuide } = require('./fixture-guide');
-const { makeTmpDir, rmrf } = require('./helpers');
+const { makeTmpDir, rmrf, rendererI18n } = require('./helpers');
 
 /**
  * Guide quality checks before exporting or publishing: placeholders with no
@@ -92,7 +92,7 @@ test('substeps are numbered as in the step list', () => withGuide(({ store, guid
 
 function panel() {
   const node = (tag) => ({ tag, children: [], attrs: {}, append(...kids) { this.children.push(...kids); } });
-  const context = vm.createContext({});
+  const context = vm.createContext({ ...rendererI18n() });
   context.el = (spec, props = {}, ...children) => {
     const n = node(spec);
     Object.assign(n.attrs, props);

@@ -7,7 +7,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const { configureGoogleOAuth } = require('../../scripts/configure-google-oauth');
-const { makeTmpDir, rmrf } = require('./helpers');
+const { makeTmpDir, rmrf, rendererI18n } = require('./helpers');
 
 function panel(initial) {
   const nodes = [];
@@ -15,7 +15,7 @@ function panel(initial) {
   let passedArgs;
   let onStatus;
 
-  const context = {
+  const context = { ...rendererI18n(),
     el(spec, props = {}, ...children) {
       const classes = new Set(spec.split('.').slice(1));
       const node = {
@@ -69,7 +69,7 @@ function panel(initial) {
   };
 
   // Borrow the shared formatters without util.js replacing the fake el().
-  const util = vm.createContext({});
+  const util = vm.createContext({ ...rendererI18n() });
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/util.js'), 'utf8'), util);
   Object.assign(context, { formatBytes: util.formatBytes, describeTransfer: util.describeTransfer });
 
@@ -248,7 +248,7 @@ test(
     let exposed;
     const calls = [];
 
-    const context = {
+    const context = { ...rendererI18n(),
       require(name) {
         assert.equal(name, 'electron');
 

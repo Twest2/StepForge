@@ -6,7 +6,9 @@ const { writeJsonSync, readJsonIfExists, deepClone } = require('./util');
 const DEFAULT_SETTINGS = {
   schemaVersion: 1,
   appearance: 'system', // system | light | dark
-  language: 'en',
+  // Interface language: 'system' follows the OS, or a code from LANGUAGES in
+  // core/i18n.js. Exported guides stay in English.
+  language: 'system',
   // Explicit opt-in; credentials live in OS-encrypted storage. `provider` is the
   // service that syncs: google | onedrive | dropbox | webdav.
   cloud: { enabled: false, provider: 'google' },

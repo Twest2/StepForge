@@ -128,6 +128,16 @@ their own guides to the web (GitHub Pages) and to Confluence or Wiki.js.
 - Short description, for example: "Record clicks as step-by-step guides with
   screenshots, then edit and export them to PDF, Word, HTML and more."
 
+**Other listing languages.** The package declares every interface language
+(`LANGUAGES` in `core/i18n.js`: en-US, fr-FR, es-ES, ru-RU, zh-CN and ja-JP),
+so the Store shows StepForge as available in them, and Partner Center adds
+them to the app's overview once the package is uploaded. Only one listing is
+required. A language without its own listing shows the English one, so you can
+submit with English only and add translated descriptions and screenshots later
+under **Store listings → Manage additional languages**. Remove a language
+there only if you don't want a listing for it; the app keeps the language
+either way.
+
 **Submission options → Restricted capabilities.** The package declares
 `runFullTrust`, as every desktop (Electron) app does. Give this reason:
 

@@ -96,22 +96,22 @@ const ANNOTATION_FIELDS = {
 // Display names for annotation types in the "Type" dropdown.
 // What a blur added by Find private details hides (core/redaction.js KINDS).
 const PRIVATE_DETAIL_LABELS = {
-  email: 'email address', phone: 'phone number', card: 'card number', ssn: 'Social Security number',
-  ip: 'IP address', secret: 'password or key', url: 'link with a private token', custom: 'word you asked to hide',
+  email: t('email address'), phone: t('phone number'), card: t('card number'), ssn: t('Social Security number'),
+  ip: t('IP address'), secret: t('password or key'), url: t('link with a private token'), custom: t('word you asked to hide'),
 };
 
 const ANNOTATION_TYPE_LABELS = {
-  rect: 'Rectangle',
-  oval: 'Oval',
-  line: 'Line',
-  arrow: 'Arrow',
-  text: 'Text',
-  tooltip: 'Tooltip',
-  number: 'Number',
-  blur: 'Blur',
-  highlight: 'Highlight',
-  magnify: 'Magnify',
-  cursor: 'Cursor',
+  rect: t('Rectangle'),
+  oval: t('Oval'),
+  line: t('Line'),
+  arrow: t('Arrow'),
+  text: t('Text'),
+  tooltip: t('Tooltip'),
+  number: t('Number'),
+  blur: t('Blur'),
+  highlight: t('Highlight'),
+  magnify: t('Magnify'),
+  cursor: t('Cursor'),
 };
 
 /** White or near-black text, whichever reads better on a badge or tooltip of color `hex`. */
@@ -149,7 +149,7 @@ function nextBlockOrder(step) {
 }
 
 function blockLabel(kind) {
-  return kind === 'text' ? 'Text block' : kind === 'code' ? 'Code block' : 'Table';
+  return kind === 'text' ? t('Text block') : kind === 'code' ? t('Code block') : t('Table');
 }
 
 function stepDepth(step, stepMap) {
@@ -286,25 +286,25 @@ class GuideEditor {
   /** Items for the AI ▾ menu in the guide toolbar. */
   aiMenuItems() {
     if (this.aiRun) {
-      return [{ label: 'Stop writing', action: () => this.stopAiWriting() }];
+      return [{ label: t('Stop writing'), action: () => this.stopAiWriting() }];
     }
     const enabled = this.isAiEnabled();
     const hasStep = Boolean(this.currentStep);
     const unavailable = (available) => !enabled || !available;
     return [
-      ...(enabled ? [] : [{ label: 'Turn on AI in Settings…', action: () => this.openSettings('ai') }, 'sep']),
-      { label: 'Write the whole guide', disabled: unavailable(this.steps.length > 0), action: () => this.writeGuideWithAi() },
-      { label: 'Write the whole step', disabled: unavailable(hasStep), action: () => this.writeStepWithAi('step') },
+      ...(enabled ? [] : [{ label: t('Turn on AI in Settings…'), action: () => this.openSettings('ai') }, 'sep']),
+      { label: t('Write the whole guide'), disabled: unavailable(this.steps.length > 0), action: () => this.writeGuideWithAi() },
+      { label: t('Write the whole step'), disabled: unavailable(hasStep), action: () => this.writeStepWithAi('step') },
       'sep',
-      { label: 'Write the title', disabled: unavailable(hasStep), action: () => this.writeStepWithAi('title') },
-      { label: 'Write the description', disabled: unavailable(hasStep), action: () => this.writeStepWithAi('description') },
-      { label: 'Write the blocks', disabled: unavailable(hasStep), action: () => this.writeStepWithAi('blocks') },
+      { label: t('Write the title'), disabled: unavailable(hasStep), action: () => this.writeStepWithAi('title') },
+      { label: t('Write the description'), disabled: unavailable(hasStep), action: () => this.writeStepWithAi('description') },
+      { label: t('Write the blocks'), disabled: unavailable(hasStep), action: () => this.writeStepWithAi('blocks') },
     ];
   }
 
   /** Short progress text for the AI button while AI is writing, else ''. */
   aiProgressLabel() {
-    return this.aiRun ? this.aiRun.progress || 'writing…' : '';
+    return this.aiRun ? this.aiRun.progress || t('writing…') : '';
   }
 
   setAiProgress(progress) {
@@ -318,7 +318,7 @@ class GuideEditor {
     if (this.guideId) api.ai.cancel({ guideId: this.guideId }).catch(() => {});
     if (!this.aiRun) return;
     this.aiRun.cancelled = true;
-    if (!quiet) this.onToast('Stopping AI…');
+    if (!quiet) this.onToast(t('Stopping AI…'));
   }
 
   /** Show an AI-written step without losing edits the user made meanwhile. */
@@ -340,12 +340,17 @@ class GuideEditor {
     const step = this.currentStep;
     if (!step || this.aiRun) return;
     if (!this.isAiEnabled()) {
-      this.onToast('Turn on AI in Settings first.', { error: true });
+      this.onToast(t('Turn on AI in Settings first.'), { error: true });
       return;
     }
     if (this.pendingSave) await this.flushStep();
-    const what = {
-      step: 'this step', title: 'the title', description: 'the description', blocks: 'the blocks',
+    const failure = {
+      step: t('AI could not write this step.'), title: t('AI could not write the title.'),
+      description: t('AI could not write the description.'), blocks: t('AI could not write the blocks.'),
+    }[target];
+    const success = {
+      step: t('AI wrote this step.'), title: t('AI wrote the title.'),
+      description: t('AI wrote the description.'), blocks: t('AI wrote the blocks.'),
     }[target];
     const run = { cancelled: false, progress: '' };
     this.aiRun = run;
@@ -355,17 +360,17 @@ class GuideEditor {
       const result = await api.ai.fillStep({ guideId: this.guideId, stepId: step.stepId, target });
       if (run.cancelled) return;
       if (!result || !result.ok) {
-        this.onToast(result?.reason || `AI could not write ${what}.`, { error: true });
+        this.onToast(result?.reason || failure, { error: true });
         return;
       }
       if (this.applyAiStep(result.step)) {
         this.pushCanvasHistory(this.multiStepRecord([before], [result.step]));
-        this.onToast(`AI wrote ${what}. Press Ctrl+Z to undo.`);
+        this.onToast(`${success} ${t('Press Ctrl+Z to undo.')}`);
       } else {
-        this.onToast(`AI wrote ${what}.`);
+        this.onToast(success);
       }
     } catch (err) {
-      if (!run.cancelled) this.onToast(err.message || `AI could not write ${what}.`, { error: true });
+      if (!run.cancelled) this.onToast(err.message || failure, { error: true });
     } finally {
       if (this.aiRun === run) this.aiRun = null;
       this.emitMeta();
@@ -380,7 +385,7 @@ class GuideEditor {
   async writeGuideWithAi() {
     if (this.aiRun || !this.steps.length) return;
     if (!this.isAiEnabled()) {
-      this.onToast('Turn on AI in Settings first.', { error: true });
+      this.onToast(t('Turn on AI in Settings first.'), { error: true });
       return;
     }
     // A step with no screenshot and no text gives AI nothing to work from.
@@ -390,23 +395,23 @@ class GuideEditor {
       .map((id) => this.stepMap.get(id))
       .filter((step) => step && (step.image || hasText(step)));
     if (!queue.length) {
-      this.onToast('There is nothing for AI to write from yet. Capture some steps first.', { error: true });
+      this.onToast(t('There is nothing for AI to write from yet. Capture some steps first.'), { error: true });
       return;
     }
     const ok = await confirmDialog(
-      `AI will write the title, description and blocks for ${queue.length} step${queue.length === 1 ? '' : 's'}, `
-      + 'make substeps where steps belong together, add placeholders for values that repeat, '
-      + 'then write the guide’s title and description. Text you already wrote is polished, not replaced with something new. '
-      + 'A snapshot is saved first, so you can undo this from More → Backups & snapshots.',
-      { okLabel: 'Write the whole guide' },
+      `${tn(queue.length, 'AI will write the title, description and blocks for {count} step.',
+        'AI will write the title, description and blocks for {count} steps, make substeps where steps belong together, and add placeholders for values that repeat.')} ${
+        t('Then it writes the guide’s title and description. Text you already wrote is polished, not replaced with something new.')} ${
+        t('A snapshot is saved first, so you can undo this from More → Backups & snapshots.')}`,
+      { okLabel: t('Write the whole guide') },
     );
     if (!ok) return;
     if (this.pendingSave) await this.flushStep();
     if (this.pendingGuideSave) await this.flushGuide();
     try {
-      await api.snapshots.create({ guideId: this.guideId, label: 'before AI' });
+      await api.snapshots.create({ guideId: this.guideId, label: t('before AI') });
     } catch (err) {
-      this.onToast(`Could not save a snapshot first, so AI did not start: ${err.message || err}`, { error: true });
+      this.onToast(t('Could not save a snapshot first, so AI did not start: {error}', { error: err.message || err }), { error: true });
       return;
     }
 
@@ -433,7 +438,7 @@ class GuideEditor {
           written += 1;
           this.applyAiStep(result.step);
         } else {
-          problems.push(result?.reason || 'AI could not write a step.');
+          problems.push(result?.reason || t('AI could not write a step.'));
         }
       }
       if (!run.cancelled && written) {
@@ -445,7 +450,7 @@ class GuideEditor {
           substeps = organized.substeps || 0;
           newPlaceholders = (organized.placeholders || []).map((p) => `[[${p.name}]]`);
         } else if (!run.cancelled) {
-          problems.push(organized?.reason || 'AI could not organize the guide.');
+          problems.push(organized?.reason || t('AI could not organize the guide.'));
         }
       }
       if (!run.cancelled && written) {
@@ -455,7 +460,7 @@ class GuideEditor {
         if (!run.cancelled && result?.ok) {
           this.guide = result.guide;
         } else if (!run.cancelled) {
-          problems.push(result?.reason || 'AI could not write the guide title.');
+          problems.push(result?.reason || t('AI could not write the guide title.'));
         }
       }
     } finally {
@@ -466,15 +471,15 @@ class GuideEditor {
     // Substeps and placeholders changed steps and numbering: show the guide as saved.
     await this.reloadAfterOutsideChange();
     const extras = [
-      substeps ? `made ${substeps} substep${substeps === 1 ? '' : 's'}` : '',
-      newPlaceholders.length ? `added ${newPlaceholders.join(', ')}` : '',
-    ].filter(Boolean).join(' and ');
+      substeps ? tn(substeps, 'Made {count} substep.', 'Made {count} substeps.') : '',
+      newPlaceholders.length ? t('Added {placeholders}.', { placeholders: newPlaceholders.join(', ') }) : '',
+    ].filter(Boolean).join(' ');
     if (run.cancelled) {
-      this.onToast(`Stopped. AI wrote ${written} of ${queue.length} step${queue.length === 1 ? '' : 's'}.`);
+      this.onToast(tn(queue.length, 'Stopped. AI wrote {written} of {count} step.', 'Stopped. AI wrote {written} of {count} steps.', { written }));
     } else if (problems.length) {
-      this.onToast(`AI wrote ${written} of ${queue.length} steps. ${problems[0]}`, { error: true, ms: 6000 });
+      this.onToast(`${tn(queue.length, 'AI wrote {written} of {count} step.', 'AI wrote {written} of {count} steps.', { written })} ${problems[0]}`, { error: true, ms: 6000 });
     } else {
-      this.onToast(`AI wrote the whole guide (${written} step${written === 1 ? '' : 's'})${extras ? ` and ${extras}` : ''}.`, { ms: 5000 });
+      this.onToast(`${tn(written, 'AI wrote the whole guide ({count} step).', 'AI wrote the whole guide ({count} steps).')}${extras ? ` ${extras}` : ''}`, { ms: 5000 });
     }
   }
 
@@ -590,51 +595,51 @@ class GuideEditor {
       el('aside.pane-steps', {},
         el('div.pane-head', {},
           el('div', {},
-            el('div.eyebrow', {}, 'Steps'),
-            this.dom.stepCount = el('div.muted', {}, '0 steps'),
+            el('div.eyebrow', {}, t('Steps')),
+            this.dom.stepCount = el('div.muted', {}, tn(0, '{count} step', '{count} steps')),
           ),
           el('div.row', {},
-            this.dom.addStepBtn = el('button.primary', { type: 'button' }, 'Add'),
-            this.dom.importBtn = el('button', { type: 'button' }, 'Import'),
-            this.dom.selectStepsBtn = el('button', { type: 'button', title: 'Select steps; Shift-click to select a range' }, 'Select'),
+            this.dom.addStepBtn = el('button.primary', { type: 'button' }, t('Add')),
+            this.dom.importBtn = el('button', { type: 'button' }, t('Import')),
+            this.dom.selectStepsBtn = el('button', { type: 'button', title: t('Select steps; Shift-click to select a range') }, t('Select')),
           ),
         ),
         this.dom.stepsList = el('div.steps-list'),
         this.dom.stepBulkBar = el('div'),
         this.dom.paneFoot = el('div.pane-foot', {},
-          this.dom.moveUpBtn = el('button.icon', { type: 'button', title: 'Move step up' }, '↑'),
-          this.dom.moveDownBtn = el('button.icon', { type: 'button', title: 'Move step down' }, '↓'),
-          this.dom.duplicateBtn = el('button', { type: 'button' }, 'Duplicate'),
-          this.dom.deleteBtn = el('button.danger', { type: 'button' }, 'Delete'),
+          this.dom.moveUpBtn = el('button.icon', { type: 'button', title: t('Move step up') }, '↑'),
+          this.dom.moveDownBtn = el('button.icon', { type: 'button', title: t('Move step down') }, '↓'),
+          this.dom.duplicateBtn = el('button', { type: 'button' }, t('Duplicate')),
+          this.dom.deleteBtn = el('button.danger', { type: 'button' }, t('Delete')),
         ),
       ),
       el('section.pane-canvas', {},
         el('div.canvas-toolbar', {},
           ...toolButtons.map(([tool, label]) => this.dom[`tool-${tool}`] = el('button.tool', { type: 'button', dataset: { tool } }, label)),
           el('span.sep'),
-          this.dom.zoomFitBtn = el('button.tool', { type: 'button' }, 'Fit'),
+          this.dom.zoomFitBtn = el('button.tool', { type: 'button' }, t('Fit')),
           this.dom.zoom100Btn = el('button.tool', { type: 'button' }, '100%'),
           this.dom.zoom125Btn = el('button.tool', { type: 'button' }, '125%'),
           this.dom.zoom150Btn = el('button.tool', { type: 'button' }, '150%'),
           el('span.sep'),
-          this.dom.undoBtn = el('button.tool', { type: 'button' }, 'Undo'),
-          this.dom.redoBtn = el('button.tool', { type: 'button' }, 'Redo'),
+          this.dom.undoBtn = el('button.tool', { type: 'button' }, t('Undo')),
+          this.dom.redoBtn = el('button.tool', { type: 'button' }, t('Redo')),
         ),
         this.dom.canvasWrap = el('div.canvas-wrap', {},
           this.dom.canvas = el('canvas', { width: 1, height: 1 }),
-          this.dom.canvasEmpty = el('div.canvas-empty', {}, 'Select an image step to edit annotations.'),
+          this.dom.canvasEmpty = el('div.canvas-empty', {}, t('Select an image step to edit annotations.')),
         ),
       ),
       el('aside.pane-props', {},
         el('section', {},
-          el('h3', {}, 'Step'),
+          el('h3', {}, t('Step')),
           el('div.row', {},
-            this.dom.titleInput = el('input', { type: 'text', placeholder: 'Step title', style: { flex: 1 } }),
+            this.dom.titleInput = el('input', { type: 'text', placeholder: t('Step title'), style: { flex: 1 } }),
           ),
           this.dom.statusSelect = makeSelect('todo', [
-            { value: 'todo', label: 'Todo' },
-            { value: 'in-progress', label: 'In progress' },
-            { value: 'done', label: 'Done' },
+            { value: 'todo', label: t('Todo') },
+            { value: 'in-progress', label: t('In progress') },
+            { value: 'done', label: t('Done') },
           ]),
           el('div.row', {},
             this.dom.hiddenToggle = el('label', {}, el('input', { type: 'checkbox' }), ' Hidden'),
@@ -645,17 +650,17 @@ class GuideEditor {
             this.dom.focusedViewToggle = el('label', {}, el('input', { type: 'checkbox' }), ' Focused'),
           ),
           this.dom.focusedControls = el('div.focused-controls.hidden', {},
-            el('div.form-row', {}, el('label', {}, 'Zoom'),
+            el('div.form-row', {}, el('label', {}, t('Zoom')),
               this.dom.fvZoom = el('input', { type: 'range', min: 1, max: 3, step: 0.05, value: 1.5 })),
-            el('div.form-row', {}, el('label', {}, 'Pan X'),
+            el('div.form-row', {}, el('label', {}, t('Pan X')),
               this.dom.fvPanX = el('input', { type: 'range', min: 0, max: 1, step: 0.01, value: 0.5 })),
-            el('div.form-row', {}, el('label', {}, 'Pan Y'),
+            el('div.form-row', {}, el('label', {}, t('Pan Y')),
               this.dom.fvPanY = el('input', { type: 'range', min: 0, max: 1, step: 0.01, value: 0.5 })),
-            el('div.muted', {}, 'Exports crop to this view; the original image is never modified.'),
+            el('div.muted', {}, t('Exports crop to this view; the original image is never modified.')),
           ),
         ),
         el('section', {},
-          el('h3', {}, 'Description'),
+          el('h3', {}, t('Description')),
           this.dom.richToolbar = el('div.rich-toolbar', {},
             this.toolbarBtn('bold', 'Bold'),
             this.toolbarBtn('italic', 'Italic'),
@@ -668,24 +673,24 @@ class GuideEditor {
           this.dom.descEditor = el('div.rich-editor', { contentEditable: 'true', spellcheck: true }),
         ),
         el('section', {},
-          el('h3', {}, 'Annotations'),
+          el('h3', {}, t('Annotations')),
           this.dom.annotationList = el('div', { className: 'annotation-list' }),
           this.dom.annotationEditor = el('div', { className: 'annotation-editor' }),
         ),
         el('section', {},
-          el('h3', {}, 'Blocks'),
+          el('h3', {}, t('Blocks')),
           this.dom.blocksList = el('div', { className: 'blocks-list' }),
           el('div.row', {},
-            this.dom.addTextBlockBtn = el('button', { type: 'button' }, '+ Text block'),
-            this.dom.addCodeBlockBtn = el('button', { type: 'button' }, '+ Code'),
-            this.dom.addTableBlockBtn = el('button', { type: 'button' }, '+ Table'),
+            this.dom.addTextBlockBtn = el('button', { type: 'button' }, t('+ Text block')),
+            this.dom.addCodeBlockBtn = el('button', { type: 'button' }, t('+ Code')),
+            this.dom.addTableBlockBtn = el('button', { type: 'button' }, t('+ Table')),
           ),
         ),
         el('section', {},
-          el('h3', {}, 'Guide'),
+          el('h3', {}, t('Guide')),
           this.dom.guideSummary = el('div.muted', {}),
-          this.dom.saveNowBtn = el('button.primary', { type: 'button', title: 'Save changes. For guides linked to a shared archive, also writes the archive file.' }, 'Save now'),
-          this.dom.snapshotBtn = el('button', { type: 'button' }, 'Snapshot'),
+          this.dom.saveNowBtn = el('button.primary', { type: 'button', title: t('Save changes. For guides linked to a shared archive, also writes the archive file.') }, t('Save now')),
+          this.dom.snapshotBtn = el('button', { type: 'button' }, t('Snapshot')),
         ),
       ),
     );
@@ -778,7 +783,7 @@ class GuideEditor {
       this.pendingSave = true;
       this.saveStepDebounced();
       const row = [...this.dom.stepsList.children].find((node) => node.dataset.stepId === this.selectedStepId);
-      if (row) row.querySelector('.t').textContent = this.currentStep.title || 'Untitled step';
+      if (row) row.querySelector('.t').textContent = this.currentStep.title || t('Untitled step');
       this.emitMeta();
     });
 
@@ -900,7 +905,7 @@ class GuideEditor {
   addBlock(kind) {
     const step = this.currentStep;
     if (!step) {
-      this.onToast('Select a step first.', { error: true });
+      this.onToast(t('Select a step first.'), { error: true });
       return;
     }
     this.syncBlockEditors(step);
@@ -963,7 +968,7 @@ class GuideEditor {
     clearNode(this.dom.blocksList);
     const step = this.currentStep;
     if (!step) {
-      this.dom.blocksList.append(el('div.muted', {}, 'Select a step to add blocks.'));
+      this.dom.blocksList.append(el('div.muted', {}, t('Select a step to add blocks.')));
       return;
     }
     const save = () => {
@@ -1009,7 +1014,7 @@ class GuideEditor {
       reflowBlockCards();
     };
     const removeBtn = (onRemove) => el('button.icon.danger', {
-      type: 'button', title: 'Remove block',
+      type: 'button', title: t('Remove block'),
       onClick: () => { onRemove(); save(); this.renderBlocksPanel(); },
     }, '✕');
 
@@ -1035,8 +1040,8 @@ class GuideEditor {
         el('strong', {}, blockLabel(kind)),
         el('span.muted', { dataset: { blockOrder: 'true' } }, `#${Number.isFinite(block.order) ? block.order : index + 1}`),
         el('span.spacer'),
-        el('button.icon', { type: 'button', title: 'Move block up', disabled: !canMoveUp, onClick: moveUp, dataset: { blockMove: 'up' } }, '↑'),
-        el('button.icon', { type: 'button', title: 'Move block down', disabled: !canMoveDown, onClick: moveDown, dataset: { blockMove: 'down' } }, '↓'),
+        el('button.icon', { type: 'button', title: t('Move block up'), disabled: !canMoveUp, onClick: moveUp, dataset: { blockMove: 'up' } }, '↑'),
+        el('button.icon', { type: 'button', title: t('Move block down'), disabled: !canMoveDown, onClick: moveDown, dataset: { blockMove: 'down' } }, '↓'),
         removeBtn(() => {
           if (kind === 'text') step.textBlocks = (step.textBlocks || []).filter((b) => b !== block);
           else if (kind === 'code') step.codeBlocks = (step.codeBlocks || []).filter((b) => b !== block);
@@ -1068,24 +1073,24 @@ class GuideEditor {
       if (kind === 'text') {
         card.dataset.level = block.level || 'info';
         const position = makeSelect(block.position, [
-          { value: 'before-title', label: 'Before title' },
-          { value: 'after-title', label: 'After title' },
-          { value: 'before-image', label: 'Before image' },
-          { value: 'after-image', label: 'After image' },
-          { value: 'before-description', label: 'Before description' },
-          { value: 'after-description', label: 'After description' },
+          { value: 'before-title', label: t('Before title') },
+          { value: 'after-title', label: t('After title') },
+          { value: 'before-image', label: t('Before image') },
+          { value: 'after-image', label: t('After image') },
+          { value: 'before-description', label: t('Before description') },
+          { value: 'after-description', label: t('After description') },
         ]);
         position.dataset.blockField = 'position';
         const level = makeSelect(block.level, [
-          { value: 'info', label: 'Note' },
-          { value: 'warn', label: 'Warning' },
-          { value: 'error', label: 'Important' },
-          { value: 'success', label: 'Tip' },
+          { value: 'info', label: t('Note') },
+          { value: 'warn', label: t('Warning') },
+          { value: 'error', label: t('Important') },
+          { value: 'success', label: t('Tip') },
         ]);
         level.dataset.blockField = 'level';
-        const title = el('input', { type: 'text', value: block.title || '', placeholder: 'Block title' });
+        const title = el('input', { type: 'text', value: block.title || '', placeholder: t('Block title') });
         title.dataset.blockField = 'title';
-        const body = el('textarea', { rows: 2, placeholder: 'Block text' });
+        const body = el('textarea', { rows: 2, placeholder: t('Block text') });
         body.dataset.blockField = 'body';
         body.value = (block.descriptionHtml || '').replace(/<[^>]+>/g, '');
         position.addEventListener('change', () => { block.position = position.value; save(); });
@@ -1098,9 +1103,9 @@ class GuideEditor {
           body,
         );
       } else if (kind === 'code') {
-        const lang = el('input', { type: 'text', value: block.language || '', placeholder: 'Language (e.g. bash)' });
+        const lang = el('input', { type: 'text', value: block.language || '', placeholder: t('Language (e.g. bash)') });
         lang.dataset.blockField = 'language';
-        const code = el('textarea', { rows: 3, placeholder: 'Code', spellcheck: false });
+        const code = el('textarea', { rows: 3, placeholder: t('Code'), spellcheck: false });
         code.dataset.blockField = 'code';
         code.value = blockText(block);
         code.style.fontFamily = 'monospace';
@@ -1108,7 +1113,7 @@ class GuideEditor {
         code.addEventListener('input', () => { block.code = code.value; save(); });
         card.append(lang, code);
       } else if (kind === 'table') {
-        const grid = el('textarea', { rows: 3, placeholder: 'One row per line, cells separated by |', spellcheck: false });
+        const grid = el('textarea', { rows: 3, placeholder: t('One row per line, cells separated by |'), spellcheck: false });
         grid.dataset.blockField = 'rows';
         grid.value = (block.rows || []).map((r) => r.join(' | ')).join('\n');
         grid.addEventListener('input', () => {
@@ -1117,7 +1122,7 @@ class GuideEditor {
           save();
         });
         card.append(
-          el('div.muted', {}, 'First line is the header row.'),
+          el('div.muted', {}, t('First line is the header row.')),
           grid,
         );
       }
@@ -1126,7 +1131,7 @@ class GuideEditor {
     }
 
     if (!blocks.length) {
-      this.dom.blocksList.append(el('div.muted', {}, 'Informational text, code, and table blocks can be reordered with drag handles or arrows.'));
+      this.dom.blocksList.append(el('div.muted', {}, t('Informational text, code, and table blocks can be reordered with drag handles or arrows.')));
     }
   }
 
@@ -1134,7 +1139,7 @@ class GuideEditor {
     const current = this.currentStep;
     const numbers = stepNumberMap(this.steps);
     clearNode(this.dom.stepsList);
-    this.dom.stepCount.textContent = `${this.steps.length} step${this.steps.length === 1 ? '' : 's'}`;
+    this.dom.stepCount.textContent = tn(this.steps.length, '{count} step', '{count} steps');
     this.dom.selectStepsBtn.className = this.stepSelectMode ? 'primary' : '';
     for (const step of this.steps) {
       const number = numbers.get(step.stepId) || '';
@@ -1159,35 +1164,35 @@ class GuideEditor {
           if (this.stepSelectMode) return;
           this.selectStep(step.stepId);
           contextMenu(e.clientX, e.clientY, [
-            { label: 'Add substep', action: () => this.addSubstep(step.stepId) },
+            { label: t('Add substep'), action: () => this.addSubstep(step.stepId) },
             {
-              label: 'Make substep of…',
+              label: t('Make substep of…'),
               submenu: () => {
                 const subtreeIds = new Set([step.stepId, ...this.getStepDescendantIds(step.stepId)]);
                 return this.steps
                   .filter((s) => !subtreeIds.has(s.stepId))
                   .map((s) => ({
-                    label: `${numbers.get(s.stepId)}  ${s.title || 'Untitled step'}`,
+                    label: `${numbers.get(s.stepId)}  ${s.title || t('Untitled step')}`,
                     action: () => this.makeSubstepOf(step.stepId, s.stepId),
                   }));
               },
             },
-            { label: 'Duplicate step', action: () => this.duplicateSelectedStep() },
-            { label: 'Choose image…', action: () => this.chooseScreenshot(step.stepId) },
+            { label: t('Duplicate step'), action: () => this.duplicateSelectedStep() },
+            { label: t('Choose image…'), action: () => this.chooseScreenshot(step.stepId) },
             {
-              label: 'Retake screenshot',
+              label: t('Retake screenshot'),
               submenu: [
-                { label: 'Full screen', action: () => this.retakeScreenshot(step.stepId, 'fullscreen') },
-                { label: 'Window', action: () => this.retakeScreenshot(step.stepId, 'window') },
-                { label: 'Region…', action: () => this.retakeScreenshot(step.stepId, 'region') },
+                { label: t('Full screen'), action: () => this.retakeScreenshot(step.stepId, 'fullscreen') },
+                { label: t('Window'), action: () => this.retakeScreenshot(step.stepId, 'window') },
+                { label: t('Region…'), action: () => this.retakeScreenshot(step.stepId, 'region') },
               ],
             },
             'sep',
-            { label: 'Move up', action: () => this.moveSelectedStep(-1) },
-            { label: 'Move down', action: () => this.moveSelectedStep(1) },
-            { label: 'Move to…', action: () => this.moveStepTo(step.stepId) },
+            { label: t('Move up'), action: () => this.moveSelectedStep(-1) },
+            { label: t('Move down'), action: () => this.moveSelectedStep(1) },
+            { label: t('Move to…'), action: () => this.moveStepTo(step.stepId) },
             'sep',
-            { label: 'Delete step', danger: true, action: () => this.deleteSelectedStep() },
+            { label: t('Delete step'), danger: true, action: () => this.deleteSelectedStep() },
           ]);
         },
       };
@@ -1197,7 +1202,7 @@ class GuideEditor {
           ? el('input', {
             type: 'checkbox',
             checked,
-            'aria-label': `Select step ${number || step.title || ''}`,
+            'aria-label': t('Select step {step}', { step: number || step.title || '' }),
             onClick: (e) => {
               e.stopPropagation();
               this.toggleStepSelection(step.stepId, e.shiftKey);
@@ -1206,7 +1211,7 @@ class GuideEditor {
           : null,
         el('span.status-dot', { className: `status-dot status-${step.status}` }),
         el('span.num', {}, number || '•'),
-        el('span.t', {}, step.title || 'Untitled step'),
+        el('span.t', {}, step.title || t('Untitled step')),
         el('span.flags', {}, [
           step.parentStepId ? 'sub' : '',
           step.hidden ? 'hidden' : '',
@@ -1216,7 +1221,7 @@ class GuideEditor {
       this.dom.stepsList.append(item);
     }
     if (!this.steps.length) {
-      this.dom.stepsList.append(el('div.empty-state', { style: { marginTop: '40px' } }, 'No steps yet.'));
+      this.dom.stepsList.append(el('div.empty-state', { style: { marginTop: '40px' } }, t('No steps yet.')));
     }
     this.renderStepBulkBar();
   }
@@ -1269,16 +1274,16 @@ class GuideEditor {
         el('button', {
           type: 'button',
           onClick: () => (allSelected ? this.clearStepSelection() : this.selectAllSteps()),
-        }, allSelected ? 'Clear' : 'Select all'),
+        }, allSelected ? t('Clear') : t('Select all')),
         this.annotationClipboard
           ? el('button', {
             type: 'button',
             disabled: !n,
-            title: 'Add the copied annotation at the same position on each selected step',
+            title: t('Add the copied annotation at the same position on each selected step'),
             onClick: () => this.pasteAnnotationToSelectedSteps(),
-          }, `Paste annotation to ${n} step${n === 1 ? '' : 's'}`)
+          }, tn(n, 'Paste annotation to {count} step', 'Paste annotation to {count} steps'))
           : null,
-        el('button.danger', { type: 'button', disabled: !n, onClick: () => this.deleteSelectedSteps() }, 'Delete'),
+        el('button.danger', { type: 'button', disabled: !n, onClick: () => this.deleteSelectedSteps() }, t('Delete')),
       ),
     );
   }
@@ -1286,7 +1291,7 @@ class GuideEditor {
   async deleteSelectedSteps() {
     const ids = [...this.selectedSteps];
     if (!ids.length) return;
-    const ok = await confirmDialog(`Delete ${ids.length} step${ids.length === 1 ? '' : 's'}?`, { danger: true, okLabel: 'Delete' });
+    const ok = await confirmDialog(`Delete ${ids.length} step${ids.length === 1 ? '' : 's'}?`, { danger: true, okLabel: t('Delete') });
     if (!ok) return;
     if (this.pendingSave) await this.flushStep();
     const order = this.steps.map((s) => s.stepId);
@@ -1328,7 +1333,7 @@ class GuideEditor {
     this.dom.forceNewPageToggle.querySelector('input').checked = Boolean(step.forceNewPage);
     this.dom.focusedViewToggle.querySelector('input').checked = Boolean(step.focusedView?.enabled);
     this.dom.guideSummary.textContent = guide
-      ? `${guide.title} · ${guide.linkedSource ? 'linked' : 'local'} · ${this.steps.length} steps`
+      ? `${guide.title} · ${guide.linkedSource ? t('linked') : t('local')} · ${tn(this.steps.length, '{count} step', '{count} steps')}`
       : '';
   }
 
@@ -1370,15 +1375,15 @@ class GuideEditor {
     clearNode(this.dom.annotationList);
     const step = this.currentStep;
     if (!step) {
-      this.dom.annotationList.append(el('div.muted', {}, 'No step selected.'));
+      this.dom.annotationList.append(el('div.muted', {}, t('No step selected.')));
       clearNode(this.dom.annotationEditor);
-      this.dom.annotationEditor.append(el('div.muted', {}, 'Select a step to edit annotations.'));
+      this.dom.annotationEditor.append(el('div.muted', {}, t('Select a step to edit annotations.')));
       return;
     }
 
     const anns = step.annotations || [];
     if (!anns.length) {
-      this.dom.annotationList.append(el('div.muted', {}, 'No annotations yet. Pick a tool and drag on the canvas.'));
+      this.dom.annotationList.append(el('div.muted', {}, t('No annotations yet. Pick a tool and drag on the canvas.')));
     } else {
       for (const ann of anns) {
         const selected = this.canvas.selected() && this.canvas.selected().id === ann.id;
@@ -1388,7 +1393,7 @@ class GuideEditor {
         },
         el('div.row', {}, el('strong', {}, ANNOTATION_TYPE_LABELS[ann.type] || ann.type),
           // Blurs StepForge added for a private detail say what they hide.
-          el('span.muted', {}, ann.redact ? `Private detail: ${PRIVATE_DETAIL_LABELS[ann.redact.kind] || 'added by StepForge'}` : ann.text || ann.value || '')),
+          el('span.muted', {}, ann.redact ? t('Private detail: {kind}', { kind: PRIVATE_DETAIL_LABELS[ann.redact.kind] || t('added by StepForge') }) : ann.text || ann.value || '')),
         el('div.muted', {}, `${ann.x.toFixed(3)}, ${ann.y.toFixed(3)} · ${ann.w.toFixed(3)} × ${ann.h.toFixed(3)}`)));
       }
     }
@@ -1396,7 +1401,7 @@ class GuideEditor {
     const selected = this.canvas.selected();
     clearNode(this.dom.annotationEditor);
     if (!selected) {
-      this.dom.annotationEditor.append(el('div.muted', {}, 'Select an annotation to edit its style.'));
+      this.dom.annotationEditor.append(el('div.muted', {}, t('Select an annotation to edit its style.')));
       return;
     }
 
@@ -1404,7 +1409,7 @@ class GuideEditor {
     const typeSelect = makeSelect(selected.type, [
       'rect', 'oval', 'line', 'arrow', 'text', 'tooltip', 'number', 'blur', 'highlight', 'magnify', 'cursor',
     ].map((type) => ({ value: type, label: ANNOTATION_TYPE_LABELS[type] || type })));
-    const valueInput = el('input', { type: 'number', value: Number.isFinite(selected.value) ? selected.value : '', placeholder: 'Value' });
+    const valueInput = el('input', { type: 'number', value: Number.isFinite(selected.value) ? selected.value : '', placeholder: t('Value') });
     const strokeInput = el('input', { type: 'color', value: style.stroke || '#E5484D' });
     const fillInput = el('input', { type: 'color', value: style.fill && style.fill !== 'transparent' ? style.fill : '#ffffff' });
     const strokeWidthInput = el('input', { type: 'number', min: 1, step: 1, value: style.strokeWidth || 3 });
@@ -1413,10 +1418,10 @@ class GuideEditor {
     const zoomInput = el('input', { type: 'number', min: 1, step: 0.1, value: selected.zoom || 2 });
     const radiusInput = el('input', { type: 'number', min: 1, step: 1, value: selected.radius || 8 });
     const tailInput = makeSelect(style.tail || 'bottom', [
-      { value: 'bottom', label: 'Bottom' },
-      { value: 'top', label: 'Top' },
-      { value: 'left', label: 'Left' },
-      { value: 'right', label: 'Right' },
+      { value: 'bottom', label: t('Bottom') },
+      { value: 'top', label: t('Top') },
+      { value: 'left', label: t('Left') },
+      { value: 'right', label: t('Right') },
     ]);
 
     // Light-weight apply: mutate the selected annotation, redraw, and let the
@@ -1437,41 +1442,41 @@ class GuideEditor {
     };
 
     const fields = new Set(ANNOTATION_FIELDS[selected.type] || []);
-    const strokeLabel = (selected.type === 'text' || selected.type === 'number') ? 'Color' : 'Stroke';
+    const strokeLabel = (selected.type === 'text' || selected.type === 'number') ? t('Color') : t('Stroke');
     const typeLabel = ANNOTATION_TYPE_LABELS[selected.type] || selected.type;
     const textInput = fields.has('text')
       ? el('textarea', {
         rows: Math.max(3, Math.min(8, String(selected.text || '').split('\n').length)),
-        placeholder: 'Annotation text',
+        placeholder: t('Annotation text'),
         spellcheck: true,
       })
-      : el('input', { type: 'text', value: selected.text || '', placeholder: 'Annotation text' });
+      : el('input', { type: 'text', value: selected.text || '', placeholder: t('Annotation text') });
     if (fields.has('text')) textInput.value = selected.text || '';
 
-    const rows = [labeledRow('Type', typeSelect)];
-    if (fields.has('text')) rows.push(labeledRow('Text', textInput, { stacked: true }));
-    if (fields.has('value')) rows.push(labeledRow('Value', valueInput));
+    const rows = [labeledRow(t('Type'), typeSelect)];
+    if (fields.has('text')) rows.push(labeledRow(t('Text'), textInput, { stacked: true }));
+    if (fields.has('value')) rows.push(labeledRow(t('Value'), valueInput));
     if (fields.has('stroke')) rows.push(labeledRow(strokeLabel, strokeInput));
-    if (fields.has('fill')) rows.push(labeledRow('Fill', fillInput));
-    if (fields.has('strokeWidth')) rows.push(labeledRow('Stroke width', strokeWidthInput));
-    if (fields.has('fontSize')) rows.push(labeledRow('Font size', fontSizeInput));
-    if (fields.has('textColor')) rows.push(labeledRow('Text color', textColorInput));
-    if (fields.has('zoom')) rows.push(labeledRow('Zoom', zoomInput));
-    if (fields.has('radius')) rows.push(labeledRow('Radius', radiusInput));
-    if (fields.has('tail')) rows.push(labeledRow('Tail', tailInput));
+    if (fields.has('fill')) rows.push(labeledRow(t('Fill'), fillInput));
+    if (fields.has('strokeWidth')) rows.push(labeledRow(t('Stroke width'), strokeWidthInput));
+    if (fields.has('fontSize')) rows.push(labeledRow(t('Font size'), fontSizeInput));
+    if (fields.has('textColor')) rows.push(labeledRow(t('Text color'), textColorInput));
+    if (fields.has('zoom')) rows.push(labeledRow(t('Zoom'), zoomInput));
+    if (fields.has('radius')) rows.push(labeledRow(t('Radius'), radiusInput));
+    if (fields.has('tail')) rows.push(labeledRow(t('Tail'), tailInput));
     rows.push(
-      el('div.muted', {}, `Copy this style to every other "${typeLabel}" annotation:`),
+      el('div.muted', {}, t('Copy this style to every other “{type}” annotation:', { type: typeLabel })),
       el('div.row', {},
         el('button', {
           type: 'button',
-          title: `Overwrite the style of every "${typeLabel}" annotation on this step with the style shown above.`,
+          title: t('Overwrite the style of every “{type}” annotation on this step with the style shown above.', { type: typeLabel }),
           onClick: () => this.applyStyleAcross('step'),
-        }, 'This step'),
+        }, t('This step')),
         el('button', {
           type: 'button',
-          title: `Overwrite the style of every "${typeLabel}" annotation across all steps in this guide with the style shown above.`,
+          title: t('Overwrite the style of every “{type}” annotation across all steps in this guide with the style shown above.', { type: typeLabel }),
           onClick: () => this.applyStyleAcross('guide'),
-        }, 'Entire guide'),
+        }, t('Entire guide')),
       ),
     );
 
@@ -1679,7 +1684,7 @@ class GuideEditor {
     try {
       await api.step.reorder({ guideId: this.guideId, order, parents });
     } catch (err) {
-      this.onToast(`Could not undo the move: ${err.message || err}`, { error: true });
+      this.onToast(t('Could not undo the move: {error}', { error: err.message || err }), { error: true });
       return undefined;
     }
     await this.reload(this.selectedStepId);
@@ -1701,9 +1706,9 @@ class GuideEditor {
     });
     if (stale.length) {
       const ok = await confirmDialog(
-        `${stale.length === 1 ? 'A step was' : `${stale.length} steps were`} changed since this edit, `
-        + 'perhaps by AI or another app. Undo anyway and overwrite those changes?',
-        { danger: true, okLabel: 'Undo anyway' },
+        tn(stale.length, 'A step was changed since this edit, perhaps by AI or another app. Undo anyway and overwrite those changes?',
+          '{count} steps were changed since this edit, perhaps by AI or another app. Undo anyway and overwrite those changes?'),
+        { danger: true, okLabel: t('Undo anyway') },
       );
       if (!ok) return null;
     }
@@ -1724,7 +1729,7 @@ class GuideEditor {
         failed.push(step);
       }
     }
-    if (error) this.onToast(`Could not undo every step: ${error.message || error}`, { error: true });
+    if (error) this.onToast(t('Could not undo every step: {error}', { error: error.message || error }), { error: true });
     await this.reload(this.selectedStepId);
     if (!saved.length) return null;
     const inverse = this.multiStepRecord(replaced, saved);
@@ -1783,7 +1788,7 @@ class GuideEditor {
 
   async undo() {
     if (!this.canvasHistory.length) {
-      this.onToast('Nothing to undo.');
+      this.onToast(t('Nothing to undo.'));
       return;
     }
     if (!(await this.settlePendingSave())) return;
@@ -1804,7 +1809,7 @@ class GuideEditor {
 
   async redo() {
     if (!this.canvasFuture.length) {
-      this.onToast('Nothing to redo.');
+      this.onToast(t('Nothing to redo.'));
       return;
     }
     if (!(await this.settlePendingSave())) return;
@@ -1886,9 +1891,9 @@ class GuideEditor {
       saved = await api.step.save({ guideId: this.guideId, step, baseStep: this.savedStepBaselines?.get(step.stepId) });
     } catch (err) {
       this.pendingSave = true;
-      this.saveError = (err && err.message) || 'Save failed';
+      this.saveError = (err && err.message) || t('Save failed');
       this.emitMeta();
-      this.onToast('Could not save this step — your changes are kept. Retrying…', { error: true });
+      this.onToast(t('Could not save this step — your changes are kept. Retrying…'), { error: true });
       return null;
     }
     this.pendingSave = false;
@@ -1956,9 +1961,9 @@ class GuideEditor {
       await this.saveGuideEdits();
     } catch (err) {
       this.pendingGuideSave = true;
-      this.saveError = (err && err.message) || 'Save failed';
+      this.saveError = (err && err.message) || t('Save failed');
       this.emitMeta();
-      this.onToast('Could not save guide details — your changes are kept. Retrying…', { error: true });
+      this.onToast(t('Could not save guide details — your changes are kept. Retrying…'), { error: true });
       return;
     }
     this.pendingGuideSave = false;
@@ -1982,13 +1987,13 @@ class GuideEditor {
       const result = await this.runLinkedSave({ force: false });
       if (result.saved) {
         if (this.guide.linkedSource) this.guide.linkedSource.lastSavedAt = new Date().toISOString();
-        this.toastLinkedSave(result, 'Saved and synced to linked archive.');
+        this.toastLinkedSave(result, t('Saved and synced to linked archive.'));
       } else {
-        this.onToast('Saved locally, but the linked archive is locked by another session.', { error: true });
+        this.onToast(t('Saved locally, but the linked archive is locked by another session.'), { error: true });
       }
       return;
     }
-    this.onToast('Saved.');
+    this.onToast(t('Saved.'));
   }
 
   /**
@@ -2061,23 +2066,23 @@ class GuideEditor {
   toastLinkedSave(result, message) {
     if (!result.merged) return this.onToast(message);
     const conflicts = result.conflicts
-      ? ` ${result.conflicts} ${result.conflicts === 1 ? 'conflict was' : 'conflicts were'} settled in favor of the most recent edit.`
+      ? ` ${tn(result.conflicts, '{count} conflict was settled in favor of the most recent edit.', '{count} conflicts were settled in favor of the most recent edit.')}`
       : '';
-    return this.onToast(`${message} Merged changes from another session.${conflicts}`);
+    return this.onToast(`${message} ${t('Merged changes from another session.')}${conflicts}`);
   }
 
   async createSnapshot() {
     if (!this.guideId) return;
     const label = await dialogs.promptText({
-      title: 'Create snapshot',
-      label: 'Snapshot name',
+      title: t('Create snapshot'),
+      label: t('Snapshot name'),
       placeholder: 'manual',
     });
     if (label == null) return;
     if (this.currentStep) await this.flushStep();
     if (this.guide) await this.flushGuide();
     await api.snapshots.create({ guideId: this.guideId, label: label.trim() || 'manual' });
-    this.onToast('Snapshot created.');
+    this.onToast(t('Snapshot created.'));
   }
 
   async selectStep(stepId) {
@@ -2100,32 +2105,32 @@ class GuideEditor {
 
   async addEmptyStep() {
     const title = await dialogs.promptText({
-      title: 'Add Step',
-      label: 'Step title',
+      title: t('Add Step'),
+      label: t('Step title'),
       value: '',
-      placeholder: 'Untitled step',
+      placeholder: t('Untitled step'),
     });
     if (title == null) return;
     const step = await api.step.add({
       guideId: this.guideId,
       fields: {
         kind: 'empty',
-        title: title.trim() || 'Untitled step',
+        title: title.trim() || t('Untitled step'),
         status: 'todo',
       },
       position: this.steps.length,
     });
     await this.reload(step.stepId);
-    this.onToast('Step added.');
+    this.onToast(t('Step added.'));
   }
 
   async addSubstep(parentStepId = this.selectedStepId) {
     if (!parentStepId) return;
     const title = await dialogs.promptText({
-      title: 'Add Substep',
-      label: 'Substep title',
+      title: t('Add Substep'),
+      label: t('Substep title'),
       value: '',
-      placeholder: 'Untitled substep',
+      placeholder: t('Untitled substep'),
     });
     if (title == null) return;
     const parent = this.stepMap.get(parentStepId);
@@ -2134,14 +2139,14 @@ class GuideEditor {
       guideId: this.guideId,
       fields: {
         kind: 'empty',
-        title: title.trim() || 'Untitled substep',
+        title: title.trim() || t('Untitled substep'),
         parentStepId,
         status: 'todo',
       },
       position: parentIndex + 1,
     });
     await this.reload(step.stepId);
-    this.onToast(parent ? 'Substep added.' : 'Step added.');
+    this.onToast(parent ? t('Substep added.') : t('Step added.'));
   }
 
   /** All step ids whose ancestor chain leads back to `stepId`. */
@@ -2167,11 +2172,11 @@ class GuideEditor {
     const numbers = stepNumberMap(this.steps);
     const subtreeIds = new Set([stepId, ...this.getStepDescendantIds(stepId)]);
     if (subtreeIds.has(targetStepId)) {
-      this.onToast('A step cannot be made a substep of itself or one of its own substeps.', { error: true });
+      this.onToast(t('A step cannot be made a substep of itself or one of its own substeps.'), { error: true });
       return;
     }
     if (step.parentStepId === targetStepId) {
-      this.onToast(`“${step.title || 'Untitled step'}” is already a substep of step ${numbers.get(targetStepId)}.`);
+      this.onToast(t('“{title}” is already a substep of step {number}.', { title: step.title || t('Untitled step'), number: numbers.get(targetStepId) }));
       return;
     }
 
@@ -2192,7 +2197,7 @@ class GuideEditor {
     this.pushCanvasHistory(before);
 
     await this.reload(stepId);
-    this.onToast(`“${step.title || 'Untitled step'}” is now a substep of step ${numbers.get(targetStepId)}.`);
+    this.onToast(t('“{title}” is now a substep of step {number}.', { title: step.title || t('Untitled step'), number: numbers.get(targetStepId) }));
   }
 
   async duplicateSelectedStep() {
@@ -2200,7 +2205,7 @@ class GuideEditor {
     if (!step) return;
     const copy = clone(step);
     copy.stepId = undefined;
-    copy.title = copy.title ? `${copy.title} copy` : 'Untitled step copy';
+    copy.title = copy.title ? `${copy.title} copy` : t('Untitled step copy');
     const image = await this.currentStepImageToBase64();
     const newStep = await api.step.add({
       guideId: this.guideId,
@@ -2213,7 +2218,7 @@ class GuideEditor {
       position: this.steps.findIndex((s) => s.stepId === step.stepId) + 1,
     });
     await this.reload(newStep.stepId);
-    this.onToast('Step duplicated.');
+    this.onToast(t('Step duplicated.'));
   }
 
   /**
@@ -2233,7 +2238,7 @@ class GuideEditor {
   async retakeScreenshot(stepId, mode = 'fullscreen', delayMs = RETAKE_DELAY_MS) {
     if (stepId && stepId !== this.selectedStepId) await this.selectStep(stepId);
     if ((await api.capture.state())?.active) {
-      this.onToast('Stop the recording session before retaking a screenshot.', { error: true });
+      this.onToast(t('Stop the recording session before retaking a screenshot.'), { error: true });
       return;
     }
     await this.replaceStepScreenshot(stepId, (step) => api.step.retake({ guideId: this.guideId, stepId: step.stepId, mode, delayMs }), 'retaken');
@@ -2263,16 +2268,15 @@ class GuideEditor {
     if (before) this.pushCanvasHistory(before);
     await this.reload(step.stepId);
     const kept = (result.step.annotations || []).length;
-    const blurs = result.removedBlurs ? ' Private details will be checked again before publishing.' : '';
-    this.onToast(kept
-      ? `Screenshot ${verb}. Its annotations were kept, so check they still line up.${blurs} Press Ctrl+Z to undo.`
-      : `Screenshot ${verb}.${blurs} Press Ctrl+Z to undo.`);
+    const done = verb === 'retaken' ? t('Screenshot retaken.') : t('Screenshot replaced.');
+    const blurs = result.removedBlurs ? ` ${t('Private details will be checked again before publishing.')}` : '';
+    this.onToast(`${done}${kept ? ` ${t('Its annotations were kept, so check they still line up.')}` : ''}${blurs} ${t('Press Ctrl+Z to undo.')}`);
   }
 
   async deleteSelectedStep() {
     const step = this.currentStep;
     if (!step) return;
-    const ok = await confirmDialog(`Delete “${step.title || 'Untitled step'}”?`, { danger: true, okLabel: 'Delete' });
+    const ok = await confirmDialog(`Delete “${step.title || 'Untitled step'}”?`, { danger: true, okLabel: t('Delete') });
     if (!ok) return;
     if (this.pendingSave) await this.flushStep();
     const order = this.steps.map((s) => s.stepId);
@@ -2283,7 +2287,7 @@ class GuideEditor {
       || this.steps[this.steps.findIndex((s) => s.stepId === step.stepId) - 1]
       || null;
     await this.reload(next && next.stepId);
-    this.onToast('Step deleted. Press Ctrl+Z to undo.');
+    this.onToast(t('Step deleted. Press Ctrl+Z to undo.'));
   }
 
   /** Move the current step, with its substeps, past the neighbouring step and its substeps. */
@@ -2312,7 +2316,7 @@ class GuideEditor {
     try {
       await api.step.reorder({ guideId: this.guideId, order: moved.order, parents });
     } catch (err) {
-      this.onToast(`Could not move the step: ${err.message || err}`, { error: true });
+      this.onToast(t('Could not move the step: {error}', { error: err.message || err }), { error: true });
       return false;
     }
     this.pushCanvasHistory(before);
@@ -2327,7 +2331,7 @@ class GuideEditor {
     const order = this.steps.map((s) => s.stepId);
     const parentOf = outline.parentMap(this.steps);
     const numbers = stepNumberMap(this.steps);
-    const nameOf = (id) => `${numbers.get(id)}  ${this.stepMap.get(id).title || 'Untitled step'}`;
+    const nameOf = (id) => `${numbers.get(id)}  ${this.stepMap.get(id).title || t('Untitled step')}`;
     const index = order.indexOf(stepId);
     const blockEnd = index + outline.subtreeOf(order, parentOf, stepId).length;
     const positions = [];
@@ -2343,19 +2347,19 @@ class GuideEditor {
         levels.set(parentId || '', {
           value: String(depth),
           depth: parentId ? outline.depthOf(result.parentOf, parentId) + 1 : 0,
-          label: parentId ? `Substep of ${nameOf(parentId)}` : 'Top level',
+          label: parentId ? `Substep of ${nameOf(parentId)}` : t('Top level'),
         });
       }
       positions.push({
         value: String(gap),
-        label: gap === 0 ? 'At the top' : `After ${nameOf(order[gap - 1])}`,
+        label: gap === 0 ? t('At the top') : `After ${nameOf(order[gap - 1])}`,
         current: gap === index,
         levels: [...levels.values()].sort((a, b) => a.depth - b.depth),
       });
     }
     const choice = await dialogs.showMoveStepDialog({
-      title: `Move “${step.title || 'Untitled step'}”`,
-      hint: this.getStepDescendantIds(stepId).length ? 'Its substeps move with it.' : '',
+      title: t('Move “{title}”', { title: step.title || t('Untitled step') }),
+      hint: this.getStepDescendantIds(stepId).length ? t('Its substeps move with it.') : '',
       positions,
       currentDepth: outline.depthOf(parentOf, stepId),
     });
@@ -2370,10 +2374,10 @@ class GuideEditor {
       ? outline.moveSubtree(nowOrder, outline.parentMap(this.steps), stepId, nowGap, Number(choice.depth))
       : null;
     if (!moved) {
-      this.onToast('The guide changed while you were choosing, so the step was not moved. Try Move to… again.', { error: true });
+      this.onToast(t('The guide changed while you were choosing, so the step was not moved. Try Move to… again.'), { error: true });
       return;
     }
-    if (await this.applyStepMove(stepId, moved)) this.onToast('Step moved. Press Ctrl+Z to undo.');
+    if (await this.applyStepMove(stepId, moved)) this.onToast(t('Step moved. Press Ctrl+Z to undo.'));
   }
 
   /** Where a dragged step would land for a pointer at (x, y): { gap, depth, moved } with moved null if refused. */
@@ -2430,7 +2434,7 @@ class GuideEditor {
     this.endStepDrag();
     if (!target) return;
     if (!target.moved) {
-      this.onToast('A step can’t be dropped inside its own substeps.', { error: true });
+      this.onToast(t('A step can’t be dropped inside its own substeps.'), { error: true });
       return;
     }
     await this.applyStepMove(stepId, target.moved);
@@ -2464,7 +2468,7 @@ class GuideEditor {
     if (!result || !result.ok) return;
     const last = result.steps && result.steps[result.steps.length - 1];
     await this.reload(last ? last.stepId : this.selectedStepId);
-    this.onToast('Images imported.');
+    this.onToast(t('Images imported.'));
   }
 
   async captureStep(mode, delayMs = null) {
@@ -2473,7 +2477,7 @@ class GuideEditor {
       : await api.capture.shoot({ guideId: this.guideId, mode, delayMs });
     if (result && result.ok) {
       await this.reload(result.step.stepId);
-      this.onToast('Captured.');
+      this.onToast(t('Captured.'));
     } else if (result && result.reason) {
       this.onToast(result.reason, { error: true });
     }
@@ -2484,15 +2488,15 @@ class GuideEditor {
     const rect = event.target.getBoundingClientRect();
     const session = (await api.capture.state())?.active;
     const items = [
-      { label: 'Capture full screen', action: () => this.captureStep('fullscreen') },
-      { label: 'Capture window', action: () => this.captureStep('window') },
-      { label: 'Capture region…', action: () => this.captureStep('region') },
+      { label: t('Capture full screen'), action: () => this.captureStep('fullscreen') },
+      { label: t('Capture window'), action: () => this.captureStep('window') },
+      { label: t('Capture region…'), action: () => this.captureStep('region') },
       'sep',
-      { label: 'Paste image as step', action: () => this.pasteClipboardStep() },
-      { label: 'Import images…', action: () => this.importImageSteps() },
+      { label: t('Paste image as step'), action: () => this.pasteClipboardStep() },
+      { label: t('Import images…'), action: () => this.importImageSteps() },
     ];
     if (!session) {
-      items.push('sep', { label: 'Start capture session (hotkey)', action: () => this.startCaptureSession() });
+      items.push('sep', { label: t('Start capture session (hotkey)'), action: () => this.startCaptureSession() });
     }
     contextMenu(rect.left, rect.bottom + 4, items);
   }
@@ -2501,15 +2505,15 @@ class GuideEditor {
     const result = await api.step.fromClipboard({ guideId: this.guideId });
     if (result && result.ok) {
       await this.reload(result.step.stepId);
-      this.onToast('Image pasted as a new step.');
+      this.onToast(t('Image pasted as a new step.'));
     } else {
-      this.onToast(result?.reason || 'Clipboard has no image.', { error: true });
+      this.onToast(result?.reason || t('Clipboard has no image.'), { error: true });
     }
   }
 
   async shareAsFile() {
     const result = await api.archive.export({ guideId: this.guideId });
-    if (result && result.ok) this.onToast(`Shared to ${result.path}`);
+    if (result && result.ok) this.onToast(t('Shared to {path}', { path: result.path }));
   }
 
   async openBackupsDialog() {
@@ -2517,20 +2521,20 @@ class GuideEditor {
     const snapshots = await api.snapshots.list({ guideId: this.guideId });
     const restore = async (name) => {
       const ok = await confirmDialog(
-        `Restore "${name}"? Current state is snapshotted first, so this is undoable.`,
-        { okLabel: 'Restore' },
+        t('Restore “{name}”? Current state is snapshotted first, so this is undoable.', { name }),
+        { okLabel: t('Restore') },
       );
       if (!ok) return false;
       await api.snapshots.restore({ guideId: this.guideId, name });
       await this.reload();
-      this.onToast('Snapshot restored.');
+      this.onToast(t('Snapshot restored.'));
       return true;
     };
     await dialogs.showBackupsDialog({
       snapshots,
       onCreate: async () => {
         await api.snapshots.create({ guideId: this.guideId, label: 'manual' });
-        this.onToast('Snapshot created.');
+        this.onToast(t('Snapshot created.'));
         return api.snapshots.list({ guideId: this.guideId });
       },
       onRestore: restore,
@@ -2550,7 +2554,7 @@ class GuideEditor {
     try {
       diff = await api.snapshots.compare({ guideId: this.guideId, name });
     } catch (err) {
-      this.onToast(`Could not compare with this snapshot: ${err.message || err}`, { error: true });
+      this.onToast(t('Could not compare with this snapshot: {error}', { error: err.message || err }), { error: true });
       return false;
     }
     return window.StepForgeCompare.showSnapshotCompare({
@@ -2565,13 +2569,13 @@ class GuideEditor {
   async openGuidePlaceholders() {
     if (!this.guide) return;
     await dialogs.showPlaceholdersDialog({
-      title: 'Guide placeholders',
-      hint: 'Use [[Name]] in titles, descriptions, and blocks. Guide values override global ones.',
+      title: t('Guide placeholders'),
+      hint: t('Use [[Name]] in titles, descriptions, and blocks. Guide values override global ones.'),
       values: this.guide.placeholders || {},
       onSave: async (values) => {
         this.guide.placeholders = values;
         await this.saveGuideEdits();
-        this.onToast('Placeholders saved.');
+        this.onToast(t('Placeholders saved.'));
       },
     });
   }
@@ -2590,7 +2594,7 @@ class GuideEditor {
         this.guide.descriptionHtml = textToHtml(description);
         this.guide.cloud = { ...(this.guide.cloud || {}), sharingEnabled };
         await this.saveGuideEdits();
-        this.onToast('Guide information saved.');
+        this.onToast(t('Guide information saved.'));
       },
       onCloudSnapshots: async () => {
         try {
@@ -2598,22 +2602,22 @@ class GuideEditor {
           await dialogs.showCloudSnapshotsDialog({
             snapshots,
             onRestore: async (snapshot) => {
-              const ok = await confirmDialog('Restore this cloud snapshot? Your current local guide is kept as a cloud snapshot first.', { okLabel: 'Restore' });
+              const ok = await confirmDialog(t('Restore this cloud snapshot? Your current local guide is kept as a cloud snapshot first.'), { okLabel: t('Restore') });
               if (!ok) return;
               await api.cloud.restore({ guideId: this.guideId, versionId: snapshot.id });
               await this.reload();
-              this.onToast('Cloud snapshot restored.');
+              this.onToast(t('Cloud snapshot restored.'));
             },
           });
         } catch (err) { this.onToast(err.message); }
       },
       onDeleteCloudSnapshots: async () => {
-        const ok = await confirmDialog('Remove every cloud snapshot for this guide? This also turns off cloud sync for the guide. The local guide is kept.', { danger: true, okLabel: 'Remove cloud copies' });
+        const ok = await confirmDialog(t('Remove every cloud snapshot for this guide? This also turns off cloud sync for the guide. The local guide is kept.'), { danger: true, okLabel: t('Remove cloud copies') });
         if (!ok) return;
         try {
           await api.cloud.deleteGuideSnapshots({ guideId: this.guideId });
           this.guide.cloud = { ...(this.guide.cloud || {}), sharingEnabled: false };
-          this.onToast('Cloud copies removed.');
+          this.onToast(t('Cloud copies removed.'));
         } catch (err) { this.onToast(err.message); }
       },
     });
@@ -2648,7 +2652,7 @@ class GuideEditor {
       const saved = await this.flushStep(step);
       if (saved) after.push(saved);
       const undo = this.pushStyleHistory(before, after);
-      this.onToast(`Style applied to all ${source.type} annotations in this step.${undo}`);
+      this.onToast(`${t('Style applied to all “{type}” annotations in this step.', { type: ANNOTATION_TYPE_LABELS[source.type] || source.type })}${undo}`);
     } else {
       for (const step of this.steps) {
         const touched = restyle(step);
@@ -2659,7 +2663,7 @@ class GuideEditor {
       }
       const undo = this.pushStyleHistory(before, after);
       await this.reload(this.selectedStepId);
-      this.onToast(`Style applied to all ${source.type} annotations in the guide.${undo}`);
+      this.onToast(`${t('Style applied to all “{type}” annotations in the guide.', { type: ANNOTATION_TYPE_LABELS[source.type] || source.type })}${undo}`);
     }
   }
 
@@ -2667,7 +2671,7 @@ class GuideEditor {
   pushStyleHistory(before, after) {
     if (!before.length) return '';
     this.pushCanvasHistory(this.multiStepRecord(before, after));
-    return ' Press Ctrl+Z to undo.';
+    return ` ${t('Press Ctrl+Z to undo.')}`;
   }
 
   async startCaptureSession() {
@@ -2677,19 +2681,20 @@ class GuideEditor {
 
   async pauseCaptureSession() {
     await api.capture.session({ action: 'pause', guideId: this.guideId });
-    this.onToast('Capture paused.');
+    this.onToast(t('Capture paused.'));
     this.emitMeta();
   }
 
   async resumeCaptureSession() {
     await api.capture.session({ action: 'resume', guideId: this.guideId });
-    this.onToast('Capture resumed.');
+    this.onToast(t('Capture resumed.'));
     this.emitMeta();
   }
 
   async openSettings(section) {
     const settings = await api.settings.all();
     const placeholders = await api.settings.globalPlaceholders();
+    let newLanguage = null;
     await dialogs.showSettingsDialog({
       api,
       settings,
@@ -2705,6 +2710,17 @@ class GuideEditor {
         return !this.pendingSave && !this.pendingGuideSave;
       },
       onSave: async (next) => {
+        if (next.language !== settings.language) {
+          let saved = false;
+          try {
+            if (this.pendingSave || this.pendingGuideSave) await this.saveAll();
+            saved = !this.pendingSave && !this.pendingGuideSave;
+          } catch { /* Keep the form and its language selection for a retry. */ }
+          if (!saved) {
+            this.onToast(t('Your guide could not be saved. Your language choice is still selected; try Save again.'), { error: true });
+            return false;
+          }
+        }
         await api.settings.set({ keyPath: 'appearance', value: next.appearance });
         await api.settings.set({ keyPath: 'spellcheck', value: next.spellcheck });
         await api.settings.set({ keyPath: 'capture', value: next.capture });
@@ -2715,8 +2731,21 @@ class GuideEditor {
         await api.settings.set({ keyPath: 'branding', value: next.branding });
         await api.settings.set({ keyPath: 'backups', value: next.backups });
         await api.settings.setGlobalPlaceholders(next.placeholders || {});
+        if (next.language !== settings.language) newLanguage = next.language;
       },
     });
+    // The quick-actions and AI menus open Settings here too. A language
+    // reload must wait for the guide to be saved, just as in the app toolbar.
+    if (newLanguage) {
+      try {
+        if (this.pendingSave || this.pendingGuideSave) await this.saveAll();
+      } catch {
+        return;
+      }
+      if (this.pendingSave || this.pendingGuideSave) return;
+      const result = await api.app.setLanguage({ language: newLanguage });
+      if (result.reloaded) return;
+    }
     this.setSettings(await api.settings.all());
   }
 
@@ -2784,12 +2813,12 @@ class GuideEditor {
             },
             onImport: async () => {
               const res = await api.templates.import();
-              if (res?.ok) this.onToast(`Imported template for ${res.format}.`);
+              if (res?.ok) this.onToast(t('Imported template for {format}.', { format: res.format }));
               return api.templates.list({ format });
             },
             onExport: async (name) => {
               const res = await api.templates.export({ format, name });
-              if (res?.ok) this.onToast('Template shared as .sfglt.');
+              if (res?.ok) this.onToast(t('Template shared as .sfglt.'));
             },
           });
         }
@@ -2799,7 +2828,7 @@ class GuideEditor {
         const preview = await api.export.preview({ guideId: this.guideId, format, options, brandProfileId });
         if (preview && preview.file) {
           await api.shell.openProduced({ target: preview.file }); // open in default viewer
-          this.onToast('Preview opened (first steps only).');
+          this.onToast(t('Preview opened (first steps only).'));
         }
         return true;
       },
@@ -2818,7 +2847,7 @@ class GuideEditor {
       return;
     }
     if (publishRequest) {
-      await showPublishProgressDialog({ api, guideId: this.guideId, guideTitle: this.guide?.title || 'This guide', request: publishRequest });
+      await showPublishProgressDialog({ api, guideId: this.guideId, guideTitle: this.guide?.title || t('This guide'), request: publishRequest });
       // Publishing blurs private details in screenshots that weren't checked yet.
       await this.reload();
     }
@@ -2845,7 +2874,7 @@ class GuideEditor {
 
   async openLinkedGuide() {
     if (!this.guide || !this.guide.linkedSource) {
-      await dialogs.showInfoDialog('Linked Guide', 'This guide is stored locally and is not linked to a shared archive.');
+      await dialogs.showInfoDialog(t('Linked Guide'), 'This guide is stored locally and is not linked to a shared archive.');
       return;
     }
     const library = await api.library.list();
@@ -2856,13 +2885,13 @@ class GuideEditor {
       lock: locked ? { acquired: false } : { acquired: true },
       onSave: async () => {
         const result = await this.runLinkedSave({ force: false });
-        if (result.saved) this.toastLinkedSave(result, 'Linked archive saved.');
-        else this.onToast('Could not save linked archive.', { error: true });
+        if (result.saved) this.toastLinkedSave(result, t('Linked archive saved.'));
+        else this.onToast(t('Could not save linked archive.'), { error: true });
       },
       onForceSave: async () => {
         const result = await this.runLinkedSave({ force: true });
-        if (result.saved) this.toastLinkedSave(result, 'Linked archive force-saved.');
-        else this.onToast('Could not save linked archive.', { error: true });
+        if (result.saved) this.toastLinkedSave(result, t('Linked archive force-saved.'));
+        else this.onToast(t('Could not save linked archive.'), { error: true });
       },
       onOpenArchive: async () => {
         await api.shell.revealLinkedArchive({ guideId: this.guideId });
@@ -2872,11 +2901,11 @@ class GuideEditor {
 
   async openQuickActions() {
     const commands = [
-      { kind: 'cmd', label: 'New guide', description: 'Create a blank guide', action: () => this.onBack('new') },
-      { kind: 'cmd', label: 'Export', description: 'Export the current guide', action: () => this.openExportDialog() },
-      { kind: 'cmd', label: 'Settings', description: 'Open application settings', action: () => this.openSettings() },
-      { kind: 'cmd', label: 'Linked guide', description: 'Show linked archive details', action: () => this.openLinkedGuide() },
-      { kind: 'cmd', label: 'Start capture session', description: 'Enable hotkey capture for this guide', action: () => this.startCaptureSession() },
+      { kind: 'cmd', label: t('New guide'), description: t('Create a blank guide'), action: () => this.onBack('new') },
+      { kind: 'cmd', label: t('Export'), description: t('Export the current guide'), action: () => this.openExportDialog() },
+      { kind: 'cmd', label: t('Settings'), description: t('Open application settings'), action: () => this.openSettings() },
+      { kind: 'cmd', label: t('Linked guide'), description: t('Show linked archive details'), action: () => this.openLinkedGuide() },
+      { kind: 'cmd', label: t('Start capture session'), description: t('Enable hotkey capture for this guide'), action: () => this.startCaptureSession() },
     ];
 
     await dialogs.showQuickActions({
@@ -2926,15 +2955,15 @@ class GuideEditor {
       // autosave during the batch saves the replacement, not the old text.
       for (const step of result.steps) saved.push(this.commitBatchSave(await api.step.save({ guideId: this.guideId, step })));
     } catch (err) {
-      this.onToast(`Could not save every step: ${err.message || err}`, { error: true });
+      this.onToast(t('Could not save every step: {error}', { error: err.message || err }), { error: true });
     }
     if (saved.length) this.pushCanvasHistory(this.multiStepRecord(result.before.slice(0, saved.length), saved));
     await this.reload(this.selectedStepId);
     const skipped = result.refused.length + result.stale.length;
-    const stepWord = saved.length === 1 ? 'step' : 'steps';
+    const skippedText = skipped ? ` ${t('{count} skipped.', { count: skipped })}` : '';
     this.onToast(saved.length
-      ? `Replaced ${result.applied} in ${saved.length} ${stepWord}.${skipped ? ` ${skipped} skipped.` : ''} Press Ctrl+Z to undo.`
-      : `Nothing was replaced.${skipped ? ` ${skipped} skipped.` : ''}`);
+      ? `${tn(saved.length, 'Replaced {applied} in {count} step.', 'Replaced {applied} in {count} steps.', { applied: result.applied })}${skippedText} ${t('Press Ctrl+Z to undo.')}`
+      : `${t('Nothing was replaced.')}${skippedText}`);
     return saved.length ? result.applied : 0;
   }
 
@@ -3106,12 +3135,14 @@ class GuideEditor {
     }
     if (before.length) this.pushCanvasHistory(this.multiStepRecord(before, after));
     await this.reload(this.selectedStepId);
-    const plural = (n) => `${n} step${n === 1 ? '' : 's'}`;
-    let text = before.length ? `Annotation pasted onto ${plural(before.length)}. Press Ctrl+Z to undo.` : 'No steps changed.';
+    let text = before.length
+      ? `${tn(before.length, 'Annotation pasted onto {count} step.', 'Annotation pasted onto {count} steps.')} ${t('Press Ctrl+Z to undo.')}`
+      : t('No steps changed.');
     if (skipped.length) {
-      text += ` Skipped ${plural(skipped.length)} (already there, no image, or a different image shape): ${skipped.join(', ')}.`;
+      text += ` ${tn(skipped.length, 'Skipped {count} step (already there, no image, or a different image shape): {steps}.',
+        'Skipped {count} steps (already there, no image, or a different image shape): {steps}.', { steps: skipped.join(', ') })}`;
     }
-    if (failed) text += ` Stopped early: ${failed.message || failed}`;
+    if (failed) text += ` ${t('Stopped early: {error}', { error: failed.message || failed })}`;
     this.onToast(text, failed ? { error: true } : undefined);
   }
 
@@ -3140,7 +3171,7 @@ class GuideEditor {
   async onCanvasCrop(rect) {
     const step = this.currentStep;
     if (!step || !step.image) return;
-    const ok = await confirmDialog('Crop the working image to the selected area?');
+    const ok = await confirmDialog(t('Crop the working image to the selected area?'));
     if (!ok) return;
     this.saveStepDebounced.cancel();
     const snapshot = this.beforeCanvasSnapshot || await this.snapshotCurrentStep(true);
@@ -3187,7 +3218,7 @@ class GuideEditor {
     step.annotations = nextAnnotations;
     await this.flushStep(step);
     await this.reload(step.stepId);
-    this.onToast('Image cropped.');
+    this.onToast(t('Image cropped.'));
   }
 
   async editAnnotationText(ann) {
@@ -3206,8 +3237,8 @@ class GuideEditor {
       if (persist) this.saveStepDebounced();
     };
     const value = await dialogs.promptText({
-      title: ann.type === 'tooltip' ? 'Edit tooltip' : 'Edit text',
-      label: 'Text',
+      title: ann.type === 'tooltip' ? t('Edit tooltip') : t('Edit text'),
+      label: t('Text'),
       value: originalText,
       multiline: true,
       onInput: applyText,
@@ -3252,7 +3283,7 @@ class GuideEditor {
       }
       case 'createLink': {
         const selectedText = window.getSelection().toString();
-        const text = selectedText || 'Text';
+        const text = selectedText || t('Text');
         document.execCommand('insertText', false, `[${text}](Link)`);
         break;
       }
@@ -3337,7 +3368,7 @@ class GuideEditor {
         this.annotationClipboardAspect = size && size.width > 0 && size.height > 0 ? size.width / size.height
           : imgW > 0 && imgH > 0 ? imgW / imgH : 0;
         this.renderStepBulkBar();
-        this.onToast('Annotation copied.');
+        this.onToast(t('Annotation copied.'));
         return;
       }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {

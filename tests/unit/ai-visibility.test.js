@@ -151,3 +151,60 @@ test('Settings opened from the editor saves a language choice after flushing edi
     assert.deepEqual(events, saveFails ? ['save'] : ['save', 'fr']);
   }
 });
+
+test('a failed guide save keeps the editor Settings language choice available for retry', async () => {
+  const notices = [];
+  const languages = [];
+  let fail = true, writes = 0;
+  const settings = { language: 'en', ai: { enabled: true } };
+  const { editor } = editorContext({
+    api: {
+      settings: { all: async () => settings, globalPlaceholders: async () => ({}),
+        set: async () => { writes++; }, setGlobalPlaceholders: async () => {} },
+      app: { setLanguage: async ({ language }) => { languages.push(language); return { reloaded: true }; } },
+    },
+    dialogs: { showSettingsDialog: async ({ onSave }) => {
+      const choice = { ...settings, language: 'fr' };
+      assert.equal(await onSave(choice), false, 'the form must stay open');
+      assert.equal(writes, 0, 'do not partly apply Settings before saving the guide');
+      assert.deepEqual(languages, []);
+      assert.match(notices[0], /language choice is still selected/);
+      fail = false;
+      await onSave(choice);
+    } },
+  });
+  editor.onToast = (message) => notices.push(message);
+  editor.pendingSave = true;
+  editor.saveAll = async () => { if (fail) throw new Error('disk busy'); editor.pendingSave = false; };
+  await editor.openSettings();
+  assert.deepEqual(languages, ['fr']);
+  assert.ok(writes > 0);
+});
+
+test('app Settings refuses to close on a failed language-save preflight and accepts retry', async () => {
+  const settings = { language: 'en' };
+  const notices = [], languages = [];
+  let canSave = false, writes = 0;
+  const api = {
+    settings: { all: async () => settings, globalPlaceholders: async () => ({}),
+      set: async () => { writes++; }, setGlobalPlaceholders: async () => {} },
+    app: { setLanguage: async ({ language }) => { languages.push(language); return { reloaded: true }; } },
+  };
+  const context = { ...rendererI18n(), window: { stepforge: api }, document: { addEventListener() {} },
+    toast: (message) => notices.push(message) };
+  context.window.StepForgeDialogs = { showSettingsDialog: async ({ onSave }) => {
+    const next = { language: 'ja' };
+    assert.equal(await onSave(next), false);
+    assert.equal(writes, 0);
+    assert.match(notices[0], /language choice is still selected/);
+    canSave = true;
+    await onSave(next);
+  } };
+  const source = fs.readFileSync(path.join(__dirname, '../../app/renderer/app.js'), 'utf8');
+  vm.runInNewContext(source.replace('\nboot();', '\n'), context);
+  const app = Object.create(context.window.StepForgeApp.prototype);
+  app.state = {};
+  app.flushEditorBeforeNavigation = async () => canSave;
+  await app.openSettings();
+  assert.deepEqual(languages, ['ja']);
+});

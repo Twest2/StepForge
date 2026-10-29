@@ -1106,7 +1106,7 @@ function showSettingsDialog({
                 return acc;
               }, {}),
             };
-            await onSave(next);
+            if (await onSave(next) === false) return;
             accountsPanel.dispose();
             close();
             resolve(true);

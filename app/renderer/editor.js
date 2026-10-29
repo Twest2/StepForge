@@ -2692,6 +2692,17 @@ class GuideEditor {
         return !this.pendingSave && !this.pendingGuideSave;
       },
       onSave: async (next) => {
+        if (next.language !== settings.language) {
+          let saved = false;
+          try {
+            if (this.pendingSave || this.pendingGuideSave) await this.saveAll();
+            saved = !this.pendingSave && !this.pendingGuideSave;
+          } catch { /* Keep the form and its language selection for a retry. */ }
+          if (!saved) {
+            this.onToast(t('Your guide could not be saved. Your language choice is still selected; try Save again.'), { error: true });
+            return false;
+          }
+        }
         await api.settings.set({ keyPath: 'appearance', value: next.appearance });
         await api.settings.set({ keyPath: 'spellcheck', value: next.spellcheck });
         await api.settings.set({ keyPath: 'capture', value: next.capture });

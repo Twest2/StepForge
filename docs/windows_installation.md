@@ -118,7 +118,12 @@ newest installer from
 keep **Keep StepForge updated with Chocolatey** checked to get **Update now**
 from then on. Your guides and settings are kept either way.
 
+Earlier versions kept guides in `%APPDATA%\stepforge`. The first time
+a new version starts, it moves them to `%USERPROFILE%\StepForge` by itself:
+it copies them, checks the copy, and only then switches. The old copy is
+deleted 30 days later. You don't need to do anything.
+
 **To uninstall,** open **Settings → Apps → Installed apps**, find
 **StepForge**, and choose **Uninstall**. Your guides stay in
-`%APPDATA%\stepforge` in case you reinstall. Delete that folder if you want
-them gone too.
+`%USERPROFILE%\StepForge` in case you reinstall. Delete that folder if you
+want them gone too.

@@ -278,8 +278,7 @@ computer.
 
 | System | Location |
 | --- | --- |
-| Windows (Microsoft Store) | `%USERPROFILE%\StepForge` (`C:\Users\<you>\StepForge`) |
-| Windows (`.exe` installer or Chocolatey) | `%APPDATA%\stepforge` |
+| Windows | `%USERPROFILE%\StepForge` (`C:\Users\<you>\StepForge`) |
 | Linux | `~/.local/share/stepforge` (or `$XDG_DATA_HOME/stepforge`) |
 
 You can move your library under **Settings → General → Guide storage**, or
@@ -288,6 +287,11 @@ Uninstalling StepForge leaves this folder in place. Delete it to remove all of
 your guides and settings. A Microsoft Store install also keeps a few
 computer-specific settings, such as cloud sign-ins, in its app data, which
 Windows deletes when you uninstall it.
+
+Older Windows versions kept the library in `%APPDATA%\stepforge`. A new
+version copies it to `%USERPROFILE%\StepForge` on its first start, checks the
+copy, and deletes the old one 30 days later. The Microsoft Store version
+leaves the old folder alone, because it belongs to the installer version.
 
 ## Questions
 

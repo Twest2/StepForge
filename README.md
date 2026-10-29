@@ -114,7 +114,7 @@ page and hands you a link to send. It's usually online in under a minute.
 
 | Platform | Recommended | Guide |
 | --- | --- | --- |
-| **Windows 10 / 11** (64-bit) | Microsoft Store: no warnings, automatic updates. Or Chocolatey, or the `.exe` | [Microsoft Store](docs/windows/microsoft-store.md) · [Chocolatey](docs/windows/chocolatey.md) · [Windows](docs/windows_installation.md) |
+| **Windows 10 / 11** (64-bit) | Microsoft Store, Chocolatey, or the `.exe` | [Microsoft Store](docs/windows/microsoft-store.md) · [Chocolatey](docs/windows/chocolatey.md) · [Windows](docs/windows_installation.md) |
 | **Ubuntu 26.04** | APT repository | [Ubuntu](docs/linux/apt.md) |
 | **Fedora 44 Workstation** | DNF repository | [Fedora](docs/linux/dnf.md) |
 | **Other Linux** | Portable `.tar.gz` | [Linux overview](docs/linux/linux_install.md) |

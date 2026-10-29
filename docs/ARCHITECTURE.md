@@ -36,9 +36,9 @@ Internal working storage is **folder-based**; sharing/backups use a
 **single-file zip archive** (`.sfgz`).
 
 ```text
-<data root>/                      (~/.local/share/stepforge, %APPDATA%/stepforge,
-  settings/                        %USERPROFILE%/StepForge for a Microsoft
-                                   Store install, or $STEPFORGE_DATA_DIR)
+<data root>/                      (~/.local/share/stepforge, %USERPROFILE%/StepForge,
+  settings/                        or $STEPFORGE_DATA_DIR; older Windows versions
+                                   used %APPDATA%/stepforge, see library-location.js)
     app-settings.json
     placeholders.json             global placeholders
     templates/<format>/<name>.template.json

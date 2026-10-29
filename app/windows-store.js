@@ -6,10 +6,9 @@
  *
  * A Store install differs from the .exe installer in three ways:
  * - Windows redirects new files under %APPDATA% into a private folder that it
- *   deletes with the app, so the guide library defaults to %USERPROFILE%\StepForge
- *   instead (app/data-dir.js). Not Documents: OneDrive, Dropbox and Google
- *   Drive often back that up, which would upload every guide and fight
- *   StepForge's own sync.
+ *   deletes with the app. The guide library isn't there (app/data-dir.js), and
+ *   the old installer folder's copy isn't removed after the automatic move,
+ *   because it belongs to the installer version.
  * - The Store installs updates. Chocolatey's Update now is never offered;
  *   Settings → About opens StepForge in the Store instead.
  * - The exe sits in a WindowsApps folder named after its version, so AI agents
@@ -23,22 +22,12 @@
 const { win32 } = require('node:path');
 
 const EXECUTION_ALIAS = 'stepforge.exe';
-const LIBRARY_FOLDER = 'StepForge';
 const UPDATES_PAGE = 'ms-windows-store://downloadsandupdates';
 
 /** Running from a Store package: Electron says so, or the exe is under WindowsApps, as Electron itself decides. */
 function isStoreInstall({ platform = process.platform, windowsStore = process.windowsStore, execPath = process.execPath } = {}) {
   if (platform !== 'win32') return false;
   return windowsStore === true || /\\WindowsApps\\/i.test(String(execPath || ''));
-}
-
-/**
- * The default library of a Store install: StepForge in the user's home folder.
- * Windows keeps it when the app is uninstalled, and OneDrive's folder backup
- * (Desktop, Documents, Pictures) doesn't include it.
- */
-function storeLibraryDir(homeDir) {
-  return win32.join(homeDir, LIBRARY_FOLDER);
 }
 
 /** The execution alias agents run: %LOCALAPPDATA%\Microsoft\WindowsApps\stepforge.exe, which Windows keeps on PATH. */
@@ -59,10 +48,8 @@ function storeUpdateUrl(productId) {
 
 module.exports = {
   EXECUTION_ALIAS,
-  LIBRARY_FOLDER,
   UPDATES_PAGE,
   isStoreInstall,
-  storeLibraryDir,
   executionAliasPath,
   storeUpdateUrl,
 };

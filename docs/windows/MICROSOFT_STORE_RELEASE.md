@@ -139,7 +139,7 @@ their own guides to the web (GitHub Pages) and to Confluence or Wiki.js.
 
 > No account or sign-in is needed. To test: open StepForge, choose New guide,
 > then Capture → Start capture session. Click anywhere on screen a few times,
-> then stop the recording from the StepForge icon in the notification area.
+> then stop the recording from the StepForge icon in the system tray.
 > Each click becomes a step with a screenshot. Cloud sync, publishing and AI features are optional and
 > off by default.
 
@@ -160,6 +160,8 @@ StepForge then runs as it would from the Store. Check that:
 
 - **Settings → About** shows the library in `%USERPROFILE%\StepForge`, not
   under `AppData` or `Documents`.
+- With a library from an older version in `%APPDATA%\stepforge`, the first
+  start opens with all its guides, now in `%USERPROFILE%\StepForge`.
 - **Check for updates** offers **Open Microsoft Store** for a newer release,
   and never **Update now**.
 - `stepforge.exe --mcp` starts from a new terminal, and **Settings → AI → AI

@@ -122,7 +122,7 @@ choco uninstall stepforge -y
 ```
 
 This removes the application only. Your guides and settings stay in
-`%APPDATA%\stepforge`. To also remove the StepForge feed:
+`%USERPROFILE%\StepForge`. To also remove the StepForge feed:
 
 ```powershell
 choco source remove --name=stepforge

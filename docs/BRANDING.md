@@ -279,3 +279,6 @@ cleaned of scripts, links and anything else that isn't drawing.
 Profiles live in your data folder under `settings/branding/` (see
 **Settings → About → Data folder**). Logos, banners and fonts are kept beside
 them. An upload that no profile uses any more is deleted after a day.
+
+With [cloud sync](GOOGLE_DRIVE.md#settings-that-sync) on, your profiles, their
+files and the active profile follow you to every computer that syncs.

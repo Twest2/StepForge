@@ -2,7 +2,8 @@
 
 Google Drive sync keeps your StepForge library the same on every computer you
 use. Sign in once on each machine and your guides, including screenshots,
-annotations, and descriptions, follow you.
+annotations, and descriptions, follow you, along with the
+[settings guides depend on](#settings-that-sync).
 
 Sync is **optional and off by default**. StepForge works fully offline without it.
 
@@ -76,6 +77,36 @@ or open the Drive settings, to see the guide's name and the transfer speed.
 - **Going offline is fine.** Local edits are kept and sync resumes when you're
   back online.
 
+### Settings that sync
+
+These settings follow your guides across computers:
+
+- **Global placeholders** (**Settings → Placeholders**)
+- **Brand profiles**, with their logos, banners and fonts, and which profile
+  is active (**Settings → Branding**)
+- **Recording shortcuts**: Capture and Pause/resume (**Settings → Capture → Hotkeys**).
+  Cleared shortcuts stay disabled; incoming changes take effect immediately.
+
+Other capture options, AI and guide storage stay on each computer.
+
+They're combined the same way as guides: changes to different placeholders or
+fields within a brand profile on different computers all survive. A placeholder
+or profile deleted on one computer is deleted on the others unless another
+computer edited it. When both computers changed the same value, the most recent
+edit to that value is kept; changing capture options or another placeholder
+doesn't make an older choice newer. A computer syncing for the first time adds
+its placeholders and profiles to the ones already in the cloud. Conflicting
+explicit choices use the same newest-edit rule, including a deliberate reset
+to a default. Its untouched defaults never replace a choice made on another computer.
+
+Changes from another computer wait while **Settings** is open, so saving it
+can't undo them, and arrive when you close it.
+
+If a settings version is damaged or needs a newer StepForge, settings sync
+shows an error and leaves the saved settings alone. Guide sync continues.
+StepForge doesn't skip that settings version, because publishing a merge
+without it could discard values it couldn't read.
+
 ## Manage what's in Drive
 
 **Settings → Accounts → Google Drive** also lets you see and tidy up your Drive storage.
@@ -134,7 +165,7 @@ If your computers have drifted apart and you want one of them to win, use
 
 1. Deletes everything StepForge has stored in Drive, including all versions
    and recovery copies.
-2. Uploads the guides on this computer.
+2. Uploads the guides and [settings](#settings-that-sync) on this computer.
 3. Tells your other computers to move any guide that isn't on this computer
    to their trash, and to update the rest to this computer's version.
    Unsynced edits on those computers are combined with this computer's version.

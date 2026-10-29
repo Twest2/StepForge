@@ -140,8 +140,11 @@ Drive sync is **off by default**. When you sign in
   files it creates in its own hidden folder in your Drive. It can't see your
   other Drive files.
 - **Your whole library is uploaded**: screenshots, text, annotations,
-  placeholders, and the capture details listed above. It goes to that private
-  folder in *your* Google Drive, not to StepForge or anyone else.
+  placeholders, and the capture details listed above, along with your global
+  placeholders, brand profiles (with their logos, banners and fonts), and
+  configured Capture and Pause/resume keyboard shortcuts. It
+  goes to that private folder in *your* Google Drive,
+  not to StepForge or anyone else. The rest of Settings isn't uploaded.
   Screenshots are stored once and shared between versions, labelled with a
   fingerprint (SHA-256 hash) of their contents so each is only uploaded once.
 - StepForge also reads your Google account's email address, profile photo, and
@@ -150,7 +153,8 @@ Drive sync is **off by default**. When you sign in
 - Data travels over HTTPS. It isn't additionally encrypted by StepForge.
 - To combine edits made on different computers, StepForge keeps the text of
   each synced guide as it was last synced, with screenshot fingerprints but no
-  screenshots, in the `cloud` folder of your [data folder](#where-your-data-lives).
+  screenshots, in the `cloud` folder of your [data folder](#where-your-data-lives),
+  and the synced settings the same way, without their logos, banners or fonts.
   Before it combines unsynced edits, it saves your version as one of the
   guide's local backups.
 - Your Google token is stored encrypted with your operating system's
@@ -171,7 +175,7 @@ Drive sync is **off by default**. When you sign in
 ## Optional OneDrive, Dropbox and Nextcloud sync
 
 These work like Google Drive sync above: off by default, your whole library
-is uploaded to *your* account and nowhere else, screenshots are stored once
+and the same settings are uploaded to *your* account and nowhere else, screenshots are stored once
 by SHA-256 fingerprint, and sign-in details are stored encrypted with your
 operating system's credential storage. StepForge syncs with one service at a
 time. [How it works](CLOUD_ACCOUNTS.md).

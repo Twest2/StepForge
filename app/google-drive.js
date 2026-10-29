@@ -394,6 +394,11 @@ class GoogleDrive {
     return this.listAppData("trashed = false and appProperties has { key='stepforge' and value='deletion-v1' }");
   }
 
+  // Global placeholders, branding and language (see core/shared-settings.js).
+  async listSettings() {
+    return this.listAppData("trashed = false and appProperties has { key='stepforge' and value='settings-v1' }");
+  }
+
   // Files shared between versions (see core/cloud-parts.js).
   async listParts() {
     return this.listAppData("trashed = false and appProperties has { key='stepforge' and value='part-v1' }");

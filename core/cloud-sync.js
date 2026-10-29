@@ -10,6 +10,7 @@ const { atomicWriteFileSync, writeJsonSync, readJsonIfExists } = require('./util
 const { TransferMeter } = require('./transfer-meter');
 const { mergeGuideEntries } = require('./guide-merge');
 const { createSnapshot } = require('./snapshots');
+const { mergeSharedSettings, UNZIP_LIMITS: SHARED_LIMITS } = require('./shared-settings');
 const parts = require('./cloud-parts');
 
 const validId = (id) => typeof id === 'string' && /^[A-Za-z0-9_-]{1,100}$/.test(id) && !['__proto__', 'constructor', 'prototype'].includes(id);
@@ -137,9 +138,13 @@ const PART_CLEANUP_MS = 6 * 60 * 60 * 1000;
 
 /** Immutable Drive snapshots: concurrent writers create branches, never overwrite bytes. */
 class CloudSync {
+  // `shared` (core/shared-settings.js) syncs global placeholders, branding
+  // and language too; `sharedReady` is false while Settings is open, so
+  // saving it can't undo what arrived meanwhile.
   constructor({ store, drive, enabled, canReplace = () => true, canUpload = () => true, onChange = () => {}, onDelete = () => {}, onStatus = () => {}, settleMs = 3000,
-    inlineLimit = parts.INLINE_LIMIT, partGraceMs = PART_GRACE_MS }) {
-    Object.assign(this, { store, drive, enabled, canReplace, canUpload, onChange, onDelete, onStatus, settleMs, inlineLimit, partGraceMs });
+    inlineLimit = parts.INLINE_LIMIT, partGraceMs = PART_GRACE_MS, shared = null, sharedReady = () => true, onSharedChange = () => {} }) {
+    Object.assign(this, { store, drive, enabled, canReplace, canUpload, onChange, onDelete, onStatus, settleMs, inlineLimit, partGraceMs,
+      shared, sharedReady, onSharedChange });
     this.directory = path.join(store.root, 'cloud');
     this.partIndexCache = null;
     this.lastPartCleanup = 0;
@@ -327,35 +332,37 @@ class CloudSync {
 
   basePath(id) { return path.join(this.directory, 'bases', `${id}.json`); }
 
+  sharedBasePath() { return path.join(this.directory, 'settings-base.json'); }
+
   /**
    * Remember the content this computer last agreed on with the cloud, so a
    * later merge has a base even when that version is gone from the cloud.
    * Screenshots are kept as hashes only.
    */
-  rememberBase(id, entries) {
+  rememberBase(file, entries) {
     try {
       const list = entries.filter((entry) => entry.name !== 'manifest.json').map((entry) => {
         const data = Buffer.isBuffer(entry.data) ? entry.data : Buffer.from(String(entry.data), 'utf8');
         return entry.name.endsWith('.json') ? { name: entry.name, data: data.toString('base64') } : { name: entry.name, sha: parts.sha256(data) };
       });
-      fs.mkdirSync(path.dirname(this.basePath(id)), { recursive: true });
-      writeJsonSync(this.basePath(id), { hash: parts.contentHash(entries), entries: list });
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      writeJsonSync(file, { hash: parts.contentHash(entries), entries: list });
     } catch { /* only a cache */ }
   }
 
   /** The remembered base entries, if they are the content with this hash. */
-  rememberedBase(id, hash) {
-    const saved = readJsonIfExists(this.basePath(id), null);
+  rememberedBase(file, hash) {
+    const saved = readJsonIfExists(file, null);
     if (!hash || saved?.hash !== hash || !Array.isArray(saved.entries)) return null;
     return saved.entries.map((entry) => ({ name: entry.name, sha: entry.sha, data: entry.data === undefined ? null : Buffer.from(entry.data, 'base64') }));
   }
 
   /**
-   * Base entries for merging `tips` (and the local guide, when `record` is
+   * Base entries for merging `tips` (and the local copy, when `record` is
    * given): the newest version every side descends from. Without one, the
-   * remembered base for the local guide, or null to merge without a base.
+   * base remembered in `baseFile`, or null to merge without a base.
    */
-  async mergeBase(id, versions, tips, record) {
+  async mergeBase(baseFile, versions, tips, record) {
     const byId = new Map(versions.map((file) => [file.id, file]));
     const ancestry = (start) => {
       const seen = new Set();
@@ -371,8 +378,8 @@ class CloudSync {
     const lines = starts.map(ancestry);
     const common = [...lines[0]].filter((vid) => lines.every((line) => line.has(vid))).map((vid) => byId.get(vid))
       .sort((a, b) => compareText(a.createdTime || '', b.createdTime || '') || compareText(a.id, b.id)).at(-1);
-    if (!common) return record ? this.rememberedBase(id, record.hash) : null;
-    return this.rememberedBase(id, common.appProperties.hash) || this.versionEntries(common);
+    if (!common) return record ? this.rememberedBase(baseFile, record.hash) : null;
+    return this.rememberedBase(baseFile, common.appProperties.hash) || this.versionEntries(common);
   }
 
   /** A version's entries for use as a merge base; screenshots may be hashes only. */
@@ -493,6 +500,13 @@ class CloudSync {
   markChanged(id) {
     this.changedAt.set(id, Date.now());
     this.fingerprints.delete(id);
+    this.scheduleSync();
+  }
+
+  /** Global placeholders, branding or language may have changed here. */
+  markSharedChanged() { this.scheduleSync(); }
+
+  scheduleSync() {
     if (!this.enabled()) return;
     this.publish('pending', 'Changes waiting to sync.');
     clearTimeout(this.timer);
@@ -569,6 +583,11 @@ class CloudSync {
       const keep = protectedVersions(versions, retain);
       remove.push(...versions.filter((file) => !keep.has(file.id)));
     }
+    if (this.shared) {
+      const versions = await this.drive.listSettings();
+      const keep = protectedVersions(versions, retain);
+      remove.push(...versions.filter((file) => !keep.has(file.id)));
+    }
     for (const file of remove) await this.drive.deleteFile(file.id);
     let reclaimedBytes = remove.reduce((n, file) => n + sizeOf(file), 0);
     let converted = 0;
@@ -630,6 +649,8 @@ class CloudSync {
       purged += 1;
     }
     for (const file of files) await this.drive.deleteFile(file.id);
+    for (const file of this.shared ? await this.drive.listSettings() : []) await this.drive.deleteFile(file.id);
+    delete this.state.settings;
     for (const file of await this.drive.listParts()) await this.drive.deleteFile(file.id);
     this.partIndexCache = null;
     for (const file of markers) if (!keepMarkers.has(file.id)) await this.drive.deleteFile(file.id);
@@ -873,6 +894,81 @@ class CloudSync {
     }
   }
 
+  // ---- shared settings (core/shared-settings.js) ---------------------------
+
+  /**
+   * Global placeholders, branding and language sync like one guide:
+   * immutable `settings-v1` versions with parents, merged against the
+   * version every side started from. Returns { pending } when something
+   * has to wait for the next sync.
+   */
+  async syncShared(check) {
+    const versions = (await this.drive.listSettings())
+      .filter((file) => validId(file.id) && /^[a-f0-9]{64}$/.test(file.appProperties?.hash || ''));
+    check();
+    let record = this.state.settings || null;
+    if (record?.head && !versions.some((file) => file.id === record.head)) {
+      // As for guides: removed from the cloud, pruned or replaced, or a
+      // listing that hasn't caught up with this computer's own upload yet.
+      if (!versions.length) { record = null; delete this.state.settings; }
+      else if (Date.now() - (record.syncedAt || 0) > STALE_HEAD_MS || versions.some((file) => parentsOf(file).includes(record.head))) record = { hash: record.hash };
+      else return { pending: true };
+    }
+    if (!this.sharedReady()) return { pending: true };
+    const local = this.shared.snapshot();
+    const heads = headsOf(versions);
+    const latest = heads.at(-1);
+    if (latest && heads.some((head) => !record?.heads?.includes(head.id))) {
+      if (record?.hash && heads.every((head) => head.appProperties.hash === record.hash)) {
+        this.state.settings = { ...record, head: latest.id, heads: heads.map((head) => head.id), syncedAt: Date.now() };
+      } else {
+        const localChanged = !record || local.hash !== record.hash;
+        const tips = [...new Map(heads.map((head) => [head.appProperties.hash, head])).values()];
+        const withLocal = localChanged && !tips.some((head) => head.appProperties.hash === local.hash);
+        const merging = tips.length > 1 || withLocal;
+        const sides = [];
+        for (const tip of merging ? tips : [latest]) {
+          const entries = unzipSync(await this.downloadArchive(tip), { limits: SHARED_LIMITS });
+          check();
+          if (parts.contentHash(entries) !== tip.appProperties.hash) throw new Error('Synced settings failed their integrity check. Settings here are unchanged.');
+          sides.push({ entries, hash: tip.appProperties.hash, time: tip.createdTime || '' });
+        }
+        let incoming = mergeSharedSettings({ sides: [sides[0]] }).entries;
+        if (merging) {
+          // A computer that never synced shares no history with the cloud:
+          // merge without a base, so nothing counts as deleted.
+          const base = withLocal && !record ? null : await this.mergeBase(this.sharedBasePath(), versions, tips, withLocal ? record : null);
+          check();
+          if (withLocal) sides.push({ entries: local.entries, hash: local.hash, time: local.time });
+          incoming = mergeSharedSettings({ base, sides }).entries;
+        }
+        // Changed here, or Settings opened, while downloading: try again next time.
+        if (!this.sharedReady() || this.shared.snapshot().hash !== local.hash) return { pending: true };
+        if (parts.contentHash(incoming) !== local.hash) {
+          const changes = this.shared.apply(incoming);
+          if (changes.length) this.onSharedChange(changes);
+        }
+        this.state.settings = { head: latest.id, heads: heads.map((head) => head.id), hash: latest.appProperties.hash, syncedAt: Date.now(),
+          ...(merging ? { merged: heads.filter((head) => head.id !== latest.id).map((head) => head.id) } : {}) };
+        if (!merging) this.rememberBase(this.sharedBasePath(), incoming);
+      }
+      this.saveState();
+    }
+    const baseline = this.state.settings || null;
+    const absorbed = mergedProperty((baseline?.merged || []).filter((vid) => vid !== baseline.head && validId(vid)));
+    const current = this.shared.snapshot();
+    if (baseline && current.hash === baseline.hash && !absorbed) return { pending: false };
+    const entries = current.entries;
+    const hash = parts.contentHash(entries);
+    const file = await this.uploadArchive({ data: zipSync(entries), name: 'StepForge settings',
+      properties: { stepforge: 'settings-v1', hash, ...(baseline?.head ? { parent: baseline.head } : {}), ...(absorbed ? { merged: absorbed } : {}) } });
+    check();
+    this.state.settings = { head: file.id, heads: [...heads.filter((head) => head.id !== baseline?.head).map((head) => head.id), file.id], hash, syncedAt: Date.now() };
+    this.saveState();
+    this.rememberBase(this.sharedBasePath(), entries);
+    return { pending: this.shared.snapshot().hash !== hash };
+  }
+
   sync() {
     if (this.manualCount) return Promise.resolve(this.status);
     if (this.running) return this.running;
@@ -1034,7 +1130,7 @@ class CloudSync {
             downloads.push({ tip, bytes: await this.downloadVersion(tip) });
             check();
           }
-          const base = merging ? await this.mergeBase(id, versions, tips, withLocal ? record : null) : null;
+          const base = merging ? await this.mergeBase(this.basePath(id), versions, tips, withLocal ? record : null) : null;
           check();
           if (!this.canReplace(id) || this.store.guideExists(id) !== exists
               || (exists && this.localSnapshot(id).hash !== local.hash)) { pending = true; continue; }
@@ -1062,7 +1158,7 @@ class CloudSync {
           this.state.records[id] = { head: latest.id, heads: heads.map((h) => h.id), hash: latest.appProperties.hash, syncedAt: Date.now(),
             ...(merging ? { merged: heads.filter((h) => h.id !== latest.id).map((h) => h.id) } : {}) };
           this.saveState();
-          if (!merging) this.rememberBase(id, unzipSync(incoming));
+          if (!merging) this.rememberBase(this.basePath(id), unzipSync(incoming));
         }
         if (!exists) continue;
         const baseline = Object.hasOwn(this.state.records, id) ? this.state.records[id] : null;
@@ -1095,7 +1191,7 @@ class CloudSync {
           check();
           this.state.records[id] = { head: file.id, heads: [...heads.filter((h) => h.id !== baseline?.head).map((h) => h.id), file.id], hash: local.hash, syncedAt: Date.now() };
           this.saveState();
-          this.rememberBase(id, uploaded);
+          this.rememberBase(this.basePath(id), uploaded);
           // If edits happened during upload, this baseline describes only uploaded bytes.
           if (this.store.guideExists(id) && this.localSnapshot(id).hash !== local.hash) pending = true;
         }
@@ -1104,12 +1200,25 @@ class CloudSync {
         errors.push(err.message);
       }
     }
+    let sharedError = null;
+    let sharedPending = false;
+    if (this.shared) {
+      try {
+        check();
+        sharedPending = (await this.syncShared(check)).pending;
+      } catch (err) {
+        check();
+        sharedError = err.message;
+      }
+    }
     if (errors.length) this.publish('error', `${errors.length} guide(s) could not sync: ${errors[0]}`);
+    else if (sharedError) this.publish('error', `Placeholders and branding could not sync: ${sharedError}`);
     else if (pending) this.publish('pending', 'Changes pending. Incoming updates wait until the guide is closed.');
+    else if (sharedPending) this.publish('pending', this.sharedReady() ? 'Changes waiting to sync.' : 'Placeholders and branding sync when Settings closes.');
     else this.publish('synced', mergeMessage(this.label, merged, mergeConflicts), { lastSync: new Date().toISOString() });
     // Snapshots are immutable. Retain the current version and two prior
     // versions on every live conflict branch after a successful sync.
-    if (!errors.length && !pending) await this.pruneNow();
+    if (!errors.length && !sharedError && !pending && !sharedPending) await this.pruneNow();
     return this.status;
   }
 

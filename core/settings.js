@@ -1,6 +1,8 @@
 'use strict';
 
 const path = require('node:path');
+const fs = require('node:fs');
+const { isDeepStrictEqual } = require('node:util');
 const { writeJsonSync, readJsonIfExists, deepClone } = require('./util');
 
 const DEFAULT_SETTINGS = {
@@ -127,11 +129,35 @@ const DEFAULT_SETTINGS = {
   },
 };
 
+// Values that sync independently; changing a whole capture/branding object
+// still records clocks only for the shared fields that actually changed.
+const SHARED_SETTING_PATHS = Object.freeze({
+  language: 'language', activeProfileId: 'branding.activeProfileId',
+  hotkeyCapture: 'capture.hotkeyCapture', hotkeyPauseResume: 'capture.hotkeyPauseResume',
+});
+const valueAt = (data, keyPath) => keyPath.split('.').reduce((value, key) => value?.[key], data);
+const sharedValues = (data) => Object.fromEntries(Object.entries(SHARED_SETTING_PATHS)
+  .map(([key, keyPath]) => [key, valueAt(data, keyPath)]));
+
 class Settings {
   constructor(settingsDir) {
     this.file = path.join(settingsDir, 'app-settings.json');
     this.globalPlaceholdersFile = path.join(settingsDir, 'placeholders.json');
+    this.sharedTimesFile = path.join(settingsDir, 'shared-settings-times.json');
     this.data = this.load();
+    // Seed legacy values (including newly shared keys) before an unrelated
+    // save changes the file's time. Existing per-value clocks stay intact.
+    {
+      const time = (file) => { try { return fs.statSync(file).mtime.toISOString(); } catch { return ''; } };
+      const times = this.getSharedChangeTimes();
+      for (const [key, keyPath] of Object.entries(SHARED_SETTING_PATHS)) {
+        if (!Object.hasOwn(times, `setting:${key}`) && !isDeepStrictEqual(this.get(keyPath), valueAt(DEFAULT_SETTINGS, keyPath)) && time(this.file)) times[`setting:${key}`] = time(this.file);
+      }
+      for (const name of Object.keys(this.getGlobalPlaceholders() || {})) {
+        if (!Object.hasOwn(times, `placeholder:${name}`) && time(this.globalPlaceholdersFile)) times[`placeholder:${name}`] = time(this.globalPlaceholdersFile);
+      }
+      if (Object.keys(times).length) this.setSharedChangeTimes(times);
+    }
   }
 
   load() {
@@ -152,7 +178,14 @@ class Settings {
     return keyPath.split('.').reduce((o, k) => (o == null ? undefined : o[k]), this.data);
   }
 
+  getSharedChangeTimes() { return readJsonIfExists(this.sharedTimesFile, {}); }
+
+  setSharedChangeTimes(times) {
+    if (!isDeepStrictEqual(this.getSharedChangeTimes(), times)) writeJsonSync(this.sharedTimesFile, times);
+  }
+
   set(keyPath, value) {
+    const before = sharedValues(this.data);
     const keys = keyPath.split('.');
     let obj = this.data;
     for (const k of keys.slice(0, -1)) {
@@ -160,7 +193,14 @@ class Settings {
       obj = obj[k];
     }
     obj[keys[keys.length - 1]] = value;
-    return this.save();
+    const saved = this.save();
+    const after = sharedValues(this.data);
+    const times = this.getSharedChangeTimes();
+    for (const key of Object.keys(before)) {
+      if (!isDeepStrictEqual(before[key], after[key])) times[`setting:${key}`] = new Date().toISOString();
+    }
+    this.setSharedChangeTimes(times);
+    return saved;
   }
 
   getGlobalPlaceholders() {
@@ -168,7 +208,13 @@ class Settings {
   }
 
   setGlobalPlaceholders(values) {
+    const before = this.getGlobalPlaceholders() || {};
+    const times = this.getSharedChangeTimes();
+    for (const name of new Set([...Object.keys(before), ...Object.keys(values)])) {
+      if (!isDeepStrictEqual(before[name], values[name])) times[`placeholder:${name}`] = new Date().toISOString();
+    }
     writeJsonSync(this.globalPlaceholdersFile, values);
+    this.setSharedChangeTimes(times);
     return values;
   }
 }
@@ -184,4 +230,4 @@ function mergeDeep(base, extra) {
   return base;
 }
 
-module.exports = { Settings, DEFAULT_SETTINGS };
+module.exports = { Settings, DEFAULT_SETTINGS, SHARED_SETTING_PATHS };

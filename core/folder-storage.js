@@ -15,7 +15,7 @@ const { writeJsonSync, readJsonIfExists } = require('./util');
  *
  *   parts/<sha>        a shared part (core/cloud-parts.js), named by its hash,
  *                      so listing the folder is all a sync needs.
- *   objects/<id>.bin   the data of a version or deletion record.
+ *   objects/<id>.bin   the data of a version, settings or deletion record.
  *   objects/<id>.json  its name, time, size and properties. Written last, so
  *                      a file only counts once its data is complete. Small
  *                      data such as deletion records lives inside it.
@@ -80,8 +80,8 @@ class FolderStorage {
     return { id, name: details.name, createdTime: details.createdTime, size: String(size ?? details.size ?? 0), appProperties: { ...details.appProperties } };
   }
 
-  // Versions and deletion records together. listVersions and listDeletions
-  // run side by side, so they share one listing.
+  // Versions, deletion records and settings together. They're listed side by
+  // side, so they share one listing.
   objects() {
     this.listing ||= (async () => {
       const entries = await this.backend.list('objects');
@@ -128,6 +128,10 @@ class FolderStorage {
 
   async listDeletions() {
     return (await this.objects()).filter((file) => file.appProperties.stepforge === 'deletion-v1');
+  }
+
+  async listSettings() {
+    return (await this.objects()).filter((file) => file.appProperties.stepforge === 'settings-v1');
   }
 
   async listParts() {

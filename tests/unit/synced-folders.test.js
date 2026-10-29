@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { rendererI18n } = require('./helpers');
 
 const {
   dropboxFolders,
@@ -110,7 +111,7 @@ test('a library is in a synced folder when it is that folder or anywhere under i
 });
 
 function storageWarning(info) {
-  const context = { window: {}, setTimeout, el: () => ({}) };
+  const context = { ...(rendererI18n ? rendererI18n() : {}), window: {}, setTimeout, el: () => ({}) };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/dialogs.js'), 'utf8'), context);
   return context.window.StepForgeDialogs.storageWarning(info);
 }

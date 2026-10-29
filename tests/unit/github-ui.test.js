@@ -848,6 +848,34 @@ test('a two-step account enters a code after its password, and can sign in again
   again.dispose();
 });
 
+test('Publish to Wiki.js starts with the title as exported, placeholders filled in, unless it was already edited', async () => {
+  const u = ui();
+  const defaults = { path: 'guides/set-up-acmesync', title: 'Set up AcmeSync', locale: 'en', published: null };
+  const api = wikiApi({
+    status: async () => ({ connected: true, host: 'wiki.example.com', method: 'apikey' }),
+    defaults: async () => defaults,
+  });
+  u.context.showPublishToWikiJsDialog({ api, guideId: 'guide-1', guideTitle: 'Set up [[Product]]' });
+  await settle(); await settle();
+  const field = (modal, label) => u.all(modal).find((n) => n.tag === 'input' && n['aria-label'] === label);
+  const modal = u.root.children.at(-1);
+  assert.deepEqual([field(modal, 'Page path').value, field(modal, 'Page title').value], ['guides/set-up-acmesync', 'Set up AcmeSync']);
+
+  // A title typed before the defaults arrive is kept.
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  api.wikijs.defaults = async () => { await gate; return defaults; };
+  const check = api.redact.check;
+  api.redact.check = async (args) => { await gate; return check(args); };
+  u.context.showPublishToWikiJsDialog({ api, guideId: 'guide-1', guideTitle: 'Set up [[Product]]' });
+  await settle();
+  const second = u.root.children.at(-1);
+  field(second, 'Page title').value = 'AcmeSync setup';
+  release(); await settle(); await settle();
+  assert.equal(field(second, 'Page title').value, 'AcmeSync setup');
+  assert.equal(field(second, 'Page path').value, 'guides/set-up-acmesync');
+});
+
 test('Publish to Wiki.js asks for a code when Wiki.js ended the session, then publishes', async () => {
   const u = ui();
   let answers = [{ needsCode: true }];
@@ -859,6 +887,7 @@ test('Publish to Wiki.js asks for a code when Wiki.js ended the session, then pu
       if (args.code !== '123456') throw new Error('Wiki.js didn’t accept that code.');
       return { connected: true, needsCode: false };
     },
+    defaults: async () => ({ path: 'guides/vpn', title: 'VPN', locale: 'en', published: null }),
   });
   u.context.showPublishToWikiJsDialog({ api, guideId: 'guide-1', guideTitle: 'VPN' });
   await settle(); await settle();

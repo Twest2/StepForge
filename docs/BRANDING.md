@@ -28,7 +28,8 @@ extra CSS for web pages. Set it up once and every guide uses it.
      mode** to let web pages switch to dark colors when the reader's computer
      is in dark mode.
    - **Header text**, **Logo in page header**, **Footer text** and **Page
-     numbers**.
+     numbers**. Header and footer text can use placeholders, such as
+     `© [[Year]] Acme Corp`.
    - **Watermark screenshots with the logo**, with its corner and opacity.
    - **Annotation colors**: off by default, so annotations keep StepForge's
      colors (red shapes, blue number badges, dark tooltips). Turn on **Use

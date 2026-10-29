@@ -57,6 +57,7 @@ function qualityFindings(ast, numbers = null) {
 
     const names = unresolved([step.title, step.descriptionText,
       ...(step.textBlocks || []).flatMap((tb) => [tb.title, tb.descriptionText]),
+      ...(step.tableBlocks || []).flatMap((tb) => tb.rows.flat()),
       ...(step.annotations || []).map((a) => a.text)]);
     if (names.length) findings.push({ kind: 'placeholder', ...at, names });
   }

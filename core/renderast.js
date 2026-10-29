@@ -53,6 +53,9 @@ function buildRenderAst(store, guideId, { globals = {}, now = new Date(), maxSte
   // link syntax (as inserted by the editor's Link button) into real <a>
   // tags before sanitizing, so exporters render an actual link.
   const expandDesc = (html) => linkifyMarkdownLinks(expandRichPlaceholders(html || '', values));
+  // Table cells are plain text. Code blocks are left as written: [[ ]] is
+  // real syntax in shells and other languages.
+  const expandRows = (rows) => (Array.isArray(rows) ? rows.map((row) => row.map((cell) => expand(cell))) : []);
 
   const steps = [];
   const topCounter = { n: 0 };
@@ -100,10 +103,7 @@ function buildRenderAst(store, guideId, { globals = {}, now = new Date(), maxSte
         descriptionText: htmlToText(expandDesc(tb.descriptionHtml)),
       })),
       codeBlocks: (step.codeBlocks || []).map((cb) => ({ ...cb, code: blockText(cb) })),
-      tableBlocks: (step.tableBlocks || []).map((tb) => ({
-        ...tb,
-        rows: Array.isArray(tb.rows) ? tb.rows.map((row) => [...row]) : [],
-      })),
+      tableBlocks: (step.tableBlocks || []).map((tb) => ({ ...tb, rows: expandRows(tb.rows) })),
       blocks: orderedBlocks(step).map((block) => {
         if (block.kind === 'text') {
           return {
@@ -114,7 +114,7 @@ function buildRenderAst(store, guideId, { globals = {}, now = new Date(), maxSte
           };
         }
         if (block.kind === 'code') return { ...block };
-        if (block.kind === 'table') return { ...block };
+        if (block.kind === 'table') return { ...block, rows: expandRows(block.rows) };
         return { ...block };
       }),
       links: step.links || [],
@@ -131,6 +131,13 @@ function buildRenderAst(store, guideId, { globals = {}, now = new Date(), maxSte
 
   const limited = maxSteps > 0 ? steps.slice(0, maxSteps) : steps;
 
+  // Header and footer text can use placeholders too, such as "© [[Year]]".
+  const brand = loadBranding(branding);
+  if (brand) {
+    brand.header = { ...brand.header, text: expand(brand.header.text) };
+    brand.footer = { ...brand.footer, text: expand(brand.footer.text) };
+  }
+
   return {
     format: 'stepforge-render-ast',
     version: 1,
@@ -138,7 +145,7 @@ function buildRenderAst(store, guideId, { globals = {}, now = new Date(), maxSte
     placeholders: values,
     codeStyle,
     // The brand profile to apply (BrandingStore.resolve), or null for none.
-    branding: loadBranding(branding),
+    branding: brand,
     guide: {
       id: guide.guideId,
       title: expand(guide.title),

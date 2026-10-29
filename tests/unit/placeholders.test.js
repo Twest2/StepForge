@@ -39,11 +39,12 @@ test('placeholders used across a guide are collected from every surface', () => 
     createStep({
       textBlocks: [{ title: 'Warning [[Severity]]', descriptionHtml: '<p>[[Company]]</p>' }],
       annotations: [{ type: 'text', x: 0, y: 0, w: 0.1, h: 0.1, text: 'See [[Doc_Ref]]' }],
+      tableBlocks: [{ id: 't1', rows: [['Host'], ['[[Server]]']] }],
     }),
   ];
   assert.deepEqual(
     collectGuidePlaceholders(guide, steps),
-    ['Author', 'Company', 'Doc_Ref', 'Product', 'Severity']
+    ['Author', 'Company', 'Doc_Ref', 'Product', 'Server', 'Severity']
   );
   assert.deepEqual(listPlaceholders('no tokens here'), []);
 });

@@ -580,3 +580,43 @@ test('screenshot alt text: one string in the render AST, escaped by the Markdown
   assert.ok(doc.includes('descr="Screenshot for step 1: Save &amp; exit &lt;now&gt; &quot;quoted&quot; it&apos;s done"'));
   assert.ok(doc.includes('descr="Screenshot for step 2"'));
 });
+
+test('placeholders are filled in every text export, table cells included, and code is left as written', (t) => {
+  const root = makeTmpDir('expplaceholders');
+  t.after(() => rmrf(root));
+  const { store, guide, s2 } = buildFixtureGuide(path.join(root, 'data'));
+  store.saveGuide({ ...store.getGuide(guide.guideId), descriptionHtml: '<p>Check the integration. [[Site]]</p>' });
+  const step = store.getStep(guide.guideId, s2.stepId);
+  store.saveStep(guide.guideId, { ...step,
+    codeBlocks: [{ id: 'cb1', language: 'text', code: 'wiki-sync --page "[[Page]]"' }],
+    tableBlocks: [{ id: 'tb1', rows: [['Server', 'App'], ['[[Site]]', '[[Product]]']] }] });
+
+  const ast = buildRenderAst(store, guide.guideId, { globals: { Site: 'wiki.example.com', Page: 'Home' } });
+  assert.deepEqual(ast.steps[2].tableBlocks[0].rows[1], ['wiki.example.com', 'AcmeSync']);
+  assert.deepEqual(ast.steps[2].blocks.find((b) => b.kind === 'table').rows[1], ['wiki.example.com', 'AcmeSync']);
+
+  const { runExport } = require('../../exporters');
+  const walk = (p) => (fs.statSync(p).isDirectory() ? fs.readdirSync(p).flatMap((n) => walk(path.join(p, n))) : [p]);
+  const read = (file) => (/\.docx$/.test(file)
+    ? unzipSync(fs.readFileSync(file)).map((e) => e.data.toString('utf8')).join('\n')
+    : fs.readFileSync(file, 'utf8'));
+  for (const format of ['json', 'markdown', 'wikijs', 'html-simple', 'html-rich', 'confluence', 'docx']) {
+    const out = path.join(root, format);
+    runExport(format, ast, out, format === 'confluence' ? { apiFiles: true } : {});
+    const text = walk(out).filter((f) => !/\.png$/.test(f)).map(read).join('\n');
+    assert.ok(!/\[\[(Site|Product)\]\]/.test(text), `${format} has no unfilled placeholders`);
+    assert.ok(text.includes('wiki.example.com'), `${format} has the global value`);
+    // HTML colors each bracket of a pair, so compare the text without tags.
+    assert.ok(text.replace(/<[^>]+>/g, '').includes('[[Page]]'), `${format} keeps the code block as written`);
+  }
+});
+
+test('Wiki.js export: the page description has its placeholders filled in, for publishing', (t) => {
+  const root = makeTmpDir('expwikijsdesc');
+  t.after(() => rmrf(root));
+  const { store, guide } = buildFixtureGuide(path.join(root, 'data'));
+  store.saveGuide({ ...store.getGuide(guide.guideId), descriptionHtml: '<p>Open a document to check\nthe integration. [[stepforge]]</p>' });
+  const ast = buildRenderAst(store, guide.guideId, { globals: { stepforge: 'StepForge Cloud' } });
+  const { description } = exportWikiJs(ast, path.join(root, 'out'));
+  assert.equal(description, 'Open a document to check the integration. StepForge Cloud');
+});

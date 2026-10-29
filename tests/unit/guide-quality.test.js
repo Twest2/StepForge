@@ -42,14 +42,15 @@ test('placeholders with no value are flagged where they would print, and globals
   store.saveGuide({ ...store.getGuide(guide.guideId), title: 'Set up [[Product]] for [[Team]]' });
   const step = store.getStep(guide.guideId, s2.stepId);
   store.saveStep(guide.guideId, { ...step, descriptionHtml: '<p>Ask [[Admin]] then [[Team]].</p>',
+    tableBlocks: [{ id: 'tb1', rows: [['Server'], ['[[Host]]']] }],
     annotations: [...step.annotations, { type: 'text', text: 'See [[Wiki_URL]]', x: 0.1, y: 0.1, w: 0.2, h: 0.1 }] });
 
   assert.deepEqual(check(store, guide.guideId), [
     { kind: 'placeholder', stepId: null, stepNumber: null, names: ['Team'] },
-    { kind: 'placeholder', stepId: s2.stepId, stepNumber: '2', names: ['Admin', 'Team', 'Wiki_URL'] },
+    { kind: 'placeholder', stepId: s2.stepId, stepNumber: '2', names: ['Admin', 'Team', 'Host', 'Wiki_URL'] },
   ]);
   // A value in Settings → Placeholders resolves it everywhere.
-  const withGlobals = check(store, guide.guideId, { Team: 'IT', Admin: 'Sam' });
+  const withGlobals = check(store, guide.guideId, { Team: 'IT', Admin: 'Sam', Host: 'srv1' });
   assert.deepEqual(withGlobals.map((f) => f.names), [['Wiki_URL']]);
   assert.equal(check(store, guide.guideId).some((f) => f.stepId === s1.stepId), false, 'defined guide placeholders are fine');
 }));

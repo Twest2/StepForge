@@ -5,8 +5,9 @@ const { htmlToText, escapeHtml } = require('./util');
 
 /**
  * Placeholders are [[Name]] tokens usable in titles, descriptions, text
- * blocks, and export cover pages. Resolution precedence (highest wins):
- * guide placeholders > global placeholders > system placeholders.
+ * blocks, table cells, and brand header and footer text. Resolution
+ * precedence (highest wins): guide placeholders > global placeholders >
+ * system placeholders.
  * Unknown tokens are left untouched so typos are visible in output.
  */
 
@@ -77,6 +78,9 @@ function collectGuidePlaceholders(guide, steps) {
     for (const tb of step.textBlocks || []) {
       add(tb.title);
       add(tb.descriptionHtml);
+    }
+    for (const table of step.tableBlocks || []) {
+      for (const row of table.rows || []) row.forEach(add);
     }
     for (const ann of step.annotations || []) add(ann.text);
   }

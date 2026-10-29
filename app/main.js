@@ -19,7 +19,6 @@ const { RedactionService, bitmapToPpm } = require('./redaction');
 const { forgetScreenshotChecks } = require('../core/redaction');
 const { Confluence, pageFromExport } = require('./confluence');
 const { createConfluenceSession } = require('./confluence-session');
-const { htmlToText } = require('../core/util');
 const { WikiJs, pageFromExport: wikiPageFromExport, normalizePagePath, normalizeLocale,
   validConnectArgs: validWikiConnectArgs, validCodeArgs: validWikiCodeArgs, validPublishArgs: validWikiPublishArgs } = require('./wikijs');
 const { GitHubPages } = require('./github-pages');
@@ -1220,7 +1219,9 @@ function setupIpc() {
   h('wikijs:disconnect', () => wikijs.disconnect());
   h('wikijs:defaults', ({ guideId }) => {
     if (!store.guideExists(guideId)) throw new Error('Guide not found.');
-    return wikijs.defaultsFor(guideId, store.getGuide(guideId).title);
+    // The title as exported, with placeholders filled in, names the page.
+    const { guide } = buildRenderAst(store, guideId, { globals: settings.getGlobalPlaceholders() });
+    return wikijs.defaultsFor(guideId, guide.title);
   }, { validate: (a) => c.id(a.guideId) });
   h('wikijs:publish', async ({ guideId, path: pagePath, title, locale = 'en', replace = false }) => {
     if (!store.guideExists(guideId)) throw new Error('Guide not found.');
@@ -1242,8 +1243,7 @@ function setupIpc() {
       const result = await runExportInWorker({ dataDir: store.root, guideId, format: 'wikijs',
         options: { includeImages: true, toc: false, frontMatter: false, assetFolder }, outDir, globals: settings.getGlobalPlaceholders(), reviewDays: exportReviewDays(),
         branding: exportBranding() });
-      const description = htmlToText(store.getGuide(guideId).descriptionHtml || '').replace(/\s+/g, ' ').trim();
-      return await wikijs.publish({ guideId, path: target, title, locale: language, description, replace, onProgress: progress,
+      return await wikijs.publish({ guideId, path: target, title, locale: language, description: result.description, replace, onProgress: progress,
         page: wikiPageFromExport(result.file, assetFolder) });
     } finally {
       fs.rmSync(outDir, { recursive: true, force: true });

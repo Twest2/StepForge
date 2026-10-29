@@ -90,7 +90,8 @@ Wiki.js…** from a guide's menu in the library. Then check:
   guide's title. Use letters, numbers, dashes and underscores, with `/`
   between folders. Wiki.js keeps a few first words for itself, such as `login`
   or a language code like `en`.
-- **Title**: the page title. It starts as the guide's title.
+- **Title**: the page title. It starts as the guide's title, with its
+  [placeholders](GETTING_STARTED.md) filled in.
 - **Language**: the page's language code, `en` unless your wiki uses others.
 
 Choose **Publish**. When it's done, StepForge shows the page's link.

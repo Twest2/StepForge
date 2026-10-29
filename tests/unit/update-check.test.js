@@ -74,6 +74,22 @@ test('Windows: Update now is offered only for an install registered with Chocola
   assert.equal(current.updateNow, undefined, 'nothing to update');
 });
 
+test('a Microsoft Store install is sent to the Store, never to Update now or the installer', async () => {
+  const store = await checkForUpdates({ currentVersion: '0.7.0', platform: 'win32', chocolatey: true, store: true, fetchImpl: githubReturns(release('v1.0')).fetchImpl });
+  assert.equal(store.status, 'update-available');
+  assert.equal(store.store, true);
+  assert.equal(store.updateNow, false, 'the Store updates it, even beside a Chocolatey-registered copy');
+  assert.match(store.hint, /^The Microsoft Store installs updates automatically/);
+  assert.doesNotMatch(store.hint, /installer|Chocolatey/);
+
+  const installer = await checkForUpdates({ currentVersion: '0.7.0', platform: 'win32', fetchImpl: githubReturns(release('v1.0')).fetchImpl });
+  assert.equal(installer.store, false);
+
+  const linux = await checkForUpdates({ currentVersion: '0.7.0', platform: 'linux', store: true, fetchImpl: githubReturns(release('v1.0')).fetchImpl });
+  assert.equal(linux.store, false, 'only Windows has a Microsoft Store install');
+  assert.match(linux.hint, /Download the new version/);
+});
+
 test('the Windows hint without Chocolatey says how to get one-click updates', () => {
   const hint = installHint('win32');
   assert.equal(hint, 'Download the new installer from the release page. Run the installer again and keep "Keep StepForge updated with Chocolatey" checked to get one-click updates.');

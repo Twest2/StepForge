@@ -51,6 +51,7 @@ const { keepProcessesResponsive } = require('./win-power');
 const { zoomShortcutFromInputEvent } = require('./shortcut-utils');
 const security = require('./security');
 const { linuxPasswordStore } = require('./platform/linux/password-store');
+const windowsStore = require('./windows-store');
 const PACKAGE_JSON = require(path.join(__dirname, '..', 'package.json'));
 // Linux packages launch the bundled Electron against /opt/stepforge, so
 // app.isPackaged is false there too. Only a source checkout is a dev build.
@@ -710,6 +711,8 @@ function agentSetupCommand() {
   // Linux packages start through a launcher script that sets up the sandbox.
   const launcher = path.resolve(app.getAppPath(), '..', '..', 'usr', 'bin', 'stepforge');
   if (process.platform === 'linux' && fs.existsSync(launcher)) return { command: launcher, args: mcpArgs };
+  // A Store install's exe moves with every update; its execution alias doesn't.
+  if (windowsStore.isStoreInstall()) return { command: windowsStore.executionAliasPath(), args: mcpArgs };
   if (app.isPackaged) return { command: process.execPath, args: mcpArgs };
   return { command: process.execPath, args: [app.getAppPath(), ...mcpArgs] }; // development checkout
 }
@@ -1804,14 +1807,23 @@ function setupIpc() {
   // The result is kept so Update now installs the version this check found.
   let lastUpdateCheck = null;
   h('app:checkForUpdates', async () => {
+    const store = windowsStore.isStoreInstall();
     lastUpdateCheck = await require('./update-check').checkForUpdates({
       currentVersion: PACKAGE_JSON.buildVersion || app.getVersion(),
       platform: process.platform,
       hasCommand: (name) => ['/usr/bin', '/bin', '/usr/local/bin'].some((dir) => fs.existsSync(path.join(dir, name))),
-      chocolatey: require('./windows-update').updateNowAvailable({ platform: process.platform, packaged: app.isPackaged }),
+      chocolatey: require('./windows-update').updateNowAvailable({ platform: process.platform, packaged: app.isPackaged, store }),
+      store,
     });
     return lastUpdateCheck;
   });
+  // Settings → About "Open Microsoft Store" (Store installs): StepForge's Store
+  // page, where Update installs the new version. The URL is built here.
+  h('app:openStore', async () => {
+    if (!windowsStore.isStoreInstall()) return { ok: false, reason: 'not a Microsoft Store install' };
+    await shell.openExternal(windowsStore.storeUpdateUrl(PACKAGE_JSON.microsoftStore?.productId));
+    return { ok: true };
+  }, { validate: (a) => Object.keys(a).length === 0 });
   // Settings → About "Update now" (Windows, registered with Chocolatey). Takes
   // no arguments: app/windows-update.js re-checks everything and builds the
   // elevated command from this process's own PID and paths. Once the elevated
@@ -1821,6 +1833,7 @@ function setupIpc() {
     const result = await require('./windows-update').updateNow({
       platform: process.platform,
       packaged: app.isPackaged,
+      store: windowsStore.isStoreInstall(),
       lastCheck: lastUpdateCheck,
     });
     if (result.ok) setTimeout(() => app.quit(), 250);
@@ -1877,6 +1890,9 @@ if (!gotLock) {
 
   app.whenReady().then(() => {
     libraryLocation = libraryLocationFor(app.getPath('userData'));
+    // A Windows library still in %APPDATA%\stepforge moves to the new default
+    // now, copied and checked before it's used (app/data-dir.js).
+    libraryLocation.scheduleMigration();
     const dataDir = libraryLocation.applyPending();
     store = new GuideStore(dataDir);
     settings = new Settings(store.settingsDir);

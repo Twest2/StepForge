@@ -262,10 +262,11 @@ with the hotkey or on a timer instead.
 
 | System | Location |
 | --- | --- |
-| Windows | `%APPDATA%\stepforge` |
+| Windows | `%USERPROFILE%\StepForge` (`C:\Users\<you>\StepForge`) |
 | Linux | `~/.local/share/stepforge` |
 
-The exact folder is shown in **Settings → About**.
+The exact folder is shown in **Settings → About**. Older Windows versions used
+`%APPDATA%\stepforge`; a new version moves your guides from there by itself.
 
 Still stuck? [Open an issue](https://github.com/Twest2/StepForge/issues/new/choose)
 and include your operating system, StepForge version (from **Settings → About**),

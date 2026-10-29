@@ -97,6 +97,19 @@ jobs:
           path: releases/*.exe
           if-no-files-found: error
 
+      # Built from the same stamped checkout, unsigned: Partner Center signs it.
+      # It is uploaded to Partner Center by hand, not attached to the release
+      # (docs/windows/MICROSOFT_STORE_RELEASE.md). Skipped until
+      # packaging/windows/store/identity.json is filled in.
+      - name: Package Microsoft Store .appx
+        run: node scripts/package-windows-store.js --if-configured
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: microsoft-store-package
+          path: releases/*.appx
+          if-no-files-found: ignore
+
 
   build-linux:
     needs: authorize-release

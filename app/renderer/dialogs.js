@@ -502,7 +502,8 @@ function showFindReplace({ stepNumbers = {}, find, replace } = {}) {
  * Settings → About "Check for updates", and on Windows installs registered
  * with Chocolatey, "Update now". The check only contacts GitHub when pressed
  * (app/update-check.js); Update now is decided and run by the main process
- * (app/windows-update.js). `flushEdits` saves the open guide before StepForge
+ * (app/windows-update.js). A Microsoft Store install is offered its Store page
+ * instead of a download. `flushEdits` saves the open guide before StepForge
  * closes for the update and resolves false if that failed.
  */
 function makeUpdateCheck(api, { openLink, flushEdits = null }) {
@@ -541,6 +542,27 @@ function makeUpdateCheck(api, { openLink, flushEdits = null }) {
     return { button, note };
   };
 
+  // The Store installs the update; this only opens StepForge's Store page.
+  const storeButton = () => {
+    const button = el('button.primary', { type: 'button' }, 'Open Microsoft Store');
+    const note = el('div.setting-desc.update-now-note', {});
+    button.addEventListener('click', async () => {
+      note.textContent = '';
+      note.classList.remove('error');
+      let outcome;
+      try {
+        outcome = await api.app.openStore();
+      } catch {
+        outcome = null;
+      }
+      if (!outcome || !outcome.ok) {
+        note.textContent = 'Couldn’t open the Microsoft Store. Open it from the Start menu, then choose Library → Get updates.';
+        note.classList.add('error');
+      }
+    });
+    return { button, note };
+  };
+
   checkUpdatesBtn.addEventListener('click', async () => {
     setButtonLoading(checkUpdatesBtn, true, 'Checking…');
     clearNode(updateStatus);
@@ -555,6 +577,15 @@ function makeUpdateCheck(api, { openLink, flushEdits = null }) {
     }
     if (result.status === 'update-available') {
       updateStatus.classList.add('available');
+      if (result.store) {
+        const store = storeButton();
+        updateStatus.append(
+          el('div.update-status-title', {}, `Version ${result.latestVersion} is available`),
+          el('div.setting-desc', {}, `You have ${result.currentVersion}. ${result.hint || ''}`),
+          el('div.settings-actions', {}, store.button),
+          store.note);
+        return;
+      }
       // With Update now, downloading stays available as the secondary action.
       const updateNow = result.updateNow ? updateNowButton(result) : null;
       const download = el(updateNow ? 'button' : 'button.primary', { type: 'button', onClick: openLink(result.releaseUrl) }, 'View release and download');

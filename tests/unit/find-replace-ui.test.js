@@ -6,6 +6,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { findMatches, applyReplacements } = require('../../core/find-replace');
 const { createStep } = require('../../core/schema');
+const { rendererI18n } = require('./helpers');
 
 const json = (v) => JSON.parse(JSON.stringify(v));
 
@@ -32,7 +33,7 @@ function setupEditor(steps) {
   };
   const shown = [];
   const dialogs = { showFindReplace: async (options) => { shown.push(options); } };
-  const context = {
+  const context = { ...rendererI18n(),
     window: { stepforge: api, StepForgeDialogs: dialogs, StepForgeOutline: require('../../core/step-outline') }, document: { activeElement: null },
     confirmDialog: async () => true, clearNode() {}, el() {},
   };
@@ -115,7 +116,7 @@ test('refused matches are skipped and reported, and a batch that changes nothing
 /** The dialog, with a fake DOM just big enough to drive it. */
 function setupDialog({ find, replace }) {
   const nodes = [];
-  const context = {
+  const context = { ...rendererI18n(),
     window: {}, setTimeout: () => {}, debounce: (fn) => fn,
     clearNode: (node) => { node.children = []; },
     openModal: (options) => { context.modal = options; return { close() { context.closed = true; } }; },

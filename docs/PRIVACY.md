@@ -63,6 +63,13 @@ Chocolatey) runs `choco upgrade stepforge -y`, so Chocolatey downloads the new
 version from the StepForge package feed and its configured sources, as it
 does when you run the command yourself.
 
+If you installed StepForge from the Microsoft Store, the Store downloads and
+installs updates, under the
+[Microsoft Privacy Statement](https://privacy.microsoft.com/privacystatement),
+as it does for every Store app. StepForge sends nothing to Microsoft itself:
+**Open Microsoft Store** in Settings → About only opens StepForge's page in the
+Store app.
+
 The Ubuntu `.deb` and Fedora `.rpm` add the StepForge APT or DNF repository
 (`packages.twestbrook.com`) to your system's software sources, as installing
 from the repository does. That traffic comes from your package manager, not
@@ -107,9 +114,15 @@ agents edit your guides** and connect an agent such as Claude Code or Codex
 - Screenshots are shared with your blurs filled in. Agents never get the text
   you typed while recording, field values, or the text StepForge read from the
   screen.
-- Agents can rewrite text, make substeps, add placeholders, and draw
-  annotations. They can't reorder steps, change screenshots, or delete
-  anything.
+- Agents can rewrite text, add placeholders, draw annotations, create guides
+  and steps, reorder steps, replace or remove screenshots, delete steps,
+  blocks and annotations, and move guides to the Trash. StepForge snapshots a
+  guide before each change that deletes, moves or replaces something, and keeps
+  those snapshots in the guide's folder. Agents can't change or delete
+  placeholders, or delete blurs.
+- To use a PNG file as a screenshot, an agent names it by its full path, and
+  StepForge copies it into the guide. StepForge reads no other file outside
+  your library for an agent, apart from brand files (below).
 - With **Let AI agents edit brand profiles** on (it's off by default), agents
   can also read and change brand profiles, see the logo, and add an image or
   font file they name on your computer to a profile. They can't delete a
@@ -275,13 +288,32 @@ computer.
 
 | System | Location |
 | --- | --- |
-| Windows | `%APPDATA%\stepforge` |
+| Windows | `%USERPROFILE%\StepForge` (`C:\Users\<you>\StepForge`) |
 | Linux | `~/.local/share/stepforge` (or `$XDG_DATA_HOME/stepforge`) |
 
 You can move your library under **Settings → General → Guide storage**, or
 override the location with the `STEPFORGE_DATA_DIR` environment variable.
 Uninstalling StepForge leaves this folder in place. Delete it to remove all of
-your guides and settings.
+your guides and settings. A Microsoft Store install also keeps a few
+computer-specific settings, such as cloud sign-ins, in its app data, which
+Windows deletes when you uninstall it.
+
+Older Windows versions kept the library in `%APPDATA%\stepforge`. A new
+version copies it to `%USERPROFILE%\StepForge` on its first start, checks the
+copy, and keeps the old folder as a backup until you remove it yourself.
+StepForge never deletes it automatically: another installation may still use
+that folder.
+
+**Keep the library out of folders that OneDrive, Dropbox, Google Drive or
+Nextcloud sync,** such as a Documents folder that OneDrive backs up. Those apps
+upload everything in their folders, screenshots included, whether or not you
+turned on StepForge's sync. Guide storage warns you when the library, or a
+folder you're moving it to, is in one. To find those folders, StepForge reads
+the sync apps' own settings on your computer: OneDrive's environment variables,
+Dropbox's `info.json`, Nextcloud's `nextcloud.cfg`, and the Linux OneDrive
+client's `config`. Google Drive is recognized by its **My Drive** folder name.
+Nothing is sent anywhere. To keep guides in step across computers, use
+StepForge's own sync instead.
 
 ## Questions
 

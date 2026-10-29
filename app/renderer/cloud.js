@@ -73,7 +73,7 @@ function makeCloudSettings(api, { provider = 'google' } = {}) {
   const formatWhen = (iso) => {
     const date = iso ? new Date(iso) : null;
     return date && !Number.isNaN(date.getTime())
-      ? date.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
+      ? date.toLocaleString(dateLocale, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
       : 'Date unavailable';
   };
   const timeAgo = (iso) => {

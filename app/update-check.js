@@ -41,11 +41,15 @@ function formatVersion(value) {
 /**
  * How to install the update, based on how StepForge is usually installed on
  * this platform. Package-manager installs update through the package manager;
- * everyone else downloads the new release. On Windows, an install registered
- * with Chocolatey gets the Update now button (app/windows-update.js).
+ * everyone else downloads the new release. On Windows, a Microsoft Store
+ * install is updated by the Store, and an install registered with Chocolatey
+ * gets the Update now button (app/windows-update.js).
  */
-function installHint(platform, hasCommand = () => false, { chocolatey = false } = {}) {
+function installHint(platform, hasCommand = () => false, { chocolatey = false, store = false } = {}) {
   if (platform === 'win32') {
+    if (store) {
+      return 'The Microsoft Store installs updates automatically, usually within a day or two of a release. To get it sooner, open StepForge in the Store and choose Update.';
+    }
     if (chocolatey) {
       return 'Update now installs it with Chocolatey. StepForge closes while it updates and opens again when it’s done.';
     }
@@ -71,13 +75,16 @@ async function readLimitedText(response, maxBytes) {
  * Ask GitHub for the latest published release and compare it with the
  * running version. Never throws: failures come back as { status: 'error' }.
  * `chocolatey` is true for a Windows install that Update now can update; the
- * result's `updateNow` says whether to offer the button.
+ * result's `updateNow` says whether to offer the button. `store` is true for a
+ * Microsoft Store install, which the Store updates; the result's `store` says
+ * to send the user there instead of to the download.
  */
 async function checkForUpdates({
   currentVersion,
   platform = process.platform,
   hasCommand = () => false,
   chocolatey = false,
+  store = false,
   fetchImpl = globalThis.fetch,
   timeoutMs = DEFAULT_TIMEOUT_MS,
 } = {}) {
@@ -133,8 +140,15 @@ async function checkForUpdates({
     publishedAt: typeof release.published_at === 'string' ? release.published_at : null,
   };
   if (compareVersions(latest, current) > 0) {
-    const updateNow = platform === 'win32' && chocolatey === true;
-    return { ...result, status: 'update-available', updateNow, hint: installHint(platform, hasCommand, { chocolatey: updateNow }) };
+    const microsoftStore = platform === 'win32' && store === true;
+    const updateNow = platform === 'win32' && chocolatey === true && !microsoftStore;
+    return {
+      ...result,
+      status: 'update-available',
+      updateNow,
+      store: microsoftStore,
+      hint: installHint(platform, hasCommand, { chocolatey: updateNow, store: microsoftStore }),
+    };
   }
   return { ...result, status: 'up-to-date' };
 }

@@ -13,7 +13,8 @@ app/              Electron shell: main process, preload bridge, renderer UI,
                   capture, Google Drive client, AI (Ollama) client
 core/             Dependency-free domain logic (schema, store, archive, search,
                   placeholders, render AST, png/gif/pdf/zip primitives, locks,
-                  snapshots, settings, cloud sync engine)
+                  snapshots, settings, cloud sync engine, interface
+                  languages: i18n.js and the translations in locales/)
 exporters/        One module per output format, all consuming the Render AST
 gnome-extension/  GNOME Shell extension used for click capture on Wayland
 packaging/        Windows (NSIS, Chocolatey) and Linux (deb, rpm, Launchpad)
@@ -36,8 +37,9 @@ Internal working storage is **folder-based**; sharing/backups use a
 **single-file zip archive** (`.sfgz`).
 
 ```text
-<data root>/                      (~/.local/share/stepforge, %APPDATA%/stepforge,
-  settings/                        or $STEPFORGE_DATA_DIR)
+<data root>/                      (~/.local/share/stepforge, %USERPROFILE%/StepForge,
+  settings/                        or $STEPFORGE_DATA_DIR; older Windows versions
+                                   used %APPDATA%/stepforge, see library-location.js)
     app-settings.json
     placeholders.json             global placeholders
     templates/<format>/<name>.template.json
@@ -49,8 +51,10 @@ Internal working storage is **folder-based**; sharing/backups use a
         step.json
         original.png              never mutated after capture
         working.png               only once cropped; annotations stay vector JSON
-      history/snapshots/*.snapshot  automated + manual backups: gzipped
-                                  manifests listing each file by SHA-256
+      history/snapshots/*.snapshot  automated, manual and agent backups:
+                                  gzipped manifests listing each file by
+                                  SHA-256. Agent ones (*-before_agent_*) are
+                                  pruned apart from the rest, to the newest 50
       history/snapshot-files/<sha>  screenshots, stored once and shared by
                                   every snapshot that contains them
     index/search-index.json       inverted full-text index
@@ -128,7 +132,9 @@ Export dialog choice. In the profile editor, **Pick from logo** runs
 `core/brand-palette.js` on a small canvas drawing of the logo, and **Write
 with AI** asks Ollama for CSS (`core/ai-brand-css.js`, which also strips
 `@import` and remote `url()`s); it's shown only when `ai:status` reports AI on
-and the model installed. AI agents reach profiles through
+and the model installed. AI agents edit guides through `core/agent-tools.js`;
+each tool that deletes, moves or replaces something first calls
+`createAgentSnapshot` (`core/snapshots.js`). AI agents reach profiles through
 `core/agent-brand-tools.js`, behind `ai.agents.branding`. The `--mcp` process
 records each change in `agent-changes.json`; the running app saves an agent's
 choice of active profile itself (it holds Settings in memory) and has the
@@ -220,7 +226,10 @@ opt-in and off by default:
   PowerShell window, after a UAC prompt, that waits for StepForge to quit and
   runs `choco upgrade stepforge -y`. The script is built in the main process
   from StepForge's own PID and paths, never from renderer input, and passed
-  with `-EncodedCommand` rather than as a file.
+  with `-EncodedCommand` rather than as a file. A Microsoft Store install
+  (`app/windows-store.js`) never offers Update now: the Store updates it, and
+  **Open Microsoft Store** opens an `ms-windows-store:` URL built in the main
+  process.
 
 - **AI** (`app/text-intel.js`, `core/text-intel.js`) talks to a user-configured
   Ollama endpoint. Non-loopback hosts are refused unless

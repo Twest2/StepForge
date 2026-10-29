@@ -11,6 +11,7 @@ const {
 const { GuideStore } = require('../core/store');
 const { libraryLocationFor } = require('./data-dir');
 const { Settings } = require('../core/settings');
+const { saveGuideFromEditor, saveStepFromEditor } = require('../core/editor-save');
 const { GoogleDrive } = require('./google-drive');
 const { OneDrive } = require('./onedrive');
 const { Dropbox } = require('./dropbox');
@@ -52,6 +53,10 @@ const { keepProcessesResponsive } = require('./win-power');
 const { zoomShortcutFromInputEvent } = require('./shortcut-utils');
 const security = require('./security');
 const { linuxPasswordStore } = require('./platform/linux/password-store');
+const { syncedFolders, syncServiceFor } = require('./synced-folders');
+const windowsStore = require('./windows-store');
+const i18n = require('../core/i18n');
+const LOCALES = require('../core/locales');
 const PACKAGE_JSON = require(path.join(__dirname, '..', 'package.json'));
 // Linux packages launch the bundled Electron against /opt/stepforge, so
 // app.isPackaged is false there too. Only a source checkout is a dev build.
@@ -192,6 +197,21 @@ function applyTheme() {
   nativeTheme.themeSource = settings.get('appearance') || 'system';
 }
 
+/** The interface language from Settings → General → Language ('system' follows the OS). */
+function uiLanguage() {
+  return i18n.resolveLanguage(settings.get('language'), app.getPreferredSystemLanguages());
+}
+
+// Translates the main process's own text: file dialog titles.
+let mainText = i18n.createTranslator('en');
+const t = (text, params) => mainText.t(text, params);
+
+/** Loads index.html in the interface language; the renderer reads it from ?lang=. */
+function loadMainPage() {
+  mainText = i18n.createTranslator(uiLanguage(), LOCALES);
+  return mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'), { query: { lang: mainText.language } });
+}
+
 /** Code block colors for an export, from Settings → Exports. */
 function exportCodeStyle() {
   return resolveCodeStyle(settings.get('exports.codeTheme'));
@@ -294,7 +314,7 @@ function createWindow() {
     event.preventDefault();
     handleZoomShortcut(kind);
   });
-  mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  loadMainPage();
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
     // Dev-only verification hook: optionally navigate, then write a
@@ -692,7 +712,13 @@ function watchAgentChanges() {
     }
     seenAt = changed.latest;
     for (const guideId of changed.guideIds) {
-      if (!store.guideExists(guideId)) continue;
+      if (!store.guideExists(guideId)) {
+        // The agent moved it to the Trash. Like any local Trash, that stays
+        // on this computer: cloud sync neither deletes nor restores it.
+        searchIndex.removeGuide(guideId);
+        sendToRenderer('guide:changed-by-agent', { guideId, deleted: true });
+        continue;
+      }
       reindex(guideId);
       sendToRenderer('guide:changed-by-agent', { guideId });
     }
@@ -715,6 +741,8 @@ function agentSetupCommand() {
   // Linux packages start through a launcher script that sets up the sandbox.
   const launcher = path.resolve(app.getAppPath(), '..', '..', 'usr', 'bin', 'stepforge');
   if (process.platform === 'linux' && fs.existsSync(launcher)) return { command: launcher, args: mcpArgs };
+  // A Store install's exe moves with every update; its execution alias doesn't.
+  if (windowsStore.isStoreInstall()) return { command: windowsStore.executionAliasPath(), args: mcpArgs };
   if (app.isPackaged) return { command: process.execPath, args: mcpArgs };
   return { command: process.execPath, args: [app.getAppPath(), ...mcpArgs] }; // development checkout
 }
@@ -872,11 +900,14 @@ function setupIpc() {
   h('guide:quality', ({ guideId }) => qualityFindings(buildRenderAst(store, guideId, {
     globals: settings.getGlobalPlaceholders(), reviewDays: exportReviewDays(),
   }), stepNumberMap(orderedSteps(guideId))), { validate: (a) => c.id(a.guideId) });
-  h('guide:save', ({ guide }) => {
-    const saved = store.saveGuide(guide);
+  // An AI agent may have moved the guide to the Trash meanwhile; a late save
+  // from the editor must not recreate it, which would also block its restore.
+  h('guide:save', ({ guide, baseGuide }) => {
+    const saved = saveGuideFromEditor(store, guide, baseGuide);
     reindex(guide.guideId);
     return saved;
-  }, { validate: (a) => security.isPlainArgs(a.guide) && a.guide && c.id(a.guide.guideId) });
+  }, { validate: (a) => security.isPlainArgs(a.guide) && a.guide && c.id(a.guide.guideId)
+    && (a.baseGuide == null || (security.isPlainArgs(a.baseGuide) && a.baseGuide.guideId === a.guide.guideId)) });
   h('step:add', ({ guideId, fields, imageBase64, size, position }) => {
     const buf = imageBase64 ? Buffer.from(imageBase64, 'base64') : null;
     const step = store.addStep(guideId, fields || {}, buf, size || null, { position });
@@ -886,11 +917,12 @@ function setupIpc() {
     maxChars: IMAGE_BUDGET,
     validate: (a) => c.id(a.guideId) && c.optionalBase64(a.imageBase64) && c.optionalNumber(a.position, 0, 100000),
   });
-  h('step:save', ({ guideId, step }) => {
-    const saved = store.saveStep(guideId, step);
+  h('step:save', ({ guideId, step, baseStep }) => {
+    const saved = saveStepFromEditor(store, guideId, step, baseStep);
     reindex(guideId);
     return saved;
-  }, { validate: (a) => c.id(a.guideId) && security.isPlainArgs(a.step) && a.step && c.id(a.step.stepId) });
+  }, { validate: (a) => c.id(a.guideId) && security.isPlainArgs(a.step) && a.step && c.id(a.step.stepId)
+    && (a.baseStep == null || (security.isPlainArgs(a.baseStep) && a.baseStep.stepId === a.step.stepId)) });
   h('step:delete', ({ guideId, stepId }) => {
     store.deleteStep(guideId, stepId);
     reindex(guideId);
@@ -966,7 +998,7 @@ function setupIpc() {
   }, { validate: (a) => c.id(a.guideId) && c.optionalNumber(a.position, 0, 100000) });
   h('step:importImage', async ({ guideId }) => {
     const res = await dialog.showOpenDialog(mainWindow, {
-      title: 'Import images as steps',
+      title: t('Import images as steps'),
       filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp'] }],
       properties: ['openFile', 'multiSelections'],
     });
@@ -1000,7 +1032,7 @@ function setupIpc() {
   h('step:chooseImage', async ({ guideId, stepId }) => {
     store.getStep(guideId, stepId); // throws for a step that does not exist, before any dialog
     const res = await dialog.showOpenDialog(mainWindow, {
-      title: 'Choose a screenshot for this step',
+      title: t('Choose a screenshot for this step'),
       filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'] }],
       properties: ['openFile'],
     });
@@ -1336,20 +1368,27 @@ function setupIpc() {
 
   // settings + placeholders
   h('settings:all', () => settings.data);
-  h('storage:status', () => libraryLocation.status());
+  // `syncedBy` names the OneDrive, Dropbox, Google Drive or Nextcloud app that
+  // uploads the library or the folder it's moving to, so Settings can warn.
+  const storageStatus = (status) => {
+    const folders = syncedFolders();
+    return { ...status, syncedBy: { current: syncServiceFor(status.current, { folders }), pending: syncServiceFor(status.pending, { folders }) } };
+  };
+  h('storage:status', () => storageStatus(libraryLocation.status()));
   h('storage:choose', async () => {
     if (libraryLocation.status().locked) throw new Error('STEPFORGE_DATA_DIR controls this session. Remove that override before changing storage.');
     const result = await dialog.showOpenDialog(mainWindow, {
-      title: 'Choose guide storage folder',
+      title: t('Choose guide storage folder'),
       properties: ['openDirectory', 'createDirectory'],
     });
-    if (result.canceled || !result.filePaths[0]) return { cancelled: true, ...libraryLocation.status() };
-    return libraryLocation.schedule(result.filePaths[0]);
+    if (result.canceled || !result.filePaths[0]) return { cancelled: true, ...storageStatus(libraryLocation.status()) };
+    return storageStatus(libraryLocation.schedule(result.filePaths[0]));
   });
-  h('storage:reset', () => libraryLocation.schedule(libraryLocation.defaultPath));
-  h('storage:cancelMove', () => libraryLocation.cancel());
+  h('storage:reset', () => storageStatus(libraryLocation.schedule(libraryLocation.defaultPath)));
+  h('storage:cancelMove', () => storageStatus(libraryLocation.cancel()));
   h('settings:set', ({ keyPath, value }) => {
     if (keyPath === 'cloud' || keyPath.startsWith('cloud.')) throw new Error('Use the cloud sync controls in Settings → Accounts.');
+    if (keyPath === 'language') throw new Error('Use Settings → General → Language.');
     const trashWasKept = !(settings.get('library.trashDays') > 0);
     settings.set(keyPath, value);
     // Turning emptying on starts the clock now for guides already in the trash.
@@ -1483,7 +1522,7 @@ function setupIpc() {
   h('archive:export', async ({ guideId }) => {
     const guide = store.getGuide(guideId);
     const res = await dialog.showSaveDialog(mainWindow, {
-      title: 'Share guide as file',
+      title: t('Share guide as file'),
       defaultPath: `${guide.title.replace(/[/\\:]+/g, '-')}.sfgz`,
       filters: [{ name: 'StepForge guide archive', extensions: ['sfgz'] }],
     });
@@ -1493,7 +1532,7 @@ function setupIpc() {
   }, { validate: (a) => c.id(a.guideId) });
   h('archive:open', async ({ mode }) => {
     const res = await dialog.showOpenDialog(mainWindow, {
-      title: 'Open guide archive',
+      title: t('Open guide archive'),
       filters: [{ name: 'StepForge guide archive', extensions: ['sfgz'] }],
       properties: ['openFile'],
     });
@@ -1628,7 +1667,7 @@ function setupIpc() {
     if (!dir) dir = settings.get(`exports.lastOutputDirs.${format}`);
     if (!dir) {
       const res = await dialog.showOpenDialog(mainWindow, {
-        title: 'Choose output folder', properties: ['openDirectory', 'createDirectory'],
+        title: t('Choose output folder'), properties: ['openDirectory', 'createDirectory'],
       });
       if (res.canceled) return { ok: false };
       dir = res.filePaths[0];
@@ -1655,14 +1694,14 @@ function setupIpc() {
   });
   h('export:chooseImage', async () => {
     const res = await dialog.showOpenDialog(mainWindow, {
-      title: 'Choose an image', properties: ['openFile'],
+      title: t('Choose an image'), properties: ['openFile'],
       filters: [{ name: 'PNG image', extensions: ['png'] }],
     });
     return res.canceled ? null : res.filePaths[0];
   });
   h('export:chooseDir', async ({ format }) => {
     const res = await dialog.showOpenDialog(mainWindow, {
-      title: 'Choose output folder', properties: ['openDirectory', 'createDirectory'],
+      title: t('Choose output folder'), properties: ['openDirectory', 'createDirectory'],
     });
     if (res.canceled) return null;
     chosenOutputDirs.add(res.filePaths[0]);
@@ -1702,9 +1741,9 @@ function setupIpc() {
   };
   const assetId = (v) => typeof v === 'string' && /^[a-f0-9]{32}$/.test(v);
   const ASSET_FILTERS = {
-    image: { title: 'Choose an image', filters: [{ name: 'Images (PNG, JPG, SVG)', extensions: ['png', 'jpg', 'jpeg', 'svg'] }] },
-    font: { title: 'Choose a font file', filters: [{ name: 'Fonts (WOFF2, WOFF, TTF, OTF)', extensions: ['woff2', 'woff', 'ttf', 'otf'] }] },
-    css: { title: 'Choose a CSS file', filters: [{ name: 'CSS', extensions: ['css'] }] },
+    image: { title: () => t('Choose an image'), filters: [{ name: 'Images (PNG, JPG, SVG)', extensions: ['png', 'jpg', 'jpeg', 'svg'] }] },
+    font: { title: () => t('Choose a font file'), filters: [{ name: 'Fonts (WOFF2, WOFF, TTF, OTF)', extensions: ['woff2', 'woff', 'ttf', 'otf'] }] },
+    css: { title: () => t('Choose a CSS file'), filters: [{ name: 'CSS', extensions: ['css'] }] },
   };
   h('branding:list', () => branding.list());
   h('branding:get', ({ id }) => brandProfile(id), { validate: (a) => validBrandId(a.id) });
@@ -1717,7 +1756,7 @@ function setupIpc() {
   }, { validate: (a) => validBrandId(a.id) });
   h('branding:duplicate', ({ id }) => brandProfile(branding.duplicate(id).id), { validate: (a) => validBrandId(a.id) });
   h('branding:chooseAsset', async ({ kind }) => {
-    const res = await dialog.showOpenDialog(mainWindow, { ...ASSET_FILTERS[kind], properties: ['openFile'] });
+    const res = await dialog.showOpenDialog(mainWindow, { ...ASSET_FILTERS[kind], title: ASSET_FILTERS[kind].title(), properties: ['openFile'] });
     if (res.canceled) return null;
     const file = res.filePaths[0];
     // Too large is refused as soon as it's picked, before the file is read.
@@ -1816,14 +1855,32 @@ function setupIpc() {
   // The result is kept so Update now installs the version this check found.
   let lastUpdateCheck = null;
   h('app:checkForUpdates', async () => {
+    const store = windowsStore.isStoreInstall();
     lastUpdateCheck = await require('./update-check').checkForUpdates({
       currentVersion: PACKAGE_JSON.buildVersion || app.getVersion(),
       platform: process.platform,
       hasCommand: (name) => ['/usr/bin', '/bin', '/usr/local/bin'].some((dir) => fs.existsSync(path.join(dir, name))),
-      chocolatey: require('./windows-update').updateNowAvailable({ platform: process.platform, packaged: app.isPackaged }),
+      chocolatey: require('./windows-update').updateNowAvailable({ platform: process.platform, packaged: app.isPackaged, store }),
+      store,
     });
     return lastUpdateCheck;
   });
+  // Settings → General → Language. Saves the choice and, when the shown
+  // language changes, reloads the window in it. The renderer saves open
+  // edits first.
+  h('app:setLanguage', ({ language }) => {
+    settings.set('language', language);
+    if (uiLanguage() === mainText.language) return { ok: true, reloaded: false };
+    void loadMainPage();
+    return { ok: true, reloaded: true };
+  }, { validate: (a) => c.oneOf(a.language, ['system', ...i18n.LANGUAGES.map((l) => l.code)]) });
+  // Settings → About "Open Microsoft Store" (Store installs): StepForge's Store
+  // page, where Update installs the new version. The URL is built here.
+  h('app:openStore', async () => {
+    if (!windowsStore.isStoreInstall()) return { ok: false, reason: 'not a Microsoft Store install' };
+    await shell.openExternal(windowsStore.storeUpdateUrl(PACKAGE_JSON.microsoftStore?.productId));
+    return { ok: true };
+  }, { validate: (a) => Object.keys(a).length === 0 });
   // Settings → About "Update now" (Windows, registered with Chocolatey). Takes
   // no arguments: app/windows-update.js re-checks everything and builds the
   // elevated command from this process's own PID and paths. Once the elevated
@@ -1833,6 +1890,7 @@ function setupIpc() {
     const result = await require('./windows-update').updateNow({
       platform: process.platform,
       packaged: app.isPackaged,
+      store: windowsStore.isStoreInstall(),
       lastCheck: lastUpdateCheck,
     });
     if (result.ok) setTimeout(() => app.quit(), 250);
@@ -1889,6 +1947,9 @@ if (!gotLock) {
 
   app.whenReady().then(() => {
     libraryLocation = libraryLocationFor(app.getPath('userData'));
+    // A Windows library still in %APPDATA%\stepforge moves to the new default
+    // now, copied and checked before it's used (app/data-dir.js).
+    libraryLocation.scheduleMigration();
     const dataDir = libraryLocation.applyPending();
     store = new GuideStore(dataDir);
     settings = new Settings(store.settingsDir);
@@ -1913,10 +1974,10 @@ if (!gotLock) {
         certificates: { ...(settings.get('confluence')?.certificates || {}), [host]: fingerprint } }),
       ask: async (host, certificates) => {
         const { response } = await dialog.showMessageBox(mainWindow, {
-          type: 'question', title: 'Choose a certificate',
-          message: `${host} asks for a certificate to sign you in.`,
-          detail: 'Choose the one from your smart card that you use to sign in to websites. StepForge remembers your choice for this site.',
-          buttons: [...certificates.map((cert) => `${cert.subjectName} (issued by ${cert.issuerName})`.slice(0, 120)), 'Cancel'],
+          type: 'question', title: t('Choose a certificate'),
+          message: t('{host} asks for a certificate to sign you in.', { host }),
+          detail: t('Choose the one from your smart card that you use to sign in to websites. StepForge remembers your choice for this site.'),
+          buttons: [...certificates.map((cert) => t('{subject} (issued by {issuer})', { subject: cert.subjectName, issuer: cert.issuerName }).slice(0, 120)), t('Cancel')],
           cancelId: certificates.length, noLink: true,
         });
         return response >= certificates.length ? -1 : response;

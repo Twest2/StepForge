@@ -6,6 +6,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const CaptureService = require('../../app/capture');
 const GnomeCaptureService = require('../../app/platform/linux/gnome-capture');
+const { rendererI18n } = require('./helpers');
 
 /**
  * Window mode on a Wayland desktop without GNOME records the full screen.
@@ -53,7 +54,7 @@ function app() {
   const toasts = [];
   // Like the DOM's append(): anything that isn't a node becomes text, so a stray null shows as "null".
   const node = () => ({ children: [], classList: { add() {}, remove() {} }, append(...kids) { this.children.push(...kids.map((k) => (k && typeof k === 'object' ? k : String(k)))); } });
-  const context = vm.createContext({ window: {}, document: { addEventListener() {} } });
+  const context = vm.createContext({ ...rendererI18n(), window: {}, document: { addEventListener() {} } });
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/util.js'), 'utf8'), context);
   context.toast = (message, opts) => toasts.push([message, opts]);
   context.el = (selector, attrs = {}, ...children) => ({ selector, ...attrs, children: children.flat().filter((c) => c != null && c !== false) });

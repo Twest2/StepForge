@@ -67,6 +67,12 @@ test('step reorder, delete with substep reparenting, and order integrity', (t) =
   const after = store.getGuide(guide.guideId);
   assert.deepEqual(after.stepsOrder, [c.stepId, a.stepId]);
   assert.equal(store.getStep(guide.guideId, c.stepId).parentStepId, null);
+
+  // Deleting a substep moves its own substeps up to its parent, not to the top.
+  const d = store.addStep(guide.guideId, { kind: 'empty', title: 'D', parentStepId: a.stepId });
+  const e = store.addStep(guide.guideId, { kind: 'empty', title: 'E', parentStepId: d.stepId });
+  store.deleteStep(guide.guideId, d.stepId);
+  assert.equal(store.getStep(guide.guideId, e.stepId).parentStepId, a.stepId);
 });
 
 test('restoreStep recreates a deleted step with its original id, data, and images', (t) => {

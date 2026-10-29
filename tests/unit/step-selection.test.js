@@ -4,9 +4,10 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { rendererI18n } = require('./helpers');
 
 function editor() {
-  const context = { window: { StepForgeOutline: require('../../core/step-outline') },
+  const context = { ...rendererI18n(), window: { StepForgeOutline: require('../../core/step-outline') },
     el: (tag, props, ...children) => ({ tag, props, children }),
     clearNode: (node) => { node.children = []; },
   };

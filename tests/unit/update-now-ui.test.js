@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { rendererI18n } = require('./helpers');
 
 /**
  * Settings → About: "Check for updates" and, for Windows installs registered
@@ -11,7 +12,7 @@ const vm = require('node:vm');
  * driven through a DOM stand-in with scripted main-process answers.
  */
 
-function setup({ check, updateNow = async () => ({ ok: true }), confirm = true, flushEdits = null }) {
+function setup({ check, updateNow = async () => ({ ok: true }), openStore = async () => ({ ok: true }), confirm = true, flushEdits = null }) {
   function el(spec, props = {}, ...children) {
     const [tag, ...classes] = spec.split('.');
     const classSet = new Set(classes);
@@ -41,7 +42,7 @@ function setup({ check, updateNow = async () => ({ ok: true }), confirm = true, 
   }
   const calls = [];
   const confirms = [];
-  const context = {
+  const context = { ...rendererI18n(),
     window: {}, setTimeout, el,
     clearNode: (node) => { node.children = []; node._text = undefined; },
     setButtonLoading: (button, loading, label) => { button.disabled = loading; button.loadingLabel = loading ? label : undefined; },
@@ -52,6 +53,7 @@ function setup({ check, updateNow = async () => ({ ok: true }), confirm = true, 
     app: {
       checkForUpdates: async () => { calls.push('check'); return check; },
       updateNow: async (args) => { calls.push(['updateNow', args]); return updateNow(); },
+      openStore: async (args) => { calls.push(['openStore', args]); return openStore(); },
     },
   };
   const openLink = (url) => () => calls.push(['open', url]);
@@ -146,4 +148,27 @@ test('unsaved edits that fail to save stop the update; other failures are shown 
   assert.match(note.textContent, /Couldn’t start the update/);
   assert.equal(note.classList.contains('error'), true);
   assert.equal(button.disabled, false);
+});
+
+test('a Microsoft Store install is offered only its Store page, which the main process opens', async () => {
+  const u = setup({ check: available({ updateNow: false, store: true, hint: 'The Store updates it.' }) });
+  await u.press(u.checkUpdatesBtn);
+  assert.deepEqual(u.buttons().map((b) => b.textContent), ['Open Microsoft Store'], 'no installer download');
+  assert.equal(u.button('Open Microsoft Store').classList.contains('primary'), true);
+  assert.match(u.updateStatus.textContent, /Version 1\.4\.1 is available/);
+  assert.match(u.updateStatus.textContent, /You have 1\.4\. The Store updates it\./);
+  await u.press(u.button('Open Microsoft Store'));
+  assert.deepEqual(u.calls.at(-1), ['openStore', undefined], 'no URL comes from the renderer');
+  assert.equal(u.updateStatus.children.at(-1).textContent, '');
+});
+
+test('when the Store cannot be opened, the user is told where to find the update', async () => {
+  for (const openStore of [async () => ({ ok: false }), async () => { throw new Error('boom'); }]) {
+    const u = setup({ check: available({ store: true }), openStore });
+    await u.press(u.checkUpdatesBtn);
+    await u.press(u.button('Open Microsoft Store'));
+    const note = u.updateStatus.children.at(-1);
+    assert.match(note.textContent, /Library → Get updates/);
+    assert.equal(note.classList.contains('error'), true);
+  }
 });

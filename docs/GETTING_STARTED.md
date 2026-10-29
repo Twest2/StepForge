@@ -209,6 +209,12 @@ The library is your home screen.
   Each one shows how long it has left. To keep them longer, or until you empty
   the trash yourself, use **Settings → General → Trash**.
 
+StepForge shows its menus and messages in your system's language when it has
+it: English, French, Spanish, Russian, Simplified Chinese or Japanese. The
+translations other than English are in beta. To pick a different language,
+use **Settings → General → Language**; StepForge reloads its window in the new
+language, after saving your open guide. Exported guides stay in English.
+
 Guides live in your StepForge data folder. To keep them somewhere else, such
 as a larger drive, use **Settings → General → Guide storage**. StepForge copies
 and verifies your library before switching to the new location.
@@ -262,10 +268,16 @@ with the hotkey or on a timer instead.
 
 | System | Location |
 | --- | --- |
-| Windows | `%APPDATA%\stepforge` |
+| Windows | `%USERPROFILE%\StepForge` (`C:\Users\<you>\StepForge`) |
 | Linux | `~/.local/share/stepforge` |
 
-The exact folder is shown in **Settings → About**.
+The exact folder is shown in **Settings → About**. You can move it under
+**Settings → General → Guide storage**. Avoid folders that OneDrive, Dropbox,
+Google Drive or Nextcloud sync; Guide storage warns you if you pick one. Use
+StepForge's own sync (**Settings → Accounts**) to keep guides in step across
+computers.
+Older Windows versions used `%APPDATA%\stepforge`; a new version moves your
+guides from there by itself.
 
 Still stuck? [Open an issue](https://github.com/Twest2/StepForge/issues/new/choose)
 and include your operating system, StepForge version (from **Settings → About**),

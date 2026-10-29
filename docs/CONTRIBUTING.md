@@ -159,11 +159,36 @@ runtime files but can be larger. Normal RPM builds retain the distro's
 compression defaults. A small real-RPM fixture checks both compression paths
 on every Fedora PR run.
 
+## Interface text and translations
+
+StepForge's interface is in English, French, Spanish, Russian, Simplified
+Chinese and Japanese. `core/i18n.js` explains how it works. In short:
+
+- Write interface text in English, inside `t('…')`, and put values in
+  placeholders: `t('Move to {folder}', { folder: name })`. Text that changes
+  with a number uses `tn(count, '{count} step', '{count} steps')`. The main
+  process uses `t` for its own dialogs.
+- Keep each message one whole sentence in one string literal. Don't join
+  fragments or build text at run time: word order differs between languages,
+  and `npm run translations` can only find literals.
+- `npm run translations` lists the text each language in `core/locales/` is
+  missing. Missing text shows in English, so the app still works, but add the
+  translations before a release. Plural entries give one string per plural
+  category of the language (`one`/`other`, and `few`/`many` for Russian).
+- Product names (StepForge, GitHub, Confluence, Wiki.js, Ollama), key names
+  and file extensions stay as they are. Exported guides are English only.
+
+To add a language, add it to `LANGUAGES` in `core/i18n.js`, add its catalog
+to `core/locales/` and `core/locales/index.js`, and load it with a script tag
+in `app/renderer/index.html`. The Microsoft Store package lists every language
+in `LANGUAGES` (see `docs/windows/MICROSOFT_STORE_RELEASE.md`).
+
 ## Build installable packages
 
 | Target | Command | Output |
 | --- | --- | --- |
 | Windows installer | `npm run package:windows` (or `pwsh scripts/package-windows.ps1`) | `releases/` |
+| Microsoft Store `.appx` (Windows only) | `npm run package:windows:store` (or `npm run package:windows:store:test` before the app is reserved); see [the release guide](windows/MICROSOFT_STORE_RELEASE.md) | `releases/` |
 | Ubuntu `.deb` + portable `.tar.gz` | `npm run package:linux:deb` | `build/artifacts/` |
 | Fedora `.rpm` | `npm run package:linux:rpm` | `build/artifacts/x86_64/` |
 | Unpacked app folder | `bash scripts/build-release.sh` | `build/` |
@@ -268,6 +293,7 @@ Before requesting review, make sure:
 - [ ] `bash tests/run_test.sh` passes locally.
 - [ ] New behavior has tests that check real output.
 - [ ] Docs are updated for anything users will notice.
+- [ ] New interface text is in `t()`, and `npm run translations` lists nothing missing.
 - [ ] The change stays within the issue's scope.
 - [ ] Anything that still needs manual verification is listed in the PR.
 - [ ] No new network calls, dependencies, or third-party branding.

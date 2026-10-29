@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { rendererI18n } = require('./helpers');
 
 // A small DOM stand-in with working classes, so visibility can be asserted.
 function ui({ realLoading = false } = {}) {
@@ -51,7 +52,7 @@ function ui({ realLoading = false } = {}) {
   const root = el('div');
   const windowListeners = {};
   const toasts = [];
-  const context = {
+  const context = { ...rendererI18n(),
     document: { activeElement: null, getElementById: () => root, addEventListener() {}, removeEventListener() {} },
     window: {
       addEventListener: (type, fn) => { (windowListeners[type] ||= new Set()).add(fn); },
@@ -687,7 +688,7 @@ test('cancelling Publish while the private-detail check runs resolves only after
 });
 
 test('App.publishToWeb (the marker\'s route) saves the open guide first and reloads it after a cancelled check', async () => {
-  const context = vm.createContext({ window: {}, document: { addEventListener() {} } });
+  const context = vm.createContext({ ...rendererI18n(), window: {}, document: { addEventListener() {} } });
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/util.js'), 'utf8'), context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/app.js'), 'utf8').replace('\nboot();', '\n'), context);
   const events = [];
@@ -1205,7 +1206,7 @@ test('Export marks the Confluence and Wiki.js formats as Beta', async () => {
 });
 
 test('the guide menus offer Publish to Wiki.js beside Confluence, both marked Beta', async () => {
-  const context = vm.createContext({ window: {}, document: { addEventListener() {} } });
+  const context = vm.createContext({ ...rendererI18n(), window: {}, document: { addEventListener() {} } });
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/util.js'), 'utf8'), context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/app.js'), 'utf8').replace('\nboot();', '\n'), context);
   let items = null;
@@ -1222,8 +1223,8 @@ test('the guide menus offer Publish to Wiki.js beside Confluence, both marked Be
   assert.deepEqual(opened, ['g1']);
   // The editor's Share menu has the same two items.
   const src = fs.readFileSync(path.join(__dirname, '../../app/renderer/app.js'), 'utf8');
-  assert.equal((src.match(/label: 'Publish to Wiki\.js…', badge: 'Beta'/g) || []).length, 2);
-  assert.equal((src.match(/label: 'Publish to Confluence…', badge: 'Beta'/g) || []).length, 2);
+  assert.equal((src.match(/label: t\('Publish to Wiki\.js…'\), badge: 'Beta'/g) || []).length, 2);
+  assert.equal((src.match(/label: t\('Publish to Confluence…'\), badge: 'Beta'/g) || []).length, 2);
 
   // The menu draws the badge as the same chip Settings uses.
   const appended = [];

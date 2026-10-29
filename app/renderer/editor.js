@@ -548,6 +548,7 @@ class GuideEditor {
     const { guide, steps } = await api.guide.get({ guideId: this.guideId });
     if (token !== this.stepLoadToken) return;
     this.guide = guide;
+    this.savedGuideBaseline = clone(guide);
     this.steps = steps;
     this.stepMap = new Map(steps.map((step) => [step.stepId, step]));
     this.savedStepBaselines = new Map(steps.map((step) => [step.stepId, clone(step)]));
@@ -1939,11 +1940,20 @@ class GuideEditor {
     return existing;
   }
 
+  async saveGuideEdits() {
+    const saved = await api.guide.save({ guide: this.guide, baseGuide: this.savedGuideBaseline });
+    if (saved?.guideId) {
+      this.guide = saved;
+      this.savedGuideBaseline = clone(saved);
+    }
+    return saved;
+  }
+
   async flushGuide() {
     while (this.linkedSaveInFlight) await this.linkedSaveInFlight; // see flushStep
     if (!this.guide) return;
     try {
-      await api.guide.save({ guide: this.guide });
+      await this.saveGuideEdits();
     } catch (err) {
       this.pendingGuideSave = true;
       this.saveError = (err && err.message) || 'Save failed';
@@ -2560,7 +2570,7 @@ class GuideEditor {
       values: this.guide.placeholders || {},
       onSave: async (values) => {
         this.guide.placeholders = values;
-        await api.guide.save({ guide: this.guide });
+        await this.saveGuideEdits();
         this.onToast('Placeholders saved.');
       },
     });
@@ -2579,7 +2589,7 @@ class GuideEditor {
         this.guide.metadata = metadata;
         this.guide.descriptionHtml = textToHtml(description);
         this.guide.cloud = { ...(this.guide.cloud || {}), sharingEnabled };
-        await api.guide.save({ guide: this.guide });
+        await this.saveGuideEdits();
         this.onToast('Guide information saved.');
       },
       onCloudSnapshots: async () => {

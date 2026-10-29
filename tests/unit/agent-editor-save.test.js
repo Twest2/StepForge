@@ -25,12 +25,13 @@ function library(t) {
 test('saving stale guide details preserves steps added, moved and deleted outside the editor', (t) => {
   const { store, guideId, a, b } = library(t);
   const stale = store.getGuide(guideId);
+  const baseline = structuredClone(stale);
   const c = store.addStep(guideId, { title: 'C' });
   store.reorderSteps(guideId, [c.stepId, b.stepId, a.stepId]);
   store.deleteStep(guideId, a.stepId);
   stale.title = 'User typed title';
   const revision = store.getGuide(guideId).revision;
-  const saved = saveGuideFromEditor(store, stale);
+  const saved = saveGuideFromEditor(store, stale, baseline);
   assert.equal(saved.revision, revision + 1);
   assert.equal(saved.title, 'User typed title');
   assert.deepEqual(saved.stepsOrder, [c.stepId, b.stepId]);
@@ -210,4 +211,25 @@ test('undoing a saved edit uses the current revision and remains available after
   await editor.restoreHistoryRecord({ step: before });
   assert.equal(store.getStep(guideId, a.stepId).title, before.title);
   assert.equal(store.getStep(guideId, a.stepId).revision, priorRevision + 1);
+});
+
+
+test('guide autosaves combine an unsaved description with an external title and reject unknown stale baselines', async (t) => {
+  const { store, guideId } = library(t);
+  const baseline = store.getGuide(guideId);
+  const local = { ...structuredClone(baseline), descriptionHtml: '<p>Unsaved user introduction</p>' };
+  store.saveGuide({ ...baseline, title: 'Agent title' });
+  const api = { guide: { save: async ({ guide, baseGuide }) => saveGuideFromEditor(store, guide, baseGuide) } };
+  const context = { ...(rendererI18n ? rendererI18n() : {}), window: { stepforge: api } };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/editor.js'), 'utf8'), context);
+  const editor = Object.create(context.window.GuideEditor.prototype);
+  Object.assign(editor, { guide: local, savedGuideBaseline: baseline, pendingGuideSave: true,
+    onToast: (message) => assert.fail(message), emitMeta() {} });
+  await editor.flushGuide();
+  assert.equal(editor.pendingGuideSave, false);
+  assert.equal(editor.guide.title, 'Agent title');
+  assert.equal(editor.guide.descriptionHtml, local.descriptionHtml);
+  assert.equal(editor.savedGuideBaseline.revision, store.getGuide(guideId).revision);
+  assert.throws(() => saveGuideFromEditor(store, { ...baseline, title: 'Another stale title' }), /unsaved edits are kept/);
+  assert.equal(store.getGuide(guideId).title, 'Agent title');
 });

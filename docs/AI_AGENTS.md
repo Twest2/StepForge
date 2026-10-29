@@ -49,7 +49,10 @@ snapshots; create a manual snapshot first if you want a recovery point before
 those edits.
 
 A guide an agent deletes goes to the Trash, like one you delete. Restore it
-from there.
+from there. Its snapshot and Trash copy contain saved content; unsaved edits
+in an open editor are not included when the agent deletes the guide. The
+agent-access switch permits all the guide tools listed above; it is not a
+separate approval for each deletion.
 
 ## 1. Turn on agent access
 

@@ -1,7 +1,7 @@
 # Install StepForge from the Microsoft Store
 
 
-Note that this installation method is coming in the next couple of days. Microsoft is currently verifying the app package.
+Note that support for this installation method is coming in the next couple of days. Microsoft is currently verifying the app package.
 
 
 The Microsoft Store is the recommended way to install StepForge on

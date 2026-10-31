@@ -11,7 +11,7 @@ to install it:
 
 ## Recommended: the Microsoft Store
 
-1. Open [StepForge in the Microsoft Store](https://apps.microsoft.com/search?query=StepForge),
+1. Open [StepForge in the Microsoft Store](https://apps.microsoft.com/detail/9NDH81CF1HGV),
    or search for **StepForge** in the **Microsoft Store** app.
 2. Click **Get**, then **Open**.
 

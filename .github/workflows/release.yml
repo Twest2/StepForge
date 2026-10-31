@@ -1,8 +1,9 @@
 name: Release
 
-# Manual release: all three platform packages build concurrently, followed by
-# one GitHub Release and concurrent ProGet publication for the Linux packages
-# and the Windows Chocolatey package.
+# Manual release: the Windows installer, the Microsoft Store package and the
+# two Linux packages build concurrently, followed by one GitHub Release, then
+# concurrent ProGet publication for the Linux packages and the Windows
+# Chocolatey package, and submission of the Store package to Partner Center.
 on:
   workflow_dispatch:
     inputs:
@@ -97,18 +98,60 @@ jobs:
           path: releases/*.exe
           if-no-files-found: error
 
-      # Built from the same stamped checkout, unsigned: Partner Center signs it.
-      # It is uploaded to Partner Center by hand, not attached to the release
-      # (docs/windows/MICROSOFT_STORE_RELEASE.md). Skipped until
-      # packaging/windows/store/identity.json is filled in.
+
+  build-windows-store:
+    needs: authorize-release
+    name: Build Microsoft Store package
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      # Recheck on every job: rerunning failed jobs can reuse an earlier authorization.
+      - name: Verify release owner
+        run: node scripts/check-release-access.js
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Configure StepForge Google sign-in
+        env:
+          STEPFORGE_GOOGLE_CLIENT_ID: ${{ vars.STEPFORGE_GOOGLE_CLIENT_ID }}
+          STEPFORGE_GOOGLE_CLIENT_SECRET: ${{ secrets.STEPFORGE_GOOGLE_CLIENT_SECRET }}
+        run: node scripts/configure-google-oauth.js
+
+      - name: Configure StepForge GitHub sign-in
+        env:
+          STEPFORGE_GITHUB_CLIENT_ID: ${{ vars.STEPFORGE_GITHUB_CLIENT_ID }}
+          STEPFORGE_GITHUB_APP_SLUG: ${{ vars.STEPFORGE_GITHUB_APP_SLUG }}
+        run: node scripts/configure-github-app.js
+
+      - name: Configure StepForge OneDrive and Dropbox sign-in
+        env:
+          STEPFORGE_ONEDRIVE_CLIENT_ID: ${{ vars.STEPFORGE_ONEDRIVE_CLIENT_ID }}
+          STEPFORGE_DROPBOX_APP_KEY: ${{ vars.STEPFORGE_DROPBOX_APP_KEY }}
+        run: node scripts/configure-cloud-apps.js
+
+      - name: Set version from input
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: node scripts/stamp-version.js "${VERSION#v}"
+
+      # Unsigned: Partner Center signs it. It isn't attached to the GitHub
+      # Release; publish-microsoft-store submits it to Partner Center.
       - name: Package Microsoft Store .appx
-        run: node scripts/package-windows-store.js --if-configured
+        run: npm run package:windows:store
 
       - uses: actions/upload-artifact@v4
         with:
           name: microsoft-store-package
           path: releases/*.appx
-          if-no-files-found: ignore
+          if-no-files-found: error
 
 
   build-linux:
@@ -239,6 +282,7 @@ jobs:
     name: Publish GitHub Release
     needs:
       - build-windows
+      - build-windows-store
       - build-linux
       - build-fedora
 
@@ -723,3 +767,40 @@ jobs:
 
           choco push $package.FullName --source "$base/nuget/$env:PROGET_CHOCO_FEED/" --api-key $env:PROGET_API_KEY --execution-timeout 1800
           if ($LASTEXITCODE -ne 0) { throw "choco push failed with exit code $LASTEXITCODE" }
+
+
+  publish-microsoft-store:
+    name: Submit to the Microsoft Store
+    needs: release
+    if: inputs.prerelease == false
+    runs-on: windows-latest
+    # Uploading and Partner Center's checks take minutes; certification
+    # itself happens after this job, within about three days.
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+      # Recheck on every job: rerunning failed jobs can reuse an earlier authorization.
+      - name: Verify release owner
+        run: node scripts/check-release-access.js
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: microsoft-store-package
+          path: dist/microsoft-store
+
+      - name: Set up the Microsoft Store Developer CLI
+        uses: microsoft/microsoft-store-apppublisher@v1.4
+        with:
+          version: v0.4.3
+
+      # Signs in as an Entra ID app with the Manager role in Partner Center,
+      # replaces the live package with this one and commits the submission.
+      # A rerun skips a version that is already in certification or live.
+      - name: Submit the package for certification
+        env:
+          MICROSOFT_STORE_TENANT_ID: ${{ vars.MICROSOFT_STORE_TENANT_ID }}
+          MICROSOFT_STORE_SELLER_ID: ${{ vars.MICROSOFT_STORE_SELLER_ID }}
+          MICROSOFT_STORE_CLIENT_ID: ${{ vars.MICROSOFT_STORE_CLIENT_ID }}
+          MICROSOFT_STORE_CLIENT_SECRET: ${{ secrets.MICROSOFT_STORE_CLIENT_SECRET }}
+        run: node scripts/publish-microsoft-store.js dist/microsoft-store

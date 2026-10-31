@@ -177,10 +177,16 @@ test('npm scripts and the release workflow build the Store package', () => {
   const pkg = JSON.parse(read('package.json'));
   assert.equal(pkg.scripts['package:windows:store'], 'node scripts/package-windows-store.js');
   assert.equal(pkg.scripts['package:windows:store:test'], 'node scripts/package-windows-store.js --test-identity');
-  const job = read('.github/workflows/release.yml').split('  build-windows:')[1].split('\n  build-linux:')[0];
-  // Not "npm run ... -- --flag": the Windows runners' PowerShell drops the "--".
-  assert.match(job, /node scripts\/package-windows-store\.js --if-configured\n/);
-  assert.match(job, /releases\/\*\.appx/);
+  const workflow = read('.github/workflows/release.yml');
+  // Its own job, so it builds alongside the installer instead of after it.
+  const job = workflow.split('  build-windows-store:')[1].split('\n  build-linux:')[0];
+  assert.match(job, /^\n    needs: authorize-release\n/);
+  assert.match(job, /node scripts\/stamp-version\.js/);
+  assert.match(job, /run: npm run package:windows:store\n/);
+  assert.match(job, /name: microsoft-store-package\n\s+path: releases\/\*\.appx\n\s+if-no-files-found: error/);
+  const installer = workflow.split('  build-windows:')[1].split('\n  build-windows-store:')[0];
+  assert.doesNotMatch(installer, /package-windows-store|package:windows:store|\.appx/);
+  assert.match(workflow.split('\n  release:\n')[1].split('\n    runs-on:')[0], /\n      - build-windows-store\n/);
   const ci = read('.github/workflows/ci.yml');
   assert.match(ci, /npm run package:windows:store:test\n/);
   assert.doesNotMatch(`${job}\n${ci}`, /package:windows:store -- /);

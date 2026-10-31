@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 'use strict';
 
-// Builds the Microsoft Store package (.appx) that is uploaded to Partner
-// Center. The Store signs it, so it is never signed here. Needs Windows (the
-// Windows SDK's makeappx), so it runs in CI; see docs/windows/MICROSOFT_STORE_RELEASE.md.
+// Builds the Microsoft Store package (.appx) that the release workflow submits
+// to Partner Center (scripts/publish-microsoft-store.js). The Store signs it,
+// so it is never signed here. Needs Windows (the Windows SDK's makeappx), so it
+// runs in CI.
 //
 //   npm run package:windows:store                            # the identity in packaging/windows/store/identity.json
 //   node scripts/package-windows-store.js --if-configured    # the same, skipped while identity.json is unfilled
@@ -19,6 +20,7 @@ const path = require('node:path');
 const { build, Platform, Arch } = require('electron-builder');
 const { APP_ID, BUILD_VERSION, createWindowsInstallerConfig } = require('./package-windows');
 const { LANGUAGES } = require('../core/i18n');
+const { storeVersion } = require('./store-version');
 
 const ROOT_DIR = path.resolve(__dirname, '..');
 const STORE_DIR = path.join(ROOT_DIR, 'packaging', 'windows', 'store');
@@ -58,24 +60,6 @@ function validateStoreIdentity(identity) {
     publisherDisplayName: value('publisherDisplayName'),
     productId: value('productId'),
   };
-}
-
-/**
- * The Store version for a StepForge build version. The Store reserves the
- * fourth part and needs it to be 0, and every submission must be newer than
- * the last, so a.b.c.d becomes a.b.(c*100+d).0: 1.5.3 → 1.5.300.0 and
- * 1.5.3.1 → 1.5.301.0. Each part must fit in 16 bits.
- */
-function storeVersion(buildVersion) {
-  const parts = String(buildVersion || '').split('.');
-  if (parts.length < 1 || parts.length > 4 || !parts.every((part) => /^(0|[1-9]\d{0,4})$/.test(part))) {
-    throw new Error(`Build version ${JSON.stringify(buildVersion)} is not a numeric version.`);
-  }
-  const [major, minor = 0, patch = 0, revision = 0] = parts.map(Number);
-  if (revision > 99) throw new Error(`Build version ${buildVersion}: the fourth part must be below 100 for the Store version.`);
-  const build = patch * 100 + revision;
-  if ([major, minor, build].some((n) => n > 65535)) throw new Error(`Build version ${buildVersion} does not fit a Store version.`);
-  return `${major}.${minor}.${build}.0`;
 }
 
 /** The manifest template with the Store version filled in. */

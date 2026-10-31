@@ -181,14 +181,14 @@ Chinese and Japanese. `core/i18n.js` explains how it works. In short:
 To add a language, add it to `LANGUAGES` in `core/i18n.js`, add its catalog
 to `core/locales/` and `core/locales/index.js`, and load it with a script tag
 in `app/renderer/index.html`. The Microsoft Store package lists every language
-in `LANGUAGES` (see `docs/windows/MICROSOFT_STORE_RELEASE.md`).
+in `LANGUAGES`, so the Store shows StepForge as available in it.
 
 ## Build installable packages
 
 | Target | Command | Output |
 | --- | --- | --- |
 | Windows installer | `npm run package:windows` (or `pwsh scripts/package-windows.ps1`) | `releases/` |
-| Microsoft Store `.appx` (Windows only) | `npm run package:windows:store` (or `npm run package:windows:store:test` before the app is reserved); see [the release guide](windows/MICROSOFT_STORE_RELEASE.md) | `releases/` |
+| Microsoft Store `.appx` (Windows only) | `npm run package:windows:store` (or `npm run package:windows:store:test` for a placeholder identity). The Release workflow builds it and submits it to the Store | `releases/` |
 | Ubuntu `.deb` + portable `.tar.gz` | `npm run package:linux:deb` | `build/artifacts/` |
 | Fedora `.rpm` | `npm run package:linux:rpm` | `build/artifacts/x86_64/` |
 | Unpacked app folder | `bash scripts/build-release.sh` | `build/` |

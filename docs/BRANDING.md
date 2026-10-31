@@ -31,13 +31,10 @@ extra CSS for web pages. Set it up once and every guide uses it.
      numbers**. Header and footer text can use placeholders, such as
      `© [[Year]] Acme Corp`.
    - **Watermark screenshots with the logo**, with its corner and opacity.
-   - **Annotation colors**: off by default, so annotations keep StepForge's
-     colors (red shapes, blue number badges, dark tooltips). Turn on **Use
-     your own annotation colors** to pick colors for **Shapes** (rectangles,
-     ovals, lines, arrows, text and magnifiers, and the marker on recorded
-     clicks), **Number badges** and **Tooltips**. New annotations start in
-     these colors; ones already drawn keep theirs, and you can still change
-     any annotation's color in the editor. Highlights stay yellow.
+   - **Annotation colors**: turn on **Use your own annotation colors** to
+     pick colors for **Shapes** (including the click marker), **Number
+     badges** and **Tooltips**. New annotations start in these colors;
+     ones already drawn keep theirs. Highlights stay yellow.
    - **Advanced CSS**: see [below](#advanced-css).
 3. Choose **Preview** at the bottom to see a sample guide with your changes,
    then **Save**.
@@ -263,9 +260,8 @@ An agent can:
   a file you upload
 - choose the active profile
 
-It can't delete a profile. An SVG or JPG image an agent adds works in HTML
-exports at once. The other exports need a PNG copy, which StepForge draws
-within a few seconds while it's open, or the next time it starts.
+It can't delete a profile. If StepForge is closed when an agent adds an SVG
+or JPG image, exports other than HTML pick it up once StepForge is next open.
 
 ## Share a profile
 

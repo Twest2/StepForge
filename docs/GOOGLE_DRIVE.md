@@ -62,12 +62,9 @@ or open the Drive settings, to see the guide's name and the transfer speed.
   kept, and a step deleted on one computer is removed unless it was edited on
   the other. This isn't live co-editing.
 - **When both computers changed the same thing**, such as the same step
-  title, the change saved most recently is kept. If this computer had edits
-  that hadn't synced yet, its version from before the update is saved as a
-  *before-sync-merge* snapshot under **More → Backups & snapshots…** in the
-  editor, so nothing is lost.
-  Editing one description on both computers keeps the newer description; the
-  two texts aren't blended.
+  title, the most recent change is kept. If this computer had edits that
+  hadn't synced yet, its earlier version is saved as a *before-sync-merge*
+  snapshot under **More → Backups & snapshots…**, so nothing is lost.
 - **Your work isn't interrupted.** Updates from another computer wait until
   you close the guide and stop recording.
 - **Downloads are checked** before they replace anything, and the replaced
@@ -84,28 +81,23 @@ These settings follow your guides across computers:
 - **Global placeholders** (**Settings → Placeholders**)
 - **Brand profiles**, with their logos, banners and fonts, and which profile
   is active (**Settings → Branding**)
-- **Recording shortcuts**: Capture and Pause/resume (**Settings → Capture → Hotkeys**).
-  Cleared shortcuts stay disabled; incoming changes take effect immediately.
+- **Interface language** (**Settings → General → Language**)
+- **Recording shortcuts** for Capture and Pause/resume
+  (**Settings → Capture → Hotkeys**)
 
 Other capture options, AI and guide storage stay on each computer.
 
-They're combined the same way as guides: changes to different placeholders or
-fields within a brand profile on different computers all survive. A placeholder
-or profile deleted on one computer is deleted on the others unless another
-computer edited it. When both computers changed the same value, the most recent
-edit to that value is kept; changing capture options or another placeholder
-doesn't make an older choice newer. A computer syncing for the first time adds
-its placeholders and profiles to the ones already in the cloud. Conflicting
-explicit choices use the same newest-edit rule, including a deliberate reset
-to a default. Its untouched defaults never replace a choice made on another computer.
+They're combined the same way as guides: changes made on different computers
+all survive, and when two computers changed the same value, the most recent
+edit wins. Deleting a placeholder or profile deletes it everywhere, unless
+another computer edited it. A computer syncing for the first time adds its
+placeholders and profiles to the ones already there, and its untouched
+defaults never replace a choice you made on another computer.
 
-Changes from another computer wait while **Settings** is open, so saving it
-can't undo them, and arrive when you close it.
-
-If a settings version is damaged or needs a newer StepForge, settings sync
-shows an error and leaves the saved settings alone. Guide sync continues.
-StepForge doesn't skip that settings version, because publishing a merge
-without it could discard values it couldn't read.
+Changes from another computer wait while **Settings** is open and arrive when
+you close it. If settings sync shows an error, usually because another
+computer saved them with a newer StepForge, update StepForge on this computer.
+Until then your settings are left as they are, and guides keep syncing.
 
 ## Manage what's in Drive
 
@@ -134,9 +126,7 @@ way: a computer only fetches the screenshots it doesn't already have.
   **Free up space** to switch them over; each one is downloaded and uploaded
   once.
 - Files that no version uses any more are removed automatically after a
-  sync, and right away by **Free up space**. A file uploaded in the last hour
-  is left alone, in case another computer is still saving the version that
-  uses it.
+  sync, and right away by **Free up space**.
 
 > [!IMPORTANT]
 > Update StepForge on **every** computer that syncs with the same Google

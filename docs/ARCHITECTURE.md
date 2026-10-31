@@ -132,14 +132,31 @@ Export dialog choice. In the profile editor, **Pick from logo** runs
 `core/brand-palette.js` on a small canvas drawing of the logo, and **Write
 with AI** asks Ollama for CSS (`core/ai-brand-css.js`, which also strips
 `@import` and remote `url()`s); it's shown only when `ai:status` reports AI on
-and the model installed. AI agents edit guides through `core/agent-tools.js`;
-each tool that deletes, moves or replaces something first calls
-`createAgentSnapshot` (`core/snapshots.js`). AI agents reach profiles through
-`core/agent-brand-tools.js`, behind `ai.agents.branding`. The `--mcp` process
-records each change in `agent-changes.json`; the running app saves an agent's
-choice of active profile itself (it holds Settings in memory) and has the
-renderer draw PNG copies of SVG or JPG images agents added
-(`branding:pendingRasters`).
+and the model installed.
+
+## AI Agents (MCP)
+
+`stepforge --mcp` runs an MCP server over stdio for agents such as Claude Code
+and Codex, gated by `ai.agents` (re-read on every request).
+
+- Guide tools live in `core/agent-tools.js`. Each tool that deletes, moves or
+  replaces something first calls `createAgentSnapshot` (`core/snapshots.js`).
+  Text rewrites, substep changes through `update_step`, new placeholders and
+  drawn annotations don't snapshot.
+- Agents can't delete blurs or existing placeholders. A screenshot an agent
+  imports must come from outside the library, so raw originals, Trash and
+  snapshot files can't be used to get around blurs, and a replaced screenshot
+  keeps its blurs, including those from Find private details.
+- When an agent deletes a guide, the snapshot and Trash copy hold the saved
+  content only, not unsaved edits in an open editor. If the editor has the
+  step an agent deleted, it drops that step's pending save instead of
+  recreating it; for surviving steps, edits to different fields combine and
+  the user's edit wins a field both changed.
+- Profiles are reached through `core/agent-brand-tools.js`, behind
+  `ai.agents.branding`. The `--mcp` process records each change in
+  `agent-changes.json`; the running app saves an agent's choice of active
+  profile itself (it holds Settings in memory) and has the renderer draw PNG
+  copies of SVG or JPG images agents added (`branding:pendingRasters`).
 
 ## Shell / Core Boundary
 
@@ -263,8 +280,12 @@ opt-in and off by default:
   new computer's defaults never win a merge.
   Per-value edit times travel in `settings.json.modifiedAt`; their local
   copy is `settings/shared-settings-times.json`, updated only when that value
-  changes. Older archives fall back to their version time. Profile field
-  conflicts compare the profile's `updatedAt`.
+  changes, so editing one value never makes another look newer. Older
+  archives fall back to their version time. Profile field conflicts compare
+  the profile's `updatedAt`. A settings version that is damaged or needs a
+  newer StepForge stops settings sync with an error rather than being
+  skipped, because a merge published without it could discard values this
+  build couldn't read; guide sync carries on.
   The base is `cloud/settings-base.json`. Incoming settings wait while the
   Settings dialog is open. Incoming recording shortcuts re-register the running
   app’s global hotkeys immediately. Every image and font is re-checked by
@@ -275,6 +296,9 @@ opt-in and off by default:
   `core/folder-storage.js` keeps each version's details in a small
   `objects/<id>.json` beside its data and names shared parts by their hash.
   `settings.cloud.provider` picks the one service that syncs.
+- **Unused parts** are garbage-collected after a sync and by **Free up
+  space**, except parts uploaded in the last hour, which another computer may
+  still be committing a version for.
 
 The sandboxed renderer never makes network requests or sees tokens; all of
 these run in the main process.
@@ -283,16 +307,20 @@ these run in the main process.
 
 - Archive imports validate every entry name against path traversal and
   absolute paths before extraction (`core/zip.js`).
-- Linked guides use sidecar `*.lock-sfgz` lock files; conflicts surface a
+- Linked guides use sidecar `*.lock-sfgz` lock files that record who is
+  saving, not who has the guide open. Saving while another client holds the
+  lock is refused unless the user saves anyway; conflicts surface a
   keep-editing / discard dialog. A linked save re-reads the shared file under
   the lock and three-way merges it (`core/guide-merge.js`) with the version
-  this library last saved or opened, kept in `history/linked-base.json`.
+  this library last saved or opened, kept in `history/linked-base.json`. A
+  value both sides changed goes to the more recent edit, the toast reports
+  the conflict count, and a backup is taken before each merge.
 - Renderer runs with `contextIsolation: true`, `nodeIntegration: false`,
   and `sandbox` enabled; only the preload API is exposed.
 - Description HTML is sanitized against an allowlist on save and again on
   render and export (`core/sanitize.js`).
 
-## Workflow
+## Tests and CI
 
 1. Change core/exporter logic together with its workflow tests in
    `tests/unit/`.
@@ -300,4 +328,22 @@ these run in the main process.
 3. Run `bash tests/run_test.sh` locally.
 4. Open a pull request linked to an issue; CI runs the same suite.
 
-The full process is in [CONTRIBUTING.md](CONTRIBUTING.md).
+CI is `.github/workflows/ci.yml`. The runner accepts repeatable
+`--skip test_name.sh` options for checks delegated to other jobs; an unknown
+name fails before any check runs. Fedora CI delegates the Debian release
+build to the pinned Ubuntu package job and units to the Linux/Windows unit
+jobs. Ubuntu builds the Debian package once while verifying the release
+report and sample manifest, then uploads those same artifacts. Locally, the
+default command still runs the complete suite.
+
+The Fedora build-deps installer includes Electron's system libraries for
+repository checks. Its optional `--rpm-only` argument omits `dpkg` for jobs
+that do not build Debian artifacts; contributor setup includes it by default.
+
+Fedora CI builds test RPMs with `STEPFORGE_RPM_FAST=1`, selecting level-3
+Zstandard compression with two threads. These packages contain the same
+runtime files but can be larger. Normal RPM builds retain the distro's
+compression defaults. A small real-RPM fixture checks both compression paths
+on every Fedora PR run.
+
+The full contributor process is in [CONTRIBUTING.md](CONTRIBUTING.md).

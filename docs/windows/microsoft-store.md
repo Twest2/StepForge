@@ -60,23 +60,25 @@ Your guides come with you, and there's nothing to move by hand:
    installed it with Chocolatey. Your guides stay on your computer.
 2. Install StepForge from the Store, as above.
 
-Older versions kept guides in `%APPDATA%\stepforge`. The first time a new
-version starts, it copies them to `%USERPROFILE%\StepForge`, checks that every
-file arrived intact, and only then opens from there, with all your guides and
-settings. If anything goes wrong, it keeps using the old folder, so nothing is
-lost. It retries at the next start when it can safely do so. If a failed
-rollback leaves two different copies, Guide storage explains how to recover
-without overwriting either copy. The old folder stays as a backup until you
-remove it yourself; another installation may still use it.
-
-If you clean up that backup, first check that no other StepForge installation
-uses it. Remove only the old `library`, `settings`, `cloud` and `shared-links`
-folders. Keep `library-location.json` and Electron's profile files in place.
-
 > [!IMPORTANT]
 > Keep only one of the two installed. Having both gives you two StepForge
 > entries in the Start menu, each updating separately, and only one of them can
 > move your guides to the new folder.
+
+Older versions kept guides in `%APPDATA%\stepforge`. The first time a new
+version starts, it copies them to `%USERPROFILE%\StepForge`, checks the copy,
+and only then switches over. If anything goes wrong, it keeps using the old
+folder, so nothing is lost, and tries again next time. The old folder stays as
+a backup until you delete it.
+
+<details>
+<summary>Deleting the old <code>%APPDATA%\stepforge</code> folder</summary>
+
+First make sure no other StepForge installation still uses it. Then delete only
+its `library`, `settings`, `cloud` and `shared-links` folders. Leave
+`library-location.json` and Electron's own files in place.
+
+</details>
 
 ## AI agents
 
@@ -97,4 +99,4 @@ folder if you want them gone too.
 | --- | --- |
 | StepForge isn't found in the Store | Check that you're on Windows 10 version 1809 or later, 64-bit. On a work or school PC, the Store may be turned off by your organization; use the [Windows installer](../windows_installation.md) instead. |
 | **Check for updates** shows a newer version, but the Store has no update yet | Microsoft checks each release before the Store offers it, which can take a day or two. Try again later. |
-| **Settings → General → Guide storage** says your guides are still in `%APPDATA%\stepforge` | StepForge couldn't move them, so it keeps using that folder and nothing is lost. The message says why. It retries ordinary failures; if two different copies remain, choose an empty folder in Guide storage or combine the copies manually before trying again. If `C:\Users\<your name>\StepForge` already holds a library from the other version, uninstall one of the two, then [open an issue](https://github.com/Twest2/StepForge/issues/new/choose) if you need both libraries combined. |
+| **Settings → General → Guide storage** says your guides are still in `%APPDATA%\stepforge` | StepForge couldn't move them, so it keeps using that folder and nothing is lost. The message says why, and StepForge tries again at the next start when it safely can. If `C:\Users\<your name>\StepForge` already holds guides from another StepForge install, uninstall one of the two, and [open an issue](https://github.com/Twest2/StepForge/issues/new/choose) if you need both libraries combined. |

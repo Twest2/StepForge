@@ -71,7 +71,7 @@ teams writing SOPs and runbooks, trainers and teachers, support teams answering
   screenshot for email addresses, card numbers, passwords, API keys and more,
   and blurs them.
 - **Send a link, not a file.** Publish any guide as a web page in one click,
-  hosted free on your own GitHub. [More below](#share-a-guide-with-a-link).
+  hosted free on your own GitHub. [More below](#share-a-guide-with-a-web-link).
 - **Export to what your team already uses.** PDF, Word, PowerPoint, Markdown,
   HTML, Confluence, Wiki.js and more, so a guide lands where people will read it.
 
@@ -94,9 +94,6 @@ page and hands you a link to send. It's usually online in under a minute.
 - **The same link, always up to date.** Changed the guide? Publish again and
   the link stays the same. StepForge marks guides you've **edited since you
   shared them**, so you never send out a stale version.
-- **Checked before it goes public.** Screenshots are scanned for email
-  addresses, passwords, keys and card numbers, and those are blurred before
-  anything is uploaded.
 - **Hard to stumble on.** Every link has a random ID, and pages ask search
   engines not to index them. Want links on `guides.yourdomain.com`? Point a
   [custom domain](docs/GITHUB_PAGES.md#use-your-own-domain) at it and
@@ -106,9 +103,9 @@ page and hands you a link to send. It's usually online in under a minute.
   password.
 
 > [!IMPORTANT]
-> Shared guides are **public**: anyone with the link can open them. The
-> privacy check catches a lot, but always look over your screenshots before
-> publishing. [How sharing works](docs/GITHUB_PAGES.md)
+> Shared guides are **public**: anyone with the link can open them. StepForge
+> blurs the private details it finds before publishing, but always look over
+> your screenshots yourself. [How sharing works](docs/GITHUB_PAGES.md)
 
 ## Install
 
@@ -119,14 +116,8 @@ page and hands you a link to send. It's usually online in under a minute.
 | **Fedora 44 Workstation** | DNF repository | [Fedora](docs/linux/dnf.md) |
 | **Other Linux** | Portable `.tar.gz` | [Linux overview](docs/linux/linux_install.md) |
 
-Every build is also on the [Releases page](https://github.com/Twest2/StepForge/releases/latest).
-The Microsoft Store updates StepForge automatically. Installing through
-Chocolatey, APT or DNF keeps StepForge up to date with the rest of your system,
-and with Chocolatey, **Settings → About → Update now** installs a new version
-in one click.
-
-**Windows:** open [StepForge in the Microsoft Store](https://apps.microsoft.com/detail/9NDH81CF1HGV)
-and click **Get**.
+**On Windows,** get StepForge from the Microsoft Store. It needs no
+administrator rights and keeps itself up to date.
 
 <a href="https://apps.microsoft.com/detail/9NDH81CF1HGV"><img src="https://get.microsoft.com/images/en-us%20dark.svg" alt="Get it from Microsoft" width="200"></a>
 
@@ -173,6 +164,10 @@ sudo dnf install stepforge
 ```
 
 </details>
+
+Chocolatey, APT and DNF keep StepForge up to date along with the rest of your
+system. Every build is also on the
+[Releases page](https://github.com/Twest2/StepForge/releases/latest).
 
 ## Your first guide in one minute
 
@@ -221,7 +216,7 @@ was recorded with StepForge.
   annotated images.
 - **Share a link.** Publish a guide as an interactive web page on your own
   GitHub Pages site for 1, 7 or 30 days, removed automatically when its time
-  is up. [See how it works](#share-a-guide-with-a-link).
+  is up. [See how it works](#share-a-guide-with-a-web-link).
 - **Publish to Confluence** (beta) on Confluence Cloud or your organization's
   Data Center site, including sites that need a smart card (CAC).
 - **Publish to Wiki.js** (beta), with the screenshots uploaded to the wiki.

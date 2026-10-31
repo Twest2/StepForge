@@ -72,20 +72,24 @@ For each step you can:
 - Turn on **Focused** view to zoom the exported screenshot toward the click,
   so readers see the relevant part of the screen instead of the whole desktop.
 - Start a **New page** at this step in paged formats such as PDF.
-- **Replace the screenshot** when the software you documented has changed:
-  right-click the step and choose **Choose image…**, then pick an image
-  file. The step's title, description, and annotations stay, so check that
-  arrows and boxes still line up. Press **Ctrl+Z** to go back to the old
-  screenshot. A step without a screenshot gets one the same way.
-  To capture a fresh one instead, choose **Retake screenshot** and pick
-  **Full screen**, **Window** or **Region…**. StepForge hides itself for 3
-  seconds so you can get the app into the right state, takes the new
-  screenshot and comes back. Only that step's image is replaced. It is not
-  available while a capture session is running.
 
 **Working with many steps at once:** choose **Select**, click one step, then
 **Shift-click** another to select everything in between, including substeps.
 A normal click toggles a single step.
+
+### Replace or retake a screenshot
+
+When the software you documented changes, right-click the step:
+
+- **Retake screenshot** captures a new one (**Full screen**, **Window** or
+  **Region…**). StepForge hides for 3 seconds so you can get the app ready,
+  then takes the shot and comes back.
+- **Choose image…** uses an image file instead. This also adds a screenshot
+  to a step that doesn't have one.
+
+The step keeps its title, description and annotations, so check that arrows
+and boxes still line up. **Ctrl+Z** brings the old screenshot back. Retaking
+isn't available while a capture session is running.
 
 ## 3. Annotate screenshots
 
@@ -107,7 +111,7 @@ Pick a tool from the toolbar above the screenshot and drag on the image.
 Annotations stay editable. The original screenshot is never modified, so you
 can always change or remove them later.
 
-A blur replaces what's under it with the colours around it, rather than
+A blur replaces what's under it with the colors around it, rather than
 softening it. Nothing it covers is kept in exported or published images, so
 it can't be recovered from them.
 
@@ -115,6 +119,7 @@ it can't be recovered from them.
 
 **More → Find private details…** reads every screenshot and blurs what looks
 private:
+
 - email addresses, and phone and card numbers;
 - Social Security numbers and IP addresses;
 - passwords, API keys and tokens;
@@ -141,12 +146,9 @@ Publishing a guide on the web always runs this check first.
 
 Choose **Export**, pick a format, and choose where to save.
 
-If something looks unfinished, the Export dialog lists it at the top:
-placeholders with no value, steps with no screenshot, and steps with no title
-or one StepForge filled in automatically (such as "Screen capture"). Click an
-item to go to that step, or export anyway. The Publish dialogs show the same
-list. A step with no screenshot but its own text counts as a text-only step and
-isn't flagged.
+If something looks unfinished, such as a step with no screenshot or title,
+or a placeholder with no value, the Export dialog lists it at the top. Click
+an item to go to that step, or export anyway.
 
 | Format | Best for |
 | --- | --- |
@@ -167,35 +169,23 @@ the screenshots, and updates the same page when you publish again. The Export
 dialog points you there when you pick either format. See
 [Publish to Confluence](CONFLUENCE.md) and [Publish to Wiki.js](WIKIJS.md).
 
-Each format has options (page size, table of contents, image width, and so
-on). Save your preferred options as a **template** so every guide exports the
-same way. Templates can be shared with teammates as `.sfglt` files.
+**Templates.** Each format has options such as page size, table of contents
+and image width. Save the ones you like as a template so every guide exports
+the same way, and share it with teammates as a `.sfglt` file.
 
-**Branding** gives every export your company's look. In **Settings → Branding**,
-choose **Manage** to make a brand profile: a name, your logo (PNG, JPG or SVG)
-and an optional banner, primary, accent and text colors, heading and body
-fonts (upload a font file to embed it in HTML), a cover style, header and footer
-text with page numbers, an optional logo watermark for GIFs and image bundles,
-optional colors for new annotations (shapes, number badges, tooltips), and
-extra CSS for HTML. Then pick it as the **Active brand profile**, and use
-**Design preview** to see a sample guide with it. HTML, GitHub Pages, PDF, Word
-and PowerPoint get the full treatment; Wiki.js, Confluence and Markdown get the
-logo, banner and header and footer text; JSON stays raw data. The Export dialog
-can choose a different profile, or none, for one export. Profiles can be shared
-as `.sfbrand` files. [Brand your exported guides](BRANDING.md) has the details,
-including what Advanced CSS can style.
+**Branding.** A brand profile puts your logo, colors, fonts, cover, header and
+footer on every export. Set one up in **Settings → Branding → Manage**. See
+[Brand your exported guides](BRANDING.md).
 
-Exported screenshots get alt text built from the step title (for example
-"Screenshot for step 3: Click Save") in the HTML, Word, PowerPoint, Markdown
-and Confluence formats, so screen readers announce more than a step number. PDFs
-carry the guide title, and the author if you set one, as their document
-properties. They are not tagged PDFs.
+**Placeholders.** Define one in **Settings → Placeholders** (for example
+`Product` → `Admin Portal`) and type `[[Product]]` in any title, description
+or table cell. It's replaced when you export or publish (code blocks are left
+as written). A single guide can have its own placeholders under
+**More → Guide placeholders…**.
 
-**Placeholders** keep repeated text consistent. Define one in
-**Settings → Placeholders** (for example `Product` → `Admin Portal`) and type
-`[[Product]]` in any title, description or table cell. It's replaced when you
-export or publish. Code blocks are left as written.
-Guides can also have their own placeholders under **More → Guide placeholders…**.
+**Accessibility.** Screenshots in HTML, Word, PowerPoint, Markdown and
+Confluence exports get alt text from the step title, such as "Screenshot for
+step 3: Click Save". PDFs aren't tagged for screen readers.
 
 ## 5. Organize your library
 
@@ -209,11 +199,10 @@ The library is your home screen.
   Each one shows how long it has left. To keep them longer, or until you empty
   the trash yourself, use **Settings → General → Trash**.
 
-StepForge shows its menus and messages in your system's language when it has
-it: English, French, Spanish, Russian, Simplified Chinese or Japanese. The
-translations other than English are in beta. To pick a different language,
-use **Settings → General → Language**; StepForge reloads its window in the new
-language, after saving your open guide. Exported guides stay in English.
+StepForge uses your system's language if it's one of English, French,
+Spanish, Russian, Simplified Chinese or Japanese (the translations are in
+beta). To change it, use **Settings → General → Language**. Exported guides
+stay in English.
 
 Guides live in your StepForge data folder. To keep them somewhere else, such
 as a larger drive, use **Settings → General → Guide storage**. StepForge copies
@@ -225,14 +214,13 @@ and verifies your library before switching to the new location.
   images into one file. Anyone with StepForge can open it with
   **Import → Import a copy of a guide (.sfgz)…**.
 - **Linked guides** let several people work from one `.sfgz` on a shared
-  folder. StepForge saves back to the file and warns you if someone else is
-  saving it. If someone else saved since you last did, your changes are merged
-  with theirs instead of replacing them.
+  folder. StepForge saves back to the file, and if someone else saved it in
+  the meantime, it merges their changes with yours.
 - **Snapshots** are automatic backups of each guide. Open
   **More → Backups & snapshots…** to create one by hand or roll back.
   **Settings → Editor → Snapshots to keep** controls how many are kept.
-- **Google Drive sync** keeps your library the same on all your computers.
-  See [Google Drive sync](GOOGLE_DRIVE.md).
+- **Cloud sync** keeps your library the same on all your computers, through
+  [Google Drive](GOOGLE_DRIVE.md) or [OneDrive, Dropbox or Nextcloud](CLOUD_ACCOUNTS.md).
 
 ## Keyboard shortcuts
 
@@ -271,13 +259,10 @@ with the hotkey or on a timer instead.
 | Windows | `%USERPROFILE%\StepForge` (`C:\Users\<you>\StepForge`) |
 | Linux | `~/.local/share/stepforge` |
 
-The exact folder is shown in **Settings → About**. You can move it under
-**Settings → General → Guide storage**. Avoid folders that OneDrive, Dropbox,
-Google Drive or Nextcloud sync; Guide storage warns you if you pick one. Use
-StepForge's own sync (**Settings → Accounts**) to keep guides in step across
-computers.
-Older Windows versions used `%APPDATA%\stepforge`; a new version moves your
-guides from there by itself.
+The exact folder is shown in **Settings → About**, and you can move it under
+**Settings → General → Guide storage**. Don't put it in a folder that
+OneDrive, Dropbox, Google Drive or Nextcloud syncs: use StepForge's own sync
+(**Settings → Accounts**) instead.
 
 Still stuck? [Open an issue](https://github.com/Twest2/StepForge/issues/new/choose)
 and include your operating system, StepForge version (from **Settings → About**),

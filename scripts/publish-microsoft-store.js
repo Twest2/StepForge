@@ -165,7 +165,9 @@ async function publishToStore({ dir, env = process.env, run = runMsstore, identi
 
     // Replaces any draft with a copy of the live submission, uploads the
     // package to it, and leaves it uncommitted so old packages can go first.
-    run(['publish', upload, '--appId', productId, '--noCommit']);
+    // StepForge is free. Saying so keeps the CLI from stopping when Partner
+    // Center reports per-market pricing it can't send back.
+    run(['publish', upload, '--appId', productId, '--priceId', 'Free', '--noCommit']);
 
     const draft = getSubmission(run, productId);
     const retired = retirePreviousPackages(draft, name);

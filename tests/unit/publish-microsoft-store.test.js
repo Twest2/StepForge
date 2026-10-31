@@ -129,7 +129,7 @@ test('a release replaces the live package and commits the submission', async () 
     const publish = store.calls[2];
     assert.equal(path.basename(publish.args[1]), 'StepForge_1.6.0.0_x64.msix');
     assert.equal(publish.uploaded, 'appx bytes', 'the .appx is uploaded unchanged');
-    assert.deepEqual(publish.args.slice(2), ['--appId', productId, '--noCommit']);
+    assert.deepEqual(publish.args.slice(2), ['--appId', productId, '--priceId', 'Free', '--noCommit']);
     assert.deepEqual(store.calls[4].args.slice(2, 4), [productId, '--payload']);
     assert.deepEqual(store.calls[4].payload.ApplicationPackages.map((p) => [p.FileName, p.FileStatus]), [
       ['StepForge 1.5.3 Microsoft Store.appx', 'PendingDelete'],

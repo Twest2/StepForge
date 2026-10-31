@@ -42,6 +42,11 @@ jobs:
           # fixing the PPA tooling without changing its release tag.
           ref: ${{ github.event_name == 'workflow_dispatch' && github.ref || github.event.release.tag_name }}
 
+      # Before the signing key is touched: only the repository owner may
+      # publish or rerun, whether by dispatch or by publishing a release.
+      - name: Verify release owner
+        run: node scripts/check-release-access.js
+
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc

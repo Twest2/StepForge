@@ -31,3 +31,15 @@ test('every release build requires authorization and only the publisher receives
   assert.match(workflow, /  release:\n    permissions:\n      contents: write/);
   assert.equal((workflow.match(/run: node scripts\/check-release-access\.js/g) || []).length, 10, 'every job rechecks the rerun actor');
 });
+
+test('only the repository owner can publish to the Launchpad PPA', () => {
+  const workflow = fs.readFileSync(path.join(__dirname, '../../.github/workflows/release-ppa.yml'), 'utf8');
+  const steps = workflow.split('\n    steps:\n')[1];
+  const check = steps.indexOf('run: node scripts/check-release-access.js');
+  assert.ok(check > steps.indexOf('uses: actions/checkout@v4'), 'the check runs from the checkout');
+  for (const later of ['npm ci', 'Import the Launchpad signing key', 'dput']) {
+    assert.ok(check < steps.indexOf(later), `the check runs before ${later}`);
+  }
+  // The workflow has one job, so a rerun always repeats the check.
+  assert.equal((workflow.match(/^  [\w-]+:\n    name:/gm) || []).length, 1);
+});

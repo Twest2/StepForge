@@ -99,6 +99,7 @@ folder if you want them gone too.
 
 | Problem | What to do |
 | --- | --- |
+| A yellow border shows around your screen while you record | Windows draws it while an app records the screen. To hide it on Windows 11, open **Settings → Privacy & security → Screenshot borders**, turn on the switch at the top and the one for **StepForge**, then close StepForge completely and start it again. |
 | StepForge isn't found in the Store | Check that you're on Windows 10 version 1809 or later, 64-bit. On a work or school PC, the Store may be turned off by your organization; use the [Windows installer](../windows_installation.md) instead. |
 | **Check for updates** shows a newer version, but the Store has no update yet | Microsoft checks each release before the Store offers it, which can take a day or two. Try again later. |
 | **Settings → General → Guide storage** says your guides are still in `%APPDATA%\stepforge` | StepForge couldn't move them, so it keeps using that folder and nothing is lost. The message says why. It retries ordinary failures; if two different copies remain, choose an empty folder in Guide storage or combine the copies manually before trying again. If `C:\Users\<your name>\StepForge` already holds a library from the other version, uninstall one of the two, then [open an issue](https://github.com/Twest2/StepForge/issues/new/choose) if you need both libraries combined. |

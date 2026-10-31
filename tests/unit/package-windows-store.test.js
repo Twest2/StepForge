@@ -111,6 +111,13 @@ test('the manifest carries the Store version and the stepforge.exe alias', () =>
     'splashScreen', 'arch', 'resourceLanguages', 'capabilities', 'extensions', 'minVersion', 'maxVersionTested'];
   assert.deepEqual(macros.filter((m) => !known.includes(m)), []);
   assert.ok(macros.includes('extensions'));
+  // The capabilities are written out, so electron-builder's list can't replace them.
+  assert.ok(!macros.includes('capabilities'));
+  assert.match(manifest, /xmlns:uap11="http:\/\/schemas\.microsoft\.com\/appx\/manifest\/uap\/windows10\/11"/);
+  assert.match(manifest, /IgnorableNamespaces="[^"]*\buap11\b[^"]*"/);
+  const capabilities = manifest.split('<Capabilities>')[1].split('</Capabilities>')[0];
+  assert.deepEqual([...capabilities.matchAll(/<(\w+):Capability Name="(\w+)" \/>/g)].map((m) => `${m[1]}:${m[2]}`),
+    ['uap11:graphicsCaptureWithoutBorder', 'rescap:runFullTrust']);
   assert.throws(() => renderStoreManifest('1.5.3.1'), /invalid Store version/);
 
   const extensions = read('packaging/windows/store/extensions.xml');

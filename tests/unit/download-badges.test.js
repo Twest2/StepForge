@@ -74,12 +74,14 @@ test('every badge in the real README has a configured download source', () => {
   assert.deepEqual([...labels].sort(), Object.keys(SOURCES).sort());
 });
 
-test('counts come from GitHub release assets and ProGet totalDownloads via shields.io', async () => {
+test('counts come from GitHub release assets, ProGet totalDownloads via shields.io, and the badges branch', async () => {
   const requested = [];
   const fetchImpl = async (url, options) => {
     requested.push({ url, auth: options.headers.Authorization });
     let body;
-    if (url.startsWith('https://api.github.com/')) {
+    if (url.includes('/contents/')) {
+      body = { schemaVersion: 1, label: 'Microsoft Store downloads', message: '31', color: 'blue' };
+    } else if (url.startsWith('https://api.github.com/')) {
       body = url.endsWith('page=1')
         ? [{ assets: [{ download_count: 10 }, { download_count: 2 }] }, { assets: [] }]
         : [];
@@ -96,6 +98,7 @@ test('counts come from GitHub release assets and ProGet totalDownloads via shiel
     'APT downloads': 18,
     'DNF downloads': 0,
     'Chocolatey downloads': 18,
+    'Microsoft Store downloads': 31,
   });
   assert.ok(requested.some((r) => r.url.includes('/repos/Twest2/StepForge/releases') && r.auth === 'Bearer t0k'));
   const choco = requested.find((r) => r.url.includes(encodeURIComponent('/stepforge-choco/')));
@@ -119,4 +122,21 @@ test('an unreadable ProGet feed aborts instead of counting as zero', async () =>
 test('a failed request aborts the sort', async () => {
   const fetchImpl = async () => ({ ok: false, status: 503, json: async () => ({}) });
   await assert.rejects(fetchCounts(['APT downloads'], { fetchImpl }), /HTTP 503/);
+});
+
+test('the Microsoft Store count is read from the badges branch through the contents API', async () => {
+  const requested = [];
+  const fetchImpl = async (url, options) => {
+    requested.push({ url, headers: options.headers });
+    return { ok: true, status: 200, json: async () => ({ schemaVersion: 1, label: 'Microsoft Store downloads', message: '31', color: 'blue' }) };
+  };
+  assert.deepEqual(await fetchCounts(['Microsoft Store downloads'], { fetchImpl, token: 't0k' }), { 'Microsoft Store downloads': 31 });
+  assert.equal(requested[0].url, 'https://api.github.com/repos/Twest2/StepForge/contents/microsoft-store-downloads.json?ref=badges');
+  assert.equal(requested[0].headers.Accept, 'application/vnd.github.raw+json');
+  assert.equal(requested[0].headers.Authorization, 'Bearer t0k');
+
+  // A missing branch or an unreadable file aborts instead of counting as zero.
+  await assert.rejects(fetchCounts(['Microsoft Store downloads'], { fetchImpl: async () => ({ ok: false, status: 404, json: async () => ({}) }) }), /HTTP 404/);
+  const empty = async () => ({ ok: true, status: 200, json: async () => ({ message: '' }) });
+  await assert.rejects(fetchCounts(['Microsoft Store downloads'], { fetchImpl: empty }), /has no count/);
 });

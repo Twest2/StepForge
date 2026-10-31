@@ -28,7 +28,7 @@ assignees: Twest2
 ## Your setup
 
 - **StepForge version** (Settings → About):
-  - [ ] It still happens after **Settings → About → Check for updates**
+  - [ ] It happens on the current version of StepForge (**Settings → About → Check for updates**)
 - **Operating system:**
   - [ ] Windows 10
   - [ ] Windows 11
@@ -40,7 +40,6 @@ assignees: Twest2
   - [ ] Chocolatey
   - [ ] Setup `.exe` from GitHub Releases
   - [ ] APT repository
-  - [ ] Launchpad PPA
   - [ ] DNF repository
   - [ ] `.deb` or `.rpm` from GitHub Releases
   - [ ] Portable `.tar.gz`

@@ -1,9 +1,5 @@
 # Install StepForge from the Microsoft Store
 
-
-Note that support for this installation method is coming in the next couple of days. Microsoft is currently verifying the app package.
-
-
 The Microsoft Store is the recommended way to install StepForge on
 **Windows 10 (version 1809 or later) and Windows 11, 64-bit**. Microsoft
 checks and signs the package, so Windows shows no **Windows protected your
@@ -15,7 +11,7 @@ Prefer a package manager or a regular installer? See
 
 ## Install
 
-1. Open [StepForge in the Microsoft Store](https://apps.microsoft.com/search?query=StepForge),
+1. Open [StepForge in the Microsoft Store](https://apps.microsoft.com/detail/9NDH81CF1HGV),
    or open the **Microsoft Store** app from the Start menu and search for
    **StepForge**.
 2. Click **Get** (or **Install**).

@@ -25,9 +25,9 @@ test('every release build requires authorization and only the publisher receives
   const workflow = fs.readFileSync(path.join(__dirname, '../../.github/workflows/release.yml'), 'utf8');
   assert.match(workflow, /permissions:\n  contents: read/);
   assert.match(workflow, /run: node scripts\/check-release-access\.js/);
-  for (const job of ['build-windows', 'build-linux', 'build-fedora']) {
+  for (const job of ['build-windows', 'build-windows-store', 'build-linux', 'build-fedora']) {
     assert.ok(workflow.includes(`  ${job}:\n    needs: authorize-release\n`));
   }
   assert.match(workflow, /  release:\n    permissions:\n      contents: write/);
-  assert.equal((workflow.match(/run: node scripts\/check-release-access\.js/g) || []).length, 8, 'every job rechecks the rerun actor');
+  assert.equal((workflow.match(/run: node scripts\/check-release-access\.js/g) || []).length, 10, 'every job rechecks the rerun actor');
 });

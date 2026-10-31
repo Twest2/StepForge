@@ -125,8 +125,10 @@ Chocolatey, APT or DNF keeps StepForge up to date with the rest of your system,
 and with Chocolatey, **Settings → About → Update now** installs a new version
 in one click.
 
-**Windows:** open [StepForge in the Microsoft Store](https://apps.microsoft.com/search?query=StepForge)
+**Windows:** open [StepForge in the Microsoft Store](https://apps.microsoft.com/detail/9NDH81CF1HGV)
 and click **Get**.
+
+<a href="https://apps.microsoft.com/detail/9NDH81CF1HGV"><img src="https://get.microsoft.com/images/en-us%20dark.svg" alt="Get it from Microsoft" width="200"></a>
 
 <details>
 <summary><strong>Windows (Chocolatey)</strong> commands</summary>

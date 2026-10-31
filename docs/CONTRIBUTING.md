@@ -31,9 +31,10 @@ CI runs the full test suite on every pull request.
 - Core features must work offline. No telemetry, automatic update checks,
   license checks, or remote fonts. The only update check is the one the user
   starts from **Settings → About**.
-- Optional integrations (AI and Google Drive) stay **off by default**, require
-  explicit opt-in, and follow the [privacy policy](PRIVACY.md). Discuss any new
-  network feature with the maintainer before building it.
+- Optional integrations (AI, cloud sync, sharing and publishing) stay **off by
+  default**, require explicit opt-in, and follow the
+  [privacy policy](PRIVACY.md). Discuss any new network feature with the
+  maintainer before building it.
 
 ### No new runtime dependencies
 
@@ -141,23 +142,9 @@ scripts in `scripts/linux/` install; without them those checks are skipped.
 - Name and describe tests clearly so that whoever breaks one later understands
   what it protects.
 
-CI is configured in `.github/workflows/ci.yml`. The runner accepts repeatable
-`--skip test_name.sh` options for checks delegated to other jobs; an unknown
-name fails before any check runs. Fedora CI delegates the Debian release
-build to the pinned Ubuntu package job and units to the Linux/Windows unit
-jobs. Ubuntu builds the Debian package once while verifying the release
-report and sample manifest, then uploads those same artifacts. The default
-command above still runs the complete suite locally.
-
-The Fedora build-deps installer includes Electron's system libraries for
-repository checks. Its optional `--rpm-only` argument omits `dpkg` for jobs
-that do not build Debian artifacts; contributor setup includes it by default.
-
-Fedora CI builds test RPMs with `STEPFORGE_RPM_FAST=1`, selecting level-3
-Zstandard compression with two threads. These packages contain the same
-runtime files but can be larger. Normal RPM builds retain the distro's
-compression defaults. A small real-RPM fixture checks both compression paths
-on every Fedora PR run.
+CI (`.github/workflows/ci.yml`) runs the same suite on Ubuntu, Fedora and
+Windows. How the jobs split the work is described in
+[ARCHITECTURE.md](ARCHITECTURE.md#tests-and-ci).
 
 ## Interface text and translations
 
@@ -188,7 +175,7 @@ in `LANGUAGES`, so the Store shows StepForge as available in it.
 | Target | Command | Output |
 | --- | --- | --- |
 | Windows installer | `npm run package:windows` (or `pwsh scripts/package-windows.ps1`) | `releases/` |
-| Microsoft Store `.appx` (Windows only) | `npm run package:windows:store` (or `npm run package:windows:store:test` for a placeholder identity). The Release workflow builds it and submits it to the Store | `releases/` |
+| Microsoft Store `.appx` (Windows only) | `npm run package:windows:store`, or `npm run package:windows:store:test` for a test build with a placeholder identity | `releases/` |
 | Ubuntu `.deb` + portable `.tar.gz` | `npm run package:linux:deb` | `build/artifacts/` |
 | Fedora `.rpm` | `npm run package:linux:rpm` | `build/artifacts/x86_64/` |
 | Unpacked app folder | `bash scripts/build-release.sh` | `build/` |

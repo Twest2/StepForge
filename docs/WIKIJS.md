@@ -46,22 +46,15 @@ and then the 6-digit code from your authenticator app:
    shows now and choose **Verify**.
 
 You don't need a code each time you publish. StepForge keeps your Wiki.js
-session, encrypted like your password, and Wiki.js renews it while you use
-it. Wiki.js renews a session that's been unused for up to 14 days by default
-(your administrator can change this under **Administration → Security**).
+session, encrypted like your password, and Wiki.js renews it while you use it.
 
 StepForge asks for a code again when Wiki.js has ended your session, for
-example after a longer break, or if an administrator signed you out:
+example after about two weeks without publishing, or if an administrator
+signed you out. **Publish to Wiki.js** then asks for the code and carries on,
+and **Settings → Accounts → Wiki.js** shows a code field.
 
-- **Publish to Wiki.js** asks for the code, then carries on publishing.
-- **Settings → Accounts → Wiki.js** shows **Signed out on the wiki** with a
-  code field.
-
-If two-step verification is turned off for your account later, StepForge
-notices the next time it signs in, and stops asking for codes.
-
-If your account doesn't have two-step verification set up yet and the wiki
-requires it, set it up on the wiki in your browser first, then sign in here.
+If the wiki requires two-step verification and you haven't set it up yet, set
+it up on the wiki in your browser first, then sign in here.
 
 ## API keys
 
@@ -122,12 +115,8 @@ those edits."
 - **Publish anyway** replaces the page with the guide.
 - **Cancel** keeps the wiki's version.
 
-If your account can write pages but not manage them, Wiki.js doesn't tell
-StepForge who made the edit, so the question leaves the name out.
-
-StepForge also asks before replacing a page it didn't publish from this guide.
-
-Tags added to the page on the wiki are kept when it's updated.
+StepForge also asks before replacing a page it didn't publish from this
+guide. Tags added to the page on the wiki are kept when it's updated.
 
 ## Permissions
 

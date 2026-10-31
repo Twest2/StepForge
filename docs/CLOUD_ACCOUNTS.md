@@ -26,12 +26,10 @@ KWallet, or another Secret Service such as KeePassXC). If sign-in says it needs
 an operating-system credential store, make sure a keyring is installed and
 unlocked, then restart StepForge.
 
-Sync works the same way on every service: versions, restoring, combining
-edits from different computers, the [settings that sync](GOOGLE_DRIVE.md#settings-that-sync)
-with your guides, recently deleted guides, and **Free up space** are all
-described in
-[Google Drive sync](GOOGLE_DRIVE.md). Every service stores only what changed
-between versions, so a screenshot that appears in many versions is stored once.
+Sync works the same way on every service. [Google Drive sync](GOOGLE_DRIVE.md)
+explains versions, restoring, how edits from different computers are combined,
+the [settings that sync](GOOGLE_DRIVE.md#settings-that-sync), and
+**Free up space**.
 
 ## One account at a time
 

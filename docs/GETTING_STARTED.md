@@ -135,6 +135,11 @@ Pick a tool from the toolbar above the screenshot and drag on the image.
 | Cursor | `U` | Adding a mouse pointer |
 | Crop | `C` | Trimming the screenshot |
 
+After each annotation or crop, StepForge switches back to **Select**, with the
+new annotation selected so you can move or resize it straight away. To draw
+several with the same tool without picking it again each time, turn off
+**Settings → Editor → Go back to Select after each use**.
+
 Annotations stay editable. The original screenshot is never modified, so you
 can always change or remove them later.
 

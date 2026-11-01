@@ -746,6 +746,7 @@ function showSettingsDialog({
     const captureHotkey = makeHotkeyInput(settings.capture?.hotkeyCapture || '');
     const pauseHotkey = makeHotkeyInput(settings.capture?.hotkeyPauseResume || '');
     const focusedDefault = el('input', { type: 'checkbox', checked: settings.editor?.focusedViewDefaultForNewSteps !== false });
+    const returnToSelect = el('input', { type: 'checkbox', checked: settings.editor?.returnToSelect !== false });
     const previewCount = makeInput(settings.exports?.previewStepCount ?? 3, 'number', { min: 1, step: 1 });
     const openFolder = el('input', { type: 'checkbox', checked: Boolean(settings.exports?.openFolderAfterExport) });
     const codeTheme = makeSelect(CODE_THEME_CHOICES.some((t) => t.value === settings.exports?.codeTheme) ? settings.exports.codeTheme : 'atom-one-dark',
@@ -938,11 +939,14 @@ function showSettingsDialog({
           settingRow(t('Capture'), t('Take a step. Also used when clicks can’t be detected.'), captureHotkey),
           settingRow(t('Pause / resume'), t('Pause or resume the capture session.'), pauseHotkey)),
       ] },
-      { id: 'editor', label: t('Editor'), description: t('Defaults for new steps and automatic backups.'), content: [
+      { id: 'editor', label: t('Editor'), description: t('Defaults for new steps, annotation tools and automatic backups.'), content: [
         settingsCard(t('New steps'),
           settingRow(t('Focus recorded clicks'), t('Zoom new screenshots toward where you clicked.'), makeSwitch(smartCropping, t('Focus recorded clicks'))),
           settingRow(t('Default focus amount'), t('More context (1×) to closer focus (2×). Applies to new captures only.'), focusControl),
           settingRow(t('Focused view for new steps'), t('Open new steps in focused view.'), makeSwitch(focusedDefault, t('Focused view for new steps')))),
+        settingsCard(t('Annotation tools'),
+          settingRow(t('Go back to Select after each use'), t('After you draw a blur, shape, arrow or other annotation, or crop, the Select tool is picked again. Turn off to keep using the same tool.'),
+            makeSwitch(returnToSelect, t('Go back to Select after each use')))),
         settingsCard(t('Backups'),
           settingRow(t('Snapshots to keep'), t('Older backup snapshots of each guide are removed. 0 keeps all of them.'), keepLast)),
       ] },
@@ -1056,6 +1060,7 @@ function showSettingsDialog({
               editor: {
                 ...settings.editor,
                 focusedViewDefaultForNewSteps: focusedDefault.checked,
+                returnToSelect: returnToSelect.checked,
               },
               branding: {
                 ...settings.branding,

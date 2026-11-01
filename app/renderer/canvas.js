@@ -17,7 +17,7 @@ class AnnotationCanvas {
   constructor(canvasEl, callbacks = {}) {
     this.canvas = canvasEl;
     this.ctx = canvasEl.getContext('2d');
-    this.cb = callbacks; // { onChange, onSelect, onCrop, onRequestText }
+    this.cb = callbacks; // { onChange, onSelect, onCrop, onRequestText, onToolUsed }
     this.image = null;   // HTMLImageElement
     this.imgW = 0;
     this.imgH = 0;
@@ -523,7 +523,10 @@ class AnnotationCanvas {
         w: Math.abs(r.x1 - r.x0), h: Math.abs(r.y1 - r.y0),
       };
       this.render();
-      if (rect.w > 0.02 && rect.h > 0.02 && this.cb.onCrop) this.cb.onCrop(rect);
+      if (rect.w > 0.02 && rect.h > 0.02) {
+        if (this.cb.onCrop) this.cb.onCrop(rect);
+        if (this.cb.onToolUsed) this.cb.onToolUsed('crop');
+      }
       return;
     }
     if (d.kind === 'create') {
@@ -536,6 +539,7 @@ class AnnotationCanvas {
       this.normalizeRect(d.ann);
       this.changed();
       this.select(d.ann.id);
+      if (this.cb.onToolUsed) this.cb.onToolUsed(d.ann.type);
       if ((d.ann.type === 'text' || d.ann.type === 'tooltip') && this.cb.onRequestText) {
         this.cb.onRequestText(d.ann);
       }

@@ -8,6 +8,8 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
+const { BADGE_BRANCH, BADGE_FILE } = require('./microsoft-store-downloads');
+
 const START_MARKER = '<!-- download-badges:start';
 const END_MARKER = '<!-- download-badges:end -->';
 const GITHUB_REPO = 'Twest2/StepForge';
@@ -20,6 +22,7 @@ const SOURCES = {
   'APT downloads': { kind: 'proget', feed: 'stepforge' },
   'DNF downloads': { kind: 'proget', feed: 'stepforge-rpm' },
   'Chocolatey downloads': { kind: 'proget', feed: 'stepforge-choco' },
+  'Microsoft Store downloads': { kind: 'badge-branch', repo: GITHUB_REPO, branch: BADGE_BRANCH, file: BADGE_FILE },
 };
 
 function badgeLabel(line) {
@@ -107,14 +110,25 @@ async function progetDownloads(fetchImpl, feed) {
   throw new Error(`shields.io could not read ProGet feed ${feed}: ${value || 'empty response'}`);
 }
 
+// Partner Center has no public count, so the workflow's first job writes it
+// to the badges branch. Read it through the contents API, which, unlike
+// raw.githubusercontent.com, isn't cached for minutes after that push.
+async function badgeBranchDownloads(fetchImpl, { repo, branch, file }, token) {
+  const headers = { Accept: 'application/vnd.github.raw+json', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
+  const badge = await getJson(fetchImpl, `https://api.github.com/repos/${repo}/contents/${file}?ref=${branch}`, headers);
+  const value = String(badge.message ?? '');
+  if (/^\d+$/.test(value)) return Number(value);
+  throw new Error(`${file} on the ${branch} branch has no count: ${value || 'empty message'}`);
+}
+
 async function fetchCounts(labels, { fetchImpl = fetch, token } = {}) {
   const counts = {};
   for (const label of labels) {
     const source = SOURCES[label];
     if (!source) throw new Error(`No download source configured for badge "${label}"`);
-    counts[label] = source.kind === 'github'
-      ? await githubDownloads(fetchImpl, source.repo, token)
-      : await progetDownloads(fetchImpl, source.feed);
+    if (source.kind === 'github') counts[label] = await githubDownloads(fetchImpl, source.repo, token);
+    else if (source.kind === 'badge-branch') counts[label] = await badgeBranchDownloads(fetchImpl, source, token);
+    else counts[label] = await progetDownloads(fetchImpl, source.feed);
   }
   return counts;
 }

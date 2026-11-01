@@ -1,5 +1,13 @@
 # Install StepForge from the Microsoft Store
+<!-- Eventually will need to update this in later versions to remove this and related sections.
 
+Older versions kept guides in `%APPDATA%\stepforge`. The first time a new
+version starts, it copies them to `%USERPROFILE%\StepForge`, checks the copy,
+and only then switches over. If anything goes wrong, it keeps using the old
+folder, so nothing is lost, and tries again next time. The old folder stays as
+a backup until you delete it.
+
+-->>
 The Microsoft Store is the recommended way to install StepForge on
 **Windows 10 (version 1809 or later) and Windows 11, 64-bit**. Microsoft
 checks and signs the package, so Windows shows no **Windows protected your

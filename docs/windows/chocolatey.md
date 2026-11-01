@@ -38,12 +38,12 @@ StepForge is installed for all users and appears in the Start menu. Head to
 
 The easiest way: in StepForge, open **Settings → About**, press **Check for
 updates**, then **Update now**. StepForge saves your work and closes, Windows
-asks for administrator approval, and a PowerShell window titled **Updating
-StepForge** runs `choco upgrade stepforge -y` (StepForge only, nothing else
-installed through Chocolatey). When it's done, StepForge opens again as a
-normal app. If you decline the approval prompt, StepForge stays open and
-nothing changes. If the update fails, the window says why, shows Chocolatey's
-exit code and stays open until you press Enter; Chocolatey's own log is
+asks for administrator approval, and Chocolatey updates StepForge (and nothing
+else). Then StepForge opens again. If you decline the approval prompt, nothing
+changes.
+
+If the update fails, the **Updating StepForge** window says why and stays open
+until you press Enter. Chocolatey's log is
 `C:\ProgramData\chocolatey\logs\chocolatey.log`.
 
 **Update now** appears only when StepForge is registered with Chocolatey,
@@ -67,43 +67,41 @@ Updates keep your guides, settings, and Google Drive sign-in.
 
 ## Already installed from the .exe?
 
-The setup wizard has an **Updates** page with **Keep StepForge updated with
-Chocolatey**, checked by default. If Chocolatey isn't installed, it reads
-**Install Chocolatey and keep StepForge updated with it**. Leave it checked
-and, after the files are copied, the installer does the following (if you
-install only for yourself, Windows first asks for administrator approval once;
-an all-users install already has it):
+The setup wizard's **Updates** page has **Keep StepForge updated with
+Chocolatey**, checked by default. Leave it checked, and once the files are
+copied the installer installs Chocolatey if needed, adds the StepForge feed,
+and registers the version you just installed. From then on, **Update now** and
+`choco upgrade stepforge -y` both work. If you install only for yourself,
+Windows asks for administrator approval once.
 
-1. Installs Chocolatey, if it is missing.
-2. Adds the `stepforge` feed, unless a source with that URL already exists.
-3. Tells Chocolatey which StepForge version you just installed, without
-   running the installer again.
+Installed with an older installer that has no **Updates** page? Run the latest
+installer once. Your guides and settings are kept.
 
-After that, **Settings → About → Check for updates → Update now** updates
-StepForge, and so does `choco upgrade stepforge -y`. Installed with an
-older installer that has no **Updates** page? Run the latest installer once;
-your guides and settings are kept. Notes:
+Good to know:
 
-- **Internet access is needed**, and registering downloads the StepForge
-  package from the feed once. That package contains the whole installer
-  (about 100 MB).
+- **It needs internet access**, and downloads the StepForge package (about
+  100 MB) from the feed once.
 - If you installed **only for you**, the first Chocolatey update turns it into
   an **all-users** install. Your guides, settings, and sign-in are kept.
-- **If it doesn't work** (you decline the approval prompt, you're offline, IT
-  policy blocks it, or you're on a development or prerelease build that isn't
-  on the feed), StepForge is still installed and the wizard says so and where
-  the log is, normally `C:\ProgramData\StepForge\chocolatey-setup.log`. You can set it up
-  later with the [install steps](#install) above, or by running
-  `choco install stepforge --version <your version> --source=stepforge -y --skip-automation-scripts`.
-- Silent installs (`/S`) skip this unless you also pass `/chocolatey`, for
-  example `"StepForge Setup <version>.exe" /S /allusers /chocolatey`. Run it
-  from an administrator prompt, or Windows shows an approval prompt even
-  though the install is silent. The installer never does this when
-  Chocolatey itself is running it.
+- **If it doesn't work** (you declined the approval prompt, you're offline, IT
+  policy blocks it, or it's a prerelease build that isn't on the feed),
+  StepForge is still installed, and the wizard tells you where the log is,
+  normally `C:\ProgramData\StepForge\chocolatey-setup.log`. You can set it up
+  later with the [install steps](#install) above.
 - Uninstalling from **Apps & Features** also removes StepForge from
-  Chocolatey, so `choco upgrade` doesn't bring it back. If StepForge was
-  installed only for you, Windows asks for administrator approval for this.
-  Silent uninstalls (`/S`) leave the Chocolatey registration alone.
+  Chocolatey, so `choco upgrade` doesn't bring it back.
+
+### For IT admins
+
+- Silent installs (`/S`) skip the Chocolatey setup unless you also pass
+  `/chocolatey`, for example
+  `"StepForge Setup <version>.exe" /S /allusers /chocolatey`. Run it from an
+  administrator prompt, or Windows shows an approval prompt even though the
+  install is silent. The installer never does this when Chocolatey itself is
+  running it.
+- Silent uninstalls (`/S`) leave the Chocolatey registration alone.
+- To register an installed version with Chocolatey by hand, run
+  `choco install stepforge --version <your version> --source=stepforge -y --skip-automation-scripts`.
 
 ## Switching from the regular installer
 

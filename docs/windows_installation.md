@@ -82,14 +82,11 @@ users** of this computer. Installing for all users needs administrator rights.
 ![The install location page](steps-windows_installation/008-select-next.png)
 
 **2.6** On the **Desktop Icon** page, click **Next**. On the **Updates**
-page, leave **Keep StepForge updated with Chocolatey** checked to be able to
-update with **Update now** in Settings → About, or `choco upgrade stepforge`,
-later (see
-[Already installed from the .exe?](windows/chocolatey.md#already-installed-from-the-exe)),
-then click **Install**. If you install only for yourself, Windows asks for
-administrator approval once for this; if you decline, StepForge is still
-installed. Installing only for yourself becomes an all-users install on the
-first Chocolatey update.
+page, leave **Keep StepForge updated with Chocolatey** checked so you can
+update later with one click, then click **Install**. If Windows asks for
+administrator approval and you decline, StepForge is still installed, just
+without Chocolatey updates
+([more about this option](windows/chocolatey.md#already-installed-from-the-exe)).
 
 ![The Install button](steps-windows_installation/009-select-install.png)
 
@@ -108,21 +105,17 @@ These are for the `.exe` installer. For the Store version, see
 [Updates](windows/microsoft-store.md#updates) and
 [Uninstall](windows/microsoft-store.md#uninstall).
 
-**To update,** open **Settings → About** and press **Check for updates**. If
-you left the Chocolatey option on during setup, press **Update now**: StepForge
-closes, installs the new version with Chocolatey after you approve the
-administrator prompt, and opens again (or run `choco upgrade stepforge -y`
-yourself, see [Update](windows/chocolatey.md#update)). Otherwise, download the
+**To update,** open **Settings → About** and press **Check for updates**.
+If you kept the Chocolatey option during setup, press **Update now** and
+approve the administrator prompt; StepForge updates and opens again (see
+[Update](windows/chocolatey.md#update)). Otherwise, download and run the
 newest installer from
-[Releases](https://github.com/Twest2/StepForge/releases/latest) and run it;
-keep **Keep StepForge updated with Chocolatey** checked to get **Update now**
-from then on. Your guides and settings are kept either way.
+[Releases](https://github.com/Twest2/StepForge/releases/latest). Your guides
+and settings are kept either way.
 
-Earlier versions kept guides in `%APPDATA%\stepforge`. The first time
-a new version starts, it moves them to `%USERPROFILE%\StepForge` by itself:
-it copies them, checks the copy, and only then switches. The old copy stays
-in place until you remove it yourself. Keep it if another installation still
-uses that folder; StepForge never deletes it automatically.
+Earlier versions kept guides in `%APPDATA%\stepforge`. A new version moves
+them to `%USERPROFILE%\StepForge` by itself and leaves the old folder as a
+backup until you delete it.
 
 **To uninstall,** open **Settings → Apps → Installed apps**, find
 **StepForge**, and choose **Uninstall**. Your guides stay in

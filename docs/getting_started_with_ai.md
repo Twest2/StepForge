@@ -58,37 +58,25 @@ Open a guide and choose **AI ▾** in the toolbar, next to **More ▾**:
 
 | Choose | AI writes |
 | --- | --- |
-| **Write the whole guide** | The title, description, and blocks of every step. Then it makes substeps where steps belong together and adds placeholders for values that repeat, and finally writes the guide's own title and description. |
+| **Write the whole guide** | Every step's title, description, and blocks, then the guide's own title and description. It can also group steps into substeps and add placeholders for repeated values. |
 | **Write the whole step** | The selected step's title, description, and blocks. |
 | **Write the title** | The selected step's title. |
 | **Write the description** | The selected step's description. |
-| **Write the blocks** | The selected step's notes, warnings, tips, and code. It rewrites the blocks you have and adds at most two new ones when the step needs them. |
+| **Write the blocks** | The selected step's notes, warnings, tips, and code. It rewrites the blocks you have and may add up to two more. |
 
 - **Your writing is kept.** If you already wrote a title or description, AI
-  polishes your wording instead of replacing it with something new. It never
-  deletes a block.
-- **You can undo a whole-guide run.** Before writing the whole guide,
-  StepForge saves a snapshot. To undo, choose **More → Backups & snapshots**
-  and restore the snapshot labeled **before AI**. Global placeholders AI added
-  live in **Settings → Placeholders** and stay after a restore.
-- **You can undo a single-step write.** After AI writes one step, its title,
-  its description or its blocks, press Ctrl+Z to get your old text back.
-- **AI uses your placeholders.** It sees your global placeholders and this
-  guide's placeholders, and writes the `[[name]]` token wherever a
-  placeholder's value would appear in a description or block. Titles keep
-  plain words, so the step list stays readable. A paragraph that holds only a
-  placeholder, such as `[[stepforge]]`, stays exactly where you put it.
-- **AI can add placeholders.** When you write the whole guide, AI may add up to
-  three placeholders for specific values that appear in two or more steps,
-  such as a course code, product name, or web address. Most become guide
-  placeholders (**More → Guide placeholders**); a value about your
-  organization, such as its name, may become a global one
-  (**Settings → Placeholders**). It never changes or removes a placeholder you
-  already have.
-- **AI can make substeps.** When you write the whole guide, AI may make a few
-  steps substeps of the step that starts their task, such as the clicks inside
-  a dialog that step opened. It never changes the order of your steps, and it
-  only nests one level deep, like 3.1.
+  polishes your wording instead of replacing it. It never deletes a block.
+- **You can undo it.** After AI writes one step, press **Ctrl+Z**. Before it
+  writes the whole guide, StepForge saves a snapshot: to undo, open
+  **More → Backups & snapshots** and restore the one labeled **before AI**.
+  Global placeholders it added stay in **Settings → Placeholders**.
+- **It uses your placeholders.** Where a placeholder's value would appear in a
+  description or block, AI writes `[[name]]` instead. Step titles keep plain
+  words.
+- **It can add placeholders and substeps** when it writes the whole guide: up
+  to three placeholders for values that repeat, such as a product name or web
+  address, and one level of substeps for clicks that belong together. It never
+  reorders your steps or changes a placeholder you already have.
 - **You can stop at any time.** While AI is writing, the button shows its
   progress, such as **AI · 3/12**. Choose it, then **Stop writing**.
 

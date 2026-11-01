@@ -7,16 +7,17 @@ steps to reproduce it. **Don't open a public issue or pull request** for
 security problems, so users aren't exposed before a fix is available.
 
 Fixes are released as a new version on every distribution channel (GitHub
-Releases, Chocolatey, APT, and DNF), so keeping StepForge updated is the best
-way to stay protected.
+Releases, the Microsoft Store, Chocolatey, APT, and DNF), so keeping StepForge
+updated is the best way to stay protected.
 
 ## Security at a glance
 
 - **Offline by default.** Capture, editing, OCR, and export make no network
   connections. There's no telemetry, license check, or automatic update check.
-- **Opt-in networking only.** AI, Google Drive sync, and GitHub sharing are
-  off until you turn them on, and **Check for updates** runs only when you
-  press it. All are described in the [privacy policy](PRIVACY.md).
+- **Opt-in networking only.** AI, cloud sync, GitHub sharing, and Confluence
+  and Wiki.js publishing are off until you turn them on, and **Check for
+  updates** runs only when you press it. All are described in the
+  [privacy policy](PRIVACY.md).
 - **Sandboxed interface.** The app's window runs in Chromium's sandbox with no
   direct access to your files, the network, or credentials.
 - **Untrusted files are validated.** Imported guides, templates, and images are
@@ -94,21 +95,14 @@ checksums.
 - **Guides aren't encrypted at rest.** They're protected by your user account's
   file permissions, like any other documents. If you need to send a guide
   securely, encrypt the `.sfgz` with a separate tool.
-- **Linked-guide locks are advisory.** When several people open the same
-  `.sfgz` on a shared folder, a `<name>.lock-sfgz` file is created next to it
-  while someone is saving. It records who is saving, not who has the guide
-  open, and it isn't a security boundary: a crashed or hostile client can
-  remove it. Saving while someone else holds it is refused unless the user
-  chooses to save anyway. Each save also re-reads the shared file. If someone
-  else saved it since you last did, their changes and yours are merged
-  instead of one replacing the other, and StepForge tells you. When both of
-  you changed the same value, the more recently edited version wins that one
-  value and the toast reports the number of conflicts. Because the lock is
-  advisory, two saves can still run at the same moment, and the later one may
-  miss the other's changes until the next save merges them. A backup of the
-  guide is taken before each merge.
+- **Linked-guide locks are advisory.** When several people share one `.sfgz`
+  on a shared folder, a `<name>.lock-sfgz` file next to it marks who is
+  saving. It isn't a security boundary: a crashed or hostile client can remove
+  it. Each save re-reads the shared file and merges in anyone else's changes,
+  taking a backup first, but two saves at the same moment can still miss each
+  other's changes until the next save.
 - **Screenshots contain what was on screen.** Review and blur sensitive
-  information before sharing.
-  A blur's area is filled only from the pixels around it, so exported and
-  published images keep nothing of what it covers. Unlike a real blur or
-  pixelation, it can't be reversed by blurring guesses until one matches.
+  information before sharing. A blur fills its area only from the pixels
+  around it, so exported and published images keep nothing of what it covers.
+  Unlike a real blur or pixelation, it can't be reversed by blurring guesses
+  until one matches.

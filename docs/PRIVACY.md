@@ -1,16 +1,22 @@
 # Privacy
 
 **Short version:** StepForge keeps your guides on your computer. It has no
-accounts, collects no analytics, and doesn't contact the internet unless you
-turn on Google Drive sync, connect GitHub to share guides, point AI at a remote
-server, or press **Check for updates**. If you connect an AI agent such as
-Claude or Codex, that agent sends what it reads to its AI provider.
+accounts and collects no analytics. It only goes online when you use one of
+these optional features:
+
+- syncing with Google Drive, OneDrive, Dropbox or Nextcloud
+- sharing a guide on GitHub Pages, or publishing it to Confluence or Wiki.js
+- AI, if you point it at a server on another computer
+- **Check for updates**, when you press it
+
+If you connect an AI agent such as Claude or Codex, that agent sends what it
+reads to its AI provider.
 
 ## What StepForge never does
 
 - No telemetry, analytics, or crash reporting.
 - No automatic update checks, license checks, or "phoning home".
-- No uploads unless you sign in to Google Drive or publish a guide to GitHub.
+- No uploads, except by the optional features listed above.
 - No downloading code or components while it runs.
 
 ## What StepForge stores on your computer
@@ -132,7 +138,7 @@ agents edit your guides** and connect an agent such as Claude Code or Codex
 ## Optional Google Drive sync
 
 Drive sync is **off by default**. When you sign in
-([how it works](GOOGLE_DRIVE.md)):
+([how it works](CLOUD_ACCOUNTS.md)):
 
 - Sign-in happens in your browser on Google's site. StepForge never sees your
   password.
@@ -141,8 +147,8 @@ Drive sync is **off by default**. When you sign in
   other Drive files.
 - **Your whole library is uploaded**: screenshots, text, annotations,
   placeholders, and the capture details listed above, along with your global
-  placeholders, brand profiles (with their logos, banners and fonts), and
-  configured Capture and Pause/resume keyboard shortcuts. It
+  placeholders, brand profiles (with their logos, banners and fonts), interface
+  language, and configured Capture and Pause/resume keyboard shortcuts. It
   goes to that private folder in *your* Google Drive,
   not to StepForge or anyone else. The rest of Settings isn't uploaded.
   Screenshots are stored once and shared between versions, labelled with a
@@ -163,7 +169,9 @@ Drive sync is **off by default**. When you sign in
   never uploads a guide.
 - Turning sync off stops transfers. **Disconnect** also removes the saved
   sign-in. Neither deletes guides from your computer or from Drive. Deleting a
-  guide locally doesn't delete it from Drive.
+  synced guide removes its versions from Drive and moves it to the Trash on
+  your other computers; one recovery copy stays in Drive until you delete it
+  under **Recently deleted**.
 - To remove everything StepForge stored in Drive, revoke its access in your
   [Google Account](https://myaccount.google.com/connections), then in Google
   Drive open **Settings → Manage apps**, find StepForge, and choose
@@ -300,9 +308,7 @@ Windows deletes when you uninstall it.
 
 Older Windows versions kept the library in `%APPDATA%\stepforge`. A new
 version copies it to `%USERPROFILE%\StepForge` on its first start, checks the
-copy, and keeps the old folder as a backup until you remove it yourself.
-StepForge never deletes it automatically: another installation may still use
-that folder.
+copy, and keeps the old folder as a backup until you delete it yourself.
 
 **Keep the library out of folders that OneDrive, Dropbox, Google Drive or
 Nextcloud sync,** such as a Documents folder that OneDrive backs up. Those apps

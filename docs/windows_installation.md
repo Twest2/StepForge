@@ -1,7 +1,11 @@
 # Install StepForge on Windows
 
-StepForge runs on **Windows 10 and Windows 11 (64-bit)**. There are three ways
-to install it:
+StepForge runs on **Windows 10 and Windows 11 (64-bit)**. **Install it from
+the Microsoft Store** unless your PC can't use the Store.
+
+<a href="https://apps.microsoft.com/detail/9NDH81CF1HGV"><img src="https://get.microsoft.com/images/en-us%20dark.svg" alt="Get it from Microsoft" width="200"></a>
+
+There are three ways to install it:
 
 | | Updates | Windows warning | Administrator rights |
 | --- | --- | --- | --- |
@@ -10,6 +14,11 @@ to install it:
 | **The `.exe` installer** (this page) | **Update now**, if you let it set up Chocolatey | **Windows protected your PC**, the first time | Needed for Chocolatey updates or an all-users install |
 
 ## Recommended: the Microsoft Store
+
+Microsoft reviews and signs every version of StepForge before it reaches the
+Store, so you know the app you install is the real one. Windows installs it
+without warnings, the Store keeps it up to date, and you don't need
+administrator rights.
 
 1. Open [StepForge in the Microsoft Store](https://apps.microsoft.com/detail/9NDH81CF1HGV),
    or search for **StepForge** in the **Microsoft Store** app.
@@ -22,9 +31,11 @@ Switching from the `.exe` installer, or want the details? See
 
 ## Or use the .exe installer
 
-Use the installer if the Microsoft Store isn't available, for example on a
-work PC where your organization has turned it off. Installing takes about two
-minutes.
+Only use the installer if the Microsoft Store isn't available, for example
+on a work PC where your organization has turned it off. Because the installer
+isn't distributed through Microsoft, Windows warns about it the first time you
+run it, and you have to update it yourself unless you set up Chocolatey.
+Installing takes about two minutes.
 
 > [!TIP]
 > The installer's **Updates** page (checked by default) sets up

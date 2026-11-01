@@ -28,7 +28,11 @@
 <!-- download-badges:end -->
 
 <p align="center">
-  <a href="https://github.com/Twest2/StepForge/releases/latest"><strong>Download</strong></a> ·
+  <a href="https://apps.microsoft.com/detail/9NDH81CF1HGV"><img src="https://get.microsoft.com/images/en-us%20dark.svg" alt="Get it from Microsoft" width="200"></a>
+</p>
+
+<p align="center">
+  <a href="#install"><strong>Download</strong></a> ·
   <a href="docs/GETTING_STARTED.md"><strong>Getting started</strong></a> ·
   <a href="#share-a-guide-with-a-web-link"><strong>Share with a link</strong></a> ·
   <a href="docs/windows_installation.md"><strong>See a real guide made with it</strong></a> ·
@@ -112,20 +116,39 @@ page and hands you a link to send. It's usually online in under a minute.
 
 | Platform | Recommended | Guide |
 | --- | --- | --- |
-| **Windows 10 / 11** (64-bit) | Microsoft Store, Chocolatey, or the `.exe` | [Microsoft Store](docs/windows/microsoft-store.md) · [Chocolatey](docs/windows/chocolatey.md) · [Windows](docs/windows_installation.md) |
+| **Windows 10 / 11** (64-bit) | **Microsoft Store** | [Microsoft Store](docs/windows/microsoft-store.md) |
 | **Ubuntu 26.04** | APT repository | [Ubuntu](docs/linux/apt.md) |
 | **Fedora 44 Workstation** | DNF repository | [Fedora](docs/linux/dnf.md) |
 | **Other Linux** | Portable `.tar.gz` | [Linux overview](docs/linux/linux_install.md) |
 
-**On Windows,** get StepForge from the Microsoft Store. It needs no
-administrator rights and keeps itself up to date.
+### Windows: get it from the Microsoft Store
 
 <a href="https://apps.microsoft.com/detail/9NDH81CF1HGV"><img src="https://get.microsoft.com/images/en-us%20dark.svg" alt="Get it from Microsoft" width="200"></a>
 
-<details>
-<summary><strong>Windows (Chocolatey)</strong> commands</summary>
+The Microsoft Store is the safest and easiest way to install StepForge:
 
-From an Administrator PowerShell:
+- **Checked by Microsoft.** Microsoft reviews and signs every version before
+  it reaches the Store, so Windows installs it without any warnings.
+- **Updates itself.** The Store keeps StepForge up to date in the background.
+- **No administrator rights.** It installs for you alone, even on a PC where
+  you can't install regular programs.
+- **Removes cleanly.** Uninstall it like any other app. Your guides stay in
+  your **StepForge** folder.
+
+Click **Get it from Microsoft** above, or search for **StepForge** in the
+Microsoft Store app. [More about the Store version](docs/windows/microsoft-store.md)
+
+<details>
+<summary><strong>Can't use the Microsoft Store?</strong></summary>
+
+Some work and school PCs have the Store turned off. On those, use
+[Chocolatey](docs/windows/chocolatey.md) if your PC is managed with it, or the
+[`.exe` installer](docs/windows_installation.md#or-use-the-exe-installer)
+from the Releases page. The installer isn't distributed through Microsoft,
+so Windows shows a **Windows protected your PC** warning the first time you
+run it.
+
+Chocolatey, from an Administrator PowerShell:
 
 ```powershell
 choco source add --name=stepforge --source=https://packages.twestbrook.com/nuget/stepforge-choco/
@@ -133,6 +156,8 @@ choco install stepforge --source=stepforge -y
 ```
 
 </details>
+
+### Linux
 
 <details>
 <summary><strong>Ubuntu 26.04</strong> commands</summary>
@@ -166,9 +191,10 @@ sudo dnf install stepforge
 
 </details>
 
-Chocolatey, APT and DNF keep StepForge up to date along with the rest of your
-system. Every build is also on the
-[Releases page](https://github.com/Twest2/StepForge/releases/latest).
+APT and DNF keep StepForge up to date along with the rest of your system.
+Every build is also on the
+[Releases page](https://github.com/Twest2/StepForge/releases/latest), but on
+Windows, the Microsoft Store is the better choice.
 
 ## Your first guide in one minute
 
@@ -266,7 +292,7 @@ each optional feature sends.
 
 **Installing**
 
-- [Microsoft Store](docs/windows/microsoft-store.md) · [Windows installer](docs/windows_installation.md) · [Chocolatey](docs/windows/chocolatey.md)
+- [Microsoft Store](docs/windows/microsoft-store.md) (recommended for Windows) · [Windows installer](docs/windows_installation.md) · [Chocolatey](docs/windows/chocolatey.md)
 - [Linux overview](docs/linux/linux_install.md) · [Ubuntu](docs/linux/apt.md) · [Fedora](docs/linux/dnf.md)
 
 **Contributing**

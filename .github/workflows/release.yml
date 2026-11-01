@@ -324,9 +324,13 @@ jobs:
             flags+=(--prerelease)
           fi
 
+          # Shown above the generated notes, for people who land here first.
+          store_note='**On Windows, [get StepForge from the Microsoft Store](https://apps.microsoft.com/detail/9NDH81CF1HGV).** Microsoft checks and signs every version, Windows installs it without warnings, and it updates itself. Only use the `.exe` below if your PC can'"'"'t use the Store.'
+
           gh release create "$TAG" \
             --title "StepForge $TAG" \
             --target "${{ github.sha }}" \
+            --notes "$store_note" \
             --generate-notes \
             "${flags[@]}"
 

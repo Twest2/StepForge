@@ -5,9 +5,13 @@ Windows 11 (64-bit)** from the command line. After a one-time setup, one
 command keeps StepForge up to date, with no installers to download and no
 SmartScreen prompts. It suits PCs you already manage with Chocolatey.
 
-For most people, the [Microsoft Store](microsoft-store.md) is simpler: no
-administrator rights or command line, and updates are automatic. Prefer a
-regular installer? See the [Windows installation guide](../windows_installation.md).
+> [!TIP]
+> **Not managing PCs with Chocolatey? Use the [Microsoft Store](microsoft-store.md)
+> instead.** Microsoft checks and signs every version, it needs no
+> administrator rights or command line, and updates are automatic.
+
+Need a regular installer instead? See the
+[Windows installation guide](../windows_installation.md).
 
 ## Before you start
 

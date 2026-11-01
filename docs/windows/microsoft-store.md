@@ -14,7 +14,9 @@ checks and signs the package, so Windows shows no **Windows protected your
 PC** warning, and the Store keeps StepForge up to date for you. You don't need
 administrator rights.
 
-Prefer a package manager or a regular installer? See
+<a href="https://apps.microsoft.com/detail/9NDH81CF1HGV"><img src="https://get.microsoft.com/images/en-us%20dark.svg" alt="Get it from Microsoft" width="200"></a>
+
+Can't use the Store, for example on a work PC where it's turned off? See
 [Chocolatey](chocolatey.md) or the [Windows installer guide](../windows_installation.md).
 
 ## Install

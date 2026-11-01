@@ -190,8 +190,9 @@ If your computers have drifted apart and you want one of them to win, open
 
 - Each guide keeps its **latest version plus up to two previous versions**.
   Older versions are removed automatically after a successful sync.
-- A single guide can be up to **256 MB**. Very large guides on slow
-  connections may take more than one attempt.
+- A guide can be up to **1 GB**, and each file in it, such as a screenshot,
+  up to **256 MB**. Very large guides on slow connections may take more than
+  one attempt.
 - The first sync of a guide sends all of it. After that, only new or changed
   files are sent.
 

@@ -14,13 +14,17 @@ Closes #<!-- issue number -->
 
 ## Area
 
-- [ ] Guide editor
 - [ ] Capture / recording
+- [ ] Guide editor
 - [ ] Library
 - [ ] Settings
 - [ ] Exports
-- [ ] Google Drive sync
-- [ ] Packaging / install
+- [ ] Sharing and publishing (GitHub Pages, Confluence, Wiki.js)
+- [ ] Cloud sync (Google Drive, OneDrive, Dropbox, Nextcloud / WebDAV)
+- [ ] AI and AI agents (MCP)
+- [ ] Branding
+- [ ] Translations
+- [ ] Packaging, install, or release (Microsoft Store, Chocolatey, APT, DNF)
 - [ ] Documentation
 - [ ] Tests
 - [ ] Git / workflow
@@ -30,7 +34,7 @@ Closes #<!-- issue number -->
 - [ ] `bash tests/run_test.sh` passes
 - [ ] Tested manually (describe below)
 
-<!-- What you tested, on which OS, and the results. -->
+<!-- What you tested, on which OS and install type, and the results. -->
 
 ## Screenshots or recordings
 
@@ -38,12 +42,17 @@ Closes #<!-- issue number -->
 
 ## Rollout notes
 
-<!-- Migrations, settings changes, packaging steps, or "None". -->
+<!-- Migrations, settings changes, packaging or release steps, or "None". -->
 
 ## Checklist
 
+<!-- The review checklist from docs/CONTRIBUTING.md. -->
+
 - [ ] Linked to an issue above
 - [ ] Scope is limited to that issue
-- [ ] Docs updated for user-visible changes
-- [ ] No new network calls, runtime dependencies, or third-party branding
+- [ ] New behavior has tests that check real output
+- [ ] Docs updated for anything users will notice
+- [ ] New interface text is in `t()`, and `npm run translations` lists nothing missing
+- [ ] Anything that still needs manual verification is listed above
+- [ ] No new network calls, dependencies, or third-party branding
 - [ ] Follow-up work is tracked in an issue

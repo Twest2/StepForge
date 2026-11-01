@@ -2,7 +2,7 @@
 name: Bug report
 about: Something in StepForge isn't working as expected
 title: "[BUG] "
-labels: Feature, Potential bug
+labels: Potential bug
 assignees: Twest2
 
 ---
@@ -28,13 +28,22 @@ assignees: Twest2
 ## Your setup
 
 - **StepForge version** (Settings → About):
+  - [ ] It happens on the current version of StepForge (**Settings → About → Check for updates**)
 - **Operating system:**
   - [ ] Windows 10
   - [ ] Windows 11
   - [ ] Ubuntu 26.04
   - [ ] Fedora 44
   - [ ] Other:
-- **Installed with:** <!-- Chocolatey, setup .exe, APT, DNF, .deb/.rpm, portable, source -->
+- **Installed with:**
+  - [ ] Microsoft Store
+  - [ ] Chocolatey
+  - [ ] Setup `.exe` from GitHub Releases
+  - [ ] APT repository
+  - [ ] DNF repository
+  - [ ] `.deb` or `.rpm` from GitHub Releases
+  - [ ] Portable `.tar.gz`
+  - [ ] From source
 - **Linux only, desktop session:** <!-- e.g. GNOME 50 Wayland -->
 
 ## Anything else?

@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security problem
+    url: https://github.com/Twest2/StepForge/blob/main/docs/SECURITY.md
+    about: Please email git@twestbrook.com instead of opening a public issue.
+  - name: Install and getting started guides
+    url: https://github.com/Twest2/StepForge/blob/main/docs/GETTING_STARTED.md
+    about: Installing StepForge, recording your first guide, and fixes for common problems.

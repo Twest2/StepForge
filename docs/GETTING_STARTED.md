@@ -1,8 +1,9 @@
 # Getting started with StepForge
 
 This guide takes you from a fresh install to a finished, exported guide. If
-you haven't installed StepForge yet, start with the
-[installation options in the README](../README.md#install).
+you haven't installed StepForge yet, on Windows
+[get it from the Microsoft Store](https://apps.microsoft.com/detail/9NDH81CF1HGV).
+For Linux, see the [installation options in the README](../README.md#install).
 
 - [1. Record a guide](#1-record-a-guide)
 - [2. Edit your steps](#2-edit-your-steps)

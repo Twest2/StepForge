@@ -21,30 +21,56 @@ you haven't installed StepForge yet, start with the
 3. Work through the task you want to document. **Each click creates a step**
    with a screenshot taken at the moment of the click and a marker on the
    spot you clicked.
-4. When you're finished, stop the session:
-   - **Windows:** use the red StepForge icon in the system tray.
-   - **Linux (GNOME):** use **StepForge REC** in the top panel, or restore
-     StepForge from the dock.
+4. When you're finished, stop the recording. StepForge is hidden at this
+   point, so [here's where to click](#stop-recording).
 
 StepForge reads the text around each click (with on-device OCR) and uses it
 to title the step, so you'll usually see titles like *Click Releases* or
 *Select Run anyway* without typing anything.
-
-**Other ways to add steps**
-
-| To... | Do this |
-| --- | --- |
-| Take a single screenshot | **Capture → Capture full screen**, **Capture window**, or **Capture region…** |
-| Capture with the keyboard | Press **Ctrl+Shift+1** (change it in **Settings → Capture → Hotkeys**) |
-| Pause and resume a session | Press **Ctrl+Shift+2** |
-| Use an image you already have | Paste it with **Ctrl+V**, or use **Capture → Import images…** |
-| Add a text-only step | Choose **Add** in the steps list |
 
 > [!TIP]
 > On first recording under GNOME Wayland you'll be asked to enable the
 > StepForge extension and pick which monitors to share. Select every monitor
 > you plan to click on. See [Linux recording](linux/linux_install.md#recording-on-gnome-wayland)
 > for details.
+
+### Stop recording
+
+**On Windows,** look for a small **red dot** in the bottom-right corner of the
+screen, in the row of icons beside the clock.
+
+1. Click the red dot. Recording pauses, and StepForge comes back with your
+   new steps.
+2. Don't see it? Click the **^** arrow beside those icons to show the hidden
+   ones. The red dot is usually in there.
+3. Still can't find it? Open StepForge from the Start menu again. That also
+   pauses recording and brings StepForge back.
+
+Right-click the red dot for more choices, such as **Pause capturing** or
+**Finish session**, which ends the recording and removes the dot.
+
+**On Linux (GNOME),** look for **● StepForge REC** at the top right of the
+screen.
+
+1. Click **● StepForge REC**, then choose **Stop recording**. StepForge comes
+   back with your new steps.
+2. Or click StepForge in the dock to bring its window back, then choose
+   **Stop recording** at the top right of the window.
+
+The click that stops recording never becomes a step, but other clicks you
+make while looking for it can, such as on the **^** arrow. Delete any extra
+steps in the editor. To record more, choose **Start recording** at the top
+right of the StepForge window.
+
+### Other ways to add steps
+
+| To... | Do this |
+| --- | --- |
+| Take a single screenshot | **Capture → Capture full screen**, **Capture window**, or **Capture region…** |
+| Capture with the keyboard | Press **Ctrl+Shift+1** (change it in **Settings → Capture → Hotkeys**) |
+| Pause and resume a session | Press **Ctrl+Shift+2**. StepForge stays hidden while paused |
+| Use an image you already have | Paste it with **Ctrl+V**, or use **Capture → Import images…** |
+| Add a text-only step | Choose **Add** in the steps list |
 
 ## 2. Edit your steps
 
@@ -242,6 +268,10 @@ Press **Ctrl+/** for the quick-actions palette, or open
 | `Ctrl+=` / `Ctrl+-` / `Ctrl+0` | Zoom in / out / fit |
 
 ## Troubleshooting
+
+**I can't find how to stop recording.** See [Stop recording](#stop-recording).
+On Windows, the red dot is often hidden behind the **^** arrow beside the
+clock.
 
 **Clicks aren't creating steps on Linux.** Make sure you're on a GNOME Wayland
 session, that you logged out and back in after installing StepForge, and that

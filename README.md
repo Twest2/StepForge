@@ -174,8 +174,9 @@ system. Every build is also on the
 1. Open StepForge and choose **New guide**.
 2. Choose **Capture → Start capture session**. StepForge steps out of the way.
 3. Do the task you want to document, clicking as you normally would.
-4. Stop the recording from the tray icon (Windows) or **StepForge REC** in the
-   GNOME top panel (Linux).
+4. To stop, click the **red dot** beside the clock (Windows), or
+   **● StepForge REC → Stop recording** at the top right of the screen
+   (Linux). [Can't find it?](docs/GETTING_STARTED.md#stop-recording)
 5. Tidy up titles, add annotations, then choose **Export**.
 
 The [Getting Started guide](docs/GETTING_STARTED.md) walks through recording,

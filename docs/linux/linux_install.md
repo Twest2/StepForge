@@ -37,9 +37,11 @@ Then, to record:
 1. Open or create a guide and start a capture session.
 2. If GNOME asks, allow the StepForge extension.
 3. Choose the monitors to share. Pick every monitor you'll click on.
-4. StepForge minimizes and **StepForge REC** appears in the top panel.
+4. StepForge minimizes and **● StepForge REC** appears at the top right of
+   the screen.
 5. Click through your task. Each click becomes a step.
-6. Stop from **StepForge REC** or from the StepForge window.
+6. To stop, click **● StepForge REC**, then **Stop recording**. StepForge
+   comes back with your steps.
 
 **Good to know**
 

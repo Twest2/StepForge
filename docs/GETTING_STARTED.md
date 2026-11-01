@@ -245,8 +245,9 @@ and verifies your library before switching to the new location.
 - **Snapshots** are automatic backups of each guide. Open
   **More → Backups & snapshots…** to create one by hand or roll back.
   **Settings → Editor → Snapshots to keep** controls how many are kept.
-- **Cloud sync** keeps your library the same on all your computers, through
-  [Google Drive](GOOGLE_DRIVE.md) or [OneDrive, Dropbox or Nextcloud](CLOUD_ACCOUNTS.md).
+- **Cloud sync** keeps your library the same on all your computers, with
+  Google Drive, OneDrive, Dropbox or Nextcloud. See
+  [Sync your guides between computers](CLOUD_ACCOUNTS.md).
 
 ## Keyboard shortcuts
 

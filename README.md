@@ -257,7 +257,7 @@ each optional feature sends.
 - [Getting started](docs/GETTING_STARTED.md): recording, editing and exporting
 - [AI-written guides with Ollama](docs/getting_started_with_ai.md)
 - [Let Claude or Codex write your guides](docs/AI_AGENTS.md)
-- [Google Drive sync](docs/GOOGLE_DRIVE.md) · [OneDrive, Dropbox or Nextcloud](docs/CLOUD_ACCOUNTS.md)
+- [Sync between computers](docs/CLOUD_ACCOUNTS.md) with Google Drive, OneDrive, Dropbox or Nextcloud
 - [Share guides on the web with GitHub Pages](docs/GITHUB_PAGES.md)
 - [Publish to Confluence](docs/CONFLUENCE.md) · [Publish to Wiki.js](docs/WIKIJS.md)
 - [Brand your exported guides](docs/BRANDING.md): logos, colors, fonts and Advanced CSS

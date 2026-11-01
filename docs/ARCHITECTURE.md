@@ -267,7 +267,7 @@ opt-in and off by default:
   untrusted and pass archive validation before a journaled, staged
   replacement that keeps a local backup. Archive compression runs one job at a
   time in a background worker shared with linked-archive writes and
-  automatic backups. See [GOOGLE_DRIVE.md](GOOGLE_DRIVE.md) and
+  automatic backups. See [CLOUD_ACCOUNTS.md](CLOUD_ACCOUNTS.md) and
   [SECURITY.md](SECURITY.md).
 - **Synced settings** (`core/shared-settings.js`): global placeholders, brand
   profiles with the assets they use, the active profile, the language and

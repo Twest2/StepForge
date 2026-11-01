@@ -138,7 +138,7 @@ agents edit your guides** and connect an agent such as Claude Code or Codex
 ## Optional Google Drive sync
 
 Drive sync is **off by default**. When you sign in
-([how it works](GOOGLE_DRIVE.md)):
+([how it works](CLOUD_ACCOUNTS.md)):
 
 - Sign-in happens in your browser on Google's site. StepForge never sees your
   password.
@@ -169,7 +169,9 @@ Drive sync is **off by default**. When you sign in
   never uploads a guide.
 - Turning sync off stops transfers. **Disconnect** also removes the saved
   sign-in. Neither deletes guides from your computer or from Drive. Deleting a
-  guide locally doesn't delete it from Drive.
+  synced guide removes its versions from Drive and moves it to the Trash on
+  your other computers; one recovery copy stays in Drive until you delete it
+  under **Recently deleted**.
 - To remove everything StepForge stored in Drive, revoke its access in your
   [Google Account](https://myaccount.google.com/connections), then in Google
   Drive open **Settings → Manage apps**, find StepForge, and choose

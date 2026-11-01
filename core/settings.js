@@ -68,6 +68,9 @@ const DEFAULT_SETTINGS = {
   },
   editor: {
     focusedViewDefaultForNewSteps: true,
+    // After drawing one annotation (or cropping), switch back to the Select
+    // tool. Off keeps the drawing tool picked until another is chosen.
+    returnToSelect: true,
     autoTitleTemplate: '[[Mode]] capture [[Time]]',
   },
   ai: {

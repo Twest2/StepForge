@@ -707,6 +707,7 @@ class GuideEditor {
       onSelect: (ann) => this.onCanvasSelect(ann),
       onCrop: (rect) => this.onCanvasCrop(rect),
       onRequestText: (ann) => this.editAnnotationText(ann),
+      onToolUsed: () => this.onCanvasToolUsed(),
       defaultStyle: (tool) => this.defaultStyleForTool(tool),
       nextNumber: () => this.nextAnnotationNumber(),
     });
@@ -1574,6 +1575,13 @@ class GuideEditor {
       if (!key.startsWith('tool-')) continue;
       node.classList.toggle('active', node.dataset.tool === tool);
     }
+  }
+
+  // A drawing tool goes back to Select after one use unless Settings → Editor
+  // says to keep it, so what was just drawn can be moved or resized at once.
+  onCanvasToolUsed() {
+    if (this.settings?.editor?.returnToSelect === false || this.currentTool === 'select') return;
+    this.setTool('select');
   }
 
   setZoom(mode) {

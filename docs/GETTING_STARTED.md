@@ -227,6 +227,16 @@ or table cell. It's replaced when you export or publish (code blocks are left
 as written). A single guide can have its own placeholders under
 **More → Guide placeholders…**.
 
+**Other languages.** Guides in any language export to PDF: Chinese,
+Japanese, Korean, Russian, Greek and the rest use fonts already on your
+computer, and the text can still be searched and copied. On Windows that
+works out of the box. On Linux, Chinese, Japanese and Korean need a TrueType
+font such as WenQuanYi Zen Hei (`sudo apt install fonts-wqy-zenhei` or
+`sudo dnf install wqy-zenhei-fonts`); without one those characters show as
+`?`. Arabic and Hebrew letters appear, but are not joined or ordered right to
+left yet. Exported files are named after the guide in its own language, such
+as `重置密码.pdf`.
+
 **Accessibility.** Screenshots in HTML, Word, PowerPoint, Markdown and
 Confluence exports get alt text from the step title, such as "Screenshot for
 step 3: Click Save". PDFs aren't tagged for screen readers.

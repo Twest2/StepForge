@@ -142,6 +142,24 @@ function slugify(text, fallback = 'untitled') {
   return slug || fallback;
 }
 
+/**
+ * Like slugify, for export file names, but keeps letters of every script:
+ * "重置密码 / Сброс пароля" becomes "重置密码-сброс-пароля", not the fallback.
+ * Latin accents are still dropped; characters Windows forbids never pass.
+ */
+function fileNameSlug(text, fallback = 'untitled') {
+  const slug = String(text || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .normalize('NFC') // put Korean syllables and Japanese kana back together
+    .toLowerCase()
+    .replace(/[^\p{L}\p{M}\p{N}._ -]+/gu, '')
+    .trim()
+    .replace(/\s+/g, '-');
+  // Cut at 80 characters, not UTF-16 units, so no character is split.
+  return [...slug].slice(0, 80).join('').replace(/[. ]+$/, '') || fallback;
+}
+
 module.exports = {
   newId,
   nowIso,
@@ -158,4 +176,5 @@ module.exports = {
   deepClone,
   clamp,
   slugify,
+  fileNameSlug,
 };

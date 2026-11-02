@@ -8,13 +8,17 @@ const CaptureService = require('../../app/capture');
 const { rendererI18n } = require('./helpers');
 
 function makeService() {
-  return new CaptureService({
+  const service = new CaptureService({
     store: {},
     settings: { get: () => null },
     getWindow: () => null,
     notify: () => {},
     screenApi: { getCursorScreenPoint: () => ({ x: 0, y: 0 }), getAllDisplays: () => [] },
   });
+  // A Window retake grabs the window itself here, as on Linux; Windows cuts
+  // it out of the screen (tests/unit/window-capture.test.js).
+  service._cropsWindows = false;
+  return service;
 }
 
 const frame = { png: Buffer.from('new'), size: { width: 20, height: 15 } };
@@ -99,6 +103,7 @@ test('the real hide, countdown and grab path: hidden first, grab after the count
     store: {}, settings: { get: () => null }, getWindow: () => win, notify: () => {},
     screenApi: { getCursorScreenPoint: () => ({ x: 0, y: 0 }), getAllDisplays: () => [] },
   });
+  service._cropsWindows = false;
   const image = { toPNG: () => Buffer.from('png'), getSize: () => ({ width: 8, height: 6 }) };
   // Only the electron call itself is replaced; withWindowHidden and captureCurrentFrame are real.
   service.grab = async (mode) => {

@@ -24,8 +24,18 @@ const { pointInBounds } = require('./click-frames');
  * single display at any scale, and multi-display with a uniform scale.
  */
 
-/** Physical-pixel rectangle a display occupies, derived from DIP bounds. */
+/**
+ * Physical-pixel rectangle a display occupies: `physicalBounds` when the
+ * caller has the real one (Windows, screen.dipToScreenRect), else derived
+ * from DIP bounds. The derivation scales the origin too, which is wrong for
+ * a scaled display beside the primary on Windows: Chromium keeps such a
+ * display's DIP origin at its physical edge, not at that edge times the scale.
+ */
 function physicalBoundsOf(display) {
+  const real = display && display.physicalBounds;
+  if (real && [real.x, real.y, real.width, real.height].every(Number.isFinite) && real.width > 0 && real.height > 0) {
+    return { x: real.x, y: real.y, width: real.width, height: real.height };
+  }
   const bounds = display && display.bounds;
   if (!bounds) return null;
   const scale = display.scaleFactor || 1;
@@ -101,10 +111,54 @@ function displayForDipPoint(point, displays) {
   return nearest;
 }
 
+/**
+ * A physical-pixel window rectangle ({ left, top, right, bottom }) in DIP,
+ * placed relative to an anchor point known in both spaces: the click, so the
+ * window and the click marker go through the same conversion. `scale` is the
+ * anchor display's scale factor. Within one display the mapping is linear;
+ * parts of the window on other displays are cut away by cropGeometry.
+ */
+function physicalRectToDip(rect, anchorPhysical, anchorDip, scale = 1) {
+  if (!rect || !anchorPhysical || !anchorDip) return null;
+  const s = Number.isFinite(scale) && scale > 0 ? scale : 1;
+  const out = {
+    x: anchorDip.x + (rect.left - anchorPhysical.x) / s,
+    y: anchorDip.y + (rect.top - anchorPhysical.y) / s,
+    width: (rect.right - rect.left) / s,
+    height: (rect.bottom - rect.top) / s,
+  };
+  if (!Object.values(out).every(Number.isFinite) || out.width <= 0 || out.height <= 0) return null;
+  return out;
+}
+
+/**
+ * Where a DIP rectangle falls in a frame of one display: its part on that
+ * display (`bounds`, DIP) and the matching pixels of the frame image.
+ * Throws when the rectangle is not on the display at all.
+ */
+function cropGeometry(bounds, rect, size) {
+  const x = Math.max(bounds.x, rect.x);
+  const y = Math.max(bounds.y, rect.y);
+  const right = Math.min(bounds.x + bounds.width, rect.x + rect.width);
+  const bottom = Math.min(bounds.y + bounds.height, rect.y + rect.height);
+  if (right <= x || bottom <= y) throw new Error('The selected area is outside the shared monitor.');
+  const sx = size.width / bounds.width;
+  const sy = size.height / bounds.height;
+  const px = Math.round((x - bounds.x) * sx);
+  const py = Math.round((y - bounds.y) * sy);
+  return {
+    bounds: { x, y, width: right - x, height: bottom - y },
+    pixels: { x: px, y: py, width: Math.round((right - bounds.x) * sx) - px,
+      height: Math.round((bottom - bounds.y) * sy) - py },
+  };
+}
+
 module.exports = {
   physicalBoundsOf,
   displayForPhysicalPoint,
   displayForDipPoint,
   physicalToDip,
+  physicalRectToDip,
+  cropGeometry,
   pointInBounds,
 };

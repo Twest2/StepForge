@@ -1579,6 +1579,7 @@ function streamFrame(clickAt) {
 test('window mode on Wayland uses the full-screen stream frame instead of skipping the click', async () => {
   const service = makeService({ settings: { 'capture.mode': 'window' } });
   service._wayland = true; // KDE, sway and so on: no frame loop
+  service._cropsWindows = false; // Linux, also when the suite runs on Windows
   const clickAt = Date.now();
   const events = [];
   service.notify = (name, payload) => events.push([name, payload]);
@@ -1595,13 +1596,14 @@ test('window mode on Wayland uses the full-screen stream frame instead of skippi
   assert.match(diagnostics[0][1].reason, /full screen/);
 });
 
-test('window mode off Wayland still skips the stream and returns no frame without a frame loop', async () => {
+test('window mode on X11 still skips the stream and returns no frame without a frame loop', async () => {
   const service = makeService({ settings: { 'capture.mode': 'window' } });
   service._wayland = false;
+  service._cropsWindows = false; // X11 grabs the window itself; Windows cuts it from the stream
   service.session = { guideId: 'guide-window-x11', paused: false, count: 0, intervalSec: 0 };
   service.streamBackend = {
     isActive: () => true,
-    frameForClick: async () => { throw new Error('window mode must not use the full-screen stream off Wayland'); },
+    frameForClick: async () => { throw new Error('window mode must not use the full-screen stream on X11'); },
     stop: () => {},
   };
   assert.equal(await service.frameForClick({ x: 10, y: 10 }, Date.now()), null);
@@ -1687,4 +1689,29 @@ test('the click marker on a window frame is placed by captureBounds', async () =
   const mark = added[0].annotations[0];
   assert.equal(mark.x + mark.w / 2, 0.5);
   assert.equal(mark.y + mark.h / 2, 0.5);
+});
+
+test('on Windows, clicks on scaled monitors beside the primary map to the monitor that was clicked', () => {
+  // A real 100% / 150% / 125% desktop as Electron reported it. Rebuilding the
+  // 150% monitor's physical origin from its DIP bounds put this click on the
+  // primary monitor, so the step showed the wrong screen.
+  const monitors = [
+    { id: 1, scaleFactor: 1, bounds: { x: 0, y: 0, width: 3440, height: 1440 }, physical: { x: 0, y: 0, width: 3440, height: 1440 } },
+    { id: 2, scaleFactor: 1.5, bounds: { x: 3440, y: 127, width: 1281, height: 721 }, physical: { x: 3440, y: 127, width: 1922, height: 1082 } },
+    { id: 3, scaleFactor: 1.25, bounds: { x: -1536, y: 120, width: 1536, height: 960 }, physical: { x: -1920, y: 120, width: 1920, height: 1200 } },
+  ];
+  const inside = (p, r) => p.x >= r.x && p.x < r.x + r.width && p.y >= r.y && p.y < r.y + r.height;
+  const service = makeService({ screenApi: {
+    getCursorScreenPoint: () => ({ x: 0, y: 0 }),
+    getAllDisplays: () => monitors.map(({ physical, ...display }) => display),
+    screenToDipPoint(p) {
+      const m = monitors.find((d) => inside(p, d.physical)) || monitors[0];
+      return { x: m.bounds.x + (p.x - m.physical.x) / m.scaleFactor, y: m.bounds.y + (p.y - m.physical.y) / m.scaleFactor };
+    },
+    dipToScreenRect: (_window, rect) => monitors.find((d) => d.bounds.x === rect.x && d.bounds.y === rect.y).physical,
+  } });
+  const right = service.osPointToDip({ x: 4000, y: 500 });
+  assert.ok(Math.abs(right.x - 3813.33) < 0.01 && Math.abs(right.y - 375.67) < 0.01, JSON.stringify(right));
+  assert.deepEqual(service.osPointToDip({ x: -1000, y: 600 }), { x: -800, y: 504 });
+  assert.deepEqual(service.osPointToDip({ x: 1720, y: 700 }), { x: 1720, y: 700 });
 });

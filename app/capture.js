@@ -14,7 +14,8 @@ const {
   DEFAULT_MAX_AGE_MS,
   DEFAULT_START_SLACK_MS,
 } = require('./click-frames');
-const { physicalToDip } = require('./coords');
+const { physicalToDip, physicalRectToDip, displayForDipPoint, cropGeometry } = require('./coords');
+const { WINDOW_BOUNDS_CS, parseWindowBounds, readActiveWindow } = require('./platform/windows/window-bounds');
 const { DEFAULT_CAPTURE_TITLES, mouseButtonKey } = require('../core/text-intel');
 
 /** True when two presses (DIP points) are close enough to be one double-click. */
@@ -69,6 +70,9 @@ const MIN_DOUBLE_CLICK_GAP_MS = 20;
 const DOUBLE_CLICK_RADIUS = 8;
 // Shown before and during a recording whose Window setting can't be honoured.
 const WINDOW_FALLBACK_NOTE = 'Window capture is not available on this desktop, so StepForge records the full screen.';
+// Window mode on Windows, when a capture has no window to show (a click on
+// the desktop or taskbar, or the active window could not be read).
+const WINDOW_NOT_FOUND_NOTE = 'StepForge couldn’t tell which window to capture, so it captured the full screen.';
 // How long a Linux raw button event waits for its regular twin (the
 // representation that carries root coordinates) before firing without them.
 const LINUX_CLICK_TWIN_MS = 25;
@@ -246,6 +250,11 @@ class CaptureService {
     this.frameLoopTimer = null;
     this.frameLoopRunning = false;
     this.windowFallbackNoted = false; // one window-mode-unavailable diagnostic per session
+    this.windowMissNoted = false; // one window-not-found diagnostic per session
+    // Windows cuts Window-mode shots out of full-screen frames (windowFrame):
+    // desktopCapturer's window list puts always-on-top windows, such as an
+    // input method's toolbar, first (#203). Overridable in tests.
+    this._cropsWindows = process.platform === 'win32';
     this.frameWaiters = [];
     this.latestFrame = null;
     this.clickWatcherBuf = '';
@@ -257,6 +266,8 @@ class CaptureService {
     this._lastShortcut = '';  // last Ctrl+X / Alt+X combination
     this._keyLastAt = 0;      // timestamp of last key event
     this._pendingWindowContext = null; // buffered CTX+ELEM from click watcher, consumed on CLICK
+    this._pendingClickWindow = undefined; // WIN line from the Windows hook, consumed by its CLICK
+    this.pendingClickWindow = undefined; // that window's DIP bounds (null: none), for enqueueClickCapture
     this.clickQueue = Promise.resolve();
     this.frameLoopInFlight = false;
     this.frameLoopGrabStartedAt = null;
@@ -295,6 +306,27 @@ class CaptureService {
    */
   windowModeFallsBack() {
     return (this.settings.get('capture.mode') || 'fullscreen') === 'window' && this.onWayland();
+  }
+
+  /** Whether Window shots are cut out of full-screen frames (Windows). */
+  cropsWindowsFromScreen() {
+    return this._cropsWindows;
+  }
+
+  /** Settings says Window, and this platform cuts the window out of the screen. */
+  windowModeCrops() {
+    return (this.settings.get('capture.mode') || 'fullscreen') === 'window' && this.cropsWindowsFromScreen();
+  }
+
+  /**
+   * The mode the frame recorders grab in. Region recordings and, on
+   * Windows, Window recordings take the full screen; the window is cut out
+   * when each step is stored.
+   */
+  recorderMode() {
+    const mode = this.settings.get('capture.mode') || 'fullscreen';
+    if (mode === 'region') return 'fullscreen';
+    return mode === 'window' && this.cropsWindowsFromScreen() ? 'fullscreen' : mode;
   }
 
   state() {
@@ -381,6 +413,7 @@ class CaptureService {
   startSession(guideId, { intervalSec = null } = {}) {
     this.finishSession();
     this.windowFallbackNoted = false;
+    this.windowMissNoted = false;
     // Default trigger: clicks when the platform supports it, otherwise the
     // user-selected fallback (timer or hotkey-only). That keeps Linux from
     // silently dropping into an unwanted 5-second timer when click capture
@@ -716,7 +749,9 @@ class CaptureService {
       if (frame) {
         clog('click@', clickAt, 'frame', frame.source || 'loop',
           'started', frame.startedAt - clickAt, 'ms, captured', frame.capturedAt - clickAt, 'ms rel. click');
-        const result = await this.storeFrameAsStep(guideId, frame.mode, frame, clickPos, clickMeta);
+        // Window mode on Windows: the frame is the whole screen; keep the clicked window.
+        const shot = this.windowModeCrops() ? this.windowFrame(frame, clickMeta ? clickMeta.windowBounds : null) : frame;
+        const result = await this.storeFrameAsStep(guideId, shot.mode, shot, clickPos, clickMeta);
         if (result.ok) this.noteStepAdded(result.step, trigger, guideId);
         return result;
       }
@@ -749,15 +784,21 @@ class CaptureService {
     // frame (wrong display / out of bounds) and fall through to a getSources()
     // shot, i.e. a portal dialog on every interval tick.
     if (trigger !== 'click' && this.streamBackend && this.streamBackend.isActive()) {
+      const guideId = this.session.guideId;
+      // Window mode on Windows: find the active window first, so the frame
+      // comes from the monitor it is on.
+      const windowMode = this.windowModeCrops();
+      const windowBounds = windowMode ? await this.activeWindowBounds() : null;
       const frame = await this.streamBackend.frameForClick({
-        clickPos: null,
+        clickPos: windowBounds ? this.windowAnchor(windowBounds) : null,
         clickAt: Date.now(),
         strict: false, // no pre/post-click constraint for timed captures
         leadMs: 0,
         failable: false, // a slow timed-capture encode must not kill the stream
       }).catch(() => null);
       if (frame) {
-        const result = await this.storeFrameAsStep(this.session.guideId, 'fullscreen', frame);
+        const shot = windowMode ? this.windowFrame(frame, windowBounds) : frame;
+        const result = await this.storeFrameAsStep(guideId, shot.mode, shot);
         if (result.ok) this.noteStepAdded(result.step, trigger);
         clog(trigger, 'capture stored from stream; total', this.session && this.session.count);
         return result;
@@ -790,6 +831,8 @@ class CaptureService {
         hideWindowDelayMs: trigger === 'click' ? CLICK_CAPTURE_HIDE_DELAY_MS : null,
         refocus: false, // don't steal focus from the app the user is documenting
         clickPos,
+        // The clicked window, not whichever is active by the time this runs.
+        ...(trigger === 'click' && this.windowModeCrops() ? { windowBounds: clickMeta ? clickMeta.windowBounds : null } : {}),
       });
       if (finalResult.ok) this.noteStepAdded(finalResult.step, trigger);
       return finalResult;
@@ -840,9 +883,7 @@ class CaptureService {
         if (!this.shooting) {
           this.frameLoopInFlight = true;
           this.frameLoopGrabStartedAt = Date.now();
-          const mode = this.settings.get('capture.mode') || 'fullscreen';
-          const grabMode = mode === 'region' ? 'fullscreen' : mode;
-          const frame = await this.captureCurrentFrame(grabMode, null, this.frameLoopGrabStartedAt);
+          const frame = await this.captureCurrentFrame(this.recorderMode(), null, this.frameLoopGrabStartedAt);
           if (this.frameLoopRunning) this.acceptFrame(frame);
         }
       } catch {
@@ -915,8 +956,9 @@ class CaptureService {
    * frame off as the click-time screen.
    */
   async frameForClick(clickPos = null, clickAt = Date.now()) {
-    const mode = this.settings.get('capture.mode') || 'fullscreen';
-    let grabMode = mode === 'region' ? 'fullscreen' : mode;
+    // On Windows a Window recording pairs clicks with full-screen frames too;
+    // sessionCapture cuts the clicked window out of the one it gets.
+    let grabMode = this.recorderMode();
     // Window grabs need the frame loop's desktopCapturer filtering, which does
     // not run on Wayland. Without this fallback every click would find no
     // frame and be skipped, so window mode would record nothing. Use the
@@ -1010,13 +1052,13 @@ class CaptureService {
    * automatic degradation target if the worker stops answering mid-session.
    */
   async startClickFrameBackend() {
-    const mode = this.settings.get('capture.mode') || 'fullscreen';
-    // The worker streams screens; window-mode grabs need the loop's
-    // source-filtering logic. But the loop isn't viable on Wayland (getSources
-    // is broken/portal), so there we always take the stream backend regardless
-    // of the streamCapture/window settings.
+    // The worker streams screens; X11 window-mode grabs need the loop's
+    // source-filtering logic (Windows cuts windows out of the screen stream
+    // instead, see recorderMode). But the loop isn't viable on Wayland
+    // (getSources is broken/portal), so there we always take the stream
+    // backend regardless of the streamCapture/window settings.
     if (this.canUseFrameLoop()
-      && (this.settings.get('capture.streamCapture') === false || mode === 'window')) {
+      && (this.settings.get('capture.streamCapture') === false || this.recorderMode() === 'window')) {
       this.startFrameLoop();
       return;
     }
@@ -1302,9 +1344,8 @@ public static class SFHook {
   [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
   private static extern bool QueryFullProcessImageName(IntPtr hProcess, uint dwFlags, System.Text.StringBuilder lpExeName, ref uint lpdwSize);
 
-  private static string GetFwTitle() {
+  private static string GetFwTitle(IntPtr hwnd) {
     try {
-      IntPtr hwnd = GetForegroundWindow();
       if (hwnd == IntPtr.Zero) return "";
       var sb = new System.Text.StringBuilder(512);
       GetWindowText(hwnd, sb, sb.Capacity);
@@ -1312,9 +1353,8 @@ public static class SFHook {
     } catch { return ""; }
   }
 
-  private static string GetFwApp() {
+  private static string GetFwApp(IntPtr hwnd) {
     try {
-      IntPtr hwnd = GetForegroundWindow();
       if (hwnd == IntPtr.Zero) return "";
       uint pid = 0;
       GetWindowThreadProcessId(hwnd, out pid);
@@ -1455,12 +1495,19 @@ public static class SFHook {
       if (button != null) {
         MSLLHOOKSTRUCT data = (MSLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(MSLLHOOKSTRUCT));
         long unixMs = DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond - UnixEpochMilliseconds;
-        // Capture window context while the user's app is still in foreground.
-        // GetForegroundWindow is synchronous and fast (no IPC overhead).
+        // The window under the click, not the foreground one: this hook runs
+        // before Windows activates the clicked window, so on the first click
+        // into another app the foreground window is still the previous app.
+        // All synchronous Win32 reads (no messages to other processes).
+        IntPtr clicked = IntPtr.Zero;
+        string area = "-";
+        try { area = SFWindows.ForClick(data.pt.x, data.pt.y, out clicked); } catch { }
         try {
-          string t = GetFwTitle(), a = GetFwApp();
+          IntPtr titled = clicked != IntPtr.Zero ? clicked : GetForegroundWindow();
+          string t = GetFwTitle(titled), a = GetFwApp(titled);
           queue.Enqueue("CTX " + B64(t) + " " + B64(a) + " " + unixMs);
         } catch { }
+        queue.Enqueue("WIN " + area);
         var target = hoveredElement;
         if (target != null && target.Generation == elementGeneration && target.X == data.pt.x && target.Y == data.pt.y &&
             target.Window == GetForegroundWindow() && DateTime.UtcNow.Ticks - target.At < TimeSpan.TicksPerMillisecond * 300) {
@@ -1558,6 +1605,7 @@ public static class SFHook {
     return null;
   }
 }
+${WINDOW_BOUNDS_CS}
 '@
 [SFHook]::Run()
 `;
@@ -1768,7 +1816,16 @@ public static class SFHook {
         if (clickM) {
           const osPoint = clickM[1] === undefined ? null : { x: Number(clickM[1]), y: Number(clickM[2]) };
           const eventAt = clickM[4] === undefined ? Date.now() : Number(clickM[4]);
-          this.onOsClick(Number.isFinite(eventAt) ? eventAt : Date.now(), osPoint, clickM[3] || 'mouse');
+          const clickWindow = this._pendingClickWindow;
+          this._pendingClickWindow = undefined;
+          this.onOsClick(Number.isFinite(eventAt) ? eventAt : Date.now(), osPoint, clickM[3] || 'mouse', clickWindow);
+          continue;
+        }
+        // WIN comes just before its CLICK: the clicked window's area in
+        // physical pixels, or "-" when there is no window to show.
+        const winM = /^WIN\s+(.+)$/.exec(trimmed);
+        if (winM) {
+          this._pendingClickWindow = parseWindowBounds(winM[1]);
           continue;
         }
         const keyM = /^KEY\s+(\S+)\s+(\d+)\s*$/.exec(trimmed);
@@ -1883,7 +1940,7 @@ public static class SFHook {
     return raw != null && Number.isFinite(v) && v >= 0 ? v : DEFAULT_CLICK_DEBOUNCE_MS;
   }
 
-  onOsClick(at = Date.now(), osPoint = null, rawButton = 'mouse') {
+  onOsClick(at = Date.now(), osPoint = null, rawButton = 'mouse', clickWindow = undefined) {
     // Windows says 'right', Linux says 'button-3'; everything downstream uses
     // one vocabulary (left / right / middle, other buttons by their own name).
     const button = mouseButtonKey(rawButton);
@@ -1920,6 +1977,10 @@ public static class SFHook {
     this.pendingClickOsPoint = osPoint && Number.isFinite(osPoint.x) && Number.isFinite(osPoint.y)
       ? { x: osPoint.x, y: osPoint.y }
       : null;
+    // Windows reports the clicked window with each click (null: none to show).
+    this.pendingClickWindow = clickWindow === undefined ? undefined
+      : this.windowBoundsToDip(clickWindow, this.pendingClickOsPoint && clickPos
+        ? { physical: this.pendingClickOsPoint, dip: clickPos } : null);
     this.enqueueClickCapture(clickPos, clickAt, button);
   }
 
@@ -1984,7 +2045,7 @@ public static class SFHook {
       const displays = this.screen && typeof this.screen.getAllDisplays === 'function'
         ? this.screen.getAllDisplays()
         : [];
-      geometryDip = physicalToDip(osPoint, displays);
+      geometryDip = physicalToDip(osPoint, this.withPhysicalBounds(displays));
     } catch {
       geometryDip = null;
     }
@@ -2005,6 +2066,22 @@ public static class SFHook {
       } catch { /* fall through to manual conversion */ }
     }
     return geometryDip || osPoint;
+  }
+
+  /**
+   * Displays with their real physical rectangles where Electron can say
+   * (Windows). Reconstructing them from DIP bounds put a click on a scaled
+   * monitor to the right of the primary onto the primary instead.
+   */
+  withPhysicalBounds(displays) {
+    if (!this.screen || typeof this.screen.dipToScreenRect !== 'function') return displays;
+    return displays.map((display) => {
+      try {
+        return { ...display, physicalBounds: this.screen.dipToScreenRect(null, display.bounds) };
+      } catch {
+        return display;
+      }
+    });
   }
 
   /**
@@ -2036,6 +2113,9 @@ public static class SFHook {
     if (osPoint) {
       clickMeta.osPoint = { x: osPoint.x, y: osPoint.y };
     }
+    // DIP bounds of the clicked window, for Window mode on Windows.
+    if (this.pendingClickWindow !== undefined) clickMeta.windowBounds = this.pendingClickWindow;
+    this.pendingClickWindow = undefined;
     // Snapshot keyboard context accumulated since the last capture.
     clickMeta.keyContext = this.snapshotKeyContext();
     // Attach the window + element context emitted by the click watcher.
@@ -2116,6 +2196,127 @@ public static class SFHook {
       cursor: capturePoint || grabbed.cursor,
       startedAt,
       capturedAt: Date.now(),
+    };
+  }
+
+  // ---- Window mode on Windows ------------------------------------------------
+  //
+  // A Window shot is the full-screen frame cut down to the window (#203), the
+  // way the GNOME backend does it. The window comes from the click hook (WIN
+  // line, see app/platform/windows/window-bounds.js) or, without a click,
+  // from the active window. Cutting it from the screen keeps the frame from
+  // just before the click, shows menus and dropdowns over the window, and
+  // gives the step a click marker and automatic focus.
+
+  /**
+   * One frame in `mode`. A Window shot on Windows is the screen cut down to
+   * `windowBounds` (DIP, from a click) or, when that is undefined, to the
+   * active window looked up now. Elsewhere desktopCapturer grabs the window.
+   */
+  async grabFrame(mode, point = null, windowBounds = undefined) {
+    if (mode !== 'window' || !this.cropsWindowsFromScreen()) return this.captureCurrentFrame(mode, point);
+    const bounds = windowBounds !== undefined ? windowBounds : await this.activeWindowBounds();
+    let cursor = point;
+    if (!cursor) {
+      try { cursor = this.screen.getCursorScreenPoint(); } catch { cursor = null; }
+    }
+    // Grab the monitor the window is on; the marker still goes where the cursor is.
+    const frame = await this.captureCurrentFrame('fullscreen', bounds ? this.windowAnchor(bounds, cursor) : point);
+    return this.windowFrame({ ...frame, cursor }, bounds);
+  }
+
+  /**
+   * The full-screen `frame` cut down to `bounds` (DIP). Without a window on
+   * the frame's monitor the step keeps the full screen, and the user is told.
+   */
+  windowFrame(frame, bounds) {
+    const cropped = bounds ? this.cropFrameToBounds(frame, bounds) : null;
+    if (cropped) return cropped;
+    this.noteWindowNotFound();
+    return frame;
+  }
+
+  cropFrameToBounds(frame, bounds) {
+    let geometry;
+    try {
+      geometry = cropGeometry(frame.display.bounds, bounds, frame.size);
+    } catch {
+      return null; // the window is not on this monitor
+    }
+    if (geometry.pixels.width <= 0 || geometry.pixels.height <= 0) return null;
+    const image = (frame.image || this.imageFromPng(frame.png)).crop(geometry.pixels);
+    const cropped = {
+      ...frame,
+      mode: 'window',
+      size: image.getSize(),
+      captureBounds: geometry.bounds,
+      display: { ...frame.display, bounds: geometry.bounds },
+    };
+    // Stream frames carry PNG bytes only; keep it that way for them.
+    return frame.image ? { ...cropped, image, png: null } : { ...cropped, png: image.toPNG() };
+  }
+
+  imageFromPng(png) {
+    return nativeImage.createFromBuffer(png);
+  }
+
+  noteWindowNotFound() {
+    clog('window mode: no window to cut out; keeping the full screen');
+    if (this.session) {
+      if (this.windowMissNoted) return;
+      this.windowMissNoted = true;
+    }
+    this.notify('capture:diagnostic', {
+      kind: 'window-not-found',
+      guideId: this.session ? this.session.guideId : null,
+      reason: WINDOW_NOT_FOUND_NOTE,
+    });
+  }
+
+  /**
+   * Physical window bounds from the Windows helpers -> DIP. A click passes
+   * its own point in both spaces as the anchor, so the window and the click
+   * marker go through the same conversion; otherwise the window's center is
+   * converted. StepForge's own windows are never the one to show.
+   */
+  windowBoundsToDip(found, anchor = null) {
+    if (!found || found.pid === process.pid) return null;
+    const physical = anchor ? anchor.physical
+      : { x: Math.round((found.left + found.right) / 2), y: Math.round((found.top + found.bottom) / 2) };
+    const dip = anchor ? anchor.dip : this.osPointToDip(physical);
+    let displays = [];
+    try { displays = this.screen.getAllDisplays(); } catch { displays = []; }
+    const display = displayForDipPoint(dip, displays);
+    return physicalRectToDip(found, physical, dip, display ? display.scaleFactor : 1);
+  }
+
+  /** DIP bounds of the active window, or null. Read while StepForge is hidden. */
+  async activeWindowBounds() {
+    let found = null;
+    try { found = await this.readActiveWindow(); } catch { found = null; }
+    return this.windowBoundsToDip(found);
+  }
+
+  readActiveWindow() {
+    return readActiveWindow();
+  }
+
+  /**
+   * A point that picks the monitor to grab for `bounds`: the cursor when it
+   * is on the window, else the window's center, kept on a monitor so the
+   * stream backend accepts it.
+   */
+  windowAnchor(bounds, cursor = null) {
+    if (cursor && pointInBounds(cursor, bounds)) return cursor;
+    const center = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+    let displays = [];
+    try { displays = this.screen.getAllDisplays(); } catch { displays = []; }
+    const display = displayForDipPoint(center, displays);
+    if (!display) return center;
+    const b = display.bounds;
+    return {
+      x: Math.min(Math.max(center.x, b.x), b.x + b.width - 1),
+      y: Math.min(Math.max(center.y, b.y), b.y + b.height - 1),
     };
   }
 
@@ -2251,21 +2452,24 @@ public static class SFHook {
     refocus = true,
     hideWindowDelayMs = null,
     clickPos = null,
+    // Window mode on Windows: the clicked window's DIP bounds (null: none).
+    // Left undefined, the active window is shown.
+    windowBounds = undefined,
   }) {
     const delay = delayMs == null ? this.settings.get('capture.delayMs') || 0 : delayMs;
     if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
     let frame;
     try {
       frame = hideWindow
-        ? await this.withWindowHidden(() => this.captureCurrentFrame(mode, clickPos), {
+        ? await this.withWindowHidden(() => this.grabFrame(mode, clickPos, windowBounds), {
           refocus,
           pauseMs: hideWindowDelayMs == null ? 350 : hideWindowDelayMs,
         })
-        : await this.captureCurrentFrame(mode, clickPos);
+        : await this.grabFrame(mode, clickPos, windowBounds);
     } catch (err) {
       return { ok: false, reason: err.message };
     }
-    return this.storeFrameAsStep(guideId, mode, frame, clickPos);
+    return this.storeFrameAsStep(guideId, frame.mode || mode, frame, clickPos);
   }
 
   /**
@@ -2327,7 +2531,7 @@ public static class SFHook {
         try {
           frame = await this.withWindowHidden(async () => {
             if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
-            return this.captureCurrentFrame(mode);
+            return this.grabFrame(mode);
           });
         } catch (err) {
           return { ok: false, reason: err.message };

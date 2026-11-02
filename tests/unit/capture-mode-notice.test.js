@@ -50,11 +50,12 @@ test('the window-mode-unavailable notice reaches the renderer through preload', 
   assert.deepEqual(received, [{ kind: 'window-mode-unavailable', reason: 'full screen' }]);
 });
 
-function app() {
+function app(language = 'en') {
   const toasts = [];
   // Like the DOM's append(): anything that isn't a node becomes text, so a stray null shows as "null".
   const node = () => ({ children: [], classList: { add() {}, remove() {} }, append(...kids) { this.children.push(...kids.map((k) => (k && typeof k === 'object' ? k : String(k)))); } });
-  const context = vm.createContext({ ...rendererI18n(), window: {}, document: { addEventListener() {} } });
+  const context = vm.createContext({ ...rendererI18n(language), StepForgeLocales: require('../../core/locales'),
+    window: {}, document: { addEventListener() {} } });
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/util.js'), 'utf8'), context);
   context.toast = (message, opts) => toasts.push([message, opts]);
   context.el = (selector, attrs = {}, ...children) => ({ selector, ...attrs, children: children.flat().filter((c) => c != null && c !== false) });
@@ -81,4 +82,14 @@ test('the recording bar shows the full-screen note before recording starts, and 
   ui.onCaptureDiagnostic({ kind: 'window-mode-unavailable', reason: note });
   ui.onCaptureDiagnostic({ kind: 'strict-click-skipped', reason: 'not shown' });
   assert.deepEqual(toasts.map(([message]) => message), [note]);
+});
+
+test('when Window mode on Windows finds no window, the user is told in their language', () => {
+  const english = app();
+  english.app.onCaptureDiagnostic({ kind: 'window-not-found', reason: 'English text from the main process' });
+  assert.deepEqual(english.toasts.map(([message]) => message),
+    ['StepForge couldn’t tell which window to capture, so it captured the full screen.']);
+  const chinese = app('zh-CN');
+  chinese.app.onCaptureDiagnostic({ kind: 'window-not-found', reason: 'English text from the main process' });
+  assert.deepEqual(chinese.toasts.map(([message]) => message), ['StepForge 无法确定要捕获哪个窗口，因此捕获了全屏。']);
 });

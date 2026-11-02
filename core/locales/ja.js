@@ -63,6 +63,7 @@
   'Capture session — {trigger}': 'キャプチャセッション — {trigger}',
   'Recording - {trigger}': '録画 - {trigger}',
   'Full screen (window capture unavailable)': '全画面（ウィンドウのキャプチャは利用できません）',
+  'StepForge couldn’t tell which window to capture, so it captured the full screen.': 'StepForge はキャプチャするウィンドウを特定できなかったため、全画面をキャプチャしました。',
   'Library': 'ライブラリ',
   'Capture a screenshot step': 'スクリーンショットのステップをキャプチャ',
   'Capture ▾': 'キャプチャ ▾',

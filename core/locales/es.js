@@ -63,6 +63,7 @@
   'Capture session — {trigger}': 'Sesión de captura — {trigger}',
   'Recording - {trigger}': 'Grabación - {trigger}',
   'Full screen (window capture unavailable)': 'Pantalla completa (captura de ventana no disponible)',
+  'StepForge couldn’t tell which window to capture, so it captured the full screen.': 'StepForge no pudo saber qué ventana capturar, así que capturó la pantalla completa.',
   'Library': 'Biblioteca',
   'Capture a screenshot step': 'Capturar un paso',
   'Capture ▾': 'Capturar ▾',

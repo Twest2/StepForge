@@ -6,26 +6,10 @@ const { dialog, nativeImage } = require('electron');
 const CaptureService = require('../../capture');
 const { PortalBackend } = require('./portal-backend');
 const { mouseButtonKey } = require('../../../core/text-intel');
+const { cropGeometry } = require('../../coords');
 const run = promisify(execFile);
 const UUID = 'com.twestbrook.stepforge';
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-function cropGeometry(bounds, rect, size) {
-  const x = Math.max(bounds.x, rect.x);
-  const y = Math.max(bounds.y, rect.y);
-  const right = Math.min(bounds.x + bounds.width, rect.x + rect.width);
-  const bottom = Math.min(bounds.y + bounds.height, rect.y + rect.height);
-  if (right <= x || bottom <= y) throw new Error('The selected area is outside the shared monitor.');
-  const sx = size.width / bounds.width;
-  const sy = size.height / bounds.height;
-  const px = Math.round((x - bounds.x) * sx);
-  const py = Math.round((y - bounds.y) * sy);
-  return {
-    bounds: { x, y, width: right - x, height: bottom - y },
-    pixels: { x: px, y: py, width: Math.round((right - bounds.x) * sx) - px,
-      height: Math.round((bottom - bounds.y) * sy) - py },
-  };
-}
 
 class GnomeCaptureService extends CaptureService {
   constructor(options) {

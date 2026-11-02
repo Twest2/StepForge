@@ -63,6 +63,7 @@
   'Capture session — {trigger}': '捕获会话 — {trigger}',
   'Recording - {trigger}': '录制 - {trigger}',
   'Full screen (window capture unavailable)': '全屏（窗口捕获不可用）',
+  'StepForge couldn’t tell which window to capture, so it captured the full screen.': 'StepForge 无法确定要捕获哪个窗口，因此捕获了全屏。',
   'Library': '指南库',
   'Capture a screenshot step': '捕获截图步骤',
   'Capture ▾': '捕获 ▾',

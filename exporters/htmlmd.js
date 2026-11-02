@@ -15,8 +15,8 @@ function htmlToMarkdown(html) {
   out = out.replace(/<table>([\s\S]*?)<\/table>/gi, (m, body) => tableToMd(body));
 
   out = out
-    .replace(/<pre>\s*<code[^>]*>([\s\S]*?)<\/code>\s*<\/pre>/gi, (m, code) => `\n\`\`\`\n${decodeEntities(code)}\n\`\`\`\n`)
-    .replace(/<pre>([\s\S]*?)<\/pre>/gi, (m, code) => `\n\`\`\`\n${decodeEntities(code)}\n\`\`\`\n`)
+    .replace(/<pre>\s*<code[^>]*>([\s\S]*?)<\/code>\s*<\/pre>/gi, '\n```\n$1\n```\n')
+    .replace(/<pre>([\s\S]*?)<\/pre>/gi, '\n```\n$1\n```\n')
     .replace(/<h1>([\s\S]*?)<\/h1>/gi, '\n# $1\n')
     .replace(/<h2>([\s\S]*?)<\/h2>/gi, '\n## $1\n')
     .replace(/<h3>([\s\S]*?)<\/h3>/gi, '\n### $1\n')
@@ -26,7 +26,7 @@ function htmlToMarkdown(html) {
     .replace(/<(i|em)>([\s\S]*?)<\/\1>/gi, '*$2*')
     .replace(/<u>([\s\S]*?)<\/u>/gi, '$1')
     .replace(/<s>([\s\S]*?)<\/s>/gi, '~~$1~~')
-    .replace(/<code[^>]*>([\s\S]*?)<\/code>/gi, (m, c) => `\`${decodeEntities(c)}\``)
+    .replace(/<code[^>]*>([\s\S]*?)<\/code>/gi, '`$1`')
     .replace(/<a\s+[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi, (m, href, label) => {
       if (href.startsWith('step:')) return `[${stripTags(label)}](#step-${href.slice(5)})`;
       return `[${stripTags(label)}](${href})`;
@@ -77,8 +77,10 @@ function tableToMd(body) {
   return `\n${lines.join('\n')}\n`;
 }
 
+// Entities stay encoded until htmlToMarkdown's final decode, so escaped text
+// such as `&lt;b&gt;` is never mistaken for a tag and decoded only once.
 function stripTags(html) {
-  return decodeEntities(String(html).replace(/<[^>]+>/g, ''));
+  return String(html).replace(/<[^>]+>/g, '');
 }
 
 module.exports = { htmlToMarkdown };

@@ -28,12 +28,15 @@ class RecordingControls {
     verify = verifyCaptureExclusion, log = console.warn }) {
     Object.assign(this, { settings, getState, onPause, onFinish, onGesture, onUnavailable, electron, platform, release, verify, log });
     this.win = null;
+    this.started = false;
     this.ready = false;
     this.closed = false;
     this.suspended = 0;
   }
 
   async start() {
+    if (this.started || this.closed) return;
+    this.started = true;
     try {
       if (!supportsCaptureExclusion(this.platform, this.release)) throw new Error('Windows 10 build 19041 or later is required for capture exclusion');
       const { BrowserWindow, screen, nativeTheme, ipcMain } = this.electron;

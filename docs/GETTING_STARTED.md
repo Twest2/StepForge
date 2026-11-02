@@ -37,9 +37,10 @@ to title the step, so you'll usually see titles like *Click Releases* or
 
 ### Stop recording
 
-**On Windows,** a small floating bar stays on screen while your recording
-session is open. It shows whether recording is paused and how many steps
-you've captured. Click **Pause** or **Resume** to take a break, or **Finish**
+**On Windows,** a small floating bar appears when you start recording.
+Opening a guide does not show it. Once recording starts, the bar stays
+available while paused and shows how many steps you've captured. Click
+**Pause** or **Resume** to take a break, or **Finish**
 to end the session and see your steps. These buttons leave your other app
 in focus. You can also press **Ctrl+Shift+2** to pause or resume.
 

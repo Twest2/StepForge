@@ -176,7 +176,12 @@ editor without activating it. State updates follow pause/resume and stored
 steps. Theme updates come from `nativeTheme`; all text uses the UI locale.
 The editor's stopped-session Start recording action creates and resumes a
 session in one interaction, with controls disabled until both requests
-settle. Merely opening a guide still arms a paused session.
+settle. Merely opening a guide still arms a paused session. Preparing this
+session allocates only the floating-controls controller; its native window
+is created on the first resume. Starting the controller is idempotent, so
+pause/resume keeps one bar even when no steps have been recorded. Finish
+destroys it; opening another guide leaves its bar unstarted. Tray mode,
+including Linux, retains its existing session-preparation behavior.
 Stream startup discovers screen IDs with a zero thumbnail size. Even a 1×1
 thumbnail starts a screen grab and can add several seconds on Windows;
 zero skips that work before the actual stream opens. The three-second

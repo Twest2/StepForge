@@ -435,7 +435,6 @@ class CaptureService {
         if (this.session) this.createSessionTray();
       },
     });
-    void controls.start();
   }
 
   /** Red-dot tray icon with session controls, shown while recording. */
@@ -565,6 +564,7 @@ class CaptureService {
     // recorder that serves click captures. Pausing stops it and discards
     // buffered frames, so a resume can never serve a pre-pause screen.
     if (wasPaused && !this.session.paused) {
+      if (this.recordingControls) void this.recordingControls.start();
       this.armRecording();
     } else if (!wasPaused && this.session.paused) {
       this.warmingUp = false; // cancel any in-flight warmup

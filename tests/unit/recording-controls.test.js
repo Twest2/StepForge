@@ -253,3 +253,92 @@ test('region picker restores controls after selection, cancellation and an overl
     assert.equal(suspended, false);
   }
 });
+
+function captureWithControls(platform = 'win32', mode = 'floating') {
+  const f = fixture();
+  const electron = f.controls.electron;
+  const captureFile = path.join(__dirname, '../../app/capture.js');
+  const localRequire = require('node:module').createRequire(captureFile);
+  const module = { exports: {} };
+  class Controls extends RecordingControls {
+    constructor(options) { super({ ...options, electron, platform, release: '10.0.26100', verify: async () => true }); }
+  }
+  require('node:vm').runInNewContext(fs.readFileSync(captureFile, 'utf8'), {
+    module, __dirname: path.dirname(captureFile), Buffer, console,
+    setTimeout, clearTimeout, setInterval, clearInterval,
+    process: { ...process, platform, env: { ...process.env, STEPFORGE_SCREENSHOT: '' } },
+    require: (name) => name === './recording-controls'
+      ? { RecordingControls: Controls, recordingControlsMode }
+      : name === 'electron' ? electron : localRequire(name),
+  });
+  const win = {
+    visible: true, isDestroyed: () => false, isMinimized: () => false,
+    isVisible() { return this.visible; }, hide() { this.visible = false; }, minimize() { this.visible = false; },
+    show() { this.visible = true; }, showInactive() { this.visible = true; }, focus() {},
+  };
+  const values = { 'capture.recordingControls': mode, 'capture.captureOutsideClicks': false, 'capture.streamCapture': false, 'capture.postHideSettleMs': 0 };
+  const svc = new module.exports({ store: {}, settings: { get: (key) => values[key], set() {} },
+    getWindow: () => win, notify: () => {}, screenApi: electron.screen });
+  return { ...f, svc, win };
+}
+
+test('opening or switching guides does not open the floating bar; starting shows it and pausing keeps it available', async (t) => {
+  const f = captureWithControls();
+  t.after(() => f.svc.finishSession());
+  for (const guideId of ['from-library', 'from-recent', 'from-linked-guide']) {
+    f.svc.startSession(guideId, { intervalSec: 0 });
+    assert.equal(f.svc.state().paused, true);
+    assert.equal(f.svc.recordingControls.started, false);
+    assert.equal(f.windows.length, 0, 'preparing any guide must not create a native bar');
+  }
+  f.svc.togglePause(true);
+  assert.equal(f.windows.length, 0, 'a pause before the first start must not expose controls');
+  f.svc.togglePause(false);
+  await new Promise(setImmediate);
+  assert.equal(f.windows.length, 1);
+  const bar = f.windows[0];
+  assert.equal(bar.visible, true);
+  assert.equal(bar.lastState.paused, false);
+  assert.equal(f.win.visible, false, 'starting still hides the editor');
+  f.svc.togglePause(true);
+  assert.equal(f.svc.state().count, 0);
+  assert.equal(bar.visible, true, 'paused controls must remain available even before the first step');
+  assert.equal(bar.lastState.paused, true);
+  f.svc.togglePause(false);
+  await new Promise(setImmediate);
+  assert.equal(f.windows.length, 1, 'resume reuses the same bar');
+  f.svc.finishSession({ refocus: false });
+  assert.equal(bar.dead, true);
+  assert.equal(f.win.visible, true);
+  f.svc.startSession('reopened-after-finish', { intervalSec: 0 });
+  assert.equal(f.windows.length, 1, 'reopening must not create another bar until Start recording');
+  assert.equal(f.svc.recordingControls.started, false);
+  f.svc.togglePause(false);
+  await new Promise(setImmediate);
+  assert.equal(f.windows.length, 2);
+  assert.equal(f.windows[1].visible, true);
+});
+
+test('the deferred floating controller can be finished without ever opening a window', async () => {
+  const f = captureWithControls();
+  f.svc.startSession('opened-only', { intervalSec: 0 });
+  const pending = f.svc.recordingControls;
+  f.svc.finishSession();
+  await pending.start();
+  assert.equal(f.windows.length, 0, 'a disposed controller cannot resurrect a bar');
+});
+
+test('Linux and Windows tray mode keep their existing controls on session preparation', (t) => {
+  for (const [platform, mode] of [['linux', 'floating'], ['linux', 'tray'], ['win32', 'tray']]) {
+    const f = captureWithControls(platform, mode);
+    t.after(() => f.svc.finishSession());
+    let trayStarts = 0;
+    f.svc.createSessionTray = () => { trayStarts += 1; };
+    f.svc.startSession('tray-guide', { intervalSec: 0 });
+    assert.equal(trayStarts, 1);
+    assert.equal(f.svc.recordingControls, null);
+    f.svc.togglePause(false);
+    assert.equal(trayStarts, 1);
+    assert.equal(f.windows.length, 0);
+  }
+});

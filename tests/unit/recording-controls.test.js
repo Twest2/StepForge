@@ -51,7 +51,7 @@ test('native verification fails closed on a black box, denied API or timeout', a
     assert.equal(await verifyCaptureExclusion(win, (exe, args, options, done) => {
       assert.equal(exe, 'powershell.exe');
       assert.equal(options.windowsHide, true);
-      assert.equal(options.timeout, 5000);
+      assert.equal(options.timeout, 15000);
       const script = Buffer.from(args.at(-1), 'base64').toString('utf16le');
       assert.match(script, /affinity -eq 17/);
       assert.match(script, /\[long\]4660/);
@@ -382,5 +382,39 @@ test('the floating Finish action restores focus on every recording cycle, includ
     assert.equal(f.svc.session, null);
     assert.equal(f.svc.recordingControls, null);
     assert.equal(bar.dead, true);
+  }
+});
+
+test('a confirmed exclusion check is not repeated, so later recordings show the bar at once', async () => {
+  let checks = 0;
+  const verify = async () => { checks += 1; return true; };
+  for (let i = 0; i < 3; i += 1) {
+    const f = fixture({ verify });
+    await f.controls.start();
+    assert.equal(f.windows[0].opacity, 1);
+    f.controls.destroy();
+  }
+  assert.equal(checks, 1);
+  let refusals = 0;
+  const refuse = async () => { refusals += 1; return false; };
+  for (let i = 0; i < 2; i += 1) await fixture({ verify: refuse }).controls.start();
+  assert.equal(refusals, 2, 'a failed check is tried again next recording');
+});
+
+test('quitting closes the floating bar without starting the tray; an unexpected close still falls back', async (t) => {
+  for (const quitting of [true, false]) {
+    const f = captureWithControls();
+    t.after(() => f.svc.finishSession());
+    let trayStarts = 0;
+    f.svc.createSessionTray = () => { trayStarts += 1; };
+    f.svc.startSession('quit-guide', { intervalSec: 0 });
+    f.svc.togglePause(false);
+    await new Promise(setImmediate);
+    const bar = f.windows[0];
+    if (quitting) f.svc.closeRecordingControls();
+    // Electron closes every window while the app quits.
+    bar.emit('closed');
+    assert.equal(f.svc.recordingControls, null);
+    assert.equal(trayStarts, quitting ? 0 : 1);
   }
 });

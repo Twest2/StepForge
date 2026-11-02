@@ -200,6 +200,11 @@ older Windows treats it as `WDA_MONITOR` (a black rectangle in captures).
 and desktop composition is enabled; a failed check, timeout, or renderer
 failure logs why and falls back to the tray. Electron's
 `isContentProtected()` alone cannot confirm that Windows applied exclusion.
+The check compiles C# through PowerShell, so it gets 15 seconds (antivirus
+scans and the click hook's own compile can slow the first run), and a
+success is remembered for the rest of the process: later recordings show the
+bar at once. Quitting calls `closeRecordingControls()` first, so the bar
+closing with every other window is not mistaken for a failure.
 
 Capture exclusion applies to the desktop media stream in `stream-backend.js`,
 the in-process `desktopCapturer.getSources` frame loop, and fresh captures

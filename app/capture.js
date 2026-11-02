@@ -437,6 +437,15 @@ class CaptureService {
     });
   }
 
+  /**
+   * Close the floating bar without falling back to the tray. Quitting closes
+   * every window, which the bar would otherwise treat as a failure.
+   */
+  closeRecordingControls() {
+    if (this.recordingControls) this.recordingControls.destroy();
+    this.recordingControls = null;
+  }
+
   /** Red-dot tray icon with session controls, shown while recording. */
   createSessionTray() {
     this.destroySessionTray();
@@ -652,8 +661,7 @@ class CaptureService {
     this.stopFrameLoop();
     this.stopClickFrameBackend();
     this.destroySessionTray();
-    if (this.recordingControls) this.recordingControls.destroy();
-    this.recordingControls = null;
+    this.closeRecordingControls();
     this.session = null;
     // A finished session never records: release the power blocker here so it
     // can't outlive the recording (finish from any path — bar, tray, quit).

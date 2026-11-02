@@ -6,6 +6,9 @@ const { supportsCaptureExclusion, verifyCaptureExclusion } = require('./windows-
 const { installWindowSecurity, isAppPageUrl } = require('./security');
 
 const SIZE = { width: 460, height: 48 };
+// Verifiers that already saw Windows exclude a bar. The result holds for the
+// life of the process, so later recordings skip the slow PowerShell check.
+const confirmedVerifiers = new WeakSet();
 
 function recordingControlsMode(platform, value) {
   return platform === 'win32' && value !== 'tray' ? 'floating' : 'tray';
@@ -79,7 +82,10 @@ class RecordingControls {
       // Chromium applies exclusion when the native window is first shown.
       // Keep it transparent and click-through until Windows confirms it.
       win.showInactive();
-      if (!await this.verify(win)) throw new Error('Windows did not confirm WDA_EXCLUDEFROMCAPTURE');
+      if (!confirmedVerifiers.has(this.verify)) {
+        if (!await this.verify(win)) throw new Error('Windows did not confirm WDA_EXCLUDEFROMCAPTURE');
+        confirmedVerifiers.add(this.verify);
+      }
       if (this.closed) return;
       if (this.suspended) win.hide();
       win.setIgnoreMouseEvents(false);

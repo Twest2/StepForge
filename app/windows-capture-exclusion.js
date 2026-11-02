@@ -32,7 +32,9 @@ if ($ok -and $affinity -eq 17 -and $hr -eq 0 -and $composed) { 'excluded' } else
 `;
   return new Promise((resolve) => {
     run('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')],
-      { windowsHide: true, timeout: 5000 }, (error, stdout) => resolve(!error && stdout.trim() === 'excluded'));
+      // Add-Type compiles C#; antivirus scans can slow the first run, and the
+      // click hook compiles at the same time. A spurious timeout means tray.
+      { windowsHide: true, timeout: 15000 }, (error, stdout) => resolve(!error && stdout.trim() === 'excluded'));
   });
 }
 

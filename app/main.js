@@ -2206,6 +2206,7 @@ if (!gotLock) {
     event.preventDefault();
     // Stop new clicks from being queued, then wait for the queue to settle.
     capture.stopClickWatcher();
+    capture.closeRecordingControls();
     cloudSync?.stop();
     // Electron quits even with active worker threads. Let durable archive
     // writes and the stopped cloud cycle finish before terminating workers.

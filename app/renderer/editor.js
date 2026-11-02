@@ -7,6 +7,7 @@ const dialogs = window.StepForgeDialogs || {};
 const shortcuts = window.StepForgeShortcuts || {};
 const outline = window.StepForgeOutline || {};
 const { stepNumberMap } = outline;
+const focused = window.StepForgeFocusedView || {};
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
 
@@ -649,13 +650,20 @@ class GuideEditor {
             this.dom.forceNewPageToggle = el('label', {}, el('input', { type: 'checkbox' }), ' New page'),
             this.dom.focusedViewToggle = el('label', {}, el('input', { type: 'checkbox' }), ' Focused'),
           ),
+          // Pan shows as a percentage, 0% at the left and top edges (core/focused-view.js).
           this.dom.focusedControls = el('div.focused-controls.hidden', {},
             el('div.form-row', {}, el('label', {}, t('Zoom')),
-              this.dom.fvZoom = el('input', { type: 'range', min: 1, max: 3, step: 0.05, value: 1.5 })),
-            el('div.form-row', {}, el('label', {}, t('Pan X')),
-              this.dom.fvPanX = el('input', { type: 'range', min: 0, max: 1, step: 0.01, value: 0.5 })),
-            el('div.form-row', {}, el('label', {}, t('Pan Y')),
-              this.dom.fvPanY = el('input', { type: 'range', min: 0, max: 1, step: 0.01, value: 0.5 })),
+              this.dom.fvZoom = el('input', { type: 'range', min: 1, max: 3, step: 0.05, value: 1.5, 'aria-label': t('Zoom') }),
+              this.dom.fvZoomNum = el('input', { type: 'number', min: 1, max: 3, step: 0.05, value: '1.50', 'aria-label': t('Zoom') }),
+              el('span.fv-unit', {}, '×')),
+            el('div.form-row', { title: t('0% is the left edge, 100% the right edge.') }, el('label', {}, t('Pan X')),
+              this.dom.fvPanX = el('input', { type: 'range', min: 0, max: 100, step: 1, value: 50, 'aria-label': t('Pan X') }),
+              this.dom.fvPanXNum = el('input', { type: 'number', min: 0, max: 100, step: 1, value: 50, 'aria-label': t('Pan X') }),
+              el('span.fv-unit', {}, '%')),
+            el('div.form-row', { title: t('0% is the top edge, 100% the bottom edge.') }, el('label', {}, t('Pan Y')),
+              this.dom.fvPanY = el('input', { type: 'range', min: 0, max: 100, step: 1, value: 50, 'aria-label': t('Pan Y') }),
+              this.dom.fvPanYNum = el('input', { type: 'number', min: 0, max: 100, step: 1, value: 50, 'aria-label': t('Pan Y') }),
+              el('span.fv-unit', {}, '%')),
             el('div.muted', {}, t('Exports crop to this view; the original image is never modified.')),
           ),
         ),
@@ -824,17 +832,7 @@ class GuideEditor {
       this.syncFocusedControls();
       this.emitMeta();
     });
-    const bindFocusedSlider = (node, field) => node.addEventListener('input', () => {
-      const step = this.currentStep;
-      if (!step || !step.focusedView) return;
-      step.focusedView[field] = Number(node.value);
-      this.pendingSave = true;
-      this.saveStepDebounced();
-      this.canvas.setFocusedView(step.focusedView);
-    });
-    bindFocusedSlider(this.dom.fvZoom, 'zoom');
-    bindFocusedSlider(this.dom.fvPanX, 'panX');
-    bindFocusedSlider(this.dom.fvPanY, 'panY');
+    this.bindFocusedControls();
 
     this.dom.addTextBlockBtn.addEventListener('click', () => this.addBlock('text'));
     this.dom.addCodeBlockBtn.addEventListener('click', () => this.addBlock('code'));
@@ -893,12 +891,50 @@ class GuideEditor {
     const fv = this.currentStep?.focusedView;
     const enabled = Boolean(fv && fv.enabled);
     this.dom.focusedControls.classList.toggle('hidden', !enabled);
-    if (enabled) {
-      this.dom.fvZoom.value = fv.zoom || 1.5;
-      this.dom.fvPanX.value = fv.panX ?? 0.5;
-      this.dom.fvPanY.value = fv.panY ?? 0.5;
-    }
+    if (enabled) this.showFocusedValues();
     this.canvas.setFocusedView(fv);
+  }
+
+  /**
+   * Each Focused view slider and its number box set one stored field and
+   * mirror each other. While typing, the box keeps its text (so "1." can
+   * become "1.5"); Enter or leaving the box shows the clamped value.
+   */
+  bindFocusedControls() {
+    const setField = (field, value) => {
+      const step = this.currentStep;
+      if (!step || !step.focusedView || !Number.isFinite(value)) return false;
+      step.focusedView[field] = value;
+      this.pendingSave = true;
+      this.saveStepDebounced();
+      this.canvas.setFocusedView(step.focusedView);
+      return true;
+    };
+    const bind = (range, box, field, read) => {
+      for (const node of [range, box]) {
+        node.addEventListener('input', () => {
+          if (setField(field, read(node.value))) this.showFocusedValues(node);
+        });
+      }
+      box.addEventListener('change', () => this.showFocusedValues());
+    };
+    bind(this.dom.fvZoom, this.dom.fvZoomNum, 'zoom', (value) => focused.zoomFromInput(value));
+    bind(this.dom.fvPanX, this.dom.fvPanXNum, 'panX', (value) => focused.panFromPercent(value, 'x'));
+    bind(this.dom.fvPanY, this.dom.fvPanYNum, 'panY', (value) => focused.panFromPercent(value, 'y'));
+  }
+
+  /** Show the current step's Focused view in its sliders and boxes, except `keep`, which is being edited. */
+  showFocusedValues(keep = null) {
+    const fv = this.currentStep?.focusedView || {};
+    const rows = [
+      [this.dom.fvZoom, this.dom.fvZoomNum, focused.formatZoom(fv.zoom || 1.5)],
+      [this.dom.fvPanX, this.dom.fvPanXNum, focused.panToPercent(fv.panX ?? 0.5, 'x')],
+      [this.dom.fvPanY, this.dom.fvPanYNum, focused.panToPercent(fv.panY ?? 0.5, 'y')],
+    ];
+    for (const [range, box, value] of rows) {
+      if (range !== keep) range.value = value;
+      if (box !== keep) box.value = value;
+    }
   }
 
   // ---- text / code / table blocks ----------------------------------------

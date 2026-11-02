@@ -566,6 +566,8 @@
   'Pan X': 'Desplazamiento X',
   'Pan Y': 'Desplazamiento Y',
   'Exports crop to this view; the original image is never modified.': 'Las exportaciones se recortan a esta vista; la imagen original nunca se modifica.',
+  '0% is the left edge, 100% the right edge.': '0 % es el borde izquierdo y 100 %, el derecho.',
+  '0% is the top edge, 100% the bottom edge.': '0 % es el borde superior y 100 %, el inferior.',
   'Annotations': 'Anotaciones',
   'Blocks': 'Bloques',
   '+ Text block': '+ Bloque de texto',

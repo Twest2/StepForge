@@ -1068,7 +1068,7 @@ class CaptureService {
       const useDisplayMedia = this.onWayland();
       const sources = useDisplayMedia ? [] : await desktopCapturer.getSources({
         types: ['screen'],
-        thumbnailSize: { width: 1, height: 1 }, // ids only — skip thumbnail work
+        thumbnailSize: { width: 0, height: 0 }, // ids only — do not capture thumbnails
       });
       const ok = await backend.start({
         displays,

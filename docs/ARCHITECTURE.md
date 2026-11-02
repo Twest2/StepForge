@@ -177,6 +177,13 @@ steps. Theme updates come from `nativeTheme`; all text uses the UI locale.
 The editor's stopped-session Start recording action creates and resumes a
 session in one interaction, with controls disabled until both requests
 settle. Merely opening a guide still arms a paused session.
+Stream startup discovers screen IDs with a zero thumbnail size. Even a 1×1
+thumbnail starts a screen grab and can add several seconds on Windows;
+zero skips that work before the actual stream opens. The three-second
+warmup cap is a fallback, not a fixed delay: the editor hides as soon as
+the stream is ready. Run the hidden Windows check with
+`npx electron tests/integration/windows/recording-startup.js` to measure
+readiness and verify that the first strict pre-click frame is available.
 
 The bar enables `setContentProtection(true)` before its first show. Chromium
 applies affinity on show, so the initial window is fully transparent and

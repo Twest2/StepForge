@@ -22,6 +22,7 @@ const RENDERER_DIR = path.join(__dirname, 'renderer');
 
 const APP_PAGES = {
   main: pathToFileURL(path.join(RENDERER_DIR, 'index.html')).href,
+  recordingControls: pathToFileURL(path.join(RENDERER_DIR, 'recording-controls.html')).href,
   region: pathToFileURL(path.join(RENDERER_DIR, 'region.html')).href,
   captureWorker: pathToFileURL(path.join(RENDERER_DIR, 'capture-worker.html')).href,
 };

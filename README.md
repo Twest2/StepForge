@@ -201,8 +201,10 @@ Windows, the Microsoft Store is the better choice.
 1. Open StepForge and choose **New guide**.
 2. Choose **Capture → Start capture session**. StepForge steps out of the way.
 3. Do the task you want to document, clicking as you normally would.
-4. To stop on **Windows**, click the **red dot** beside the clock. Don't see
-   it? Click the **^** arrow near the clock, then the red dot. On **Linux**,
+4. To stop on **Windows**, click **Finish** on the floating recording bar.
+   You can choose **Tray icon (red dot)** in **Settings → Capture → Recording
+   controls** instead; the dot may be behind the **^** arrow beside the clock.
+   On **Linux**,
    click **● StepForge REC → Stop recording** at the top right of the screen.
    [More help](docs/GETTING_STARTED.md#stop-recording)
 5. Tidy up titles, add annotations, then choose **Export**.

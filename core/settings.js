@@ -20,6 +20,8 @@ const DEFAULT_SETTINGS = {
   // `terms` are extra words to always hide, such as names.
   redaction: { onCapture: false, terms: [] },
   capture: {
+    recordingControls: 'floating', // floating | tray (Windows only)
+    recordingBarPosition: null, // DIP coordinates; local to this device.
     delayMs: 0,
     mode: 'fullscreen', // fullscreen | window ('region' in old files loads as fullscreen)
     includeCursor: true,
@@ -166,9 +168,13 @@ class Settings {
   load() {
     const stored = readJsonIfExists(this.file, {});
     const data = mergeDeep(deepClone(DEFAULT_SETTINGS), stored);
+    if (!data.capture || typeof data.capture !== 'object' || Array.isArray(data.capture)) data.capture = deepClone(DEFAULT_SETTINGS.capture);
     // 'region' (and anything else unknown) was offered once but always
     // recorded the full screen; say so in the file too.
     if (data.capture && !['fullscreen', 'window'].includes(data.capture.mode)) data.capture.mode = 'fullscreen';
+    if (!['floating', 'tray'].includes(data.capture.recordingControls)) data.capture.recordingControls = 'floating';
+    const position = data.capture.recordingBarPosition;
+    if (!position || !Number.isFinite(position.x) || !Number.isFinite(position.y)) data.capture.recordingBarPosition = null;
     return data;
   }
 

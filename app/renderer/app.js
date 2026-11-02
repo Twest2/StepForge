@@ -400,6 +400,23 @@ class StepForgeApp {
     return next;
   }
 
+  async startCaptureSession(guideId) {
+    if (this.startingCaptureSession) return;
+    this.startingCaptureSession = true;
+    this.updateCaptureState(this.captureState);
+    try {
+      await this.armCaptureSession(guideId);
+      const next = await api.capture.session({ action: 'resume', guideId });
+      this.updateCaptureState(next);
+      return next;
+    } catch (error) {
+      toast(error.message || String(error), { error: true });
+    } finally {
+      this.startingCaptureSession = false;
+      this.updateCaptureState(this.captureState);
+    }
+  }
+
   // Opens a guide and arms (paused) capture for it, so the red REC bar pops
   // up right away with a "Start recording" option to resume capturing steps.
   async openGuideAndArmCapture(guideId, stepId = null) {
@@ -459,8 +476,9 @@ class StepForgeApp {
         el('span', {}, t('Recording - stopped')),
         el('button', {
           type: 'button',
-          onClick: () => this.armCaptureSession(this.editor.guideId),
-        }, t('New recording')),
+          disabled: Boolean(this.startingCaptureSession),
+          onClick: () => this.startCaptureSession(this.editor.guideId),
+        }, this.startingCaptureSession ? t('Starting…') : t('Start recording')),
       );
       return;
     }
@@ -478,6 +496,7 @@ class StepForgeApp {
 
     const pauseBtn = el('button', {
       type: 'button',
+      disabled: Boolean(this.startingCaptureSession),
       title: notStarted ? t('StepForge tucks away and starts capturing') : '',
       onClick: async () => {
         if (notStarted) {
@@ -486,7 +505,7 @@ class StepForgeApp {
         }
         send({ action: s.paused ? 'resume' : 'pause' });
       },
-    }, s.paused ? t('Start recording') : t('Stop recording'));
+    }, this.startingCaptureSession ? t('Starting…') : s.paused ? t('Start recording') : t('Stop recording'));
 
     this.captureStatus.append(
       el('span', { title: t('Capture session — {trigger}', { trigger }) }, t('Recording - {trigger}', { trigger })),

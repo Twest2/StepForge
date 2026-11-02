@@ -1121,7 +1121,10 @@ fieldset legend {
   gap: 4px;
 }
 .focused-controls .form-row label { width: 50px; flex: none; color: var(--muted); font-size: 12px; }
-.focused-controls input[type="range"] { flex: 1; }
+.focused-controls input[type="range"] { flex: 1; min-width: 0; }
+.focused-controls input[type="number"] { width: 76px; flex: none; font-variant-numeric: tabular-nums; }
+.focused-controls .fv-unit { width: 12px; flex: none; color: var(--muted); font-size: 12px; }
+.focused-controls .form-row { gap: 6px; }
 .blocks-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
 .blocks-list .block-card textarea,
 .blocks-list .block-card input { width: 100%; }

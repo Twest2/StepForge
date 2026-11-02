@@ -566,6 +566,8 @@
   'Pan X': 'Сдвиг X',
   'Pan Y': 'Сдвиг Y',
   'Exports crop to this view; the original image is never modified.': 'При экспорте изображение обрезается по этому виду; исходное изображение не изменяется.',
+  '0% is the left edge, 100% the right edge.': '0 % — левый край, 100 % — правый.',
+  '0% is the top edge, 100% the bottom edge.': '0 % — верхний край, 100 % — нижний.',
   'Annotations': 'Аннотации',
   'Blocks': 'Блоки',
   '+ Text block': '+ Текстовый блок',

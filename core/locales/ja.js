@@ -566,6 +566,8 @@
   'Pan X': '横位置',
   'Pan Y': '縦位置',
   'Exports crop to this view; the original image is never modified.': 'エクスポートはこの表示範囲でトリミングされます。元の画像は変更されません。',
+  '0% is the left edge, 100% the right edge.': '0% が左端、100% が右端です。',
+  '0% is the top edge, 100% the bottom edge.': '0% が上端、100% が下端です。',
   'Annotations': '注釈',
   'Blocks': 'ブロック',
   '+ Text block': '+ テキストブロック',

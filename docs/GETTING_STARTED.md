@@ -98,6 +98,8 @@ For each step you can:
   **Skipped**.
 - Turn on **Focused** view to zoom the exported screenshot toward the click,
   so readers see the relevant part of the screen instead of the whole desktop.
+  Drag the **Zoom**, **Pan X** and **Pan Y** sliders or type exact numbers
+  to frame every screenshot the same way (pan 0% is the left or top edge).
 - Start a **New page** at this step in paged formats such as PDF.
 
 **Working with many steps at once:** choose **Select**, click one step, then

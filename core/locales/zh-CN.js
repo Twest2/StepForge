@@ -566,6 +566,8 @@
   'Pan X': '平移 X',
   'Pan Y': '平移 Y',
   'Exports crop to this view; the original image is never modified.': '导出时会裁剪为此视图；原始图片永远不会被修改。',
+  '0% is the left edge, 100% the right edge.': '0% 为左边缘，100% 为右边缘。',
+  '0% is the top edge, 100% the bottom edge.': '0% 为上边缘，100% 为下边缘。',
   'Annotations': '标注',
   'Blocks': '内容块',
   '+ Text block': '+ 文本块',

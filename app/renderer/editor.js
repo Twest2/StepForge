@@ -93,6 +93,10 @@ const ANNOTATION_FIELDS = {
   magnify: ['zoom', 'stroke', 'strokeWidth'],
   cursor: [],
 };
+// Types whose fill can be Transparent. A tooltip's text sits on its fill, so it keeps one.
+const CLEARABLE_FILL_TYPES = new Set(['rect', 'oval']);
+// Fill colors offered when no brand profile is active.
+const DEFAULT_FILL_PRESETS = ['#FFE066', '#E5484D', '#1F6FEB', '#10B981', '#111827', '#FFFFFF'];
 
 // Display names for annotation types in the "Type" dropdown.
 // What a blur added by Find private details hides (core/redaction.js KINDS).
@@ -275,8 +279,14 @@ class GuideEditor {
     try {
       const profile = id ? (await api.branding.list()).find((p) => p.id === id) : null;
       this.brandAnnotations = profile?.annotations?.custom ? profile.annotations : null;
+      // The profile's own colors, offered first when picking a fill.
+      this.brandColors = profile ? [
+        profile.colors?.primary, profile.colors?.accent, profile.colors?.text,
+        ...(this.brandAnnotations ? [profile.annotations.shapes, profile.annotations.numbers, profile.annotations.tooltips] : []),
+      ].filter(Boolean) : null;
     } catch {
       this.brandAnnotations = null;
+      this.brandColors = null;
     }
   }
 
@@ -1448,7 +1458,6 @@ class GuideEditor {
     ].map((type) => ({ value: type, label: ANNOTATION_TYPE_LABELS[type] || type })));
     const valueInput = el('input', { type: 'number', value: Number.isFinite(selected.value) ? selected.value : '', placeholder: t('Value') });
     const strokeInput = el('input', { type: 'color', value: style.stroke || '#E5484D' });
-    const fillInput = el('input', { type: 'color', value: style.fill && style.fill !== 'transparent' ? style.fill : '#ffffff' });
     const strokeWidthInput = el('input', { type: 'number', min: 1, step: 1, value: style.strokeWidth || 3 });
     const fontSizeInput = el('input', { type: 'number', min: 0.01, step: 0.001, value: style.fontSize || 0.022 });
     const textColorInput = el('input', { type: 'color', value: style.textColor || '#ffffff' });
@@ -1494,7 +1503,14 @@ class GuideEditor {
     if (fields.has('text')) rows.push(labeledRow(t('Text'), textInput, { stacked: true }));
     if (fields.has('value')) rows.push(labeledRow(t('Value'), valueInput));
     if (fields.has('stroke')) rows.push(labeledRow(strokeLabel, strokeInput));
-    if (fields.has('fill')) rows.push(labeledRow(t('Fill'), fillInput));
+    if (fields.has('fill')) {
+      rows.push(labeledRow(t('Fill'), this.fillPicker(selected, (fill, { record = true } = {}) => {
+        const ann = this.canvas.selected();
+        if (!ann) return;
+        if (record) this.pushCanvasHistory('annotation-fill');
+        apply({ style: { ...ann.style, fill } });
+      })));
+    }
     if (fields.has('strokeWidth')) rows.push(labeledRow(t('Stroke width'), strokeWidthInput));
     if (fields.has('fontSize')) rows.push(labeledRow(t('Font size'), fontSizeInput));
     if (fields.has('textColor')) rows.push(labeledRow(t('Text color'), textColorInput));
@@ -1543,11 +1559,6 @@ class GuideEditor {
       if (!ann) return;
       await apply({ style: { ...ann.style, stroke: strokeInput.value } });
     });
-    fillInput.addEventListener('input', async () => {
-      const ann = this.canvas.selected();
-      if (!ann) return;
-      await apply({ style: { ...ann.style, fill: fillInput.value } });
-    });
     strokeWidthInput.addEventListener('input', async () => {
       const ann = this.canvas.selected();
       if (!ann) return;
@@ -1578,6 +1589,124 @@ class GuideEditor {
       if (!ann) return;
       await apply({ style: { ...ann.style, tail: tailInput.value } });
     });
+  }
+
+  /**
+   * The Fill control: a swatch that opens a short list of fills under it. A
+   * native color input can't offer "none", so this lists Transparent (for
+   * types that may be empty), preset colors, and Custom color…, which opens
+   * the system color picker. onPick(fill, { record }) applies a choice;
+   * record is false for the live updates while the custom picker is open.
+   */
+  fillPicker(ann, onPick) {
+    const allowTransparent = CLEARABLE_FILL_TYPES.has(ann.type);
+    const isNone = (fill) => !fill || fill === 'transparent';
+    // A tooltip without a fill is drawn #1F2937 (canvas.js, core/raster.js).
+    let current = isNone(ann.style?.fill) ? (allowTransparent ? 'transparent' : '#1F2937') : ann.style.fill;
+    const name = (fill) => (isNone(fill) ? t('Transparent') : fill.toUpperCase());
+    const chip = (fill) => (isNone(fill) ? el('span.fill-chip.none') : el('span.fill-chip', { style: { background: fill } }));
+
+    const swatch = el('button.fill-swatch', { type: 'button', 'aria-haspopup': 'menu', 'aria-expanded': 'false' });
+    const showCurrent = () => {
+      swatch.replaceChildren(chip(current), el('span.fill-name', {}, name(current)));
+      swatch.setAttribute('aria-label', `${t('Fill')}: ${name(current)}`);
+    };
+    showCurrent();
+
+    // The system picker behind Custom color…, kept out of sight under the swatch.
+    const custom = el('input', { type: 'color', className: 'fill-custom-input', tabIndex: -1, 'aria-hidden': 'true' });
+    let customStarted = false;
+    const pickCustom = () => {
+      current = custom.value;
+      showCurrent();
+      onPick(current, { record: !customStarted });
+      customStarted = true;
+    };
+    custom.addEventListener('input', pickCustom);
+    custom.addEventListener('change', () => { if (!customStarted) pickCustom(); });
+
+    const popover = el('div.fill-popover', { role: 'menu', 'aria-label': t('Fill'), hidden: true });
+    const wrapper = el('div.fill-picker', {}, swatch, popover, custom);
+    const items = () => [...popover.querySelectorAll('[role^="menuitem"]')];
+    const onOutside = (event) => {
+      if (!wrapper.isConnected || !wrapper.contains(event.target)) close();
+    };
+    const close = ({ focus = false } = {}) => {
+      document.removeEventListener('pointerdown', onOutside, true);
+      if (popover.hidden) return;
+      popover.hidden = true;
+      swatch.setAttribute('aria-expanded', 'false');
+      if (focus) swatch.focus();
+    };
+    const choose = (fill) => {
+      close({ focus: true });
+      if (fill.toLowerCase() === current.toLowerCase()) return;
+      if (fill === 'transparent' && !isNone(current)) (this.clearedFills ||= new Map()).set(ann.id, current);
+      current = fill;
+      showCurrent();
+      onPick(fill);
+    };
+    const open = () => {
+      const entry = (fill) => ({ role: 'menuitemradio', 'aria-checked': String(fill.toLowerCase() === current.toLowerCase()), tabIndex: -1 });
+      clearNode(popover);
+      if (allowTransparent) {
+        popover.append(el('button.fill-item', { type: 'button', ...entry('transparent'), onClick: () => choose('transparent') },
+          chip('transparent'), t('Transparent')), el('hr'));
+      }
+      popover.append(el('div.fill-presets', {}, this.fillPresets(ann, current).map((fill) => el('button.fill-preset', {
+        type: 'button', ...entry(fill), title: fill, 'aria-label': fill, style: { background: fill }, onClick: () => choose(fill),
+      }))), el('hr'), el('button.fill-item', {
+        type: 'button', role: 'menuitem', tabIndex: -1,
+        onClick: () => {
+          close({ focus: true });
+          custom.value = isNone(current) ? this.clearedFills?.get(ann.id) || '#FFFFFF' : current;
+          customStarted = false;
+          custom.click();
+        },
+      }, t('Custom color…')));
+      popover.hidden = false;
+      swatch.setAttribute('aria-expanded', 'true');
+      document.addEventListener('pointerdown', onOutside, true);
+      const list = items();
+      (list.find((item) => item.getAttribute('aria-checked') === 'true') || list[0]).focus();
+      popover.scrollIntoView({ block: 'nearest' });
+    };
+
+    swatch.addEventListener('click', () => (popover.hidden ? open() : close()));
+    swatch.addEventListener('keydown', (event) => {
+      if (event.key === 'ArrowDown' && popover.hidden) { event.preventDefault(); open(); }
+    });
+    popover.addEventListener('keydown', (event) => {
+      const list = items();
+      const at = list.indexOf(document.activeElement);
+      const move = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key];
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        close({ focus: true });
+      } else if (event.key === 'Tab') {
+        close();
+      } else if (move || event.key === 'Home' || event.key === 'End') {
+        event.preventDefault();
+        const next = event.key === 'Home' ? 0 : event.key === 'End' ? list.length - 1 : (at + move + list.length) % list.length;
+        list[next].focus();
+      }
+    });
+    return wrapper;
+  }
+
+  /** Fill colors to offer: the current one, then the brand profile's colors or StepForge's. */
+  fillPresets(ann, current) {
+    const colors = [];
+    const add = (fill) => {
+      if (typeof fill === 'string' && /^#[0-9a-f]{6}$/i.test(fill) && !colors.some((c) => c.toLowerCase() === fill.toLowerCase())) {
+        colors.push(fill.toUpperCase());
+      }
+    };
+    add(current);
+    add(this.clearedFills?.get(ann.id));
+    for (const fill of this.brandColors || DEFAULT_FILL_PRESETS) add(fill);
+    return colors.slice(0, 8);
   }
 
   defaultStyleForTool(tool) {
@@ -3347,6 +3476,9 @@ class GuideEditor {
 
   onDocumentKeyDown(e) {
     if (!this.active || !this.guide) return;
+    // Plain keys in the Fill picker move through it and close it; they must
+    // not nudge, deselect or delete the annotation. Ctrl/Cmd shortcuts still work.
+    if (!e.ctrlKey && !e.metaKey && e.target?.closest?.('.fill-picker')) return;
     const zoomShortcut = zoomShortcutFromEvent(e);
     if (zoomShortcut) {
       e.preventDefault();

@@ -716,6 +716,74 @@ body.platform-linux #capture-status button {
 .annotation-editor .form-row > label:first-child {
   width: 118px;
 }
+/* Fill: a swatch that opens a short list of fills (editor.js fillPicker). */
+.fill-picker { position: relative; flex: 1; min-width: 0; }
+.fill-swatch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+}
+.fill-chip {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.fill-chip.none { background: repeating-conic-gradient(#cfd6de 0 25%, #ffffff 0 50%) 0 0 / 8px 8px; }
+.fill-popover {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  right: 0;
+  width: 214px;
+  padding: 5px;
+  background: var(--panel-solid);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+}
+.fill-popover[hidden] { display: none; }
+.fill-popover .fill-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  text-align: left;
+}
+.fill-popover .fill-item:hover,
+.fill-popover .fill-item:focus-visible { background: var(--panel-2); }
+.fill-popover .fill-item[aria-checked="true"] { font-weight: 600; }
+.fill-presets { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 8px; }
+.fill-preset {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.fill-preset:hover { filter: brightness(0.95); }
+.fill-preset[aria-checked="true"] { outline: 2px solid var(--accent); outline-offset: 1px; }
+.fill-popover hr { margin: 4px 0; border: 0; border-top: 1px solid var(--border); }
+.fill-custom-input {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
 
 fieldset {
   margin: 0;

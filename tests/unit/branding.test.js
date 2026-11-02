@@ -186,6 +186,8 @@ test('branding: profiles are saved, listed by name, duplicated and deleted', (t)
   assert.deepEqual(brands.list().map((p) => p.name), ['alpha', 'Zeta']);
   assert.deepEqual(brands.list()[0].annotations, DEFAULT_ANNOTATION_COLORS && { custom: false, ...DEFAULT_ANNOTATION_COLORS },
     'the list carries annotation colors, which the editor reads');
+  assert.deepEqual(brands.list()[0].colors, { primary: '#2563EB', accent: '#0EA5E9', text: '#18212B' },
+    'and the brand colors, which the Fill picker offers');
   const renamed = brands.save({ ...b, name: 'Beta' });
   assert.equal(renamed.id, b.id, 'saving with an id updates that profile');
   assert.equal(renamed.createdAt, b.createdAt);

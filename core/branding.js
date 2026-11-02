@@ -302,14 +302,14 @@ class BrandingStore {
     return path.join(this.profilesDir, `${id}.json`);
   }
 
-  /** Every profile, by name: { id, name, updatedAt, annotations }. */
+  /** Every profile, by name: { id, name, updatedAt, colors, annotations }. */
   list() {
     if (!fs.existsSync(this.profilesDir)) return [];
     return fs.readdirSync(this.profilesDir)
       .filter((f) => /^brand-[A-Za-z0-9-]+\.json$/.test(f))
       .map((f) => this.get(f.slice(0, -5)))
       .filter(Boolean)
-      .map(({ id, name, updatedAt, annotations }) => ({ id, name, updatedAt, annotations }))
+      .map(({ id, name, updatedAt, colors, annotations }) => ({ id, name, updatedAt, colors, annotations }))
       .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }) || a.id.localeCompare(b.id));
   }
 

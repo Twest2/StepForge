@@ -62,7 +62,7 @@ there, or one saved in an export template, takes their place.
 | Markdown | Logo, banner, header and footer text, and the color of the accent line |
 | GIF, image bundle | Logo on the GIF title card, your colors, and the logo as a watermark if you turn it on |
 | JSON | Nothing. JSON keeps the raw guide data |
-| The editor | With **Use your own annotation colors** on: new shapes, number badges, tooltips and click markers start in the profile's colors |
+| The editor | An annotation's **Fill** list offers the profile's colors. With **Use your own annotation colors** on, it offers those too, and new shapes, number badges, tooltips and click markers start in them |
 
 A few things to know:
 

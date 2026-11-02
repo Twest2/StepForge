@@ -50,7 +50,6 @@
   'needs attention': 'требует внимания',
   '{service} settings': 'Настройки {service}',
   'Recording - stopped': 'Запись — остановлена',
-  'New recording': 'Новая запись',
   'waiting for screen sharing': 'ожидание доступа к экрану',
   'ready': 'готово',
   'paused': 'пауза',

@@ -50,7 +50,6 @@
   'needs attention': '要確認',
   '{service} settings': '{service} の設定',
   'Recording - stopped': '録画 - 停止中',
-  'New recording': '新しい録画',
   'waiting for screen sharing': '画面共有を待っています',
   'ready': '準備完了',
   'paused': '一時停止中',

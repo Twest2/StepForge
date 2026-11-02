@@ -174,6 +174,9 @@ has no taskbar entry, and uses the screen-saver always-on-top level. Its
 buttons call the same session methods as the tray; Finish restores the
 editor without activating it. State updates follow pause/resume and stored
 steps. Theme updates come from `nativeTheme`; all text uses the UI locale.
+The editor's stopped-session Start recording action creates and resumes a
+session in one interaction, with controls disabled until both requests
+settle. Merely opening a guide still arms a paused session.
 
 The bar enables `setContentProtection(true)` before its first show. Chromium
 applies affinity on show, so the initial window is fully transparent and

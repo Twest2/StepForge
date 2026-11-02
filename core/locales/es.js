@@ -50,7 +50,6 @@
   'needs attention': 'requiere atención',
   '{service} settings': 'Configuración de {service}',
   'Recording - stopped': 'Grabación - detenida',
-  'New recording': 'Nueva grabación',
   'waiting for screen sharing': 'esperando el uso compartido de pantalla',
   'ready': 'listo',
   'paused': 'en pausa',

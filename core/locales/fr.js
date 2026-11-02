@@ -50,7 +50,6 @@
   'needs attention': 'action requise',
   '{service} settings': 'Paramètres de {service}',
   'Recording - stopped': 'Enregistrement - arrêté',
-  'New recording': 'Nouvel enregistrement',
   'waiting for screen sharing': 'en attente du partage d’écran',
   'ready': 'prêt',
   'paused': 'en pause',

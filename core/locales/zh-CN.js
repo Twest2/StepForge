@@ -50,7 +50,6 @@
   'needs attention': '需要处理',
   '{service} settings': '{service} 设置',
   'Recording - stopped': '录制 - 已停止',
-  'New recording': '新建录制',
   'waiting for screen sharing': '正在等待屏幕共享',
   'ready': '就绪',
   'paused': '已暂停',

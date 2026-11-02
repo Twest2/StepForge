@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { htmlToMarkdown } = require('../exporters/htmlmd');
 const { markdownHtml } = require('./placeholder-markdown');
+const { descriptionToMarkdown } = require('./description-markdown');
 const { sanitizeHtml } = require('./sanitize');
 const { renderScreenshotForAi, aiScreenshotSize } = require('./ai-image');
 const { orderedBlocks, blockText } = require('./blocks');
@@ -60,7 +61,7 @@ const INSTRUCTIONS = [
 
 class AgentError extends Error {}
 
-const descriptionMarkdown = (html) => htmlToMarkdown(splitPinnedParagraphs(html).body).trim();
+const descriptionMarkdown = (html) => descriptionToMarkdown(splitPinnedParagraphs(html).body);
 
 function blockForAgent(block) {
   if (block.kind === 'text') {

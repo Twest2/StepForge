@@ -457,6 +457,7 @@
   'Organization': 'Organización',
   'Description': 'Descripción',
   'Shown on the first page of the PDF and at the top of other export formats.': 'Se muestra en la primera página del PDF y al principio de los demás formatos de exportación.',
+  'Markdown works here: **bold**, *italic*, `code`, [link](https://example.com), and lists that start with - or 1.': 'Admite Markdown: **negrita**, *cursiva*, `código`, [enlace](https://example.com) y listas que empiezan con - o 1.',
   'Review': 'Revisión',
   'Software version': 'Versión del software',
   'Last verified': 'Última verificación',

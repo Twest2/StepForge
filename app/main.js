@@ -12,6 +12,7 @@ const { GuideStore } = require('../core/store');
 const { libraryLocationFor } = require('./data-dir');
 const { Settings } = require('../core/settings');
 const { saveGuideFromEditor, saveStepFromEditor } = require('../core/editor-save');
+const { descriptionToMarkdown, descriptionFromMarkdown } = require('../core/description-markdown');
 const { GoogleDrive } = require('./google-drive');
 const { OneDrive } = require('./onedrive');
 const { Dropbox } = require('./dropbox');
@@ -908,6 +909,11 @@ function setupIpc() {
     return saved;
   }, { validate: (a) => security.isPlainArgs(a.guide) && a.guide && c.id(a.guide.guideId)
     && (a.baseGuide == null || (security.isPlainArgs(a.baseGuide) && a.baseGuide.guideId === a.guide.guideId)) });
+  // Guide information edits the description as Markdown (core/description-markdown.js).
+  h('guide:descriptionToMarkdown', ({ html }) => descriptionToMarkdown(html),
+    { validate: (a) => c.string(a.html, 2 * 1024 * 1024) });
+  h('guide:descriptionFromMarkdown', ({ markdown }) => descriptionFromMarkdown(markdown),
+    { validate: (a) => c.string(a.markdown, 2 * 1024 * 1024) });
   h('step:add', ({ guideId, fields, imageBase64, size, position }) => {
     const buf = imageBase64 ? Buffer.from(imageBase64, 'base64') : null;
     const step = store.addStep(guideId, fields || {}, buf, size || null, { position });

@@ -11,8 +11,9 @@ function markdownHtml(source) {
     escaped = escaped.replace(/`([^`]+)`/g, (_, code) => slot(`<code>${code}</code>`));
     escaped = escaped.replace(/\[([^\]\n]+)\]\(([^\s)]+)\)/g, (_, label, url) =>
       /^(https?:|mailto:|step:|#)/i.test(url) ? slot(`<a href="${url}">${label}</a>`) : label);
-    escaped = escaped.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
-      .replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
+    // As in CommonMark, `5 * 3 * 2` stays text: emphasis can't open or close on a space.
+    escaped = escaped.replace(/\*\*(?!\s)([^*\n]+?)(?<!\s)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(?!\s)([^*\n]+?)(?<!\s)\*/g, '<em>$1</em>');
     return escaped.replace(/\u0000(\d+)\u0000/g, (_, i) => slots[Number(i)]);
   };
   const out = [];

@@ -1,0 +1,9 @@
+:root { color-scheme: light; --bg: #fff; --fg: #202020; --border: #c8c8c8; --hover: #eee; }
+:root.dark { color-scheme: dark; --bg: #202020; --fg: #eee; --border: #666; --hover: #383838; }
+* { box-sizing: border-box; }
+body { margin: 0; height: 48px; padding: 7px 9px; display: flex; align-items: center; gap: 8px; background: var(--bg); color: var(--fg); border: 1px solid var(--border); font: 13px "Segoe UI", sans-serif; user-select: none; }
+#status { display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0; height: 100%; -webkit-app-region: drag; }
+#dot { width: 8px; height: 8px; flex-shrink: 0; border-radius: 50%; background: #e5484d; }
+#count { white-space: nowrap; }
+button { -webkit-app-region: no-drag; font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--border); border-radius: 3px; padding: 5px 10px; white-space: nowrap; }
+button:hover { background: var(--hover); }

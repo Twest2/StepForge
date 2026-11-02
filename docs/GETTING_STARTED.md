@@ -37,18 +37,22 @@ to title the step, so you'll usually see titles like *Click Releases* or
 
 ### Stop recording
 
-**On Windows,** look for a small **red dot** in the bottom-right corner of the
-screen, in the row of icons beside the clock.
+**On Windows,** a small floating bar stays on screen while your recording
+session is open. It shows whether recording is paused and how many steps
+you've captured. Click **Pause** or **Resume** to take a break, or **Finish**
+to end the session and see your steps. These buttons leave your other app
+in focus. You can also press **Ctrl+Shift+2** to pause or resume.
 
-1. Click the red dot. Recording pauses, and StepForge comes back with your
-   new steps.
-2. Don't see it? Click the **^** arrow beside those icons to show the hidden
-   ones. The red dot is usually in there.
-3. Still can't find it? Open StepForge from the Start menu again. That also
-   pauses recording and brings StepForge back.
+Drag the status and step count to move the bar. StepForge remembers where
+you put it. If that screen is disconnected, the bar returns to the top
+center of your main screen. The bar stays out of captured screenshots and
+hides while you select a region.
 
-Right-click the red dot for more choices, such as **Pause capturing** or
-**Finish session**, which ends the recording and removes the dot.
+Prefer the red dot beside the clock? Choose **Tray icon (red dot)** in
+**Settings → Capture → Recording controls**. Click it to pause and open
+StepForge, or right-click it for **Pause capturing** and **Finish session**.
+If you don't see it, click the **^** arrow beside the clock. StepForge also
+uses the red dot when Windows can't keep the floating bar out of screenshots.
 
 **On Linux (GNOME),** look for **● StepForge REC** at the top right of the
 screen.
@@ -277,8 +281,8 @@ Press **Ctrl+/** for the quick-actions palette, or open
 ## Troubleshooting
 
 **I can't find how to stop recording.** See [Stop recording](#stop-recording).
-On Windows, the red dot is often hidden behind the **^** arrow beside the
-clock.
+On Windows, use **Finish** on the floating bar. If you chose the tray icon,
+the red dot may be hidden behind the **^** arrow beside the clock.
 
 **Clicks aren't creating steps on Linux.** Make sure you're on a GNOME Wayland
 session, that you logged out and back in after installing StepForge, and that

@@ -692,6 +692,7 @@ function showSettingsDialog({
     const licenseLabel = el('span', {}, '—');
     const dataDirLabel = el('code.settings-path', {}, '—');
     api.app.info().then((info) => {
+      recordingControlsRow.hidden = info.platform !== 'win32';
       versionLabel.textContent = info.buildVersion || info.version;
       buildLabel.textContent = info.devBuild ? t('Development build') : t('Release');
       buildLabel.classList.toggle('dev', Boolean(info.devBuild));
@@ -729,6 +730,12 @@ function showSettingsDialog({
       { value: 'fullscreen', label: t('Fullscreen') },
       { value: 'window', label: t('Window') },
     ]);
+    const recordingControls = makeSelect(settings.capture?.recordingControls === 'tray' ? 'tray' : 'floating', [
+      { value: 'floating', label: t('Floating bar') },
+      { value: 'tray', label: t('Tray icon (red dot)') },
+    ]);
+    const recordingControlsRow = settingRow(t('Recording controls'), t('Choose how to pause and finish a recording.'), recordingControls);
+    recordingControlsRow.hidden = true;
     const smartCropping = el('input', { type: 'checkbox', checked: settings.capture?.smartCropping !== false });
     const redactOnCapture = el('input', { type: 'checkbox', checked: settings.redaction?.onCapture === true });
     const redactTerms = el('textarea.redact-terms', { rows: 4, spellcheck: false, placeholder: t('One per line, for example a name or project code'),
@@ -928,6 +935,7 @@ function showSettingsDialog({
       { id: 'branding', label: t('Branding'), description: t('Customize how exported guides appear.'), content: [brandingPanel.node] },
       { id: 'capture', label: t('Capture'), description: t('How StepForge records steps.'), content: [
         settingsCard(t('Recording'),
+          recordingControlsRow,
           settingRow(t('Default mode'), t('Record the whole screen or the active window. For a region, use Capture → Capture region….'), captureMode),
           settingRow(t('Delay'), t('Milliseconds to wait before each screenshot.'), delayMs),
           settingRow(t('Click marker'), t('Draw a marker where you clicked.'), makeSwitch(clickMarker, t('Click marker'))),
@@ -1048,6 +1056,7 @@ function showSettingsDialog({
                 ...settings.capture,
                 delayMs: Number(delayMs.value || 0),
                 mode: captureMode.value,
+                recordingControls: recordingControls.value,
                 clickMarker: clickMarker.checked,
                 smartCropping: smartCropping.checked,
                 focusAmount: Number(focusAmount.value),
@@ -1842,7 +1851,7 @@ function showRecordingReminder({
         el('div.recording-notice__text', {},
           document.body.classList.contains('platform-linux')
             ? t('To stop, use StepForge REC in the GNOME top panel, or restore StepForge from the dock.')
-            : t('When you want to pause or stop, use the red tray icon in the system tray.'),
+            : t('Use the floating bar to pause or finish. If you use the tray icon, look for the red dot beside the clock.'),
         ),
       ),
       footer: [

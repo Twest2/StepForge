@@ -167,6 +167,47 @@ overlay window for region selection; hotkeys use `globalShortcut`.
 
 ## Click-Capture Pipeline
 
+On Windows, `capture.recordingControls` selects `floating` (default) or
+`tray`; Linux always uses the existing tray behavior. The floating window
+(`app/recording-controls.js`) is non-focusable, shown with `showInactive`,
+has no taskbar entry, and uses the screen-saver always-on-top level. Its
+buttons call the same session methods as the tray; Finish restores the
+editor without activating it. State updates follow pause/resume and stored
+steps. Theme updates come from `nativeTheme`; all text uses the UI locale.
+
+The bar enables `setContentProtection(true)` before its first show. Chromium
+applies affinity on show, so the initial window is fully transparent and
+click-through until native verification succeeds; only then is it revealed.
+Windows builds before 19041 are rejected: Electron uses `WDA_EXCLUDEFROMCAPTURE`, but
+older Windows treats it as `WDA_MONITOR` (a black rectangle in captures).
+`windows-capture-exclusion.js` also checks the real window affinity is 0x11
+and desktop composition is enabled; a failed check, timeout, or renderer
+failure logs why and falls back to the tray. Electron's
+`isContentProtected()` alone cannot confirm that Windows applied exclusion.
+
+Capture exclusion applies to the desktop media stream in `stream-backend.js`,
+the in-process `desktopCapturer.getSources` frame loop, and fresh captures
+used by Capture now and the capture hotkey. Retake (`retakeFrame`) refuses
+an active session, so its captures never coexist with the bar.
+Region capture takes the same protected full-screen frame, then suspends the
+bar for the entire region-picker lifetime, including cancellation and errors.
+No capture backend draws or composites the bar into its image. Run
+`npx electron tests/integration/windows/recording-controls.js` on Windows to
+compare each capture path against a hidden-bar reference and exercise the
+real region overlay. Screenshots and results go in `tests/.tmp/recording-controls`.
+
+The Windows hook rejects windows owned by the main process at button-down,
+including the non-focusable bar, before sending click or window context.
+This also covers drags whose original bounds have moved by delivery time.
+The hook's physical click coordinates go through `osPointToDip` before the
+bar hit test, before debounce or frame queueing. The existing cursor-over
+skip also includes the bar, and bar buttons call `noteUiStopGesture` as a
+second guard. This avoids relying on window focus and keeps control clicks
+out of delayed capture queues. The bar's bounds and saved position are DIP,
+as are Electron display work areas; display changes revalidate the full bar
+and move it to the primary display when necessary. Position is local and
+does not sync. Destroying the session removes IPC, theme and screen listeners.
+
 Workflow recording must behave like one click → one step, with the
 screenshot showing the screen *at* the click and the marker on the exact
 click position. Three pieces make that hold:

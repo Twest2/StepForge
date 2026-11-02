@@ -4,6 +4,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { spawn, execFileSync } = require('node:child_process');
 const { desktopCapturer, screen, BrowserWindow, nativeImage, Tray, Menu } = require('electron');
+const { RecordingControls, recordingControlsMode } = require('./recording-controls');
 const raster = require('../core/raster');
 const { smartCrop } = require('../core/smart-crop');
 const { encodePng } = require('../core/png');
@@ -408,13 +409,33 @@ class CaptureService {
 
     // (Skipped for the dev screenshot hook, which needs a visible page.)
     if (!process.env.STEPFORGE_SCREENSHOT) {
-      this.createSessionTray();
+      this.createSessionControls();
       const win = this.getWindow();
       // Remember whether the window was visible when the session was set
       // up — that's what `togglePause` uses to decide whether to tuck the
       // app away once the user actually starts recording.
       this.hiddenForSession = Boolean(win && !win.isDestroyed() && win.isVisible());
     }
+  }
+
+  createSessionControls() {
+    if (recordingControlsMode(process.platform, this.settings.get('capture.recordingControls')) === 'tray') {
+      this.createSessionTray();
+      return;
+    }
+    const controls = this.recordingControls = new RecordingControls({
+      settings: this.settings,
+      getState: () => this.state(),
+      onPause: () => this.togglePause(),
+      onFinish: () => this.finishSession({ refocus: false }),
+      onGesture: () => this.noteUiStopGesture(),
+      onUnavailable: () => {
+        if (this.recordingControls !== controls) return;
+        this.recordingControls = null;
+        if (this.session) this.createSessionTray();
+      },
+    });
+    void controls.start();
   }
 
   /** Red-dot tray icon with session controls, shown while recording. */
@@ -497,12 +518,12 @@ class CaptureService {
     return near;
   }
 
-  showWindow() {
+  showWindow({ refocus = true } = {}) {
     const win = this.getWindow();
     if (win && !win.isDestroyed()) {
       if (win.isMinimized()) win.restore();
-      win.show();
-      win.focus();
+      if (refocus) { win.show(); win.focus(); }
+      else win.showInactive();
     }
   }
 
@@ -538,6 +559,7 @@ class CaptureService {
     if (!this.session) return;
     const wasPaused = this.session.paused;
     this.session.paused = typeof force === 'boolean' ? force : !this.session.paused;
+    if (this.recordingControls) this.recordingControls.update();
     // Starting/resuming tucks the window away again for clean shots (after
     // a brief delay so the user sees it happen) and starts the frame
     // recorder that serves click captures. Pausing stops it and discards
@@ -620,7 +642,7 @@ class CaptureService {
     run().catch(() => { this.warmingUp = false; });
   }
 
-  finishSession() {
+  finishSession({ refocus = true } = {}) {
     if (this.intervalTimer) {
       clearInterval(this.intervalTimer);
       this.intervalTimer = null;
@@ -630,13 +652,15 @@ class CaptureService {
     this.stopFrameLoop();
     this.stopClickFrameBackend();
     this.destroySessionTray();
+    if (this.recordingControls) this.recordingControls.destroy();
+    this.recordingControls = null;
     this.session = null;
     // A finished session never records: release the power blocker here so it
     // can't outlive the recording (finish from any path — bar, tray, quit).
     this.syncPower();
     if (this.hiddenForSession) {
       this.hiddenForSession = false;
-      this.showWindow();
+      this.showWindow({ refocus });
     }
     this.notify('capture:state', this.state());
   }
@@ -665,6 +689,7 @@ class CaptureService {
    * every automatic capture forever.
    */
   userIsInApp() {
+    if (this.recordingControls && this.recordingControls.contains(this.screen.getCursorScreenPoint())) return true;
     const win = this.getWindow();
     if (!win || win.isDestroyed() || !win.isVisible() || win.isMinimized()) return false;
     const cur = this.screen.getCursorScreenPoint();
@@ -801,6 +826,7 @@ class CaptureService {
   noteStepAdded(step, trigger, guideId = null) {
     // Steps from queued clicks can land after the session object is gone.
     if (this.session) this.session.count += 1;
+    if (this.recordingControls) this.recordingControls.update();
     this.notify('capture:added', {
       guideId: guideId || (this.session && this.session.guideId),
       step,
@@ -1186,6 +1212,7 @@ public static class SFHook {
   private const uint PROCESS_POWER_THROTTLING_EXECUTION_SPEED = 0x1;
   private const uint HIGH_PRIORITY_CLASS = 0x00000080;
 
+  private static readonly uint AppProcessId = ${process.pid};
   private static readonly bool CaptureTypedText = ${captureTypedText};
   private static IntPtr hook = IntPtr.Zero;
   private static IntPtr keyHook = IntPtr.Zero;
@@ -1286,6 +1313,9 @@ public static class SFHook {
 
   [DllImport("user32.dll")]
   private static extern IntPtr GetForegroundWindow();
+
+  [DllImport("user32.dll")]
+  private static extern IntPtr WindowFromPoint(POINT point);
 
   [DllImport("user32.dll", CharSet = CharSet.Unicode)]
   private static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder text, int count);
@@ -1454,6 +1484,11 @@ public static class SFHook {
       string button = ButtonName(message, lParam);
       if (button != null) {
         MSLLHOOKSTRUCT data = (MSLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(MSLLHOOKSTRUCT));
+        // Reject our windows at hook time, before a drag can move the bar
+        // away from the press or the renderer can finish the session.
+        uint targetPid;
+        GetWindowThreadProcessId(WindowFromPoint(data.pt), out targetPid);
+        if (targetPid == AppProcessId) return CallNextHookEx(hook, nCode, wParam, lParam);
         long unixMs = DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond - UnixEpochMilliseconds;
         // Capture window context while the user's app is still in foreground.
         // GetForegroundWindow is synchronous and fast (no IPC overhead).
@@ -1908,6 +1943,12 @@ public static class SFHook {
     // a fallback there would stamp every click marker in the top-left corner.
     // Leaving clickPos null means the step is captured with no (wrong) marker.
     if (!clickPos && !this.onWayland()) clickPos = this.screen.getCursorScreenPoint();
+    // Use the hook-time position before queueing: the cursor may have moved
+    // away by the time a slow capture finishes (including a drag of the bar).
+    if (this.recordingControls && this.recordingControls.contains(clickPos)) {
+      this._pendingWindowContext = null;
+      return;
+    }
     // Leading-edge debounce: ignore a click that lands within the debounce
     // window of the last accepted click of the same button. This makes fast
     // / accidental repeat clicks register once, while two deliberate clicks
@@ -2367,7 +2408,16 @@ public static class SFHook {
   }
 
   /** Fullscreen overlay window that resolves with a crop rect (image px). */
-  pickRegion(display, image) {
+  async pickRegion(display, image) {
+    const restoreControls = this.recordingControls ? this.recordingControls.suspend() : () => {};
+    try {
+      return await this.pickRegionOverlay(display, image);
+    } finally {
+      restoreControls();
+    }
+  }
+
+  pickRegionOverlay(display, image) {
     return new Promise((resolve) => {
       const overlay = new BrowserWindow({
         x: display.bounds.x,

@@ -627,6 +627,8 @@
   'Annotation text': '标注文本',
   'Type': '类型',
   'Fill': '填充',
+  'Transparent': '透明',
+  'Custom color…': '自定义颜色…',
   'Stroke width': '描边宽度',
   'Font size': '字号',
   'Text color': '文本颜色',

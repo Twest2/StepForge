@@ -87,7 +87,9 @@ Coordinates are fractions of the image (resolution-independent). Types:
 `rect, oval, line, arrow, text, tooltip, number, blur, highlight, magnify,
 cursor`. The same geometry is rendered by the editor canvas (HTML5 canvas)
 and by the export rasterizer (`core/raster.js`), so what you see is what
-exports.
+exports. `style.fill` is a `#RRGGBB` color or `transparent`. The editor's Fill
+picker offers Transparent for rectangles and ovals only. A tooltip with no
+fill is drawn `#1F2937`, so its text stays readable.
 
 ## Render Pipeline
 

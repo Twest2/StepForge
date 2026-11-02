@@ -627,6 +627,8 @@
   'Annotation text': 'Texto de la anotación',
   'Type': 'Tipo',
   'Fill': 'Relleno',
+  'Transparent': 'Transparente',
+  'Custom color…': 'Color personalizado…',
   'Stroke width': 'Grosor del trazo',
   'Font size': 'Tamaño de fuente',
   'Text color': 'Color del texto',

@@ -627,6 +627,8 @@
   'Annotation text': '注釈のテキスト',
   'Type': '種類',
   'Fill': '塗りつぶし',
+  'Transparent': '透明',
+  'Custom color…': 'カスタム色…',
   'Stroke width': '線の太さ',
   'Font size': 'フォントサイズ',
   'Text color': '文字色',

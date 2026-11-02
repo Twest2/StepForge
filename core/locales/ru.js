@@ -627,6 +627,8 @@
   'Annotation text': 'Текст аннотации',
   'Type': 'Тип',
   'Fill': 'Заливка',
+  'Transparent': 'Прозрачная',
+  'Custom color…': 'Другой цвет…',
   'Stroke width': 'Толщина контура',
   'Font size': 'Размер шрифта',
   'Text color': 'Цвет текста',

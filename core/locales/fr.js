@@ -627,6 +627,8 @@
   'Annotation text': 'Texte de l’annotation',
   'Type': 'Type',
   'Fill': 'Remplissage',
+  'Transparent': 'Transparent',
+  'Custom color…': 'Couleur personnalisée…',
   'Stroke width': 'Épaisseur du contour',
   'Font size': 'Taille de police',
   'Text color': 'Couleur du texte',

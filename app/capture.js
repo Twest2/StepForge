@@ -427,7 +427,7 @@ class CaptureService {
       settings: this.settings,
       getState: () => this.state(),
       onPause: () => this.togglePause(),
-      onFinish: () => this.finishSession({ refocus: false }),
+      onFinish: () => this.finishSession({ bringToFront: true }),
       onGesture: () => this.noteUiStopGesture(),
       onUnavailable: () => {
         if (this.recordingControls !== controls) return;
@@ -517,12 +517,12 @@ class CaptureService {
     return near;
   }
 
-  showWindow({ refocus = true } = {}) {
+  showWindow() {
     const win = this.getWindow();
     if (win && !win.isDestroyed()) {
       if (win.isMinimized()) win.restore();
-      if (refocus) { win.show(); win.focus(); }
-      else win.showInactive();
+      win.show();
+      win.focus();
     }
   }
 
@@ -642,7 +642,7 @@ class CaptureService {
     run().catch(() => { this.warmingUp = false; });
   }
 
-  finishSession({ refocus = true } = {}) {
+  finishSession({ bringToFront = false } = {}) {
     if (this.intervalTimer) {
       clearInterval(this.intervalTimer);
       this.intervalTimer = null;
@@ -658,9 +658,9 @@ class CaptureService {
     // A finished session never records: release the power blocker here so it
     // can't outlive the recording (finish from any path — bar, tray, quit).
     this.syncPower();
-    if (this.hiddenForSession) {
+    if (this.hiddenForSession || bringToFront) {
       this.hiddenForSession = false;
-      this.showWindow({ refocus });
+      this.showWindow();
     }
     this.notify('capture:state', this.state());
   }

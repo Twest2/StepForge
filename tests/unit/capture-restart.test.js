@@ -53,7 +53,7 @@ test('Finish → edit → Start recording restarts the same guide and hides the 
   f.capture.startSession('existing-guide');
   f.capture.togglePause(false);
   for (let cycle = 0; cycle < 3; cycle += 1) {
-    f.capture.finishSession({ refocus: false });
+    f.capture.finishSession();
     assert.equal(f.win.visible, true, 'Finish restores the editor');
     f.ui.updateCaptureState(f.capture.state());
     assert.equal(f.button().children[0], 'Start recording');

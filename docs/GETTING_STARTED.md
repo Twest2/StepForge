@@ -41,8 +41,8 @@ to title the step, so you'll usually see titles like *Click Releases* or
 Opening a guide does not show it. Once recording starts, the bar stays
 available while paused and shows how many steps you've captured. Click
 **Pause** or **Resume** to take a break, or **Finish**
-to end the session and see your steps. These buttons leave your other app
-in focus. You can also press **Ctrl+Shift+2** to pause or resume.
+to end the session and bring StepForge forward with your steps.
+Pause and Resume leave your other app in focus. You can also press **Ctrl+Shift+2** to pause or resume.
 
 Drag the status and step count to move the bar. StepForge remembers where
 you put it. If that screen is disconnected, the bar returns to the top

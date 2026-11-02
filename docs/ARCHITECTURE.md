@@ -171,8 +171,9 @@ On Windows, `capture.recordingControls` selects `floating` (default) or
 `tray`; Linux always uses the existing tray behavior. The floating window
 (`app/recording-controls.js`) is non-focusable, shown with `showInactive`,
 has no taskbar entry, and uses the screen-saver always-on-top level. Its
-buttons call the same session methods as the tray; Finish restores the
-editor without activating it. State updates follow pause/resume and stored
+buttons call the same session methods as the tray. Pause/Resume leave the
+user's app focused; Finish explicitly restores and focuses the editor,
+including when it is minimized or was not hidden by the session. State updates follow pause/resume and stored
 steps. Theme updates come from `nativeTheme`; all text uses the UI locale.
 The editor's stopped-session Start recording action creates and resumes a
 session in one interaction, with controls disabled until both requests

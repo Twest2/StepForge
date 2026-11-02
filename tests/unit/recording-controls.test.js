@@ -221,20 +221,22 @@ test('a bar click never queues a step even when the live cursor already moved aw
   f.controls.destroy();
 });
 
-test('pause hotkey and added steps refresh the bar; Finish can restore the editor without focus', () => {
+test('pause hotkey and added steps refresh the bar; explicit Finish brings the editor forward', () => {
   let updates = 0;
-  let inactive = 0;
+  let shown = 0;
+  let focused = 0;
   const svc = new CaptureService({ store: {}, settings: { get: () => null }, notify: () => {},
-    getWindow: () => ({ isDestroyed: () => false, isMinimized: () => false, showInactive: () => { inactive += 1; } }) });
+    getWindow: () => ({ isDestroyed: () => false, isMinimized: () => false, show: () => { shown += 1; }, focus: () => { focused += 1; } }) });
   svc.session = { guideId: 'guide-1', paused: false, count: 0 };
   svc.recordingControls = { update: () => { updates += 1; }, destroy: () => {} };
   svc.togglePause(true);
   svc.noteStepAdded({}, 'manual');
   assert.equal(updates, 2);
   assert.equal(svc.session.count, 1);
-  svc.hiddenForSession = true;
-  svc.finishSession({ refocus: false });
-  assert.equal(inactive, 1);
+  svc.hiddenForSession = false;
+  svc.finishSession({ bringToFront: true });
+  assert.equal(shown, 1);
+  assert.equal(focused, 1);
   assert.equal(svc.recordingControls, null);
 });
 
@@ -272,9 +274,13 @@ function captureWithControls(platform = 'win32', mode = 'floating') {
       : name === 'electron' ? electron : localRequire(name),
   });
   const win = {
-    visible: true, isDestroyed: () => false, isMinimized: () => false,
-    isVisible() { return this.visible; }, hide() { this.visible = false; }, minimize() { this.visible = false; },
-    show() { this.visible = true; }, showInactive() { this.visible = true; }, focus() {},
+    visible: true, minimized: false, focused: false, focusCalls: 0,
+    isDestroyed: () => false, isMinimized() { return this.minimized; },
+    isVisible() { return this.visible; }, hide() { this.visible = false; },
+    minimize() { this.visible = false; this.minimized = true; },
+    restore() { this.minimized = false; this.visible = true; },
+    show() { this.visible = true; }, showInactive() { this.visible = true; },
+    focus() { this.focused = true; this.focusCalls += 1; },
   };
   const values = { 'capture.recordingControls': mode, 'capture.captureOutsideClicks': false, 'capture.streamCapture': false, 'capture.postHideSettleMs': 0 };
   const svc = new module.exports({ store: {}, settings: { get: (key) => values[key], set() {} },
@@ -307,7 +313,7 @@ test('opening or switching guides does not open the floating bar; starting shows
   f.svc.togglePause(false);
   await new Promise(setImmediate);
   assert.equal(f.windows.length, 1, 'resume reuses the same bar');
-  f.svc.finishSession({ refocus: false });
+  f.svc.finishSession();
   assert.equal(bar.dead, true);
   assert.equal(f.win.visible, true);
   f.svc.startSession('reopened-after-finish', { intervalSec: 0 });
@@ -340,5 +346,41 @@ test('Linux and Windows tray mode keep their existing controls on session prepar
     f.svc.togglePause(false);
     assert.equal(trayStarts, 1);
     assert.equal(f.windows.length, 0);
+  }
+});
+
+
+test('the floating Finish action restores focus on every recording cycle, including minimized and already-visible editors', async (t) => {
+  const f = captureWithControls();
+  t.after(() => f.svc.finishSession());
+  const action = (bar, name) => f.ipcMain.emit('recording-controls:action', {
+    sender: bar.webContents, senderFrame: { url: APP_PAGES.recordingControls, parent: null },
+  }, name);
+  for (let cycle = 0; cycle < 4; cycle += 1) {
+    f.svc.startSession('edited-guide', { intervalSec: 0 });
+    assert.equal(f.svc.recordingControls.started, false, 'opening the guide stays quiet');
+    f.svc.togglePause(false);
+    await new Promise(setImmediate);
+    const bar = f.windows.at(-1);
+    f.win.focused = false;
+    const beforeFinish = f.win.focusCalls;
+    action(bar, 'pause');
+    assert.equal(f.svc.session.paused, true);
+    assert.equal(f.win.focusCalls, beforeFinish, 'Pause must not focus the editor');
+    action(bar, 'pause');
+    await new Promise(setImmediate);
+    assert.equal(f.svc.session.paused, false);
+    assert.equal(f.win.focusCalls, beforeFinish, 'Resume must not focus the editor');
+    if (cycle === 1) f.win.minimize();
+    if (cycle === 2) f.win.showInactive();
+    if (cycle === 3) f.svc.hiddenForSession = false;
+    action(bar, 'finish');
+    assert.equal(f.win.visible, true, 'Finish must show the editor');
+    assert.equal(f.win.minimized, false, 'Finish must restore a minimized editor');
+    assert.equal(f.win.focused, true, 'Finish must bring StepForge to the foreground every time');
+    assert.equal(f.win.focusCalls, beforeFinish + 1);
+    assert.equal(f.svc.session, null);
+    assert.equal(f.svc.recordingControls, null);
+    assert.equal(bar.dead, true);
   }
 });

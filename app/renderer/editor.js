@@ -2590,16 +2590,20 @@ class GuideEditor {
 
   async openGuideInfo() {
     if (!this.guide) return;
+    const description = await api.guide.descriptionToMarkdown({ html: this.guide.descriptionHtml || '' });
     await dialogs.showGuideInfoDialog({
       values: {
         ...this.guide.metadata,
-        description: htmlToPlainText(this.guide.descriptionHtml || ''),
+        description,
         sharingEnabled: this.guide.cloud?.sharingEnabled !== false,
       },
       reviewDefaultDays: this.settings?.library?.reviewAfterDays,
-      onSave: async ({ description, sharingEnabled, ...metadata }) => {
+      onSave: async ({ description: markdown, sharingEnabled, ...metadata }) => {
         this.guide.metadata = metadata;
-        this.guide.descriptionHtml = textToHtml(description);
+        // Unchanged text keeps the stored HTML, including anything Markdown can't express.
+        if (markdown !== description) {
+          this.guide.descriptionHtml = await api.guide.descriptionFromMarkdown({ markdown });
+        }
         this.guide.cloud = { ...(this.guide.cloud || {}), sharingEnabled };
         await this.saveGuideEdits();
         this.onToast(t('Guide information saved.'));

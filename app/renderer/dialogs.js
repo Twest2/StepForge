@@ -1715,6 +1715,8 @@ function showGuideInfoDialog({ values = {}, reviewDefaultDays, onSave, onCloudSn
         labeledRow(t('Description'), descriptionInput, { stacked: true }),
         el('div.muted', { style: { marginTop: '-4px' } },
           t('Shown on the first page of the PDF and at the top of other export formats.')),
+        el('div.muted', {},
+          t('Markdown works here: **bold**, *italic*, `code`, [link](https://example.com), and lists that start with - or 1.')),
         el('h3', { style: { margin: '14px 0 6px' } }, t('Review')),
         labeledRow(t('Software version'), versionInput),
         labeledRow(t('Last verified'), el('div.row', {}, verifiedInput, todayBtn)),

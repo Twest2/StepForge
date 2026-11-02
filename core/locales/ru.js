@@ -457,6 +457,7 @@
   'Organization': 'Организация',
   'Description': 'Описание',
   'Shown on the first page of the PDF and at the top of other export formats.': 'Отображается на первой странице PDF и в начале других форматов экспорта.',
+  'Markdown works here: **bold**, *italic*, `code`, [link](https://example.com), and lists that start with - or 1.': 'Поддерживается Markdown: **жирный**, *курсив*, `код`, [ссылка](https://example.com) и списки, начинающиеся с - или 1.',
   'Review': 'Проверка',
   'Software version': 'Версия программы',
   'Last verified': 'Последняя проверка',

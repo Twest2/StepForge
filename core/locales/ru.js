@@ -63,6 +63,7 @@
   'Capture session — {trigger}': 'Сеанс записи — {trigger}',
   'Recording - {trigger}': 'Запись — {trigger}',
   'Full screen (window capture unavailable)': 'Весь экран (запись окна недоступна)',
+  'StepForge couldn’t tell which window to capture, so it captured the full screen.': 'StepForge не смог определить, какое окно записать, поэтому записал весь экран.',
   'Library': 'Библиотека',
   'Capture a screenshot step': 'Записать шаг со снимком экрана',
   'Capture ▾': 'Запись ▾',

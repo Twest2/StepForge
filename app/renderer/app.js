@@ -436,6 +436,10 @@ class StepForgeApp {
     if (payload && payload.kind === 'window-mode-unavailable' && payload.reason) {
       toast(payload.reason, { error: true });
     }
+    // Window mode on Windows found no window for a step (the desktop, the taskbar).
+    if (payload && payload.kind === 'window-not-found') {
+      toast(t('StepForge couldn’t tell which window to capture, so it captured the full screen.'));
+    }
   }
 
   updateCaptureState(state) {

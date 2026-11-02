@@ -162,8 +162,9 @@ and Codex, gated by `ai.agents` (re-read on every request).
 
 The renderer never touches the filesystem. `app/preload.js` exposes a typed
 IPC API (`stepforge.*`), and `app/main.js` routes calls into `core/`. Screen
-capture uses Electron's `desktopCapturer` (full screen, window) and an
-overlay window for region selection; hotkeys use `globalShortcut`.
+capture uses Electron's `desktopCapturer` (full screen, and the window on
+X11; see [Window mode](#window-mode)) and an overlay window for region
+selection; hotkeys use `globalShortcut`.
 
 ## Click-Capture Pipeline
 
@@ -172,13 +173,18 @@ screenshot showing the screen *at* the click and the marker on the exact
 click position. Three pieces make that hold:
 
 1. **OS click events** (`app/capture.js`): a low-level mouse hook on Windows
-   (`CLICK x y button unixMs` lines), an `xinput test-xi2 --root` watcher on
+   (`CLICK x y button unixMs` lines, each after a `WIN` line naming the
+   clicked window's area), an `xinput test-xi2 --root` watcher on
    X11. The legacy Linux/X11 parser carries event-time `root:` coordinates and merges
    raw/regular twin blocks structurally — there is no time-based debounce
    that could drop fast clicks, only suppression of identical duplicate
    deliveries. Physical coordinates convert to DIP via
    `screen.screenToDipPoint` on Windows or display-geometry math in
-   `app/coords.js` elsewhere (multi-monitor and scale-factor aware).
+   `app/coords.js` elsewhere (multi-monitor and scale-factor aware). On
+   Windows the geometry check uses each monitor's real physical rectangle
+   (`screen.dipToScreenRect`): Chromium keeps a scaled monitor's DIP origin
+   at its physical edge, so scaling the origin put clicks on a scaled
+   monitor right of the primary onto the primary.
 
 2. **Frame recorders**: while recording, a hidden worker window
    (`app/stream-backend.js` + `app/renderer/capture-worker.js`) samples a
@@ -226,6 +232,32 @@ as `tests/checks/test_click_capture_selftest.sh` (skipped only when the host
 has no capture environment), so a regression in click→screenshot→step
 behavior fails the suite. `STEPFORGE_CAPTURE_LOG=1` prints one diagnostic
 line per click decision.
+
+### Window mode
+
+A Window step is the window the user clicked, as it looked just before the
+click.
+
+- **Windows** and **GNOME** cut the window out of the full-screen frame, so
+  both use the stream backend, keep the pre-click frame, and set
+  `captureBounds` (click marker, automatic focus). On Windows the hook's
+  `SFWindows` class (`app/platform/windows/window-bounds.js`) finds the
+  window from the click point: `WindowFromPoint`, then its top-level
+  window. A menu, dropdown or tooltip widens the area and hands over to its
+  owner; an unowned window that never takes focus (an input method's
+  toolbar) stands for the active window instead. Bounds are DWM's extended
+  frame bounds in physical pixels, converted to DIP around the click so the
+  crop and the marker agree. Captures without a click (Capture window,
+  Retake, the hotkey) read the active window with a one-off PowerShell call
+  after StepForge hides itself. Asking `desktopCapturer` for "the window"
+  returned the top of the window stack, which is any always-on-top window,
+  such as an input method's toolbar (#203).
+- **X11** still grabs a `desktopCapturer` window source with the frame loop.
+- **Other Wayland desktops** can't, and record the full screen with a note.
+
+When there's no window to show (a click on the desktop or taskbar, or the
+active window can't be read), the step keeps the full screen and the user
+is told once per recording.
 
 ## Network Boundary
 

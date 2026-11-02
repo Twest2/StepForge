@@ -1579,6 +1579,7 @@ function streamFrame(clickAt) {
 test('window mode on Wayland uses the full-screen stream frame instead of skipping the click', async () => {
   const service = makeService({ settings: { 'capture.mode': 'window' } });
   service._wayland = true; // KDE, sway and so on: no frame loop
+  service._cropsWindows = false; // Linux, also when the suite runs on Windows
   const clickAt = Date.now();
   const events = [];
   service.notify = (name, payload) => events.push([name, payload]);
@@ -1595,13 +1596,14 @@ test('window mode on Wayland uses the full-screen stream frame instead of skippi
   assert.match(diagnostics[0][1].reason, /full screen/);
 });
 
-test('window mode off Wayland still skips the stream and returns no frame without a frame loop', async () => {
+test('window mode on X11 still skips the stream and returns no frame without a frame loop', async () => {
   const service = makeService({ settings: { 'capture.mode': 'window' } });
   service._wayland = false;
+  service._cropsWindows = false; // X11 grabs the window itself; Windows cuts it from the stream
   service.session = { guideId: 'guide-window-x11', paused: false, count: 0, intervalSec: 0 };
   service.streamBackend = {
     isActive: () => true,
-    frameForClick: async () => { throw new Error('window mode must not use the full-screen stream off Wayland'); },
+    frameForClick: async () => { throw new Error('window mode must not use the full-screen stream on X11'); },
     stop: () => {},
   };
   assert.equal(await service.frameForClick({ x: 10, y: 10 }, Date.now()), null);

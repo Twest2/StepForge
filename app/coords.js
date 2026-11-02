@@ -24,8 +24,18 @@ const { pointInBounds } = require('./click-frames');
  * single display at any scale, and multi-display with a uniform scale.
  */
 
-/** Physical-pixel rectangle a display occupies, derived from DIP bounds. */
+/**
+ * Physical-pixel rectangle a display occupies: `physicalBounds` when the
+ * caller has the real one (Windows, screen.dipToScreenRect), else derived
+ * from DIP bounds. The derivation scales the origin too, which is wrong for
+ * a scaled display beside the primary on Windows: Chromium keeps such a
+ * display's DIP origin at its physical edge, not at that edge times the scale.
+ */
 function physicalBoundsOf(display) {
+  const real = display && display.physicalBounds;
+  if (real && [real.x, real.y, real.width, real.height].every(Number.isFinite) && real.width > 0 && real.height > 0) {
+    return { x: real.x, y: real.y, width: real.width, height: real.height };
+  }
   const bounds = display && display.bounds;
   if (!bounds) return null;
   const scale = display.scaleFactor || 1;

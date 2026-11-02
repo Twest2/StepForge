@@ -1984,7 +1984,7 @@ public static class SFHook {
       const displays = this.screen && typeof this.screen.getAllDisplays === 'function'
         ? this.screen.getAllDisplays()
         : [];
-      geometryDip = physicalToDip(osPoint, displays);
+      geometryDip = physicalToDip(osPoint, this.withPhysicalBounds(displays));
     } catch {
       geometryDip = null;
     }
@@ -2005,6 +2005,22 @@ public static class SFHook {
       } catch { /* fall through to manual conversion */ }
     }
     return geometryDip || osPoint;
+  }
+
+  /**
+   * Displays with their real physical rectangles where Electron can say
+   * (Windows). Reconstructing them from DIP bounds put a click on a scaled
+   * monitor to the right of the primary onto the primary instead.
+   */
+  withPhysicalBounds(displays) {
+    if (!this.screen || typeof this.screen.dipToScreenRect !== 'function') return displays;
+    return displays.map((display) => {
+      try {
+        return { ...display, physicalBounds: this.screen.dipToScreenRect(null, display.bounds) };
+      } catch {
+        return display;
+      }
+    });
   }
 
   /**

@@ -86,3 +86,14 @@ test('displayForDipPoint routes a click to the containing display, else the near
   assert.equal(displayForDipPoint({ x: 10, y: 10 }, displays).id, 1);
   assert.equal(displayForDipPoint({ x: 5000, y: 10 }, displays).id, 2, 'nearest display wins for out-of-bounds points');
 });
+
+test('a display’s real physical rectangle, when known, wins over one rebuilt from DIP', () => {
+  // Windows: a 150% monitor right of a 100% primary keeps its physical edge
+  // (3440, 127) as its DIP origin. Scaling that origin would put it at 5160.
+  const right = { id: 2, scaleFactor: 1.5, bounds: { x: 3440, y: 127, width: 1281, height: 721 } };
+  assert.deepEqual(physicalBoundsOf(right), { x: 5160, y: 191, width: 1922, height: 1082 }, 'the rebuilt guess');
+  const known = { ...right, physicalBounds: { x: 3440, y: 127, width: 1922, height: 1082 } };
+  assert.deepEqual(physicalBoundsOf(known), known.physicalBounds);
+  const dip = physicalToDip({ x: 4000, y: 500 }, [display(1, 0, 0, 3440, 1440, 1), known]);
+  assert.ok(Math.abs(dip.x - (3440 + 560 / 1.5)) < 1e-9 && Math.abs(dip.y - (127 + 373 / 1.5)) < 1e-9, JSON.stringify(dip));
+});

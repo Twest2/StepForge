@@ -131,7 +131,268 @@ function entriesBySha(entries) {
   return found;
 }
 
+// ---- library folders -----------------------------------------------------
+/*
+ * Library folders sync as one small `folders-v1` version: a gzipped JSON table
+ * with every folder (name and parent) and the folder of each guide that has
+ * one. Nothing else is stored, so an account with no folders uploads nothing.
+ *
+ * Each field carries the time it last changed. Two computers that changed the
+ * same field merge to the later change, with ties broken by value, so every
+ * computer reaches the same result. A deleted folder stays as a tombstone so
+ * an offline computer can't bring it back. Deleting a folder moves its guides
+ * and sub-folders to the library root, as deleting one locally does. A guide
+ * is never removed by a folder change.
+ *
+ * A table is { folders: { id: { name, parentId, nameAt, parentAt, deletedAt } },
+ * guides: { guideId: { folderId, at } } }. Times are whole milliseconds.
+ */
+
+const FOLDERS_FORMAT = 'folders-v1';           // appProperties.stepforge of a folder table
+const FOLDER_TABLE_FORMAT = 'stepforge-folders';
+const FOLDER_LIMITS = Object.freeze({ maxFolders: 5000, maxGuides: 100000, maxName: 500, maxBytes: 16 * 1024 * 1024 });
+const ID_PATTERN = /^[A-Za-z0-9_-]{1,100}$/;
+
+const isId = (id) => typeof id === 'string' && ID_PATTERN.test(id) && !['__proto__', 'constructor', 'prototype'].includes(id);
+const isTime = (value) => Number.isSafeInteger(value) && value >= 0;
+const emptyTable = () => ({ folders: {}, guides: {} });
+// A change must be later than the one it replaces, even if the clock went back.
+const stampAfter = (stamp, previous) => (previous === undefined || previous === null ? stamp : Math.max(stamp, previous + 1));
+// A folder deleted at or after its last rename or move is gone; a later edit brings it back.
+const isLiveFolder = (rec) => rec.deletedAt === null || rec.deletedAt <= Math.max(rec.nameAt, rec.parentAt);
+const compareKeys = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+
+/** The library's folders.json, validated and in the table's shape without stamps. */
+function readLocalFolders(data) {
+  const folders = [];
+  const seen = new Set();
+  for (const folder of Array.isArray(data?.folders) ? data.folders : []) {
+    if (!folder || !isId(folder.id) || seen.has(folder.id) || typeof folder.name !== 'string') continue;
+    seen.add(folder.id);
+    folders.push({ id: folder.id, name: folder.name.slice(0, FOLDER_LIMITS.maxName), parentId: isId(folder.parentId) ? folder.parentId : null });
+  }
+  const guideFolders = {};
+  const members = data?.guideFolders && typeof data.guideFolders === 'object' && !Array.isArray(data.guideFolders) ? data.guideFolders : {};
+  for (const [guideId, folderId] of Object.entries(members)) {
+    if (isId(guideId) && isId(folderId)) guideFolders[guideId] = folderId;
+  }
+  return { folders, guideFolders };
+}
+
+/**
+ * This computer's folders as a table. `base` is the table last applied here
+ * and `applied` the guide folders written then, so only changes made since
+ * then get `stamp` (when folders.json was last written). With no base, the
+ * first sync, changes take stamp 0 and anything from the cloud is newer.
+ * A guide that's gone from this computer keeps its folder, so a guide deleted
+ * and restored later comes back where it was.
+ */
+function localFolderTable(base, local, { stamp = 0, applied = {}, guideExists = () => true } = {}) {
+  const prev = base || emptyTable();
+  const folders = {};
+  const here = new Map(local.folders.map((folder) => [folder.id, folder]));
+  for (const [id, folder] of here) {
+    const was = prev.folders[id];
+    if (!was) {
+      folders[id] = { name: folder.name, parentId: folder.parentId, nameAt: stamp, parentAt: stamp, deletedAt: null };
+    } else {
+      folders[id] = { name: folder.name, parentId: folder.parentId,
+        nameAt: was.name === folder.name ? was.nameAt : stampAfter(stamp, was.nameAt),
+        parentAt: was.parentId === folder.parentId ? was.parentAt : stampAfter(stamp, was.parentAt),
+        deletedAt: was.deletedAt };
+    }
+  }
+  for (const [id, was] of Object.entries(prev.folders)) {
+    if (folders[id]) continue;
+    // Missing here: deleted on this computer, unless it was already a tombstone.
+    folders[id] = isLiveFolder(was) ? { ...was, deletedAt: stampAfter(stamp, Math.max(was.nameAt, was.parentAt)) } : was;
+  }
+  const guides = {};
+  const members = local.guideFolders;
+  const ids = new Set([...Object.keys(members), ...Object.keys(applied), ...Object.keys(prev.guides)]);
+  for (const guideId of ids) {
+    const was = prev.guides[guideId];
+    const now = members[guideId] ?? null;
+    const before = applied[guideId] ?? null;
+    if (now === before || (now === null && !guideExists(guideId)) || (was && was.folderId === now)) {
+      if (was) guides[guideId] = was;
+      continue;
+    }
+    guides[guideId] = { folderId: now, at: stampAfter(stamp, was?.at) };
+  }
+  return { folders, guides };
+}
+
+/**
+ * Settle a merged table without deleting anything: a folder whose parent is
+ * gone moves to the root, a guide whose folder is gone goes to no folder, and
+ * cycles are broken. Guides are kept even when their folder can't be resolved.
+ */
+function normalizeFolderTable(table) {
+  const folders = {};
+  for (const [id, rec] of Object.entries(table.folders)) folders[id] = { ...rec };
+  const live = new Set(Object.keys(folders).filter((id) => isLiveFolder(folders[id])));
+  for (const id of live) if (!live.has(folders[id].parentId)) folders[id].parentId = null;
+  // Folders moved into each other at the same time: the oldest move is undone.
+  const findCycle = () => {
+    for (const start of [...live].sort(compareKeys)) {
+      const path = [];
+      let current = start;
+      while (current !== null && live.has(current) && !path.includes(current)) {
+        path.push(current);
+        current = folders[current].parentId;
+      }
+      if (current !== null && path.includes(current)) return path.slice(path.indexOf(current));
+    }
+    return null;
+  };
+  for (let cycle = findCycle(); cycle; cycle = findCycle()) {
+    const oldest = cycle.reduce((a, b) => (folders[b].parentAt < folders[a].parentAt || (folders[b].parentAt === folders[a].parentAt && b < a) ? b : a));
+    folders[oldest].parentId = null;
+  }
+  const guides = {};
+  for (const [id, rec] of Object.entries(table.guides)) {
+    guides[id] = { folderId: rec.folderId !== null && live.has(rec.folderId) ? rec.folderId : null, at: rec.at };
+  }
+  return { folders, guides };
+}
+
+/**
+ * The merged table of several versions. Each field takes the newest change
+ * (ties go to the larger value), a folder is deleted only when its deletion
+ * is newer than its last rename or move, and every result is normalized.
+ */
+function mergeFolderTables(tables) {
+  const folderRecords = new Map();
+  const guideRecords = new Map();
+  const add = (map, key, rec) => { if (!map.has(key)) map.set(key, []); map.get(key).push(rec); };
+  for (const table of tables) {
+    for (const [id, rec] of Object.entries(table.folders)) add(folderRecords, id, rec);
+    for (const [id, rec] of Object.entries(table.guides)) add(guideRecords, id, rec);
+  }
+  const newest = (recs, stampKey, valueKey) => recs.reduce((best, rec) => {
+    if (rec[stampKey] !== best[stampKey]) return rec[stampKey] > best[stampKey] ? rec : best;
+    return String(rec[valueKey] ?? '') > String(best[valueKey] ?? '') ? rec : best;
+  });
+  const folders = {};
+  for (const [id, recs] of folderRecords) {
+    const name = newest(recs, 'nameAt', 'name');
+    const parent = newest(recs, 'parentAt', 'parentId');
+    const deleted = Math.max(-1, ...recs.map((rec) => rec.deletedAt ?? -1));
+    folders[id] = { name: name.name, nameAt: name.nameAt, parentId: parent.parentId, parentAt: parent.parentAt, deletedAt: deleted < 0 ? null : deleted };
+  }
+  const guides = {};
+  for (const [id, recs] of guideRecords) {
+    const best = newest(recs, 'at', 'folderId');
+    guides[id] = { folderId: best.folderId, at: best.at };
+  }
+  return normalizeFolderTable({ folders, guides });
+}
+
+/**
+ * On a computer's first sync, folders that are not yet known to the cloud but
+ * have the same name and parent as a cloud folder (matched in order from the
+ * root) take that folder's id. Two computers that each created "Work" then end
+ * up with one folder, not two. Returns the local folders with their ids mapped.
+ */
+function adoptFolderIds(local, remote) {
+  const remoteLive = new Map(Object.entries(remote.folders).filter(([, rec]) => isLiveFolder(rec)));
+  const claimed = new Set(local.folders.filter((folder) => remoteLive.has(folder.id)).map((folder) => folder.id));
+  const mapping = new Map();
+  const unmatched = local.folders.filter((folder) => !remoteLive.has(folder.id));
+  for (let progress = true; progress;) {
+    progress = false;
+    for (const folder of unmatched) {
+      if (mapping.has(folder.id)) continue;
+      const parent = folder.parentId === null ? null
+        : mapping.has(folder.parentId) ? mapping.get(folder.parentId)
+          : remoteLive.has(folder.parentId) ? folder.parentId : undefined;
+      if (parent === undefined) continue;
+      const match = [...remoteLive].find(([id, rec]) => !claimed.has(id) && rec.name === folder.name && rec.parentId === parent);
+      if (match) {
+        mapping.set(folder.id, match[0]);
+        claimed.add(match[0]);
+        progress = true;
+      }
+    }
+  }
+  const mapId = (id) => (id === null ? null : mapping.get(id) ?? id);
+  return {
+    folders: local.folders.map((folder) => ({ id: mapId(folder.id), name: folder.name, parentId: mapId(folder.parentId) })),
+    guideFolders: Object.fromEntries(Object.entries(local.guideFolders).map(([guideId, folderId]) => [guideId, mapId(folderId)])),
+  };
+}
+
+function canonicalTable(table) {
+  const sorted = (obj, pick) => Object.fromEntries(Object.keys(obj).sort(compareKeys).map((key) => [key, pick(obj[key])]));
+  return {
+    folders: sorted(table.folders, (rec) => ({ name: rec.name, parentId: rec.parentId, nameAt: rec.nameAt, parentAt: rec.parentAt, deletedAt: rec.deletedAt })),
+    guides: sorted(table.guides, (rec) => ({ folderId: rec.folderId, at: rec.at })),
+  };
+}
+
+/** The table's content hash, stored with the version so a download can be checked. */
+const folderTableHash = (table) => sha256(JSON.stringify(canonicalTable(table)));
+
+function encodeFolderTable(table) {
+  return zlib.gzipSync(JSON.stringify({ format: FOLDER_TABLE_FORMAT, version: 1, ...canonicalTable(table) }));
+}
+
+/** Read a folder table from Drive. Anything malformed is an error, never a partial table. */
+function decodeFolderTable(buffer) {
+  const damaged = () => new Error('A cloud folder list is damaged and can’t be read.');
+  let raw;
+  try { raw = JSON.parse(zlib.gunzipSync(buffer, { maxOutputLength: FOLDER_LIMITS.maxBytes }).toString('utf8')); } catch { throw damaged(); }
+  if (!raw || raw.format !== FOLDER_TABLE_FORMAT || !raw.folders || !raw.guides || typeof raw.folders !== 'object' || typeof raw.guides !== 'object') throw damaged();
+  if (raw.version !== 1) throw new Error('The cloud folder list was saved by a newer StepForge. Update StepForge on this computer.');
+  const folderEntries = Object.entries(raw.folders);
+  const guideEntries = Object.entries(raw.guides);
+  if (folderEntries.length > FOLDER_LIMITS.maxFolders || guideEntries.length > FOLDER_LIMITS.maxGuides) throw damaged();
+  const folders = {};
+  for (const [id, rec] of folderEntries) {
+    if (!isId(id) || !rec || typeof rec !== 'object') throw damaged();
+    if (typeof rec.name !== 'string' || rec.name.length > FOLDER_LIMITS.maxName) throw damaged();
+    if (!(rec.parentId === null || isId(rec.parentId)) || !isTime(rec.nameAt) || !isTime(rec.parentAt)) throw damaged();
+    if (!(rec.deletedAt === null || isTime(rec.deletedAt))) throw damaged();
+    folders[id] = { name: rec.name, parentId: rec.parentId, nameAt: rec.nameAt, parentAt: rec.parentAt, deletedAt: rec.deletedAt };
+  }
+  const guides = {};
+  for (const [id, rec] of guideEntries) {
+    if (!isId(id) || !rec || typeof rec !== 'object') throw damaged();
+    if (!(rec.folderId === null || isId(rec.folderId)) || !isTime(rec.at)) throw damaged();
+    guides[id] = { folderId: rec.folderId, at: rec.at };
+  }
+  return { folders, guides };
+}
+
+/**
+ * Write the table to folders.json (only if it changed) and return the guide
+ * folders written: only guides that are on this computer get one, so a folder
+ * entry never points at a guide that isn't here.
+ */
+function applyFolderTable(store, table, guideExists) {
+  const folders = Object.keys(table.folders).filter((id) => isLiveFolder(table.folders[id])).sort(compareKeys)
+    .map((id) => ({ id, name: table.folders[id].name, parentId: table.folders[id].parentId }));
+  const guideFolders = {};
+  for (const [guideId, rec] of Object.entries(table.guides)) {
+    if (rec.folderId !== null && guideExists(guideId)) guideFolders[guideId] = rec.folderId;
+  }
+  const view = { folders, guideFolders };
+  const current = store.loadFolders();
+  const key = (data) => {
+    const local = readLocalFolders(data);
+    return JSON.stringify({
+      folders: [...local.folders].sort((a, b) => compareKeys(a.id, b.id)),
+      guideFolders: Object.keys(local.guideFolders).sort(compareKeys).map((guideId) => [guideId, local.guideFolders[guideId]]),
+    });
+  };
+  if (key(current) !== key(view)) store.saveFolders({ ...current, folders, guideFolders });
+  return guideFolders;
+}
+
 module.exports = {
   PARTS_FORMAT, PART_KIND, INLINE_LIMIT, LIMITS, SHA_PATTERN,
   sha256, contentHash, isPartsSnapshot, encodeSnapshot, decodeSnapshot, partShas, assembleEntries, entriesBySha,
+  FOLDERS_FORMAT, FOLDER_LIMITS, readLocalFolders, localFolderTable, mergeFolderTables, adoptFolderIds,
+  folderTableHash, encodeFolderTable, decodeFolderTable, applyFolderTable, emptyTable,
 };

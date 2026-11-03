@@ -6,7 +6,31 @@ const api = window.stepforge;
 const dialogs = window.StepForgeDialogs || {};
 const review = window.StepForgeReview;
 
-/** "just now", "5 min ago", "3 hr ago", "yesterday", "4 days ago", else a short date. */
+// Three-letter month names for the interface languages that have them. English
+// is written out (Intl's English short names vary by ICU version); fr and es
+// are shortened by hand because their Intl names are longer or end in a dot.
+const GUIDE_MONTHS = {
+  en: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+  fr: ['jan', 'fév', 'mar', 'avr', 'mai', 'jui', 'jul', 'aoû', 'sep', 'oct', 'nov', 'déc'],
+  es: ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'],
+};
+
+/**
+ * A guide date as DD-MMM-YYYY in local time, e.g. "01-Nov-2026". ru uses Intl's
+ * short month with the trailing dot removed; ja and zh-CN have no three-letter
+ * form, so they show Intl's short month (e.g. "11月"). '' for a missing or invalid date.
+ */
+function formatGuideDate(iso, language = 'en') {
+  if (!iso) return '';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  const table = GUIDE_MONTHS[language];
+  const month = table ? table[date.getMonth()]
+    : new Intl.DateTimeFormat(language, { month: 'short' }).format(date).replace(/\.$/, '');
+  return `${String(date.getDate()).padStart(2, '0')}-${month}-${date.getFullYear()}`;
+}
+
+/** "just now", "5 min ago", "3 hr ago", "yesterday", "4 days ago", else formatGuideDate. */
 function timeAgo(iso) {
   const then = Date.parse(iso);
   if (!Number.isFinite(then)) return '';
@@ -18,14 +42,14 @@ function timeAgo(iso) {
   const days = Math.round(hours / 24);
   if (days === 1) return t('yesterday');
   if (days < 7) return tn(days, '{count} day ago', '{count} days ago');
-  return new Date(then).toLocaleDateString(dateLocale, { month: 'short', day: 'numeric', year: new Date(then).getFullYear() === new Date().getFullYear() ? undefined : 'numeric' });
+  return formatGuideDate(iso, uiLanguage);
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** The "May need review" pill's tooltip: why the guide is flagged. */
 function reviewBadgeTitle(status) {
-  const since = new Date(status.since).toLocaleDateString(dateLocale, { dateStyle: 'medium' });
+  const since = formatGuideDate(status.since, uiLanguage);
   const what = status.sinceKind === 'verified' ? t('Last verified {date}', { date: since }) : t('Last saved {date}', { date: since });
   return t('{since}, over {interval} ago. Open the guide to check it still matches the software, or right-click → Mark as verified.',
     { since: what, interval: intervalText(status.days) });
@@ -345,7 +369,7 @@ class StepForgeApp {
         },
         el('span.welcome-recent-details', {},
           el('span.welcome-recent-title', {}, guide.title),
-          el('span.muted', {}, `${tn(guide.stepCount, '{count} step', '{count} steps')} • ${fmtDate(guide.updatedAt)}`),
+          el('span.muted', {}, `${tn(guide.stepCount, '{count} step', '{count} steps')} • ${formatGuideDate(guide.updatedAt, uiLanguage)}`),
         ),
         el('span.muted', { 'aria-hidden': 'true' }, '›'),
         ),
@@ -875,7 +899,7 @@ class StepForgeApp {
       guide.linkedSource ? el('span.badge', { title: t('Saved to a linked .sfgz file') }, t('Linked')) : null,
       guide.locked ? el('span.badge', { title: t('Open on another device') }, t('Locked')) : null,
       reviewState?.overdue ? el('span.badge.review-badge', { title: reviewBadgeTitle(reviewState) }, t('May need review')) : null,
-      el('span.card-updated', { title: fmtDate(guide.updatedAt) }, timeAgo(guide.updatedAt))));
+      el('span.card-updated', { title: formatGuideDate(guide.updatedAt, uiLanguage) }, timeAgo(guide.updatedAt))));
   }
 
   resultCard(result, guide, isStep) {

@@ -628,6 +628,9 @@ class CloudSync {
     if (!this.enabled()) throw new Error(`Turn on automatic sync before replacing ${this.label}.`);
     await this.loadAccountState();
     const [files, markers] = await Promise.all([this.drive.listVersions(), this.drive.listDeletions()]);
+    // Read the cloud's folders before anything is deleted: folders not on this computer are removed everywhere.
+    const folderVersions = typeof this.drive.listFolders === 'function' ? await this.drive.listFolders() : [];
+    const cloudFolders = folderVersions.length ? parts.mergeFolderTables(await Promise.all(folderVersions.map((file) => this.folderTableOf(file)))) : null;
     const local = new Set(this.store.listGuides().map((guide) => guide.guideId));
     const groups = guideVersions(files);
     const states = this.deletionStates(markers);
@@ -654,8 +657,18 @@ class CloudSync {
     for (const file of await this.drive.listParts()) await this.drive.deleteFile(file.id);
     this.partIndexCache = null;
     for (const file of markers) if (!keepMarkers.has(file.id)) await this.drive.deleteFile(file.id);
+    for (const file of folderVersions) await this.drive.deleteFile(file.id);
     for (const id of Object.keys(this.pending.records)) this.clearPendingDeletion(id);
     this.state.records = {};
+    // This computer's folders are the new version, stamped now so they win over
+    // the cloud's older ones. Folders the cloud had but this computer lacks are deleted.
+    const now = Date.now();
+    const localFolders = parts.readLocalFolders(this.store.loadFolders());
+    const replacement = parts.localFolderTable(null, localFolders, { stamp: now, guideExists: (id) => this.store.guideExists(id) });
+    for (const [id, rec] of Object.entries(cloudFolders?.folders || {})) {
+      if (!replacement.folders[id]) replacement.folders[id] = { ...rec, deletedAt: now };
+    }
+    this.state.folders = { table: replacement, applied: { ...localFolders.guideFolders } };
     this.saveState();
     this.fingerprints.clear();
     return { removed: files.length, purged, uploading: [...local].filter((id) => this.isSharingEnabled(id)).length };
@@ -780,6 +793,7 @@ class CloudSync {
     if (unsent) delete this.pending.restores[id];
     else this.pending.restores[id] = { restoredAt: new Date().toISOString() };
     this.savePending();
+    this.restoreFolderOf(id);
     if (this.enabled()) this.markChanged(id);
   }
 
@@ -892,6 +906,79 @@ class CloudSync {
     } finally {
       fs.rmSync(stagingRoot, { recursive: true, force: true });
     }
+  }
+
+  // ---- library folders (core/cloud-parts.js) -------------------------------
+
+  /** One folder table version, checked against the hash it was saved with. */
+  async folderTableOf(file) {
+    const table = parts.decodeFolderTable(await this.drive.download(file.id));
+    if (parts.folderTableHash(table) !== file.appProperties.hash) throw new Error('A cloud folder list failed its integrity check. Folders here are unchanged.');
+    return table;
+  }
+
+  /**
+   * Sync folder names, parents and guide folders. Local changes are the
+   * differences from the last applied state, stamped with when folders.json
+   * was last written, so an offline edit keeps its real time. Every listed
+   * folder version is merged, the merge is applied here, and one new version
+   * replaces them all. Nothing is uploaded while there are no folders.
+   */
+  async syncFolders(check) {
+    if (typeof this.drive.listFolders !== 'function') return;
+    const listed = (await this.drive.listFolders()).filter((file) => validId(file.id) && parts.SHA_PATTERN.test(file.appProperties?.hash || ''));
+    check();
+    const record = this.state.folders || {};
+    const base = record.table || null;
+    // Only the version this computer last agreed on: nothing new to read.
+    const current = listed.length === 1 && listed[0].id === record.head;
+    const remoteTables = current ? [] : await Promise.all(listed.map((file) => this.folderTableOf(file)));
+    check();
+    // No awaits below: the local file can't change between reading it and writing it.
+    let local = parts.readLocalFolders(this.store.loadFolders());
+    if (!base && remoteTables.length) local = parts.adoptFolderIds(local, parts.mergeFolderTables(remoteTables));
+    const stamp = base && fs.existsSync(this.store.foldersFile) ? Math.floor(fs.statSync(this.store.foldersFile).mtimeMs) : 0;
+    const localTable = parts.localFolderTable(base, local, { stamp, applied: record.applied || {}, guideExists: (id) => this.store.guideExists(id) });
+    const table = parts.mergeFolderTables([...remoteTables, ...(base ? [base] : []), localTable]);
+    const applied = parts.applyFolderTable(this.store, table, (id) => this.store.guideExists(id));
+    const hash = parts.folderTableHash(table);
+    this.state.folders = { table, applied, head: record.head, hash: record.hash, syncedAt: record.syncedAt };
+    this.saveState();
+    const hasContent = Object.keys(table.folders).length + Object.keys(table.guides).length > 0;
+    const agreed = record.hash === hash && listed.some((file) => file.id === record.head);
+    if (!agreed && (listed.length || hasContent)) {
+      const heads = headsOf(listed);
+      const latest = heads.at(-1);
+      const others = heads.filter((file) => file !== latest).map((file) => file.id);
+      const merged = mergedProperty(others);
+      const file = await this.uploadArchive({ data: parts.encodeFolderTable(table), name: 'StepForge folders',
+        properties: { stepforge: parts.FOLDERS_FORMAT, hash, ...(latest ? { parent: latest.id } : {}), ...(merged ? { merged } : {}) } });
+      check();
+      this.state.folders = { table, applied, head: file.id, hash, syncedAt: Date.now() };
+      this.saveState();
+    }
+    // Every version is a whole table, so the ones merged above are superseded.
+    // A failed delete is retried by a later sync, which only removes versions.
+    const head = this.state.folders.head;
+    for (const file of listed) {
+      if (file.id === head) continue;
+      try { await this.drive.deleteFile(file.id); } catch { /* removed by a later sync */ }
+    }
+  }
+
+  /**
+   * Store.restoreFromTrash drops the guide's folder entry. Put it back from the
+   * synced state, so a restored guide returns to its folder.
+   */
+  restoreFolderOf(id) {
+    const folderId = this.state.folders?.table?.guides?.[id]?.folderId;
+    if (!folderId || !this.store.guideExists(id)) return;
+    const data = this.store.loadFolders();
+    if (!data.folders.some((folder) => folder.id === folderId)) return;
+    data.guideFolders = { ...data.guideFolders, [id]: folderId };
+    this.store.saveFolders(data);
+    this.state.folders.applied = { ...(this.state.folders.applied || {}), [id]: folderId };
+    if (this.stateFile) this.saveState();
   }
 
   // ---- shared settings (core/shared-settings.js) ---------------------------
@@ -1200,6 +1287,14 @@ class CloudSync {
         errors.push(err.message);
       }
     }
+    let folderError = null;
+    try {
+      check();
+      await this.syncFolders(check);
+    } catch (err) {
+      check();
+      folderError = err.message;
+    }
     let sharedError = null;
     let sharedPending = false;
     if (this.shared) {
@@ -1212,13 +1307,14 @@ class CloudSync {
       }
     }
     if (errors.length) this.publish('error', `${errors.length} guide(s) could not sync: ${errors[0]}`);
+    else if (folderError) this.publish('error', `Folders could not sync: ${folderError}`);
     else if (sharedError) this.publish('error', `Placeholders and branding could not sync: ${sharedError}`);
     else if (pending) this.publish('pending', 'Changes pending. Incoming updates wait until the guide is closed.');
     else if (sharedPending) this.publish('pending', this.sharedReady() ? 'Changes waiting to sync.' : 'Placeholders and branding sync when Settings closes.');
     else this.publish('synced', mergeMessage(this.label, merged, mergeConflicts), { lastSync: new Date().toISOString() });
     // Snapshots are immutable. Retain the current version and two prior
     // versions on every live conflict branch after a successful sync.
-    if (!errors.length && !sharedError && !pending && !sharedPending) await this.pruneNow();
+    if (!errors.length && !folderError && !sharedError && !pending && !sharedPending) await this.pruneNow();
     return this.status;
   }
 

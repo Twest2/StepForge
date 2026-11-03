@@ -365,6 +365,18 @@ opt-in and off by default:
   time in a background worker shared with linked-archive writes and
   automatic backups. See [CLOUD_ACCOUNTS.md](CLOUD_ACCOUNTS.md) and
   [SECURITY.md](SECURITY.md).
+- **Library folders** (`core/cloud-parts.js`, the folder phase of
+  `core/cloud-sync.js`): folder names, parents and each guide's folder travel
+  as one `folders-v1` version per account, a gzipped table with a hash, parent
+  and `merged` property like the others. Every field carries the time it last
+  changed here (the `library/folders.json` mtime, for changes since the last
+  applied state), so the newest change wins a conflict. Deletions are
+  tombstones; a folder deleted on another computer moves its guides and
+  sub-folders to the root, as `deleteFolder` does, and never removes a guide.
+  Accounts without folders store no version, and older StepForge versions
+  ignore the `folders-v1` objects. The state is `sync-<account>.json`'s
+  `folders` entry: the merged table, the guide folders written to
+  `folders.json`, and the head.
 - **Synced settings** (`core/shared-settings.js`): global placeholders, brand
   profiles with the assets they use, the active profile, the language and
   configurable recording shortcuts

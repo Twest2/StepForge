@@ -1555,6 +1555,7 @@ fieldset legend {
 /* Card heading: a quiet uppercase label, the same treatment as the library sidebar headings,
    so the settings inside a card read as the primary level. */
 .settings-card-title {
+  margin: 0;
   padding: 14px 0 4px;
   color: var(--muted);
   font-size: 11px;

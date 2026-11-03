@@ -6,6 +6,7 @@
 :root {
   /* Native form controls, scrollbars and date/number fields follow the theme. */
   color-scheme: light;
+  accent-color: var(--accent);
   --bg: #f4f6f8;
   --panel: rgba(255, 255, 255, 0.92);
   --panel-solid: #ffffff;

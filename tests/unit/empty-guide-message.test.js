@@ -13,10 +13,10 @@ const { rendererI18n } = require('./helpers');
 const OLD_HINT = 'Select an image step to edit annotations.';
 const EMPTY_GUIDE = 'Start recording or import images to begin.';
 
-function loadEditorClass(language = 'en') {
+function loadEditorClass(language = 'en', api = {}) {
   const context = {
     ...rendererI18n(language),
-    stepforge: {},
+    stepforge: api,
   };
   // Renderer scripts are plain browser scripts: window is the global.
   context.window = context;
@@ -28,8 +28,8 @@ function loadEditorClass(language = 'en') {
  * An editor with just the state renderCanvas reads. The canvas is not under
  * test, so it is a no-op, and the message is read back from its DOM node.
  */
-function makeEditor(language = 'en') {
-  const GuideEditor = loadEditorClass(language);
+function makeEditor(language = 'en', api = {}) {
+  const GuideEditor = loadEditorClass(language, api);
   const editor = Object.create(GuideEditor.prototype);
   const node = { hidden: true, text: OLD_HINT }; // as mountShell() creates it
   editor.dom = {
@@ -87,4 +87,10 @@ test('the empty-guide message is translated', async () => {
   const text = await show([], null);
   assert.notEqual(text, EMPTY_GUIDE);
   assert.match(text, /[А-Яа-я]/);
+});
+
+test('an unresolved screenshot clears the canvas and restores the non-empty guide hint', async () => {
+  const { show } = makeEditor('en', { step: { imagePath: async () => null } });
+  const imageStep = { ...stepWithoutImage, image: { path: 'missing.png' } };
+  assert.equal(await show([imageStep], imageStep.stepId), OLD_HINT);
 });

@@ -594,6 +594,9 @@ body.platform-linux #capture-status button {
   inset: 0;
   display: grid;
   place-items: center;
+  padding: 16px;
+  text-align: center;
+  overflow-wrap: anywhere;
   color: var(--muted);
   pointer-events: none;
 }

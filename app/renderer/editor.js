@@ -1409,7 +1409,12 @@ class GuideEditor {
       stepId: step.stepId,
       which: 'working',
     });
-    if (token !== this.imageLoadToken || !src) return;
+    if (token !== this.imageLoadToken) return;
+    if (!src) {
+      this.canvas.setImage(null, 0, 0);
+      this.showCanvasEmpty();
+      return;
+    }
     const img = new Image();
     img.onload = () => {
       if (token !== this.imageLoadToken) return;

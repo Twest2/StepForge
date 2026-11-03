@@ -9,7 +9,7 @@
   --panel-solid: #ffffff;
   --panel-2: #eef2f6;
   --text: #18212b;
-  --muted: #657181;
+  --muted: #5f6b7b;
   --border: #d9e1e8;
   --accent: #0068ff;
   --accent-strong: #0054cc;
@@ -160,10 +160,11 @@ input, select, textarea {
   border-radius: 10px;
   padding: 7px 10px;
 }
-input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--muted) 78%, transparent); }
+input::placeholder, textarea::placeholder { color: var(--muted); }
+/* Focus ring uses the full accent (4.75:1 on white, 5.3:1+ on dark panels), not a tint. */
 input:focus, select:focus, textarea:focus, button:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--accent) 60%, white 40%);
-  outline-offset: 1px;
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 textarea { resize: vertical; }
 label { user-select: none; }
@@ -669,7 +670,7 @@ body.platform-linux #capture-status button {
   border-radius: 12px;
   background: var(--panel-solid);
 }
-.rich-editor:focus { outline: 2px solid color-mix(in srgb, var(--accent) 60%, white 40%); }
+.rich-editor:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
 .rich-editor table,
 .rich-editor th,
 .rich-editor td {
@@ -1517,7 +1518,8 @@ fieldset legend {
 .switch input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }
 .switch-track {
   position: relative; flex: none; width: 34px; height: 20px; border-radius: 999px;
-  background: color-mix(in srgb, var(--muted) 45%, var(--border)); transition: background 140ms ease;
+  /* Off track: 3:1 or better against the panel, so the switch state is visible without colour. */
+  background: color-mix(in srgb, var(--muted) 80%, var(--panel-solid)); transition: background 140ms ease;
 }
 .switch-track::after {
   content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%;

@@ -404,3 +404,123 @@ test('folder storage on file-based services lists folder versions apart from gui
   assert.deepEqual(await storage.listVersions(), []);
   assert.deepEqual(await storage.download(folder.id), bytes);
 });
+
+function overlapFolderListings(devices) {
+  let arrived = 0;
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  for (const { drive } of devices) {
+    const list = drive.listFolders.bind(drive);
+    let first = true;
+    drive.listFolders = async () => {
+      const files = await list();
+      if (first) {
+        first = false;
+        if (++arrived === devices.length) release();
+        await gate;
+      }
+      return files;
+    };
+  }
+}
+
+test('simultaneous first syncs coalesce matching folder trees and keep both guides', async (t) => {
+  const { device } = setup(t);
+  const a = device('concurrent-a');
+  const b = device('concurrent-b');
+  for (const [index, d] of [a, b].entries()) change(d, index + 1, () => {
+    const root = d.store.createFolder('Work');
+    const child = d.store.createFolder('Projects', root.id);
+    d.store.moveGuideToFolder(addGuide(d.store, `Guide ${index}`), child.id);
+  });
+  overlapFolderListings([a, b]);
+  await Promise.all([synced(a.sync), synced(b.sync)]);
+  await synced(a.sync);
+  await synced(b.sync);
+  await synced(a.sync);
+  const expected = { folders: ['/ > Work', 'Work > Projects'], placement: { 'Guide 0': 'Projects', 'Guide 1': 'Projects' } };
+  assert.deepEqual(view(a.store), expected);
+  assert.deepEqual(view(b.store), expected);
+});
+
+test('simultaneous new folders after the first sync converge without collapsing intentional siblings', async (t) => {
+  const { device } = setup(t);
+  const a = device('new-a');
+  const b = device('new-b');
+  change(a, 1, () => a.store.createFolder('Existing'));
+  await synced(a.sync);
+  await synced(b.sync);
+  for (const [index, d] of [a, b].entries()) change(d, index + 2, () => {
+    const first = d.store.createFolder('Shared');
+    const second = d.store.createFolder('Shared');
+    d.store.moveGuideToFolder(addGuide(d.store, `First ${index}`), first.id);
+    d.store.moveGuideToFolder(addGuide(d.store, `Second ${index}`), second.id);
+  });
+  overlapFolderListings([a, b]);
+  await Promise.all([synced(a.sync), synced(b.sync)]);
+  await synced(a.sync);
+  await synced(b.sync);
+  const folders = a.store.loadFolders().folders;
+  assert.equal(folders.filter(f => f.name === 'Shared').length, 2, 'intentional duplicate siblings survive, without cross-device duplication');
+  assert.deepEqual(view(a.store), view(b.store));
+  assert.equal(a.store.listGuides().length, 4);
+});
+
+test('a renamed folder keeps its identity and deleting then recreating its name does not revive old placement', async (t) => {
+  const { device } = setup(t);
+  const a = device('recreate-a');
+  const b = device('recreate-b');
+  change(a, 1, () => { const f = a.store.createFolder('Work'); a.store.moveGuideToFolder(addGuide(a.store, 'Kept guide'), f.id); });
+  await synced(a.sync);
+  await synced(b.sync);
+  const id = folderId(a.store, 'Work');
+  change(a, 2, () => a.store.renameFolder(id, 'Renamed'));
+  await synced(a.sync);
+  await synced(b.sync);
+  assert.equal(folderId(a.store, 'Renamed'), id);
+  assert.equal(folderId(b.store, 'Renamed'), id);
+  change(a, 3, () => a.store.deleteFolder(id));
+  await synced(a.sync);
+  await synced(b.sync);
+  change(a, 4, () => a.store.createFolder('Work'));
+  await synced(a.sync);
+  await synced(b.sync);
+  assert.notEqual(folderId(a.store, 'Work'), id, 'a tombstone is not reused');
+  assert.deepEqual(view(a.store), { folders: ['/ > Work'], placement: { 'Kept guide': '/' } });
+  assert.deepEqual(view(a.store), view(b.store));
+});
+
+test('folder tables reject arrays instead of accepting malformed maps as an empty library', () => {
+  const { gzipSync } = require('node:zlib');
+  for (const maps of [{ folders: [], guides: {} }, { folders: {}, guides: [] }]) {
+    const bytes = gzipSync(JSON.stringify({ format: 'stepforge-folders', version: 1, ...maps }));
+    assert.throws(() => parts.decodeFolderTable(bytes), /damaged/);
+  }
+});
+
+test('moving a folder and renaming it on different devices preserves its subtree and guide membership', async (t) => {
+  const { device } = setup(t);
+  const a = device('move-a');
+  const b = device('move-b');
+  change(a, 1, () => {
+    const first = a.store.createFolder('First');
+    a.store.createFolder('Second');
+    const child = a.store.createFolder('Child', first.id);
+    a.store.moveGuideToFolder(addGuide(a.store, 'Inside child'), child.id);
+  });
+  await synced(a.sync);
+  await synced(b.sync);
+  const childId = folderId(a.store, 'Child');
+  change(a, 2, () => a.store.renameFolder(childId, 'Renamed child'));
+  change(b, 3, () => {
+    const data = b.store.loadFolders();
+    data.folders.find(f => f.id === childId).parentId = folderId(b.store, 'Second');
+    b.store.saveFolders(data);
+  });
+  await synced(a.sync);
+  await synced(b.sync);
+  await synced(a.sync);
+  assert.equal(folderId(a.store, 'Renamed child'), childId);
+  assert.deepEqual(view(a.store), { folders: ['/ > First', '/ > Second', 'Second > Renamed child'], placement: { 'Inside child': 'Renamed child' } });
+  assert.deepEqual(view(a.store), view(b.store));
+});

@@ -936,7 +936,9 @@ class CloudSync {
     check();
     // No awaits below: the local file can't change between reading it and writing it.
     let local = parts.readLocalFolders(this.store.loadFolders());
-    if (!base && remoteTables.length) local = parts.adoptFolderIds(local, parts.mergeFolderTables(remoteTables));
+    const remote = remoteTables.length ? parts.mergeFolderTables(remoteTables) : parts.emptyTable();
+    if (remoteTables.length) local = parts.adoptFolderIds(local, remote, new Set(Object.keys(base?.folders || {})));
+    local = parts.identifyNewFolders(local, { ...remote.folders, ...base?.folders });
     const stamp = base && fs.existsSync(this.store.foldersFile) ? Math.floor(fs.statSync(this.store.foldersFile).mtimeMs) : 0;
     const localTable = parts.localFolderTable(base, local, { stamp, applied: record.applied || {}, guideExists: (id) => this.store.guideExists(id) });
     const table = parts.mergeFolderTables([...remoteTables, ...(base ? [base] : []), localTable]);

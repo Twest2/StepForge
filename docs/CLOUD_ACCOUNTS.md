@@ -106,7 +106,9 @@ sync**.
   the computer where you deleted it; no guide is deleted. The first time a
   computer syncs its folders, a folder with the same name (matched exactly)
   and in the same place as one already in the cloud is treated as that folder,
-  so the two aren't listed twice.
+  so the two aren't listed twice. Matching new folders also converge when
+  computers upload at the same time. Intentionally creating two sibling
+  folders with the same name keeps two folders.
 
 ### Settings that sync
 

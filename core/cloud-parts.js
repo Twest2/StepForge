@@ -295,11 +295,11 @@ function mergeFolderTables(tables) {
  * root) take that folder's id. Two computers that each created "Work" then end
  * up with one folder, not two. Returns the local folders with their ids mapped.
  */
-function adoptFolderIds(local, remote) {
+function adoptFolderIds(local, remote, knownIds = new Set()) {
   const remoteLive = new Map(Object.entries(remote.folders).filter(([, rec]) => isLiveFolder(rec)));
   const claimed = new Set(local.folders.filter((folder) => remoteLive.has(folder.id)).map((folder) => folder.id));
   const mapping = new Map();
-  const unmatched = local.folders.filter((folder) => !remoteLive.has(folder.id));
+  const unmatched = local.folders.filter((folder) => !remoteLive.has(folder.id) && !knownIds.has(folder.id));
   for (let progress = true; progress;) {
     progress = false;
     for (const folder of unmatched) {
@@ -323,6 +323,39 @@ function adoptFolderIds(local, remote) {
   };
 }
 
+/**
+ * Give folders not yet synchronized a stable identity before their first
+ * upload. Concurrent devices can then create the same tree without producing
+ * two cloud identities. Known ids (including tombstones) never change; a
+ * repeated sibling name gets another slot, preserving deliberate duplicates.
+ */
+function identifyNewFolders(local, known) {
+  const occupied = new Set(Object.keys(known));
+  const mapping = new Map(local.folders.filter((folder) => occupied.has(folder.id)).map((folder) => [folder.id, folder.id]));
+  const pending = local.folders.filter((folder) => !mapping.has(folder.id)).sort((a, b) => compareKeys(a.id, b.id));
+  for (let progress = true; progress;) {
+    progress = false;
+    for (const folder of pending) {
+      if (mapping.has(folder.id)) continue;
+      const parentId = folder.parentId === null ? null : mapping.get(folder.parentId);
+      if (parentId === undefined) continue;
+      let id;
+      for (let slot = 0; ; slot++) {
+        id = `folder-${sha256(JSON.stringify([parentId, folder.name, slot])).slice(0, 32)}`;
+        if (!occupied.has(id)) break;
+      }
+      occupied.add(id);
+      mapping.set(folder.id, id);
+      progress = true;
+    }
+  }
+  const mapped = (id) => mapping.get(id) ?? id;
+  return {
+    folders: local.folders.map((folder) => ({ ...folder, id: mapped(folder.id), parentId: mapped(folder.parentId) })),
+    guideFolders: Object.fromEntries(Object.entries(local.guideFolders).map(([id, folderId]) => [id, mapped(folderId)])),
+  };
+}
+
 function canonicalTable(table) {
   const sorted = (obj, pick) => Object.fromEntries(Object.keys(obj).sort(compareKeys).map((key) => [key, pick(obj[key])]));
   return {
@@ -343,7 +376,8 @@ function decodeFolderTable(buffer) {
   const damaged = () => new Error('A cloud folder list is damaged and can’t be read.');
   let raw;
   try { raw = JSON.parse(zlib.gunzipSync(buffer, { maxOutputLength: FOLDER_LIMITS.maxBytes }).toString('utf8')); } catch { throw damaged(); }
-  if (!raw || raw.format !== FOLDER_TABLE_FORMAT || !raw.folders || !raw.guides || typeof raw.folders !== 'object' || typeof raw.guides !== 'object') throw damaged();
+  if (!raw || raw.format !== FOLDER_TABLE_FORMAT || !raw.folders || !raw.guides || typeof raw.folders !== 'object' || typeof raw.guides !== 'object'
+    || Array.isArray(raw.folders) || Array.isArray(raw.guides)) throw damaged();
   if (raw.version !== 1) throw new Error('The cloud folder list was saved by a newer StepForge. Update StepForge on this computer.');
   const folderEntries = Object.entries(raw.folders);
   const guideEntries = Object.entries(raw.guides);
@@ -393,6 +427,6 @@ function applyFolderTable(store, table, guideExists) {
 module.exports = {
   PARTS_FORMAT, PART_KIND, INLINE_LIMIT, LIMITS, SHA_PATTERN,
   sha256, contentHash, isPartsSnapshot, encodeSnapshot, decodeSnapshot, partShas, assembleEntries, entriesBySha,
-  FOLDERS_FORMAT, FOLDER_LIMITS, readLocalFolders, localFolderTable, mergeFolderTables, adoptFolderIds,
+  FOLDERS_FORMAT, FOLDER_LIMITS, readLocalFolders, localFolderTable, mergeFolderTables, adoptFolderIds, identifyNewFolders,
   folderTableHash, encodeFolderTable, decodeFolderTable, applyFolderTable, emptyTable,
 };

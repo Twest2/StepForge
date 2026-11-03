@@ -376,7 +376,11 @@ opt-in and off by default:
   Accounts without folders store no version, and older StepForge versions
   ignore the `folders-v1` objects. The state is `sync-<account>.json`'s
   `folders` entry: the merged table, the guide folders written to
-  `folders.json`, and the head.
+  `folders.json`, and the head. Before their first upload, new folders receive
+  deterministic ids derived from their parent id, exact name and sibling
+  occurrence. Known ids and tombstones are preserved, and guide membership is
+  remapped together with the folder tree. This prevents concurrent creation
+  from adding duplicate cloud identities without adding remote metadata.
 - **Synced settings** (`core/shared-settings.js`): global placeholders, brand
   profiles with the assets they use, the active profile, the language and
   configurable recording shortcuts

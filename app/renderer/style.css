@@ -20,6 +20,9 @@
   --caution: #d97706;
   --shadow: 0 14px 40px rgba(15, 23, 42, 0.08);
   --radius: 14px;
+  /* Scrollbar thumb: 3:1 or better against the panels, never bright white. */
+  --scroll-thumb: #7d8998;
+  --scroll-thumb-hover: #5f6b7b;
   /* Compare view (git-style diff colors). */
   --diff-add-bg: #dafbe1;
   --diff-add-strong: #abf2bc;
@@ -47,6 +50,8 @@
     --ok: #4ade80;
     --caution: #fbbf24;
     --shadow: 0 14px 40px rgba(0, 0, 0, 0.35);
+    --scroll-thumb: #6b7889;
+    --scroll-thumb-hover: #8a96a6;
     --diff-add-bg: rgba(46, 160, 67, 0.15);
     --diff-add-strong: rgba(46, 160, 67, 0.4);
     --diff-add-fg: #7ee787;
@@ -58,6 +63,23 @@
 }
 
 * { box-sizing: border-box; }
+/* One scrollbar style for every scroll area. Scrollable elements use overflow:
+   auto, so a bar appears only when content overflows. Chromium (Electron) uses
+   scrollbar-width/-color and ignores ::-webkit-scrollbar once they are set; the
+   pseudo-element rules below are the fallback for engines without them. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scroll-thumb) transparent;
+}
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--scroll-thumb);
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--scroll-thumb-hover); background-clip: content-box; }
 html, body { margin: 0; height: 100%; }
 body {
   font: 13px/1.45 "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, sans-serif;
@@ -1543,9 +1565,6 @@ fieldset legend {
 .settings-nav-item:hover { background: color-mix(in srgb, var(--text) 6%, transparent); color: var(--text); }
 .settings-nav-item.active { background: var(--panel-solid); color: var(--text); font-weight: 600; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08); }
 .settings-content { overflow-y: auto; padding: 20px 24px 28px; }
-/* Settings scrolls with the wheel, trackpad, and keyboard without drawing a scroll bar. */
-.settings-nav, .settings-content { scrollbar-width: none; }
-.settings-nav::-webkit-scrollbar, .settings-content::-webkit-scrollbar { display: none; }
 .settings-pane { display: flex; flex-direction: column; gap: 14px; max-width: 760px; }
 .settings-pane[hidden] { display: none; }
 .settings-pane-head h3 { margin: 0 0 4px; font-size: 17px; }

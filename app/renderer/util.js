@@ -9,6 +9,9 @@ const { t, tn, language: uiLanguage } = StepForgeI18n.createTranslator(
 // Dates follow the interface language; in English, the system's date format.
 const dateLocale = uiLanguage === 'en' ? undefined : uiLanguage;
 
+// Between two sentences: Japanese and Chinese don't put a space there.
+const sentenceGap = uiLanguage === 'ja' || uiLanguage === 'zh-CN' ? '' : ' ';
+
 /**
  * Translated text with elements in it, for el() children: each {name} in
  * `text` becomes nodes[name], so a link can sit anywhere in the sentence.

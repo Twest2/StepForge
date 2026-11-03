@@ -19,7 +19,8 @@ const CHANGE_LABELS = {
   Title: t('Title'), Description: t('Description'), 'Step type': t('Step type'), Hidden: t('Hidden'), Skipped: t('Skipped'),
   'Starts a new page': t('Starts a new page'), Links: t('Links'), Screenshot: t('Screenshot'), 'Guide title': t('Guide title'),
   'Guide description': t('Guide description'), Theme: t('Theme'), Style: t('Style'), Placed: t('Placed'), Text: t('Text'),
-  Language: t('Language'), 'Text block': t('Text block'), 'Code block': t('Code block'), Table: t('Table'),
+  Language: t('Language'), Author: t('Author'), 'Co-authors': t('Co-authors'), Organization: t('Organization'),
+  'Focused view for new steps': t('Focused view for new steps'), 'Hide skipped steps in exports': t('Hide skipped steps in exports'), Link: t('Link'), 'Text block': t('Text block'), 'Code block': t('Code block'), Table: t('Table'),
 };
 const VALUE_LABELS = {
   Yes: t('Yes'), No: t('No'), Screenshot: t('Screenshot'), Blank: t('Blank'), 'Content only': t('Content only'),
@@ -28,7 +29,10 @@ const VALUE_LABELS = {
   'Before the screenshot': t('Before the screenshot'), 'After the screenshot': t('After the screenshot'),
   'Before the description': t('Before the description'), 'After the description': t('After the description'),
 };
-const changeLabel = (label) => CHANGE_LABELS[label] || label;
+const changeLabel = (label) => {
+  const placeholder = /^Placeholder \[\[(.*)\]\]$/.exec(label);
+  return placeholder ? t('Placeholder {name}', { name: `[[${placeholder[1]}]]` }) : CHANGE_LABELS[label] || label;
+};
 const JUMP_TITLES = {
   added: t('Jump to the first added step'), deleted: t('Jump to the first deleted step'),
   changed: t('Jump to the first changed step'), moved: t('Jump to the first moved step'),

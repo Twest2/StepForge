@@ -8,7 +8,7 @@
  */
 const CLOUD_SERVICES = {
   google: {
-    name: 'Google Drive', short: 'Drive', replace: t('Replace Drive'), replaceWith: t('Replace Drive with this computer'), where: t('in Google Drive'), whereShort: t('in Drive'), icon: 'google-drive.svg',
+    name: 'Google Drive', short: 'Drive', replace: t('Replace Drive'), replaceWith: t('Replace Drive with this computer'), deleteFrom: t('Delete from Drive'), where: t('in Google Drive'), whereShort: t('in Drive'), icon: 'google-drive.svg',
     account: t('Google account'), signIn: t('Sign in with Google'), waiting: t('Waiting for Google…'),
     description: t('Back up and sync guides between your computers.'),
     hint: t('Choose your Google account in the browser and allow StepForge to store its guides, then return here.'),
@@ -18,7 +18,7 @@ const CLOUD_SERVICES = {
     revoke: t('You can also revoke access in your Google account.'),
   },
   onedrive: {
-    name: 'OneDrive', short: 'OneDrive', replace: t('Replace OneDrive'), replaceWith: t('Replace OneDrive with this computer'), where: t('in OneDrive'), whereShort: t('in OneDrive'), icon: 'onedrive.svg',
+    name: 'OneDrive', short: 'OneDrive', replace: t('Replace OneDrive'), replaceWith: t('Replace OneDrive with this computer'), deleteFrom: t('Delete from OneDrive'), where: t('in OneDrive'), whereShort: t('in OneDrive'), icon: 'onedrive.svg',
     account: t('Microsoft account'), signIn: t('Sign in with Microsoft'), waiting: t('Waiting for Microsoft…'),
     description: t('Back up and sync guides with your Microsoft account.'),
     hint: t('Choose your Microsoft account in the browser and allow StepForge to use its app folder, then return here.'),
@@ -28,7 +28,7 @@ const CLOUD_SERVICES = {
     revoke: t('You can also remove StepForge’s access in your Microsoft account under Privacy → Apps and services.'),
   },
   dropbox: {
-    name: 'Dropbox', short: 'Dropbox', replace: t('Replace Dropbox'), replaceWith: t('Replace Dropbox with this computer'), where: t('in Dropbox'), whereShort: t('in Dropbox'), icon: 'dropbox.svg',
+    name: 'Dropbox', short: 'Dropbox', replace: t('Replace Dropbox'), replaceWith: t('Replace Dropbox with this computer'), deleteFrom: t('Delete from Dropbox'), where: t('in Dropbox'), whereShort: t('in Dropbox'), icon: 'dropbox.svg',
     account: t('Dropbox account'), signIn: t('Sign in with Dropbox'), waiting: t('Waiting for Dropbox…'),
     description: t('Back up and sync guides with your Dropbox.'),
     hint: t('Sign in to Dropbox in the browser and allow StepForge to use its app folder, then return here.'),
@@ -38,13 +38,13 @@ const CLOUD_SERVICES = {
     revoke: t('You can also remove StepForge in Dropbox under Settings → Connected apps.'),
   },
   webdav: {
-    name: 'Nextcloud', short: t('the server'), replace: t('Replace the server’s copies'), replaceWith: t('Replace the server’s copies with this computer’s'), where: t('on your server'), whereShort: t('on the server'), icon: 'nextcloud.svg',
+    name: 'Nextcloud', short: t('the server'), replace: t('Replace the server’s copies'), replaceWith: t('Replace the server’s copies with this computer’s'), deleteFrom: t('Delete from the server'), where: t('on your server'), whereShort: t('on the server'), icon: 'nextcloud.svg',
     account: t('Nextcloud account'), signIn: t('Sign in'), waiting: t('Waiting for sign-in…'),
     description: t('Sync with your own Nextcloud or any WebDAV server.'),
     hint: t('Log in to Nextcloud in the browser and grant access, then return here.'),
     privacy: t('Works with Nextcloud, ownCloud and any WebDAV server. StepForge keeps its files in a StepForge folder in your account.'),
     storage: t('Stored in the StepForge folder of your account. Leave the files there as they are; StepForge manages them.'),
-    quota: 'storage',
+    quota: t('storage'),
     revoke: t('On Nextcloud you can also revoke StepForge’s app password under Settings → Security.'),
   },
 };
@@ -187,7 +187,7 @@ function makeCloudSettings(api, { provider = 'google' } = {}) {
     el('div.cloud-hero-icon', { 'aria-hidden': 'true' }, el('img', { src: `../assets/icons/${S.icon}`, alt: '' })),
     el('div.cloud-hero-text', {},
       el('strong', {}, t('Keep your guides in sync')),
-      el('p.muted', {}, `${t('Back up your guides and pick them up on your other computers.')} ${S.privacy}`),
+      el('p.muted', {}, `${t('Back up your guides and pick them up on your other computers.')}${sentenceGap}${S.privacy}`),
       ...(isWebDAV ? [el('label.cloud-field', {}, el('span', {}, t('Server address')), server), loginFields] : []),
       switching,
       el('div.row', {}, connect, cancel, ...(isWebDAV ? [usePassword] : [])),
@@ -226,7 +226,7 @@ function makeCloudSettings(api, { provider = 'google' } = {}) {
   }) }, t('Sync now'));
   const disconnect = el('button', { type: 'button', onClick: () => run(disconnect, t('Disconnecting…'), async () => {
     await api.cloud.disconnect();
-    say(`${t('Disconnected on this computer. Local guides and the copies {where} are kept.', { where: S.where })} ${S.revoke}`);
+    say(`${t('Disconnected on this computer. Local guides and the copies {where} are kept.', { where: S.where })}${sentenceGap}${S.revoke}`);
   }) }, t('Disconnect'));
   const account = el('div.cloud-account.hidden', {},
     avatar,
@@ -413,7 +413,7 @@ function makeCloudSettings(api, { provider = 'google' } = {}) {
     legendRecovery.value.textContent = formatBytes(summary.recoveryBytes || 0);
     const quota = summary.quota;
     quotaNote.textContent = quota?.limit
-      ? `${t('Uses {percent}% of your {limit} {quota}.', { percent: ((total / quota.limit) * 100).toFixed(total / quota.limit < 0.001 ? 2 : 1), limit: formatBytes(quota.limit), quota: S.quota })} ${S.storage}`
+      ? `${t('Uses {percent}% of your {limit} {quota}.', { percent: ((total / quota.limit) * 100).toFixed(total / quota.limit < 0.001 ? 2 : 1), limit: formatBytes(quota.limit), quota: S.quota })}${sentenceGap}${S.storage}`
       : S.storage;
     prune.textContent = summary.reclaimableBytes ? t('Free up {size}', { size: formatBytes(summary.reclaimableBytes) })
       : summary.fullCount ? t('Free up space') : t('Nothing to free up');
@@ -481,14 +481,14 @@ function makeCloudSettings(api, { provider = 'google' } = {}) {
           el('strong', {}, t('Delete “{title}” from {service}?', { title: guide.title, service: S.name })),
           el('p', {}, `${tn(guide.snapshotCount, 'Its {count} version {where} will be deleted.', 'All {count} versions {where} will be deleted.', { where: S.whereShort })} ${guide.local ? t('The guide stays on this computer and stops syncing.') : t('This guide is not on this computer.')}`),
           el('p.muted', {}, t('Other computers that still sync this guide may upload it again. This cannot be undone.'))),
-        { danger: true, okLabel: t('Delete from {service}', { service: S.short }) });
+        { danger: true, okLabel: S.deleteFrom });
         if (!ok) return;
         await run(remove, t('Deleting…'), async () => {
           await api.cloud.deleteGuideSnapshots({ guideId: guide.guideId });
           say(`${t('Deleted “{title}” from {service}.', { title: guide.title, service: S.name })}${guide.local ? ` ${t('The guide is still on this computer.')}` : ''}`, 'success');
           await refreshLists();
         });
-      } }, t('Delete from {service}', { service: S.short }));
+      } }, S.deleteFrom);
       guideList.append(el('div.cloud-guide', {},
         el('div.cloud-guide-row', {},
           el('div.cloud-guide-icon', { 'aria-hidden': 'true' }, (guide.title || '?').trim().slice(0, 1).toUpperCase() || '?'),

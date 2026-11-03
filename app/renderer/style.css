@@ -80,6 +80,12 @@
   background-clip: content-box;
 }
 ::-webkit-scrollbar-thumb:hover { background: var(--scroll-thumb-hover); background-clip: content-box; }
+/* Respect high-contrast system colors and the native scrollbar hit target. */
+@media (forced-colors: active) {
+  * { scrollbar-width: auto; scrollbar-color: auto; }
+  ::-webkit-scrollbar, ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner,
+  ::-webkit-scrollbar-thumb, ::-webkit-scrollbar-thumb:hover { all: revert; }
+}
 html, body { margin: 0; height: 100%; }
 body {
   font: 13px/1.45 "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, sans-serif;

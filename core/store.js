@@ -14,11 +14,16 @@ const {
 const { sanitizeHtml } = require('./sanitize');
 const { isValidOutline } = require('./step-outline');
 const { toDateOnly } = require('./review');
+const { storedExtension } = require('./image-format');
 
-// A step's screenshot is original.png. Cropping it writes working.png;
-// until then the working path is the original's, so there is one copy.
-const ORIGINAL_FILE = 'original.png';
-const WORKING_FILE = 'working.png';
+// A step's screenshot is original.webp (or original.png, for PNG screenshots
+// and every guide made before WebP storage). Cropping it writes working.*;
+// until then the working path is the original's, so there is one copy. The
+// extension follows the bytes, so a file never has the wrong one.
+const ORIGINAL_BASE = 'original';
+const WORKING_BASE = 'working';
+const imageFileName = (base, buffer) => `${base}.${storedExtension(buffer)}`;
+const baseOfImageFile = (rel) => rel.replace(/\.(png|webp)$/, '');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -313,8 +318,8 @@ class GuideStore {
 
   /**
    * Create a step and append it to the guide's order.
-   * `imageBuffer` (PNG bytes) is optional; when given it is stored as
-   * original.png, which is never changed. A crop goes to working.png.
+   * `imageBuffer` (PNG or WebP bytes) is optional; when given it is stored as
+   * original.<ext>, which is never changed. A crop goes to working.<ext>.
    */
   addStep(guideId, fields = {}, imageBuffer = null, imageSize = null, { position } = {}) {
     const guide = this.getGuide(guideId);
@@ -322,11 +327,12 @@ class GuideStore {
     if (imageBuffer) {
       const dir = this.stepDir(guideId, step.stepId);
       fs.mkdirSync(dir, { recursive: true });
-      atomicWriteFileSync(path.join(dir, ORIGINAL_FILE), imageBuffer);
+      const file = imageFileName(ORIGINAL_BASE, imageBuffer);
+      atomicWriteFileSync(path.join(dir, file), imageBuffer);
       step.kind = 'image';
       step.image = {
-        originalPath: ORIGINAL_FILE,
-        workingPath: ORIGINAL_FILE,
+        originalPath: file,
+        workingPath: file,
         size: imageSize || { width: 0, height: 0 },
       };
     }
@@ -500,11 +506,16 @@ class GuideStore {
       image.workingPath = image.originalPath;
       return unused;
     }
-    if (image.workingPath === image.originalPath) {
-      image.workingPath = image.originalPath === WORKING_FILE ? `crop-${WORKING_FILE}` : WORKING_FILE;
-    }
-    atomicWriteFileSync(path.join(dir, image.workingPath), buffer);
-    return null;
+    const previous = image.workingPath;
+    const shared = previous === image.originalPath;
+    const ext = storedExtension(buffer);
+    // A crop gets its own file; a working file keeps its name unless the format changes.
+    const next = shared
+      ? `${baseOfImageFile(image.originalPath) === WORKING_BASE ? `crop-${WORKING_BASE}` : WORKING_BASE}.${ext}`
+      : `${baseOfImageFile(previous)}.${ext}`;
+    image.workingPath = next;
+    atomicWriteFileSync(path.join(dir, next), buffer);
+    return !shared && next !== previous ? path.join(dir, previous) : null;
   }
 
   /** The image paths on disk, which a caller's copy of the step may predate. */
@@ -530,8 +541,8 @@ class GuideStore {
 
   /**
    * Replace a step's screenshot (Choose image…, and undoing it).
-   * `images.original` becomes original.png; `images.working`, when it
-   * differs, becomes working.png. A step without a screenshot gets one.
+   * `images.original` becomes original.<ext>; `images.working`, when it
+   * differs, becomes working.<ext>. A step without a screenshot gets one.
    * `stepPatch` is saved with it, so text and annotations go in one write.
    */
   replaceImages(guideId, stepId, images, size, stepPatch = null) {
@@ -541,16 +552,56 @@ class GuideStore {
     step.revision = current.revision;
     if (!images?.original && !images?.working) throw new Error('No screenshot to use.');
     if (!step.image) {
-      step.image = { originalPath: ORIGINAL_FILE, workingPath: ORIGINAL_FILE, size };
+      const file = imageFileName(ORIGINAL_BASE, images.original || images.working);
+      step.image = { originalPath: file, workingPath: file, size };
     }
     step.kind = 'image';
     const dir = this.stepDir(guideId, stepId);
     fs.mkdirSync(dir, { recursive: true });
-    if (images.original) atomicWriteFileSync(path.join(dir, step.image.originalPath), images.original);
+    const retired = [];
+    if (images.original) {
+      // The new bytes may be another format, so the file gets its extension.
+      const oldOriginal = step.image.originalPath;
+      const newOriginal = imageFileName(ORIGINAL_BASE, images.original);
+      if (step.image.workingPath === oldOriginal) step.image.workingPath = newOriginal;
+      if (oldOriginal !== newOriginal) retired.push(oldOriginal);
+      step.image.originalPath = newOriginal;
+      atomicWriteFileSync(path.join(dir, newOriginal), images.original);
+    }
     const unused = this.placeWorkingImage(dir, step.image, images.working || images.original);
     step.image.size = size;
     const saved = this.saveStep(guideId, step, { imagePaths: true });
     if (unused) fs.rmSync(unused, { force: true });
+    for (const rel of retired) {
+      if (rel !== saved.image.originalPath && rel !== saved.image.workingPath) fs.rmSync(path.join(dir, rel), { force: true });
+    }
+    return saved;
+  }
+
+  /**
+   * Store new bytes for a step's existing screenshot files, keyed by their
+   * current names (`{ 'original.png': webpBytes }`), used by the optimize
+   * action. Each file is written under its new extension, then step.json
+   * names it. The pixel size must not change; the caller checks that.
+   */
+  rewriteStepImages(guideId, stepId, buffers) {
+    this.getGuide(guideId);
+    const step = this.getStep(guideId, stepId);
+    if (!step.image) throw new Error('step has no image');
+    const dir = this.stepDir(guideId, stepId);
+    const renamed = new Map();
+    for (const [rel, bytes] of Object.entries(buffers)) {
+      const next = imageFileName(baseOfImageFile(rel), bytes);
+      atomicWriteFileSync(path.join(dir, next), bytes);
+      if (next !== rel) renamed.set(rel, next);
+    }
+    const retired = [...renamed.keys()];
+    if (renamed.has(step.image.originalPath)) step.image.originalPath = renamed.get(step.image.originalPath);
+    if (renamed.has(step.image.workingPath)) step.image.workingPath = renamed.get(step.image.workingPath);
+    const saved = this.saveStep(guideId, step, { imagePaths: true });
+    for (const rel of retired) {
+      if (rel !== saved.image.originalPath && rel !== saved.image.workingPath) fs.rmSync(path.join(dir, rel), { force: true });
+    }
     return saved;
   }
 

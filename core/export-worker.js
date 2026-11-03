@@ -14,9 +14,12 @@ const { runExport } = require('../exporters');
 process.on('message', (job) => {
   let payload;
   try {
-    const { dataDir, guideId, format, options, outDir, globals, maxSteps, codeStyle, reviewDays, branding } = job;
+    const { dataDir, guideId, format, options, outDir, globals, maxSteps, codeStyle, reviewDays, branding, preparedImages } = job;
     const store = new GuideStore(dataDir);
-    const ast = buildRenderAst(store, guideId, { globals, maxSteps, codeStyle, reviewDays, branding });
+    // WebP screenshots arrive already decoded to PNG by the main process,
+    // which has the Chromium codec; this helper process has none.
+    const images = new Map((preparedImages || []).map(([file, base64]) => [file, Buffer.from(base64, 'base64')]));
+    const ast = buildRenderAst(store, guideId, { globals, maxSteps, codeStyle, reviewDays, branding, images });
     const result = runExport(format, ast, outDir, options || {});
     payload = { ok: true, result };
   } catch (err) {

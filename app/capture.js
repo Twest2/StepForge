@@ -8,6 +8,7 @@ const { RecordingControls, recordingControlsMode } = require('./recording-contro
 const raster = require('../core/raster');
 const { smartCrop } = require('../core/smart-crop');
 const { encodePng } = require('../core/png');
+const { optimizeScreenshot, getImageCodec } = require('../core/image-format');
 const {
   selectFrameForClick,
   frameUsableForClick,
@@ -2414,6 +2415,7 @@ ${WINDOW_BOUNDS_CS}
       ? smartCrop(frame.size, cropBounds, clickPos, this.settings.get('capture.focusAmount') ?? 1.25) : null;
     await this.settleClickKind(clickMeta);
     const { title, captureMetadata } = await this.buildStepMeta(mode, frame, clickPos, clickMeta);
+    const stored = await this.storeScreenshot(frame.png || frame.image.toPNG());
     const step = this.store.addStep(guideId, {
       title,
       captureMetadata,
@@ -2422,8 +2424,16 @@ ${WINDOW_BOUNDS_CS}
         enabled: Boolean(this.settings.get('editor.focusedViewDefaultForNewSteps')),
         zoom: 1, panX: 0.5, panY: 0.5,
       },
-    }, frame.png || frame.image.toPNG(), frame.size);
+    }, stored, frame.size);
     return { ok: true, step };
+  }
+
+  /** A new capture in the stored form (WebP when the setting asks and it's smaller). */
+  async storeScreenshot(png) {
+    if (this.settings.get('images.format') !== 'webp') return png;
+    return (await optimizeScreenshot(png, {
+      format: 'webp', webpQuality: this.settings.get('images.webpQuality'), codec: getImageCodec(),
+    })).buffer;
   }
 
   autoTitle(mode) {

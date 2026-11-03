@@ -404,8 +404,8 @@ function showBrandProfileEditor(api, data = null) {
     // Colors: a color picker and its hex code, kept in step, editing colors[key].
     // `setters[key]` sets both from code; `onInput` hears the user change it.
     const colorRow = (colors, key, title, desc, { setters = null, onInput = () => {} } = {}) => {
-      const picker = el('input', { type: 'color', value: colors[key].toLowerCase(), 'aria-label': `${title} color` });
-      const hex = el('input.brand-hex', { type: 'text', value: colors[key], maxLength: 7, spellcheck: false, 'aria-label': `${title} color code` });
+      const picker = el('input', { type: 'color', value: colors[key].toLowerCase(), 'aria-label': t('{name} color', { name: title }) });
+      const hex = el('input.brand-hex', { type: 'text', value: colors[key], maxLength: 7, spellcheck: false, 'aria-label': t('{name} color code', { name: title }) });
       picker.addEventListener('input', () => { colors[key] = picker.value.toUpperCase(); hex.value = colors[key]; onInput(); });
       hex.addEventListener('input', () => {
         const v = hex.value.trim();
@@ -468,9 +468,9 @@ function showBrandProfileEditor(api, data = null) {
     // Annotation colors: StepForge's unless the profile turns its own on.
     const ownAnnotations = el('input', { type: 'checkbox', checked: draft.annotations.custom });
     const annotationRows = el('div', { hidden: !draft.annotations.custom },
-      colorRow(draft.annotations, 'shapes', 'Shapes', 'Rectangles, ovals, lines, arrows, text and magnifiers, and the marker on recorded clicks.'),
-      colorRow(draft.annotations, 'numbers', 'Number badges', 'Numbered step markers.'),
-      colorRow(draft.annotations, 'tooltips', 'Tooltips', 'The tooltip bubble. Its text turns black or white to stay readable.'));
+      colorRow(draft.annotations, 'shapes', t('Shapes'), t('Rectangles, ovals, lines, arrows, text and magnifiers, and the marker on recorded clicks.')),
+      colorRow(draft.annotations, 'numbers', t('Number badges'), t('Numbered step markers.')),
+      colorRow(draft.annotations, 'tooltips', t('Tooltips'), t('The tooltip bubble. Its text turns black or white to stay readable.')));
     ownAnnotations.addEventListener('change', () => { draft.annotations.custom = ownAnnotations.checked; annotationRows.hidden = !ownAnnotations.checked; });
 
     // Fonts
@@ -678,9 +678,9 @@ function showBrandProfileEditor(api, data = null) {
         colorRow(draft.colors, 'accent', 'Accent', 'Links and highlights.', { setters: colorSetters, onInput: forgetPick }),
         colorRow(draft.colors, 'text', 'Text', 'Body text.', { setters: colorSetters, onInput: forgetPick }),
         pickRow),
-      settingsCard('Annotation colors',
-        settingRow('Use your own annotation colors', 'Off keeps StepForge’s: red shapes, blue number badges, dark tooltips. New annotations start in these colors; ones already drawn keep theirs.',
-          makeSwitch(ownAnnotations, 'Use your own annotation colors')),
+      settingsCard(t('Annotation colors'),
+        settingRow(t('Use your own annotation colors'), t('Off keeps StepForge’s: red shapes, blue number badges, dark tooltips. New annotations start in these colors; ones already drawn keep theirs.'),
+          makeSwitch(ownAnnotations, t('Use your own annotation colors'))),
         annotationRows),
       settingsCard('Fonts',
         fontRow('heading', 'Headings', 'Titles and step headings.'),

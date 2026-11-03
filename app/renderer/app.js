@@ -557,7 +557,7 @@ class StepForgeApp {
           const rect = e.currentTarget.getBoundingClientRect();
           contextMenu(rect.left, rect.bottom + 4, this.editor.aiMenuItems());
         },
-      }, this.editorMeta?.aiProgress ? `AI · ${this.editorMeta.aiProgress}` : t('AI ▾')),
+      }, this.editorMeta?.aiProgress ? t('AI · {progress}', { progress: this.editorMeta.aiProgress }) : t('AI ▾')),
       el('button', {
         type: 'button',
         onClick: (e) => {

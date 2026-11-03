@@ -191,22 +191,30 @@ function shortDate(iso) {
  * Asks before publishing over a page someone edited on the site since the
  * guide was last published. `edited` is { url, by, when } from the main
  * process; `where` names the site ("in Confluence"), and `history` says
- * where the edited version is kept. Open page leaves the question open.
- * Resolves true to publish anyway.
+ * where the edited version is kept, both already translated. Open page
+ * leaves the question open. Resolves true to publish anyway.
  */
 function confirmReplaceEdits(api, edited, { where, history }) {
-  const by = edited?.by ? ` by ${edited.by}` : '';
+  const by = edited?.by || '';
   const date = shortDate(edited?.when);
+  // One sentence per combination, so each language can order the parts its own way.
+  const edits = by && date
+    ? t('This page was edited {where} by {name} on {date} since you last published. Publishing will replace those edits.', { where, name: by, date })
+    : by
+      ? t('This page was edited {where} by {name} since you last published. Publishing will replace those edits.', { where, name: by })
+      : date
+        ? t('This page was edited {where} on {date} since you last published. Publishing will replace those edits.', { where, date })
+        : t('This page was edited {where} since you last published. Publishing will replace those edits.', { where });
   return new Promise((resolve) => {
     const { close } = openModal({
-      title: 'Page edited since you published',
+      title: t('Page edited since you published'),
       body: el('div.cloud-confirm', {},
-        el('strong', {}, `This page was edited ${where}${by}${date ? ` on ${date}` : ''} since you last published. Publishing will replace those edits.`),
+        el('strong', {}, edits),
         el('p', {}, history)),
       footer: [
-        edited?.url ? el('button', { type: 'button', onClick: () => { void api.shell.openExternal({ url: edited.url }).catch(() => {}); } }, 'Open page') : null,
-        el('button', { type: 'button', onClick: () => { close(); resolve(false); } }, 'Cancel'),
-        el('button.primary', { type: 'button', onClick: () => { close(); resolve(true); } }, 'Publish anyway'),
+        edited?.url ? el('button', { type: 'button', onClick: () => { void api.shell.openExternal({ url: edited.url }).catch(() => {}); } }, t('Open page')) : null,
+        el('button', { type: 'button', onClick: () => { close(); resolve(false); } }, t('Cancel')),
+        el('button.primary', { type: 'button', onClick: () => { close(); resolve(true); } }, t('Publish anyway')),
       ].filter(Boolean),
       onClose: () => resolve(false),
     });
@@ -315,13 +323,15 @@ function formatBytes(bytes) {
 /** Wording for a live cloud transfer ({ direction, name, loaded, total, bytesPerSecond }). */
 function describeTransfer(transfer) {
   const percent = transfer.total ? Math.min(100, Math.floor((transfer.loaded / transfer.total) * 100)) : 0;
-  const amount = `${formatBytes(transfer.loaded)} of ${formatBytes(transfer.total)}`;
+  const parts = { name: transfer.name || t('guide'), loaded: formatBytes(transfer.loaded), total: formatBytes(transfer.total) };
   const rate = transfer.bytesPerSecond ? `${formatBytes(transfer.bytesPerSecond)}/s` : '';
-  const verb = transfer.direction === 'upload' ? 'Uploading' : 'Downloading';
+  const progress = transfer.direction === 'upload'
+    ? t('Uploading “{name}” — {loaded} of {total}', parts)
+    : t('Downloading “{name}” — {loaded} of {total}', parts);
   return {
     percent,
     arrow: transfer.direction === 'upload' ? '↑' : '↓',
     compact: `${formatBytes(transfer.loaded)} / ${formatBytes(transfer.total)}`,
-    detail: `${verb} “${transfer.name || 'guide'}” — ${amount}${rate ? ` · ${rate}` : ''}`,
+    detail: `${progress}${rate ? ` · ${rate}` : ''}`,
   };
 }

@@ -190,3 +190,16 @@ test('after a guide reload, the toolbar shows the editor state, not the last but
   await editor.reload();
   assertToolbar(editor, { tool: 'select', zoom: 'fit' });
 });
+
+test('zoom shortcuts never leave a stale preset highlighted at a custom zoom', async () => {
+  const editor = makeEditor(GUIDES);
+  await editor.open('g1');
+  editor.applyZoomShortcut('in');
+  assertToolbar(editor, { tool: 'select', zoom: 1.25 });
+  editor.applyZoomShortcut('in');
+  assertToolbar(editor, { tool: 'select', zoom: 1.5 });
+  editor.applyZoomShortcut('in');
+  assertToolbar(editor, { tool: 'select', zoom: 1.75 });
+  editor.applyZoomShortcut('fit');
+  assertToolbar(editor, { tool: 'select', zoom: 'fit' });
+});

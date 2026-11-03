@@ -8,44 +8,44 @@
  */
 const CLOUD_SERVICES = {
   google: {
-    name: 'Google Drive', short: 'Drive', replace: 'Replace Drive', where: 'in Google Drive', whereShort: 'in Drive', icon: 'google-drive.svg',
-    account: 'Google account', signIn: 'Sign in with Google', waiting: 'Waiting for Google…',
-    description: 'Back up and sync guides between your computers.',
-    hint: 'Choose your Google account in the browser and allow StepForge to store its guides, then return here.',
-    privacy: 'They are stored in a private app folder only StepForge can see — not your My Drive files.',
-    storage: 'Stored in a hidden app folder, so it won’t appear in your Drive file list.',
-    quota: 'Google storage',
-    revoke: 'You can also revoke access in your Google account.',
+    name: 'Google Drive', short: 'Drive', replace: t('Replace Drive'), replaceWith: t('Replace Drive with this computer'), deleteFrom: t('Delete from Drive'), where: t('in Google Drive'), whereShort: t('in Drive'), icon: 'google-drive.svg',
+    account: t('Google account'), signIn: t('Sign in with Google'), waiting: t('Waiting for Google…'),
+    description: t('Back up and sync guides between your computers.'),
+    hint: t('Choose your Google account in the browser and allow StepForge to store its guides, then return here.'),
+    privacy: t('They are stored in a private app folder only StepForge can see — not your My Drive files.'),
+    storage: t('Stored in a hidden app folder, so it won’t appear in your Drive file list.'),
+    quota: t('Google storage'),
+    revoke: t('You can also revoke access in your Google account.'),
   },
   onedrive: {
-    name: 'OneDrive', short: 'OneDrive', replace: 'Replace OneDrive', where: 'in OneDrive', whereShort: 'in OneDrive', icon: 'onedrive.svg',
-    account: 'Microsoft account', signIn: 'Sign in with Microsoft', waiting: 'Waiting for Microsoft…',
-    description: 'Back up and sync guides with your Microsoft account.',
-    hint: 'Choose your Microsoft account in the browser and allow StepForge to use its app folder, then return here.',
-    privacy: 'StepForge only gets its own folder, Apps/StepForge, and can’t see anything else in your OneDrive. Personal, work and school accounts all work.',
-    storage: 'Stored in Apps/StepForge in your OneDrive. Leave the files there as they are; StepForge manages them.',
-    quota: 'OneDrive storage',
-    revoke: 'You can also remove StepForge’s access in your Microsoft account under Privacy → Apps and services.',
+    name: 'OneDrive', short: 'OneDrive', replace: t('Replace OneDrive'), replaceWith: t('Replace OneDrive with this computer'), deleteFrom: t('Delete from OneDrive'), where: t('in OneDrive'), whereShort: t('in OneDrive'), icon: 'onedrive.svg',
+    account: t('Microsoft account'), signIn: t('Sign in with Microsoft'), waiting: t('Waiting for Microsoft…'),
+    description: t('Back up and sync guides with your Microsoft account.'),
+    hint: t('Choose your Microsoft account in the browser and allow StepForge to use its app folder, then return here.'),
+    privacy: t('StepForge only gets its own folder, Apps/StepForge, and can’t see anything else in your OneDrive. Personal, work and school accounts all work.'),
+    storage: t('Stored in Apps/StepForge in your OneDrive. Leave the files there as they are; StepForge manages them.'),
+    quota: t('OneDrive storage'),
+    revoke: t('You can also remove StepForge’s access in your Microsoft account under Privacy → Apps and services.'),
   },
   dropbox: {
-    name: 'Dropbox', short: 'Dropbox', replace: 'Replace Dropbox', where: 'in Dropbox', whereShort: 'in Dropbox', icon: 'dropbox.svg',
-    account: 'Dropbox account', signIn: 'Sign in with Dropbox', waiting: 'Waiting for Dropbox…',
-    description: 'Back up and sync guides with your Dropbox.',
-    hint: 'Sign in to Dropbox in the browser and allow StepForge to use its app folder, then return here.',
-    privacy: 'StepForge only gets its own folder, Apps/StepForge, and can’t see anything else in your Dropbox.',
-    storage: 'Stored in Apps/StepForge in your Dropbox. Leave the files there as they are; StepForge manages them.',
-    quota: 'Dropbox storage',
-    revoke: 'You can also remove StepForge in Dropbox under Settings → Connected apps.',
+    name: 'Dropbox', short: 'Dropbox', replace: t('Replace Dropbox'), replaceWith: t('Replace Dropbox with this computer'), deleteFrom: t('Delete from Dropbox'), where: t('in Dropbox'), whereShort: t('in Dropbox'), icon: 'dropbox.svg',
+    account: t('Dropbox account'), signIn: t('Sign in with Dropbox'), waiting: t('Waiting for Dropbox…'),
+    description: t('Back up and sync guides with your Dropbox.'),
+    hint: t('Sign in to Dropbox in the browser and allow StepForge to use its app folder, then return here.'),
+    privacy: t('StepForge only gets its own folder, Apps/StepForge, and can’t see anything else in your Dropbox.'),
+    storage: t('Stored in Apps/StepForge in your Dropbox. Leave the files there as they are; StepForge manages them.'),
+    quota: t('Dropbox storage'),
+    revoke: t('You can also remove StepForge in Dropbox under Settings → Connected apps.'),
   },
   webdav: {
-    name: 'Nextcloud', short: 'the server', replace: 'Replace the server’s copies', where: 'on your server', whereShort: 'on the server', icon: 'nextcloud.svg',
-    account: 'Nextcloud account', signIn: 'Sign in', waiting: 'Waiting for sign-in…',
-    description: 'Sync with your own Nextcloud or any WebDAV server.',
-    hint: 'Log in to Nextcloud in the browser and grant access, then return here.',
-    privacy: 'Works with Nextcloud, ownCloud and any WebDAV server. StepForge keeps its files in a StepForge folder in your account.',
-    storage: 'Stored in the StepForge folder of your account. Leave the files there as they are; StepForge manages them.',
-    quota: 'storage',
-    revoke: 'On Nextcloud you can also revoke StepForge’s app password under Settings → Security.',
+    name: 'Nextcloud', short: t('the server'), replace: t('Replace the server’s copies'), replaceWith: t('Replace the server’s copies with this computer’s'), deleteFrom: t('Delete from the server'), where: t('on your server'), whereShort: t('on the server'), icon: 'nextcloud.svg',
+    account: t('Nextcloud account'), signIn: t('Sign in'), waiting: t('Waiting for sign-in…'),
+    description: t('Sync with your own Nextcloud or any WebDAV server.'),
+    hint: t('Log in to Nextcloud in the browser and grant access, then return here.'),
+    privacy: t('Works with Nextcloud, ownCloud and any WebDAV server. StepForge keeps its files in a StepForge folder in your account.'),
+    storage: t('Stored in the StepForge folder of your account. Leave the files there as they are; StepForge manages them.'),
+    quota: t('storage'),
+    revoke: t('On Nextcloud you can also revoke StepForge’s app password under Settings → Security.'),
   },
 };
 
@@ -63,28 +63,27 @@ function makeCloudSettings(api, { provider = 'google' } = {}) {
     return id ? CLOUD_SERVICES[id] || null : null;
   };
   const PHASES = {
-    off: ['idle', 'Auto-sync is paused'],
-    synced: ['ok', 'Up to date'],
-    syncing: ['busy', 'Syncing…'],
-    pending: ['warn', 'Changes waiting to sync'],
-    error: ['error', 'Needs attention'],
-    disconnected: ['error', 'Sign in again'],
+    off: ['idle', t('Auto-sync is paused')],
+    synced: ['ok', t('Up to date')],
+    syncing: ['busy', t('Syncing…')],
+    pending: ['warn', t('Changes waiting to sync')],
+    error: ['error', t('Needs attention')],
+    disconnected: ['error', t('Sign in again')],
   };
   const formatWhen = (iso) => {
     const date = iso ? new Date(iso) : null;
     return date && !Number.isNaN(date.getTime())
       ? date.toLocaleString(dateLocale, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
-      : 'Date unavailable';
+      : t('Date unavailable');
   };
   const timeAgo = (iso) => {
     const seconds = (Date.now() - new Date(iso).getTime()) / 1000;
     if (!(seconds >= 0)) return '';
-    if (seconds < 60) return 'just now';
-    if (seconds < 3600) return `${Math.round(seconds / 60)} min ago`;
-    if (seconds < 86400) return `${Math.round(seconds / 3600)} hr ago`;
+    if (seconds < 60) return t('just now');
+    if (seconds < 3600) return t('{count} min ago', { count: Math.round(seconds / 60) });
+    if (seconds < 86400) return t('{count} hr ago', { count: Math.round(seconds / 3600) });
     return formatWhen(iso);
   };
-  const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
   // Previous versions or unused files to remove, or full copies to convert.
   const canFreeUp = (summary) => Boolean(summary && (summary.pruneCount || summary.fullCount || summary.reclaimableBytes));
 
@@ -124,25 +123,25 @@ function makeCloudSettings(api, { provider = 'google' } = {}) {
 
   /* Signed-out view */
   // Nextcloud and WebDAV need the server's address, and WebDAV a login.
-  const server = isWebDAV ? el('input', { type: 'url', placeholder: 'cloud.example.com', autocomplete: 'url', spellcheck: false, 'aria-label': 'Server address' }) : null;
-  const username = isWebDAV ? el('input', { type: 'text', autocomplete: 'username', spellcheck: false, 'aria-label': 'User name' }) : null;
-  const password = isWebDAV ? el('input', { type: 'password', autocomplete: 'current-password', 'aria-label': 'Password or app password' }) : null;
+  const server = isWebDAV ? el('input', { type: 'url', placeholder: 'cloud.example.com', autocomplete: 'url', spellcheck: false, 'aria-label': t('Server address') }) : null;
+  const username = isWebDAV ? el('input', { type: 'text', autocomplete: 'username', spellcheck: false, 'aria-label': t('User name') }) : null;
+  const password = isWebDAV ? el('input', { type: 'password', autocomplete: 'current-password', 'aria-label': t('Password or app password') }) : null;
   const loginFields = isWebDAV ? el('div.cloud-login.hidden', {},
-    el('label.cloud-field', {}, el('span', {}, 'User name'), username),
-    el('label.cloud-field', {}, el('span', {}, 'Password or app password'), password),
-    el('p.muted', {}, 'If your server offers app passwords, create one for StepForge and use it here instead of your main password.')) : null;
+    el('label.cloud-field', {}, el('span', {}, t('User name')), username),
+    el('label.cloud-field', {}, el('span', {}, t('Password or app password')), password),
+    el('p.muted', {}, t('If your server offers app passwords, create one for StepForge and use it here instead of your main password.'))) : null;
   const usePassword = isWebDAV ? el('button.link', { type: 'button', onClick: () => {
     loginFields.classList.remove('hidden');
     usePassword.classList.add('hidden');
-  } }, 'Use a user name and password instead') : null;
+  } }, t('Use a user name and password instead')) : null;
   const signIn = async () => {
     const other = otherService(current);
     if (other) {
       const ok = await confirmDialog(el('div.cloud-confirm', {},
-        el('strong', {}, `Sync with ${S.name} instead of ${other.name}?`),
-        el('p', {}, `StepForge syncs with one account at a time, so signing in here disconnects ${other.name} on this computer.`),
-        el('p.muted', {}, `Your guides stay on this computer, and everything already ${other.where} stays there. Other computers keep syncing with ${other.name} until you switch them too.`)),
-      { okLabel: `Switch to ${S.name}` });
+        el('strong', {}, t('Sync with {service} instead of {other}?', { service: S.name, other: other.name })),
+        el('p', {}, t('StepForge syncs with one account at a time, so signing in here disconnects {other} on this computer.', { other: other.name })),
+        el('p.muted', {}, t('Your guides stay on this computer, and everything already {where} stays there. Other computers keep syncing with {other} until you switch them too.', { where: other.where, other: other.name }))),
+      { okLabel: t('Switch to {service}', { service: S.name }) });
       if (!ok) return;
     }
     await run(connect, S.waiting, async () => {
@@ -151,7 +150,7 @@ function makeCloudSettings(api, { provider = 'google' } = {}) {
         request.server = server.value.trim();
         if (!loginFields.classList.contains('hidden')) Object.assign(request, { username: username.value.trim(), password: password.value });
       }
-      say(isWebDAV && request.username ? 'Signing in…' : S.hint);
+      say(isWebDAV && request.username ? t('Signing in…') : S.hint);
       signingIn = true;
       cancel.classList.remove('hidden');
       linkHelp.classList.toggle('hidden', Boolean(isWebDAV && request.username));
@@ -162,35 +161,34 @@ function makeCloudSettings(api, { provider = 'google' } = {}) {
           if (result.server) server.value = result.server;
           loginFields.classList.remove('hidden');
           usePassword.classList.add('hidden');
-          say('This server isn’t Nextcloud, so enter its WebDAV user name and password. The address should be your WebDAV folder.', 'info');
+          say(t('This server isn’t Nextcloud, so enter its WebDAV user name and password. The address should be your WebDAV folder.'), 'info');
           return;
         }
         if (password) password.value = '';
-        say('Connected. Your guides will sync automatically.', 'success');
+        say(t('Connected. Your guides will sync automatically.'), 'success');
         await refreshLists();
       } finally { signingIn = false; cancel.classList.add('hidden'); linkHelp.classList.add('hidden'); }
     });
   };
   const connect = el('button.primary', { type: 'button', onClick: signIn }, S.signIn);
-  const cancel = el('button.hidden', { type: 'button', onClick: () => api.cloud.cancel().catch((err) => say(err.message, 'error')) }, 'Cancel sign-in');
+  const cancel = el('button.hidden', { type: 'button', onClick: () => api.cloud.cancel().catch((err) => say(err.message, 'error')) }, t('Cancel sign-in'));
   // For when the browser didn't open, or opened the wrong one.
-  const linkHelp = el('p.cloud-signin-help.muted.hidden', {}, 'Browser didn’t open? ',
-    el('button.link', { type: 'button', onClick: () => api.cloud.openSignInLink().catch((err) => say(err.message, 'error')) }, 'Open it again'),
-    ' or ',
-    el('button.link', { type: 'button', onClick: async () => {
+  const linkHelp = el('p.cloud-signin-help.muted.hidden', {}, ...fillNodes(t('Browser didn’t open? {open} or {copy}.'), {
+    open: el('button.link', { type: 'button', onClick: () => api.cloud.openSignInLink().catch((err) => say(err.message, 'error')) }, t('Open it again')),
+    copy: el('button.link', { type: 'button', onClick: async () => {
       try {
-        if ((await api.cloud.copySignInLink())?.ok) say('Sign-in link copied. Paste it into your browser’s address bar, then come back here.');
+        if ((await api.cloud.copySignInLink())?.ok) say(t('Sign-in link copied. Paste it into your browser’s address bar, then come back here.'));
       } catch (err) { say(err.message, 'error'); }
-    } }, 'copy the sign-in link'),
-    '.');
-  const unavailable = el('p.muted.hidden', {}, `${S.name} sign-in is unavailable in this build of StepForge.`);
+    } }, t('copy the sign-in link')),
+  }));
+  const unavailable = el('p.muted.hidden', {}, t('{service} sign-in is unavailable in this build of StepForge.', { service: S.name }));
   const switching = el('p.cloud-note.hidden', {}, '');
   const signedOut = el('div.cloud-hero', {},
     el('div.cloud-hero-icon', { 'aria-hidden': 'true' }, el('img', { src: `../assets/icons/${S.icon}`, alt: '' })),
     el('div.cloud-hero-text', {},
-      el('strong', {}, 'Keep your guides in sync'),
-      el('p.muted', {}, `Back up your guides and pick them up on your other computers. ${S.privacy}`),
-      ...(isWebDAV ? [el('label.cloud-field', {}, el('span', {}, 'Server address'), server), loginFields] : []),
+      el('strong', {}, t('Keep your guides in sync')),
+      el('p.muted', {}, `${t('Back up your guides and pick them up on your other computers.')}${sentenceGap}${S.privacy}`),
+      ...(isWebDAV ? [el('label.cloud-field', {}, el('span', {}, t('Server address')), server), loginFields] : []),
       switching,
       el('div.row', {}, connect, cancel, ...(isWebDAV ? [usePassword] : [])),
       linkHelp,
@@ -218,23 +216,23 @@ function makeCloudSettings(api, { provider = 'google' } = {}) {
   const lastSync = el('span.muted', {}, '');
   const transferFill = el('span.cloud-meter-seg.latest', { style: {} });
   const transferText = el('span.muted', {}, '');
-  const transferBar = el('div.cloud-meter', { role: 'progressbar', 'aria-label': `${S.name} transfer`, 'aria-valuemin': '0', 'aria-valuemax': '100' }, transferFill);
+  const transferBar = el('div.cloud-meter', { role: 'progressbar', 'aria-label': t('{service} transfer', { service: S.name }), 'aria-valuemin': '0', 'aria-valuemax': '100' }, transferFill);
   const transferRow = el('div.cloud-transfer.hidden', {}, transferBar, transferText);
-  const enabled = el('input', { type: 'checkbox', 'aria-label': 'Automatically sync guides' });
-  const sync = el('button', { type: 'button', onClick: () => run(sync, 'Syncing…', async () => {
+  const enabled = el('input', { type: 'checkbox', 'aria-label': t('Automatically sync guides') });
+  const sync = el('button', { type: 'button', onClick: () => run(sync, t('Syncing…'), async () => {
     const result = await api.cloud.sync();
     say(result.message, result.phase === 'error' ? 'error' : result.phase === 'synced' ? 'success' : 'info');
     await refreshLists();
-  }) }, 'Sync now');
-  const disconnect = el('button', { type: 'button', onClick: () => run(disconnect, 'Disconnecting…', async () => {
+  }) }, t('Sync now'));
+  const disconnect = el('button', { type: 'button', onClick: () => run(disconnect, t('Disconnecting…'), async () => {
     await api.cloud.disconnect();
-    say(`Disconnected on this computer. Local guides and the copies ${S.where} are kept. ${S.revoke}`);
-  }) }, 'Disconnect');
+    say(`${t('Disconnected on this computer. Local guides and the copies {where} are kept.', { where: S.where })}${sentenceGap}${S.revoke}`);
+  }) }, t('Disconnect'));
   const account = el('div.cloud-account.hidden', {},
     avatar,
     el('div.cloud-account-info', {}, email, el('div.cloud-status-line', {}, dot, phaseText, lastSync), transferRow),
     el('div.cloud-account-actions', {},
-      el('label.switch', { title: 'Automatically sync guides' }, enabled, el('span.switch-track', { 'aria-hidden': 'true' }), 'Auto-sync'),
+      el('label.switch', { title: t('Automatically sync guides') }, enabled, el('span.switch-track', { 'aria-hidden': 'true' }), t('Auto-sync')),
       sync, disconnect),
   );
 
@@ -247,58 +245,60 @@ function makeCloudSettings(api, { provider = 'google' } = {}) {
     const value = el('span.cloud-legend-value', {}, '—');
     return { value, node: el('div.cloud-legend-item', {}, el(`span.cloud-swatch.${kind}`), el('span', {}, label), value) };
   };
-  const legendLatest = legendItem('latest', 'Latest versions');
-  const legendPrevious = legendItem('previous', 'Previous versions');
-  const legendRecovery = legendItem('recovery', 'Deleted-guide recovery');
+  const legendLatest = legendItem('latest', t('Latest versions'));
+  const legendPrevious = legendItem('previous', t('Previous versions'));
+  const legendRecovery = legendItem('recovery', t('Deleted-guide recovery'));
   const quotaNote = el('p.muted', {}, S.storage);
   const prune = el('button', { type: 'button', disabled: true, onClick: async () => {
     if (busy || disposed || !lastStorage) return;
     const { pruneCount = 0, fullCount = 0, reclaimableBytes = 0 } = lastStorage;
     // replaceChildren() would print a skipped (null) item as "null".
     const ok = await confirmDialog(el('div.cloud-confirm', {}, ...[
-      el('strong', {}, reclaimableBytes ? `Free up ${formatBytes(reclaimableBytes)}?` : `Free up space ${S.where}?`),
-      pruneCount ? el('p', {}, `This removes ${plural(pruneCount, 'previous version')} ${S.where.replace(/^(in|on) /, 'from ')}. The latest version of every guide is always kept.`) : null,
-      fullCount ? el('p', {}, `It also switches ${plural(fullCount, 'guide version')} saved as full copies to space-saving versions, so later versions only store what changed. Each one is downloaded and uploaded once.`) : null,
-      pruneCount ? el('p.muted', {}, 'Removed versions can no longer be restored. This cannot be undone.') : null,
+      el('strong', {}, reclaimableBytes ? t('Free up {size}?', { size: formatBytes(reclaimableBytes) }) : t('Free up space {where}?', { where: S.where })),
+      pruneCount ? el('p', {}, tn(pruneCount, 'This removes {count} previous version {where}. The latest version of every guide is always kept.',
+        'This removes {count} previous versions {where}. The latest version of every guide is always kept.', { where: S.where })) : null,
+      fullCount ? el('p', {}, tn(fullCount, 'It also switches {count} guide version saved as a full copy to a space-saving version, so later versions only store what changed. It is downloaded and uploaded once.',
+        'It also switches {count} guide versions saved as full copies to space-saving versions, so later versions only store what changed. Each one is downloaded and uploaded once.')) : null,
+      pruneCount ? el('p.muted', {}, t('Removed versions can no longer be restored. This cannot be undone.')) : null,
     ].filter(Boolean)),
-    { danger: pruneCount > 0, okLabel: 'Free up space' });
+    { danger: pruneCount > 0, okLabel: t('Free up space') });
     if (!ok) return;
-    await run(prune, 'Freeing up space…', async () => {
+    await run(prune, t('Freeing up space…'), async () => {
       const result = await api.cloud.prune();
-      const converted = result.converted ? ` ${plural(result.converted, 'guide version')} now ${result.converted === 1 ? 'stores' : 'store'} only what changes.` : '';
-      say(`Removed ${plural(result.pruned, 'previous version')} and freed ${formatBytes(result.reclaimedBytes)}.${converted}`, 'success');
+      const converted = result.converted ? ` ${tn(result.converted, '{count} guide version now stores only what changes.', '{count} guide versions now store only what changes.')}` : '';
+      say(`${tn(result.pruned, 'Removed {count} previous version and freed {size}.', 'Removed {count} previous versions and freed {size}.', { size: formatBytes(result.reclaimedBytes) })}${converted}`, 'success');
       await refreshLists();
     });
-  } }, 'Free up space');
+  } }, t('Free up space'));
   const storageCard = el('section.cloud-card', {},
-    el('header.cloud-card-head', {}, el('h4', {}, 'Storage'), storageTotal),
-    el('div.cloud-meter', { role: 'img', 'aria-label': `${S.name} storage used by StepForge` }, segLatest, segPrevious, segRecovery),
+    el('header.cloud-card-head', {}, el('h4', {}, t('Storage')), storageTotal),
+    el('div.cloud-meter', { role: 'img', 'aria-label': t('{service} storage used by StepForge', { service: S.name }) }, segLatest, segPrevious, segRecovery),
     el('div.cloud-legend', {}, legendLatest.node, legendPrevious.node, legendRecovery.node),
     el('div.cloud-card-foot', {}, quotaNote, prune),
   );
 
   /* Guides card */
   const guideCount = el('span.cloud-card-meta', {}, '');
-  const guideList = el('div.cloud-guide-list', {}, el('p.muted', {}, 'Loading guides…'));
-  const refresh = el('button', { type: 'button', title: `Reload from ${S.name}`, onClick: () => run(refresh, 'Refreshing…', refreshLists) }, 'Refresh');
+  const guideList = el('div.cloud-guide-list', {}, el('p.muted', {}, t('Loading guides…')));
+  const refresh = el('button', { type: 'button', title: t('Reload from {service}', { service: S.name }), onClick: () => run(refresh, t('Refreshing…'), refreshLists) }, t('Refresh'));
   const guidesCard = el('section.cloud-card', {},
-    el('header.cloud-card-head', {}, el('h4', {}, `Guides ${S.whereShort}`), guideCount, refresh),
-    el('p.muted', {}, 'Each guide keeps its latest version and up to two previous versions you can restore. To stop syncing one guide, turn off sharing in its Guide information.'),
+    el('header.cloud-card-head', {}, el('h4', {}, t('Guides {where}', { where: S.whereShort })), guideCount, refresh),
+    el('p.muted', {}, t('Each guide keeps its latest version and up to two previous versions you can restore. To stop syncing one guide, turn off sharing in its Guide information.')),
     guideList,
   );
 
   /* Deleted guides */
   const deletedCount = el('span.cloud-count', {}, '0');
-  const deletedList = el('div.cloud-guide-list', {}, el('p.muted', {}, 'No recently deleted guides.'));
+  const deletedList = el('div.cloud-guide-list', {}, el('p.muted', {}, t('No recently deleted guides.')));
   const deletedCard = el('details.cloud-card.cloud-collapsible', {},
-    el('summary', {}, el('h4', {}, 'Recently deleted'), deletedCount),
-    el('p.muted', {}, `Guides deleted from a synced library are removed from your other computers. One recovery copy stays ${S.whereShort} until you restore it or delete it permanently.`),
+    el('summary', {}, el('h4', {}, t('Recently deleted')), deletedCount),
+    el('p.muted', {}, t('Guides deleted from a synced library are removed from your other computers. One recovery copy stays {where} until you restore it or delete it permanently.', { where: S.whereShort })),
     deletedList,
   );
 
   /* Advanced */
   const testResults = el('ul.cloud-checks.hidden');
-  const test = el('button', { type: 'button', onClick: () => run(test, 'Testing…', async () => {
+  const test = el('button', { type: 'button', onClick: () => run(test, t('Testing…'), async () => {
     testResults.replaceChildren();
     testResults.classList.add('hidden');
     const result = await api.cloud.test();
@@ -307,35 +307,36 @@ function makeCloudSettings(api, { provider = 'google' } = {}) {
       return el(`li.${failed ? 'fail' : 'pass'}`, {}, el('span.cloud-check-icon', { 'aria-hidden': 'true' }, failed ? '✕' : '✓'), line.replace(/: passed$/, ''));
     }));
     testResults.classList.remove('hidden');
-    say(result.ok ? 'Connection test passed.' : 'Connection test needs attention.', result.ok ? 'success' : 'error');
-  }) }, 'Test connection');
+    say(result.ok ? t('Connection test passed.') : t('Connection test needs attention.'), result.ok ? 'success' : 'error');
+  }) }, t('Test connection'));
   const replace = el('button.danger', { type: 'button', onClick: async () => {
     if (busy || disposed) return;
-    if (!current.enabled) { say(`Turn on auto-sync before replacing what’s ${S.where} with this computer’s guides.`, 'error'); return; }
+    if (!current.enabled) { say(t('Turn on auto-sync before replacing what’s {where} with this computer’s guides.', { where: S.where }), 'error'); return; }
     const cloudOnly = lastGuides.filter((guide) => !guide.local).length;
     const ok = await confirmDialog(el('div.cloud-confirm', {},
-      el('strong', {}, 'Make this computer the source of truth?'),
-      el('p', {}, `Everything StepForge stored ${S.where} is deleted, including previous versions and deleted-guide recovery copies. Then the guides on this computer are uploaded as the only copies.`),
-      cloudOnly ? el('p', {}, `${plural(cloudOnly, 'guide')} ${S.whereShort} ${cloudOnly === 1 ? 'is' : 'are'} not on this computer and will be removed. Your other computers move ${cloudOnly === 1 ? 'it' : 'them'} to their trash.`) : null,
-      el('p.muted', {}, 'This cannot be undone.')),
+      el('strong', {}, t('Make this computer the source of truth?')),
+      el('p', {}, t('Everything StepForge stored {where} is deleted, including previous versions and deleted-guide recovery copies. Then the guides on this computer are uploaded as the only copies.', { where: S.where })),
+      cloudOnly ? el('p', {}, tn(cloudOnly, '{count} guide {where} is not on this computer and will be removed. Your other computers move it to their trash.',
+        '{count} guides {where} are not on this computer and will be removed. Your other computers move them to their trash.', { where: S.whereShort })) : null,
+      el('p.muted', {}, t('This cannot be undone.'))),
     { danger: true, okLabel: S.replace });
     if (!ok) return;
-    await run(replace, 'Replacing…', async () => {
+    await run(replace, t('Replacing…'), async () => {
       const result = await api.cloud.replaceCloudWithLocal();
-      say(`${S.name} now matches this computer. ${plural(result.uploading, 'guide')} uploaded.`, 'success');
+      say(`${t('{service} now matches this computer.', { service: S.name })} ${tn(result.uploading, '{count} guide uploaded.', '{count} guides uploaded.')}`, 'success');
       await refreshLists();
     });
-  } }, `${S.replace} with this computer`);
+  } }, S.replaceWith);
   const advancedCard = el('details.cloud-card.cloud-collapsible', {},
-    el('summary', {}, el('h4', {}, 'Advanced')),
+    el('summary', {}, el('h4', {}, t('Advanced'))),
     el('div.cloud-setting', {},
-      el('div', {}, el('strong', {}, 'Test connection'),
-        el('p.muted', {}, 'Checks sign-in, storage access, and a temporary upload and download. No guides are uploaded.')),
+      el('div', {}, el('strong', {}, t('Test connection')),
+        el('p.muted', {}, t('Checks sign-in, storage access, and a temporary upload and download. No guides are uploaded.'))),
       test),
     testResults,
     el('div.cloud-setting.cloud-danger', {},
-      el('div', {}, el('strong', {}, 'Use this computer as the source of truth'),
-        el('p.muted', {}, `Deletes everything StepForge stored ${S.where} and replaces it with the guides on this computer.`)),
+      el('div', {}, el('strong', {}, t('Use this computer as the source of truth')),
+        el('p.muted', {}, t('Deletes everything StepForge stored {where} and replaces it with the guides on this computer.', { where: S.where }))),
       replace),
   );
 
@@ -353,7 +354,7 @@ function makeCloudSettings(api, { provider = 'google' } = {}) {
     unavailable.classList.toggle('hidden', available);
     connect.disabled = busy || connected || !available;
     const other = connected ? null : otherService(next);
-    switching.textContent = other ? `You’re syncing with ${other.name} now. StepForge syncs with one account at a time, so signing in here switches this computer to ${S.name}.` : '';
+    switching.textContent = other ? t('You’re syncing with {other} now. StepForge syncs with one account at a time, so signing in here switches this computer to {service}.', { other: other.name, service: S.name }) : '';
     switching.classList.toggle('hidden', !other);
     enabled.checked = Boolean(next.enabled);
     enabled.disabled = busy || !connected;
@@ -385,7 +386,7 @@ function makeCloudSettings(api, { provider = 'google' } = {}) {
     dot.className = `cloud-dot ${tone}`;
     phaseText.textContent = label;
     phaseText.title = next.error || next.message || '';
-    lastSync.textContent = next.lastSync && tone !== 'busy' ? ` · Last synced ${timeAgo(next.lastSync)}` : '';
+    lastSync.textContent = next.lastSync && tone !== 'busy' ? ` · ${t('Last synced {when}', { when: timeAgo(next.lastSync) })}` : '';
     transferRow.classList.toggle('hidden', !next.transfer);
     if (next.transfer) {
       const { percent, detail } = describeTransfer(next.transfer);
@@ -402,7 +403,7 @@ function makeCloudSettings(api, { provider = 'google' } = {}) {
   const renderStorage = (summary) => {
     lastStorage = summary;
     const total = summary.bytes || 0;
-    storageTotal.textContent = `${formatBytes(total)} used`;
+    storageTotal.textContent = t('{size} used', { size: formatBytes(total) });
     const pct = (value) => `${total ? Math.max(value ? 2 : 0, (value / total) * 100) : 0}%`;
     segLatest.style.width = pct(summary.latestBytes || 0);
     segPrevious.style.width = pct(summary.previousBytes || 0);
@@ -412,10 +413,10 @@ function makeCloudSettings(api, { provider = 'google' } = {}) {
     legendRecovery.value.textContent = formatBytes(summary.recoveryBytes || 0);
     const quota = summary.quota;
     quotaNote.textContent = quota?.limit
-      ? `Uses ${((total / quota.limit) * 100).toFixed(total / quota.limit < 0.001 ? 2 : 1)}% of your ${formatBytes(quota.limit)} ${S.quota}. ${S.storage}`
+      ? `${t('Uses {percent}% of your {limit} {quota}.', { percent: ((total / quota.limit) * 100).toFixed(total / quota.limit < 0.001 ? 2 : 1), limit: formatBytes(quota.limit), quota: S.quota })}${sentenceGap}${S.storage}`
       : S.storage;
-    prune.textContent = summary.reclaimableBytes ? `Free up ${formatBytes(summary.reclaimableBytes)}`
-      : summary.fullCount ? 'Free up space' : 'Nothing to free up';
+    prune.textContent = summary.reclaimableBytes ? t('Free up {size}', { size: formatBytes(summary.reclaimableBytes) })
+      : summary.fullCount ? t('Free up space') : t('Nothing to free up');
     prune.disabled = busy || !canFreeUp(summary);
   };
 
@@ -425,27 +426,27 @@ function makeCloudSettings(api, { provider = 'google' } = {}) {
     catch (err) { if (!disposed) host.replaceChildren(el('p.muted', {}, err.message)); return; }
     if (disposed) return;
     host.replaceChildren();
-    if (!versions.length) { host.append(el('p.muted', {}, 'No versions remain. Refresh the list.')); return; }
+    if (!versions.length) { host.append(el('p.muted', {}, t('No versions remain. Refresh the list.'))); return; }
     for (const [index, version] of versions.entries()) {
       const restore = el('button', { type: 'button', onClick: async () => {
         if (busy || disposed) return;
         const ok = await confirmDialog(el('div.cloud-confirm', {},
-          el('strong', {}, `Restore “${guide.title}”?`),
-          el('p', {}, `This replaces the guide on this computer with the version from ${formatWhen(version.createdTime)}. Your current copy is backed up first.`),
-          el('p.muted', {}, `With sync on, the restored version becomes the latest version ${S.where}.`)),
-        { okLabel: 'Restore version' });
+          el('strong', {}, t('Restore “{title}”?', { title: guide.title })),
+          el('p', {}, t('This replaces the guide on this computer with the version from {when}. Your current copy is backed up first.', { when: formatWhen(version.createdTime) })),
+          el('p.muted', {}, t('With sync on, the restored version becomes the latest version {where}.', { where: S.where }))),
+        { okLabel: t('Restore version') });
         if (!ok) return;
-        await run(restore, 'Restoring…', async () => {
+        await run(restore, t('Restoring…'), async () => {
           await api.cloud.restore({ guideId: guide.guideId, versionId: version.id });
-          say(`Restored “${guide.title}” from ${formatWhen(version.createdTime)}.`, 'success');
+          say(t('Restored “{title}” from {when}.', { title: guide.title, when: formatWhen(version.createdTime) }), 'success');
           await refreshLists();
         });
-      } }, 'Restore');
+      } }, t('Restore'));
       host.append(el(`div.cloud-version${index === 0 ? '.latest' : ''}`, {},
         el('span.cloud-version-dot', { 'aria-hidden': 'true' }),
         el('div.cloud-version-info', {},
           el('span', {}, formatWhen(version.createdTime)),
-          el('span.muted', {}, `${index === 0 ? 'Latest' : 'Previous version'} · ${formatBytes(version.size)}`)),
+          el('span.muted', {}, `${index === 0 ? t('Latest') : t('Previous version')} · ${formatBytes(version.size)}`)),
         restore));
     }
   };
@@ -455,9 +456,9 @@ function makeCloudSettings(api, { provider = 'google' } = {}) {
     const guides = await api.cloud.guides();
     if (disposed || request !== guideRequest) return;
     lastGuides = guides;
-    guideCount.textContent = guides.length ? plural(guides.length, 'guide') : '';
+    guideCount.textContent = guides.length ? tn(guides.length, '{count} guide', '{count} guides') : '';
     guideList.replaceChildren();
-    if (!guides.length) { guideList.append(el('p.cloud-empty.muted', {}, `No guides ${S.where} yet.`)); return; }
+    if (!guides.length) { guideList.append(el('p.cloud-empty.muted', {}, t('No guides {where} yet.', { where: S.where }))); return; }
     for (const guide of guides) {
       const versions = el('div.cloud-versions', { hidden: true });
       const toggle = el('button', { type: 'button', 'aria-expanded': 'false', onClick: async () => {
@@ -465,39 +466,39 @@ function makeCloudSettings(api, { provider = 'google' } = {}) {
         versions.hidden = !open;
         toggle.setAttribute('aria-expanded', String(open));
         if (open) {
-          versions.replaceChildren(el('p.muted', {}, 'Loading versions…'));
+          versions.replaceChildren(el('p.muted', {}, t('Loading versions…')));
           await renderVersions(guide, versions);
         }
-      } }, 'Versions');
-      const download = guide.local ? null : el('button', { type: 'button', onClick: () => run(download, 'Downloading…', async () => {
+      } }, t('Versions'));
+      const download = guide.local ? null : el('button', { type: 'button', onClick: () => run(download, t('Downloading…'), async () => {
         await api.cloud.restore({ guideId: guide.guideId, versionId: guide.latestId });
-        say(`Downloaded “${guide.title}” to this computer.`, 'success');
+        say(t('Downloaded “{title}” to this computer.', { title: guide.title }), 'success');
         await refreshLists();
-      }) }, 'Download');
+      }) }, t('Download'));
       const remove = el('button.danger', { type: 'button', onClick: async () => {
         if (busy || disposed) return;
         const ok = await confirmDialog(el('div.cloud-confirm', {},
-          el('strong', {}, `Delete “${guide.title}” from ${S.name}?`),
-          el('p', {}, `All ${plural(guide.snapshotCount, 'version')} ${S.whereShort} will be deleted. ${guide.local ? 'The guide stays on this computer and stops syncing.' : 'This guide is not on this computer.'}`),
-          el('p.muted', {}, 'Other computers that still sync this guide may upload it again. This cannot be undone.')),
-        { danger: true, okLabel: `Delete from ${S.short}` });
+          el('strong', {}, t('Delete “{title}” from {service}?', { title: guide.title, service: S.name })),
+          el('p', {}, `${tn(guide.snapshotCount, 'Its {count} version {where} will be deleted.', 'All {count} versions {where} will be deleted.', { where: S.whereShort })} ${guide.local ? t('The guide stays on this computer and stops syncing.') : t('This guide is not on this computer.')}`),
+          el('p.muted', {}, t('Other computers that still sync this guide may upload it again. This cannot be undone.'))),
+        { danger: true, okLabel: S.deleteFrom });
         if (!ok) return;
-        await run(remove, 'Deleting…', async () => {
+        await run(remove, t('Deleting…'), async () => {
           await api.cloud.deleteGuideSnapshots({ guideId: guide.guideId });
-          say(`Deleted “${guide.title}” from ${S.name}.${guide.local ? ' The guide is still on this computer.' : ''}`, 'success');
+          say(`${t('Deleted “{title}” from {service}.', { title: guide.title, service: S.name })}${guide.local ? ` ${t('The guide is still on this computer.')}` : ''}`, 'success');
           await refreshLists();
         });
-      } }, `Delete from ${S.short}`);
+      } }, S.deleteFrom);
       guideList.append(el('div.cloud-guide', {},
         el('div.cloud-guide-row', {},
           el('div.cloud-guide-icon', { 'aria-hidden': 'true' }, (guide.title || '?').trim().slice(0, 1).toUpperCase() || '?'),
           el('div.cloud-guide-info', {},
             el('div.cloud-guide-title', { title: guide.title }, guide.title),
             el('div.cloud-chips', {},
-              el(`span.cloud-chip${guide.local ? '.local' : ''}`, {}, guide.local ? 'On this computer' : `Only ${S.whereShort}`),
-              el('span.cloud-chip', {}, plural(guide.snapshotCount, 'version')),
+              el(`span.cloud-chip${guide.local ? '.local' : ''}`, {}, guide.local ? t('On this computer') : t('Only {where}', { where: S.whereShort })),
+              el('span.cloud-chip', {}, tn(guide.snapshotCount, '{count} version', '{count} versions')),
               el('span.cloud-chip', {}, formatBytes(guide.bytes)),
-              guide.updatedAt ? el('span.muted', {}, `Updated ${timeAgo(guide.updatedAt)}`) : null)),
+              guide.updatedAt ? el('span.muted', {}, t('Updated {when}', { when: timeAgo(guide.updatedAt) })) : null)),
           el('div.cloud-guide-actions', {}, download, toggle, remove)),
         versions));
     }
@@ -510,25 +511,25 @@ function makeCloudSettings(api, { provider = 'google' } = {}) {
     deletedCount.textContent = String(recoverable.length);
     deletedCount.className = `cloud-count${recoverable.length ? ' active' : ''}`;
     deletedList.replaceChildren();
-    if (!recoverable.length) { deletedList.append(el('p.cloud-empty.muted', {}, 'No recently deleted guides.')); return; }
+    if (!recoverable.length) { deletedList.append(el('p.cloud-empty.muted', {}, t('No recently deleted guides.'))); return; }
     for (const guide of recoverable) {
       const restore = el('button', { type: 'button', onClick: async () => {
-        const ok = await confirmDialog(`Restore “${guide.title}” to your library? It will sync to your other computers again.`, { okLabel: 'Restore' });
+        const ok = await confirmDialog(t('Restore “{title}” to your library? It will sync to your other computers again.', { title: guide.title }), { okLabel: t('Restore') });
         if (!ok) return;
-        await run(restore, 'Restoring…', async () => {
+        await run(restore, t('Restoring…'), async () => {
           await api.cloud.restoreDeletedGuide({ guideId: guide.guideId });
-          say(`Restored “${guide.title}”.`, 'success');
+          say(t('Restored “{title}”.', { title: guide.title }), 'success');
           await refreshLists();
         });
-      } }, 'Restore');
+      } }, t('Restore'));
       const remove = el('button.danger', { type: 'button', onClick: async () => {
-        const ok = await confirmDialog(`Permanently delete the recovery copy of “${guide.title}”? It cannot be restored afterwards.`, { danger: true, okLabel: 'Delete permanently' });
+        const ok = await confirmDialog(t('Permanently delete the recovery copy of “{title}”? It cannot be restored afterwards.', { title: guide.title }), { danger: true, okLabel: t('Delete permanently') });
         if (!ok) return;
-        await run(remove, 'Deleting…', async () => {
+        await run(remove, t('Deleting…'), async () => {
           await api.cloud.permanentlyDeleteRecovery({ guideId: guide.guideId });
           await refreshLists();
         });
-      } }, 'Delete permanently');
+      } }, t('Delete permanently'));
       deletedList.append(el('div.cloud-guide', {},
         el('div.cloud-guide-row', {},
           el('div.cloud-guide-icon.deleted', { 'aria-hidden': 'true' }, (guide.title || '?').trim().slice(0, 1).toUpperCase() || '?'),
@@ -536,7 +537,7 @@ function makeCloudSettings(api, { provider = 'google' } = {}) {
             el('div.cloud-guide-title', { title: guide.title }, guide.title),
             el('div.cloud-chips', {},
               el('span.cloud-chip', {}, formatBytes(guide.size)),
-              el('span.muted', {}, `Deleted ${guide.deletedAt ? timeAgo(guide.deletedAt) : '(date unavailable)'}`))),
+              el('span.muted', {}, t('Deleted {when}', { when: guide.deletedAt ? timeAgo(guide.deletedAt) : t('(date unavailable)') })))),
           el('div.cloud-guide-actions', {}, restore, remove))));
     }
   };
@@ -554,13 +555,13 @@ function makeCloudSettings(api, { provider = 'google' } = {}) {
     ]);
   };
 
-  enabled.addEventListener('change', () => run(sync, 'Applying…', async () => {
+  enabled.addEventListener('change', () => run(sync, t('Applying…'), async () => {
     // Capture the requested value before run() restores the saved control state.
     await api.cloud.enable({ enabled: !current.enabled });
   }));
 
   const node = el('fieldset.cloud-panel', {},
-    el('legend', {}, `${S.name} sharing`),
+    el('legend', {}, t('{service} sharing', { service: S.name })),
     signedOut, account, banner, signedIn,
   );
   const unsubscribe = api.cloud.onStatus((next) => { if (!disposed) update(next); });

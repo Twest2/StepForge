@@ -39,22 +39,21 @@ function ui() {
       ? (n.spec?.startsWith('button') && n.children.includes(label) ? n : n.children.map(walk).find(Boolean)) : null;
     return walk(within);
   };
-  const escape = () => { for (const fn of [...keys]) { let stop = false; fn({ key: 'Escape', preventDefault() {}, stopImmediatePropagation() { stop = true; } }); if (stop) break; } };
+  const escape = () => { for (const fn of [...keys]) { let stop = false; fn({ key: 'Escape', preventDefault() {}, stopPropagation() {}, stopImmediatePropagation() { stop = true; } }); if (stop) break; } };
   return { context, root, nodes, el, button, escape };
 }
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 
-test('nested confirmation cancel, Escape, backdrop and accept all return to the same Settings form', async () => {
+test('nested confirmation cancel, Escape and accept all return to the same Settings form', async () => {
   const u = ui();
   const input = u.el('input', { value: 'unsaved setting' });
   let closed = 0;
   const settings = u.context.openModal({ title: 'Settings', body: input, onClose: () => closed++ });
-  for (const action of ['Cancel', 'Escape', 'backdrop', 'OK']) {
+  for (const action of ['Cancel', 'Escape', 'OK']) {
     const confirming = u.context.confirmDialog('Continue?');
     assert.equal(settings.node.hidden, true);
     assert.equal(settings.node.inert, true);
     if (action === 'Escape') u.escape();
-    else if (action === 'backdrop') u.root.onclick();
     else u.button(action).onClick();
     assert.equal(await confirming, action === 'OK');
     assert.equal(u.root.children.length, 1);
@@ -66,6 +65,26 @@ test('nested confirmation cancel, Escape, backdrop and accept all return to the 
   u.escape();
   assert.equal(closed, 1);
   assert.equal(u.root.children.length, 0);
+});
+
+test('a backdrop click does nothing: neither Settings nor a confirmation on top of it closes', async () => {
+  const u = ui();
+  const input = u.el('input', { value: 'unsaved setting' });
+  let closed = 0;
+  const settings = u.context.openModal({ title: 'Settings', body: input, onClose: () => closed++ });
+  // The backdrop is the modal root. It has no click handler, so a click on it changes nothing.
+  assert.equal(u.root.onclick, undefined);
+  assert.equal(u.root.children.length, 1);
+  assert.equal(settings.node.hidden, false);
+  assert.equal(closed, 0);
+  const confirming = u.context.confirmDialog('Continue?');
+  assert.equal(u.root.children.length, 2);
+  u.button('Cancel').onClick();
+  assert.equal(await confirming, false);
+  assert.equal(u.root.children.length, 1);
+  assert.equal(input.value, 'unsaved setting');
+  u.escape();
+  assert.equal(closed, 1);
 });
 
 function cloud(u, overrides = {}) {

@@ -51,20 +51,18 @@ test('an invalid or missing date formats as an empty string', () => {
   assert.equal(formatGuideDate(null), '');
 });
 
-test('localized interfaces retain the fixed three-letter month format', () => {
-  for (const language of ['en', 'fr', 'es', 'ru', 'ja', 'zh-CN']) {
-    assert.equal(formatGuideDate(local(2026, 11, 1), language), '01-Nov-2026');
-    assert.equal(formatGuideDate(local(2026, 6, 19), language), '19-Jun-2026');
-  }
+test('other interfaces use their languages normal date conventions', () => {
+  const iso = local(2026, 11, 1);
+  assert.equal(formatGuideDate(iso, 'fr'), '1 nov. 2026');
+  assert.equal(formatGuideDate(iso, 'es'), '1 nov 2026');
+  assert.equal(formatGuideDate(iso, 'ru'), '1 нояб. 2026 г.');
+  assert.equal(formatGuideDate(iso, 'ja'), '2026/11/01');
+  assert.equal(formatGuideDate(iso, 'zh-CN'), '2026年11月1日');
 });
 
-test('every interface language gives a day-month-year string with no stray punctuation', () => {
-  const iso = local(2026, 9, 7);
-  for (const language of ['en', 'fr', 'es', 'ru', 'ja', 'zh-CN']) {
-    const text = formatGuideDate(iso, language);
-    assert.match(text, /^07-.+-2026$/, language);
-    assert.doesNotMatch(text.slice(3, -5), /[.\s]/, `${language}: ${text}`);
-  }
+test('localized dates keep the local day near midnight', () => {
+  assert.equal(formatGuideDate(local(2026, 11, 1, 23, 59), 'ru'), '1 нояб. 2026 г.');
+  assert.equal(formatGuideDate(local(2026, 11, 2, 0, 1), 'ja'), '2026/11/02');
 });
 
 test('Trash retains relative deletion times and formats older dates consistently', () => {

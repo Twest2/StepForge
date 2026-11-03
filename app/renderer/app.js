@@ -6,14 +6,15 @@ const api = window.stepforge;
 const dialogs = window.StepForgeDialogs || {};
 const review = window.StepForgeReview;
 
-// Fixed three-letter month abbreviations keep DD-MMM-YYYY consistent in every UI language.
+// English uses the requested DD-MMM-YYYY; other interfaces use their locale's dates.
 const GUIDE_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 /** A display-only date in local time; stored timestamps are unchanged. */
-function formatGuideDate(iso) {
+function formatGuideDate(iso, language = 'en') {
   if (iso == null || iso === '') return '';
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return '';
+  if (language !== 'en') return new Intl.DateTimeFormat(language, { dateStyle: 'medium' }).format(date);
   return `${String(date.getDate()).padStart(2, '0')}-${GUIDE_MONTHS[date.getMonth()]}-${String(date.getFullYear()).padStart(4, '0')}`;
 }
 
@@ -886,7 +887,7 @@ class StepForgeApp {
       guide.linkedSource ? el('span.badge', { title: t('Saved to a linked .sfgz file') }, t('Linked')) : null,
       guide.locked ? el('span.badge', { title: t('Open on another device') }, t('Locked')) : null,
       reviewState?.overdue ? el('span.badge.review-badge', { title: reviewBadgeTitle(reviewState) }, t('May need review')) : null,
-      el('span.card-updated', { title: formatGuideDate(guide.updatedAt, uiLanguage) }, formatGuideDate(guide.updatedAt))));
+      el('span.card-updated', { title: formatGuideDate(guide.updatedAt, uiLanguage) }, formatGuideDate(guide.updatedAt, uiLanguage))));
   }
 
   resultCard(result, guide, isStep) {

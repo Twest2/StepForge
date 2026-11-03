@@ -364,9 +364,10 @@ body.platform-linux #capture-status button {
   opacity: 0;
   transition: opacity 120ms ease;
 }
-.guide-card:hover .fav, .guide-card .fav:focus-visible { opacity: 0.55; }
+.guide-card:hover .fav { opacity: 0.55; }
+.guide-card .fav:focus-visible { opacity: 1; transition: none; }
 .guide-card .fav:hover { opacity: 1; background: var(--panel-2); }
-.guide-card .fav.on { opacity: 1; color: #f5a524; }
+.guide-card .fav.on { opacity: 1; color: var(--accent-strong); }
 .guide-card.selecting .fav:not(.on) { display: none; }
 
 /* Round checkbox on every card while Select is on. */
@@ -553,7 +554,7 @@ body.platform-linux #capture-status button {
   background: repeating-linear-gradient(90deg, var(--danger) 0 6px, transparent 6px 10px);
 }
 .step-item.skipped .t { text-decoration: line-through; opacity: 0.68; }
-.step-item.hiddenstep .t { opacity: 0.5; }
+.step-item.hiddenstep .t { color: var(--muted); }
 .status-dot { width: 8px; height: 8px; border-radius: 999px; flex: none; }
 .status-todo { background: #9aa7b8; }
 .status-in-progress { background: #f0a500; }
@@ -1799,7 +1800,7 @@ button.cmp-fold:hover { background: var(--border); color: var(--text); }
 .cmp-code-line { display: grid; grid-template-columns: 40px 40px 18px 1fr; min-width: max-content; }
 .cmp-code-line.del { background: var(--diff-del-bg); }
 .cmp-code-line.add { background: var(--diff-add-bg); }
-.cmp-ln { color: var(--muted); text-align: right; padding-right: 8px; user-select: none; opacity: 0.8; }
+.cmp-ln { color: var(--muted); text-align: right; padding-right: 8px; user-select: none; }
 .cmp-sign { user-select: none; text-align: center; color: var(--muted); }
 .cmp-code-line.del .cmp-sign { color: var(--diff-del-fg); }
 .cmp-code-line.add .cmp-sign { color: var(--diff-add-fg); }

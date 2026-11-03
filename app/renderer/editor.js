@@ -196,6 +196,7 @@ function isEditableTarget(target) {
   return target && (
     target.tagName === 'INPUT' ||
     target.tagName === 'TEXTAREA' ||
+    target.tagName === 'SELECT' ||
     target.isContentEditable
   );
 }

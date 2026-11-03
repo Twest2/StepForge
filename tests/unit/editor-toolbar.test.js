@@ -250,3 +250,22 @@ test('a zoom set by the keyboard that is not in the list still shows in the sele
   assert.equal(editor.dom.zoomSelect.value, 'fit');
   assert.equal(editor.dom.zoomSelect.children.filter((o) => o.value === '1.75').length, 0, 'the extra option is removed');
 });
+
+test('typing and navigation inside the zoom dropdown cannot change tools or delete annotations', async () => {
+  const editor = makeEditor(GUIDES);
+  await editor.open('g1');
+  editor.selectedAnnotationId = 'selected-annotation';
+  editor.canvas.deleteSelected = () => { throw new Error('native select key deleted an annotation'); };
+  editor.canvas.nudgeSelected = () => { throw new Error('native select key moved an annotation'); };
+  for (const key of ['r', 'ArrowDown', 'ArrowUp', 'PageDown', 'Delete', 'Backspace', 'Escape']) {
+    let prevented = false;
+    editor.onDocumentKeyDown({ key, target: { tagName: 'SELECT' }, preventDefault() { prevented = true; } });
+    assert.equal(prevented, false, `${key} is left to the native dropdown`);
+    assert.equal(editor.currentTool, 'select');
+    assert.equal(editor.selectedAnnotationId, 'selected-annotation');
+  }
+  let prevented = false;
+  editor.onDocumentKeyDown({ key: '=', ctrlKey: true, target: { tagName: 'SELECT' }, preventDefault() { prevented = true; } });
+  assert.equal(prevented, true, 'the existing Ctrl+= shortcut still works');
+  assert.equal(editor.currentZoom, 1.25);
+});

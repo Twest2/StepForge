@@ -59,6 +59,9 @@ test('cloud services, GitHub sharing and branding text follow the interface lang
   const google = vm.runInContext('CLOUD_SERVICES.google', zh);
   assert.equal(google.signIn, '使用 Google 登录');
   assert.equal(google.replaceWith, '用此计算机替换 Drive');
+  const nextcloud = vm.runInContext('CLOUD_SERVICES.webdav', load('ru', ['cloud.js']));
+  assert.equal(nextcloud.deleteFrom, 'Удалить с сервера');
+  assert.equal(load('ru', []).t('No guides {where} yet.', { where: 'в Google Drive' }), 'Пока нет руководств в Google Drive.');
   assert.equal(zh.t('No guides {where} yet.', { where: google.where }), 'Google Drive 中还没有指南。');
 
   const ru = load('ru', ['github.js']);
@@ -66,6 +69,8 @@ test('cloud services, GitHub sharing and branding text follow the interface lang
   assert.equal(ru.githubTimeLeft(inHours(2)), 'Будет удалено через 2 часа');
   assert.equal(ru.githubTimeLeft(inHours(24 * 5)), 'Будет удалено через 5 дней');
   assert.equal(ru.githubExpiryLabel(1), '1 день');
+  assert.match(vm.runInContext('PUBLIC_WARNING_TEXT', ru), /^Любой, у кого есть ссылка/);
+  assert.ok(!/[A-Za-z]{4,} [a-z]{4,}/.test(vm.runInContext('PUBLIC_WARNING_TEXT', ru).replace(/GitHub/g, '')), 'no English left in the warning');
 
   const es = load('es', ['branding.js']);
   const support = vm.runInContext('BRAND_SUPPORT', es);
@@ -88,4 +93,24 @@ test('the Export dialog’s format descriptions and option labels are translated
   for (const [code, catalog] of Object.entries(LOCALES)) {
     for (const [text] of exportText) assert.ok(catalog[text], `${code}: ${text}`);
   }
+});
+
+test('Compare translates interface enums without translating author metadata or placeholders', () => {
+  const source = fs.readFileSync(path.join(__dirname, '../../app/renderer/compare.js'), 'utf8')
+    .replace('window.StepForgeCompare = { showSnapshotCompare };', 'window.StepForgeCompare = { showSnapshotCompare, fieldRow };');
+  const context = load('ru', []);
+  vm.runInContext(source, context);
+  const row = (label, before, after) => context.StepForgeCompare.fieldRow({ label, before, after });
+  for (const label of ['Author', 'Co-authors', 'Organization', 'Placeholder [[Answer]]', 'Links']) {
+    const value = row(label, 'No', 'Warning');
+    assert.equal(value.children[1].children[0].children[0].text, 'No', label);
+    assert.equal(value.children[1].children[0].children[2].text, 'Warning', label);
+  }
+  const hidden = row('Hidden', 'No', 'Yes');
+  assert.equal(hidden.children[1].children[0].children[0].text, 'Нет');
+  assert.equal(hidden.children[1].children[0].children[2].text, 'Да');
+  const theme = row('Theme', 'system', 'Warning');
+  assert.equal(theme.children[1].children[0].children[2].text, 'Warning', 'custom theme names stay intact');
+  const blank = row('Author', '', 'No');
+  assert.equal(blank.children[1].children[0].children[0].text, 'No', 'new author values stay intact');
 });

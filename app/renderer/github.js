@@ -7,8 +7,7 @@
  */
 
 const PUBLIC_WARNING_TITLE = t('Shared guides are public.');
-const PUBLIC_WARNING_TEXT = 'Anyone with the link can open a shared guide, and anyone who looks at your repository on GitHub can find it. '
-  + t('Removing a guide takes it off the site, but someone may already have saved a copy.');
+const PUBLIC_WARNING_TEXT = t('Anyone with the link can open a shared guide, and anyone who looks at your repository on GitHub can find it. Removing a guide takes it off the site, but someone may already have saved a copy.');
 
 function githubPublicWarning(extra = null) {
   return el('div.gh-warning', { role: 'note' },
@@ -185,7 +184,7 @@ function makeGitHubSettings(api, { onPublishToWeb = null } = {}) {
   const repoSelect = el('select', { 'aria-label': t('Repository for shared guides') });
   const useRepo = el('button.primary', { type: 'button', onClick: () => run(useRepo, t('Setting up…'), async () => {
     const fullName = repoSelect.value;
-    if (!fullName) throw new Error('Choose a repository first.');
+    if (!fullName) throw new Error(t('Choose a repository first.'));
     setupButton = useRepo;
     let status;
     try {
@@ -215,8 +214,7 @@ function makeGitHubSettings(api, { onPublishToWeb = null } = {}) {
   // Builds without a registered StepForge GitHub App have nothing to install
   // or sign in to, so say so where the disabled buttons are.
   const unavailable = el('p.gh-note.error.hidden', { role: 'note' },
-    'This copy of StepForge isn’t connected to a StepForge GitHub App yet, so the Install and Sign in buttons are turned off. '
-    + t('Official releases include it. If you run StepForge from source, see “GitHub Pages sharing: maintainer guide” in the docs.'));
+    t('This copy of StepForge isn’t connected to a StepForge GitHub App yet, so the Install and Sign in buttons are turned off. Official releases include it. If you run StepForge from source, see “GitHub Pages sharing: maintainer guide” in the docs.'));
   const setupCard = el('section.cloud-card', {},
     el('header.cloud-card-head', {}, el('h4', {}, t('Set up sharing (one time)'))),
     unavailable,

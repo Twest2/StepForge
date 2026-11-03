@@ -19,7 +19,8 @@ const CHANGE_LABELS = {
   Title: t('Title'), Description: t('Description'), 'Step type': t('Step type'), Hidden: t('Hidden'), Skipped: t('Skipped'),
   'Starts a new page': t('Starts a new page'), Links: t('Links'), Screenshot: t('Screenshot'), 'Guide title': t('Guide title'),
   'Guide description': t('Guide description'), Theme: t('Theme'), Style: t('Style'), Placed: t('Placed'), Text: t('Text'),
-  Language: t('Language'), 'Text block': t('Text block'), 'Code block': t('Code block'), Table: t('Table'),
+  Language: t('Language'), Author: t('Author'), 'Co-authors': t('Co-authors'), Organization: t('Organization'),
+  'Focused view for new steps': t('Focused view for new steps'), 'Hide skipped steps in exports': t('Hide skipped steps in exports'), Link: t('Link'), 'Text block': t('Text block'), 'Code block': t('Code block'), Table: t('Table'),
 };
 const VALUE_LABELS = {
   Yes: t('Yes'), No: t('No'), Screenshot: t('Screenshot'), Blank: t('Blank'), 'Content only': t('Content only'),
@@ -28,7 +29,10 @@ const VALUE_LABELS = {
   'Before the screenshot': t('Before the screenshot'), 'After the screenshot': t('After the screenshot'),
   'Before the description': t('Before the description'), 'After the description': t('After the description'),
 };
-const changeLabel = (label) => CHANGE_LABELS[label] || label;
+const changeLabel = (label) => {
+  const placeholder = /^Placeholder \[\[(.*)\]\]$/.exec(label);
+  return placeholder ? t('Placeholder {name}', { name: `[[${placeholder[1]}]]` }) : CHANGE_LABELS[label] || label;
+};
 const JUMP_TITLES = {
   added: t('Jump to the first added step'), deleted: t('Jump to the first deleted step'),
   changed: t('Jump to the first changed step'), moved: t('Jump to the first moved step'),
@@ -64,8 +68,19 @@ function changeRow(label, content) {
   return el('div.cmp-row', {}, el('div.cmp-label', {}, changeLabel(label)), el('div.cmp-value', {}, content));
 }
 
-function fieldValue(value) {
-  return value === null || value === undefined || value === '' ? el('span.muted', {}, t('None')) : VALUE_LABELS[value] || String(value);
+function fieldValue(value, label) {
+  if (value === null || value === undefined || value === '') return el('span.muted', {}, t('None'));
+  // Metadata, placeholders and link titles belong to the guide's author.
+  // Only the core's known enum fields contain interface text to translate.
+  const choices = {
+    Hidden: ['Yes', 'No'], Skipped: ['Yes', 'No'], 'Starts a new page': ['Yes', 'No'],
+    'Focused view for new steps': ['Yes', 'No'], 'Hide skipped steps in exports': ['Yes', 'No'],
+    'Step type': ['Screenshot', 'Blank', 'Content only'],
+    Style: ['Info', 'Warning', 'Error', 'Success'],
+    Placed: ['Before the title', 'After the title', 'Before the screenshot', 'After the screenshot', 'Before the description', 'After the description'],
+    Language: ['Plain text'], Theme: ['system'],
+  };
+  return choices[label]?.includes(value) ? VALUE_LABELS[value] || String(value) : String(value);
 }
 
 /** "Hidden: No → Yes", old value struck red, new value green. */
@@ -74,9 +89,9 @@ function fieldRow(change) {
   const removed = empty(change.after);
   const added = empty(change.before);
   return changeRow(change.label, el('div.cmp-field', {},
-    added ? null : el('del.cmp-del', {}, fieldValue(change.before)),
+    added ? null : el('del.cmp-del', {}, fieldValue(change.before, change.label)),
     added || removed ? null : el('span.cmp-arrow', { 'aria-hidden': 'true' }, '→'),
-    removed ? null : el('ins.cmp-add', {}, fieldValue(change.after)),
+    removed ? null : el('ins.cmp-add', {}, fieldValue(change.after, change.label)),
     added ? el('span.muted', {}, ` ${t('(added)')}`) : removed ? el('span.muted', {}, ` ${t('(removed)')}`) : null));
 }
 

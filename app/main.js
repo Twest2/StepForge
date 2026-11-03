@@ -1784,7 +1784,7 @@ function setupIpc() {
     if (!profile) throw new Error(t('That brand profile no longer exists.'));
     const res = await dialog.showSaveDialog(mainWindow, {
       defaultPath: `${profile.name.replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'Brand profile'}.sfbrand`,
-      filters: [{ name: 'StepForge brand profile', extensions: ['sfbrand'] }],
+      filters: [{ name: t('StepForge brand profile'), extensions: ['sfbrand'] }],
     });
     if (res.canceled) return { ok: false };
     branding.exportProfile(id, res.filePath);
@@ -1792,7 +1792,7 @@ function setupIpc() {
   }, { validate: (a) => validBrandId(a.id) });
   h('branding:import', async () => {
     const res = await dialog.showOpenDialog(mainWindow, {
-      filters: [{ name: 'StepForge brand profile', extensions: ['sfbrand'] }],
+      filters: [{ name: t('StepForge brand profile'), extensions: ['sfbrand'] }],
       properties: ['openFile'],
     });
     if (res.canceled) return { ok: false };

@@ -269,3 +269,16 @@ test('typing and navigation inside the zoom dropdown cannot change tools or dele
   assert.equal(prevented, true, 'the existing Ctrl+= shortcut still works');
   assert.equal(editor.currentZoom, 1.25);
 });
+
+test('zoom shortcuts never leave a stale preset highlighted at a custom zoom', async () => {
+  const editor = makeEditor(GUIDES);
+  await editor.open('g1');
+  editor.applyZoomShortcut('in');
+  assertToolbar(editor, { tool: 'select', zoom: 1.25 });
+  editor.applyZoomShortcut('in');
+  assertToolbar(editor, { tool: 'select', zoom: 1.5 });
+  editor.applyZoomShortcut('in');
+  assertToolbar(editor, { tool: 'select', zoom: 1.75 });
+  editor.applyZoomShortcut('fit');
+  assertToolbar(editor, { tool: 'select', zoom: 'fit' });
+});

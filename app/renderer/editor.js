@@ -1389,6 +1389,7 @@ class GuideEditor {
     const token = ++this.imageLoadToken;
     this.canvas.setTool(this.currentTool);
     this.canvas.setZoom(this.currentZoom);
+    this.syncToolbar();
     if (!step || !step.image) {
       this.canvas.setImage(null, 0, 0);
       this.dom.canvasEmpty.classList.remove('hidden');
@@ -1736,10 +1737,22 @@ class GuideEditor {
   setTool(tool) {
     this.currentTool = tool;
     this.canvas.setTool(tool);
+    this.syncToolbar();
+  }
+
+  // Mirror currentTool and currentZoom onto their buttons, so the highlighted
+  // button is always the mode the canvas is really in.
+  syncToolbar() {
     for (const [key, node] of Object.entries(this.dom)) {
-      if (!key.startsWith('tool-')) continue;
-      node.classList.toggle('active', node.dataset.tool === tool);
+      if (key.startsWith('tool-')) this.setPressed(node, node.dataset.tool === this.currentTool);
     }
+    const zoomButtons = [[this.dom.zoomFitBtn, 'fit'], [this.dom.zoom100Btn, 1], [this.dom.zoom125Btn, 1.25], [this.dom.zoom150Btn, 1.5]];
+    for (const [btn, mode] of zoomButtons) this.setPressed(btn, mode === this.currentZoom);
+  }
+
+  setPressed(btn, pressed) {
+    btn.classList.toggle('active', pressed);
+    btn.setAttribute('aria-pressed', String(pressed));
   }
 
   // A drawing tool goes back to Select after one use unless Settings → Editor
@@ -1753,12 +1766,7 @@ class GuideEditor {
     this.currentZoom = mode;
     this.canvas.setZoom(mode);
     this.canvas.applyZoom();
-    const buttons = [this.dom.zoomFitBtn, this.dom.zoom100Btn, this.dom.zoom125Btn, this.dom.zoom150Btn];
-    buttons.forEach((btn) => btn.classList.remove('active'));
-    if (mode === 'fit') this.dom.zoomFitBtn.classList.add('active');
-    if (mode === 1) this.dom.zoom100Btn.classList.add('active');
-    if (mode === 1.25) this.dom.zoom125Btn.classList.add('active');
-    if (mode === 1.5) this.dom.zoom150Btn.classList.add('active');
+    this.syncToolbar();
   }
 
   applyZoomShortcut(kind) {

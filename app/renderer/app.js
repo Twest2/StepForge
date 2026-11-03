@@ -870,11 +870,12 @@ class StepForgeApp {
     el('h4', {}, guide.title || t('Untitled guide')),
     description ? el('div.snippet', {}, description) : null,
     el('div.card-footer', {},
-      el('span', {}, tn(steps, '{count} step', '{count} steps')),
+      el('span.card-step-count', {}, tn(steps, '{count} step', '{count} steps')),
       showFolder ? el('span.card-folder', { title: folder.name }, el('span.card-folder-name', {}, folder.name)) : null,
-      guide.linkedSource ? el('span.badge', { title: t('Saved to a linked .sfgz file') }, t('Linked')) : null,
-      guide.locked ? el('span.badge', { title: t('Open on another device') }, t('Locked')) : null,
-      reviewState?.overdue ? el('span.badge.review-badge', { title: reviewBadgeTitle(reviewState) }, t('May need review')) : null,
+      guide.linkedSource || guide.locked || reviewState?.overdue ? el('div.card-statuses', {},
+        guide.linkedSource ? el('span.badge', { title: t('Saved to a linked .sfgz file') }, t('Linked')) : null,
+        guide.locked ? el('span.badge', { title: t('Open on another device') }, t('Locked')) : null,
+        reviewState?.overdue ? el('span.badge.review-badge', { title: reviewBadgeTitle(reviewState) }, t('May need review')) : null) : null,
       el('span.card-updated', { title: fmtDate(guide.updatedAt) }, timeAgo(guide.updatedAt))));
   }
 

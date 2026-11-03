@@ -412,9 +412,14 @@ body.platform-linux #capture-status button {
   color: var(--muted);
   font-size: 12px;
 }
-/* Guide cards keep the footer on one line; the folder chip gives way first. Trash cards may still wrap. */
-.guide-card:not(.trash-card) .card-footer { flex-wrap: nowrap; white-space: nowrap; min-width: 0; gap: 8px; }
-.guide-card:not(.trash-card) .card-footer > :not(.card-folder) { flex-shrink: 0; }
+/* Metadata shares one line; status badges have a separate, compact line. */
+.guide-card:not(.trash-card) .card-footer { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; white-space: nowrap; min-width: 0; gap: 6px 8px; }
+.guide-card .card-step-count { grid-column: 1; grid-row: 1; }
+.guide-card .card-folder { grid-column: 2; grid-row: 1; }
+.guide-card:not(.trash-card) .card-updated { grid-column: 3; grid-row: 1; }
+.guide-card .card-statuses { grid-column: 1 / -1; display: flex; min-width: 0; gap: 6px; }
+.guide-card .card-statuses .badge { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.guide-card .card-statuses .review-badge { margin-left: 0; }
 /* A long folder name shrinks and ends in an ellipsis; the full name is in the chip's title. */
 .guide-card .card-folder { display: inline-flex; align-items: center; gap: 4px; min-width: 0; flex-shrink: 1; }
 .guide-card .card-folder::before { content: ""; flex-shrink: 0; width: 6px; height: 6px; border-radius: 2px; background: color-mix(in srgb, var(--accent) 55%, var(--border)); }

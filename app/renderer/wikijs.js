@@ -15,7 +15,7 @@ function wikiJsOpen(api, url) {
 /** The code field for two-step sign-in: digits only, filled in by password managers that know one-time codes. */
 function wikiJsCodeInput() {
   return el('input', { type: 'text', inputMode: 'numeric', autocomplete: 'one-time-code', maxLength: 7, spellcheck: false,
-    placeholder: '123456', 'aria-label': 'Verification code' });
+    placeholder: '123456', 'aria-label': t('Verification code') });
 }
 
 function makeWikiJsSettings(api) {
@@ -41,51 +41,51 @@ function makeWikiJsSettings(api) {
   };
 
   /* Signed out: the site address, then a username and password or an API key. */
-  const address = el('input', { type: 'url', placeholder: 'wiki.example.com', spellcheck: false, 'aria-label': 'Wiki.js site address' });
-  const next = el('button.primary', { type: 'button' }, 'Continue');
+  const address = el('input', { type: 'url', placeholder: 'wiki.example.com', spellcheck: false, 'aria-label': t('Wiki.js site address') });
+  const next = el('button.primary', { type: 'button' }, t('Continue'));
 
-  const strategySelect = el('select', { 'aria-label': 'Sign in with' });
-  const strategyField = el('label.cloud-field.hidden', {}, el('span', {}, 'Sign in with'), strategySelect);
-  const usernameLabel = el('span', {}, 'Username');
-  const username = el('input', { type: 'text', autocomplete: 'username', spellcheck: false, 'aria-label': 'Username' });
-  const password = el('input', { type: 'password', autocomplete: 'current-password', 'aria-label': 'Password' });
-  const signIn = el('button.primary', { type: 'button' }, 'Sign in');
+  const strategySelect = el('select', { 'aria-label': t('Sign in with') });
+  const strategyField = el('label.cloud-field.hidden', {}, el('span', {}, t('Sign in with')), strategySelect);
+  const usernameLabel = el('span', {}, t('Username'));
+  const username = el('input', { type: 'text', autocomplete: 'username', spellcheck: false, 'aria-label': t('Username') });
+  const password = el('input', { type: 'password', autocomplete: 'current-password', 'aria-label': t('Password') });
+  const signIn = el('button.primary', { type: 'button' }, t('Sign in'));
   // Shown when Wiki.js asks for a code from the authenticator app.
   const code = wikiJsCodeInput();
-  const codeField = el('label.cloud-field.hidden', {}, el('span', {}, 'Verification code'), code);
+  const codeField = el('label.cloud-field.hidden', {}, el('span', {}, t('Verification code')), code);
   const passwordOption = el('div.wikijs-method', {},
     strategyField,
     el('label.cloud-field', {}, usernameLabel, username),
-    el('label.cloud-field', {}, el('span', {}, 'Password'), password),
+    el('label.cloud-field', {}, el('span', {}, t('Password')), password),
     codeField,
     el('div.row', {}, signIn));
   const noPasswordNote = el('p.muted.hidden', {}, '');
 
-  const apiKey = el('input', { type: 'password', autocomplete: 'off', 'aria-label': 'API key' });
-  const connect = el('button', { type: 'button' }, 'Connect');
-  const keyLink = el('button.link', { type: 'button', onClick: () => wikiJsOpen(api, site?.apiKeyUrl) }, 'Open API Access on your wiki');
-  const keyOr = el('p.confluence-or', {}, 'Or use an API key');
+  const apiKey = el('input', { type: 'password', autocomplete: 'off', 'aria-label': t('API key') });
+  const connect = el('button', { type: 'button' }, t('Connect'));
+  const keyLink = el('button.link', { type: 'button', onClick: () => wikiJsOpen(api, site?.apiKeyUrl) }, t('Open API Access on your wiki'));
+  const keyOr = el('p.confluence-or', {}, t('Or use an API key'));
   const keyOption = el('div.wikijs-method', {},
     keyOr,
-    el('label.cloud-field', {}, el('span', {}, 'API key'), apiKey),
+    el('label.cloud-field', {}, el('span', {}, t('API key')), apiKey),
     el('div.row', {}, connect, keyLink),
-    el('p.muted', {}, 'An administrator creates API keys under Administration → API Access, after turning API access on.'));
+    el('p.muted', {}, t('An administrator creates API keys under Administration → API Access, after turning API access on.')));
   const method = el('div.confluence-method.hidden', {}, passwordOption, noPasswordNote, keyOption);
   const signedOut = el('div.cloud-hero', {},
     el('div.cloud-hero-icon', { 'aria-hidden': 'true' }, el('img', { src: WIKIJS_ICON, alt: '' })),
     el('div.cloud-hero-text', {},
-      el('strong', {}, 'Publish guides as Wiki.js pages'),
-      el('p.muted', {}, 'For Wiki.js 2 sites. StepForge creates or updates one page per guide, with its screenshots in the wiki’s assets.'),
-      el('label.cloud-field', {}, el('span', {}, 'Site address'), address),
+      el('strong', {}, t('Publish guides as Wiki.js pages')),
+      el('p.muted', {}, t('For Wiki.js 2 sites. StepForge creates or updates one page per guide, with its screenshots in the wiki’s assets.')),
+      el('label.cloud-field', {}, el('span', {}, t('Site address')), address),
       el('div.row', {}, next),
       method));
 
   const chosenStrategy = () => site?.strategies.find((s) => s.key === strategySelect.value) || site?.strategies[0] || null;
   const refreshUsername = () => {
     const email = chosenStrategy()?.usernameType === 'email';
-    usernameLabel.textContent = email ? 'Email address' : 'Username';
+    usernameLabel.textContent = email ? t('Email address') : t('Username');
     username.type = email ? 'email' : 'text';
-    username.setAttribute('aria-label', email ? 'Email address' : 'Username');
+    username.setAttribute('aria-label', email ? t('Email address') : t('Username'));
   };
   // A different sign-in starts over without the code.
   strategySelect.addEventListener('change', () => { refreshUsername(); askForCode(false); });
@@ -100,13 +100,13 @@ function makeWikiJsSettings(api) {
     strategyField.classList.toggle('hidden', strategies.length < 2);
     passwordOption.classList.toggle('hidden', !strategies.length);
     noPasswordNote.textContent = strategies.length ? ''
-      : 'This wiki only offers single sign-on, so StepForge can’t sign in with a username and password. Use an API key instead.';
+      : t('This wiki only offers single sign-on, so StepForge can’t sign in with a username and password. Use an API key instead.');
     noPasswordNote.classList.toggle('hidden', Boolean(strategies.length));
-    keyOr.textContent = strategies.length ? 'Or use an API key' : 'Use an API key';
+    keyOr.textContent = strategies.length ? t('Or use an API key') : t('Use an API key');
     refreshUsername();
     (strategies.length ? username : apiKey).focus?.();
   };
-  next.addEventListener('click', () => run(next, 'Checking…', async () => {
+  next.addEventListener('click', () => run(next, t('Checking…'), async () => {
     say('');
     showMethod(await api.wikijs.probe({ address: address.value.trim() }));
   }));
@@ -115,7 +115,7 @@ function makeWikiJsSettings(api) {
 
   const askForCode = (asking) => {
     codeField.classList.toggle('hidden', !asking);
-    signIn.textContent = asking ? 'Verify' : 'Sign in';
+    signIn.textContent = asking ? t('Verify') : t('Sign in');
     code.value = '';
     if (asking) code.focus?.();
   };
@@ -125,12 +125,12 @@ function makeWikiJsSettings(api) {
     password.value = '';
     apiKey.value = '';
     askForCode(false);
-    say(status.user ? `Signed in as ${status.user}.` : `Connected to ${status.host} with an API key.`, 'success');
+    say(status.user ? t('Signed in as {user}.', { user: status.user }) : t('Connected to {host} with an API key.', { host: status.host }), 'success');
     update(status);
   };
   signIn.addEventListener('click', async () => {
     let wantsCode = false;
-    await run(signIn, 'Signing in…', async () => {
+    await run(signIn, t('Signing in…'), async () => {
       const asking = !codeField.classList.contains('hidden');
       const result = await api.wikijs.connect({ address: address.value.trim(), method: 'password',
         username: username.value.trim(), password: password.value, strategy: chosenStrategy()?.key || '',
@@ -141,12 +141,12 @@ function makeWikiJsSettings(api) {
     // Once run() is done: ending the loading state puts the button's earlier label back.
     if (wantsCode && !disposed) {
       askForCode(true);
-      say('This account uses two-step verification. Enter the 6-digit code from your authenticator app.');
+      say(t('This account uses two-step verification. Enter the 6-digit code from your authenticator app.'));
     }
   });
   code.addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); signIn.click(); } });
   password.addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); signIn.click(); } });
-  connect.addEventListener('click', () => run(connect, 'Connecting…', async () => {
+  connect.addEventListener('click', () => run(connect, t('Connecting…'), async () => {
     connected(await api.wikijs.connect({ address: address.value.trim(), method: 'apikey', apiKey: apiKey.value }));
   }));
   apiKey.addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); connect.click(); } });
@@ -154,32 +154,32 @@ function makeWikiJsSettings(api) {
   /* Signed in: the account. */
   const who = el('strong.cloud-email', {}, '');
   const siteLine = el('span.muted', {}, '');
-  const disconnect = el('button', { type: 'button', onClick: () => run(disconnect, 'Signing out…', async () => {
+  const disconnect = el('button', { type: 'button', onClick: () => run(disconnect, t('Signing out…'), async () => {
     update(await api.wikijs.disconnect());
-    say('Signed out. Pages you published stay on the wiki.');
-  }) }, 'Sign out');
+    say(t('Signed out. Pages you published stay on the wiki.'));
+  }) }, t('Sign out'));
   const account = el('div.cloud-account', {},
     el('div.cloud-avatar', { 'aria-hidden': 'true' }, el('img', { src: WIKIJS_ICON, alt: '' })),
     el('div.cloud-account-info', {}, who, el('div.cloud-status-line', {}, siteLine)),
     el('div.cloud-account-actions', {}, disconnect));
   // Wiki.js ended a two-step session: a code signs in again.
   const againCode = wikiJsCodeInput();
-  const againBtn = el('button.primary', { type: 'button' }, 'Sign in again');
+  const againBtn = el('button.primary', { type: 'button' }, t('Sign in again'));
   const again = el('section.cloud-card.hidden', {},
-    el('header.cloud-card-head', {}, el('h4', {}, 'Signed out on the wiki')),
-    el('p.muted', {}, 'Enter the 6-digit code from your authenticator app to sign in again. StepForge asks for this when Wiki.js ends your session, for example after a long break.'),
-    el('label.cloud-field', {}, el('span', {}, 'Verification code'), againCode),
+    el('header.cloud-card-head', {}, el('h4', {}, t('Signed out on the wiki'))),
+    el('p.muted', {}, t('Enter the 6-digit code from your authenticator app to sign in again. StepForge asks for this when Wiki.js ends your session, for example after a long break.')),
+    el('label.cloud-field', {}, el('span', {}, t('Verification code')), againCode),
     el('div.row', {}, againBtn));
-  againBtn.addEventListener('click', () => run(againBtn, 'Signing in…', async () => {
+  againBtn.addEventListener('click', () => run(againBtn, t('Signing in…'), async () => {
     const status = await api.wikijs.signInAgain({ code: againCode.value.trim() });
     againCode.value = '';
-    say(`Signed in as ${status.user}.`, 'success');
+    say(t('Signed in as {user}.', { user: status.user }), 'success');
     update(status);
   }));
   againCode.addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); againBtn.click(); } });
   const usage = el('section.cloud-card', {},
-    el('header.cloud-card-head', {}, el('h4', {}, 'Publishing')),
-    el('p.muted', {}, 'Choose Share → Publish to Wiki.js… in a guide. You pick the page’s path when you publish; publishing the guide again updates the same page.'));
+    el('header.cloud-card-head', {}, el('h4', {}, t('Publishing'))),
+    el('p.muted', {}, t('Choose Share → Publish to Wiki.js… in a guide. You pick the page’s path when you publish; publishing the guide again updates the same page.')));
   const signedIn = el('div.cloud-stack.hidden', {}, account, again, usage);
 
   function update(status) {
@@ -188,9 +188,11 @@ function makeWikiJsSettings(api) {
     signedIn.classList.toggle('hidden', !current.connected);
     if (current.error && !current.connected) say(current.error, 'error');
     if (!current.connected) return;
-    who.textContent = current.user || 'API key';
-    siteLine.textContent = `${current.host} · Wiki.js · ${current.method === 'apikey' ? 'signed in with an API key' : `signed in with ${current.strategy || 'a password'}`}`
-      + (current.twoStep ? ' and two-step verification' : '');
+    who.textContent = current.user || t('API key');
+    const how = current.method === 'apikey' ? t('signed in with an API key')
+      : current.twoStep ? t('signed in with {method} and two-step verification', { method: current.strategy || t('a password') })
+        : t('signed in with {method}', { method: current.strategy || t('a password') });
+    siteLine.textContent = `${current.host} · Wiki.js · ${how}`;
     again.classList.toggle('hidden', !current.needsCode);
   }
 
@@ -201,22 +203,22 @@ function makeWikiJsSettings(api) {
 }
 
 const WIKIJS_STAGES = [
-  ['check', 'Check for private details'],
-  ['export', 'Prepare the page'],
-  ['upload', 'Upload screenshots'],
-  ['page', 'Save the page'],
+  ['check', t('Check for private details')],
+  ['export', t('Prepare the page')],
+  ['upload', t('Upload screenshots')],
+  ['page', t('Save the page')],
 ];
 
 function wikiJsProgress(guideTitle) {
   const fill = el('span.gh-progress-fill', { style: {} });
-  const bar = el('div.gh-progress.indeterminate', { role: 'progressbar', 'aria-label': 'Publishing progress', 'aria-valuemin': '0', 'aria-valuemax': '100' }, fill);
+  const bar = el('div.gh-progress.indeterminate', { role: 'progressbar', 'aria-label': t('Publishing progress'), 'aria-valuemin': '0', 'aria-valuemax': '100' }, fill);
   const detail = el('span.gh-progress-detail.muted', {}, '');
   const stages = WIKIJS_STAGES.map(([id, label]) => {
     const icon = el('span.gh-stage-icon', { 'aria-hidden': 'true' });
     return { id, icon, node: el('li.gh-stage', {}, icon, el('span.gh-stage-label', {}, label)) };
   });
   const node = el('div.gh-publishing', { role: 'status', 'aria-live': 'polite' },
-    el('p', {}, el('strong', {}, `Publishing “${guideTitle}” to Wiki.js`)),
+    el('p', {}, el('strong', {}, t('Publishing “{title}” to Wiki.js', { title: guideTitle }))),
     el('ol.gh-stages', {}, ...stages.map((s) => s.node)),
     el('div.gh-upload', {}, bar, detail));
   const set = (progress) => {
@@ -237,10 +239,10 @@ function wikiJsProgress(guideTitle) {
       fill.style.width = `${percent}%`;
       bar.setAttribute('aria-valuenow', String(percent));
     }
-    detail.textContent = progress?.stage === 'upload' && progress.index ? `Screenshot ${progress.index} of ${progress.count}`
-      : progress?.stage === 'upload' ? 'Getting the screenshot folder ready…'
-        : progress?.stage === 'check' && progress.total ? `Screenshot ${progress.done} of ${progress.total}`
-          : progress?.stage === 'page' ? 'Saving the page in Wiki.js…' : 'Building the page from your guide…';
+    detail.textContent = progress?.stage === 'upload' && progress.index ? t('Screenshot {index} of {count}', { index: progress.index, count: progress.count })
+      : progress?.stage === 'upload' ? t('Getting the screenshot folder ready…')
+        : progress?.stage === 'check' && progress.total ? t('Screenshot {index} of {count}', { index: progress.done, count: progress.total })
+          : progress?.stage === 'page' ? t('Saving the page in Wiki.js…') : t('Building the page from your guide…');
   };
   set({ stage: 'check' });
   return { node, set };
@@ -254,13 +256,13 @@ function askWikiJsCode(api) {
   return new Promise((resolve) => {
     const code = wikiJsCodeInput();
     const error = el('p.gh-note.error.hidden', { role: 'alert' }, '');
-    const cancel = el('button', { type: 'button', onClick: () => { close(); resolve(false); } }, 'Cancel');
-    const verify = el('button.primary', { type: 'button' }, 'Sign in');
+    const cancel = el('button', { type: 'button', onClick: () => { close(); resolve(false); } }, t('Cancel'));
+    const verify = el('button.primary', { type: 'button' }, t('Sign in'));
     const { close } = openModal({
-      title: 'Sign in to Wiki.js again',
+      title: t('Sign in to Wiki.js again'),
       body: el('div.cloud-confirm', {},
-        el('p', {}, 'Wiki.js ended your session. Enter the 6-digit code from your authenticator app to sign in again and publish.'),
-        el('label.cloud-field', {}, el('span', {}, 'Verification code'), code),
+        el('p', {}, t('Wiki.js ended your session. Enter the 6-digit code from your authenticator app to sign in again and publish.')),
+        el('label.cloud-field', {}, el('span', {}, t('Verification code')), code),
         error),
       footer: [cancel, verify],
       onClose: () => resolve(false),
@@ -269,7 +271,7 @@ function askWikiJsCode(api) {
     verify.addEventListener('click', async () => {
       if (busy) return;
       busy = true;
-      setButtonLoading(verify, true, 'Signing in…');
+      setButtonLoading(verify, true, t('Signing in…'));
       try {
         await api.wikijs.signInAgain({ code: code.value.trim() });
         close();
@@ -303,13 +305,13 @@ async function showPublishToWikiJsDialog({ api, guideId, guideTitle, onOpenAccou
   if (!status.connected) {
     return new Promise((resolve) => {
       const { close } = openModal({
-        title: 'Publish to Wiki.js',
+        title: t('Publish to Wiki.js'),
         body: el('div.gh-publish', {},
-          el('p', {}, 'Publishing creates a Wiki.js page for this guide, with its screenshots uploaded to the wiki. Publishing again updates the same page.'),
-          el('p.muted', {}, status.error || 'To start, connect your wiki in Settings → Accounts → Wiki.js.')),
+          el('p', {}, t('Publishing creates a Wiki.js page for this guide, with its screenshots uploaded to the wiki. Publishing again updates the same page.')),
+          el('p.muted', {}, status.error || t('To start, connect your wiki in Settings → Accounts → Wiki.js.'))),
         footer: [
-          el('button', { type: 'button', onClick: () => { close(); resolve(false); } }, 'Cancel'),
-          el('button.primary', { type: 'button', onClick: () => { close(); resolve(false); onOpenAccounts?.(); } }, 'Set up Wiki.js'),
+          el('button', { type: 'button', onClick: () => { close(); resolve(false); } }, t('Cancel')),
+          el('button.primary', { type: 'button', onClick: () => { close(); resolve(false); onOpenAccounts?.(); } }, t('Set up Wiki.js')),
         ],
         onClose: () => resolve(false),
       });
@@ -322,15 +324,15 @@ async function showPublishToWikiJsDialog({ api, guideId, guideTitle, onOpenAccou
     let changed = false;
     const finish = () => { open = false; resolve(changed); };
     const body = el('div.gh-publish.wikijs-publish');
-    const cancelBtn = el('button', { type: 'button', onClick: () => { close(); finish(); } }, 'Cancel');
-    const publishBtn = el('button.primary', { type: 'button', disabled: true }, 'Publish');
+    const cancelBtn = el('button', { type: 'button', onClick: () => { close(); finish(); } }, t('Cancel'));
+    const publishBtn = el('button.primary', { type: 'button', disabled: true }, t('Publish'));
     const quality = el('div');
-    const { close } = openModal({ title: 'Publish to Wiki.js', body: el('div', {}, quality, body), footer: [cancelBtn, publishBtn], onClose: finish });
+    const { close } = openModal({ title: t('Publish to Wiki.js'), body: el('div', {}, quality, body), footer: [cancelBtn, publishBtn], onClose: finish });
     addQualityPanel(api, guideId, quality, (finding) => { close(); finish(); onShowFinding?.(finding); });
 
-    const pathInput = el('input', { type: 'text', spellcheck: false, 'aria-label': 'Page path', placeholder: 'guides/my-guide' });
-    const titleInput = el('input', { type: 'text', 'aria-label': 'Page title', value: guideTitle });
-    const localeInput = el('input.wikijs-locale', { type: 'text', spellcheck: false, 'aria-label': 'Language', value: 'en' });
+    const pathInput = el('input', { type: 'text', spellcheck: false, 'aria-label': t('Page path'), placeholder: 'guides/my-guide' });
+    const titleInput = el('input', { type: 'text', 'aria-label': t('Page title'), value: guideTitle });
+    const localeInput = el('input.wikijs-locale', { type: 'text', spellcheck: false, 'aria-label': t('Language'), value: 'en' });
     const addressNote = el('p.muted.wikijs-address', {}, '');
     const previous = el('div.cloud-banner.hidden', {});
     const error = el('p.gh-note.error.hidden', { role: 'alert' }, '');
@@ -341,14 +343,14 @@ async function showPublishToWikiJsDialog({ api, guideId, guideTitle, onOpenAccou
     const refresh = () => {
       publishBtn.disabled = !canPublish();
       addressNote.textContent = pathInput.value.trim()
-        ? `The page will be at ${wikiJsAddress(status.host, localeInput.value, pathInput.value)}, with its screenshots in the asset folder of the same name.` : '';
+        ? t('The page will be at {address}, with its screenshots in the asset folder of the same name.', { address: wikiJsAddress(status.host, localeInput.value, pathInput.value) }) : '';
     };
     for (const input of [pathInput, titleInput, localeInput]) input.addEventListener('input', refresh);
 
     // Private details are checked before Publish is available, as for the web.
-    const privacyText = el('span', {}, 'Checking screenshots for private details…');
+    const privacyText = el('span', {}, t('Checking screenshots for private details…'));
     const privacySpinner = el('span.spinner', { 'aria-hidden': 'true' });
-    const privacyReview = el('button.hidden', { type: 'button' }, 'Review');
+    const privacyReview = el('button.hidden', { type: 'button' }, t('Review'));
     const privacyBox = el('div.gh-privacy', { role: 'status', 'aria-live': 'polite' }, privacySpinner, privacyText, privacyReview);
     let review = null;
     const showReview = (next) => {
@@ -361,28 +363,28 @@ async function showPublishToWikiJsDialog({ api, guideId, guideTitle, onOpenAccou
     };
     privacyReview.addEventListener('click', () => {
       const { close: closeReview } = openModal({
-        title: 'Private details',
+        title: t('Private details'),
         body: el('div.privacy-dialog', {},
-          el('p.muted', {}, 'These are blurred on the Wiki.js page. Remove any blur that isn’t needed.'),
+          el('p.muted', {}, t('These are blurred on the Wiki.js page. Remove any blur that isn’t needed.')),
           privacyReviewList(api, guideId, review, { onChange: (next) => { changed = true; showReview(next); } })),
-        footer: [el('button.primary', { type: 'button', onClick: () => closeReview() }, 'Done')],
+        footer: [el('button.primary', { type: 'button', onClick: () => closeReview() }, t('Done'))],
       });
     });
     runPrivacyCheck(api, guideId, (text) => { privacyText.textContent = text; })
       .then(showReview)
       .catch((err) => {
         privacySpinner.classList.add('hidden');
-        privacyText.textContent = `StepForge couldn’t check the screenshots for private details (${err.message}). Check them yourself before publishing.`;
+        privacyText.textContent = t('StepForge couldn’t check the screenshots for private details ({error}). Check them yourself before publishing.', { error: err.message });
         privacyBox.classList.add('found');
       })
       .finally(() => { checking = false; refresh(); });
 
     const form = el('div.gh-publish.wikijs-publish', {},
-      el('p', {}, `Publish “${guideTitle}” as a page on ${status.host}, with its screenshots uploaded to the wiki.`),
+      el('p', {}, t('Publish “{title}” as a page on {host}, with its screenshots uploaded to the wiki.', { title: guideTitle, host: status.host })),
       previous,
-      el('label.gh-field', {}, el('span', {}, 'Path'), pathInput),
-      el('label.gh-field', {}, el('span', {}, 'Title'), titleInput),
-      el('label.gh-field', {}, el('span', {}, 'Language'), localeInput),
+      el('label.gh-field', {}, el('span', {}, t('Path')), pathInput),
+      el('label.gh-field', {}, el('span', {}, t('Title')), titleInput),
+      el('label.gh-field', {}, el('span', {}, t('Language')), localeInput),
       addressNote,
       privacyBox,
       error);
@@ -399,8 +401,8 @@ async function showPublishToWikiJsDialog({ api, guideId, guideTitle, onOpenAccou
       refresh();
       const page = defaults.published;
       if (!page) return;
-      previous.replaceChildren('Published before. Publishing again updates ', el('button.link', { type: 'button', onClick: () => wikiJsOpen(api, page.url) }, 'the same page'), '.',
-        editedSinceShared(updated.get(guideId), page.publishedAt) ? ' The guide has changed since you published it.' : '');
+      previous.replaceChildren(...fillNodes(t('Published before. Publishing again updates {link}.'), { link: el('button.link', { type: 'button', onClick: () => wikiJsOpen(api, page.url) }, t('the same page')) }),
+        editedSinceShared(updated.get(guideId), page.publishedAt) ? ` ${t('The guide has changed since you published it.')}` : '');
       previous.classList.remove('hidden');
     }).catch((err) => showError(err.message));
 
@@ -408,7 +410,7 @@ async function showPublishToWikiJsDialog({ api, guideId, guideTitle, onOpenAccou
       publishing = false;
       body.replaceChildren(form);
       publishBtn.classList.remove('hidden');
-      cancelBtn.textContent = 'Cancel';
+      cancelBtn.textContent = t('Cancel');
       refresh();
     };
     const publish = async (replace = false) => {
@@ -419,17 +421,17 @@ async function showPublishToWikiJsDialog({ api, guideId, guideTitle, onOpenAccou
       const progress = wikiJsProgress(guideTitle);
       body.replaceChildren(progress.node);
       publishBtn.classList.add('hidden');
-      cancelBtn.textContent = 'Close';
+      cancelBtn.textContent = t('Close');
       const stop = api.wikijs.onProgress((update) => { if (update?.guideId === guideId) progress.set(update); });
       try {
         const result = await api.wikijs.publish({ guideId, path: pathInput.value.trim(), title: titleInput.value.trim(), locale: localeInput.value.trim() || 'en', replace });
         changed = true;
         if (result.needsCode) {
           publishing = false;
-          if (!open) { toast(`Wiki.js ended your session. Publish “${guideTitle}” again to enter a code from your authenticator app.`, { error: true }); return; }
+          if (!open) { toast(t('Wiki.js ended your session. Publish “{title}” again to enter a code from your authenticator app.', { title: guideTitle }), { error: true }); return; }
           if (await askWikiJsCode(api) && open) { await publish(replace); return; }
           backToForm();
-          showError('Publishing needs a code from your authenticator app. Choose Publish to try again.');
+          showError(t('Publishing needs a code from your authenticator app. Choose Publish to try again.'));
           return;
         }
         if (result.edited || result.conflict) {
@@ -437,26 +439,26 @@ async function showPublishToWikiJsDialog({ api, guideId, guideTitle, onOpenAccou
           const ok = result.edited
             ? await confirmReplaceEdits(api, result.edited, { where: t('on the wiki'), history: t('Wiki.js keeps the edited version in the page history.') })
             : await confirmDialog(el('div.cloud-confirm', {},
-              el('strong', {}, `A page already exists at ${result.conflict.path}. Replace it?`),
-              el('p', {}, `“${result.conflict.title}” wasn’t published from this guide. Wiki.js keeps its current version in the page history.`)),
-            { okLabel: 'Replace page' });
+              el('strong', {}, t('A page already exists at {path}. Replace it?', { path: result.conflict.path })),
+              el('p', {}, t('“{title}” wasn’t published from this guide. Wiki.js keeps its current version in the page history.', { title: result.conflict.title }))),
+            { okLabel: t('Replace page') });
           if (ok && open) { await publish(true); return; }
           backToForm();
           return;
         }
-        if (!open) { toast(`“${guideTitle}” is on Wiki.js.`); return; }
+        if (!open) { toast(t('“{title}” is on Wiki.js.', { title: guideTitle })); return; }
         const copy = el('button.primary', { type: 'button', onClick: async () => {
-          try { await navigator.clipboard.writeText(result.url); toast('Link copied.'); }
-          catch { toast('Couldn’t copy the link.', { error: true }); }
-        } }, 'Copy link');
+          try { await navigator.clipboard.writeText(result.url); toast(t('Link copied.')); }
+          catch { toast(t('Couldn’t copy the link.'), { error: true }); }
+        } }, t('Copy link'));
         body.replaceChildren(
           el('p.gh-published-title', {}, el('span.gh-published-icon', { 'aria-hidden': 'true' }, '✓'),
-            el('strong', {}, result.updated ? `Updated “${result.title}” on Wiki.js.` : `Published “${result.title}” to Wiki.js.`)),
+            el('strong', {}, result.updated ? t('Updated “{title}” on Wiki.js.', { title: result.title }) : t('Published “{title}” to Wiki.js.', { title: result.title }))),
           el('code.settings-path.gh-url', { title: result.url }, result.url),
-          el('div.row', {}, copy, el('button', { type: 'button', onClick: () => wikiJsOpen(api, result.url) }, 'Open in browser')));
-        cancelBtn.textContent = 'Done';
+          el('div.row', {}, copy, el('button', { type: 'button', onClick: () => wikiJsOpen(api, result.url) }, t('Open in browser'))));
+        cancelBtn.textContent = t('Done');
       } catch (err) {
-        if (!open) { toast(`Publishing “${guideTitle}” to Wiki.js failed: ${err.message}`, { error: true }); return; }
+        if (!open) { toast(t('Publishing “{title}” to Wiki.js failed: {error}', { title: guideTitle, error: err.message }), { error: true }); return; }
         backToForm();
         showError(err.message);
       } finally {

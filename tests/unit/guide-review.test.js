@@ -179,7 +179,7 @@ test('library: review.js loads before the renderer scripts that use it', () => {
 
 test('library: the "May need review" pill shows only when overdue, just left of the date', () => {
   const app = read('app/renderer/app.js');
-  const footer = app.slice(app.indexOf("el('div.card-footer', {},\n      el('span', {}, `${steps} step"));
+  const footer = app.slice(app.indexOf("el('div.card-footer', {},\n      el('span', {}, tn(steps, '{count} step'"));
   const badge = footer.indexOf("reviewState?.overdue ? el('span.badge.review-badge'");
   const date = footer.indexOf("el('span.card-updated'");
   assert.ok(badge > 0 && badge < date, 'the badge comes right before the date');

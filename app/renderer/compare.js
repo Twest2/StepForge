@@ -11,13 +11,31 @@
  * and stays viewed for that snapshot until the step changes again.
  */
 
-const STATUS_LABELS = { added: 'Added', deleted: 'Deleted', changed: 'Changed', unchanged: 'Unchanged' };
-const LEVEL_LABELS = { info: 'Info', warn: 'Warning', error: 'Error', success: 'Success' };
-const REASON_LABELS = { screenshot: 'new screenshot', annotations: 'annotations changed', 'focused view': 'focused view changed' };
+const STATUS_LABELS = { added: t('Added'), deleted: t('Deleted'), changed: t('Changed'), unchanged: t('Unchanged') };
+const LEVEL_LABELS = { info: t('Info'), warn: t('Warning'), error: t('Error'), success: t('Success') };
+const REASON_LABELS = { screenshot: t('new screenshot'), annotations: t('annotations changed'), 'focused view': t('focused view changed') };
+// Labels and values core/guide-diff.js reports in English, as the reader sees them.
+const CHANGE_LABELS = {
+  Title: t('Title'), Description: t('Description'), 'Step type': t('Step type'), Hidden: t('Hidden'), Skipped: t('Skipped'),
+  'Starts a new page': t('Starts a new page'), Links: t('Links'), Screenshot: t('Screenshot'), 'Guide title': t('Guide title'),
+  'Guide description': t('Guide description'), Theme: t('Theme'), Style: t('Style'), Placed: t('Placed'), Text: t('Text'),
+  Language: t('Language'), 'Text block': t('Text block'), 'Code block': t('Code block'), Table: t('Table'),
+};
+const VALUE_LABELS = {
+  Yes: t('Yes'), No: t('No'), Screenshot: t('Screenshot'), Blank: t('Blank'), 'Content only': t('Content only'),
+  Info: t('Info'), Warning: t('Warning'), Error: t('Error'), Success: t('Success'), 'Plain text': t('Plain text'), None: t('None'),
+  system: t('system'), 'Before the title': t('Before the title'), 'After the title': t('After the title'),
+  'Before the screenshot': t('Before the screenshot'), 'After the screenshot': t('After the screenshot'),
+  'Before the description': t('Before the description'), 'After the description': t('After the description'),
+};
+const changeLabel = (label) => CHANGE_LABELS[label] || label;
+const JUMP_TITLES = {
+  added: t('Jump to the first added step'), deleted: t('Jump to the first deleted step'),
+  changed: t('Jump to the first changed step'), moved: t('Jump to the first moved step'),
+};
+const COUNT_LABELS = { added: t('{count} added'), deleted: t('{count} deleted'), changed: t('{count} changed'), moved: t('{count} moved') };
 // Unchanged code lines around a change that stay visible; longer runs fold.
 const CODE_CONTEXT = 3;
-
-const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
 
 /** Inline word diff: removed parts struck through in red, added parts green. */
 function diffText(parts, className = 'cmp-text') {
@@ -31,7 +49,7 @@ function statusTag(status) {
 }
 
 function movedTag(from, to) {
-  return el('span.cmp-status.moved', { title: 'Its place among the others changed' }, from && to && from !== to ? `Moved #${from} → #${to}` : 'Moved');
+  return el('span.cmp-status.moved', { title: t('Its place among the others changed') }, from && to && from !== to ? t('Moved #{from} → #{to}', { from, to }) : t('Moved'));
 }
 
 /** A short, stable fingerprint of a change, so "viewed" resets when it changes again. */
@@ -43,11 +61,11 @@ function fingerprint(value) {
 }
 
 function changeRow(label, content) {
-  return el('div.cmp-row', {}, el('div.cmp-label', {}, label), el('div.cmp-value', {}, content));
+  return el('div.cmp-row', {}, el('div.cmp-label', {}, changeLabel(label)), el('div.cmp-value', {}, content));
 }
 
 function fieldValue(value) {
-  return value === null || value === undefined || value === '' ? el('span.muted', {}, 'None') : String(value);
+  return value === null || value === undefined || value === '' ? el('span.muted', {}, t('None')) : VALUE_LABELS[value] || String(value);
 }
 
 /** "Hidden: No → Yes", old value struck red, new value green. */
@@ -59,7 +77,7 @@ function fieldRow(change) {
     added ? null : el('del.cmp-del', {}, fieldValue(change.before)),
     added || removed ? null : el('span.cmp-arrow', { 'aria-hidden': 'true' }, '→'),
     removed ? null : el('ins.cmp-add', {}, fieldValue(change.after)),
-    added ? el('span.muted', {}, ' (added)') : removed ? el('span.muted', {}, ' (removed)') : null));
+    added ? el('span.muted', {}, ` ${t('(added)')}`) : removed ? el('span.muted', {}, ` ${t('(removed)')}`) : null));
 }
 
 /** Git-style code lines with -/+ gutters; long unchanged runs fold. */
@@ -75,7 +93,7 @@ function codeDiff(lines) {
     const hidden = folded;
     folded = [];
     if (hidden.length === 1) { rows.push(hidden[0]); return; }
-    const fold = el('button.cmp-code-fold', { type: 'button', title: 'Show these lines' }, `⋯ ${plural(hidden.length, 'unchanged line')}`);
+    const fold = el('button.cmp-code-fold', { type: 'button', title: t('Show these lines') }, `⋯ ${tn(hidden.length, '{count} unchanged line', '{count} unchanged lines')}`);
     fold.addEventListener('click', () => fold.replaceWith(...hidden));
     rows.push(fold);
   };
@@ -105,9 +123,9 @@ function tableGrid(rows, op) {
 function tableDiff(table) {
   if (table.structure) {
     return el('div.cmp-table-structure', {},
-      el('div.cmp-note', {}, 'Table structure changed (a different number of columns).'),
-      el('div.cmp-caption.before', {}, 'Before'), tableGrid(table.before, 'del'),
-      el('div.cmp-caption.after', {}, 'After'), tableGrid(table.after, 'add'));
+      el('div.cmp-note', {}, t('Table structure changed (a different number of columns).')),
+      el('div.cmp-caption.before', {}, t('Before')), tableGrid(table.before, 'del'),
+      el('div.cmp-caption.after', {}, t('After')), tableGrid(table.after, 'add'));
   }
   return el('table.cmp-table', {}, ...table.rows.map((row) => el(`tr.${row.op}`, {},
     el('td.cmp-sign', { 'aria-hidden': 'true' }, row.op === 'del' ? '−' : row.op === 'add' ? '+' : row.op === 'change' ? '~' : ''),
@@ -119,7 +137,7 @@ function blockCard(block) {
   const kind = block.kind === 'code' && block.languageValue ? block.languageValue
     : block.kind === 'text' && block.levelValue ? LEVEL_LABELS[block.levelValue] || block.levelValue : '';
   const head = el('div.cmp-block-head', {},
-    el('span.cmp-block-kind', {}, block.label),
+    el('span.cmp-block-kind', {}, changeLabel(block.label)),
     kind ? el(`span.cmp-block-type${block.kind === 'code' ? '.mono' : ''}`, {}, kind) : null,
     el('span.spacer'),
     block.moved ? movedTag() : null,
@@ -129,7 +147,7 @@ function blockCard(block) {
     if (block.level) body.push(fieldRow(block.level));
     if (block.position) body.push(fieldRow(block.position));
     if (block.title) body.push(diffText(block.title.parts, 'cmp-block-title'));
-    if (block.description?.type === 'formatting') body.push(el('div.cmp-note', {}, 'Formatting changed (bold, links, lists…); the words are the same.'));
+    if (block.description?.type === 'formatting') body.push(el('div.cmp-note', {}, t('Formatting changed (bold, links, lists…); the words are the same.')));
     else if (block.description) body.push(diffText(block.description.parts));
   } else if (block.kind === 'code') {
     if (block.language) body.push(fieldRow(block.language));
@@ -149,14 +167,14 @@ function blockCard(block) {
  */
 function imageCompare(change, loadImage, observer) {
   const pane = (side, ref) => {
-    const holder = el('div.cmp-image-holder', {}, el('div.cmp-image-loading.muted', {}, 'Loading screenshot…'));
+    const holder = el('div.cmp-image-holder', {}, el('div.cmp-image-loading.muted', {}, t('Loading screenshot…')));
     const node = el(`div.cmp-image-pane.${side}`, {},
       el('div.cmp-caption', {},
         el(`span.cmp-key.${side === 'before' ? 'del' : 'add'}`, { 'aria-hidden': 'true' }, side === 'before' ? '−' : '+'),
-        side === 'before' ? 'Before (snapshot)' : 'After (now)'),
+        side === 'before' ? t('Before (snapshot)') : t('After (now)')),
       holder);
     if (!ref) {
-      holder.replaceChildren(el('div.cmp-image-empty.muted', {}, side === 'before' ? 'No screenshot in the snapshot' : 'No screenshot now'));
+      holder.replaceChildren(el('div.cmp-image-empty.muted', {}, side === 'before' ? t('No screenshot in the snapshot') : t('No screenshot now')));
       return node;
     }
     holder.cmpLoad = () => drawImage(holder, ref, () => loadImage(side, ref.file));
@@ -164,11 +182,11 @@ function imageCompare(change, loadImage, observer) {
     return node;
   };
   const reasons = (change.reasons || []).map((reason) => REASON_LABELS[reason] || reason);
-  if (change.status === 'added') reasons.push('added');
-  if (change.status === 'deleted') reasons.push('removed');
+  if (change.status === 'added') reasons.push(t('added'));
+  if (change.status === 'deleted') reasons.push(t('removed'));
   return el('div.cmp-images', {},
     el('div.cmp-images-head', {},
-      el('span.cmp-label', {}, change.label),
+      el('span.cmp-label', {}, changeLabel(change.label)),
       reasons.length ? el('span.muted', {}, reasons.join(', ')) : null),
     el(`div.cmp-image-pair${change.before && change.after ? '' : '.single'}`, {},
       change.before || change.status === 'changed' ? pane('before', change.before) : null,
@@ -181,7 +199,7 @@ async function drawImage(holder, ref, load) {
     if (!url) throw new Error('missing');
     const img = new Image();
     await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = url; });
-    const canvasEl = el('canvas.cmp-canvas', { 'aria-label': 'Screenshot with annotations' });
+    const canvasEl = el('canvas.cmp-canvas', { 'aria-label': t('Screenshot with annotations') });
     holder.replaceChildren(canvasEl);
     const view = new window.AnnotationCanvas(canvasEl, {});
     const width = img.naturalWidth;
@@ -193,14 +211,14 @@ async function drawImage(holder, ref, load) {
     view.setImage(img, width, height);
     canvasEl.style.width = `${canvasEl.width / dpr}px`;
   } catch {
-    holder.replaceChildren(el('div.cmp-image-empty.muted', {}, 'This screenshot can’t be shown (it is missing or damaged).'));
+    holder.replaceChildren(el('div.cmp-image-empty.muted', {}, t('This screenshot can’t be shown (it is missing or damaged).')));
   }
 }
 
 function stepChangeNodes(step, loadImage, observer) {
   return step.changes.map((change) => {
     if (change.type === 'text') return changeRow(change.label, diffText(change.parts));
-    if (change.type === 'formatting') return changeRow(change.label, el('div.cmp-note', {}, 'Formatting changed (bold, links, lists…); the words are the same.'));
+    if (change.type === 'formatting') return changeRow(change.label, el('div.cmp-note', {}, t('Formatting changed (bold, links, lists…); the words are the same.')));
     if (change.type === 'field') return fieldRow(change);
     if (change.type === 'image') return imageCompare(change, loadImage, observer);
     if (change.type === 'block') return blockCard(change);
@@ -218,19 +236,19 @@ function stepNumber(step) {
  * GitHub's. `review` remembers what was viewed.
  */
 function reviewCard({ className, key, print, headParts, body, review, depth = 0, dataset = {} }) {
-  const chevron = el('button.cmp-fold', { type: 'button', title: 'Fold', 'aria-expanded': 'true' }, el('span.cmp-chevron', { 'aria-hidden': 'true' }, '▾'));
+  const chevron = el('button.cmp-fold', { type: 'button', title: t('Fold'), 'aria-expanded': 'true' }, el('span.cmp-chevron', { 'aria-hidden': 'true' }, '▾'));
   const viewed = el('input', { type: 'checkbox' });
   const card = el(`section.cmp-step.${className}`, {
     style: { marginLeft: `${Math.min(depth, 4) * 18}px` },
     dataset,
   },
   el('div.cmp-step-head', {}, chevron, ...headParts,
-    el('label.cmp-viewed', { title: 'Mark as viewed (V) and fold it away' }, viewed, 'Viewed')),
+    el('label.cmp-viewed', { title: t('Mark as viewed (V) and fold it away') }, viewed, t('Viewed'))),
   body);
   card.cmpSetOpen = (open) => {
     body.hidden = !open;
     chevron.setAttribute('aria-expanded', String(open));
-    chevron.title = open ? 'Fold' : 'Unfold';
+    chevron.title = open ? t('Fold') : t('Unfold');
     card.classList.toggle('folded', !open);
   };
   card.cmpSetViewed = (on) => {
@@ -254,8 +272,8 @@ function stepCard(step, loadImage, observer, review) {
   const number = stepNumber(step);
   const body = step.status === 'unchanged'
     ? el('div.cmp-step-body', {}, el('div.cmp-note', {}, step.number.before !== step.number.after
-      ? `Only its place in the guide changed (it was step ${step.number.before}).`
-      : 'Only its place among the other steps changed.'))
+      ? t('Only its place in the guide changed (it was step {number}).', { number: step.number.before })
+      : t('Only its place among the other steps changed.')))
     : el('div.cmp-step-body', {}, ...stepChangeNodes(step, loadImage, observer));
   return reviewCard({
     className: `${step.status}${step.moved ? '.is-moved' : ''}`,
@@ -263,7 +281,7 @@ function stepCard(step, loadImage, observer, review) {
     print: fingerprint([step.status, step.moved, step.number, step.changes]),
     headParts: [
       el('span.cmp-step-number', {}, number ? `#${number}` : ''),
-      el('span.cmp-step-title', { title: step.title }, step.title || el('span.muted', {}, 'Untitled step')),
+      el('span.cmp-step-title', { title: step.title }, step.title || el('span.muted', {}, t('Untitled step'))),
       step.moved ? movedTag(step.number.before, step.number.after) : null,
       step.status !== 'unchanged' ? statusTag(step.status) : null,
     ],
@@ -278,13 +296,13 @@ function stepCard(step, loadImage, observer, review) {
 function unchangedGroup(steps) {
   const first = stepNumber(steps[0]);
   const last = stepNumber(steps.at(-1));
-  const range = steps.length === 1 ? `step ${first}` : `steps ${first}–${last}`;
+  const range = steps.length === 1 ? t('step {number}', { number: first }) : t('steps {first}–{last}', { first, last });
   const list = el('div.cmp-unchanged-list', { hidden: true }, ...steps.map((step) => el('div.cmp-unchanged-item', {
     style: { paddingLeft: `${10 + Math.min(step.depth, 4) * 18}px` },
-  }, el('span.cmp-step-number', {}, `#${stepNumber(step)}`), step.title || el('span.muted', {}, 'Untitled step'))));
+  }, el('span.cmp-step-number', {}, `#${stepNumber(step)}`), step.title || el('span.muted', {}, t('Untitled step')))));
   const toggle = el('button.cmp-unchanged-toggle', { type: 'button', 'aria-expanded': 'false' },
     el('span.cmp-chevron', { 'aria-hidden': 'true' }, '▾'),
-    `${plural(steps.length, 'unchanged step')} `, el('span.muted', {}, `(${range})`));
+    `${tn(steps.length, '{count} unchanged step', '{count} unchanged steps')} `, el('span.muted', {}, `(${range})`));
   const group = el('div.cmp-unchanged', {}, toggle, list);
   toggle.addEventListener('click', () => group.cmpSetOpen(list.hidden));
   group.cmpSetOpen = (open) => {
@@ -300,10 +318,10 @@ function guideCard(changes, review) {
     className: 'changed.cmp-guide',
     key: 'guide',
     print: fingerprint(changes),
-    headParts: [el('span.cmp-step-title', {}, 'Guide details'), statusTag('changed')],
+    headParts: [el('span.cmp-step-title', {}, t('Guide details')), statusTag('changed')],
     body: el('div.cmp-step-body', {}, ...changes.map((change) => {
       if (change.type === 'text') return changeRow(change.label, diffText(change.parts));
-      if (change.type === 'formatting') return changeRow(change.label, el('div.cmp-note', {}, 'Formatting changed; the words are the same.'));
+      if (change.type === 'formatting') return changeRow(change.label, el('div.cmp-note', {}, t('Formatting changed; the words are the same.')));
       return fieldRow(change);
     })),
     review,
@@ -313,15 +331,15 @@ function guideCard(changes, review) {
 
 /** "1 added, 1 deleted, 4 changed, 1 moved · 5 unchanged"; each count jumps to its first step. */
 function summaryBar(summary, jumpTo) {
-  const items = [['added', 'added'], ['deleted', 'deleted'], ['changed', 'changed'], ['moved', 'moved']]
-    .filter(([kind]) => summary[kind])
-    .map(([kind, text]) => el(`button.cmp-count.${kind}`, {
-      type: 'button', title: `Jump to the first ${kind} step`, onClick: () => jumpTo(kind),
-    }, el('strong', {}, String(summary[kind])), ` ${text}`));
+  const items = ['added', 'deleted', 'changed', 'moved']
+    .filter((kind) => summary[kind])
+    .map((kind) => el(`button.cmp-count.${kind}`, {
+      type: 'button', title: JUMP_TITLES[kind], onClick: () => jumpTo(kind),
+    }, ...fillNodes(COUNT_LABELS[kind], { count: el('strong', {}, String(summary[kind])) })));
   const parts = [];
   items.forEach((item, i) => { if (i) parts.push(el('span.muted', {}, ', ')); parts.push(item); });
   return el('div.cmp-summary', {}, ...parts,
-    summary.unchanged ? el('span.muted', {}, `${parts.length ? ' · ' : ''}${summary.unchanged} unchanged`) : null);
+    summary.unchanged ? el('span.muted', {}, `${parts.length ? ' · ' : ''}${t('{count} unchanged', { count: summary.unchanged })}`) : null);
 }
 
 /** Which changes were marked viewed, kept per guide and snapshot in this browser profile. */
@@ -384,10 +402,10 @@ function showSnapshotCompare({ label, diff, loadImage, onRestore, storageKey = '
     const progress = el('span.cmp-progress', {});
     const showPosition = () => {
       position.textContent = targets.length
-        ? (current < 0 ? plural(targets.length, 'change') : `Change ${current + 1} of ${targets.length}`)
+        ? (current < 0 ? tn(targets.length, '{count} change', '{count} changes') : t('Change {current} of {count}', { current: current + 1, count: targets.length }))
         : '';
       const viewedCount = targets.filter((node) => node.cmpIsViewed()).length;
-      progress.textContent = `${viewedCount} / ${targets.length} viewed`;
+      progress.textContent = t('{viewed} / {count} viewed', { viewed: viewedCount, count: targets.length });
       progress.classList.toggle('all', viewedCount === targets.length);
     };
     const select = (index) => {
@@ -422,30 +440,29 @@ function showSnapshotCompare({ label, diff, loadImage, onRestore, storageKey = '
     showAll.addEventListener('change', () => groups.forEach((group) => group.cmpSetOpen(showAll.checked)));
 
     const toolbar = el('div.cmp-toolbar', {},
-      el('div.cmp-versions', {},
-        'Comparing ',
-        el('span.cmp-version', { title: 'Removed text is shown in red' }, el('span.cmp-key.del', { 'aria-hidden': 'true' }, '−'), el('strong', {}, `snapshot ${label}`)),
-        ' with ',
-        el('span.cmp-version', { title: 'Added text is shown in green' }, el('span.cmp-key.add', { 'aria-hidden': 'true' }, '+'), el('strong', {}, 'the current guide'))),
+      el('div.cmp-versions', {}, ...fillNodes(t('Comparing {before} with {after}'), {
+        before: el('span.cmp-version', { title: t('Removed text is shown in red') }, el('span.cmp-key.del', { 'aria-hidden': 'true' }, '−'), el('strong', {}, t('snapshot {name}', { name: label }))),
+        after: el('span.cmp-version', { title: t('Added text is shown in green') }, el('span.cmp-key.add', { 'aria-hidden': 'true' }, '+'), el('strong', {}, t('the current guide'))),
+      })),
       diff.identical ? null : el('div.cmp-toolbar-row', {},
         summaryBar(diff.summary, jumpTo),
         el('div.spacer'),
-        groups.length ? el('label.cmp-show-all', {}, showAll, ' Show unchanged steps') : null,
+        groups.length ? el('label.cmp-show-all', {}, showAll, ' ', t('Show unchanged steps')) : null,
         progress,
         position,
-        navButton('↑', 'Previous change (P)', -1),
-        navButton('↓', 'Next change (N)', 1)));
+        navButton('↑', t('Previous change (P)'), -1),
+        navButton('↓', t('Next change (N)'), 1)));
 
     const body = el('div.cmp-view', {}, toolbar, diff.identical
       ? el('div.cmp-empty', {},
-        el('div', {}, el('strong', {}, 'No differences.')),
-        el('div.muted', {}, 'This snapshot matches the current guide.'))
+        el('div', {}, el('strong', {}, t('No differences.'))),
+        el('div.muted', {}, t('This snapshot matches the current guide.')))
       : list);
 
     const restoreBtn = el('button', {
       type: 'button',
       onClick: async () => {
-        setButtonLoading(restoreBtn, true, 'Restoring…');
+        setButtonLoading(restoreBtn, true, t('Restoring…'));
         let restored = false;
         try {
           restored = await onRestore?.();
@@ -454,7 +471,7 @@ function showSnapshotCompare({ label, diff, loadImage, onRestore, storageKey = '
         }
         if (restored) finish(true);
       },
-    }, 'Restore this snapshot');
+    }, t('Restore this snapshot'));
 
     const onKey = (e) => {
       if (!node.isConnected) { document.removeEventListener('keydown', onKey); return; }
@@ -482,13 +499,15 @@ function showSnapshotCompare({ label, diff, loadImage, onRestore, storageKey = '
     };
 
     const { close, node } = openModal({
-      title: 'Compare with current guide',
+      title: t('Compare with current guide'),
       body,
       footer: [
-        el('span.cmp-keys.muted', {}, el('kbd', {}, 'N'), ' / ', el('kbd', {}, 'P'), ' next / previous · ', el('kbd', {}, 'V'), ' mark viewed · ', el('kbd', {}, 'Esc'), ' close'),
+        el('span.cmp-keys.muted', {}, ...fillNodes(t('{next} / {previous} next / previous · {viewed} mark viewed · {close} close'), {
+          next: el('kbd', {}, 'N'), previous: el('kbd', {}, 'P'), viewed: el('kbd', {}, 'V'), close: el('kbd', {}, 'Esc'),
+        })),
         el('div.spacer'),
         restoreBtn,
-        el('button.primary', { type: 'button', onClick: () => finish(false) }, 'Close'),
+        el('button.primary', { type: 'button', onClick: () => finish(false) }, t('Close')),
       ],
       wide: true,
       onClose: () => finish(false),

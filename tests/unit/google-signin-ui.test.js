@@ -71,7 +71,7 @@ function panel(initial) {
   // Borrow the shared formatters without util.js replacing the fake el().
   const util = vm.createContext({ ...rendererI18n() });
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/util.js'), 'utf8'), util);
-  Object.assign(context, { formatBytes: util.formatBytes, describeTransfer: util.describeTransfer });
+  Object.assign(context, { formatBytes: util.formatBytes, describeTransfer: util.describeTransfer, fillNodes: util.fillNodes });
 
   vm.createContext(context);
 

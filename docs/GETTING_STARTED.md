@@ -116,6 +116,11 @@ exports and accepts Markdown: `**bold**`, `*italic*`, `` `code` ``,
 **Shift-click** another to select everything in between, including substeps.
 A normal click toggles a single step.
 
+**Deleting steps:** StepForge asks before it deletes a step or a selection
+of steps, and **Ctrl+Z** brings them back. To delete without being asked,
+turn on **Settings → Editor → Dangerous deletes**. Deleting a guide always
+asks.
+
 ### Replace or retake a screenshot
 
 When the software you documented changes, right-click the step:

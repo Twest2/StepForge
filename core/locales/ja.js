@@ -790,4 +790,7 @@
   '{count} steps deleted. Press Ctrl+Z to undo.': { other: '{count} ステップを削除しました。Ctrl+Z で元に戻せます。' },
   'Restored {count} steps.': { other: '{count} ステップを復元しました。' },
   'Deleted {count} steps.': { other: '{count} ステップを削除しました。' },
+  'Deleting': '削除',
+  'Dangerous deletes': '危険な削除',
+  'Delete steps without asking for confirmation.': '確認せずにステップを削除します。',
 });

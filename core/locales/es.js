@@ -790,4 +790,7 @@
   '{count} steps deleted. Press Ctrl+Z to undo.': { one: '{count} paso eliminado. Pulsa Ctrl+Z para deshacer.', other: '{count} pasos eliminados. Pulsa Ctrl+Z para deshacer.' },
   'Restored {count} steps.': { one: '{count} paso restaurado.', other: '{count} pasos restaurados.' },
   'Deleted {count} steps.': { one: '{count} paso eliminado.', other: '{count} pasos eliminados.' },
+  'Deleting': 'Eliminación',
+  'Dangerous deletes': 'Eliminaciones peligrosas',
+  'Delete steps without asking for confirmation.': 'Eliminar pasos sin pedir confirmación.',
 });

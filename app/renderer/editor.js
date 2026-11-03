@@ -1335,10 +1335,19 @@ class GuideEditor {
     );
   }
 
+  /**
+   * Asks before deleting steps, unless Settings → Editor → Dangerous deletes
+   * is on. Resolves true to delete.
+   */
+  async confirmDelete(message) {
+    if (this.settings?.editor?.dangerousDeletes === true) return true;
+    return confirmDialog(message, { danger: true, okLabel: t('Delete') });
+  }
+
   async deleteSelectedSteps() {
     const ids = [...this.selectedSteps];
     if (!ids.length) return;
-    const ok = await confirmDialog(tn(ids.length, 'Delete {count} step?', 'Delete {count} steps?'), { danger: true, okLabel: t('Delete') });
+    const ok = await this.confirmDelete(tn(ids.length, 'Delete {count} step?', 'Delete {count} steps?'));
     if (!ok) return;
     if (this.pendingSave) await this.flushStep();
     const order = this.steps.map((s) => s.stepId);
@@ -2449,7 +2458,7 @@ class GuideEditor {
   async deleteSelectedStep() {
     const step = this.currentStep;
     if (!step) return;
-    const ok = await confirmDialog(t('Delete “{title}”?', { title: step.title || t('Untitled step') }), { danger: true, okLabel: t('Delete') });
+    const ok = await this.confirmDelete(t('Delete “{title}”?', { title: step.title || t('Untitled step') }));
     if (!ok) return;
     if (this.pendingSave) await this.flushStep();
     const order = this.steps.map((s) => s.stepId);

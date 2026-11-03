@@ -790,4 +790,7 @@
   '{count} steps deleted. Press Ctrl+Z to undo.': { other: '已删除 {count} 个步骤。按 Ctrl+Z 撤消。' },
   'Restored {count} steps.': { other: '已恢复 {count} 个步骤。' },
   'Deleted {count} steps.': { other: '已删除 {count} 个步骤。' },
+  'Deleting': '删除',
+  'Dangerous deletes': '危险删除',
+  'Delete steps without asking for confirmation.': '删除步骤时不再请求确认。',
 });

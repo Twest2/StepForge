@@ -116,18 +116,116 @@ function toast(message, { error = false, ms = 2600 } = {}) {
 }
 
 const modalStack = [];
+// Close function of the "Discard your changes?" prompt while it is open, so
+// Escape or × can't stack a second one.
+let discardPrompt = null;
+let modalCount = 0;
 
-/** Modal helper. Returns { close, node }. Esc and ✕ close it. */
-function openModal({ title, body, footer, wide = false, onClose }) {
+const FIELD_TAGS = ['input', 'select', 'textarea'];
+
+const tagOf = (node) => String(node.localName || node.tagName || '').toLowerCase();
+
+/**
+ * Enabled, visible controls inside `root` in tab order. Skips hidden and
+ * inert subtrees (other Settings sections, dialogs underneath). With
+ * `fieldsOnly`, only text fields, selects and checkboxes count.
+ */
+function focusableIn(root, { fieldsOnly = false } = {}) {
+  const found = [];
+  const visit = (node) => {
+    if (!node || typeof node !== 'object') return;
+    if (node.hidden || node.inert || node.classList?.contains?.('hidden')) return;
+    const tag = tagOf(node);
+    const isField = FIELD_TAGS.includes(tag);
+    const isControl = (isField || tag === 'button' || (tag === 'a' && node.getAttribute?.('href') != null))
+      && !node.disabled && node.type !== 'hidden' && (node.tabIndex ?? 0) >= 0;
+    if (isControl && (isField || !fieldsOnly)) found.push(node);
+    for (const child of node.children || []) visit(child);
+  };
+  visit(root);
+  return found;
+}
+
+/** Tab and Shift+Tab stay inside the dialog: at either end, wrap to the other. */
+function trapTab(e, dialogNode) {
+  const items = focusableIn(dialogNode);
+  if (!items.length) { e.preventDefault(); return; }
+  const at = items.indexOf(document.activeElement);
+  if (e.shiftKey ? at <= 0 : at === -1 || at === items.length - 1) {
+    e.preventDefault();
+    (e.shiftKey ? items.at(-1) : items[0]).focus();
+  }
+}
+
+/**
+ * Keys aimed at the top dialog reach it; Escape closes it (asking first when
+ * it has unsaved changes); Tab is trapped; keys aimed at anything behind it
+ * are stopped before the app's own shortcut handlers see them.
+ */
+function onModalKeyDown(e) {
+  const top = modalStack.at(-1);
+  if (!top) return;
+  if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); top.requestDismiss(); return; }
+  if (e.key === 'Tab') { trapTab(e, top.node); return; }
+  if (!top.node.contains?.(e.target)) e.stopPropagation();
+}
+
+/**
+ * Tracks focus inside the top dialog, and sends focus that lands outside it
+ * (a click or a script) back to the control that had it last.
+ */
+function keepFocusInDialog(e) {
+  const top = modalStack.at(-1);
+  if (!top) return;
+  if (top.node.contains?.(e.target)) { top.lastFocus = e.target; return; }
+  const items = focusableIn(top.node);
+  (items.includes(top.lastFocus) ? top.lastFocus : items[0])?.focus?.();
+}
+
+/** The app behind the dialogs is inert while any dialog is open. */
+function syncAppInert() {
+  const app = document.getElementById('app');
+  if (app) app.inert = modalStack.length > 0;
+}
+
+// Key and focus guards for every dialog. Window capture runs before the page's own key handlers.
+if (typeof document !== 'undefined') {
+  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener('keydown', onModalKeyDown, true);
+  } else {
+    document.addEventListener('keydown', onModalKeyDown, true);
+  }
+  document.addEventListener('focusin', keepFocusInDialog, true);
+}
+
+/**
+ * For openModal's isDirty: true once what `read()` returns differs from what
+ * it returned when this was called (call it just before opening the dialog).
+ */
+function unsavedChanges(read) {
+  const start = JSON.stringify(read());
+  return () => JSON.stringify(read()) !== start;
+}
+
+/**
+ * Modal helper. Returns { close, node }. Esc and × close it; with `isDirty`
+ * (a function) they ask "Discard your changes?" first when it returns true.
+ * Clicking the backdrop does nothing, so an edit can't be lost by a stray
+ * click. Focus moves into the dialog, Tab is trapped there, and focus goes
+ * back to what opened it when it closes. `initialFocus` picks the element
+ * to focus on open (default: the first field, else the primary button).
+ */
+function openModal({ title, body, footer, wide = false, onClose, isDirty = null, initialFocus = null }) {
   const root = document.getElementById('modal-root');
   const parent = modalStack.at(-1);
   const previousFocus = document.activeElement;
   if (parent) { parent.node.hidden = true; parent.node.inert = true; }
+  const titleId = `modal-title-${++modalCount}`;
   let closed = false;
   // `close` just tears down the modal. Buttons that already resolve the
   // dialog's promise themselves call this. `dismiss` additionally fires
   // `onClose`, for ways of leaving the dialog that didn't pick an option
-  // (Esc, the ✕, or clicking the backdrop) and need a default resolution.
+  // (Esc or the ×) and need a default resolution.
   const close = () => {
     if (closed) return;
     closed = true;
@@ -138,45 +236,78 @@ function openModal({ title, body, footer, wide = false, onClose }) {
     modal.remove();
     const active = modalStack.at(-1);
     if (active) { active.node.hidden = false; active.node.inert = false; }
-    root.onclick = active?.dismiss || null;
+    syncAppInert();
     if (previousFocus?.isConnected) previousFocus.focus();
-    document.removeEventListener('keydown', escHandler, true);
+    else if (active) focusableIn(active.node)[0]?.focus();
   };
   const dismiss = () => {
     if (closed) return;
     close();
     if (onClose) onClose();
   };
-  const escHandler = (e) => {
-    if (e.key === 'Escape' && modalStack.at(-1) === entry) { e.preventDefault(); e.stopImmediatePropagation(); dismiss(); }
+  // Esc and × with unsaved changes: ask first. "Keep editing" is the default.
+  const requestDismiss = () => {
+    if (closed) return;
+    if (isDirty && !discardPrompt && isDirty()) { askDiscard(); return; }
+    dismiss();
   };
-  document.addEventListener('keydown', escHandler, true);
-  const modal = el('div.modal', { className: `modal${wide ? ' wide' : ''}` },
-    el('header', {}, title, el('span.close', { onClick: dismiss, title: t('Close (Esc)') }, '✕')),
-    el('div.body', {}, body),
-    footer ? el('footer', {}, footer) : null,
+  function askDiscard() {
+    let closePrompt = () => {};
+    const finish = (discard) => {
+      discardPrompt = null;
+      closePrompt();
+      if (discard) dismiss();
+    };
+    const keep = el('button', { type: 'button', className: 'primary', onClick: () => finish(false) }, t('Keep editing'));
+    const discard = el('button', { type: 'button', className: 'danger', onClick: () => finish(true) }, t('Discard'));
+    ({ close: closePrompt } = openModal({
+      title: t('Discard your changes?'),
+      body: el('div', {}, t('Your unsaved changes will be lost.')),
+      footer: [keep, discard],
+      initialFocus: keep,
+      onClose: () => { discardPrompt = null; },
+    }));
+    discardPrompt = { close: closePrompt };
+  }
+  const bodyEl = el('div.body', {}, body);
+  const footerEl = footer ? el('footer', {}, footer) : null;
+  const closeButton = el('button', {
+    type: 'button', className: 'close', title: t('Close (Esc)'), 'aria-label': t('Close (Esc)'), onClick: requestDismiss,
+  }, '✕');
+  const modal = el('div.modal', { className: `modal${wide ? ' wide' : ''}`, role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titleId },
+    el('header', {}, el('h2.modal-title', { id: titleId }, title), closeButton),
+    bodyEl,
+    footerEl,
   );
-  modal.addEventListener('click', (e) => e.stopPropagation());
-  const entry = { node: modal, dismiss };
+  const entry = { node: modal, dismiss, requestDismiss, lastFocus: null };
   modalStack.push(entry);
   root.append(modal);
-  root.onclick = dismiss;
+  syncAppInert();
+  const primary = footerEl ? focusableIn(footerEl).find((n) => n.classList?.contains?.('primary')) : null;
+  const target = initialFocus || focusableIn(bodyEl, { fieldsOnly: true })[0] || primary || focusableIn(modal)[0];
+  target?.focus?.();
   return { close, node: modal };
 }
 
-/** Simple confirm dialog returning a promise<boolean>. */
+/**
+ * Simple confirm dialog returning a promise<boolean>. A destructive one
+ * (`danger`) opens with Cancel focused, so Enter can't confirm it by accident.
+ */
 function confirmDialog(message, { danger = false, okLabel = t('OK') } = {}) {
   return new Promise((resolve) => {
+    const cancel = el('button', { type: 'button', onClick: () => { close(); resolve(false); } }, t('Cancel'));
     const { close } = openModal({
       title: t('Confirm'),
       body: el('div', {}, message),
       footer: [
-        el('button', { onClick: () => { close(); resolve(false); } }, t('Cancel')),
+        cancel,
         el('button', {
+          type: 'button',
           className: `primary${danger ? ' danger' : ''}`,
           onClick: () => { close(); resolve(true); },
         }, okLabel),
       ],
+      initialFocus: danger ? cancel : null,
       onClose: () => resolve(false),
     });
   });
@@ -216,6 +347,8 @@ function confirmReplaceEdits(api, edited, { where, history }) {
         ? t('This page was edited {where} on {date} since you last published. Publishing will replace those edits.', { where, date })
         : t('This page was edited {where} since you last published. Publishing will replace those edits.', { where });
   return new Promise((resolve) => {
+    // "Publish anyway" replaces the edits, so Cancel is the focused choice.
+    const cancel = el('button', { type: 'button', onClick: () => { close(); resolve(false); } }, t('Cancel'));
     const { close } = openModal({
       title: t('Page edited since you published'),
       body: el('div.cloud-confirm', {},
@@ -223,9 +356,10 @@ function confirmReplaceEdits(api, edited, { where, history }) {
         el('p', {}, history)),
       footer: [
         edited?.url ? el('button', { type: 'button', onClick: () => { void api.shell.openExternal({ url: edited.url }).catch(() => {}); } }, t('Open page')) : null,
-        el('button', { type: 'button', onClick: () => { close(); resolve(false); } }, t('Cancel')),
+        cancel,
         el('button.primary', { type: 'button', onClick: () => { close(); resolve(true); } }, t('Publish anyway')),
       ].filter(Boolean),
+      initialFocus: cancel,
       onClose: () => resolve(false),
     });
   });
@@ -242,6 +376,7 @@ function promptDialog(title, { value = '', label = t('Name') } = {}) {
         el('button', { onClick: () => done(null) }, t('Cancel')),
         el('button.primary', { onClick: () => done(input.value.trim() || null) }, t('OK')),
       ],
+      isDirty: unsavedChanges(() => input.value),
       onClose: () => resolve(null),
     });
     input.addEventListener('keydown', (e) => { if (e.key === 'Enter') done(input.value.trim() || null); });

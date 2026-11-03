@@ -1384,6 +1384,15 @@ class GuideEditor {
       : '';
   }
 
+  // A guide with no steps needs a first capture or import; otherwise the
+  // canvas is waiting for a step to be selected or to have an image.
+  showCanvasEmpty() {
+    this.dom.canvasEmpty.textContent = this.steps.length
+      ? t('Select an image step to edit annotations.')
+      : t('Start recording or import images to begin.');
+    this.dom.canvasEmpty.classList.remove('hidden');
+  }
+
   async renderCanvas() {
     const step = this.currentStep;
     const token = ++this.imageLoadToken;
@@ -1391,7 +1400,7 @@ class GuideEditor {
     this.canvas.setZoom(this.currentZoom);
     if (!step || !step.image) {
       this.canvas.setImage(null, 0, 0);
-      this.dom.canvasEmpty.classList.remove('hidden');
+      this.showCanvasEmpty();
       return;
     }
     this.dom.canvasEmpty.classList.add('hidden');
@@ -1413,7 +1422,7 @@ class GuideEditor {
     img.onerror = () => {
       if (token !== this.imageLoadToken) return;
       this.canvas.setImage(null, 0, 0);
-      this.dom.canvasEmpty.classList.remove('hidden');
+      this.showCanvasEmpty();
     };
     img.src = src;
   }

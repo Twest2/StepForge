@@ -99,6 +99,7 @@
   'Empty trash': '清空回收站',
   'Import ▾': '导入 ▾',
   'New guide': '新建指南',
+  'Start recording or import images to begin.': '开始录制或导入图片即可开始。',
   'Import a copy of a guide (.sfgz)…': '导入指南副本 (.sfgz)…',
   'Open a linked guide (.sfgz)…': '打开链接的指南 (.sfgz)…',
   'Rename folder': '重命名文件夹',

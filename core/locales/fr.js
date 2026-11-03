@@ -99,6 +99,7 @@
   'Empty trash': 'Vider la corbeille',
   'Import ▾': 'Importer ▾',
   'New guide': 'Nouveau guide',
+  'Start recording or import images to begin.': 'Démarrez l’enregistrement ou importez des images pour commencer.',
   'Import a copy of a guide (.sfgz)…': 'Importer une copie d’un guide (.sfgz)…',
   'Open a linked guide (.sfgz)…': 'Ouvrir un guide lié (.sfgz)…',
   'Rename folder': 'Renommer le dossier',

@@ -99,6 +99,7 @@
   'Empty trash': 'ごみ箱を空にする',
   'Import ▾': 'インポート ▾',
   'New guide': '新しいガイド',
+  'Start recording or import images to begin.': '録画を開始するか、画像をインポートして始めてください。',
   'Import a copy of a guide (.sfgz)…': 'ガイドのコピーをインポート (.sfgz)…',
   'Open a linked guide (.sfgz)…': 'リンクされたガイドを開く (.sfgz)…',
   'Rename folder': 'フォルダー名を変更',

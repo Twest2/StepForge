@@ -99,6 +99,7 @@
   'Empty trash': 'Очистить корзину',
   'Import ▾': 'Импорт ▾',
   'New guide': 'Новое руководство',
+  'Start recording or import images to begin.': 'Начните запись или импортируйте изображения, чтобы приступить к работе.',
   'Import a copy of a guide (.sfgz)…': 'Импортировать копию руководства (.sfgz)…',
   'Open a linked guide (.sfgz)…': 'Открыть связанное руководство (.sfgz)…',
   'Rename folder': 'Переименовать папку',

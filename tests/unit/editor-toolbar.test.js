@@ -28,6 +28,7 @@ class FakeClassList {
 class FakeNode {
   constructor(tag = 'div') {
     this.tagName = tag;
+    this.nodeType = 1; // el() keeps element children only when they look like nodes
     this.classList = new FakeClassList();
     this.attributes = {};
     this.dataset = {};
@@ -39,7 +40,7 @@ class FakeNode {
     this.textContent = '';
     this.innerHTML = '';
   }
-  append(...nodes) { this.children.push(...nodes); }
+  append(...nodes) { nodes.forEach((n) => { n.parent = this; }); this.children.push(...nodes); }
   addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); }
   removeEventListener() {}
   setAttribute(name, value) { this.attributes[name] = String(value); }
@@ -50,7 +51,7 @@ class FakeNode {
   contains() { return false; }
   focus() {}
   blur() {}
-  remove() {}
+  remove() { if (this.parent) this.parent.children = this.parent.children.filter((c) => c !== this); }
 }
 
 // A 2D context that accepts every drawing call, so the canvas renders headlessly.
@@ -134,17 +135,8 @@ function assertToolbar(editor, { tool, zoom }) {
     assert.equal(node.classList.contains('active'), on, `tool ${node.dataset.tool} active class`);
     assert.equal(node.getAttribute('aria-pressed'), String(on), `tool ${node.dataset.tool} aria-pressed`);
   }
-  const zoomButtons = [
-    [editor.dom.zoomFitBtn, 'fit', 'Fit'],
-    [editor.dom.zoom100Btn, 1, '100%'],
-    [editor.dom.zoom125Btn, 1.25, '125%'],
-    [editor.dom.zoom150Btn, 1.5, '150%'],
-  ];
-  for (const [node, mode, label] of zoomButtons) {
-    const on = mode === zoom;
-    assert.equal(node.classList.contains('active'), on, `zoom ${label} active class`);
-    assert.equal(node.getAttribute('aria-pressed'), String(on), `zoom ${label} aria-pressed`);
-  }
+  // The zoom menu shows the zoom: 'fit', or a number for a fixed zoom.
+  assert.equal(editor.dom.zoomSelect.value, zoom === 'fit' ? 'fit' : String(zoom), 'zoom select shows the zoom');
 }
 
 const GUIDES = {
@@ -189,4 +181,72 @@ test('after a guide reload, the toolbar shows the editor state, not the last but
   editor.currentZoom = 'fit';
   await editor.reload();
   assertToolbar(editor, { tool: 'select', zoom: 'fit' });
+});
+
+test('every tool button has an icon and a name in its title and aria-label, with no shortcut text', async () => {
+  const editor = makeEditor(GUIDES);
+  await editor.open('g1');
+  const names = {
+    select: 'Select', rect: 'Rectangle', oval: 'Oval', line: 'Line', arrow: 'Arrow', text: 'Text',
+    tooltip: 'Tooltip', number: 'Number', blur: 'Blur', highlight: 'Highlight', magnify: 'Magnify',
+    cursor: 'Cursor', crop: 'Crop',
+  };
+  for (const [tool, name] of Object.entries(names)) {
+    const node = editor.dom[`tool-${tool}`];
+    assert.ok(node, `${tool} button exists`);
+    assert.equal(node.getAttribute('aria-label'), name, `${tool} aria-label`);
+    assert.equal(node.getAttribute('title'), name, `${tool} title`);
+    assert.match(node.innerHTML, /^<svg [^>]*stroke="currentColor"/, `${tool} has an inline svg icon`);
+    assert.doesNotMatch(node.getAttribute('title'), /\(|Ctrl|Shift|Alt|\b[A-Z]\)$/, `${tool} tooltip has no shortcut hint`);
+    assert.equal(node.textContent, '', `${tool} shows no text, only the icon`);
+  }
+  for (const [node, name] of [[editor.dom.undoBtn, 'Undo'], [editor.dom.redoBtn, 'Redo']]) {
+    assert.equal(node.getAttribute('aria-label'), name);
+    assert.equal(node.getAttribute('title'), name);
+    assert.match(node.innerHTML, /^<svg /);
+  }
+});
+
+test('the zoom select lists Fit and fixed zooms, and setZoom and the select stay in step', async () => {
+  const editor = makeEditor(GUIDES);
+  await editor.open('g1');
+  const select = editor.dom.zoomSelect;
+  assert.equal(select.getAttribute('aria-label'), 'Zoom');
+  assert.deepEqual(select.children.map((o) => o.value), ['fit', '1', '1.25', '1.5']);
+  assert.equal(select.value, 'fit', 'Fit is shown by default');
+
+  // Setting the zoom in code moves the select.
+  editor.setZoom(1.25);
+  assert.equal(select.value, '1.25');
+  editor.setZoom('fit');
+  assert.equal(select.value, 'fit');
+
+  // Choosing an option fires setZoom, as the user's change does.
+  const fire = (value) => {
+    select.value = value;
+    for (const listener of select.listeners.change || []) listener();
+  };
+  fire('1.5');
+  assert.equal(editor.currentZoom, 1.5);
+  assert.equal(editor.canvas.zoomMode, 1.5);
+  assertToolbar(editor, { tool: 'select', zoom: 1.5 });
+  fire('1');
+  assert.equal(editor.currentZoom, 1);
+  fire('fit');
+  assert.equal(editor.currentZoom, 'fit');
+});
+
+test('a zoom set by the keyboard that is not in the list still shows in the select', async () => {
+  const editor = makeEditor(GUIDES);
+  await editor.open('g1');
+  editor.applyZoomShortcut('in');
+  assert.equal(editor.currentZoom, 1.25, 'Ctrl+= from Fit goes to 125%');
+  editor.applyZoomShortcut('in');
+  editor.applyZoomShortcut('in');
+  assert.equal(editor.currentZoom, 1.75);
+  assert.equal(editor.dom.zoomSelect.value, '1.75');
+  assert.equal(editor.dom.zoomSelect.children.at(-1).children[0].text, '175%', 'the extra option is labelled');
+  editor.applyZoomShortcut('fit');
+  assert.equal(editor.dom.zoomSelect.value, 'fit');
+  assert.equal(editor.dom.zoomSelect.children.filter((o) => o.value === '1.75').length, 0, 'the extra option is removed');
 });

@@ -357,6 +357,7 @@
   'Recording': 'Enregistrement',
   'Default mode': 'Mode par défaut',
   'Record the whole screen or the active window. For a region, use Capture → Capture region….': 'Enregistrer tout l’écran ou la fenêtre active. Pour une zone, utilisez Capturer → Capturer une zone….',
+  'Crop': 'Rogner',
   'Delay': 'Délai',
   'Milliseconds to wait before each screenshot.': 'Millisecondes d’attente avant chaque capture d’écran.',
   'Click marker': 'Marqueur de clic',

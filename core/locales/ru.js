@@ -357,6 +357,7 @@
   'Recording': 'Запись',
   'Default mode': 'Режим по умолчанию',
   'Record the whole screen or the active window. For a region, use Capture → Capture region….': 'Записывать весь экран или активное окно. Для области используйте Запись → Записать область….',
+  'Crop': 'Обрезка',
   'Delay': 'Задержка',
   'Milliseconds to wait before each screenshot.': 'Сколько миллисекунд ждать перед каждым снимком экрана.',
   'Click marker': 'Метка щелчка',

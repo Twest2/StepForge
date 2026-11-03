@@ -573,6 +573,24 @@ body.platform-linux #capture-status button {
   background: var(--border);
   margin: 0 4px;
 }
+/* Icon tools, undo and redo: square buttons with an outline icon. */
+.canvas-toolbar button.tool-icon {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.canvas-toolbar .tool-icon svg { width: 18px; height: 18px; flex: none; pointer-events: none; }
+.canvas-toolbar select.zoom-select {
+  width: auto;
+  height: 32px;
+  padding: 0 8px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
 .canvas-wrap {
   flex: 1;
   min-height: 0;

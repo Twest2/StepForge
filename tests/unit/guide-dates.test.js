@@ -51,17 +51,11 @@ test('an invalid or missing date formats as an empty string', () => {
   assert.equal(formatGuideDate(null), '');
 });
 
-test('other interface languages use their own three-letter month names', () => {
-  const iso = local(2026, 11, 1);
-  assert.equal(formatGuideDate(iso, 'fr'), '01-nov-2026');
-  assert.equal(formatGuideDate(local(2026, 6, 1), 'fr'), '01-jui-2026');
-  assert.equal(formatGuideDate(local(2026, 9, 1), 'es'), '01-sep-2026');
-  assert.equal(formatGuideDate(iso, 'es'), '01-nov-2026');
-  // Russian uses Intl's short month without its trailing dot.
-  assert.equal(formatGuideDate(iso, 'ru'), '01-нояб-2026');
-  // Chinese and Japanese have no three-letter form: Intl's short month.
-  assert.equal(formatGuideDate(iso, 'ja'), '01-11月-2026');
-  assert.equal(formatGuideDate(iso, 'zh-CN'), '01-11月-2026');
+test('localized interfaces retain the fixed three-letter month format', () => {
+  for (const language of ['en', 'fr', 'es', 'ru', 'ja', 'zh-CN']) {
+    assert.equal(formatGuideDate(local(2026, 11, 1), language), '01-Nov-2026');
+    assert.equal(formatGuideDate(local(2026, 6, 19), language), '19-Jun-2026');
+  }
 });
 
 test('every interface language gives a day-month-year string with no stray punctuation', () => {
@@ -73,7 +67,7 @@ test('every interface language gives a day-month-year string with no stray punct
   }
 });
 
-test('a recent guide shows a relative time, and an older one shows the fixed date', () => {
+test('Trash retains relative deletion times and formats older dates consistently', () => {
   const daysAgo = (n) => new Date(Date.now() - n * 24 * 60 * 60 * 1000).toISOString();
   assert.equal(timeAgo(new Date().toISOString()), 'just now');
   assert.equal(timeAgo(daysAgo(3)), '3 days ago');

@@ -6,28 +6,15 @@ const api = window.stepforge;
 const dialogs = window.StepForgeDialogs || {};
 const review = window.StepForgeReview;
 
-// Three-letter month names for the interface languages that have them. English
-// is written out (Intl's English short names vary by ICU version); fr and es
-// are shortened by hand because their Intl names are longer or end in a dot.
-const GUIDE_MONTHS = {
-  en: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
-  fr: ['jan', 'fév', 'mar', 'avr', 'mai', 'jui', 'jul', 'aoû', 'sep', 'oct', 'nov', 'déc'],
-  es: ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'],
-};
+// Fixed three-letter month abbreviations keep DD-MMM-YYYY consistent in every UI language.
+const GUIDE_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-/**
- * A guide date as DD-MMM-YYYY in local time, e.g. "01-Nov-2026". ru uses Intl's
- * short month with the trailing dot removed; ja and zh-CN have no three-letter
- * form, so they show Intl's short month (e.g. "11月"). '' for a missing or invalid date.
- */
-function formatGuideDate(iso, language = 'en') {
-  if (!iso) return '';
+/** A display-only date in local time; stored timestamps are unchanged. */
+function formatGuideDate(iso) {
+  if (iso == null || iso === '') return '';
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return '';
-  const table = GUIDE_MONTHS[language];
-  const month = table ? table[date.getMonth()]
-    : new Intl.DateTimeFormat(language, { month: 'short' }).format(date).replace(/\.$/, '');
-  return `${String(date.getDate()).padStart(2, '0')}-${month}-${date.getFullYear()}`;
+  return `${String(date.getDate()).padStart(2, '0')}-${GUIDE_MONTHS[date.getMonth()]}-${String(date.getFullYear()).padStart(4, '0')}`;
 }
 
 /** "just now", "5 min ago", "3 hr ago", "yesterday", "4 days ago", else formatGuideDate. */
@@ -899,7 +886,7 @@ class StepForgeApp {
       guide.linkedSource ? el('span.badge', { title: t('Saved to a linked .sfgz file') }, t('Linked')) : null,
       guide.locked ? el('span.badge', { title: t('Open on another device') }, t('Locked')) : null,
       reviewState?.overdue ? el('span.badge.review-badge', { title: reviewBadgeTitle(reviewState) }, t('May need review')) : null,
-      el('span.card-updated', { title: formatGuideDate(guide.updatedAt, uiLanguage) }, timeAgo(guide.updatedAt))));
+      el('span.card-updated', { title: formatGuideDate(guide.updatedAt, uiLanguage) }, formatGuideDate(guide.updatedAt))));
   }
 
   resultCard(result, guide, isStep) {

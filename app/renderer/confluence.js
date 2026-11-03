@@ -98,7 +98,7 @@ function makeConfluenceSettings(api) {
     say('Disconnected. Pages you published stay in Confluence.');
   }) }, 'Disconnect');
   const account = el('div.cloud-account', {},
-    el('div.cloud-avatar', { 'aria-hidden': 'true' }, el('img', { src: CONFLUENCE_ICON, alt: '' })),
+    el('div.cloud-avatar.service-logo', { 'aria-hidden': 'true' }, el('img', { src: CONFLUENCE_ICON, alt: '' })),
     el('div.cloud-account-info', {}, who, el('div.cloud-status-line', {}, siteLine)),
     el('div.cloud-account-actions', {}, disconnect));
 

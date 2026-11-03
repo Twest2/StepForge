@@ -1359,7 +1359,8 @@ fieldset legend {
 
 .cloud-setting { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .cloud-setting > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.cloud-danger { padding: 10px 12px; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--border)); }
+/* Set apart from the rows above so the destructive action isn't read as part of them. */
+.cloud-danger { margin-top: 12px; padding: 12px 14px; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--border)); }
 .cloud-checks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
 .cloud-checks li { display: flex; gap: 8px; align-items: baseline; overflow-wrap: anywhere; }
 .cloud-check-icon { font-weight: 700; color: var(--ok); }
@@ -1444,7 +1445,8 @@ fieldset legend {
 .confluence-parent { font-size: 13px; }
 .confluence-results { display: flex; flex-direction: column; gap: 4px; max-height: 180px; overflow: auto; }
 .confluence-result { text-align: left; }
-.cloud-avatar img { width: 22px; height: 22px; object-fit: contain; }
+/* Confluence and Wiki.js show their logo, not a photo; a photo fills the circle. */
+.cloud-avatar.service-logo img { width: 22px; height: 22px; object-fit: contain; }
 /* Wiki.js (wikijs.js) */
 .wikijs-method { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
 .wikijs-method select { width: 100%; max-width: 360px; }

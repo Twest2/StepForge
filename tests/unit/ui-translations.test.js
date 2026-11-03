@@ -94,3 +94,23 @@ test('the Export dialog’s format descriptions and option labels are translated
     for (const [text] of exportText) assert.ok(catalog[text], `${code}: ${text}`);
   }
 });
+
+test('Compare translates interface enums without translating author metadata or placeholders', () => {
+  const source = fs.readFileSync(path.join(__dirname, '../../app/renderer/compare.js'), 'utf8')
+    .replace('window.StepForgeCompare = { showSnapshotCompare };', 'window.StepForgeCompare = { showSnapshotCompare, fieldRow };');
+  const context = load('ru', []);
+  vm.runInContext(source, context);
+  const row = (label, before, after) => context.StepForgeCompare.fieldRow({ label, before, after });
+  for (const label of ['Author', 'Co-authors', 'Organization', 'Placeholder [[Answer]]', 'Links']) {
+    const value = row(label, 'No', 'Warning');
+    assert.equal(value.children[1].children[0].children[0].text, 'No', label);
+    assert.equal(value.children[1].children[0].children[2].text, 'Warning', label);
+  }
+  const hidden = row('Hidden', 'No', 'Yes');
+  assert.equal(hidden.children[1].children[0].children[0].text, 'Нет');
+  assert.equal(hidden.children[1].children[0].children[2].text, 'Да');
+  const theme = row('Theme', 'system', 'Warning');
+  assert.equal(theme.children[1].children[0].children[2].text, 'Warning', 'custom theme names stay intact');
+  const blank = row('Author', '', 'No');
+  assert.equal(blank.children[1].children[0].children[0].text, 'No', 'new author values stay intact');
+});

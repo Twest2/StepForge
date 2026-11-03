@@ -68,8 +68,19 @@ function changeRow(label, content) {
   return el('div.cmp-row', {}, el('div.cmp-label', {}, changeLabel(label)), el('div.cmp-value', {}, content));
 }
 
-function fieldValue(value) {
-  return value === null || value === undefined || value === '' ? el('span.muted', {}, t('None')) : VALUE_LABELS[value] || String(value);
+function fieldValue(value, label) {
+  if (value === null || value === undefined || value === '') return el('span.muted', {}, t('None'));
+  // Metadata, placeholders and link titles belong to the guide's author.
+  // Only the core's known enum fields contain interface text to translate.
+  const choices = {
+    Hidden: ['Yes', 'No'], Skipped: ['Yes', 'No'], 'Starts a new page': ['Yes', 'No'],
+    'Focused view for new steps': ['Yes', 'No'], 'Hide skipped steps in exports': ['Yes', 'No'],
+    'Step type': ['Screenshot', 'Blank', 'Content only'],
+    Style: ['Info', 'Warning', 'Error', 'Success'],
+    Placed: ['Before the title', 'After the title', 'Before the screenshot', 'After the screenshot', 'Before the description', 'After the description'],
+    Language: ['Plain text'], Theme: ['system'],
+  };
+  return choices[label]?.includes(value) ? VALUE_LABELS[value] || String(value) : String(value);
 }
 
 /** "Hidden: No → Yes", old value struck red, new value green. */
@@ -78,9 +89,9 @@ function fieldRow(change) {
   const removed = empty(change.after);
   const added = empty(change.before);
   return changeRow(change.label, el('div.cmp-field', {},
-    added ? null : el('del.cmp-del', {}, fieldValue(change.before)),
+    added ? null : el('del.cmp-del', {}, fieldValue(change.before, change.label)),
     added || removed ? null : el('span.cmp-arrow', { 'aria-hidden': 'true' }, '→'),
-    removed ? null : el('ins.cmp-add', {}, fieldValue(change.after)),
+    removed ? null : el('ins.cmp-add', {}, fieldValue(change.after, change.label)),
     added ? el('span.muted', {}, ` ${t('(added)')}`) : removed ? el('span.muted', {}, ` ${t('(removed)')}`) : null));
 }
 

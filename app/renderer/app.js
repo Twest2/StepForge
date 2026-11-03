@@ -685,7 +685,7 @@ class StepForgeApp {
         .filter(([, fid]) => fid === folder.id).length;
       out.push(el('div.nav-item', {
         className: `nav-item${this.state.folderFilter === folder.id ? ' active' : ''}`,
-        style: { paddingLeft: `${8 + depth * 12}px` },
+        style: { paddingLeft: `${10 + depth * 14}px` },
         onClick: () => this.setFolderFilter(folder.id),
         onContextMenu: (e) => this.folderContextMenu(e, folder.id),
       },
@@ -871,7 +871,7 @@ class StepForgeApp {
     description ? el('div.snippet', {}, description) : null,
     el('div.card-footer', {},
       el('span', {}, tn(steps, '{count} step', '{count} steps')),
-      showFolder ? el('span.card-folder', {}, folder.name) : null,
+      showFolder ? el('span.card-folder', { title: folder.name }, el('span.card-folder-name', {}, folder.name)) : null,
       guide.linkedSource ? el('span.badge', { title: t('Saved to a linked .sfgz file') }, t('Linked')) : null,
       guide.locked ? el('span.badge', { title: t('Open on another device') }, t('Locked')) : null,
       reviewState?.overdue ? el('span.badge.review-badge', { title: reviewBadgeTitle(reviewState) }, t('May need review')) : null,

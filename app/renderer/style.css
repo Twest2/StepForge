@@ -412,8 +412,13 @@ body.platform-linux #capture-status button {
   color: var(--muted);
   font-size: 12px;
 }
-.guide-card .card-folder { display: inline-flex; align-items: center; gap: 4px; }
-.guide-card .card-folder::before { content: ""; width: 6px; height: 6px; border-radius: 2px; background: color-mix(in srgb, var(--accent) 55%, var(--border)); }
+/* Guide cards keep the footer on one line; the folder chip gives way first. Trash cards may still wrap. */
+.guide-card:not(.trash-card) .card-footer { flex-wrap: nowrap; white-space: nowrap; min-width: 0; gap: 8px; }
+.guide-card:not(.trash-card) .card-footer > :not(.card-folder) { flex-shrink: 0; }
+/* A long folder name shrinks and ends in an ellipsis; the full name is in the chip's title. */
+.guide-card .card-folder { display: inline-flex; align-items: center; gap: 4px; min-width: 0; flex-shrink: 1; }
+.guide-card .card-folder::before { content: ""; flex-shrink: 0; width: 6px; height: 6px; border-radius: 2px; background: color-mix(in srgb, var(--accent) 55%, var(--border)); }
+.guide-card .card-folder-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .guide-card .card-updated { margin-left: auto; }
 /* Sits just left of the date, so it takes over pushing the pair right. */
 .guide-card .review-badge { margin-left: auto; background: var(--warn); color: var(--text); white-space: nowrap; }

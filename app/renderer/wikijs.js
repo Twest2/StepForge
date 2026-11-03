@@ -435,7 +435,7 @@ async function showPublishToWikiJsDialog({ api, guideId, guideTitle, onOpenAccou
         if (result.edited || result.conflict) {
           publishing = false;
           const ok = result.edited
-            ? await confirmReplaceEdits(api, result.edited, { where: 'on the wiki', history: 'Wiki.js keeps the edited version in the page history.' })
+            ? await confirmReplaceEdits(api, result.edited, { where: t('on the wiki'), history: t('Wiki.js keeps the edited version in the page history.') })
             : await confirmDialog(el('div.cloud-confirm', {},
               el('strong', {}, `A page already exists at ${result.conflict.path}. Replace it?`),
               el('p', {}, `“${result.conflict.title}” wasn’t published from this guide. Wiki.js keeps its current version in the page history.`)),

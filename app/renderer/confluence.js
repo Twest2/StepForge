@@ -409,7 +409,7 @@ async function showPublishToConfluenceDialog({ api, guideId, guideTitle, onOpenA
         if (result.edited || result.conflict) {
           publishing = false;
           const ok = result.edited
-            ? await confirmReplaceEdits(api, result.edited, { where: 'in Confluence', history: 'Confluence keeps the edited version in the page history.' })
+            ? await confirmReplaceEdits(api, result.edited, { where: t('in Confluence'), history: t('Confluence keeps the edited version in the page history.') })
             : await confirmDialog(el('div.cloud-confirm', {},
               el('strong', {}, `A page called “${result.conflict.title}” already exists in ${result.conflict.space}.`),
               el('p', {}, 'Replace its content with this guide? Confluence keeps the old version in the page history.')),

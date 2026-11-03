@@ -167,7 +167,7 @@ function onModalKeyDown(e) {
   if (!top) return;
   if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); top.requestDismiss(); return; }
   if (e.key === 'Tab') { trapTab(e, top.node); return; }
-  if (!top.node.contains?.(e.target)) e.stopPropagation();
+  if (!top.node.contains?.(e.target)) { e.preventDefault(); e.stopPropagation(); }
 }
 
 /**
@@ -286,7 +286,7 @@ function openModal({ title, body, footer, wide = false, onClose, isDirty = null,
   const primary = footerEl ? focusableIn(footerEl).find((n) => n.classList?.contains?.('primary')) : null;
   const target = initialFocus || focusableIn(bodyEl, { fieldsOnly: true })[0] || primary || focusableIn(modal)[0];
   target?.focus?.();
-  return { close, node: modal };
+  return { close, requestDismiss, node: modal };
 }
 
 /**
@@ -369,11 +369,11 @@ function promptDialog(title, { value = '', label = t('Name') } = {}) {
   return new Promise((resolve) => {
     const input = el('input', { type: 'text', value });
     const done = (v) => { close(); resolve(v); };
-    const { close } = openModal({
+    const { close, requestDismiss } = openModal({
       title,
       body: el('div.form-row', {}, el('label', {}, label), input),
       footer: [
-        el('button', { onClick: () => done(null) }, t('Cancel')),
+        el('button', { onClick: () => requestDismiss() }, t('Cancel')),
         el('button.primary', { onClick: () => done(input.value.trim() || null) }, t('OK')),
       ],
       isDirty: unsavedChanges(() => input.value),

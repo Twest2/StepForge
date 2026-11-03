@@ -357,8 +357,8 @@ test('while a dialog is open, focus cannot reach the app and Enter or Space behi
 
   const reached = [];
   u.doc.addEventListener('keydown', (e) => reached.push(e.key));
-  u.press('Enter', { target: behind });
-  u.press(' ', { target: behind });
+  assert.equal(u.press('Enter', { target: behind }).defaultPrevented, true);
+  assert.equal(u.press(' ', { target: behind }).defaultPrevented, true);
   assert.deepEqual(reached, [], 'keys aimed behind the dialog never reach the page');
   u.press('Enter', { target: field });
   assert.deepEqual(reached, ['Enter'], 'keys inside the dialog still reach it');
@@ -382,4 +382,22 @@ test('dialogs are modal dialogs labelled by their heading', () => {
   const heading = u.walk(node).find((n) => n.id === node.getAttribute('aria-labelledby'));
   assert.equal(heading.localName, 'h2');
   assert.equal(u.text(heading), 'Brand profiles');
+});
+
+test('Cancel uses the dirty dismissal guard and resolves only after discarding', async () => {
+  const u = loadUtil();
+  const pending = u.promptDialog('Rename', { value: 'Old' });
+  await settle();
+  const dialog = u.modalRoot.children[0];
+  const field = u.walk(dialog).find((n) => n.localName === 'input');
+  field.value = 'New';
+  u.button(dialog, 'Cancel').click();
+  assert.equal(u.modalRoot.children.length, 2);
+  u.button(u.modalRoot.children[1], 'Keep editing').click();
+  assert.equal(u.modalRoot.children[0], dialog);
+  assert.equal(field.value, 'New');
+  u.button(dialog, 'Cancel').click();
+  u.button(u.modalRoot.children[1], 'Discard').click();
+  assert.equal(await pending, null);
+  assert.equal(u.modalRoot.children.length, 0);
 });

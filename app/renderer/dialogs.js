@@ -241,11 +241,11 @@ async function promptText({
       ? el('textarea', { rows: 6, placeholder }, value)
       : el('input', { type: 'text', value, placeholder });
 
-    const { close } = openModal({
+    const { close, requestDismiss } = openModal({
       title,
       body: labeledRow(label, field, { stacked: multiline }),
       footer: [
-        el('button', { onClick: () => { close(); resolve(null); } }, t('Cancel')),
+        el('button', { onClick: () => requestDismiss() }, t('Cancel')),
         el('button.primary', { onClick: () => { close(); resolve(field.value); } }, t('OK')),
       ],
       isDirty: unsavedChanges(() => field.value),
@@ -1114,13 +1114,13 @@ function showSettingsDialog({
     });
     const savedState = unsavedChanges(collect);
 
-    const { close } = openModal({
+    const { close, requestDismiss } = openModal({
       title: t('Settings'),
       body: form,
       wide: true,
       isDirty: savedState,
       footer: [
-        el('button', { type: 'button', onClick: () => { accountsPanel.dispose(); close(); resolve(false); } }, t('Cancel')),
+        el('button', { type: 'button', onClick: () => requestDismiss() }, t('Cancel')),
         el('button.primary', {
           type: 'submit',
           onClick: async (e) => {
@@ -1416,7 +1416,7 @@ function showExportDialog({
     });
     const payloadKey = () => JSON.stringify(payload());
 
-    const cancelBtn = el('button', { onClick: () => { close(); resolve(false); } }, t('Cancel'));
+    const cancelBtn = el('button', { onClick: () => requestDismiss() }, t('Cancel'));
     const previewBtn = el('button', {
       onClick: async () => {
         if (typeof onPreview !== 'function') return;
@@ -1451,7 +1451,7 @@ function showExportDialog({
     }, t('Export'));
     refreshPublish();
 
-    const { close } = openModal({
+    const { close, requestDismiss } = openModal({
       title: t('Export'),
       body,
       footer: [cancelBtn, previewBtn, exportBtn],
@@ -1659,7 +1659,7 @@ function showPlaceholdersDialog({ title = t('Placeholders'), hint = '', values =
       return [inputs[0].value, inputs[1].value];
     });
 
-    const { close } = openModal({
+    const { close, requestDismiss } = openModal({
       title,
       body: el('div', {},
         hint ? el('div.muted', { style: { marginBottom: '10px' } }, hint) : null,
@@ -1668,7 +1668,7 @@ function showPlaceholdersDialog({ title = t('Placeholders'), hint = '', values =
           el('button', { type: 'button', onClick: () => addRow() }, t('Add placeholder'))),
       ),
       footer: [
-        el('button', { onClick: () => { close(); resolve(false); } }, t('Cancel')),
+        el('button', { onClick: () => requestDismiss() }, t('Cancel')),
         el('button.primary', {
           onClick: async () => {
             const next = rows.reduce((acc, row) => {
@@ -1747,7 +1747,7 @@ function showGuideInfoDialog({ values = {}, reviewDefaultDays, onSave, onCloudSn
       sharingEnabled: shareInput.checked,
     });
 
-    const { close } = openModal({
+    const { close, requestDismiss } = openModal({
       title: t('Guide information'),
       body: el('div', {},
         el('div.muted', { style: { marginBottom: '10px' } },
@@ -1772,7 +1772,7 @@ function showGuideInfoDialog({ values = {}, reviewDefaultDays, onSave, onCloudSn
       footer: [
         el('button', { type: 'button', onClick: () => onCloudSnapshots?.() }, t('Cloud snapshots')),
         el('button', { type: 'button', className: 'danger', onClick: () => onDeleteCloudSnapshots?.() }, t('Remove cloud copies')),
-        el('button', { onClick: () => { close(); resolve(false); } }, t('Cancel')),
+        el('button', { onClick: () => requestDismiss() }, t('Cancel')),
         el('button.primary', {
           onClick: async () => {
             await onSave?.({

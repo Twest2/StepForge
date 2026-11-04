@@ -1194,12 +1194,8 @@ function showExportDialog({
     const formatDesc = el('div.muted.export-format-desc');
     const templateSelect = makeSelect('', [{ value: '', label: t('Default template') }]);
     const outDirInput = makeInput(defaultOutDir, 'text', { placeholder: t('Choose an output folder') });
-    // The input already exposes the complete value to assistive technology.
-    const outDirHelp = el('div.muted.export-output-path', { 'aria-hidden': 'true' });
     outDirInput.setAttribute('aria-label', t('Output folder'));
     const refreshOutDir = () => {
-      outDirHelp.textContent = outDirInput.value;
-      outDirHelp.hidden = !outDirInput.value;
       outDirInput.title = outDirInput.value;
     };
     outDirInput.addEventListener('input', refreshOutDir);
@@ -1403,7 +1399,7 @@ function showExportDialog({
       labeledRow(t('Format'), el('div.export-format', {}, formatSelect, formatDesc, publishInsteadNote)),
       labeledRow(t('Template'), el('div.row', {}, templateSelect, saveTplBtn, manageBtn)),
       branding ? labeledRow(t('Branding'), el('div.row', {}, brandChoice, brandNote)) : null,
-      labeledRow(t('Output folder'), el('div.export-output-folder', {}, el('div.row', {}, outDirInput, el('button', {
+      labeledRow(t('Output folder'), el('div.row.export-output-folder', {}, outDirInput, el('button', {
         type: 'button',
         disabled: typeof onChooseDir !== 'function',
         onClick: async () => {
@@ -1411,7 +1407,7 @@ function showExportDialog({
           const chosen = await onChooseDir(formatSelect.value);
           if (chosen) { outDirInput.value = chosen; refreshOutDir(); }
         },
-      }, t('Choose…'))), outDirHelp)),
+      }, t('Choose…')))),
       el('fieldset', {}, el('legend', {}, t('Options')), optionsHost),
       publishBox,
     );

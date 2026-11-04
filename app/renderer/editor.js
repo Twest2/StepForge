@@ -1338,7 +1338,7 @@ class GuideEditor {
   async deleteSelectedSteps() {
     const ids = [...this.selectedSteps];
     if (!ids.length) return;
-    const ok = await confirmDialog(`Delete ${ids.length} step${ids.length === 1 ? '' : 's'}?`, { danger: true, okLabel: t('Delete') });
+    const ok = await confirmDialog(tn(ids.length, 'Delete {count} step?', 'Delete {count} steps?'), { title: t('Delete selected steps'), danger: true, okLabel: t('Delete') });
     if (!ok) return;
     if (this.pendingSave) await this.flushStep();
     const order = this.steps.map((s) => s.stepId);
@@ -2449,7 +2449,7 @@ class GuideEditor {
   async deleteSelectedStep() {
     const step = this.currentStep;
     if (!step) return;
-    const ok = await confirmDialog(`Delete “${step.title || 'Untitled step'}”?`, { danger: true, okLabel: t('Delete') });
+    const ok = await confirmDialog(t('Delete “{title}”?', { title: step.title || t('Untitled step') }), { title: t('Delete step'), danger: true, okLabel: t('Delete') });
     if (!ok) return;
     if (this.pendingSave) await this.flushStep();
     const order = this.steps.map((s) => s.stepId);
@@ -2663,7 +2663,7 @@ class GuideEditor {
     const items = [
       { label: t('Capture full screen'), action: () => this.captureStep('fullscreen') },
       { label: t('Capture window'), action: () => this.captureStep('window') },
-      { label: t('Capture region…'), action: () => this.captureStep('region') },
+      { label: t('Capture region'), action: () => this.captureStep('region') },
       'sep',
       { label: t('Paste image as step'), action: () => this.pasteClipboardStep() },
       { label: t('Import images…'), action: () => this.importImageSteps() },
@@ -3348,7 +3348,7 @@ class GuideEditor {
   async onCanvasCrop(rect) {
     const step = this.currentStep;
     if (!step || !step.image) return;
-    const ok = await confirmDialog(t('Crop the working image to the selected area?'));
+    const ok = await confirmDialog(t('Crop the working image to the selected area?'), { title: t('Crop image'), okLabel: t('Crop') });
     if (!ok) return;
     this.saveStepDebounced.cancel();
     const snapshot = this.beforeCanvasSnapshot || await this.snapshotCurrentStep(true);

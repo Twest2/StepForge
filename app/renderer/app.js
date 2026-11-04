@@ -1100,7 +1100,7 @@ class StepForgeApp {
   async deleteFolder(folderId) {
     const folder = (this.state.library.folders || []).find((f) => f.id === folderId);
     if (!folder) return;
-    const ok = await confirmDialog(t('Delete the folder “{folder}”? Guides stay in the library.', { folder: folder.name }));
+    const ok = await confirmDialog(t('Delete the folder “{folder}”? Guides stay in the library.', { folder: folder.name }), { title: t('Delete folder'), danger: true, okLabel: t('Delete') });
     if (!ok) return;
     await api.folders.delete({ folderId });
     await this.refreshLibrary();
@@ -1131,7 +1131,7 @@ class StepForgeApp {
   async deleteGuide(guideId) {
     const guide = this.state.library.guides.find((g) => g.guideId === guideId);
     if (!guide) return;
-    const ok = await confirmDialog(t('Delete “{title}”? It moves to Trash. If it syncs to the cloud, it is also removed from your other devices and one cloud recovery snapshot is retained.', { title: guide.title }), { danger: true, okLabel: t('Delete') });
+    const ok = await confirmDialog(t('Delete “{title}”? It moves to Trash. If it syncs to the cloud, it is also removed from your other devices and one cloud recovery snapshot is retained.', { title: guide.title }), { title: t('Delete guide'), danger: true, okLabel: t('Delete') });
     if (!ok) return;
     await api.library.delete({ guideId });
     await this.refreshLibrary();

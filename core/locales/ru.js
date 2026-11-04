@@ -1563,4 +1563,12 @@
   'Cloud sync status': 'Состояние облачной синхронизации',
   'Search guides…  (Ctrl+/ for quick actions)': 'Поиск руководств…  (Ctrl+/ — быстрые действия)',
   'Beta': 'Бета',
+  'Welcome': 'Главная',
+  'Capture region': 'Захватить область',
+  'Record the whole screen or the active window. For a region, use Capture → Capture region.': 'Записывайте весь экран или активное окно. Для захвата области выберите «Захват → Захватить область».',
+  'Delete selected steps': 'Удалить выбранные шаги',
+  'Delete “{title}”?': 'Удалить «{title}»?',
+  'Delete {count} steps?': { one: 'Удалить {count} шаг?', few: 'Удалить {count} шага?', many: 'Удалить {count} шагов?', other: 'Удалить {count} шага?' },
+  'Crop image': 'Обрезать изображение',
+  'Crop': 'Обрезать',
 });

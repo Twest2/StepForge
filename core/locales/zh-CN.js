@@ -1563,4 +1563,12 @@
   'Cloud sync status': '云同步状态',
   'Search guides…  (Ctrl+/ for quick actions)': '搜索指南…  (Ctrl+/ 打开快速操作)',
   'Beta': '测试版',
+  'Welcome': '主页',
+  'Capture region': '捕获区域',
+  'Record the whole screen or the active window. For a region, use Capture → Capture region.': '录制整个屏幕或活动窗口。要指定区域，请使用“捕获 → 捕获区域”。',
+  'Delete selected steps': '删除所选步骤',
+  'Delete “{title}”?': '删除“{title}”？',
+  'Delete {count} steps?': { other: '删除 {count} 个步骤？' },
+  'Crop image': '裁剪图像',
+  'Crop': '裁剪',
 });

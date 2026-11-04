@@ -1563,4 +1563,12 @@
   'Cloud sync status': 'État de la synchronisation cloud',
   'Search guides…  (Ctrl+/ for quick actions)': 'Rechercher des guides…  (Ctrl+/ pour les actions rapides)',
   'Beta': 'Bêta',
+  'Welcome': 'Accueil',
+  'Capture region': 'Capturer une zone',
+  'Record the whole screen or the active window. For a region, use Capture → Capture region.': 'Enregistrez tout l’écran ou la fenêtre active. Pour une zone, utilisez Capturer → Capturer une zone.',
+  'Delete selected steps': 'Supprimer les étapes sélectionnées',
+  'Delete “{title}”?': 'Supprimer « {title} » ?',
+  'Delete {count} steps?': { one: 'Supprimer {count} étape ?', other: 'Supprimer {count} étapes ?' },
+  'Crop image': 'Recadrer l’image',
+  'Crop': 'Recadrer',
 });

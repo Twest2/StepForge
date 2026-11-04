@@ -1563,4 +1563,12 @@
   'Cloud sync status': 'クラウド同期の状態',
   'Search guides…  (Ctrl+/ for quick actions)': 'ガイドを検索…  (Ctrl+/ でクイックアクション)',
   'Beta': 'ベータ',
+  'Welcome': 'ホーム',
+  'Capture region': '範囲をキャプチャ',
+  'Record the whole screen or the active window. For a region, use Capture → Capture region.': '画面全体またはアクティブウィンドウを記録します。範囲を指定するには「キャプチャ → 範囲をキャプチャ」を選びます。',
+  'Delete selected steps': '選択したステップを削除',
+  'Delete “{title}”?': '「{title}」を削除しますか？',
+  'Delete {count} steps?': { other: '{count} 個のステップを削除しますか？' },
+  'Crop image': '画像を切り抜く',
+  'Crop': '切り抜く',
 });

@@ -144,7 +144,7 @@ const GUIDES = {
   g2: { guideId: 'g2', title: 'Second', stepsOrder: [] },
 };
 
-test('when the editor mounts, Select and Fit are highlighted and announced as pressed', async () => {
+test('when the editor mounts, it is in Select with no tool pressed, and Fit shows in the zoom menu', async () => {
   const editor = makeEditor(GUIDES);
   await editor.open('g1');
   assert.equal(editor.currentTool, 'select');
@@ -186,8 +186,9 @@ test('after a guide reload, the toolbar shows the editor state, not the last but
 test('every tool button has an icon and a name in its title and aria-label, with no shortcut text', async () => {
   const editor = makeEditor(GUIDES);
   await editor.open('g1');
+  assert.equal(editor.dom['tool-select'], undefined, 'no Select button: it is what the editor is in when no tool is picked');
   const names = {
-    select: 'Select', rect: 'Rectangle', oval: 'Oval', line: 'Line', arrow: 'Arrow', text: 'Text',
+    rect: 'Rectangle', oval: 'Oval', line: 'Line', arrow: 'Arrow', text: 'Text',
     tooltip: 'Tooltip', number: 'Number', blur: 'Blur', highlight: 'Highlight', magnify: 'Magnify',
     cursor: 'Cursor', crop: 'Crop',
   };
@@ -280,5 +281,25 @@ test('zoom shortcuts never leave a stale preset highlighted at a custom zoom', a
   editor.applyZoomShortcut('in');
   assertToolbar(editor, { tool: 'select', zoom: 1.75 });
   editor.applyZoomShortcut('fit');
+  assertToolbar(editor, { tool: 'select', zoom: 'fit' });
+});
+
+test('clicking the picked tool again, or Escape, puts it down and goes back to Select', async () => {
+  const editor = makeEditor(GUIDES);
+  await editor.open('g1');
+  const click = (tool) => editor.dom[`tool-${tool}`].listeners.click.forEach((fn) => fn());
+  click('crop');
+  assertToolbar(editor, { tool: 'crop', zoom: 'fit' });
+  click('blur');
+  assertToolbar(editor, { tool: 'blur', zoom: 'fit' });
+  click('blur');
+  assert.equal(editor.currentTool, 'select');
+  assertToolbar(editor, { tool: 'select', zoom: 'fit' });
+
+  click('rect');
+  let prevented = false;
+  editor.onDocumentKeyDown({ key: 'Escape', target: null, preventDefault: () => { prevented = true; } });
+  assert.equal(prevented, true);
+  assert.equal(editor.currentTool, 'select');
   assertToolbar(editor, { tool: 'select', zoom: 'fit' });
 });

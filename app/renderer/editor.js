@@ -611,8 +611,9 @@ class GuideEditor {
   mountShell() {
     this.shellMounted = true;
     this.root.innerHTML = '';
+    // No Select button: Select is what the editor is in when no other tool
+    // is picked. Clicking the picked tool again, Escape or S goes back to it.
     const toolButtons = [
-      ['select', t('Select')],
       ['rect', t('Rectangle')],
       ['oval', t('Oval')],
       ['line', t('Line')],
@@ -817,7 +818,7 @@ class GuideEditor {
 
     Object.entries(this.dom).forEach(([key, value]) => {
       if (key.startsWith('tool-')) {
-        value.addEventListener('click', () => this.setTool(value.dataset.tool));
+        value.addEventListener('click', () => this.setTool(this.currentTool === value.dataset.tool ? 'select' : value.dataset.tool));
       }
     });
 
@@ -3554,10 +3555,15 @@ class GuideEditor {
       return;
     }
     if (e.key === 'Escape' && !isEditableTarget(e.target)) {
-      // Escape deselects; Delete is the destructive key.
+      // Escape deselects, or puts down a drawing tool; Delete is the destructive key.
       if (this.selectedAnnotationId) {
         e.preventDefault();
         this.canvas.select(null);
+        return;
+      }
+      if (this.currentTool !== 'select') {
+        e.preventDefault();
+        this.setTool('select');
         return;
       }
     }

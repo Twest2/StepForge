@@ -15,6 +15,8 @@
   --accent-strong: #0054cc;
   --accent-fg: #ffffff;
   --danger: #c52d2d;
+  --danger-strong: #a32424;
+  --danger-fg: #ffffff;
   --warn: #ffe7b7;
   --ok: #16a34a;
   --caution: #d97706;
@@ -43,6 +45,8 @@
     --accent-strong: #69a1ff;
     --accent-fg: #08101a;
     --danger: #ff6b6b;
+    --danger-strong: #ff8787;
+    --danger-fg: #08101a;
     --warn: #4a3410;
     --ok: #4ade80;
     --caution: #fbbf24;
@@ -106,6 +110,15 @@ button.primary {
 }
 button.primary:hover { background: var(--accent-strong); border-color: var(--accent-strong); }
 button.danger { color: var(--danger); }
+/* A dialog's destructive confirm button (primary + danger): filled with the
+   danger color rather than red text on the blue primary fill, which was
+   unreadable. */
+button.primary.danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: var(--danger-fg);
+}
+button.primary.danger:hover { background: var(--danger-strong); border-color: var(--danger-strong); }
 button.icon { padding: 5px 9px; min-width: 34px; }
 button.tool {
   padding: 5px 10px;

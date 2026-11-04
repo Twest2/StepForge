@@ -840,4 +840,7 @@
   '{count} steps deleted. Press Ctrl+Z to undo.': { one: 'Удалён {count} шаг. Нажмите Ctrl+Z, чтобы отменить.', few: 'Удалено {count} шага. Нажмите Ctrl+Z, чтобы отменить.', many: 'Удалено {count} шагов. Нажмите Ctrl+Z, чтобы отменить.', other: 'Удалено {count} шагов. Нажмите Ctrl+Z, чтобы отменить.' },
   'Restored {count} steps.': { one: 'Восстановлен {count} шаг.', few: 'Восстановлено {count} шага.', many: 'Восстановлено {count} шагов.', other: 'Восстановлено {count} шагов.' },
   'Deleted {count} steps.': { one: 'Удалён {count} шаг.', few: 'Удалено {count} шага.', many: 'Удалено {count} шагов.', other: 'Удалено {count} шагов.' },
+  'Deleting': 'Удаление',
+  'Dangerous deletes': 'Опасное удаление',
+  'Delete steps without asking for confirmation.': 'Удалять шаги без запроса подтверждения.',
 });

@@ -840,4 +840,7 @@
   '{count} steps deleted. Press Ctrl+Z to undo.': { one: '{count} étape supprimée. Appuyez sur Ctrl+Z pour annuler.', other: '{count} étapes supprimées. Appuyez sur Ctrl+Z pour annuler.' },
   'Restored {count} steps.': { one: '{count} étape restaurée.', other: '{count} étapes restaurées.' },
   'Deleted {count} steps.': { one: '{count} étape supprimée.', other: '{count} étapes supprimées.' },
+  'Deleting': 'Suppression',
+  'Dangerous deletes': 'Suppressions dangereuses',
+  'Delete steps without asking for confirmation.': 'Supprimer les étapes sans demander de confirmation.',
 });

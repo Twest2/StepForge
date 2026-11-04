@@ -828,7 +828,7 @@ class GuideEditor {
         // Plain keys on a separator must not switch canvas tools or move an annotation.
         event.stopPropagation();
         const other = side === 'steps' ? 'properties' : 'steps';
-        const bounds = layout.paneBounds(side, this.dom.root.clientWidth, this.effectivePaneWidths[other]);
+        const bounds = layout.paneBounds(side, this.dom.root.clientWidth, this.effectivePaneWidths[other], this.paneMinimums());
         let width;
         if (event.key === 'Home') width = bounds.min;
         else if (event.key === 'End') width = bounds.max;
@@ -859,7 +859,7 @@ class GuideEditor {
     this.dom.root.style.setProperty('--properties-pane-width', `${widths.properties}px`);
     for (const side of ['steps', 'properties']) {
       const other = side === 'steps' ? 'properties' : 'steps';
-      const bounds = window.StepForgePaneLayout.paneBounds(side, this.dom.root.clientWidth, widths[other]);
+      const bounds = window.StepForgePaneLayout.paneBounds(side, this.dom.root.clientWidth, widths[other], this.paneMinimums());
       const divider = this.dom[`${side}Divider`];
       divider.setAttribute('aria-valuemin', bounds.min);
       divider.setAttribute('aria-valuemax', bounds.max);
@@ -870,7 +870,29 @@ class GuideEditor {
 
   updatePaneLayout() {
     if (!this.dom?.root?.clientWidth) return;
-    this.applyPaneWidths(window.StepForgePaneLayout.layoutPanes(this.dom.root.clientWidth, this.paneWidths));
+    this.applyPaneWidths(window.StepForgePaneLayout.layoutPanes(this.dom.root.clientWidth, this.paneWidths, this.paneMinimums()));
+  }
+
+  /**
+   * The pane minimums, with the steps pane wide enough for its header and
+   * its ↑ ↓ Duplicate Delete row on one line in the current language and
+   * font. Kept at the widest seen, since the footer hides in Select mode.
+   */
+  paneMinimums() {
+    const mins = window.StepForgePaneLayout.MIN_WIDTHS;
+    const rowWidth = (row) => {
+      const items = [...row.children].filter((child) => child.offsetWidth);
+      if (!items.length) return 0;
+      const style = getComputedStyle(row);
+      const gap = parseFloat(style.columnGap) || 0;
+      // A nested .row (Add, Select) may already be wrapped, so add up its own items.
+      return items.reduce((sum, child) => sum + (child.classList.contains('row') ? rowWidth(child) : child.getBoundingClientRect().width), 0)
+        + gap * (items.length - 1) + (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0);
+    };
+    const pane = this.dom.stepsPane;
+    const needed = Math.ceil(Math.max(rowWidth(pane.querySelector('.pane-head')), rowWidth(this.dom.paneFoot)) + pane.offsetWidth - pane.clientWidth);
+    this.stepsPaneMinWidth = Math.max(this.stepsPaneMinWidth || 0, mins.steps, needed);
+    return { ...mins, steps: this.stepsPaneMinWidth };
   }
 
   resizePane(side, requested) {
@@ -878,7 +900,7 @@ class GuideEditor {
     const width = this.dom.root.clientWidth;
     const other = side === 'steps' ? 'properties' : 'steps';
     const next = { ...this.effectivePaneWidths };
-    next[side] = layout.clampPaneWidth(side, requested, width, next[other]);
+    next[side] = layout.clampPaneWidth(side, requested, width, next[other], this.paneMinimums());
     next.canvas = width - next.steps - next.properties - 2 * layout.DIVIDER_WIDTH;
     this.applyPaneWidths(next);
   }

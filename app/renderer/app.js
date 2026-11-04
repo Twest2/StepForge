@@ -6,7 +6,26 @@ const api = window.stepforge;
 const dialogs = window.StepForgeDialogs || {};
 const review = window.StepForgeReview;
 
-/** "just now", "5 min ago", "3 hr ago", "yesterday", "4 days ago", else a short date. */
+// English uses the requested DD-MMM-YYYY; other interfaces use their locale's dates.
+const GUIDE_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** A display-only date in local time; stored timestamps are unchanged. */
+function formatGuideDate(iso, language = 'en') {
+  if (iso == null || iso === '') return '';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  if (language !== 'en') return new Intl.DateTimeFormat(language, { dateStyle: 'medium' }).format(date);
+  return `${String(date.getDate()).padStart(2, '0')}-${GUIDE_MONTHS[date.getMonth()]}-${String(date.getFullYear()).padStart(4, '0')}`;
+}
+
+/** A card date's tooltip: the same date with the time it was saved. */
+function savedAtTitle(iso) {
+  const day = formatGuideDate(iso, uiLanguage);
+  if (!day) return '';
+  return `${day} ${new Date(iso).toLocaleTimeString(dateLocale, { hour: '2-digit', minute: '2-digit' })}`;
+}
+
+/** "just now", "5 min ago", "3 hr ago", "yesterday", "4 days ago", else formatGuideDate. */
 function timeAgo(iso) {
   const then = Date.parse(iso);
   if (!Number.isFinite(then)) return '';
@@ -18,14 +37,14 @@ function timeAgo(iso) {
   const days = Math.round(hours / 24);
   if (days === 1) return t('yesterday');
   if (days < 7) return tn(days, '{count} day ago', '{count} days ago');
-  return new Date(then).toLocaleDateString(dateLocale, { month: 'short', day: 'numeric', year: new Date(then).getFullYear() === new Date().getFullYear() ? undefined : 'numeric' });
+  return formatGuideDate(iso, uiLanguage);
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** The "May need review" pill's tooltip: why the guide is flagged. */
 function reviewBadgeTitle(status) {
-  const since = new Date(status.since).toLocaleDateString(dateLocale, { dateStyle: 'medium' });
+  const since = formatGuideDate(status.since, uiLanguage);
   const what = status.sinceKind === 'verified' ? t('Last verified {date}', { date: since }) : t('Last saved {date}', { date: since });
   return t('{since}, over {interval} ago. Open the guide to check it still matches the software, or right-click → Mark as verified.',
     { since: what, interval: intervalText(status.days) });
@@ -346,7 +365,7 @@ class StepForgeApp {
         },
         el('span.welcome-recent-details', {},
           el('span.welcome-recent-title', {}, guide.title),
-          el('span.muted', {}, `${tn(guide.stepCount, '{count} step', '{count} steps')} • ${fmtDate(guide.updatedAt)}`),
+          el('span.muted', {}, `${tn(guide.stepCount, '{count} step', '{count} steps')} • ${formatGuideDate(guide.updatedAt, uiLanguage)}`),
         ),
         el('span.muted', { 'aria-hidden': 'true' }, '›'),
         ),
@@ -877,7 +896,7 @@ class StepForgeApp {
       guide.linkedSource ? el('span.badge', { title: t('Saved to a linked .sfgz file') }, t('Linked')) : null,
       guide.locked ? el('span.badge', { title: t('Open on another device') }, t('Locked')) : null,
       reviewState?.overdue ? el('span.badge.review-badge', { title: reviewBadgeTitle(reviewState) }, t('May need review')) : null,
-      el('span.card-updated', { title: fmtDate(guide.updatedAt) }, timeAgo(guide.updatedAt))));
+      el('span.card-updated', { title: savedAtTitle(guide.updatedAt) }, formatGuideDate(guide.updatedAt, uiLanguage))));
   }
 
   resultCard(result, guide, isStep) {

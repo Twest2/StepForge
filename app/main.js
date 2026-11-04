@@ -1439,7 +1439,14 @@ function setupIpc() {
     if (keyPath === 'capture' || keyPath.startsWith('capture.hotkey')) registerHotkeys();
     return settings.data;
   }, { validate: (a) => c.settingsKeyPath(a.keyPath) });
-  h('ai:setKey', ({ baseUrl, apiKey }) => { textIntel.aiKeys.set(baseUrl, apiKey);return { ok: true }; }, { validate: a => typeof a.baseUrl === 'string' && a.baseUrl.length <= 4096 && typeof a.apiKey === 'string' && a.apiKey.length <= 16384 });
+  // The OpenAI-compatible server's API key: saved encrypted for one server URL
+  // (app/openai-compatible.js). The window can only learn whether one is saved.
+  h('ai:setKey', ({ baseUrl, apiKey }) => {
+    textIntel.aiKeys.set(baseUrl, apiKey);
+    return { ok: true, saved: Boolean(apiKey) };
+  }, { validate: (a) => typeof a.baseUrl === 'string' && a.baseUrl.length <= 4096 && typeof a.apiKey === 'string' && a.apiKey.length <= 16384 });
+  h('ai:keyStatus', ({ baseUrl }) => ({ saved: textIntel.aiKeys.has(baseUrl), canSave: textIntel.aiKeys.available() }),
+    { validate: (a) => typeof a.baseUrl === 'string' && a.baseUrl.length <= 4096 });
   h('ai:test', async ({ enabled = null, ollama = null, provider = null, openai = null, allowRemoteHost = null } = {}) => {
     return textIntel.testAiConnection({
       enabled,

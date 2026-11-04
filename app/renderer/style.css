@@ -146,8 +146,6 @@ button.primary {
 }
 button.primary:hover { background: var(--accent-strong); border-color: var(--accent-strong); }
 button.danger { color: var(--danger); }
-button.danger-outline { color: var(--danger); border-color: var(--danger); background: transparent; }
-button.danger-outline:hover { border-color: var(--danger-strong); background: color-mix(in srgb, var(--danger) 9%, var(--panel-solid)); }
 /* A dialog's destructive confirm button (primary + danger): filled with the
    danger color rather than red text on the blue primary fill, which was
    unreadable. */
@@ -1791,13 +1789,16 @@ fieldset legend {
 .setting-desc { color: var(--muted); font-size: 12px; margin-top: 2px; }
 .setting-desc.error { color: var(--danger); }
 .setting-control { flex: none; display: flex; justify-content: flex-end; max-width: 55%; }
-.setting-control input[type="text"], .setting-control input:not([type]), .setting-control input[type="number"], .setting-control select { width: 220px; max-width: 100%; }
+.setting-control input[type="text"], .setting-control input:not([type]), .setting-control input[type="number"], .setting-control input[type="url"], .setting-control input[type="password"], .setting-control select { width: 220px; max-width: 100%; }
+.setting-row-divided > .setting-row, .ai-provider-fields > .setting-row:first-child { border-top: 1px solid var(--border); }
+/* Settings → AI: the API key field with Remove key beside it, within the usual control width. */
+.setting-control .ai-key-control { flex-wrap: nowrap; gap: 6px; width: 220px; max-width: 100%; }
+.setting-control .ai-key-control input { width: auto; flex: 1 1 auto; min-width: 0; }
+.setting-control .ai-key-control button { flex: none; }
 .setting-control input[type="number"] { width: 110px; }
 .settings-range input[type="range"] { width: 150px; }
 .settings-range output { min-width: 44px; font-variant-numeric: tabular-nums; color: var(--muted); }
 .settings-actions { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 0 12px; }
-.ai-key-actions { flex-direction: column; align-items: flex-start; }
-.ai-key-actions[hidden] { display: none; }
 .settings-storage { display: flex; flex-direction: column; gap: 4px; padding: 12px 0 10px; }
 .settings-path {
   display: block; padding: 7px 10px; border-radius: 8px; background: var(--panel-2); font-size: 12px;

@@ -2,38 +2,32 @@
 
 StepForge can write your guides for you, a whole guide, one step, or a single
 field, using an AI model that runs **on your own computer** through
-[Ollama](https://ollama.com) by default. You can alternatively connect a
-self-hosted OpenAI-compatible server. Remote servers require explicit opt-in;
-guide text and permitted screenshots are sent to the server you configure.
+[Ollama](https://ollama.com), or your organization's own OpenAI-compatible
+server. Nothing goes to a cloud AI service unless you point StepForge at one.
 
 ## Using an OpenAI-compatible server
 
-In **Settings → AI**, choose **OpenAI-compatible** under **Provider**. Enter
-the complete base URL including its API prefix, such as
-`http://localhost:8000/v1` or `https://llm.internal.company/v1`, and the exact
-model identifier your server accepts. StepForge uses `/chat/completions` under
-that prefix and does not require a model-list endpoint.
+If your organization runs its own AI server, such as vLLM, LM Studio, LocalAI
+or LiteLLM Proxy, StepForge can use it instead of Ollama. In
+**Settings → AI → AI connection**:
 
-An API key is optional for keyless local servers. If required, enter it and
-Save. Keys are encrypted using the operating system and bound to the exact
-base URL. They are not stored in guide files or app-settings.json. Leave the
-field blank to reuse the saved key for that URL. To delete it, choose the
-red-outlined **Remove saved API key** button at the bottom of the AI settings
-and confirm. Removal takes effect immediately, even if you later cancel Settings.
-Saving a key requires an available OS keyring; keyless connections still work
-without one. Unsaved key edits are discarded with Settings.
-
-Enable **Allow remote AI host** for a server outside this computer, including
-an internal LAN server. This consent applies to both providers. Choose **Test
-connection** to send a small chat request using the entered model and key;
-the test sends no guide or screenshot. A successful test verifies the chat
-response format and model access, not image capability. Enable **Model supports
-images** only for a vision model; **Let the model see screenshots** remains
-the separate master screenshot preference. Redactions, size limits, request
-timeouts and cancellation apply to both providers. Redirects are not followed.
-
-vLLM, LM Studio, LocalAI and LiteLLM Proxy can expose this protocol; configure
-their server address and model name as supplied by your administrator.
+1. Set **Provider** to **OpenAI-compatible server**.
+2. Enter the **Server URL**: the API's base address, including `/v1` (or your
+   server's API path), for example `http://localhost:8000/v1` or
+   `https://llm.internal.example.com/v1`. StepForge sends requests to
+   `/chat/completions` under it.
+3. Enter the **Model** name your server expects.
+4. If the server needs an **API key**, type it and press **Enter** (or move to
+   another field). Entering a key saves it straight away, encrypted with your
+   operating system's keyring, for this server URL only. It isn't stored in
+   your guides or settings file, and StepForge never shows it again: the field
+   just says a key is saved. **Remove key** next to the field deletes it.
+5. Turn on **Model can read images** only if the model accepts images.
+6. A server on another computer, even on your own network, also needs
+   **Allow a server on another computer**. Guide text, and screenshots if the
+   model can read them, are then sent to that server.
+7. Choose **Test connection**. It sends one short message, with no guide or
+   screenshot, to check the URL, model and key.
 
 Prefer Claude or Codex? They can write your guides too: see
 [Let Claude or Codex write your guides](AI_AGENTS.md).

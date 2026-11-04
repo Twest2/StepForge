@@ -165,6 +165,7 @@ const api = {
   },
   ai: {
     setKey: invoke('ai:setKey'),
+    keyStatus: invoke('ai:keyStatus'),
     test: invoke('ai:test'),
     fillStep: invoke('ai:fillStep'),
     fillGuide: invoke('ai:fillGuide'),

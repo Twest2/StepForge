@@ -410,13 +410,18 @@ class TextIntelService {
   async testAiConnection(override = null) {
     const config = this.aiConfig(override);
     if (config.provider === 'openai') {
+      // A real (tiny) chat request: many compatible servers have no model list to check against.
       try {
         const host = openAI.baseUrl(config.openai?.baseUrl, Boolean(config.allowRemoteHost));
         const model = normalizeWhitespace(config.openai?.model);
-        if (!model) throw new Error('Enter a model identifier.');
-        await openAI.chat(this, { host, model, prompt: 'Reply with OK.', systemPrompt: 'This is a connection test.', apiKey: config.openai.clearKey ? '' : config.openai.apiKey || this.aiKeys.get(host) });
+        if (!model) throw new Error('Enter the model name your server expects.');
+        // A key typed in Settings but not saved yet is tried as is; otherwise the saved one.
+        const apiKey = config.openai.apiKey || this.aiKeys.get(host);
+        await openAI.chat(this, { host, model, prompt: 'Reply with OK.', systemPrompt: 'This is a connection test.', apiKey });
         return { ok: true, provider: 'openai', installed: true, host, model, models: [model], vision: Boolean(config.openai.vision) };
-      } catch (err) { return { ok: false, reason: err.message }; }
+      } catch (err) {
+        return { ok: false, reason: err.message };
+      }
     }
     if (!config.ollama.host) {
       return { ok: false, reason: 'Set an Ollama host first.' };
@@ -527,9 +532,11 @@ class TextIntelService {
       try {
         const host = openAI.baseUrl(config.openai?.baseUrl, Boolean(config.allowRemoteHost));
         const model = normalizeWhitespace(config.openai?.model);
-        if (!model) throw new Error('Enter a model identifier.');
+        if (!model) throw new Error('Choose an OpenAI-compatible server and model in Settings → AI.');
         return { ok: true, host, model, provider: 'openai' };
-      } catch (err) { return { ok: false, reason: err.message }; }
+      } catch (err) {
+        return { ok: false, reason: err.message };
+      }
     }
     if (!config.ollama.host || !config.ollama.model) {
       return { ok: false, reason: 'Choose an Ollama host and model in Settings → AI.' };
@@ -541,7 +548,8 @@ class TextIntelService {
     }
   }
 
-  // Retain the existing call interface while dispatching the chosen protocol.
+  // Sends one prompt to the chosen provider: Ollama's /api/chat, or an
+  // OpenAI-compatible server's /chat/completions (app/openai-compatible.js).
   async callOllama({ host, model, prompt, systemPrompt, images = [], guideId = null, provider = this.aiConfig().provider }) {
     if (provider === 'openai') return openAI.chat(this, { host, model, prompt, systemPrompt, images, guideId, apiKey: this.aiKeys.get(host) });
     const url = new URL('/api/chat', `${host.replace(/\/+$/, '')}/`);

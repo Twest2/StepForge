@@ -39,15 +39,14 @@ PY
 # Exercise the installed native codec, not just module presence in the archive.
 cat > "$smoke_dir/image-codec.cjs" <<'JS'
 const assert = require('node:assert/strict');
-const sharp = require('/opt/stepforge/node_modules/sharp');
+const { encodePng, decodePng } = require('/opt/stepforge/core/png');
 const { createImageCodec } = require('/opt/stepforge/core/image-codec');
 (async () => {
-  const png = await sharp({ create: { width: 32, height: 24, channels: 4,
-    background: { r: 10, g: 20, b: 30, alpha: 0.4 } } }).png().toBuffer();
+  const png = encodePng({ width: 32, height: 24, data: Buffer.from(Array(32 * 24).fill([10, 20, 30, 102]).flat()) });
   const codec = createImageCodec();
   const webp = await codec.encodeWebp(png);
   const decoded = await codec.decodeToPng(webp);
-  assert.deepEqual(await sharp(decoded).raw().toBuffer(), await sharp(png).raw().toBuffer());
+  assert.deepEqual(decodePng(decoded), decodePng(png));
   console.log('Installed Fedora Sharp lossless round-trip passed');
 })().catch(error => { console.error(error); process.exitCode = 1; });
 JS

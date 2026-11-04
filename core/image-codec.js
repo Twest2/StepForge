@@ -4,7 +4,41 @@
 // Electron, export workers and the headless MCP process on Windows and Linux.
 const sharp = (...args) => require('sharp')(...args);
 
-function createImageCodec() {
+function createImageCodec({ platform = process.platform, electron = process.versions.electron, nodePath = '/usr/bin/node' } = {}) {
+  // Linux Electron leaks GLib symbols into native addons. A plain Node process
+  // keeps libvips isolated in UI, export helpers and Electron-hosted MCP alike.
+  if (platform === 'linux' && electron) {
+    const { spawn } = require('node:child_process');
+    const path = require('node:path');
+    const run = (operation, buffer, options = {}) => new Promise((resolve, reject) => {
+      const child = spawn(nodePath, [path.join(__dirname, 'image-codec-worker.js'), operation, JSON.stringify(options)], {
+        stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true,
+      });
+      const chunks = [];
+      let size = 0;
+      let error = '';
+      const timer = setTimeout(() => { child.kill(); reject(new Error('Image processing timed out.')); }, 120000);
+      child.stdout.on('data', chunk => {
+        size += chunk.length;
+        if (size > 512 * 1024 * 1024) { child.kill(); reject(new Error('Decoded image is too large.')); }
+        else chunks.push(chunk);
+      });
+      child.stderr.on('data', chunk => { if (error.length < 8192) error += chunk; });
+      child.on('error', cause => { clearTimeout(timer); reject(cause); });
+      child.on('close', code => {
+        clearTimeout(timer);
+        if (code !== 0) reject(new Error(error.trim() || 'Image processing failed.'));
+        else resolve(size ? Buffer.concat(chunks) : null);
+      });
+      child.stdin.on('error', () => {}); // Exit/error handlers report a refused input pipe.
+      child.stdin.end(buffer);
+    });
+    return {
+      decodeToPng: buffer => run('decode', buffer),
+      encodeWebp: (buffer, options) => run('encode', buffer, options),
+      close() {},
+    };
+  }
   return {
     async decodeToPng(buffer) {
       return sharp(buffer).autoOrient().ensureAlpha().png().toBuffer();

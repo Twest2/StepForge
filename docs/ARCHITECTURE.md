@@ -462,3 +462,8 @@ A snapshot precedes content-addressed image writes, and step revisions are
 checked before retiring old files. PNG-only guides remain supported. Cloud sync
 transfers stored bytes unchanged. Long Windows preview paths use content-typed
 data URLs to avoid the Chromium file decoder path limit.
+
+On Linux Electron, image operations use `/usr/bin/node` through a bounded
+stdin/stdout helper (`core/image-codec-worker.js`). This isolates libvips from
+Electron GLib symbol collisions. Linux packages require Node >=22.12.0. Plain
+Node MCP/tests and Windows Electron use the native module directly.

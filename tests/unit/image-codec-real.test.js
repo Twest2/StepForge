@@ -209,3 +209,12 @@ test('the recording screenshot-storage path uses the shared lossless codec and k
   assert.deepEqual(decodePng(await codec.decodeToPng(stored)).data, decodePng(png).data);
   assert.equal(await CaptureService.prototype.storeScreenshot.call({ settings: { get: get('png') } }, png), png);
 });
+
+test('Linux Electron isolates real image operations in a plain Node process', async () => {
+  const isolated = createImageCodec({ platform: 'linux', electron: 'test', nodePath: process.execPath });
+  const png = screenshot();
+  const webp = await isolated.encodeWebp(png, { lossless: true });
+  assert.equal(sniffImageFormat(webp), 'webp');
+  assert.deepEqual(decodePng(await isolated.decodeToPng(webp)), decodePng(png));
+  await assert.rejects(isolated.decodeToPng(Buffer.from('broken input')), /unsupported|Input buffer/i);
+});

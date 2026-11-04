@@ -549,6 +549,16 @@ body.platform-linux #capture-status button {
   letter-spacing: 0.04em;
 }
 .step-item.dragging { opacity: 0.45; }
+.step-select, .step-summary { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+.step-select { border: 0; background: transparent; padding: 2px 0; color: inherit; text-align: left; font: inherit; }
+.step-select:hover { background: transparent; }
+.step-select:focus-visible, .step-actions:focus-visible, .annotation-select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.step-actions { flex: none; min-width: 24px; padding: 0 4px; border: 0; background: transparent; color: var(--muted); font-size: 18px; }
+.step-item .flags:empty { display: none; }
+.annotation-select { width: 100%; padding: 10px; background: var(--panel); text-align: left; color: var(--text); font: inherit; }
+.annotation-editor .form-row.stacked > label:first-child { width: auto; }
+.canvas-wrap canvas:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+#btn-home.brand { border: 0; background: transparent; padding: 2px 0; color: var(--text); }
 /* Shows where a dragged step lands; its left edge is the level it will have. */
 .step-drop-line {
   position: absolute;

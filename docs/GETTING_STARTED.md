@@ -269,6 +269,19 @@ and verifies your library before switching to the new location.
 
 ## Keyboard shortcuts
 
+In Steps, Tab reaches each step and its **⋯** Actions button. Use Up/Down or
+Home/End on a step button to navigate, and Shift+F10 for its context menu.
+Select-mode checkboxes and Select all retain keyboard focus as the list updates.
+
+Tab to an annotation card and press Enter or Space to select it. **Focus
+screenshot** moves focus to the screenshot for arrow-key movement and Delete;
+Ctrl+Z undoes those changes. The screenshot itself is also in the Tab order
+while an image is available. Annotation controls keep their own plain keys.
+
+Settings tabs use one Tab stop. Use Up/Down in the vertical layout, Left/Right
+in the narrow horizontal layout, or Home/End to change sections. Visible form
+labels are linked to their controls, including descriptions used as help text.
+
 In the library, Tab reaches sidebar filters, guide titles, favorites and the
 **⋯** Actions buttons. Enter or Space activates the focused control. Native
 checkboxes select guides in Select mode. Use Shift+F10 (or the context-menu

@@ -57,11 +57,50 @@ function betaBadge(text = 'Beta') {
 
 /** Settings row: a title and optional description beside its control. */
 function settingRow(title, description, control) {
+  const heading = el('div.setting-title', {}, title);
+  const help = description ? el('div.setting-desc', {}, description) : null;
+  labelControl(heading, control, help);
   return el('div.setting-row', {},
     el('div.setting-text', {},
-      el('div.setting-title', {}, title),
-      description ? el('div.setting-desc', {}, description) : null),
+      heading, help),
     el('div.setting-control', {}, control));
+}
+
+let controlLabelCount = 0;
+/** Connect visible form text to its controls without replacing explicit names. */
+function labelControl(label, control, description = null) {
+  if (!label.textContent?.trim()) return control;
+  const identify = node => {
+    if (!node.id) node.setAttribute('id', `control-label-${++controlLabelCount}`);
+    return node.id;
+  };
+  const labelId = identify(label), descriptionId = description ? identify(description) : '';
+  let linked = false;
+  const visit = node => {
+    if (Array.isArray(node)) { node.forEach(visit); return; }
+    if (!node || typeof node !== 'object' || node.hidden || node.getAttribute?.('aria-hidden') === 'true') return;
+    const tag = tagOf(node);
+    const native = ['input', 'select', 'textarea', 'button'].includes(tag) && node.type !== 'hidden';
+    const editable = node.getAttribute?.('role') === 'textbox';
+    if (native || editable) {
+      const wrapped = node.closest?.('label');
+      if (tagOf(label) === 'label' && native && !linked && !wrapped && !label.getAttribute('for')) {
+        label.setAttribute('for', identify(node)); linked = true;
+      }
+      if (!wrapped && !node.getAttribute('aria-label') && !node.getAttribute('aria-labelledby')) {
+        const ownText = tag === 'button' && node.textContent?.trim() ? ` ${identify(node)}` : '';
+        node.setAttribute('aria-labelledby', labelId + ownText);
+      }
+      if (descriptionId) {
+        const ids = new Set((node.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean));
+        ids.add(descriptionId); node.setAttribute('aria-describedby', [...ids].join(' '));
+      }
+      return;
+    }
+    for (const child of node.children || []) visit(child);
+  };
+  visit(control);
+  return control;
 }
 
 /** Wraps a checkbox as an on/off switch; the checkbox keeps its `checked` state. */
@@ -405,9 +444,11 @@ function promptDialog(title, { value = '', label = t('Name') } = {}) {
   return new Promise((resolve) => {
     const input = el('input', { type: 'text', value });
     const done = (v) => { close(); resolve(v); };
+    const inputLabel = el('label', {}, label);
+    labelControl(inputLabel, input);
     const { close, requestDismiss } = openModal({
       title,
-      body: el('div.form-row', {}, el('label', {}, label), input),
+      body: el('div.form-row', {}, inputLabel, input),
       footer: [
         el('button', { onClick: () => requestDismiss() }, t('Cancel')),
         el('button.primary', { onClick: () => done(input.value.trim() || null) }, t('OK')),

@@ -170,6 +170,7 @@ function stepDepth(step, stepMap) {
 function isEditableTarget(target) {
   return target && (
     target.tagName === 'INPUT' ||
+    target.tagName === 'SELECT' ||
     target.tagName === 'TEXTAREA' ||
     target.isContentEditable
   );
@@ -615,18 +616,21 @@ class GuideEditor {
             this.dom.selectStepsBtn = el('button', { type: 'button', title: t('Select steps; Shift-click to select a range') }, t('Select')),
           ),
         ),
-        this.dom.stepsList = el('div.steps-list'),
+        this.dom.stepsList = el('div.steps-list', { role: 'list', 'aria-label': t('Steps') }),
         this.dom.stepBulkBar = el('div'),
         this.dom.paneFoot = el('div.pane-foot', {},
-          this.dom.moveUpBtn = el('button.icon', { type: 'button', title: t('Move step up') }, '↑'),
-          this.dom.moveDownBtn = el('button.icon', { type: 'button', title: t('Move step down') }, '↓'),
+          this.dom.moveUpBtn = el('button.icon', { type: 'button', title: t('Move step up'), 'aria-label': t('Move step up') }, '↑'),
+          this.dom.moveDownBtn = el('button.icon', { type: 'button', title: t('Move step down'), 'aria-label': t('Move step down') }, '↓'),
           this.dom.duplicateBtn = el('button', { type: 'button' }, t('Duplicate')),
           this.dom.deleteBtn = el('button.danger', { type: 'button' }, t('Delete')),
         ),
       ),
       el('section.pane-canvas', {},
         el('div.canvas-toolbar', {},
-          ...toolButtons.map(([tool, label]) => this.dom[`tool-${tool}`] = el('button.tool', { type: 'button', dataset: { tool } }, label)),
+          ...toolButtons.map(([tool]) => {
+            const label = ANNOTATION_TYPE_LABELS[tool] || (tool === 'select' ? t('Select') : t('Crop'));
+            return this.dom[`tool-${tool}`] = el('button.tool', { type: 'button', dataset: { tool }, 'aria-label': label, 'aria-pressed': String(tool === this.currentTool) }, tool === 'number' ? '#' : label);
+          }),
           el('span.sep'),
           this.dom.zoomFitBtn = el('button.tool', { type: 'button' }, t('Fit')),
           this.dom.zoom100Btn = el('button.tool', { type: 'button' }, '100%'),
@@ -637,7 +641,8 @@ class GuideEditor {
           this.dom.redoBtn = el('button.tool', { type: 'button' }, t('Redo')),
         ),
         this.dom.canvasWrap = el('div.canvas-wrap', {},
-          this.dom.canvas = el('canvas', { width: 1, height: 1 }),
+          this.dom.canvas = el('canvas', { width: 1, height: 1, tabIndex: -1, role: 'group', 'aria-label': t('Screenshot editor'), 'aria-describedby': 'screenshot-keyboard-help' }, t('Select annotations in the list to edit their properties.')),
+          el('span.sr-only', { id: 'screenshot-keyboard-help' }, t('Select an annotation from the list, then focus the screenshot. Use arrow keys to move it and Delete to remove it.')),
           this.dom.canvasEmpty = el('div.canvas-empty', {}, t('Select an image step to edit annotations.')),
         ),
       ),
@@ -645,7 +650,7 @@ class GuideEditor {
         el('section', {},
           el('h3', {}, t('Step')),
           el('div.row', {},
-            this.dom.titleInput = el('input', { type: 'text', placeholder: t('Step title'), style: { flex: 1 } }),
+            this.dom.titleInput = el('input', { type: 'text', placeholder: t('Step title'), 'aria-label': t('Step title'), style: { flex: 1 } }),
           ),
           this.dom.statusSelect = makeSelect('todo', [
             { value: 'todo', label: t('Todo') },
@@ -653,26 +658,26 @@ class GuideEditor {
             { value: 'done', label: t('Done') },
           ]),
           el('div.row', {},
-            this.dom.hiddenToggle = el('label', {}, el('input', { type: 'checkbox' }), ' Hidden'),
-            this.dom.skippedToggle = el('label', {}, el('input', { type: 'checkbox' }), ' Skipped'),
+            this.dom.hiddenToggle = el('label', {}, el('input', { type: 'checkbox' }), ' ', t('Hidden')),
+            this.dom.skippedToggle = el('label', {}, el('input', { type: 'checkbox' }), ' ', t('Skipped')),
           ),
           el('div.row', {},
-            this.dom.forceNewPageToggle = el('label', {}, el('input', { type: 'checkbox' }), ' New page'),
-            this.dom.focusedViewToggle = el('label', {}, el('input', { type: 'checkbox' }), ' Focused'),
+            this.dom.forceNewPageToggle = el('label', {}, el('input', { type: 'checkbox' }), ' ', t('New page')),
+            this.dom.focusedViewToggle = el('label', {}, el('input', { type: 'checkbox' }), ' ', t('Focused')),
           ),
           // Pan shows as a percentage, 0% at the left and top edges (core/focused-view.js).
           this.dom.focusedControls = el('div.focused-controls.hidden', {},
             el('div.form-row', {}, el('label', {}, t('Zoom')),
               this.dom.fvZoom = el('input', { type: 'range', min: 1, max: 3, step: 0.05, value: 1.5, 'aria-label': t('Zoom') }),
-              this.dom.fvZoomNum = el('input', { type: 'number', min: 1, max: 3, step: 0.05, value: '1.50', 'aria-label': t('Zoom') }),
+              this.dom.fvZoomNum = el('input', { type: 'number', min: 1, max: 3, step: 0.05, value: '1.50', 'aria-label': t('{label} value', { label: t('Zoom') }) }),
               el('span.fv-unit', {}, '×')),
             el('div.form-row', { title: t('0% is the left edge, 100% the right edge.') }, el('label', {}, t('Pan X')),
               this.dom.fvPanX = el('input', { type: 'range', min: 0, max: 100, step: 1, value: 50, 'aria-label': t('Pan X') }),
-              this.dom.fvPanXNum = el('input', { type: 'number', min: 0, max: 100, step: 1, value: 50, 'aria-label': t('Pan X') }),
+              this.dom.fvPanXNum = el('input', { type: 'number', min: 0, max: 100, step: 1, value: 50, 'aria-label': t('{label} value', { label: t('Pan X') }) }),
               el('span.fv-unit', {}, '%')),
             el('div.form-row', { title: t('0% is the top edge, 100% the bottom edge.') }, el('label', {}, t('Pan Y')),
               this.dom.fvPanY = el('input', { type: 'range', min: 0, max: 100, step: 1, value: 50, 'aria-label': t('Pan Y') }),
-              this.dom.fvPanYNum = el('input', { type: 'number', min: 0, max: 100, step: 1, value: 50, 'aria-label': t('Pan Y') }),
+              this.dom.fvPanYNum = el('input', { type: 'number', min: 0, max: 100, step: 1, value: 50, 'aria-label': t('{label} value', { label: t('Pan Y') }) }),
               el('span.fv-unit', {}, '%')),
             el('div.muted', {}, t('Exports crop to this view; the original image is never modified.')),
           ),
@@ -688,7 +693,7 @@ class GuideEditor {
             this.toolbarBtn('createLink', 'Link'),
             this.toolbarBtn('removeFormat', 'Clear'),
           ),
-          this.dom.descEditor = el('div.rich-editor', { contentEditable: 'true', spellcheck: true }),
+          this.dom.descEditor = el('div.rich-editor', { contentEditable: 'true', spellcheck: true, role: 'textbox', 'aria-label': t('Description'), 'aria-multiline': 'true' }),
         ),
         el('section', {},
           el('h3', {}, t('Annotations')),
@@ -713,6 +718,8 @@ class GuideEditor {
       ),
     );
     this.root.append(this.dom.root);
+    this.dom.statusSelect.setAttribute('aria-label', t('Status'));
+    for (const row of this.dom.focusedControls.querySelectorAll('.form-row')) labelControl(row.querySelector('label'), [...row.querySelectorAll('input')]);
 
     // canvas interactions need to snapshot the current step before the drag
     // mutates it, so undo can restore the pre-edit annotations.
@@ -737,10 +744,12 @@ class GuideEditor {
   }
 
   toolbarBtn(action, label, block = null) {
+    const labels = { bold: t('Bold'), italic: t('Italic'), insertUnorderedList: t('Bulleted list'), insertOrderedList: t('Numbered list'), formatBlock: t('Quote'), createLink: t('Link'), removeFormat: t('Clear') };
     const btn = el('button', {
       type: 'button',
+      ...(!['createLink', 'removeFormat'].includes(action) ? { 'aria-pressed': 'false' } : {}),
       onClick: () => this.formatDescription(action, block),
-    }, label);
+    }, labels[action] || t(label));
     btn.dataset.action = action;
     if (block) btn.dataset.block = block;
     return btn;
@@ -762,6 +771,7 @@ class GuideEditor {
         active = false;
       }
       btn.classList.toggle('active', active);
+      if (!['createLink', 'removeFormat'].includes(action)) btn.setAttribute('aria-pressed', String(active));
     }
   }
 
@@ -883,6 +893,7 @@ class GuideEditor {
       const item = e.target.closest('[data-ann-id]');
       if (!item) return;
       this.canvas.select(item.dataset.annId);
+      [...this.dom.annotationList.querySelectorAll('[data-ann-id]')].find(button => button.dataset.annId === item.dataset.annId)?.focus();
     });
 
   }
@@ -944,6 +955,7 @@ class GuideEditor {
     for (const [range, box, value] of rows) {
       if (range !== keep) range.value = value;
       if (box !== keep) box.value = value;
+      range.setAttribute?.('aria-valuetext', `${value}${range === this.dom.fvZoom ? '×' : '%'}`);
     }
   }
 
@@ -1061,7 +1073,7 @@ class GuideEditor {
       reflowBlockCards();
     };
     const removeBtn = (onRemove) => el('button.icon.danger', {
-      type: 'button', title: t('Remove block'),
+      type: 'button', title: t('Remove block'), 'aria-label': t('Remove block'),
       onClick: () => { onRemove(); save(); this.renderBlocksPanel(); },
     }, '✕');
 
@@ -1087,8 +1099,8 @@ class GuideEditor {
         el('strong', {}, blockLabel(kind)),
         el('span.muted', { dataset: { blockOrder: 'true' } }, `#${Number.isFinite(block.order) ? block.order : index + 1}`),
         el('span.spacer'),
-        el('button.icon', { type: 'button', title: t('Move block up'), disabled: !canMoveUp, onClick: moveUp, dataset: { blockMove: 'up' } }, '↑'),
-        el('button.icon', { type: 'button', title: t('Move block down'), disabled: !canMoveDown, onClick: moveDown, dataset: { blockMove: 'down' } }, '↓'),
+        el('button.icon', { type: 'button', title: t('Move block up'), 'aria-label': t('Move block up'), disabled: !canMoveUp, onClick: moveUp, dataset: { blockMove: 'up' } }, '↑'),
+        el('button.icon', { type: 'button', title: t('Move block down'), 'aria-label': t('Move block down'), disabled: !canMoveDown, onClick: moveDown, dataset: { blockMove: 'down' } }, '↓'),
         removeBtn(() => {
           if (kind === 'text') step.textBlocks = (step.textBlocks || []).filter((b) => b !== block);
           else if (kind === 'code') step.codeBlocks = (step.codeBlocks || []).filter((b) => b !== block);
@@ -1128,6 +1140,7 @@ class GuideEditor {
           { value: 'after-description', label: t('After description') },
         ]);
         position.dataset.blockField = 'position';
+        position.setAttribute('aria-label', t('Block position'));
         const level = makeSelect(block.level, [
           { value: 'info', label: t('Note') },
           { value: 'warn', label: t('Warning') },
@@ -1135,9 +1148,10 @@ class GuideEditor {
           { value: 'success', label: t('Tip') },
         ]);
         level.dataset.blockField = 'level';
-        const title = el('input', { type: 'text', value: block.title || '', placeholder: t('Block title') });
+        level.setAttribute('aria-label', t('Message type'));
+        const title = el('input', { type: 'text', value: block.title || '', placeholder: t('Block title'), 'aria-label': t('Block title') });
         title.dataset.blockField = 'title';
-        const body = el('textarea', { rows: 2, placeholder: t('Block text') });
+        const body = el('textarea', { rows: 2, placeholder: t('Block text'), 'aria-label': t('Block text') });
         body.dataset.blockField = 'body';
         body.value = (block.descriptionHtml || '').replace(/<[^>]+>/g, '');
         position.addEventListener('change', () => { block.position = position.value; save(); });
@@ -1150,9 +1164,9 @@ class GuideEditor {
           body,
         );
       } else if (kind === 'code') {
-        const lang = el('input', { type: 'text', value: block.language || '', placeholder: t('Language (e.g. bash)') });
+        const lang = el('input', { type: 'text', value: block.language || '', placeholder: t('Language (e.g. bash)'), 'aria-label': t('Language') });
         lang.dataset.blockField = 'language';
-        const code = el('textarea', { rows: 3, placeholder: t('Code'), spellcheck: false });
+        const code = el('textarea', { rows: 3, placeholder: t('Code'), spellcheck: false, 'aria-label': t('Code') });
         code.dataset.blockField = 'code';
         code.value = blockText(block);
         code.style.fontFamily = 'monospace';
@@ -1160,7 +1174,7 @@ class GuideEditor {
         code.addEventListener('input', () => { block.code = code.value; save(); });
         card.append(lang, code);
       } else if (kind === 'table') {
-        const grid = el('textarea', { rows: 3, placeholder: t('One row per line, cells separated by |'), spellcheck: false });
+        const grid = el('textarea', { rows: 3, placeholder: t('One row per line, cells separated by |'), spellcheck: false, 'aria-label': t('Table rows') });
         grid.dataset.blockField = 'rows';
         grid.value = (block.rows || []).map((r) => r.join(' | ')).join('\n');
         grid.addEventListener('input', () => {
@@ -1183,17 +1197,20 @@ class GuideEditor {
   }
 
   renderStepList() {
+    const focusKey = document.activeElement?.dataset?.stepFocus;
     const current = this.currentStep;
     const numbers = stepNumberMap(this.steps);
     clearNode(this.dom.stepsList);
     this.dom.stepCount.textContent = tn(this.steps.length, '{count} step', '{count} steps');
     this.dom.selectStepsBtn.className = this.stepSelectMode ? 'primary' : '';
+    this.dom.selectStepsBtn.setAttribute?.('aria-pressed', String(this.stepSelectMode));
     for (const step of this.steps) {
       const number = numbers.get(step.stepId) || '';
       const depth = stepDepth(step, this.stepMap);
       const selected = current && current.stepId === step.stepId;
       const checked = this.selectedSteps.has(step.stepId);
       const itemProps = {
+        role: 'listitem',
         className: `step-item${selected ? ' selected' : ''}${depth ? ' sub' : ''}${step.skipped ? ' skipped' : ''}${step.hidden ? ' hiddenstep' : ''}`,
         dataset: { stepId: step.stepId },
         draggable: !this.stepSelectMode,
@@ -1206,10 +1223,14 @@ class GuideEditor {
           if (this.stepSelectMode) this.toggleStepSelection(step.stepId, e.shiftKey);
           else this.selectStep(step.stepId);
         },
-        onContextMenu: (e) => {
+        onContextMenu: async (e) => {
           e.preventDefault();
           if (this.stepSelectMode) return;
-          this.selectStep(step.stepId);
+          const kind = e.currentTarget?.classList?.contains('step-select') ? 'select' : 'actions';
+          const guideId = this.guideId;
+          await this.selectStep(step.stepId);
+          if (this.guideId !== guideId || !this.stepMap.has(step.stepId)) return;
+          const trigger = [...this.dom.stepsList.querySelectorAll('[data-step-focus]')].find(button => button.dataset.stepFocus === `${kind}:${step.stepId}`);
           contextMenu(e.clientX, e.clientY, [
             { label: t('Add substep'), action: () => this.addSubstep(step.stepId) },
             {
@@ -1240,30 +1261,58 @@ class GuideEditor {
             { label: t('Move to…'), action: () => this.moveStepTo(step.stepId) },
             'sep',
             { label: t('Delete step'), danger: true, action: () => this.deleteSelectedStep() },
-          ]);
+          ], { trigger });
+        },
+        onKeyDown: e => {
+          if (e.key !== 'ContextMenu' && !(e.shiftKey && e.key === 'F10')) return;
+          e.preventDefault(); e.stopPropagation();
+          const trigger = e.target.closest('button') || e.currentTarget;
+          const rect = trigger.getBoundingClientRect();
+          void itemProps.onContextMenu({ clientX: rect.left, clientY: rect.bottom, currentTarget: trigger, preventDefault() {} });
         },
       };
       if (depth) itemProps.style = { marginLeft: `${depth * 18}px` };
       const item = el('div.step-item', itemProps,
         this.stepSelectMode
-          ? el('input', {
+          ? el('input.step-control', {
             type: 'checkbox',
             checked,
-            'aria-label': t('Select step {step}', { step: number || step.title || '' }),
+            dataset: { stepFocus: `check:${step.stepId}` },
+            'aria-label': t('Select step {step}', { step: `${number} ${step.title || t('Untitled step')}` }),
             onClick: (e) => {
               e.stopPropagation();
               this.toggleStepSelection(step.stepId, e.shiftKey);
             },
           })
           : null,
-        el('span.status-dot', { className: `status-dot status-${step.status}` }),
-        el('span.num', {}, number || '•'),
-        el('span.t', {}, step.title || t('Untitled step')),
+        this.stepSelectMode ? el('span.step-summary', {},
+          el('span.num', {}, number || '•'), el('span.t', {}, step.title || t('Untitled step')))
+          : el('button.step-select.step-control', {
+            type: 'button', dataset: { stepFocus: `select:${step.stepId}` },
+            'aria-label': t('Select step {step}', { step: `${number} ${step.title || t('Untitled step')}` }),
+            'aria-current': selected ? 'step' : 'false',
+            onClick: e => { e.stopPropagation(); void this.selectStep(step.stepId); },
+            onKeyDown: async e => {
+              if (e.ctrlKey || e.metaKey || e.altKey || !['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(e.key)) return;
+              e.preventDefault(); e.stopPropagation();
+              const at = this.steps.findIndex(s => s.stepId === step.stepId);
+              const next = e.key === 'Home' ? 0 : e.key === 'End' ? this.steps.length - 1 : Math.max(0, Math.min(this.steps.length - 1, at + (e.key === 'ArrowDown' ? 1 : -1)));
+              const nextId = this.steps[next].stepId, guideId = this.guideId;
+              await this.selectStep(nextId);
+              if (this.guideId === guideId && document.activeElement?.dataset?.stepFocus === `select:${step.stepId}`) this.focusStepControl(`select:${nextId}`, { force: true });
+            },
+          }, el('span.status-dot', { className: `status-dot status-${step.status}`, 'aria-hidden': 'true' }),
+          el('span.num', {}, number || '•'), el('span.t', {}, step.title || t('Untitled step'))),
         el('span.flags', {}, [
-          step.parentStepId ? 'sub' : '',
-          step.hidden ? 'hidden' : '',
-          step.skipped ? 'skipped' : '',
+          step.parentStepId ? t('Substep') : '',
+          step.hidden ? t('Hidden') : '',
+          step.skipped ? t('Skipped') : '',
         ].filter(Boolean).join(' · ')),
+        this.stepSelectMode ? null : el('button.step-actions.step-control', {
+          type: 'button', 'aria-haspopup': 'menu', 'aria-expanded': 'false', dataset: { stepFocus: `actions:${step.stepId}` },
+          'aria-label': t('Actions for “{title}”', { title: step.title || t('Untitled step') }),
+          onClick: e => { e.stopPropagation(); const rect = e.currentTarget.getBoundingClientRect(); void itemProps.onContextMenu({ clientX: rect.left, clientY: rect.bottom, currentTarget: e.currentTarget, preventDefault() {} }); },
+        }, '⋯'),
       );
       this.dom.stepsList.append(item);
     }
@@ -1271,6 +1320,12 @@ class GuideEditor {
       this.dom.stepsList.append(el('div.empty-state', { style: { marginTop: '40px' } }, t('No steps yet.')));
     }
     this.renderStepBulkBar();
+    this.focusStepControl(focusKey);
+  }
+
+  focusStepControl(key, { force = false } = {}) {
+    if (!key || (!force && document.activeElement?.isConnected && document.activeElement !== document.body)) return;
+    [...(this.dom.root?.querySelectorAll?.('[data-step-focus]') || [])].find(button => button.dataset.stepFocus === key && !button.disabled)?.focus();
   }
 
   toggleStepSelectMode() {
@@ -1309,6 +1364,7 @@ class GuideEditor {
   }
 
   renderStepBulkBar() {
+    const focusKey = document.activeElement?.dataset?.stepFocus;
     clearNode(this.dom.stepBulkBar);
     this.dom.paneFoot.classList.toggle('hidden', this.stepSelectMode);
     if (!this.stepSelectMode) return;
@@ -1316,10 +1372,11 @@ class GuideEditor {
     const allSelected = this.steps.length > 0 && n === this.steps.length;
     this.dom.stepBulkBar.append(
       el('div.bulk-bar', {},
-        el('span', {}, `${n} step${n === 1 ? '' : 's'} selected`),
+        el('span', {}, tn(n, '{count} step selected', '{count} steps selected')),
         el('span.spacer', {}),
         el('button', {
           type: 'button',
+          dataset: { stepFocus: 'bulk:all' },
           onClick: () => (allSelected ? this.clearStepSelection() : this.selectAllSteps()),
         }, allSelected ? t('Clear') : t('Select all')),
         this.annotationClipboard
@@ -1330,9 +1387,10 @@ class GuideEditor {
             onClick: () => this.pasteAnnotationToSelectedSteps(),
           }, tn(n, 'Paste annotation to {count} step', 'Paste annotation to {count} steps'))
           : null,
-        el('button.danger', { type: 'button', disabled: !n, onClick: () => this.deleteSelectedSteps() }, t('Delete')),
+        el('button.danger', { type: 'button', disabled: !n, dataset: { stepFocus: 'bulk:delete' }, onClick: () => this.deleteSelectedSteps() }, t('Delete')),
       ),
     );
+    this.focusStepControl(focusKey);
   }
 
   async deleteSelectedSteps() {
@@ -1385,6 +1443,7 @@ class GuideEditor {
   }
 
   async renderCanvas() {
+    this.dom.canvas.tabIndex = -1;
     const step = this.currentStep;
     const token = ++this.imageLoadToken;
     this.canvas.setTool(this.currentTool);
@@ -1404,6 +1463,7 @@ class GuideEditor {
     const img = new Image();
     img.onload = () => {
       if (token !== this.imageLoadToken) return;
+      this.dom.canvas.tabIndex = 0;
       this.canvas.setImage(img, img.naturalWidth || img.width, img.naturalHeight || img.height);
       this.canvas.setAnnotations(step.annotations || []);
       this.canvas.setFocusedView(step.focusedView);
@@ -1434,14 +1494,15 @@ class GuideEditor {
     } else {
       for (const ann of anns) {
         const selected = this.canvas.selected() && this.canvas.selected().id === ann.id;
-        this.dom.annotationList.append(el('div.block-card', {
+        this.dom.annotationList.append(el('button.block-card.annotation-select', {
+          type: 'button', 'aria-pressed': String(Boolean(selected)),
           dataset: { annId: ann.id },
           style: { cursor: 'pointer', borderColor: selected ? 'var(--accent)' : '' },
         },
-        el('div.row', {}, el('strong', {}, ANNOTATION_TYPE_LABELS[ann.type] || ann.type),
+        el('span.row', {}, el('strong', {}, ANNOTATION_TYPE_LABELS[ann.type] || ann.type),
           // Blurs StepForge added for a private detail say what they hide.
           el('span.muted', {}, ann.redact ? t('Private detail: {kind}', { kind: PRIVATE_DETAIL_LABELS[ann.redact.kind] || t('added by StepForge') }) : ann.text || ann.value || '')),
-        el('div.muted', {}, `${ann.x.toFixed(3)}, ${ann.y.toFixed(3)} · ${ann.w.toFixed(3)} × ${ann.h.toFixed(3)}`)));
+        el('span.muted', { style: { display: 'block' } }, `${ann.x.toFixed(3)}, ${ann.y.toFixed(3)} · ${ann.w.toFixed(3)} × ${ann.h.toFixed(3)}`)));
       }
     }
 
@@ -1499,7 +1560,7 @@ class GuideEditor {
       : el('input', { type: 'text', value: selected.text || '', placeholder: t('Annotation text') });
     if (fields.has('text')) textInput.value = selected.text || '';
 
-    const rows = [labeledRow(t('Type'), typeSelect)];
+    const rows = [el('button', { type: 'button', disabled: !this.canvas.image, onClick: () => this.dom.canvas.focus() }, t('Focus screenshot')), labeledRow(t('Type'), typeSelect)];
     if (fields.has('text')) rows.push(labeledRow(t('Text'), textInput, { stacked: true }));
     if (fields.has('value')) rows.push(labeledRow(t('Value'), valueInput));
     if (fields.has('stroke')) rows.push(labeledRow(strokeLabel, strokeInput));
@@ -1739,6 +1800,7 @@ class GuideEditor {
     for (const [key, node] of Object.entries(this.dom)) {
       if (!key.startsWith('tool-')) continue;
       node.classList.toggle('active', node.dataset.tool === tool);
+      node.setAttribute?.('aria-pressed', String(node.dataset.tool === tool));
     }
   }
 
@@ -3481,6 +3543,7 @@ class GuideEditor {
 
   onDocumentKeyDown(e) {
     if (e.target?.closest?.('.ctx-menu')) return;
+    if (!e.ctrlKey && !e.metaKey && !e.altKey && (e.target?.closest?.('.step-control') || e.target?.closest?.('.annotation-select'))) return;
     if (!this.active || !this.guide) return;
     // Keys typed in a dialog are the dialog's: Delete, letters, Ctrl+Z and
     // the rest must not edit the guide behind it.
@@ -3563,6 +3626,7 @@ class GuideEditor {
       }
       if ((e.key === 'Delete' || e.key === 'Backspace') && this.selectedAnnotationId) {
         e.preventDefault();
+        if (this.canvas.selected?.()) this.pushCanvasHistory('delete-annotation');
         if (this.canvas.deleteSelected()) this.saveStepDebounced();
         return;
       }
@@ -3586,6 +3650,7 @@ class GuideEditor {
         const dx = (e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowRight' ? 1 : 0) * speed;
         const dy = (e.key === 'ArrowUp' ? -1 : e.key === 'ArrowDown' ? 1 : 0) * speed;
         if (dx || dy) {
+          if (this.canvas.selected?.()) this.pushCanvasHistory('move-annotation');
           const moved = this.canvas.nudgeSelected(dx, dy);
           if (moved) {
             const step = this.currentStep;
@@ -3602,8 +3667,10 @@ class GuideEditor {
   }
 }
 
-function labeledRow(labelText, control) {
-  return el('div.form-row', {}, el('label', {}, labelText), control);
+function labeledRow(labelText, control, { stacked = false } = {}) {
+  const label = el('label', {}, labelText);
+  labelControl(label, control);
+  return el('div.form-row', { className: `form-row${stacked ? ' stacked' : ''}` }, label, control);
 }
 
 function makeSelect(value, options) {

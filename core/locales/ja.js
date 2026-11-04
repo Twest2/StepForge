@@ -1564,4 +1564,7 @@
   'Search guides…  (Ctrl+/ for quick actions)': 'ガイドを検索…  (Ctrl+/ でクイックアクション)',
   'Beta': 'ベータ',
   'Actions': '操作',
+  'Actions for “{title}”': '「{title}」の操作',
+  '{action}: {title}': '{action}：{title}',
+  'Open “{title}”': '「{title}」を開く',
 });

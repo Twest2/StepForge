@@ -1564,4 +1564,7 @@
   'Search guides…  (Ctrl+/ for quick actions)': '搜索指南…  (Ctrl+/ 打开快速操作)',
   'Beta': '测试版',
   'Actions': '操作',
+  'Actions for “{title}”': '“{title}”的操作',
+  '{action}: {title}': '{action}：{title}',
+  'Open “{title}”': '打开“{title}”',
 });

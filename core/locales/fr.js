@@ -1564,4 +1564,7 @@
   'Search guides…  (Ctrl+/ for quick actions)': 'Rechercher des guides…  (Ctrl+/ pour les actions rapides)',
   'Beta': 'Bêta',
   'Actions': 'Actions',
+  'Actions for “{title}”': 'Actions pour « {title} »',
+  '{action}: {title}': '{action} : {title}',
+  'Open “{title}”': 'Ouvrir « {title} »',
 });

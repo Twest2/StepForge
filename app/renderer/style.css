@@ -270,6 +270,9 @@ body.platform-linux #capture-status button {
   color: var(--text);
 }
 .lib-side .nav-item:hover { background: var(--panel-2); }
+.lib-side button.nav-item { width: 100%; border: 0; background: transparent; text-align: left; font: inherit; }
+.lib-side button.nav-item:hover { background: var(--panel-2); }
+.lib-side .nav-item > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lib-side .nav-item.active {
   background: color-mix(in srgb, var(--accent) 12%, var(--panel-solid));
   color: var(--accent-strong);
@@ -323,6 +326,12 @@ body.platform-linux #capture-status button {
   box-shadow: 0 0 0 1px var(--accent), var(--shadow);
 }
 .guide-card.selecting { transform: none; }
+.guide-card:focus-within { border-color: var(--accent); }
+.guide-card .card-open { display: block; width: 100%; border: 0; border-radius: 3px; background: transparent; padding: 0; color: inherit; font: inherit; text-align: left; overflow-wrap: anywhere; }
+.guide-card .card-open:hover { background: transparent; text-decoration: underline; }
+.guide-card .card-open:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.guide-card .card-actions { margin-left: auto; padding: 0 6px; min-width: 28px; min-height: 26px; font-size: 18px; line-height: 1; }
+.guide-card input.select-check { appearance: auto; display: block; width: 20px; height: 20px; margin: 0; padding: 0; border: 0; box-shadow: none; background: transparent; accent-color: var(--accent); }
 .guide-card h4 {
   margin: 0 0 6px;
   font-size: 15px;
@@ -366,6 +375,7 @@ body.platform-linux #capture-status button {
 .guide-card:hover .fav, .guide-card .fav:focus-visible { opacity: 0.55; }
 .guide-card .fav:hover { opacity: 1; background: var(--panel-2); }
 .guide-card .fav.on { opacity: 1; color: #f5a524; }
+.guide-card .fav:focus-visible { opacity: 1; transition: none; outline: 2px solid var(--accent); }
 .guide-card.selecting .fav:not(.on) { display: none; }
 
 /* Round checkbox on every card while Select is on. */

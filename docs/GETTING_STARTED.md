@@ -269,6 +269,12 @@ and verifies your library before switching to the new location.
 
 ## Keyboard shortcuts
 
+In the library, Tab reaches sidebar filters, guide titles, favorites and the
+**⋯** Actions buttons. Enter or Space activates the focused control. Native
+checkboxes select guides in Select mode. Use Shift+F10 (or the context-menu
+key) on a guide, folder or trash control for its context actions. Focus stays
+with the corresponding control after filtering, selecting or changing a favorite.
+
 Open a menu button with Enter or Space. Inside a menu, use Up/Down, Home/End
 or type the start of a command. Right opens a submenu; Left returns to its
 parent. Escape closes one menu level and restores focus. Tab leaves the menu

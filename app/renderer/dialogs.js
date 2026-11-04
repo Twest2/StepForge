@@ -711,6 +711,19 @@ function showSettingsDialog({
       { value: 'dark', label: t('Dark') },
     ]);
     const spellcheck = el('input', { type: 'checkbox', checked: Boolean(settings.spellcheck) });
+    const imageCompression = makeSelect(settings.images?.format === 'png' ? 'off' : settings.images?.lossless === false ? 'lossy' : 'lossless', [
+      { value: 'lossless', label: t('Lossless WebP (recommended)') },
+      { value: 'lossy', label: t('Lossy WebP (smaller files)') },
+      { value: 'off', label: t('No automatic optimization') },
+    ]);
+    imageCompression.setAttribute('aria-label', t('Image compression'));
+    // Wide enough for its longest choice in any language, not the 220px other settings use.
+    Object.assign(imageCompression.style, { width: 'auto', minWidth: '220px' });
+    const imageQuality = makeInput(Math.round((settings.images?.webpQuality ?? 0.95) * 100), 'number', { min: 95, max: 100, step: 1, 'aria-label': t('Lossy quality (%)') });
+    const imageQualityRow = settingRow(t('Lossy quality (%)'), t('Text and small UI details are protected by falling back to lossless when needed.'), imageQuality);
+    const syncImageQuality = () => { imageQualityRow.hidden = imageCompression.value !== 'lossy'; };
+    imageCompression.addEventListener('change', syncImageQuality);
+    syncImageQuality();
     // Each language is listed in its own name, so anyone can find theirs.
     // Translations are new, so every language but English is marked Beta.
     const language = makeSelect(settings.language || 'system', [
@@ -941,6 +954,9 @@ function showSettingsDialog({
           settingRow(t('Delay'), t('Milliseconds to wait before each screenshot.'), delayMs),
           settingRow(t('Click marker'), t('Draw a marker where you clicked.'), makeSwitch(clickMarker, t('Click marker'))),
           settingRow(t('Capture outside clicks'), t('Record clicks in other apps while a capture session is running.'), makeSwitch(captureOutside, t('Capture outside clicks')))),
+        settingsCard(t('Image compression'),
+          settingRow(t('Compression'), t('Applies to new screenshots and imports. Existing guide images are unchanged.'), imageCompression),
+          imageQualityRow),
         settingsCard(t('When clicks can’t be detected'),
           settingRow(t('Capture with'), t('Some desktops don’t report clicks. Choose how steps are captured instead.'), fallbackTrigger),
           (intervalRow.append(settingRow(t('Timer interval'), t('Seconds between timed captures.'), autoIntervalSec)), intervalRow)),
@@ -1044,6 +1060,11 @@ function showSettingsDialog({
 
     // Everything the form holds, as Save stores it. Also what unsaved-change checks compare.
     const collect = () => ({
+      images: {
+        format: imageCompression.value === 'off' ? 'png' : 'webp',
+        lossless: imageCompression.value === 'off' ? settings.images?.lossless !== false : imageCompression.value !== 'lossy',
+        webpQuality: Math.min(100, Math.max(95, Number(imageQuality.value) || 95)) / 100,
+      },
       appearance: appearance.value,
       language: language.value,
       spellcheck: spellcheck.checked,
@@ -1572,7 +1593,8 @@ function snapshotLabel(name) {
   if (!match) return name;
   const [, day, h, m, sec, ms, label] = match;
   const when = new Date(`${day}T${h}:${m}:${sec}.${ms}Z`).toLocaleString(dateLocale, { dateStyle: 'medium', timeStyle: 'short' });
-  return label ? `${when} · ${label.replace(/_/g, ' ')}` : when;
+  const text = label?.replace(/_/g, ' ');
+  return label ? `${when} · ${text === 'before optimizing images' ? t('Before optimizing images') : text}` : when;
 }
 
 function showBackupsDialog({ snapshots = [], onCreate, onRestore, onCompare } = {}) {

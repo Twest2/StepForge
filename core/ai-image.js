@@ -3,6 +3,7 @@
 const fs = require('node:fs');
 const { decodePng, encodePng } = require('./png');
 const { renderAnnotations, resize } = require('./raster');
+const { rasterToPng } = require('./image-format');
 
 // Models gain nothing from a 4K screenshot, and every pixel costs request
 // size and inference time, so the long edge is capped at this many pixels.
@@ -12,11 +13,12 @@ const AI_SCREENSHOT_MAX_EDGE = 1600;
  * The screenshot an AI model is shown for a step: the working image with every
  * annotation burned in, exactly as exports draw it. Blurs are filled first, so
  * a model never sees what the user hid, and the click marker shows where the
- * user clicked. Returns a PNG buffer, or null when there is no readable image.
+ * user clicked. Resolves to a PNG buffer, or null when there is no readable image.
  */
-function renderScreenshotForAi(imagePath, annotations = [], { maxEdge = AI_SCREENSHOT_MAX_EDGE } = {}) {
+async function renderScreenshotForAi(imagePath, annotations = [], { maxEdge = AI_SCREENSHOT_MAX_EDGE } = {}) {
   if (!imagePath || !fs.existsSync(imagePath)) return null;
-  let img = renderAnnotations(decodePng(fs.readFileSync(imagePath)), annotations || []);
+  // WebP screenshots are decoded through the app's codec (rasterToPng).
+  let img = renderAnnotations(decodePng(await rasterToPng(fs.readFileSync(imagePath))), annotations || []);
   const target = aiScreenshotSize(img, { maxEdge });
   if (target.width !== img.width) img = resize(img, target.width, target.height);
   return encodePng(img);

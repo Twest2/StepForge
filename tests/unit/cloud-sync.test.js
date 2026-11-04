@@ -1033,3 +1033,20 @@ test('a restore is still published when the first listing after it misses the de
   assert.equal(b.store.guideExists(id), true, 'the other computer gets it back');
   assert.deepEqual(await a.sync.deletedGuides(), []);
 });
+
+test('WebP screenshots sync as the bytes they are stored as, and an old PNG beside them is unchanged', async (t) => {
+  const { device, files } = setup(t);
+  const a = device('a'); const b = device('b');
+  const id = addGuide(a.store, 0);
+  const { createImageCodec } = require('../../core/image-codec');
+  const { encodePng } = require('../../core/png');
+  const { createImage } = require('../../core/raster');
+  const webp = await createImageCodec().encodeWebp(encodePng(createImage(40, 30, [25, 75, 125, 128])));
+  const step = a.store.addStep(id, { title: 'Optimized' }, webp, { width: 40, height: 30 });
+  await synced(a.sync); await synced(b.sync);
+  const onB = b.store.getStep(id, step.stepId);
+  assert.equal(onB.image.originalPath, 'original.webp');
+  assert.deepEqual(fs.readFileSync(b.store.stepImagePath(id, step.stepId, 'original')), webp);
+  assert.equal(snapshot(a.store, id).hash, snapshot(b.store, id).hash);
+  assert.ok(files.length >= 1, 'the guide was uploaded');
+});

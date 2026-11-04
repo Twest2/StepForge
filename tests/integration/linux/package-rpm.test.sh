@@ -60,16 +60,16 @@ done
 expected_version="$(node -p "require('./package.json').buildVersion || require('./package.json').version")"
 [[ "$(rpm -qp --qf '%{VERSION}' "$RPM")" == "$expected_version" ]] || fail 'release version was truncated'
 requires="$(rpm -qp --requires "$RPM")"
-for requirement in 'nss' 'gnome-shell >= 50' 'gnome-shell < 51' 'python3-gobject' \
+for requirement in 'nodejs >= 22.12.0' 'nss' 'gnome-shell >= 50' 'gnome-shell < 51' 'python3-gobject' \
   'gstreamer1-plugins-base' 'pipewire-gstreamer' 'gdk-pixbuf2' \
   'xdg-desktop-portal-gnome' 'pipewire' 'wireplumber'; do
   grep -qFx "$requirement" <<< "$requires" || fail "missing dependency: $requirement"
 done
-if grep -q '^libffmpeg[.]so' <<< "$requires"; then
-  fail 'private bundled FFmpeg incorrectly required from system repositories'
+if grep -qE '^lib(ffmpeg|vips-cpp)[.]so' <<< "$requires"; then
+  fail 'private bundled FFmpeg/libvips incorrectly required from system repositories'
 fi
 provides="$(rpm -qp --provides "$RPM")"
-if grep -qE 'lib(EGL|GLESv2|ffmpeg|vulkan)' <<< "$provides"; then
+if grep -qE 'lib(EGL|GLESv2|ffmpeg|vulkan|vips)' <<< "$provides"; then
   fail 'private Electron libraries exposed as system capabilities'
 fi
 ( cd "$(dirname "$RPM")" && sha256sum --check "$(basename "$RPM").sha256" )

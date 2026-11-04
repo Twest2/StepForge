@@ -1925,6 +1925,28 @@ button.cmp-fold:hover { background: var(--border); color: var(--text); }
 .guide-info-cloud { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
 .guide-info-cloud h3 { margin: 0 0 10px; }
 .guide-info-cloud > .row { margin-top: 10px; flex-wrap: wrap; }
+
+/* Give localized values room instead of shrinking two full-width selects. */
+.blocks-list .block-text-options { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
+.blocks-list .block-text-options select { min-width: 0; width: 100%; }
+.export-output-folder { flex: 1; min-width: 0; }
+.export-dialog > .form-row > .export-output-folder { flex-wrap: nowrap; }
+.export-output-folder input { flex: 1; min-width: 0; width: 100%; }
+.export-output-folder button { flex: none; }
+.export-dialog > .form-row > .row { flex: 1; min-width: 0; flex-wrap: wrap; }
+.export-dialog > .form-row > .row > select { min-width: 0; max-width: 100%; }
+.export-dialog .export-format { flex: 1; min-width: 0; }
+.guide-info-body > .form-row > input,
+.guide-info-body > .form-row > select,
+.guide-info-body > .form-row > .row { flex: 1; min-width: 0; width: 100%; }
+.guide-info-body > .form-row > .row { flex-wrap: wrap; }
+.guide-info-body input[type="date"] { width: auto; max-width: 100%; }
+@media (max-width: 680px) {
+  .guide-info-body > .form-row:not(.stacked) { flex-direction: column; align-items: stretch; }
+  .guide-info-body > .form-row > label:first-child { width: auto; }
+  .export-dialog > .form-row { flex-direction: column; align-items: stretch; }
+  .export-dialog > .form-row > label:first-child { width: auto; }
+}
 .cmp-viewed {
   display: inline-flex; align-items: center; gap: 5px;
   margin-left: 6px; padding: 2px 8px;

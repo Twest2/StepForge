@@ -1181,7 +1181,7 @@ class GuideEditor {
         title.addEventListener('input', () => { block.title = title.value; save(); });
         body.addEventListener('input', () => { block.descriptionHtml = `<p>${escapeHtml(body.value)}</p>`; save(); });
         card.append(
-          el('div.row', {}, level, position),
+          el('div.row.block-text-options', {}, level, position),
           title,
           body,
         );

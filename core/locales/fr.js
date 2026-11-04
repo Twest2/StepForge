@@ -1704,7 +1704,5 @@
   'Model can read images': 'Le modèle sait lire les images',
   'Turn on only for a model that accepts images. It then sees each step’s screenshot, with blurred areas hidden.': 'À activer seulement pour un modèle qui accepte les images. Il voit alors la capture de chaque étape, zones floutées masquées.',
   'Prompts go to your own server, set below.': 'Les requêtes vont à votre propre serveur, défini ci-dessous.',
-  'Allow a server on another computer': 'Autoriser un serveur sur un autre ordinateur',
-  'Off keeps AI on this computer. On lets StepForge send step text and screenshots to the server above.': 'Désactivé, l’IA reste sur cet ordinateur. Activé, StepForge peut envoyer le texte et les captures des étapes au serveur ci-dessus.',
   'Save, then use the AI ▾ menu in a guide. Test connection checks that the model is ready.': 'Enregistrez, puis utilisez le menu IA ▾ dans un guide. Tester la connexion vérifie que le modèle est prêt.',
 });

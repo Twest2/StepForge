@@ -1704,7 +1704,5 @@
   'Model can read images': '模型可以读取图片',
   'Turn on only for a model that accepts images. It then sees each step’s screenshot, with blurred areas hidden.': '仅在模型支持图片时开启。开启后它会看到每个步骤的截图，模糊区域已隐藏。',
   'Prompts go to your own server, set below.': '请求会发送到下方设置的你自己的服务器。',
-  'Allow a server on another computer': '允许使用其他电脑上的服务器',
-  'Off keeps AI on this computer. On lets StepForge send step text and screenshots to the server above.': '关闭时 AI 只在这台电脑上运行。开启后 StepForge 可以把步骤文字和截图发送到上方的服务器。',
   'Save, then use the AI ▾ menu in a guide. Test connection checks that the model is ready.': '保存后，在指南中使用 AI ▾ 菜单。“测试连接”会检查模型是否就绪。',
 });

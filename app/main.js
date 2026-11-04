@@ -1447,11 +1447,11 @@ function setupIpc() {
   }, { validate: (a) => typeof a.baseUrl === 'string' && a.baseUrl.length <= 4096 && typeof a.apiKey === 'string' && a.apiKey.length <= 16384 });
   h('ai:keyStatus', ({ baseUrl }) => ({ saved: textIntel.aiKeys.has(baseUrl), canSave: textIntel.aiKeys.available() }),
     { validate: (a) => typeof a.baseUrl === 'string' && a.baseUrl.length <= 4096 });
-  h('ai:test', async ({ enabled = null, ollama = null, provider = null, openai = null, allowRemoteHost = null } = {}) => {
+  h('ai:test', async ({ enabled = null, ollama = null, provider = null, openai = null } = {}) => {
     return textIntel.testAiConnection({
       enabled,
       ollama,
-      ...(provider ? { provider } : {}), openai, ...(allowRemoteHost === null ? {} : { allowRemoteHost: Boolean(allowRemoteHost) }),
+      ...(provider ? { provider } : {}), openai,
     });
   }, { validate: (a) => (a.ollama == null || security.isPlainArgs(a.ollama)) && (a.openai == null || security.isPlainArgs(a.openai)) && (a.provider === undefined || ['ollama', 'openai'].includes(a.provider)) });
   h('ai:fillStep', async ({ guideId, stepId, target = 'all' } = {}) => {

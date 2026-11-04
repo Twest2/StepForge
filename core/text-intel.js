@@ -588,36 +588,16 @@ function normalizeOllamaHost(host) {
   return `http://${raw.replace(/\/+$/, '')}`;
 }
 
-// A hostname/IP that refers to this machine only. StepForge is local-first:
-// by default the Ollama endpoint must be loopback so screenshots and text
-// never leave the device, unless the user explicitly opts into a remote host.
-function isLoopbackHost(host) {
-  const normalized = normalizeOllamaHost(host);
-  if (!normalized) return false;
-  let url;
-  try {
-    url = new URL(normalized);
-  } catch {
-    return false;
-  }
-  const name = url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
-  if (name === 'localhost' || name === '::1' || name === '0.0.0.0' || name === '::') return true;
-  // IPv4 loopback block 127.0.0.0/8.
-  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(name);
-  if (m && Number(m[1]) === 127 && m.slice(1).every((o) => Number(o) >= 0 && Number(o) <= 255)) {
-    return true;
-  }
-  // IPv4-mapped IPv6 loopback, e.g. ::ffff:127.0.0.1.
-  if (/^::ffff:127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(name)) return true;
-  return false;
-}
-
 /**
- * Validate a configured Ollama endpoint against the local-first policy.
- * Returns { ok, host, reason }. Remote hosts are rejected unless the caller
- * passes allowRemote: true (the explicit ai.allowRemoteHost opt-in).
+ * Validate a configured Ollama endpoint: an http(s) URL, on this computer or
+ * another one. Returns { ok, host, reason }.
  */
-function validateOllamaHost(host, { allowRemote = false } = {}) {
+function validateOllamaHost(host) {
+  // A scheme other than http(s) (ftp://, file://) isn't a host to prefix with http://.
+  const typed = String(host || '').trim();
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(typed) && !/^https?:\/\//i.test(typed)) {
+    return { ok: false, host: typed, reason: 'Ollama host must use http or https.' };
+  }
   const normalized = normalizeOllamaHost(host);
   if (!normalized) return { ok: false, host: '', reason: 'No Ollama host configured.' };
   let url;
@@ -628,16 +608,6 @@ function validateOllamaHost(host, { allowRemote = false } = {}) {
   }
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     return { ok: false, host: normalized, reason: 'Ollama host must use http or https.' };
-  }
-  if (!allowRemote && !isLoopbackHost(normalized)) {
-    return {
-      ok: false,
-      host: normalized,
-      reason:
-        'Remote Ollama hosts are disabled. StepForge only contacts a local (loopback) ' +
-        'Ollama by default. Enable "Allow remote AI host" in AI settings to send ' +
-        'screenshots and text to this host.',
-    };
   }
   return { ok: true, host: normalized, reason: '' };
 }
@@ -1127,7 +1097,6 @@ module.exports = {
   isPasswordField,
   plainTextToHtml,
   normalizeOllamaHost,
-  isLoopbackHost,
   validateOllamaHost,
   parseAiJson,
   normalizeAiPatch,

@@ -10,14 +10,13 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { atomicWriteFileSync } = require('../core/util');
-const { isLoopbackHost } = require('../core/text-intel');
 
 /**
  * The server's base URL as StepForge uses it, without a trailing slash. A
  * path such as /v1 or /gateway/v1 is kept. Throws for anything but a plain
- * http(s) URL, and for a server off this computer unless `allowRemote`.
+ * http(s) URL.
  */
-function baseUrl(value, allowRemote = false) {
+function baseUrl(value) {
   let url;
   try {
     url = new URL(String(value).trim());
@@ -26,9 +25,6 @@ function baseUrl(value, allowRemote = false) {
   }
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
     throw new Error('Use an http:// or https:// server URL without a user name, password, query or #fragment.');
-  }
-  if (!allowRemote && !isLoopbackHost(url.href)) {
-    throw new Error('This server is on another computer. Turn on Allow a server on another computer first.');
   }
   return url.href.replace(/\/+$/, '');
 }
@@ -62,7 +58,7 @@ class AiKeyStore {
   /** True when a key is saved for this server URL. Doesn't decrypt it. */
   has(url) {
     try {
-      return this.saved()?.endpoint === baseUrl(url, true);
+      return this.saved()?.endpoint === baseUrl(url);
     } catch {
       return false;
     }
@@ -70,7 +66,7 @@ class AiKeyStore {
 
   /** Save `key` for this server URL, replacing any saved key; an empty key removes it. */
   set(url, key) {
-    const endpoint = baseUrl(url, true);
+    const endpoint = baseUrl(url);
     if (typeof key !== 'string' || /[\r\n]/.test(key)) throw new Error('Enter the API key on one line.');
     if (!key) {
       fs.rmSync(this.file, { force: true });
@@ -83,7 +79,7 @@ class AiKeyStore {
   /** The key saved for this server URL, or '' when there is none. */
   get(url) {
     const saved = this.saved();
-    if (!saved || saved.endpoint !== baseUrl(url, true)) return '';
+    if (!saved || saved.endpoint !== baseUrl(url)) return '';
     if (!this.available()) throw new Error('Unlock the system keyring so StepForge can use the saved API key.');
     try {
       return this.storage.decryptString(Buffer.from(saved.secret, 'base64'));
@@ -99,7 +95,7 @@ async function chat(service, { host, model, prompt, systemPrompt, images = [], g
   const content = images.length
     ? [{ type: 'text', text: prompt }, ...images.map((image) => ({ type: 'image_url', image_url: { url: `data:image/png;base64,${image}` } }))]
     : prompt;
-  const response = await service.withConcurrency(() => service.fetchJson(new URL(`${baseUrl(host, true)}/chat/completions`), {
+  const response = await service.withConcurrency(() => service.fetchJson(new URL(`${baseUrl(host)}/chat/completions`), {
     method: 'POST',
     guideId,
     parseBody: true,

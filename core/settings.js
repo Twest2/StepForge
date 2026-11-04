@@ -90,10 +90,6 @@ const DEFAULT_SETTINGS = {
     // Auto-document captured steps in the background when a session capture
     // lands. Requires enabled + a reachable model.
     autoDoc: false,
-    // Local-first: only a loopback AI endpoint is contacted unless this
-    // is explicitly turned on. Turning it on sends screenshots and text to
-    // the configured remote host.
-    allowRemoteHost: false,
     // Attach the step screenshot to AI requests (only for vision-capable
     // models). Turning this off keeps requests text-only.
     attachScreenshots: true,
@@ -182,6 +178,8 @@ class Settings {
     const stored = readJsonIfExists(this.file, {});
     const data = mergeDeep(deepClone(DEFAULT_SETTINGS), stored);
     if (!data.editor || typeof data.editor !== 'object' || Array.isArray(data.editor)) data.editor = deepClone(DEFAULT_SETTINGS.editor);
+    // AI may use a server on any computer now; the old on/off switch for that is gone.
+    if (data.ai && typeof data.ai === 'object') delete data.ai.allowRemoteHost;
     data.editor.recentColors = colors(data.editor.recentColors);
     data.editor.paneWidths = normalizeWidths(data.editor.paneWidths);
     if (!data.capture || typeof data.capture !== 'object' || Array.isArray(data.capture)) data.capture = deepClone(DEFAULT_SETTINGS.capture);

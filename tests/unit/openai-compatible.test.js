@@ -42,10 +42,9 @@ async function chatServer(t, reply = '{"title":"Ready"}') {
   return { requests, url: `http://127.0.0.1:${server.address().port}` };
 }
 
-test('server URLs keep their API path, and a server on another computer needs the opt-in', () => {
+test('server URLs keep their API path, on this computer or another', () => {
   assert.equal(baseUrl('http://localhost:8000/proxy/v1/'), 'http://localhost:8000/proxy/v1');
-  assert.throws(() => baseUrl('https://llm.internal/v1'), /another computer/);
-  assert.equal(baseUrl('https://llm.internal/v1', true), 'https://llm.internal/v1');
+  assert.equal(baseUrl('https://llm.internal/v1'), 'https://llm.internal/v1');
   for (const value of ['file:///tmp/a', 'http://user:key@localhost/v1', 'http://localhost/v1?token=key', 'http://localhost/v1#x', 'not a url']) {
     assert.throws(() => baseUrl(value), undefined, value);
   }

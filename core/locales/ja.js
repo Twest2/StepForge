@@ -1704,7 +1704,5 @@
   'Model can read images': 'モデルが画像を読み取れる',
   'Turn on only for a model that accepts images. It then sees each step’s screenshot, with blurred areas hidden.': '画像を受け付けるモデルの場合のみオンにします。各ステップのスクリーンショットを、ぼかした部分を隠した状態で参照します。',
   'Prompts go to your own server, set below.': 'リクエストは下で設定する自分のサーバーに送られます。',
-  'Allow a server on another computer': '別のコンピューターのサーバーを許可',
-  'Off keeps AI on this computer. On lets StepForge send step text and screenshots to the server above.': 'オフにすると AI はこのコンピューター内だけで動きます。オンにすると、ステップのテキストとスクリーンショットを上のサーバーへ送信できます。',
   'Save, then use the AI ▾ menu in a guide. Test connection checks that the model is ready.': '保存してから、ガイドの AI ▾ メニューを使います。「接続をテスト」でモデルの準備ができているか確認します。',
 });

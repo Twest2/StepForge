@@ -23,10 +23,7 @@ or LiteLLM Proxy, StepForge can use it instead of Ollama. In
    your guides or settings file, and StepForge never shows it again: the field
    just says a key is saved. **Remove key** next to the field deletes it.
 5. Turn on **Model can read images** only if the model accepts images.
-6. A server on another computer, even on your own network, also needs
-   **Allow a server on another computer**. Guide text, and screenshots if the
-   model can read them, are then sent to that server.
-7. Choose **Test connection**. It sends one short message, with no guide or
+6. Choose **Test connection**. It sends one short message, with no guide or
    screenshot, to check the URL, model and key.
 
 Prefer Claude or Codex? They can write your guides too: see
@@ -173,11 +170,10 @@ October 2026; newer models appear in the
 - To keep requests text-only even with a vision model, turn off
   **Settings → AI → Let the model see screenshots**.
 
-**Running Ollama on another machine?** Add `"allowRemoteHost": true` to the
-`ai` section of `settings/app-settings.json` in your
-[data folder](GETTING_STARTED.md#troubleshooting), then set **Host** to that
-machine's address. Only do this for a host you trust: your screenshots and
-text are sent to it, and StepForge can't control what it does with them.
+**Running Ollama on another machine?** Set **Host** to that machine's
+address, for example `http://192.168.1.20:11434`. Only use a server you trust:
+step text, and screenshots if the model can read them, are sent to it, and
+StepForge can't control what it does with them.
 
 The [privacy policy](PRIVACY.md#optional-ai) has the full details.
 

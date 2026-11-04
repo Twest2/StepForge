@@ -1790,7 +1790,7 @@ fieldset legend {
 .setting-desc.error { color: var(--danger); }
 .setting-control { flex: none; display: flex; justify-content: flex-end; max-width: 55%; }
 .setting-control input[type="text"], .setting-control input:not([type]), .setting-control input[type="number"], .setting-control input[type="url"], .setting-control input[type="password"], .setting-control select { width: 220px; max-width: 100%; }
-.setting-row-divided > .setting-row, .ai-provider-fields > .setting-row:first-child { border-top: 1px solid var(--border); }
+.ai-provider-fields > .setting-row:first-child { border-top: 1px solid var(--border); }
 /* Settings → AI: the API key field with Remove key beside it, within the usual control width. */
 .setting-control .ai-key-control { flex-wrap: nowrap; gap: 6px; width: 220px; max-width: 100%; }
 .setting-control .ai-key-control input { width: auto; flex: 1 1 auto; min-width: 0; }

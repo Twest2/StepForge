@@ -362,10 +362,12 @@ opt-in and off by default:
   **Open Microsoft Store** opens an `ms-windows-store:` URL built in the main
   process.
 
-- **AI** (`app/text-intel.js`, `core/text-intel.js`) talks to a user-configured
-  Ollama endpoint. Non-loopback hosts are refused unless
-  `ai.allowRemoteHost` is set. Requests have timeouts, bounded concurrency,
-  and are cancelled when the guide closes.
+- **AI** (`app/text-intel.js`, `core/text-intel.js`, `app/openai-compatible.js`)
+  talks to the user-configured server: Ollama, or an OpenAI-compatible
+  `/chat/completions` API, on this computer or another. Requests have
+  timeouts, bounded concurrency, refuse redirects, and are cancelled when the
+  guide closes. An API key is encrypted with `safeStorage` and only sent to
+  the server URL it was saved for.
 - **Google Drive sync** (`app/google-drive.js`, `core/cloud-sync.js`) stores
   complete `.sfgz` snapshots in the `appDataFolder`. Each upload is an
   immutable version linked to its parent, so concurrent devices never

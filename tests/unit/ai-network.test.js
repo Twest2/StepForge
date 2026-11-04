@@ -4,7 +4,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const { makeTmpDir, rmrf } = require('./helpers');
-const { isLoopbackHost, validateOllamaHost } = require('../../core/text-intel');
+const { validateOllamaHost } = require('../../core/text-intel');
+const { Settings } = require('../../core/settings');
 const { TextIntelService } = require('../../app/text-intel');
 const CaptureService = require('../../app/capture');
 
@@ -12,7 +13,6 @@ function makeSettings(ai = {}) {
   const data = {
     ai: {
       enabled: true,
-      allowRemoteHost: false,
       attachScreenshots: true,
       timeoutMs: 60000,
       maxImageBytes: 12 * 1024 * 1024,
@@ -30,63 +30,33 @@ function makeSettings(ai = {}) {
 
 // ---- loopback policy (pure core) -------------------------------------------
 
-test('isLoopbackHost recognizes local addresses and rejects remote ones', () => {
-  for (const host of [
-    'http://127.0.0.1:11434',
-    '127.0.0.1',
-    'localhost:11434',
-    'http://[::1]:11434',
-    'http://127.5.6.7',
-    '0.0.0.0',
-  ]) {
-    assert.equal(isLoopbackHost(host), true, `loopback: ${host}`);
-  }
-  for (const host of [
-    'http://10.0.0.5:11434',
-    'http://192.168.1.20',
-    'https://ollama.example.com',
-    'http://8.8.8.8',
-    'http://ollama.internal',
-  ]) {
-    assert.equal(isLoopbackHost(host), false, `remote: ${host}`);
-  }
-});
-
-test('validateOllamaHost blocks remote hosts unless explicitly allowed', () => {
+test('validateOllamaHost accepts Ollama on this computer or another, and rejects what isn’t a URL', () => {
   assert.equal(validateOllamaHost('http://127.0.0.1:11434').ok, true);
-  const blocked = validateOllamaHost('http://10.0.0.5:11434');
-  assert.equal(blocked.ok, false);
-  assert.match(blocked.reason, /remote/i);
-  assert.equal(validateOllamaHost('http://10.0.0.5:11434', { allowRemote: true }).ok, true);
+  assert.equal(validateOllamaHost('http://10.0.0.5:11434').ok, true);
+  assert.equal(validateOllamaHost('https://ollama.internal.example.com').ok, true);
   assert.equal(validateOllamaHost('').ok, false);
   assert.equal(validateOllamaHost('ftp://127.0.0.1').ok, false);
 });
 
-// ---- host policy enforced by the service -----------------------------------
-
-test('AI connection test refuses a remote host without the opt-in', async (t) => {
-  const root = makeTmpDir('ai-remote-block');
-  t.after(() => rmrf(root));
-  let called = false;
-  const service = new TextIntelService({
-    store: { settingsDir: root },
-    settings: makeSettings({ ollama: { host: 'http://10.0.0.5:11434', model: 'llama3.2:1b' } }),
-    dataDir: root,
-    fetchImpl: async () => { called = true; return { ok: true, json: async () => ({}) }; },
-  });
-  const result = await service.testAiConnection();
-  assert.equal(result.ok, false);
-  assert.match(result.reason, /remote/i);
-  assert.equal(called, false, 'must not contact a blocked host at all');
+test('an old settings file loses its allowRemoteHost switch, keeping the other AI settings', (t) => {
+  const dir = makeTmpDir('ai-settings');
+  t.after(() => rmrf(dir));
+  require('node:fs').writeFileSync(require('node:path').join(dir, 'app-settings.json'),
+    JSON.stringify({ schemaVersion: 1, ai: { enabled: true, allowRemoteHost: false, ollama: { host: 'http://10.0.0.5:11434' } } }));
+  const ai = new Settings(dir).get('ai');
+  assert.equal('allowRemoteHost' in ai, false);
+  assert.equal(ai.enabled, true);
+  assert.equal(ai.ollama.host, 'http://10.0.0.5:11434');
 });
 
-test('AI connection test allows a remote host with the opt-in', async (t) => {
+// ---- host policy enforced by the service -----------------------------------
+
+test('AI connection test talks to Ollama on another computer', async (t) => {
   const root = makeTmpDir('ai-remote-allow');
   t.after(() => rmrf(root));
   const service = new TextIntelService({
     store: { settingsDir: root },
     settings: makeSettings({
-      allowRemoteHost: true,
       ollama: { host: 'http://10.0.0.5:11434', model: 'llama3.2:1b' },
     }),
     dataDir: root,

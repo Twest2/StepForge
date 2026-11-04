@@ -1704,7 +1704,5 @@
   'Model can read images': 'Модель понимает изображения',
   'Turn on only for a model that accepts images. It then sees each step’s screenshot, with blurred areas hidden.': 'Включайте только для модели, которая принимает изображения. Тогда она видит снимок каждого шага, размытые области скрыты.',
   'Prompts go to your own server, set below.': 'Запросы отправляются на ваш собственный сервер, указанный ниже.',
-  'Allow a server on another computer': 'Разрешить сервер на другом компьютере',
-  'Off keeps AI on this computer. On lets StepForge send step text and screenshots to the server above.': 'Выключено — ИИ остаётся на этом компьютере. Включено — StepForge может отправлять текст и снимки шагов на указанный выше сервер.',
   'Save, then use the AI ▾ menu in a guide. Test connection checks that the model is ready.': 'Сохраните, затем используйте меню ИИ ▾ в руководстве. «Проверить подключение» проверяет, готова ли модель.',
 });

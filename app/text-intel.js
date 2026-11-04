@@ -112,17 +112,15 @@ class TextIntelService {
       ? ai.maxImageBytes
       : 12 * 1024 * 1024;
     return {
-      allowRemote: Boolean(ai.allowRemoteHost),
       attachScreenshots: ai.attachScreenshots !== false,
       timeoutMs,
       maxImageBytes,
     };
   }
 
-  // Resolve the endpoint against the local-first policy or throw a clear error.
+  // The configured Ollama endpoint, or a clear error for one that isn't a URL.
   resolveHost(host) {
-    const { allowRemote } = this.aiNetworkOptions();
-    const result = validateOllamaHost(host, { allowRemote });
+    const result = validateOllamaHost(host);
     if (!result.ok) {
       const err = new Error(result.reason);
       err.code = 'STEPFORGE_AI_HOST_BLOCKED';
@@ -412,7 +410,7 @@ class TextIntelService {
     if (config.provider === 'openai') {
       // A real (tiny) chat request: many compatible servers have no model list to check against.
       try {
-        const host = openAI.baseUrl(config.openai?.baseUrl, Boolean(config.allowRemoteHost));
+        const host = openAI.baseUrl(config.openai?.baseUrl);
         const model = normalizeWhitespace(config.openai?.model);
         if (!model) throw new Error('Enter the model name your server expects.');
         // A key typed in Settings but not saved yet is tried as is; otherwise the saved one.
@@ -530,7 +528,7 @@ class TextIntelService {
     if (!config.enabled) return { ok: false, reason: 'Turn on AI in Settings first.' };
     if (config.provider === 'openai') {
       try {
-        const host = openAI.baseUrl(config.openai?.baseUrl, Boolean(config.allowRemoteHost));
+        const host = openAI.baseUrl(config.openai?.baseUrl);
         const model = normalizeWhitespace(config.openai?.model);
         if (!model) throw new Error('Choose an OpenAI-compatible server and model in Settings → AI.');
         return { ok: true, host, model, provider: 'openai' };

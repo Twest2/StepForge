@@ -814,7 +814,6 @@ function showSettingsDialog({
     const removeKeyBtn = el('button', { type: 'button', hidden: true }, t('Remove key'));
     const keyDesc = el('span', { role: 'status', 'aria-live': 'polite' });
     const openaiVision = el('input', { type: 'checkbox', checked: Boolean(settings.ai?.openai?.vision) });
-    const remoteAi = el('input', { type: 'checkbox', checked: Boolean(settings.ai?.allowRemoteHost) });
     let keySaved = false;
     let keySave = null;
     const aiScreenshots = el('input', { type: 'checkbox', checked: settings.ai?.attachScreenshots !== false });
@@ -874,7 +873,7 @@ function showSettingsDialog({
       updateAiStatus(aiProvider.value === 'openai' ? t('Checking the server…') : t('Checking Ollama at the configured host…'));
       try {
         const result = await api.ai.test({
-          provider: aiProvider.value, allowRemoteHost: remoteAi.checked,
+          provider: aiProvider.value,
           openai: { baseUrl: openaiUrl.value.trim(), model: openaiModel.value.trim(), apiKey: openaiKey.value, vision: openaiVision.checked },
           ollama: {
             host: ollamaHost.value.trim(),
@@ -1034,9 +1033,6 @@ function showSettingsDialog({
       settingRow(t('Provider'), providerDesc, aiProvider),
       ollamaFields,
       openaiFields,
-      // After the provider's fields, which sit in their own block, so it draws its own divider.
-      el('div.setting-row-divided', {}, settingRow(t('Allow a server on another computer'), t('Off keeps AI on this computer. On lets StepForge send step text and screenshots to the server above.'),
-        makeSwitch(remoteAi, t('Allow a server on another computer')))),
       el('div.settings-test', {}, aiStatus, testAiBtn, ollamaModels));
     const agentOptions = el('div', { dataset: { aiDependent: 'agents' } },
       settingRow(t('Agents can see screenshots'), t('Blurred areas are filled in first. Turn off to share step text only.'), makeSwitch(agentsScreenshots, t('Agents can see screenshots'))),
@@ -1264,7 +1260,6 @@ function showSettingsDialog({
       ai: {
         ...settings.ai,
         provider: aiProvider.value,
-        allowRemoteHost: remoteAi.checked,
         openai: { baseUrl: openaiUrl.value.trim(), model: openaiModel.value.trim(), vision: openaiVision.checked },
         enabled: aiEnabled.checked,
         autoDoc: aiAutoDoc.checked,

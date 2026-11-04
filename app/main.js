@@ -2030,6 +2030,7 @@ if (!gotLock) {
         searchIndex.removeGuide(guideId);
         sendToRenderer('cloud:library-changed', { guideId });
       },
+      onFoldersChange: () => sendToRenderer('cloud:library-changed', {}),
       onStatus: () => sendToRenderer('cloud:status', cloudStatus()),
       shared: new SharedSettings({ settings, branding }),
       sharedReady: () => !settingsOpen,

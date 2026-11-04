@@ -1638,7 +1638,7 @@ function setupIpc() {
   const translatedOptions = (options = {}) => Object.fromEntries(Object.entries(options).map(([key, info]) => [key, {
     ...info, ...(info.label && { label: t(info.label) }), ...(info.hint && { hint: t(info.hint) }), ...(info.unit && { unit: t(info.unit) }),
     ...(info.group && { group: t(info.group) }),
-    ...(info.choices && { choices: info.choices.map(choice => ({ ...choice, label: t(choice.label) })) }),
+    ...(info.choices && { choices: info.choices.map((choice) => ({ ...choice, label: t(choice.label) })) }),
   }]));
   h('export:formats', () => FORMAT_ORDER.filter((f) => FORMATS.includes(f) && EXPORTERS[f]).map((format) => ({
     id: format,

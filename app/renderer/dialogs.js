@@ -1150,13 +1150,6 @@ function showSettingsDialog({
 
 // Export options an exporter doesn't name (no OPTION_INFO label) are named
 // from their key, as in English here; these give that name in every language.
-const EXPORT_OPTION_LABELS = {
-  pretty: t('Pretty'), includeImages: t('Include Images'), includeAnnotations: t('Include Annotations'), toc: t('Toc'),
-  azureWiki: t('Azure Wiki'), imageMaxWidth: t('Image Max Width'), pageSize: t('Page Size'), margin: t('Margin'),
-  includeCover: t('Include Cover'), includeToc: t('Include Toc'), imageMaxHeightRatio: t('Image Max Height Ratio'),
-  imageWidthTwips: t('Image Width Twips'), titleSlide: t('Title Slide'),
-};
-
 function showExportDialog({
   formats,
   templatesByFormat = {},
@@ -1209,7 +1202,7 @@ function showExportDialog({
     let defaults = {};
     let current = {};
     const optionInputs = [];
-    const validOptions = () => optionInputs.every(input => input.reportValidity?.() !== false);
+    const validOptions = () => optionInputs.every((input) => input.reportValidity?.() !== false);
 
     const toColorValue = (v) => (/^#[0-9a-f]{6}$/i.test(String(v)) ? String(v).toLowerCase() : '#000000');
 
@@ -1220,7 +1213,7 @@ function showExportDialog({
         if (Object.values(formatInfo(formatSelect.value).options || {}).some((o) => o.dependsOn === key)) renderOptions();
       };
       if (info.choices) {
-        const selected = info.choices.some(choice => choice.value === value) ? value : defVal;
+        const selected = info.choices.some((choice) => choice.value === value) ? value : defVal;
         const input = makeSelect(selected, info.choices);
         input.setAttribute('aria-label', info.label);
         input.addEventListener('change', () => set(input.value));
@@ -1289,7 +1282,8 @@ function showExportDialog({
           optionsHost.append(el('h3.export-option-group', {}, group));
         }
         const value = current[key] ?? defVal;
-        const label = info.label || EXPORT_OPTION_LABELS[key] || key.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase());
+        // Every built-in option has a label in its exporter's OPTION_INFO; this fallback is only for unknown keys.
+        const label = info.label || key.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase());
         optionsHost.append(settingRow(label, info.hint || '', optionControl(key, defVal, value, { ...info, label })));
       }
     }

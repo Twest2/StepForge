@@ -24,12 +24,13 @@ const DEFAULT_TEMPLATE = {
   includeToc: true,
 };
 
-
+// The Export dialog's labels, groups and units for these options (exporters/index.js FORMAT_INFO).
 const OPTION_INFO = {
   titleSlide: { label: 'Add a title slide', group: 'Contents' },
   includeToc: { label: 'Add a table of contents', group: 'Contents' },
   includeImages: { label: 'Include screenshots', group: 'Contents' },
 };
+
 const SLIDE_W = 12192000; // EMU, 16:9
 const SLIDE_H = 6858000;
 const EMU_PER_PX = 9525;

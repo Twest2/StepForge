@@ -43,7 +43,7 @@ const FORMAT_INFO = {
   'image-bundle': { description: 'A folder of numbered, annotated screenshots with an index.json.', options: require('./image-bundle').OPTION_INFO },
   confluence: { description: 'A Word document ready for Confluence\'s built-in import, so you can create the page from the website.', options: require('./confluence').OPTION_INFO, badge: 'Beta' },
   wikijs: { description: 'A Wiki.js 2 markdown page with Wiki.js callouts, plus a folder of screenshots.', options: require('./wikijs').OPTION_INFO, badge: 'Beta' },
-  json: { description: 'The raw guide data and screenshots, for scripts and integrations.' },
+  json: { description: 'The raw guide data and screenshots, for scripts and integrations.', options: require('./json').OPTION_INFO },
 };
 
 // Order formats appear in the export dialog: the most common first.

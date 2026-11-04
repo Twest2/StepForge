@@ -88,7 +88,7 @@ function setup(annotations, { brandColors = null } = {}) {
   const saved = [];
   const context = {
     ...rendererI18n(),
-    window: { stepforge: { step: { save: async ({ step }) => { saved.push(JSON.parse(JSON.stringify(step))); return step; } } }, StepForgeDialogs: {} },
+    window: { stepforge: { settings: { set: async () => ({}) }, step: { save: async ({ step }) => { saved.push(JSON.parse(JSON.stringify(step))); return step; } } }, StepForgeDialogs: {}, StepForgeAnnotationProperties: require('../../core/annotation-properties') },
     document: dom.document,
     el: dom.el,
     clearNode: dom.clearNode,
@@ -123,8 +123,8 @@ function setup(annotations, { brandColors = null } = {}) {
     reload: async () => {},
   });
   editor.renderAnnotationPanel();
-  const picker = () => {
-    const row = annotationEditor.children[0].children.find((r) => r.children[0] && r.children[0].textContent === 'Fill');
+  const picker = (label = 'Fill') => {
+    const row = annotationEditor.children[0].children.find((r) => r.children[0] && r.children[0].textContent === label);
     const wrapper = row.children[1];
     const [swatch, popover, custom] = wrapper.children;
     return { wrapper, swatch, popover, custom };
@@ -150,6 +150,21 @@ test('the Fill swatch names the current fill, and Transparent when the shape is 
   }
 });
 
+test('Stroke shares the grouped picker, preserves Fill, records undo and remembers choices', async () => {
+  const ui = setup([rect('#ffd60a')]);
+  const picker = ui.picker('Stroke');
+  assert.equal(picker.swatch.getAttribute('aria-label'), 'Stroke: #FF0000');
+  picker.swatch.click();
+  const choices = picker.popover.querySelectorAll('[role^="menuitem"]');
+  assert.equal(choices.some(n => n.textContent === 'Transparent'), false);
+  choices.find(n => n.getAttribute('aria-label') === '#1F6FEB').click();
+  await ui.editor.colorSave;
+  assert.equal(ui.steps[0].annotations[0].style.stroke, '#1F6FEB');
+  assert.equal(ui.fill(), '#ffd60a');
+  assert.equal(ui.history.at(-1).label, 'annotation-stroke');
+  assert.deepEqual(Array.from(ui.editor.settings.editor.recentColors), ['#1F6FEB']);
+});
+
 test('the popover lists Transparent first, then presets with the current color, then Custom color…', () => {
   const ui = setup([rect('#ffd60a')]);
   ui.picker().swatch.click();
@@ -158,7 +173,7 @@ test('the popover lists Transparent first, then presets with the current color, 
   assert.equal(swatch.getAttribute('aria-expanded'), 'true');
   assert.equal(popover.getAttribute('role'), 'menu');
   const labels = ui.entries().map((n) => n.getAttribute('aria-label') || n.textContent);
-  assert.deepEqual(labels, ['Transparent', '#FFD60A', '#FFE066', '#E5484D', '#1F6FEB', '#10B981', '#111827', '#FFFFFF', 'Custom color…']);
+  assert.deepEqual(labels, ['Transparent', '#FFE066', '#E5484D', '#1F6FEB', '#10B981', '#111827', '#FFFFFF', '#FFD60A', 'Custom color…']);
   // The current fill is the checked entry, and it gets the focus.
   assert.equal(ui.entry('#FFD60A').getAttribute('aria-checked'), 'true');
   assert.equal(ui.entry('Transparent').getAttribute('aria-checked'), 'false');
@@ -185,11 +200,11 @@ test('Transparent empties a filled shape at once, as one undo step, and closes t
   assert.equal(ui.history.length, 2);
 });
 
-test('the presets are the brand profile’s colors when one is active', () => {
+test('brand colors supplement the default palette without duplicates', () => {
   const ui = setup([rect('transparent')], { brandColors: ['#0A2540', '#635BFF', '#0a2540'] });
   ui.picker().swatch.click();
   assert.deepEqual(ui.entries().map((n) => n.getAttribute('aria-label') || n.textContent),
-    ['Transparent', '#0A2540', '#635BFF', 'Custom color…']);
+    ['Transparent', '#FFE066', '#E5484D', '#1F6FEB', '#10B981', '#111827', '#FFFFFF', '#0A2540', '#635BFF', 'Custom color…']);
   ui.entry('#635BFF').click();
   assert.equal(ui.fill(), '#635BFF');
 });
@@ -292,7 +307,7 @@ test('a tooltip gets the same picker without Transparent, since its text sits on
   const ui = setup([tooltip]);
   ui.picker().swatch.click();
   assert.equal(ui.entry('Transparent'), undefined);
-  assert.equal(ui.entries()[0].getAttribute('aria-label'), '#111827');
+  assert.equal(ui.entry('#111827').getAttribute('aria-checked'), 'true');
   // An old tooltip saved with no fill shows the color it is drawn with.
   assert.equal(setup([{ ...tooltip, style: { fill: 'transparent' } }]).picker().swatch.textContent, '#1F2937');
 });

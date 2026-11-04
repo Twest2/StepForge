@@ -1563,4 +1563,7 @@
   'Cloud sync status': 'État de la synchronisation cloud',
   'Search guides…  (Ctrl+/ for quick actions)': 'Rechercher des guides…  (Ctrl+/ pour les actions rapides)',
   'Beta': 'Bêta',
+  "AI agent access is off. Save to turn it back on.": "L’accès des agents IA est désactivé. Enregistrez pour le réactiver.",
+  "Could not turn off AI agent access: {error}": "Impossible de désactiver l’accès des agents IA : {error}",
+  "Turning off takes effect immediately, even if Settings is canceled. Turning on requires Save.": "La désactivation est immédiate, même si vous annulez les paramètres. La réactivation nécessite un enregistrement.",
 });

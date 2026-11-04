@@ -27,6 +27,9 @@ const CALLS = [
   { re: new RegExp(String.raw`(?<![\w.])tn\([^,]+,\s*${LITERAL},\s*${LITERAL}`, 'g'), plural: true },
 ];
 
+// Format names that stay as they are in every language.
+const EXPORT_NAMES = new Set(['Markdown', 'Wiki.js', 'Confluence', 'GitHub Markdown']);
+
 const unescape = (text) => text.replace(/\\(.)/g, '$1');
 const placeholders = (text) => [...String(text).matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(',');
 
@@ -42,6 +45,19 @@ function findMessages() {
         if (!found.has(key)) found.set(key, { plural, singular: plural ? unescape(match[1]) : null, where: `${file}:${line}` });
       }
     }
+  }
+  // The Export dialog's format names, descriptions and option text, which
+  // app/main.js translates when it sends them (export:formats).
+  const { FORMAT_INFO } = require('../exporters');
+  const { FORMAT_LABELS } = require('../core/templates');
+  const exportText = [...Object.values(FORMAT_LABELS)];
+  for (const info of Object.values(FORMAT_INFO)) {
+    exportText.push(info.description);
+    for (const option of Object.values(info.options || {})) exportText.push(option.label, option.hint, option.unit);
+  }
+  for (const text of exportText) {
+    // Leave out names and units that read the same in every language (PDF, px).
+    if (text && /[a-z]{3}/.test(text) && !EXPORT_NAMES.has(text) && !found.has(text)) found.set(text, { plural: false, where: 'exporters (Export dialog)' });
   }
   const html = fs.readFileSync(path.join(ROOT, 'app/renderer/index.html'), 'utf8');
   for (const match of html.matchAll(/(title|placeholder|aria-label)="([^"]+)"([^>]*?)data-i18n-(title|placeholder|label)/g)) {

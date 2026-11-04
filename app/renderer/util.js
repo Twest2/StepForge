@@ -9,6 +9,19 @@ const { t, tn, language: uiLanguage } = StepForgeI18n.createTranslator(
 // Dates follow the interface language; in English, the system's date format.
 const dateLocale = uiLanguage === 'en' ? undefined : uiLanguage;
 
+// Between two sentences: Japanese and Chinese don't put a space there.
+const sentenceGap = uiLanguage === 'ja' || uiLanguage === 'zh-CN' ? '' : ' ';
+
+/**
+ * Translated text with elements in it, for el() children: each {name} in
+ * `text` becomes nodes[name], so a link can sit anywhere in the sentence.
+ * Example: fillNodes(translatedText, { link: el('a', {}, linkText) }).
+ */
+function fillNodes(text, nodes) {
+  return String(text).split(/(\{\w+\})/).filter(Boolean)
+    .map((part) => (/^\{\w+\}$/.test(part) && nodes[part.slice(1, -1)] != null ? nodes[part.slice(1, -1)] : part));
+}
+
 /** Element builder: el('div.cls#id', {attrs/on*}, ...children) */
 function el(spec, props = {}, ...children) {
   const [tag, ...rest] = spec.split(/(?=[.#])/);

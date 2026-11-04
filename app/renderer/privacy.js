@@ -6,6 +6,13 @@
  * private details…) and the Publish to the web dialog.
  */
 
+// What each kind of private detail is called (core/redaction.js KINDS); app/redaction.js sends the English name.
+const PRIVACY_KIND_LABELS = {
+  email: t('Email address'), phone: t('Phone number'), card: t('Card number'), ssn: t('Social Security number'),
+  ip: t('IP address'), secret: t('Password or key'), url: t('Link with a private token'), custom: t('Word you asked to hide'),
+};
+const privacyKindLabel = (item) => PRIVACY_KIND_LABELS[item.kind] || item.label || t('Private detail');
+
 /** One line summing up a review, e.g. "Blurred 3 possible private details in 2 steps." */
 function privacySummary(review) {
   const blurs = review?.blurs?.length || 0;
@@ -69,7 +76,7 @@ function privacyReviewList(api, guideId, review, { onShow = null, onChange = () 
       keep.addEventListener('click', act(keep, t('Removing…'), () => api.redact.keepVisible({ guideId, stepId: item.stepId, annotationId: item.annotationId })));
       node.append(el('div.privacy-item', {},
         el('span.privacy-kind', {}, t('Step {number}', { number: item.stepNumber })),
-        el('span.privacy-label', {}, item.label, el('span.muted', {}, ` · ${t('blurred in the screenshot')}`)),
+        el('span.privacy-label', {}, privacyKindLabel(item), el('span.muted', {}, ` · ${t('blurred in the screenshot')}`)),
         el('div.privacy-actions', {},
           onShow ? el('button', { type: 'button', onClick: () => onShow(item.stepId, item.annotationId) }, t('Show')) : null,
           keep)));
@@ -81,7 +88,7 @@ function privacyReviewList(api, guideId, review, { onShow = null, onChange = () 
       keep.addEventListener('click', act(keep, t('Saving…'), () => api.redact.keepText({ guideId, stepId: item.stepId, key: item.key })));
       node.append(el('div.privacy-item.text', {},
         el('span.privacy-kind', {}, t('Step {number}', { number: item.stepNumber })),
-        el('span.privacy-label', {}, item.label, el('span.muted', {}, ` · ${item.field === 'title'
+        el('span.privacy-label', {}, privacyKindLabel(item), el('span.muted', {}, ` · ${item.field === 'title'
           ? t('“{text}” in the title', { text: item.preview })
           : t('“{text}” in the description', { text: item.preview })}`)),
         el('div.privacy-actions', {}, hide, keep)));

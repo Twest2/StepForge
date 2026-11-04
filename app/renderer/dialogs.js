@@ -230,7 +230,7 @@ function showMoveStepDialog({ title = t('Move step'), hint = '', positions = [],
 
 async function promptText({
   title,
-  label = 'Value',
+  label = t('Value'),
   value = '',
   placeholder = '',
   multiline = false,
@@ -516,7 +516,7 @@ function makeUpdateCheck(api, { openLink, flushEdits = null }) {
     const button = el('button.primary', { type: 'button' }, t('Update now'));
     const note = el('div.setting-desc.update-now-note', {});
     button.addEventListener('click', async () => {
-      const ok = await confirmDialog(`StepForge will close to install version ${result.latestVersion}. Continue?`, { okLabel: t('Update now') });
+      const ok = await confirmDialog(t('StepForge will close to install version {version}. Continue?', { version: result.latestVersion }), { okLabel: t('Update now') });
       if (!ok) return;
       note.textContent = '';
       note.classList.remove('error');
@@ -619,11 +619,10 @@ function storageWarning(info) {
   const syncedBy = (info && info.syncedBy) || {};
   const service = info && info.pending ? syncedBy.pending : syncedBy.current;
   if (!service) return null;
-  const subject = info.pending ? 'The folder you chose is' : 'Your guides are';
   return {
-    title: `${subject} in a folder that ${service} syncs`,
-    text: `${service} uploads every guide and screenshot in it, even with StepForge’s sync turned off, and the two can get in each other’s way if you use both. `
-      + `Choose a folder ${service} doesn’t sync. To keep guides in step across computers, use StepForge’s own sync in Settings → Accounts.`,
+    title: info.pending ? t('The folder you chose is in a folder that {service} syncs', { service })
+      : t('Your guides are in a folder that {service} syncs', { service }),
+    text: t('{service} uploads every guide and screenshot in it, even with StepForge’s sync turned off, and the two can get in each other’s way if you use both. Choose a folder {service} doesn’t sync. To keep guides in step across computers, use StepForge’s own sync in Settings → Accounts.', { service }),
   };
 }
 
@@ -1140,12 +1139,21 @@ function showSettingsDialog({
     aiEnabled.addEventListener('change', () => {
       updateAiStatus(
         aiEnabled.checked
-          ? 'Save, then use the AI ▾ menu in a guide. Test connection checks that Ollama is ready.'
+          ? t('Save, then use the AI ▾ menu in a guide. Test connection checks that Ollama is ready.')
           : t('AI is off. These settings are kept for later.'),
       );
     });
   });
 }
+
+// Export options an exporter doesn't name (no OPTION_INFO label) are named
+// from their key, as in English here; these give that name in every language.
+const EXPORT_OPTION_LABELS = {
+  pretty: t('Pretty'), includeImages: t('Include Images'), includeAnnotations: t('Include Annotations'), toc: t('Toc'),
+  azureWiki: t('Azure Wiki'), imageMaxWidth: t('Image Max Width'), pageSize: t('Page Size'), margin: t('Margin'),
+  includeCover: t('Include Cover'), includeToc: t('Include Toc'), imageMaxHeightRatio: t('Image Max Height Ratio'),
+  imageWidthTwips: t('Image Width Twips'), titleSlide: t('Title Slide'),
+};
 
 function showExportDialog({
   formats,
@@ -1180,7 +1188,7 @@ function showExportDialog({
     });
     const formatInfo = (value) => formatOptions.find((f) => f.value === value) || {};
     // A list option can only hold text, so the badge goes in its label too.
-    const formatSelect = makeSelect(defaultFormat, formatOptions.map((f) => ({ ...f, label: f.badge ? `${f.label} (${f.badge})` : f.label })));
+    const formatSelect = makeSelect(defaultFormat, formatOptions.map((f) => ({ ...f, label: f.badge ? `${f.label} (${t(f.badge)})` : f.label })));
     const formatDesc = el('div.muted.export-format-desc');
     const templateSelect = makeSelect('', [{ value: '', label: t('Default template') }]);
     const outDirInput = makeInput(defaultOutDir, 'text', { placeholder: t('Choose an output folder') });
@@ -1189,7 +1197,7 @@ function showExportDialog({
     const brandProfiles = branding?.profiles || [];
     const brandChoice = makeSelect(brandProfiles.some((p) => p.id === branding?.activeId) ? branding.activeId : '',
       [{ value: '', label: t('No branding') }, ...brandProfiles.map((p) => ({ value: p.id, label: p.name }))]);
-    brandChoice.setAttribute('aria-label', 'Branding');
+    brandChoice.setAttribute('aria-label', t('Branding'));
     const brandNote = el('span.muted');
     const refreshBrandNote = () => {
       brandNote.textContent = formatSelect.value === 'json' ? t('JSON exports keep the raw data and aren’t branded.') : t('Change the default in Settings → Branding.');
@@ -1262,7 +1270,7 @@ function showExportDialog({
       for (const [key, defVal] of entries) {
         const info = meta[key] || {};
         const value = current[key] ?? defVal;
-        const label = info.label || key.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase());
+        const label = info.label || EXPORT_OPTION_LABELS[key] || key.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase());
         optionsHost.append(settingRow(label, info.hint || '', optionControl(key, defVal, value, { ...info, label })));
       }
     }
@@ -1483,7 +1491,7 @@ function showTemplateManager({ format, names = [], onRename, onDuplicate, onDele
     }
 
     const { close } = openModal({
-      title: `Templates — ${format}`,
+      title: t('Templates — {format}', { format }),
       body: el('div', {},
         el('div.row', { style: { marginBottom: '10px' } },
           el('button', { type: 'button', onClick: async () => { list = await onImport(); renderRows(); } }, t('Import .sfglt…')),
@@ -1623,7 +1631,7 @@ function showBackupsDialog({ snapshots = [], onCreate, onRestore, onCompare } = 
   });
 }
 
-function showPlaceholdersDialog({ title = 'Placeholders', hint = '', values = {}, onSave } = {}) {
+function showPlaceholdersDialog({ title = t('Placeholders'), hint = '', values = {}, onSave } = {}) {
   return new Promise((resolve) => {
     const rowsHost = el('div', { className: 'placeholder-rows' });
     const rows = [];

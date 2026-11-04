@@ -10,12 +10,12 @@
 function qualityLabel(finding) {
   if (finding.kind === 'placeholder') {
     const names = finding.names.map((name) => `[[${name}]]`).join(', ');
-    return finding.names.length === 1 ? `${names} has no value` : `${names} have no value`;
+    return tn(finding.names.length, '{names} has no value', '{names} have no value', { names });
   }
   if (finding.kind === 'screenshot') {
-    return finding.detail === 'file-missing' ? 'Screenshot file is missing' : 'No screenshot';
+    return finding.detail === 'file-missing' ? t('Screenshot file is missing') : t('No screenshot');
   }
-  return finding.detail === 'automatic' ? `Still has the automatic title “${finding.title}”` : 'No title';
+  return finding.detail === 'automatic' ? t('Still has the automatic title “{title}”', { title: finding.title }) : t('No title');
 }
 
 /**
@@ -25,15 +25,15 @@ function qualityLabel(finding) {
 function qualityPanel(findings, onShow) {
   if (!findings?.length) return null;
   const count = findings.length;
-  return el('div.quality-panel', { role: 'group', 'aria-label': 'Things to check' },
-    el('div.quality-head', {}, `${count} thing${count === 1 ? '' : 's'} to check before sharing`,
-      el('span.muted', {}, ' · you can still export as it is')),
+  return el('div.quality-panel', { role: 'group', 'aria-label': t('Things to check') },
+    el('div.quality-head', {}, tn(count, '{count} thing to check before sharing', '{count} things to check before sharing'),
+      el('span.muted', {}, ` · ${t('you can still export as it is')}`)),
     el('div.quality-list', {}, findings.map((finding) => el('button.quality-item', {
       type: 'button',
-      title: finding.stepId ? `Go to step ${finding.stepNumber}` : 'Open the guide’s placeholders',
+      title: finding.stepId ? t('Go to step {number}', { number: finding.stepNumber }) : t('Open the guide’s placeholders'),
       onClick: () => onShow(finding),
     },
-    el('span.quality-where', {}, finding.stepId ? `Step ${finding.stepNumber}` : 'Guide'),
+    el('span.quality-where', {}, finding.stepId ? t('Step {number}', { number: finding.stepNumber }) : t('Guide')),
     el('span.quality-label', {}, qualityLabel(finding))))));
 }
 

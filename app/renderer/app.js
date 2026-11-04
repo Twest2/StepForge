@@ -174,7 +174,7 @@ class StepForgeApp {
         this.editor.pendingSave = false;
         this.editor.pendingGuideSave = false;
         await this.showLibrary();
-        toast('An AI agent moved this guide to the Trash. You can restore it from there.', { ms: 6000 });
+        toast(t('An AI agent moved this guide to the Trash. You can restore it from there.'), { ms: 6000 });
       } else if (this.state.view === 'library') {
         await this.refreshLibrary();
       }
@@ -345,7 +345,7 @@ class StepForgeApp {
         },
         el('span.welcome-recent-details', {},
           el('span.welcome-recent-title', {}, guide.title),
-          el('span.muted', {}, `${guide.stepCount} ${guide.stepCount === 1 ? 'step' : 'steps'} • ${fmtDate(guide.updatedAt)}`),
+          el('span.muted', {}, `${tn(guide.stepCount, '{count} step', '{count} steps')} • ${fmtDate(guide.updatedAt)}`),
         ),
         el('span.muted', { 'aria-hidden': 'true' }, '›'),
         ),
@@ -576,7 +576,7 @@ class StepForgeApp {
           ]);
         },
       }, t('More ▾')),
-      el('span.muted', { style: { marginLeft: '8px' } }, guide ? `${guide.title} · ${this.editorMeta?.stepCount || 0} steps` : ''),
+      el('span.muted', { style: { marginLeft: '8px' } }, guide ? `${guide.title} · ${tn(this.editorMeta?.stepCount || 0, '{count} step', '{count} steps')}` : ''),
     );
   }
 
@@ -807,7 +807,7 @@ class StepForgeApp {
       el('h4', {}, item.title),
       countdown ? el('div.trash-countdown', {}, countdown) : null,
       el('div.card-footer', {},
-        el('span', {}, `${item.stepCount} step${item.stepCount === 1 ? '' : 's'}`),
+        el('span', {}, tn(item.stepCount, '{count} step', '{count} steps')),
         item.deletedAt ? el('span', {}, t('Deleted {when}', { when: timeAgo(item.deletedAt) })) : null,
         el('button.card-restore', { type: 'button', onClick: (e) => { e.stopPropagation(); this.restoreTrashItem(item.name); } }, t('Restore'))));
     });
@@ -870,7 +870,7 @@ class StepForgeApp {
     el('h4', {}, guide.title || t('Untitled guide')),
     description ? el('div.snippet', {}, description) : null,
     el('div.card-footer', {},
-      el('span', {}, `${steps} step${steps === 1 ? '' : 's'}`),
+      el('span', {}, tn(steps, '{count} step', '{count} steps')),
       showFolder ? el('span.card-folder', {}, folder.name) : null,
       guide.linkedSource ? el('span.badge', { title: t('Saved to a linked .sfgz file') }, t('Linked')) : null,
       guide.locked ? el('span.badge', { title: t('Open on another device') }, t('Locked')) : null,

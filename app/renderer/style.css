@@ -1285,7 +1285,7 @@ fieldset legend {
 .blocks-list .block-card textarea,
 .blocks-list .block-card input { width: 100%; }
 .blocks-list .block-card { gap: 6px; }
-.export-options { display: flex; flex-direction: column; padding: 0 4px; max-height: 320px; overflow-y: auto; }
+.export-options { display: flex; flex-direction: column; padding: 0 4px; }
 .export-options .setting-row { padding: 9px 0; }
 .export-options .setting-control { flex: none; max-width: 55%; }
 .export-options .setting-control input[type="number"] { width: 90px; }
@@ -1953,4 +1953,17 @@ button.cmp-fold:hover { background: var(--border); color: var(--text); }
 @media (max-width: 760px) {
   .cmp-row { grid-template-columns: 1fr; gap: 2px; }
   .cmp-image-pair { grid-template-columns: 1fr; }
+}
+
+/* Export settings share one compact layout while retaining per-format controls. */
+.export-option-group { margin: 16px 0 2px; font-size: 12px; font-weight: 700; color: var(--muted); }
+.export-option-group:first-child { margin-top: 2px; }
+.export-option-group + .setting-row { border-top: 0; }
+.export-options .setting-text { min-width: 0; }
+.export-options .setting-control select { max-width: 100%; }
+.export-number { flex-wrap: nowrap; }
+.export-number > span { white-space: nowrap; }
+@media (max-width: 900px) {
+  .export-options .setting-row { flex-direction: column; align-items: stretch; gap: 6px; }
+  .export-options .setting-control { max-width: 100%; align-self: flex-start; }
 }

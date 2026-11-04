@@ -475,8 +475,8 @@ function showFindReplace({ stepNumbers = {}, find, replace } = {}) {
         el('div', { style: { height: '8px' } }),
         replacement,
         el('div.form-row', { style: { gap: '16px', margin: '8px 0' } },
-          el('label', {}, matchCase, ' Match case'),
-          el('label', {}, wholeWord, ' Whole word'),
+          el('label', {}, matchCase, ' ', t('Match case')),
+          el('label', {}, wholeWord, ' ', t('Whole word')),
           summary),
         list,
         el('div.muted', { style: { marginTop: '8px' } },
@@ -486,7 +486,6 @@ function showFindReplace({ stepNumbers = {}, find, replace } = {}) {
         el('button', { onClick: () => { close(); resolve(false); } }, t('Close')),
         replaceButton,
       ],
-      isDirty: unsavedChanges(() => [query.value, replacement.value]),
       onClose: () => resolve(false),
     });
 
@@ -712,6 +711,19 @@ function showSettingsDialog({
       { value: 'dark', label: t('Dark') },
     ]);
     const spellcheck = el('input', { type: 'checkbox', checked: Boolean(settings.spellcheck) });
+    const imageCompression = makeSelect(settings.images?.format === 'png' ? 'off' : settings.images?.lossless === false ? 'lossy' : 'lossless', [
+      { value: 'lossless', label: t('Lossless WebP (recommended)') },
+      { value: 'lossy', label: t('Lossy WebP (smaller files)') },
+      { value: 'off', label: t('No automatic optimization') },
+    ]);
+    imageCompression.setAttribute('aria-label', t('Image compression'));
+    // Wide enough for its longest choice in any language, not the 220px other settings use.
+    Object.assign(imageCompression.style, { width: 'auto', minWidth: '220px' });
+    const imageQuality = makeInput(Math.round((settings.images?.webpQuality ?? 0.95) * 100), 'number', { min: 95, max: 100, step: 1, 'aria-label': t('Lossy quality (%)') });
+    const imageQualityRow = settingRow(t('Lossy quality (%)'), t('Text and small UI details are protected by falling back to lossless when needed.'), imageQuality);
+    const syncImageQuality = () => { imageQualityRow.hidden = imageCompression.value !== 'lossy'; };
+    imageCompression.addEventListener('change', syncImageQuality);
+    syncImageQuality();
     // Each language is listed in its own name, so anyone can find theirs.
     // Translations are new, so every language but English is marked Beta.
     const language = makeSelect(settings.language || 'system', [
@@ -755,6 +767,7 @@ function showSettingsDialog({
     const pauseHotkey = makeHotkeyInput(settings.capture?.hotkeyPauseResume || '');
     const focusedDefault = el('input', { type: 'checkbox', checked: settings.editor?.focusedViewDefaultForNewSteps !== false });
     const returnToSelect = el('input', { type: 'checkbox', checked: settings.editor?.returnToSelect !== false });
+    const dangerousDeletes = el('input', { type: 'checkbox', checked: settings.editor?.dangerousDeletes === true });
     const previewCount = makeInput(settings.exports?.previewStepCount ?? 3, 'number', { min: 1, step: 1 });
     const openFolder = el('input', { type: 'checkbox', checked: Boolean(settings.exports?.openFolderAfterExport) });
     const codeTheme = makeSelect(CODE_THEME_CHOICES.some((t) => t.value === settings.exports?.codeTheme) ? settings.exports.codeTheme : 'atom-one-dark',
@@ -941,6 +954,9 @@ function showSettingsDialog({
           settingRow(t('Delay'), t('Milliseconds to wait before each screenshot.'), delayMs),
           settingRow(t('Click marker'), t('Draw a marker where you clicked.'), makeSwitch(clickMarker, t('Click marker'))),
           settingRow(t('Capture outside clicks'), t('Record clicks in other apps while a capture session is running.'), makeSwitch(captureOutside, t('Capture outside clicks')))),
+        settingsCard(t('Image compression'),
+          settingRow(t('Compression'), t('Applies to new screenshots and imports. Existing guide images are unchanged.'), imageCompression),
+          imageQualityRow),
         settingsCard(t('When clicks can’t be detected'),
           settingRow(t('Capture with'), t('Some desktops don’t report clicks. Choose how steps are captured instead.'), fallbackTrigger),
           (intervalRow.append(settingRow(t('Timer interval'), t('Seconds between timed captures.'), autoIntervalSec)), intervalRow)),
@@ -956,6 +972,9 @@ function showSettingsDialog({
         settingsCard(t('Annotation tools'),
           settingRow(t('Go back to Select after each use'), t('After you draw a blur, shape, arrow or other annotation, or crop, the Select tool is picked again. Turn off to keep using the same tool.'),
             makeSwitch(returnToSelect, t('Go back to Select after each use')))),
+        settingsCard(t('Deleting'),
+          settingRow(t('Dangerous deletes'), t('Delete steps without asking for confirmation.'),
+            makeSwitch(dangerousDeletes, t('Dangerous deletes')))),
         settingsCard(t('Backups'),
           settingRow(t('Snapshots to keep'), t('Older backup snapshots of each guide are removed. 0 keeps all of them.'), keepLast)),
       ] },
@@ -1041,6 +1060,11 @@ function showSettingsDialog({
 
     // Everything the form holds, as Save stores it. Also what unsaved-change checks compare.
     const collect = () => ({
+      images: {
+        format: imageCompression.value === 'off' ? 'png' : 'webp',
+        lossless: imageCompression.value === 'off' ? settings.images?.lossless !== false : imageCompression.value !== 'lossy',
+        webpQuality: Math.min(100, Math.max(95, Number(imageQuality.value) || 95)) / 100,
+      },
       appearance: appearance.value,
       language: language.value,
       spellcheck: spellcheck.checked,
@@ -1062,6 +1086,7 @@ function showSettingsDialog({
         ...settings.editor,
         focusedViewDefaultForNewSteps: focusedDefault.checked,
         returnToSelect: returnToSelect.checked,
+        dangerousDeletes: dangerousDeletes.checked,
       },
       branding: {
         ...settings.branding,
@@ -1568,7 +1593,8 @@ function snapshotLabel(name) {
   if (!match) return name;
   const [, day, h, m, sec, ms, label] = match;
   const when = new Date(`${day}T${h}:${m}:${sec}.${ms}Z`).toLocaleString(dateLocale, { dateStyle: 'medium', timeStyle: 'short' });
-  return label ? `${when} · ${label.replace(/_/g, ' ')}` : when;
+  const text = label?.replace(/_/g, ' ');
+  return label ? `${when} · ${text === 'before optimizing images' ? t('Before optimizing images') : text}` : when;
 }
 
 function showBackupsDialog({ snapshots = [], onCreate, onRestore, onCompare } = {}) {

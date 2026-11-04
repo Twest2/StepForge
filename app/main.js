@@ -36,6 +36,9 @@ const { BrandingStore, brandTemplateDefaults, checkFileSize, cssFromFile, MAX_CS
 const { MAX_REQUEST_CHARS: MAX_BRAND_CSS_REQUEST_CHARS } = require('../core/ai-brand-css');
 const { buildSampleAst } = require('../core/branding-sample');
 const { buildRenderAst } = require('../core/renderast');
+const { setImageCodec, rasterToPng, sniffImageFormat, readImageSize, optimizeScreenshot, prepareExportImages, imagePreviewUrl } = require('../core/image-format');
+const { optimizeGuideImages } = require('../core/image-optimize');
+const { createImageCodec } = require('../core/image-codec');
 const { qualityFindings } = require('../core/quality');
 const { stepNumberMap } = require('../core/step-outline');
 const { AI_TARGETS } = require('../core/text-intel');
@@ -97,6 +100,8 @@ if (process.platform === 'linux') {
 let store;
 let libraryLocation;
 let settings;
+let imageCodec = null;
+
 let searchIndex;
 let templates;
 let branding;
@@ -914,8 +919,30 @@ function setupIpc() {
     { validate: (a) => c.string(a.html, 2 * 1024 * 1024) });
   h('guide:descriptionFromMarkdown', ({ markdown }) => descriptionFromMarkdown(markdown),
     { validate: (a) => c.string(a.markdown, 2 * 1024 * 1024) });
-  h('step:add', ({ guideId, fields, imageBase64, size, position }) => {
-    const buf = imageBase64 ? Buffer.from(imageBase64, 'base64') : null;
+  // A new screenshot in the form the store keeps: WebP when the setting asks
+  // for it and encoding makes it smaller, otherwise the PNG unchanged.
+  const storeScreenshot = async (bytes) => {
+    if (settings.get('images.format') !== 'webp') return bytes;
+    return (await optimizeScreenshot(bytes, {
+      format: 'webp', lossless: settings.get('images.lossless') !== false, webpQuality: settings.get('images.webpQuality'), codec: imageCodec,
+    })).buffer;
+  };
+  // A picked image file as stored bytes and size. WebP is kept as it is (no
+  // second encode); other formats go through nativeImage to PNG first.
+  const readImageFile = async (file) => {
+    const raw = fs.readFileSync(file);
+    if (sniffImageFormat(raw) === 'webp') {
+      try {
+        const png = await rasterToPng(raw);
+        return { bytes: raw, size: readImageSize(png) };
+      } catch { return null; }
+    }
+    const img = nativeImage.createFromBuffer(raw);
+    if (img.isEmpty()) return null;
+    return { bytes: await storeScreenshot(img.toPNG()), size: img.getSize() };
+  };
+  h('step:add', async ({ guideId, fields, imageBase64, size, position }) => {
+    const buf = imageBase64 ? await storeScreenshot(Buffer.from(imageBase64, 'base64')) : null;
     const step = store.addStep(guideId, fields || {}, buf, size || null, { position });
     reindex(guideId);
     return step;
@@ -958,37 +985,32 @@ function setupIpc() {
   h('step:imagePath', ({ guideId, stepId, which }) => {
     const p = store.stepImagePath(guideId, stepId, which || 'working');
     if (!p || !fs.existsSync(p)) return null;
-    // pathToFileURL correctly encodes spaces, #, %, drive letters, etc.; the
-    // mtime is a cache-buster so the renderer reloads after an edit.
-    const url = pathToFileURL(p);
-    url.searchParams.set('v', String(fs.statSync(p).mtimeMs));
-    return url.href;
+    return imagePreviewUrl(p);
   }, {
     validate: (a) => c.id(a.guideId) && c.id(a.stepId)
       && (a.which === undefined || a.which === null || c.oneOf(a.which, ['original', 'working'])),
   });
   // A screenshot's bytes as stored, for undo. Redrawing it through a canvas
   // would re-encode it, and an undone crop would become a second copy.
-  h('step:imageData', ({ guideId, stepId, which }) => {
+  h('step:imageData', async ({ guideId, stepId, which }) => {
     const p = store.stepImagePath(guideId, stepId, which || 'working');
     if (!p || !fs.existsSync(p)) return null;
     const data = fs.readFileSync(p);
-    const isPng = data.length >= 24 && data.toString('latin1', 12, 16) === 'IHDR';
-    const size = isPng ? { width: data.readUInt32BE(16), height: data.readUInt32BE(20) } : nativeImage.createFromBuffer(data).getSize();
+    const size = sniffImageFormat(data) === 'webp' ? readImageSize(await rasterToPng(data))
+      : readImageSize(data) || nativeImage.createFromBuffer(data).getSize();
     return { base64: data.toString('base64'), size };
   }, {
     validate: (a) => c.id(a.guideId) && c.id(a.stepId)
       && (a.which === undefined || a.which === null || c.oneOf(a.which, ['original', 'working'])),
   });
-  h('step:setWorkingImage', ({ guideId, stepId, pngBase64, size, step }) =>
-    store.setWorkingImage(guideId, stepId, Buffer.from(pngBase64, 'base64'), size, step || null), {
+  h('step:setWorkingImage', async ({ guideId, stepId, pngBase64, size, step }) =>
+    store.setWorkingImage(guideId, stepId, await storeScreenshot(Buffer.from(pngBase64, 'base64')), size, step || null), {
     maxChars: IMAGE_BUDGET,
     validate: (a) => c.id(a.guideId) && c.id(a.stepId) && c.base64(a.pngBase64),
   });
-  h('step:resetWorkingImage', ({ guideId, stepId }) => {
+  h('step:resetWorkingImage', async ({ guideId, stepId }) => {
     const p = store.stepImagePath(guideId, stepId, 'original');
-    const img = nativeImage.createFromPath(p);
-    const { width, height } = img.getSize();
+    const { width, height } = readImageSize(await rasterToPng(fs.readFileSync(p)));
     return store.resetWorkingImage(guideId, stepId, { width, height });
   }, { validate: (a) => c.id(a.guideId) && c.id(a.stepId) });
   h('step:fromClipboard', async ({ guideId, position }) => {
@@ -998,7 +1020,7 @@ function setupIpc() {
     const step = store.addStep(guideId, {
       title: t('Pasted image'),
       focusedView: { enabled: false, zoom: 1, panX: 0.5, panY: 0.5 },
-    }, img.toPNG(), { width, height }, { position });
+    }, await storeScreenshot(img.toPNG()), { width, height }, { position });
     reindex(guideId);
     return { ok: true, step };
   }, { validate: (a) => c.id(a.guideId) && c.optionalNumber(a.position, 0, 100000) });
@@ -1011,11 +1033,10 @@ function setupIpc() {
     if (res.canceled) return { ok: false };
     const steps = [];
     for (const file of res.filePaths) {
-      const img = nativeImage.createFromPath(file);
-      if (img.isEmpty()) continue;
-      const { width, height } = img.getSize();
+      const picked = await readImageFile(file);
+      if (!picked) continue;
       steps.push(store.addStep(guideId, { title: path.basename(file, path.extname(file)) },
-        img.toPNG(), { width, height }));
+        picked.bytes, picked.size));
     }
     reindex(guideId);
     return { ok: true, steps };
@@ -1028,7 +1049,7 @@ function setupIpc() {
     const step = store.getStep(guideId, stepId);
     // Private-detail blurs matched the old screenshot; the new one is checked again.
     const removedBlurs = forgetScreenshotChecks(step);
-    let saved = store.replaceImages(guideId, stepId, { original: png }, size, step);
+    let saved = store.replaceImages(guideId, stepId, { original: await storeScreenshot(png) }, size, step);
     if (await blurNewCapture(guideId, stepId, { notify: false })) saved = store.getStep(guideId, stepId);
     reindex(guideId);
     return { ok: true, step: saved, removedBlurs };
@@ -1043,9 +1064,10 @@ function setupIpc() {
       properties: ['openFile'],
     });
     if (res.canceled || !res.filePaths[0]) return { ok: false };
-    const img = nativeImage.createFromPath(res.filePaths[0]);
-    if (img.isEmpty()) throw new Error(t('StepForge couldn’t open that file as an image. Choose a PNG, JPEG, GIF, WebP or BMP file.'));
-    return swapStepImage(guideId, stepId, img.toPNG(), img.getSize());
+    const picked = await readImageFile(res.filePaths[0]);
+    if (!picked) throw new Error(t('StepForge couldn’t open that file as an image. Choose a PNG, JPEG, GIF, WebP or BMP file.'));
+    // Stored bytes come back through storeScreenshot unchanged, so WebP is not re-encoded.
+    return swapStepImage(guideId, stepId, picked.bytes, picked.size);
   }, { validate: (a) => c.id(a.guideId) && c.id(a.stepId) });
   // Right-click a step → Retake screenshot: hide StepForge, count down, grab a
   // new frame and swap it in, the same way Choose image… does.
@@ -1718,7 +1740,23 @@ function setupIpc() {
     settings.set(`exports.lastOutputDirs.${format}`, res.filePaths[0]);
     return res.filePaths[0];
   }, { validate: (a) => validFormat(a.format) });
-  h('export:preview', ({ guideId, format, options, brandProfileId }) => {
+  // Optimize guide images (core/image-optimize.js). dryRun (default) only reports the saving.
+  h('guide:optimizeImages', async ({ guideId, dryRun, expectedHash }) => {
+    try {
+      return await optimizeGuideImages(store, guideId, {
+        dryRun: dryRun !== false, expectedHash,
+        format: 'webp', lossless: settings.get('images.lossless') !== false,
+        webpQuality: settings.get('images.webpQuality'), codec: imageCodec,
+      });
+    } catch (error) {
+      if (error.code === 'IMAGE_ESTIMATE_CHANGED') throw new Error(t('Guide changed. Estimate image savings again before applying.'));
+      throw new Error(t('Could not optimize guide images: {error}', { error: error.message }));
+    }
+  }, {
+    validate: (a) => c.id(a.guideId) && (a.dryRun === undefined || typeof a.dryRun === 'boolean')
+      && (a.dryRun !== false || (typeof a.expectedHash === 'string' && /^[a-f0-9]{64}$/.test(a.expectedHash))),
+  });
+  h('export:preview', async ({ guideId, format, options, brandProfileId }) => {
     const previewDir = path.join(store.tempDir, `preview-${guideId}-${format}`);
     fs.rmSync(previewDir, { recursive: true, force: true });
     const ast = buildRenderAst(store, guideId, {
@@ -1726,6 +1764,7 @@ function setupIpc() {
       maxSteps: settings.get('exports.previewStepCount') || 3,
       codeStyle: exportCodeStyle(), reviewDays: exportReviewDays(),
       branding: exportBranding(brandProfileId),
+      images: await prepareExportImages(store, guideId, { codec: imageCodec, maxSteps: settings.get('exports.previewStepCount') || 3 }),
     });
     const result = runExport(format, ast, previewDir, options || {});
     // Folder-style exports (image bundle, Confluence) preview as their folder.
@@ -1963,6 +2002,9 @@ if (!gotLock) {
     const dataDir = libraryLocation.applyPending();
     store = new GuideStore(dataDir);
     settings = new Settings(store.settingsDir);
+    // Shared lossless codec, also available in export workers and headless MCP.
+    imageCodec = createImageCodec();
+    setImageCodec(imageCodec);
     branding = new BrandingStore(store.settingsDir);
     // Dev builds keep their sign-in to their own data folder instead of
     // sharing (and possibly clearing) the release build's OS backup.
@@ -2030,6 +2072,7 @@ if (!gotLock) {
         searchIndex.removeGuide(guideId);
         sendToRenderer('cloud:library-changed', { guideId });
       },
+      onFoldersChange: () => sendToRenderer('cloud:library-changed', {}),
       onStatus: () => sendToRenderer('cloud:status', cloudStatus()),
       shared: new SharedSettings({ settings, branding }),
       sharedReady: () => !settingsOpen,
@@ -2067,7 +2110,8 @@ if (!gotLock) {
       store, settings,
       readLines: (image) => textIntel.readLines(image),
       loadImage: async (file) => {
-        const image = nativeImage.createFromPath(file);
+        // WebP screenshots are decoded by the codec; nativeImage can't read them.
+        const image = nativeImage.createFromBuffer(await rasterToPng(fs.readFileSync(file)));
         if (image.isEmpty()) throw new Error(t('A screenshot in this guide couldn’t be read.'));
         const { width, height } = image.getSize();
         return { width, height, encode: (scale) => {
@@ -2229,6 +2273,7 @@ if (!gotLock) {
   });
 
   app.on('will-quit', () => {
+    imageCodec?.close();
     cloudSync?.stop();
     githubPages?.cancel();
     globalShortcut.unregisterAll();

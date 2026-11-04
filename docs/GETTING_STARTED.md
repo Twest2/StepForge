@@ -100,14 +100,6 @@ constrains the panes and restores your preferred widths when space returns.
 
 For each step you can:
 
-- **Collapse details** with the small connector/arrow beside its title, or
-  right-click and choose **Collapse Step**. The title stays visible; existing
-  substeps fold underneath it with a count. Choose **Expand Step** to restore
-  them. Tab to the arrow and press Enter or Space for the same action.
-  Collapsing affects only this editor session: every step remains in the guide
-  and exports. Bulk selection shows all rows, and navigating directly to a
-  substep expands its ancestors.
-
 - **Write a description** with bold, italics, lists, quotes, and links.
 - **Set a status** of *Todo*, *In progress*, or *Done* to track your review.
 - **Add blocks** for anything that isn't a screenshot:

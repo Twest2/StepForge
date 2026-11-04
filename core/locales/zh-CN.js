@@ -1571,9 +1571,4 @@
   "Drag to resize. Use Left/Right arrows, Shift for larger changes, or Home/End.": "拖动以调整大小。可使用左右方向键，按住 Shift 进行较大调整，或使用 Home/End。",
   "{count} pixels": {"other":"{count} 像素"},
   "Could not save pane widths: {error}": "无法保存面板宽度：{error}",
-  'Expand Step': '展开步骤',
-  'Collapse Step': '折叠步骤',
-  '{action}: {step}': '{action}：{step}',
-  'Selected step is in this collapsed group': '所选步骤位于此折叠组中',
-  '{count} substeps': { other: '{count} 个子步骤' },
 });

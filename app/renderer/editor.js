@@ -209,7 +209,6 @@ class GuideEditor {
     this.stepSelectMode = false;
     this.selectedSteps = new Set();
     this.stepSelectionAnchor = null;
-    this.collapsedStepsByGuide = new Map();
     this.selectedAnnotationId = null;
     this.currentTool = 'select';
     this.currentZoom = 'fit';
@@ -1321,31 +1320,13 @@ class GuideEditor {
     }
   }
 
-  collapsedStepIds() {
-    this.collapsedStepsByGuide ||= new Map();
-    if (!this.collapsedStepsByGuide.has(this.guideId)) this.collapsedStepsByGuide.set(this.guideId, new Set());
-    return this.collapsedStepsByGuide.get(this.guideId);
-  }
-
-  toggleStepCollapsed(stepId) {
-    const collapsed = this.collapsedStepIds();
-    if (collapsed.has(stepId)) collapsed.delete(stepId);
-    else collapsed.add(stepId);
-    this.renderStepList();
-    [...this.dom.stepsList.querySelectorAll('.step-collapse')].find((button) => button.dataset.stepId === stepId)?.focus();
-  }
-
   renderStepList() {
     const current = this.currentStep;
     const numbers = stepNumberMap(this.steps);
     clearNode(this.dom.stepsList);
     this.dom.stepCount.textContent = tn(this.steps.length, '{count} step', '{count} steps');
     this.dom.selectStepsBtn.className = this.stepSelectMode ? 'primary' : '';
-    const collapsedIds = this.collapsedStepIds();
-    // Show all rows in bulk-selection mode so range selection is never ambiguous.
-    const visible = this.stepSelectMode ? this.steps : window.StepForgeOutline.visibleSteps(this.steps, collapsedIds);
-    for (const step of visible) {
-      const collapsed = collapsedIds.has(step.stepId);
+    for (const step of this.steps) {
       const number = numbers.get(step.stepId) || '';
       const depth = stepDepth(step, this.stepMap);
       const selected = current && current.stepId === step.stepId;
@@ -1397,26 +1378,11 @@ class GuideEditor {
             { label: t('Move to…'), action: () => this.moveStepTo(step.stepId) },
             'sep',
             { label: t('Delete step'), danger: true, action: () => this.deleteSelectedStep() },
-            'sep',
-            { label: collapsed ? t('Expand Step') : t('Collapse Step'), action: () => this.toggleStepCollapsed(step.stepId) },
           ]);
         },
       };
       if (depth) itemProps.style = { marginLeft: `${depth * 18}px` };
-      const detailId = `step-details-${step.stepId}`;
-      const preview = (el('div', { innerHTML: step.descriptionHtml || '' }).textContent || '').trim();
-      const descendants = this.getStepDescendantIds(step.stepId);
       const item = el('div.step-item', itemProps,
-        el('button.step-collapse', {
-          type: 'button', draggable: false, dataset: { stepId: step.stepId },
-          title: collapsed ? t('Expand Step') : t('Collapse Step'),
-          'aria-label': t('{action}: {step}', { action: collapsed ? t('Expand Step') : t('Collapse Step'), step: `${number} ${step.title || t('Untitled step')}` }),
-          'aria-expanded': String(!collapsed), 'aria-controls': detailId,
-          onMouseDown: e => e.stopPropagation(),
-          onDragStart: e => { e.preventDefault(); e.stopPropagation(); },
-          onClick: e => { e.stopPropagation(); this.toggleStepCollapsed(step.stepId); },
-        }, el('span', { 'aria-hidden': 'true' }, collapsed ? '›' : '⌄')),
-        el('div.step-summary', {},
         this.stepSelectMode
           ? el('input', {
             type: 'checkbox',
@@ -1431,13 +1397,11 @@ class GuideEditor {
         el('span.status-dot', { className: `status-dot status-${step.status}` }),
         el('span.num', {}, number || '•'),
         el('span.t', {}, step.title || t('Untitled step')),
-        collapsed && descendants.length ? el('span.step-collapsed-count', {}, tn(descendants.length, '{count} substep', '{count} substeps')) : null,
-        collapsed && descendants.includes(this.selectedStepId) ? el('span', { title: t('Selected step is in this collapsed group'), 'aria-label': t('Selected step is in this collapsed group') }, '•') : null,
-        ),
-        el('div.step-details', { id: detailId, hidden: collapsed },
-          el('span.flags', {}, [step.status === 'done' ? t('Done') : step.status === 'in-progress' ? t('In progress') : t('Todo'), step.hidden ? t('Hidden') : '', step.skipped ? t('Skipped') : ''].filter(Boolean).join(' · ')),
-          preview ? el('div.step-preview', {}, preview) : null,
-        ),
+        el('span.flags', {}, [
+          step.parentStepId ? 'sub' : '',
+          step.hidden ? 'hidden' : '',
+          step.skipped ? 'skipped' : '',
+        ].filter(Boolean).join(' · ')),
       );
       this.dom.stepsList.append(item);
     }
@@ -2434,12 +2398,6 @@ class GuideEditor {
 
   async selectStep(stepId) {
     if (!this.stepMap.has(stepId)) return;
-    // Keyboard/search navigation can reach a child in a collapsed group.
-    const seen = new Set();
-    for (let parent = this.stepMap.get(stepId).parentStepId; parent && !seen.has(parent); parent = this.stepMap.get(parent)?.parentStepId) {
-      this.collapsedStepIds().delete(parent);
-      seen.add(parent);
-    }
     // Persist any unsaved edits on the outgoing step before switching, so a
     // later guide-wide reload (e.g. applyStyleAcross('guide')) doesn't
     // discard them by re-fetching a stale on-disk copy.
@@ -2746,8 +2704,7 @@ class GuideEditor {
     // Dragging sideways changes the level, one indent per 18px, relative to where the drag began.
     const hint = Math.max(0, drag.depth + Math.round((x - drag.startX) / 18));
     const parentOf = outline.parentMap(this.steps);
-    const insertionGap = gap < rows.length ? this.steps.findIndex((step) => step.stepId === rows[gap].dataset.stepId) : this.steps.length;
-    const moved = outline.moveSubtree(this.steps.map((s) => s.stepId), parentOf, drag.stepId, insertionGap, hint);
+    const moved = outline.moveSubtree(this.steps.map((s) => s.stepId), parentOf, drag.stepId, gap, hint);
     return { gap, rows, moved, depth: moved ? outline.depthOf(moved.parentOf, drag.stepId) : hint };
   }
 
@@ -3679,7 +3636,7 @@ class GuideEditor {
   onDocumentKeyDown(e) {
     if (!this.active || !this.guide) return;
     // Pickers and pane dividers own their plain keys. Ctrl/Cmd shortcuts still work.
-    if (!e.ctrlKey && !e.metaKey && (e.target?.closest?.('.fill-picker') || e.target?.closest?.('.pane-divider') || e.target?.closest?.('.step-collapse'))) return;
+    if (!e.ctrlKey && !e.metaKey && (e.target?.closest?.('.fill-picker') || e.target?.closest?.('.pane-divider'))) return;
     const zoomShortcut = zoomShortcutFromEvent(e);
     if (zoomShortcut) {
       e.preventDefault();

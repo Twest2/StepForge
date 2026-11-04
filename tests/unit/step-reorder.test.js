@@ -64,7 +64,7 @@ function setup({ steps, pick = async () => null }) {
       scrollTop: 0,
       children: [],
       getBoundingClientRect: () => ({ top: 0, bottom: 600 }),
-      querySelectorAll: () => editor.steps.map((step, i) => ({ dataset: { stepId: step.stepId }, getBoundingClientRect: () => ({ top: i * 30, height: 26 }) })),
+      querySelectorAll: () => editor.steps.map((_, i) => ({ getBoundingClientRect: () => ({ top: i * 30, height: 26 }) })),
     },
   };
   editor.hideStepDropLine = () => {};
@@ -141,17 +141,6 @@ test('dragging sideways changes the level the step lands at', async () => {
   // Same gap (the end), 20px to the right: one indent deeper, so C becomes B's substep.
   await editor.onStepDrop({ clientX: 120, clientY: 500, preventDefault() {} });
   assert.deepEqual(outline(db), ['A', 'B', 'C<B']);
-});
-
-test('dropping after a collapsed group maps visible gaps to the full guide order', async () => {
-  const { editor, db } = setup({ steps: nested() });
-  await editor.reload('C');
-  const rows = ['A', 'B', 'b1', 'C'].map((stepId, index) => ({ dataset: { stepId }, getBoundingClientRect: () => ({ top: index * 30, height: 26 }) }));
-  editor.dom.stepsList.querySelectorAll = () => rows;
-  editor.stepDrag = { stepId: 'C', startX: 50, depth: 0 };
-  const target = editor.stepDropTarget(50, 30);
-  assert.deepEqual(Array.from(target.moved.order), ['A', 'a1', 'a2', 'C', 'B', 'b1']);
-  assert.deepEqual(db.order, ['A', 'a1', 'a2', 'B', 'b1', 'C'], 'previewing a drop must not write guide data');
 });
 
 test('dropping a step inside its own substeps is refused with a toast', async () => {

@@ -1571,9 +1571,4 @@
   "Drag to resize. Use Left/Right arrows, Shift for larger changes, or Home/End.": "Перетащите для изменения ширины. Используйте стрелки влево/вправо, Shift для больших изменений или Home/End.",
   "{count} pixels": {"one":"{count} пиксель","few":"{count} пикселя","many":"{count} пикселей","other":"{count} пикселя"},
   "Could not save pane widths: {error}": "Не удалось сохранить ширину панелей: {error}",
-  'Expand Step': 'Развернуть шаг',
-  'Collapse Step': 'Свернуть шаг',
-  '{action}: {step}': '{action}: {step}',
-  'Selected step is in this collapsed group': 'Выбранный шаг находится в этой свёрнутой группе',
-  '{count} substeps': { one: '{count} подшаг', few: '{count} подшага', many: '{count} подшагов', other: '{count} подшага' },
 });

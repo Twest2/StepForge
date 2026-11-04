@@ -205,18 +205,5 @@
     return numbers;
   }
 
-  /** View-only filtering: never changes steps, parents, numbering or export data. */
-  function visibleSteps(steps, collapsed) {
-    const parents = parentMap(steps);
-    return steps.filter((step) => {
-      const seen = new Set([step.stepId]);
-      for (let parent = parents.get(step.stepId); parent && !seen.has(parent); parent = parents.get(parent)) {
-        if (collapsed.has(parent)) return false;
-        seen.add(parent);
-      }
-      return true;
-    });
-  }
-
-  return { isValidOutline, withParent, parentMap, planSubsteps, depthOf, repairOutline, subtreeOf, moveSubtree, moveSubtreeBy, stepNumberMap, visibleSteps };
+  return { isValidOutline, withParent, parentMap, planSubsteps, depthOf, repairOutline, subtreeOf, moveSubtree, moveSubtreeBy, stepNumberMap };
 });

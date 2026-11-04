@@ -367,7 +367,7 @@ body.platform-linux #capture-status button {
 .guide-card:hover .fav { opacity: 0.55; }
 .guide-card .fav:focus-visible { opacity: 1; transition: none; }
 .guide-card .fav:hover { opacity: 1; background: var(--panel-2); }
-.guide-card .fav.on { opacity: 1; color: var(--accent-strong); }
+.guide-card .fav.on { opacity: 1; color: var(--caution); }
 .guide-card.selecting .fav:not(.on) { display: none; }
 
 /* Round checkbox on every card while Select is on. */

@@ -551,7 +551,7 @@ body.platform-linux #capture-status button {
    dot down past its substeps (editor.js stepThreadLines). Clicking it folds the
    substeps away; hovering lights up the whole thread. */
 .step-item { position: relative; }
-.step-thread-line, .step-thread-start {
+.step-item .step-thread-line, .step-item .step-thread-start {
   position: absolute;
   width: 12px;
   cursor: pointer;
@@ -559,7 +559,8 @@ body.platform-linux #capture-status button {
 /* Each substep row carries a piece of every thread it is in, reaching across the 4px row gap. */
 .step-thread-line { top: -1px; bottom: -5px; }
 .step-thread-line.end { bottom: 6px; }
-.step-thread-start {
+/* Two classes, so body.platform-linux button { padding } doesn't win on Linux. */
+.step-item .step-thread-start {
   left: 8px;
   top: calc(50% + 6px);
   bottom: -5px;
@@ -580,12 +581,12 @@ body.platform-linux #capture-status button {
   background: var(--border);
 }
 .step-thread-line.hot::before, .step-thread-start.hot::before { background: var(--accent); }
-.step-thread-start:hover, .step-thread-start:active { background: none; transform: none; }
+.step-item .step-thread-start:hover, .step-item .step-thread-start:active { background: none; transform: none; }
 /* Keyboard focus shows on the line itself, not as a box around it. */
-.step-thread-start:focus-visible { outline: none; }
+.step-item .step-thread-start:focus-visible { outline: none; }
 .step-thread-start:focus-visible::before { left: 4px; width: 4px; border-radius: 2px; background: var(--accent); }
 /* A collapsed step: "+3", how many substeps are folded away. Clicking it opens them. */
-.step-fold-count {
+.step-item .step-fold-count {
   flex: none;
   min-width: 0;
   padding: 0 7px;
@@ -598,7 +599,7 @@ body.platform-linux #capture-status button {
   line-height: 16px;
   font-variant-numeric: tabular-nums;
 }
-.step-fold-count:hover, .step-fold-count.hot { color: var(--accent); border-color: var(--accent); }
+.step-item .step-fold-count:hover, .step-item .step-fold-count.hot { color: var(--accent); border-color: var(--accent); }
 /* Shows where a dragged step lands; its left edge is the level it will have. */
 .step-drop-line {
   position: absolute;

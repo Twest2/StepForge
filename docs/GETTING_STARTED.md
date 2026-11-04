@@ -97,6 +97,8 @@ Home and End for the smallest and largest available width. Escape cancels
 an unfinished drag. Widths are remembered on this device. When the window
 grows, the screenshot area takes the extra space; a smaller window temporarily
 constrains the panes and restores your preferred widths when space returns.
+The center canvas keeps at least 320 pixels of width; both dividers stop before
+reducing it further. All three panes fit at the app's minimum window width.
 
 For each step you can:
 

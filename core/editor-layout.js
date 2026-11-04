@@ -8,7 +8,7 @@
   const DEFAULT_WIDTHS = Object.freeze({ steps: 320, properties: 330 });
   const MIN_WIDTHS = Object.freeze({ steps: 220, properties: 280 });
   const DIVIDER_WIDTH = 6;
-  const MIN_CANVAS_WIDTH = 64;
+  const MIN_CANVAS_WIDTH = 320;
   const MIN_EDITOR_WIDTH = MIN_WIDTHS.steps + MIN_WIDTHS.properties + 2 * DIVIDER_WIDTH + MIN_CANVAS_WIDTH;
 
   function normalizeWidths(value) {

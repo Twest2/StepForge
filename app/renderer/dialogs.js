@@ -486,7 +486,6 @@ function showFindReplace({ stepNumbers = {}, find, replace } = {}) {
         el('button', { onClick: () => { close(); resolve(false); } }, t('Close')),
         replaceButton,
       ],
-      isDirty: unsavedChanges(() => [query.value, replacement.value]),
       onClose: () => resolve(false),
     });
 

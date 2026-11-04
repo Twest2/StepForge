@@ -1694,7 +1694,8 @@ function showPlaceholdersDialog({ title = t('Placeholders'), hint = '', values =
  * shown at the top of the guide, below the title, and surfaced on the PDF
  * cover page and the top of other export formats.
  */
-function showGuideInfoDialog({ values = {}, reviewDefaultDays, onSave, onCloudSnapshots, onDeleteCloudSnapshots } = {}) {
+let guideInfoDialogId = 0;
+function showGuideInfoDialog({ values = {}, reviewDefaultDays, cloudConnected = false, onSave, onCloudSnapshots, onDeleteCloudSnapshots } = {}) {
   return new Promise((resolve) => {
     const versionInput = makeInput(values.softwareVersion || '', 'text', { placeholder: t('e.g. Windows 11 24H2'), maxLength: 200 });
     const verifiedInput = makeInput(review.normalizeDateOnly(values.lastVerified), 'date', { max: review.toDateOnly(Date.now()) });
@@ -1731,7 +1732,10 @@ function showGuideInfoDialog({ values = {}, reviewDefaultDays, onSave, onCloudSn
     const authorInput = makeInput(values.author || '', 'text', { placeholder: t('e.g. Jane Doe') });
     const coAuthorsInput = makeInput(values.coAuthors || '', 'text', { placeholder: t('e.g. Alex Lee, Sam Patel') });
     const organizationInput = makeInput(values.organization || '', 'text', { placeholder: t('e.g. Acme Corp') });
+    const descriptionId = `guide-description-${++guideInfoDialogId}`;
+    const descriptionHelpId = `${descriptionId}-help`;
     const descriptionInput = el('textarea', {
+      id: descriptionId, 'aria-describedby': descriptionHelpId,
       rows: 4,
       placeholder: t('A short summary of this guide.'),
     }, values.description || '');
@@ -1746,6 +1750,17 @@ function showGuideInfoDialog({ values = {}, reviewDefaultDays, onSave, onCloudSn
       description: descriptionInput.value,
       sharingEnabled: shareInput.checked,
     });
+    const infoBaseline = { ...infoState() };
+    const removeCopies = el('button.danger', { type: 'button', disabled: typeof onDeleteCloudSnapshots !== 'function', onClick: async () => {
+      setButtonLoading(removeCopies, true, t('Remove cloud copies'));
+      try {
+        const result = await onDeleteCloudSnapshots?.();
+        if (result === true || result?.sharingEnabled === false) {
+          shareInput.checked = false;
+          infoBaseline.sharingEnabled = false;
+        }
+      } finally { setButtonLoading(removeCopies, false); }
+    } }, t('Remove cloud copies'));
 
     const { close, requestDismiss } = openModal({
       title: t('Guide information'),
@@ -1755,23 +1770,26 @@ function showGuideInfoDialog({ values = {}, reviewDefaultDays, onSave, onCloudSn
         labeledRow(t('Author'), authorInput),
         labeledRow(t('Co-authors'), coAuthorsInput),
         labeledRow(t('Organization'), organizationInput),
-        labeledRow(t('Description'), descriptionInput, { stacked: true }),
-        el('div.muted', { style: { marginTop: '-4px' } },
-          t('Shown on the first page of the PDF and at the top of other export formats.')),
-        el('div.muted', {},
-          t('Markdown works here: **bold**, *italic*, `code`, [link](https://example.com), and lists that start with - or 1.')),
+        el('div.form-row.stacked.guide-description', {},
+          el('label', { htmlFor: descriptionId }, t('Description')),
+          el('div.muted.guide-description-help', { id: descriptionHelpId },
+            t('Shown on the first page of the PDF and at the top of other export formats.'), sentenceGap,
+            t('Markdown works here: **bold**, *italic*, `code`, [link](https://example.com), and lists that start with - or 1.')),
+          descriptionInput),
         el('h3', { style: { margin: '14px 0 6px' } }, t('Review')),
         labeledRow(t('Software version'), versionInput),
         labeledRow(t('Last verified'), el('div.row', {}, verifiedInput, todayBtn)),
         labeledRow(t('Review again'), reviewSelect),
         reviewHint,
-        el('label.cloud-enable', {}, shareInput, ' ', t('Include this guide in cloud sync')),
-        el('div.muted', { style: { marginTop: '-4px' } },
-          t('When off, this guide stays only on this device.')),
+        el('section.guide-info-cloud', { hidden: !cloudConnected, 'aria-label': t('Cloud sync') },
+          el('h3', {}, t('Cloud sync')),
+          el('label.cloud-enable', {}, shareInput, ' ', t('Include this guide in cloud sync')),
+          el('div.muted', {}, t('When off, this guide stays only on this device.')),
+          el('div.row', {},
+            el('button', { type: 'button', disabled: typeof onCloudSnapshots !== 'function', onClick: () => onCloudSnapshots?.() }, t('Cloud snapshots')),
+            removeCopies)),
       ),
       footer: [
-        el('button', { type: 'button', onClick: () => onCloudSnapshots?.() }, t('Cloud snapshots')),
-        el('button', { type: 'button', className: 'danger', onClick: () => onDeleteCloudSnapshots?.() }, t('Remove cloud copies')),
         el('button', { onClick: () => requestDismiss() }, t('Cancel')),
         el('button.primary', {
           onClick: async () => {
@@ -1790,7 +1808,7 @@ function showGuideInfoDialog({ values = {}, reviewDefaultDays, onSave, onCloudSn
           },
         }, t('Save')),
       ],
-      isDirty: unsavedChanges(infoState),
+      isDirty: () => JSON.stringify(infoState()) !== JSON.stringify(infoBaseline),
       onClose: () => resolve(false),
     });
   });

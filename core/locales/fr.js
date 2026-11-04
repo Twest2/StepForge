@@ -1563,4 +1563,5 @@
   'Cloud sync status': 'État de la synchronisation cloud',
   'Search guides…  (Ctrl+/ for quick actions)': 'Rechercher des guides…  (Ctrl+/ pour les actions rapides)',
   'Beta': 'Bêta',
+  "Cloud sync": "Synchronisation cloud",
 });

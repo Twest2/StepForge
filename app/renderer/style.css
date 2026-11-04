@@ -1765,6 +1765,11 @@ button.cmp-fold:hover { background: var(--border); color: var(--text); }
 .cmp-step.deleted .cmp-step-title { text-decoration: line-through; text-decoration-color: var(--danger); }
 .cmp-step-body { display: flex; flex-direction: column; gap: 10px; padding: 12px; }
 .cmp-step-body[hidden] { display: none; }
+
+.guide-description-help { font-size: 12px; line-height: 1.5; }
+.guide-info-cloud { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.guide-info-cloud h3 { margin: 0 0 10px; }
+.guide-info-cloud > .row { margin-top: 10px; flex-wrap: wrap; }
 .cmp-viewed {
   display: inline-flex; align-items: center; gap: 5px;
   margin-left: 6px; padding: 2px 8px;

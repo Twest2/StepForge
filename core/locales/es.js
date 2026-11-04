@@ -1586,7 +1586,6 @@
   'New page': 'Página nueva',
   'Focused': 'Vista enfocada',
   'Status': 'Estado',
-  'Substep': 'Subpaso',
   '{count} steps selected': { one: '{count} paso seleccionado', other: '{count} pasos seleccionados' },
   'Welcome': 'Inicio',
   '{label} value': 'Valor de {label}',

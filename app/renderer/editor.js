@@ -1502,7 +1502,6 @@ class GuideEditor {
           el('span.num', {}, number || '•'), el('span.t', {}, step.title || t('Untitled step'))),
         threads ? this.stepFoldCount(step, number, threads) : null,
         el('span.flags', {}, [
-          step.parentStepId ? t('Substep') : '',
           step.hidden ? t('Hidden') : '',
           step.skipped ? t('Skipped') : '',
         ].filter(Boolean).join(' · ')),

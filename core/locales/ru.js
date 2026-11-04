@@ -1586,7 +1586,6 @@
   'New page': 'С новой страницы',
   'Focused': 'Приближённый вид',
   'Status': 'Статус',
-  'Substep': 'Подшаг',
   '{count} steps selected': { one: 'Выбран {count} шаг', few: 'Выбрано {count} шага', many: 'Выбрано {count} шагов', other: 'Выбрано {count} шагов' },
   'Welcome': 'Главная',
   '{label} value': 'Значение «{label}»',

@@ -1586,7 +1586,6 @@
   'New page': '另起一页',
   'Focused': '聚焦视图',
   'Status': '状态',
-  'Substep': '子步骤',
   '{count} steps selected': { other: '已选择 {count} 个步骤' },
   'Welcome': '主页',
   '{label} value': '{label}的值',

@@ -1586,7 +1586,6 @@
   'New page': 'Nouvelle page',
   'Focused': 'Vue zoomée',
   'Status': 'État',
-  'Substep': 'Sous-étape',
   '{count} steps selected': { one: '{count} étape sélectionnée', other: '{count} étapes sélectionnées' },
   'Welcome': 'Accueil',
   '{label} value': 'Valeur de {label}',

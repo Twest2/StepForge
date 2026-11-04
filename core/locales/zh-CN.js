@@ -1563,4 +1563,11 @@
   'Cloud sync status': '云同步状态',
   'Search guides…  (Ctrl+/ for quick actions)': '搜索指南…  (Ctrl+/ 打开快速操作)',
   'Beta': '测试版',
+  'Left {x}% · Top {y}% · Width {width}% · Height {height}%': '左侧 {x}% · 顶部 {y}% · 宽度 {width}% · 高度 {height}%',
+  'Font size (% of image height)': '字号（占图像高度的百分比）',
+  'Could not save recent colors.': '无法保存最近使用的颜色。',
+  'Default Colors': '默认颜色',
+  'Recently Used Colors': '最近使用的颜色',
+  'No other recent colors.': '没有其他最近使用的颜色。',
+  'Brand colors already appear above.': '品牌颜色已显示在上方。',
 });

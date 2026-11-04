@@ -95,8 +95,6 @@ const ANNOTATION_FIELDS = {
 };
 // Types whose fill can be Transparent. A tooltip's text sits on its fill, so it keeps one.
 const CLEARABLE_FILL_TYPES = new Set(['rect', 'oval']);
-// Fill colors offered when no brand profile is active.
-const DEFAULT_FILL_PRESETS = ['#FFE066', '#E5484D', '#1F6FEB', '#10B981', '#111827', '#FFFFFF'];
 
 // Display names for annotation types in the "Type" dropdown.
 // What a blur added by Find private details hides (core/redaction.js KINDS).
@@ -1441,7 +1439,10 @@ class GuideEditor {
         el('div.row', {}, el('strong', {}, ANNOTATION_TYPE_LABELS[ann.type] || ann.type),
           // Blurs StepForge added for a private detail say what they hide.
           el('span.muted', {}, ann.redact ? t('Private detail: {kind}', { kind: PRIVATE_DETAIL_LABELS[ann.redact.kind] || t('added by StepForge') }) : ann.text || ann.value || '')),
-        el('div.muted', {}, `${ann.x.toFixed(3)}, ${ann.y.toFixed(3)} · ${ann.w.toFixed(3)} × ${ann.h.toFixed(3)}`)));
+        el('div.muted', {}, t('Left {x}% · Top {y}% · Width {width}% · Height {height}%', {
+          x: window.StepForgeAnnotationProperties.percentage(ann.x), y: window.StepForgeAnnotationProperties.percentage(ann.y),
+          width: window.StepForgeAnnotationProperties.percentage(ann.w), height: window.StepForgeAnnotationProperties.percentage(ann.h),
+        }))));
       }
     }
 
@@ -1457,9 +1458,8 @@ class GuideEditor {
       'rect', 'oval', 'line', 'arrow', 'text', 'tooltip', 'number', 'blur', 'highlight', 'magnify', 'cursor',
     ].map((type) => ({ value: type, label: ANNOTATION_TYPE_LABELS[type] || type })));
     const valueInput = el('input', { type: 'number', value: Number.isFinite(selected.value) ? selected.value : '', placeholder: t('Value') });
-    const strokeInput = el('input', { type: 'color', value: style.stroke || '#E5484D' });
     const strokeWidthInput = el('input', { type: 'number', min: 1, step: 1, value: style.strokeWidth || 3 });
-    const fontSizeInput = el('input', { type: 'number', min: 0.01, step: 0.001, value: style.fontSize || 0.022 });
+    const fontSizeInput = el('input', { type: 'number', min: 0.01, max: 100, step: 0.01, value: window.StepForgeAnnotationProperties.percentage(style.fontSize || 0.022), 'aria-label': t('Font size (% of image height)') });
     const textColorInput = el('input', { type: 'color', value: style.textColor || '#ffffff' });
     const zoomInput = el('input', { type: 'number', min: 1, step: 0.1, value: selected.zoom || 2 });
     const radiusInput = el('input', { type: 'number', min: 1, step: 1, value: selected.radius || 8 });
@@ -1502,7 +1502,12 @@ class GuideEditor {
     const rows = [labeledRow(t('Type'), typeSelect)];
     if (fields.has('text')) rows.push(labeledRow(t('Text'), textInput, { stacked: true }));
     if (fields.has('value')) rows.push(labeledRow(t('Value'), valueInput));
-    if (fields.has('stroke')) rows.push(labeledRow(strokeLabel, strokeInput));
+    if (fields.has('stroke')) rows.push(labeledRow(strokeLabel, this.colorPicker(selected, (stroke, { record = true } = {}) => {
+      const ann = this.canvas.selected();
+      if (!ann) return;
+      if (record) this.pushCanvasHistory('annotation-stroke');
+      apply({ style: { ...ann.style, stroke } });
+    }, { field: 'stroke', label: strokeLabel })));
     if (fields.has('fill')) {
       rows.push(labeledRow(t('Fill'), this.fillPicker(selected, (fill, { record = true } = {}) => {
         const ann = this.canvas.selected();
@@ -1512,7 +1517,7 @@ class GuideEditor {
       })));
     }
     if (fields.has('strokeWidth')) rows.push(labeledRow(t('Stroke width'), strokeWidthInput));
-    if (fields.has('fontSize')) rows.push(labeledRow(t('Font size'), fontSizeInput));
+    if (fields.has('fontSize')) rows.push(labeledRow(t('Font size (% of image height)'), fontSizeInput, { stacked: true }));
     if (fields.has('textColor')) rows.push(labeledRow(t('Text color'), textColorInput));
     if (fields.has('zoom')) rows.push(labeledRow(t('Zoom'), zoomInput));
     if (fields.has('radius')) rows.push(labeledRow(t('Radius'), radiusInput));
@@ -1554,11 +1559,6 @@ class GuideEditor {
       const next = valueInput.value === '' ? null : Number(valueInput.value);
       await apply({ value: Number.isFinite(next) ? next : null });
     });
-    strokeInput.addEventListener('input', async () => {
-      const ann = this.canvas.selected();
-      if (!ann) return;
-      await apply({ style: { ...ann.style, stroke: strokeInput.value } });
-    });
     strokeWidthInput.addEventListener('input', async () => {
       const ann = this.canvas.selected();
       if (!ann) return;
@@ -1567,7 +1567,8 @@ class GuideEditor {
     fontSizeInput.addEventListener('input', async () => {
       const ann = this.canvas.selected();
       if (!ann) return;
-      await apply({ style: { ...ann.style, fontSize: Number(fontSizeInput.value || 0.022) } });
+      const fontSize = window.StepForgeAnnotationProperties.fontSizeFromPercent(fontSizeInput.value);
+      if (fontSize !== null) await apply({ style: { ...ann.style, fontSize } });
     });
     textColorInput.addEventListener('input', async () => {
       const ann = this.canvas.selected();
@@ -1599,17 +1600,34 @@ class GuideEditor {
    * record is false for the live updates while the custom picker is open.
    */
   fillPicker(ann, onPick) {
-    const allowTransparent = CLEARABLE_FILL_TYPES.has(ann.type);
+    return this.colorPicker(ann, onPick, { field: 'fill', label: t('Fill') });
+  }
+
+  rememberAnnotationColor(color) {
+    const helpers = window.StepForgeAnnotationProperties;
+    const next = helpers.recentColor(this.settings?.editor?.recentColors, color);
+    if (!helpers.colors([color]).length) return;
+    this.settings ||= {};
+    this.settings.editor ||= {};
+    this.settings.editor.recentColors = next;
+    // Serialize rapid selections so the last choice also wins on disk.
+    this.colorSave = (this.colorSave || Promise.resolve()).catch(() => {}).then(() => api.settings.set({ keyPath: 'editor.recentColors', value: next })).catch(() => {
+      this.onToast(t('Could not save recent colors.'));
+    });
+  }
+
+  colorPicker(ann, onPick, { field = 'fill', label = t('Fill') } = {}) {
+    const allowTransparent = field === 'fill' && CLEARABLE_FILL_TYPES.has(ann.type);
     const isNone = (fill) => !fill || fill === 'transparent';
     // A tooltip without a fill is drawn #1F2937 (canvas.js, core/raster.js).
-    let current = isNone(ann.style?.fill) ? (allowTransparent ? 'transparent' : '#1F2937') : ann.style.fill;
+    let current = isNone(ann.style?.[field]) ? (allowTransparent ? 'transparent' : field === 'stroke' ? '#E5484D' : '#1F2937') : ann.style[field];
     const name = (fill) => (isNone(fill) ? t('Transparent') : fill.toUpperCase());
     const chip = (fill) => (isNone(fill) ? el('span.fill-chip.none') : el('span.fill-chip', { style: { background: fill } }));
 
     const swatch = el('button.fill-swatch', { type: 'button', 'aria-haspopup': 'menu', 'aria-expanded': 'false' });
     const showCurrent = () => {
       swatch.replaceChildren(chip(current), el('span.fill-name', {}, name(current)));
-      swatch.setAttribute('aria-label', `${t('Fill')}: ${name(current)}`);
+      swatch.setAttribute('aria-label', `${label}: ${name(current)}`);
     };
     showCurrent();
 
@@ -1623,9 +1641,9 @@ class GuideEditor {
       customStarted = true;
     };
     custom.addEventListener('input', pickCustom);
-    custom.addEventListener('change', () => { if (!customStarted) pickCustom(); });
+    custom.addEventListener('change', () => { if (!customStarted) pickCustom(); this.rememberAnnotationColor(current); });
 
-    const popover = el('div.fill-popover', { role: 'menu', 'aria-label': t('Fill'), hidden: true });
+    const popover = el('div.fill-popover', { role: 'menu', 'aria-label': label, hidden: true });
     const wrapper = el('div.fill-picker', {}, swatch, popover, custom);
     const items = () => [...popover.querySelectorAll('[role^="menuitem"]')];
     const onOutside = (event) => {
@@ -1640,8 +1658,9 @@ class GuideEditor {
     };
     const choose = (fill) => {
       close({ focus: true });
+      this.rememberAnnotationColor(fill);
       if (fill.toLowerCase() === current.toLowerCase()) return;
-      if (fill === 'transparent' && !isNone(current)) (this.clearedFills ||= new Map()).set(ann.id, current);
+      if (field === 'fill' && fill === 'transparent' && !isNone(current)) (this.clearedFills ||= new Map()).set(ann.id, current);
       current = fill;
       showCurrent();
       onPick(fill);
@@ -1653,9 +1672,16 @@ class GuideEditor {
         popover.append(el('button.fill-item', { type: 'button', ...entry('transparent'), onClick: () => choose('transparent') },
           chip('transparent'), t('Transparent')), el('hr'));
       }
-      popover.append(el('div.fill-presets', {}, this.fillPresets(ann, current).map((fill) => el('button.fill-preset', {
-        type: 'button', ...entry(fill), title: fill, 'aria-label': fill, style: { background: fill }, onClick: () => choose(fill),
-      }))), el('hr'), el('button.fill-item', {
+      const groups = window.StepForgeAnnotationProperties.colorGroups([current, this.clearedFills?.get(ann.id), ...(this.settings?.editor?.recentColors || [])], this.brandColors);
+      const section = (title, fills, empty) => el('div.fill-color-section', { role: 'group', 'aria-label': title },
+        el('div.fill-section-label', {}, title),
+        fills.length ? el('div.fill-presets', {}, fills.map((fill) => el('button.fill-preset', {
+          type: 'button', ...entry(fill), title: fill, 'aria-label': fill, style: { background: fill }, onClick: () => choose(fill),
+        }))) : el('div.fill-section-empty', {}, empty));
+      popover.append(section(t('Default Colors'), groups.defaults), el('hr'),
+        section(t('Recently Used Colors'), groups.recent, t('No other recent colors.')));
+      if (this.brandColors) popover.append(el('hr'), section(t('Branding'), groups.brand, t('Brand colors already appear above.')));
+      popover.append(el('hr'), el('button.fill-item', {
         type: 'button', role: 'menuitem', tabIndex: -1,
         onClick: () => {
           close({ focus: true });
@@ -1693,20 +1719,6 @@ class GuideEditor {
       }
     });
     return wrapper;
-  }
-
-  /** Fill colors to offer: the current one, then the brand profile's colors or StepForge's. */
-  fillPresets(ann, current) {
-    const colors = [];
-    const add = (fill) => {
-      if (typeof fill === 'string' && /^#[0-9a-f]{6}$/i.test(fill) && !colors.some((c) => c.toLowerCase() === fill.toLowerCase())) {
-        colors.push(fill.toUpperCase());
-      }
-    };
-    add(current);
-    add(this.clearedFills?.get(ann.id));
-    for (const fill of this.brandColors || DEFAULT_FILL_PRESETS) add(fill);
-    return colors.slice(0, 8);
   }
 
   defaultStyleForTool(tool) {
@@ -3597,8 +3609,8 @@ class GuideEditor {
   }
 }
 
-function labeledRow(labelText, control) {
-  return el('div.form-row', {}, el('label', {}, labelText), control);
+function labeledRow(labelText, control, { stacked = false } = {}) {
+  return el('div.form-row', { className: `form-row${stacked ? ' stacked' : ''}` }, el('label', {}, labelText), control);
 }
 
 function makeSelect(value, options) {

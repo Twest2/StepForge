@@ -107,6 +107,14 @@ For each step you can:
   to frame every screenshot the same way (pan 0% is the left or top edge).
 - Start a **New page** at this step in paged formats such as PDF.
 
+Annotation cards show position and size as percentages of the full screenshot.
+Font size is a percentage of screenshot height (for example, 2.2%); changing
+the display does not alter an existing annotation until you edit the value.
+Stroke and Fill use the same compact picker with default colors, recently used
+colors and, when active, branding colors. Recent choices are shared across
+guides and saved on this device. Transparent remains available for rectangle
+and oval fills. **Custom color…** opens the system color picker.
+
 **Guide details:** choose **More → Guide information…** to add an author,
 version and a short description. The description appears at the top of
 exports and accepts Markdown: `**bold**`, `*italic*`, `` `code` ``,

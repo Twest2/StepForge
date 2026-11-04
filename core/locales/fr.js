@@ -1563,4 +1563,11 @@
   'Cloud sync status': 'État de la synchronisation cloud',
   'Search guides…  (Ctrl+/ for quick actions)': 'Rechercher des guides…  (Ctrl+/ pour les actions rapides)',
   'Beta': 'Bêta',
+  'Left {x}% · Top {y}% · Width {width}% · Height {height}%': 'Gauche {x} % · Haut {y} % · Largeur {width} % · Hauteur {height} %',
+  'Font size (% of image height)': 'Taille du texte (% de la hauteur de l’image)',
+  'Could not save recent colors.': 'Impossible d’enregistrer les couleurs récentes.',
+  'Default Colors': 'Couleurs par défaut',
+  'Recently Used Colors': 'Couleurs récentes',
+  'No other recent colors.': 'Aucune autre couleur récente.',
+  'Brand colors already appear above.': 'Les couleurs de la marque figurent déjà ci-dessus.',
 });

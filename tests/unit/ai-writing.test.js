@@ -81,15 +81,15 @@ test('AI text keeps paragraphs and line breaks', () => {
   assert.equal(plainTextToHtml('   '), '');
 });
 
-test('AI screenshots are capped at the long-edge limit', (t) => {
+test('AI screenshots are capped at the long-edge limit', async (t) => {
   const dir = makeTmpDir('ai-image');
   t.after(() => rmrf(dir));
   const file = path.join(dir, 'wide.png');
   fs.writeFileSync(file, encodePng(createImage(AI_SCREENSHOT_MAX_EDGE * 2, 40)));
-  const out = decodePng(renderScreenshotForAi(file, []));
+  const out = decodePng(await renderScreenshotForAi(file, []));
   assert.equal(out.width, AI_SCREENSHOT_MAX_EDGE);
   assert.equal(out.height, 20);
-  assert.equal(renderScreenshotForAi(path.join(dir, 'missing.png')), null);
+  assert.equal(await renderScreenshotForAi(path.join(dir, 'missing.png')), null);
 });
 
 test('writing the guide title and description summarizes its steps and never clobbers a newer edit', async (t) => {

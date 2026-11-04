@@ -17,6 +17,8 @@ function ui() {
     const node = {
       tag, hidden: false, disabled: false, children: [], classes: new Set(classes), dataset: {}, style: {},
       classList: { add() {}, remove() {}, contains: (c) => node.classes.has(c), toggle() {} },
+      get firstChild() { return this.children[0]; },
+      removeChild(child) { this.children = this.children.filter(n => n !== child); },
       get textContent() { return this._text ?? this.children.map((c) => (typeof c === 'object' ? c.textContent : String(c))).join(''); },
       set textContent(value) { this.children = []; this._text = String(value); },
       append(...items) {
@@ -163,4 +165,66 @@ test('the editor opens the publish dialog after Export closes, and the app route
   // The app hands the editor a handler that opens the matching publish dialog.
   const appSrc = fs.readFileSync(path.join(__dirname, '../../app/renderer/app.js'), 'utf8');
   assert.match(appSrc, /onPublish: \(format\) => \(format === 'confluence'\s*\? this\.publishToConfluence\(this\.editor\.guideId, this\.editor\.guide\?\.title\)\s*: this\.publishToWikiJs\(this\.editor\.guideId, this\.editor\.guide\?\.title\)\)/);
+});
+
+
+test('PDF page sizes match the renderer and percentage edits keep ratio storage units', async () => {
+  const pdf = require('../../exporters/pdf');
+  assert.deepEqual(pdf.OPTION_INFO.pageSize.choices.map(choice => choice.value).sort(), Object.keys(pdf.PAGE_SIZES).sort());
+  const u = ui();
+  let payload;
+  const e = openExport(u, {
+    formats: [{ id: 'pdf', label: 'PDF', options: pdf.OPTION_INFO }],
+    onLoadDefaults: async () => pdf.DEFAULT_TEMPLATE,
+    onExport: async p => { payload = p; return false; },
+  });
+  await new Promise(resolve => setImmediate(resolve));
+  const controls = u.all(e.modal);
+  const page = controls.find(n => n.tag === 'select' && n['aria-label'] === 'Page size');
+  assert.ok(page);
+  assert.equal(page.value, 'a4');
+  page.value = 'letter'; page.listeners.change();
+  const height = controls.find(n => n.tag === 'input' && n['aria-label'] === 'Maximum screenshot height (%)');
+  assert.equal(height.value, 55);
+  height.value = '70'; height.listeners.input();
+  const margin = controls.find(n => n.tag === 'input' && n['aria-label'] === 'Page margins (pt)');
+  assert.equal(margin.value, 48);
+  await e.button('Export').listeners.click();
+  assert.equal(payload.options.pageSize, 'letter');
+  assert.equal(payload.options.imageMaxHeightRatio, 0.7);
+  assert.equal(payload.options.margin, undefined);
+});
+
+test('Word widths display centimeters without changing untouched saved templates', async () => {
+  const docx = require('../../exporters/docx');
+  const u = ui(); let payload;
+  const e = openExport(u, {
+    formats: [{ id: 'docx', label: 'DOCX', options: docx.OPTION_INFO }], defaultFormat: 'docx',
+    templatesByFormat: { docx: ['Saved'] }, onLoadDefaults: async () => docx.DEFAULT_TEMPLATE,
+    onLoadTemplate: async () => ({ imageWidthTwips: 8765, includeToc: false }),
+    onExport: async p => { payload = p; return false; },
+  });
+  await new Promise(resolve => setImmediate(resolve));
+  const select = u.all(e.modal).filter(n => n.tag === 'select')[1];
+  select.value = 'Saved'; await select.listeners.change();
+  let width = u.all(e.modal).find(n => n.tag === 'input' && n['aria-label'] === 'Screenshot width (cm)');
+  assert.equal(width.value, Math.round(8765 / (1440 / 2.54) * 1000) / 1000);
+  await e.button('Export').listeners.click();
+  assert.equal(payload.options.imageWidthTwips, 8765);
+  assert.equal(payload.options.includeToc, false);
+  width.value = '12.7'; width.listeners.input();
+  await e.button('Export').listeners.click();
+  assert.equal(payload.options.imageWidthTwips, 7200);
+});
+
+test('invalid numeric export controls prevent preview and export', async () => {
+  const pdf = require('../../exporters/pdf'); const u = ui(); let calls = 0;
+  const e = openExport(u, { formats: [{ id: 'pdf', label: 'PDF', options: pdf.OPTION_INFO }],
+    onLoadDefaults: async () => pdf.DEFAULT_TEMPLATE,
+    onExport: async () => { calls++; return false; }, onPreview: async () => { calls++; } });
+  await new Promise(resolve => setImmediate(resolve));
+  const input = u.all(e.modal).find(n => n.tag === 'input' && n.type === 'number');
+  input.reportValidity = () => false;
+  await e.button('Export').listeners.click(); await e.button('Preview').listeners.click();
+  assert.equal(calls, 0);
 });

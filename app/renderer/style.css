@@ -4,22 +4,32 @@
  */
 
 :root {
+  /* Native form controls, scrollbars and date/number fields follow the theme. */
+  color-scheme: light;
+  accent-color: var(--accent);
   --bg: #f4f6f8;
   --panel: rgba(255, 255, 255, 0.92);
   --panel-solid: #ffffff;
   --panel-2: #eef2f6;
   --text: #18212b;
-  --muted: #657181;
+  --muted: #5f6b7b;
   --border: #d9e1e8;
   --accent: #0068ff;
   --accent-strong: #0054cc;
   --accent-fg: #ffffff;
   --danger: #c52d2d;
+  --danger-strong: #a32424;
+  --danger-fg: #ffffff;
   --warn: #ffe7b7;
-  --ok: #16a34a;
-  --caution: #d97706;
+  --ok: #15803d;
+  --ok-fg: #ffffff;
+  --caution: #b45309;
+  --caution-fg: #ffffff;
   --shadow: 0 14px 40px rgba(15, 23, 42, 0.08);
   --radius: 14px;
+  /* Scrollbar thumb: 3:1 or better against the panels, never bright white. */
+  --scroll-thumb: #7d8998;
+  --scroll-thumb-hover: #5f6b7b;
   /* Compare view (git-style diff colors). */
   --diff-add-bg: #dafbe1;
   --diff-add-strong: #abf2bc;
@@ -32,6 +42,7 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
+    color-scheme: dark;
     --bg: #0f141b;
     --panel: rgba(20, 27, 35, 0.94);
     --panel-solid: #141b23;
@@ -43,10 +54,16 @@
     --accent-strong: #69a1ff;
     --accent-fg: #08101a;
     --danger: #ff6b6b;
+    --danger-strong: #ff8787;
+    --danger-fg: #08101a;
     --warn: #4a3410;
     --ok: #4ade80;
+    --ok-fg: #08101a;
     --caution: #fbbf24;
+    --caution-fg: #08101a;
     --shadow: 0 14px 40px rgba(0, 0, 0, 0.35);
+    --scroll-thumb: #6b7889;
+    --scroll-thumb-hover: #8a96a6;
     --diff-add-bg: rgba(46, 160, 67, 0.15);
     --diff-add-strong: rgba(46, 160, 67, 0.4);
     --diff-add-fg: #7ee787;
@@ -58,6 +75,29 @@
 }
 
 * { box-sizing: border-box; }
+/* One scrollbar style for every scroll area. Scrollable elements use overflow:
+   auto, so a bar appears only when content overflows. Chromium (Electron) uses
+   scrollbar-width/-color and ignores ::-webkit-scrollbar once they are set; the
+   pseudo-element rules below are the fallback for engines without them. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scroll-thumb) transparent;
+}
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--scroll-thumb);
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--scroll-thumb-hover); background-clip: content-box; }
+/* Respect high-contrast system colors and the native scrollbar hit target. */
+@media (forced-colors: active) {
+  * { scrollbar-width: auto; scrollbar-color: auto; }
+  ::-webkit-scrollbar, ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner,
+  ::-webkit-scrollbar-thumb, ::-webkit-scrollbar-thumb:hover { all: revert; }
+}
 html, body { margin: 0; height: 100%; }
 body {
   font: 13px/1.45 "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, sans-serif;
@@ -106,6 +146,15 @@ button.primary {
 }
 button.primary:hover { background: var(--accent-strong); border-color: var(--accent-strong); }
 button.danger { color: var(--danger); }
+/* A dialog's destructive confirm button (primary + danger): filled with the
+   danger color rather than red text on the blue primary fill, which was
+   unreadable. */
+button.primary.danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: var(--danger-fg);
+}
+button.primary.danger:hover { background: var(--danger-strong); border-color: var(--danger-strong); }
 button.icon { padding: 5px 9px; min-width: 34px; }
 button.tool {
   padding: 5px 10px;
@@ -160,12 +209,15 @@ input, select, textarea {
   border-radius: 10px;
   padding: 7px 10px;
 }
-input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--muted) 78%, transparent); }
+input::placeholder, textarea::placeholder { color: var(--muted); }
+/* Focus ring uses the full accent (4.75:1 on white, 5.3:1+ on dark panels), not a tint. */
 input:focus, select:focus, textarea:focus, button:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--accent) 60%, white 40%);
-  outline-offset: 1px;
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 textarea { resize: vertical; }
+/* Browser-default link blue (#0000EE) is unreadable on the dark panels. */
+a, a:visited { color: var(--accent-strong); }
 label { user-select: none; }
 kbd {
   display: inline-flex;
@@ -270,6 +322,9 @@ body.platform-linux #capture-status button {
   color: var(--text);
 }
 .lib-side .nav-item:hover { background: var(--panel-2); }
+.lib-side button.nav-item { width: 100%; border: 0; background: transparent; text-align: left; font: inherit; }
+.lib-side button.nav-item:hover { background: var(--panel-2); }
+.lib-side .nav-item > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lib-side .nav-item.active {
   background: color-mix(in srgb, var(--accent) 12%, var(--panel-solid));
   color: var(--accent-strong);
@@ -323,11 +378,31 @@ body.platform-linux #capture-status button {
   box-shadow: 0 0 0 1px var(--accent), var(--shadow);
 }
 .guide-card.selecting { transform: none; }
+/* Keyboard focus anywhere in a card outlines the card; a mouse click doesn't. */
+.guide-card:has(:focus-visible) { border-color: var(--accent); }
+.guide-card .card-open {
+  width: 100%; border: 0; border-radius: 3px; background: transparent; padding: 0; color: inherit; font: inherit; text-align: left;
+  /* Buttons don't wrap by default; a title wraps to two lines, as it did before it was a button. */
+  white-space: normal; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.guide-card .card-open:hover { background: transparent; text-decoration: underline; }
+.guide-card .card-open:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.guide-card .card-actions {
+  position: absolute; top: 10px; right: 40px; width: 28px; height: 28px; min-width: 0; padding: 0;
+  border: 0; border-radius: 8px; background: transparent; color: var(--muted); font-size: 18px; line-height: 1;
+  opacity: 0; transition: opacity 120ms ease;
+}
+/* Like the star: shown when the card is hovered or the button has keyboard focus. */
+.guide-card:hover .card-actions { opacity: 0.75; }
+.guide-card .card-actions:hover, .guide-card .card-actions:focus-visible, .guide-card .card-actions[aria-expanded="true"] { opacity: 1; background: var(--panel-2); }
+.trash-card .card-actions { position: static; opacity: 1; margin-left: auto; }
+.guide-card input.select-check { appearance: auto; display: block; width: 20px; height: 20px; margin: 0; padding: 0; border: 0; box-shadow: none; background: transparent; accent-color: var(--accent); }
 .guide-card h4 {
   margin: 0 0 6px;
   font-size: 15px;
   line-height: 1.3;
-  padding-right: 26px;
+  padding-right: 56px; /* room for the actions button and the star */
   word-break: break-word;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -363,9 +438,11 @@ body.platform-linux #capture-status button {
   opacity: 0;
   transition: opacity 120ms ease;
 }
-.guide-card:hover .fav, .guide-card .fav:focus-visible { opacity: 0.55; }
+.guide-card:hover .fav { opacity: 0.55; }
+.guide-card .fav:focus-visible { opacity: 1; transition: none; }
 .guide-card .fav:hover { opacity: 1; background: var(--panel-2); }
-.guide-card .fav.on { opacity: 1; color: #f5a524; }
+.guide-card .fav.on { opacity: 1; color: var(--caution); }
+.guide-card .fav:focus-visible { opacity: 1; transition: none; outline: 2px solid var(--accent); }
 .guide-card.selecting .fav:not(.on) { display: none; }
 
 /* Round checkbox on every card while Select is on. */
@@ -412,12 +489,21 @@ body.platform-linux #capture-status button {
   color: var(--muted);
   font-size: 12px;
 }
-.guide-card .card-folder { display: inline-flex; align-items: center; gap: 4px; }
-.guide-card .card-folder::before { content: ""; width: 6px; height: 6px; border-radius: 2px; background: color-mix(in srgb, var(--accent) 55%, var(--border)); }
+/* Metadata shares one line; status badges have a separate, compact line. */
+.guide-card:not(.trash-card) .card-footer { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; white-space: nowrap; min-width: 0; gap: 6px 8px; }
+.guide-card .card-step-count { grid-column: 1; grid-row: 1; }
+.guide-card .card-folder { grid-column: 2; grid-row: 1; }
+.guide-card:not(.trash-card) .card-updated { grid-column: 3; grid-row: 1; }
+.guide-card .card-statuses { grid-column: 1 / -1; display: flex; min-width: 0; gap: 6px; }
+.guide-card .card-statuses .badge { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.guide-card .card-statuses .review-badge { margin-left: 0; }
+/* A long folder name shrinks and ends in an ellipsis; the full name is in the chip's title. */
+.guide-card .card-folder { display: inline-flex; align-items: center; gap: 4px; min-width: 0; flex-shrink: 1; }
+.guide-card .card-folder::before { content: ""; flex-shrink: 0; width: 6px; height: 6px; border-radius: 2px; background: color-mix(in srgb, var(--accent) 55%, var(--border)); }
+.guide-card .card-folder-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .guide-card .card-updated { margin-left: auto; }
 /* Sits just left of the date, so it takes over pushing the pair right. */
 .guide-card .review-badge { margin-left: auto; background: var(--warn); color: var(--text); white-space: nowrap; }
-.guide-card .review-badge + .card-updated { margin-left: 0; }
 .guide-card .card-restore { margin-left: auto; padding: 3px 10px; font-size: 12px; }
 .trash-card { min-height: 110px; }
 .trash-countdown { color: var(--muted); font-size: 12px; margin-top: 4px; }
@@ -470,7 +556,7 @@ body.platform-linux #capture-status button {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--bg) 76%, white 24%), var(--bg));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bg) 76%, var(--panel-solid) 24%), var(--bg));
 }
 .pane-props {
   width: 330px;
@@ -539,6 +625,21 @@ body.platform-linux #capture-status button {
   letter-spacing: 0.04em;
 }
 .step-item.dragging { opacity: 0.45; }
+.step-select, .step-summary { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+/* Two classes, so body.platform-linux button { padding } doesn't win on Linux. */
+.step-item .step-select { border: 0; background: transparent; padding: 2px 0; color: inherit; text-align: left; font: inherit; }
+.step-item .step-select:hover { background: transparent; }
+.step-select:focus-visible, .step-actions:focus-visible, .annotation-select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.step-item .step-actions { flex: none; width: 22px; min-width: 0; height: 22px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font-size: 16px; line-height: 1; opacity: 0; }
+/* Like the library cards' ⋯: shown on hover, keyboard focus, or while its menu is open. */
+.step-item:hover .step-actions, .step-item .step-actions:focus-visible, .step-item .step-actions[aria-expanded="true"] { opacity: 1; }
+/* "Focus screenshot" is a skip link for keyboard users: hidden until Tab reaches it. */
+.annotation-editor .skip-to-canvas:not(:focus-visible) { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.step-item .flags:empty { display: none; }
+.block-card.annotation-select { width: 100%; padding: 10px; background: var(--panel); text-align: left; color: var(--text); font: inherit; }
+.annotation-editor .form-row.stacked > label:first-child { width: auto; }
+.canvas-wrap canvas:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+#btn-home.brand { border: 0; background: transparent; padding: 2px 0; color: var(--text); }
 /* Shows where a dragged step lands; its left edge is the level it will have. */
 .step-drop-line {
   position: absolute;
@@ -552,7 +653,7 @@ body.platform-linux #capture-status button {
   background: repeating-linear-gradient(90deg, var(--danger) 0 6px, transparent 6px 10px);
 }
 .step-item.skipped .t { text-decoration: line-through; opacity: 0.68; }
-.step-item.hiddenstep .t { opacity: 0.5; }
+.step-item.hiddenstep .t { color: var(--muted); }
 .status-dot { width: 8px; height: 8px; border-radius: 999px; flex: none; }
 .status-todo { background: #9aa7b8; }
 .status-in-progress { background: #f0a500; }
@@ -572,6 +673,29 @@ body.platform-linux #capture-status button {
   height: 20px;
   background: var(--border);
   margin: 0 4px;
+}
+/* Icon toolbar: tight spacing so the tools, zoom and undo/redo fit one row at normal widths. */
+.canvas-toolbar { gap: 2px; padding: 8px 10px; }
+.canvas-toolbar .sep { margin: 0 3px; }
+/* Icon tools, undo and redo: 32px square hit targets with an 18px outline icon. */
+.canvas-toolbar button.tool-icon {
+  box-sizing: border-box;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.canvas-toolbar .tool-icon svg { width: 18px; height: 18px; flex: none; pointer-events: none; }
+.canvas-toolbar select.zoom-select {
+  box-sizing: border-box;
+  width: auto;
+  height: 32px;
+  padding: 0 4px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
 }
 .canvas-wrap {
   flex: 1;
@@ -594,6 +718,9 @@ body.platform-linux #capture-status button {
   inset: 0;
   display: grid;
   place-items: center;
+  padding: 16px;
+  text-align: center;
+  overflow-wrap: anywhere;
   color: var(--muted);
   pointer-events: none;
 }
@@ -669,7 +796,7 @@ body.platform-linux #capture-status button {
   border-radius: 12px;
   background: var(--panel-solid);
 }
-.rich-editor:focus { outline: 2px solid color-mix(in srgb, var(--accent) 60%, white 40%); }
+.rich-editor:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
 .rich-editor table,
 .rich-editor th,
 .rich-editor td {
@@ -716,6 +843,7 @@ body.platform-linux #capture-status button {
 .annotation-editor .form-row > label:first-child {
   width: 118px;
 }
+.annotation-editor .form-row.stacked > label:first-child { width: auto; }
 /* Fill: a swatch that opens a short list of fills (editor.js fillPicker). */
 .fill-picker { position: relative; flex: 1; min-width: 0; }
 .fill-swatch {
@@ -748,6 +876,9 @@ body.platform-linux #capture-status button {
   box-shadow: var(--shadow);
 }
 .fill-popover[hidden] { display: none; }
+.fill-popover { max-height: min(360px, 60vh); overflow-y: auto; max-width: calc(100vw - 36px); }
+.fill-section-label { padding: 4px 8px 0; font-size: 12px; font-weight: 600; }
+.fill-section-empty { padding: 5px 8px; font-size: 12px; color: var(--muted); }
 .fill-popover .fill-item {
   display: flex;
   align-items: center;
@@ -994,6 +1125,9 @@ fieldset legend {
   overflow: hidden;
 }
 .modal.wide { width: min(1020px, 96vw); }
+.modal.compact { width: fit-content; min-width: min(320px, 92vw); max-width: min(520px, 92vw); }
+.modal.compact > header, .modal.compact .body { overflow-wrap: anywhere; }
+.modal.compact > footer { flex-wrap: wrap; }
 .modal > header {
   display: flex;
   align-items: center;
@@ -1041,7 +1175,7 @@ fieldset legend {
 }
 .toast.error {
   background: var(--danger);
-  color: #fff;
+  color: var(--danger-fg);
 }
 
 .ctx-menu {
@@ -1053,13 +1187,25 @@ fieldset legend {
   border: 1px solid var(--border);
   border-radius: 14px;
   box-shadow: var(--shadow);
+  max-width: calc(100vw - 12px);
+  max-height: calc(100vh - 12px);
+  overflow-y: auto;
 }
 .ctx-menu .mi {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  white-space: normal;
   padding: 7px 10px;
   border-radius: 9px;
   cursor: pointer;
 }
 .ctx-menu .mi:hover { background: var(--panel-2); }
+.ctx-menu .mi:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; background: var(--panel-2); }
 .ctx-menu .mi.danger { color: var(--danger); }
 .ctx-menu .mi.disabled {
   color: var(--muted);
@@ -1197,7 +1343,7 @@ fieldset legend {
 .blocks-list .block-card textarea,
 .blocks-list .block-card input { width: 100%; }
 .blocks-list .block-card { gap: 6px; }
-.export-options { display: flex; flex-direction: column; padding: 0 4px; max-height: 320px; overflow-y: auto; }
+.export-options { display: flex; flex-direction: column; padding: 0 4px; }
 .export-options .setting-row { padding: 9px 0; }
 .export-options .setting-control { flex: none; max-width: 55%; }
 .export-options .setting-control input[type="number"] { width: 90px; }
@@ -1243,8 +1389,8 @@ fieldset legend {
 .modal > header .modal-title { margin: 0; min-width: 0; font: inherit; color: inherit; }
 .modal > header .close { background: none; border: 0; border-radius: 6px; padding: 2px 6px; font: inherit; line-height: 1; }
 .modal > header .close:hover { color: var(--text); }
-/* Buttons in a dialog show focus even when a script moved it there; a destructive primary button keeps its text readable. */
-.modal button:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Buttons in a dialog show a focus ring for keyboard users; a destructive primary button keeps its text readable. */
+.modal button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .modal > footer button.primary.danger { background: var(--danger); border-color: var(--danger); color: var(--accent-fg); }
 /* Google Drive settings panel. Actions apply immediately, outside the Settings form. */
 .cloud-panel { display: flex; flex-direction: column; gap: 12px; }
@@ -1366,7 +1512,8 @@ fieldset legend {
 
 .cloud-setting { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .cloud-setting > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.cloud-danger { padding: 10px 12px; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--border)); }
+/* Set apart from the rows above so the destructive action isn't read as part of them. */
+.cloud-danger { margin-top: 12px; padding: 12px 14px; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--border)); }
 .cloud-checks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
 .cloud-checks li { display: flex; gap: 8px; align-items: baseline; overflow-wrap: anywhere; }
 .cloud-check-icon { font-weight: 700; color: var(--ok); }
@@ -1412,7 +1559,7 @@ fieldset legend {
 .storage-warning[hidden] { display: none; }
 .gh-warning-icon {
   flex: none; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%;
-  font-weight: 800; font-size: 12px; color: #fff; background: var(--caution);
+  font-weight: 800; font-size: 12px; color: var(--caution-fg); background: var(--caution);
 }
 .gh-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
 .gh-step { display: flex; gap: 12px; align-items: flex-start; }
@@ -1424,7 +1571,7 @@ fieldset legend {
 .gh-step-body .row { margin-top: 4px; flex-wrap: wrap; }
 .gh-step-content { display: flex; flex-direction: column; gap: 6px; }
 .gh-step-content p { margin: 0; }
-.gh-step.done .gh-step-number { background: var(--ok); color: #fff; }
+.gh-step.done .gh-step-number { background: var(--ok); color: var(--ok-fg); }
 .gh-step.upcoming .gh-step-number { background: var(--panel-2); color: var(--muted); }
 .gh-step.upcoming > .gh-step-body > strong { color: var(--muted); }
 .gh-waiting { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 12px; }
@@ -1451,7 +1598,8 @@ fieldset legend {
 .confluence-parent { font-size: 13px; }
 .confluence-results { display: flex; flex-direction: column; gap: 4px; max-height: 180px; overflow: auto; }
 .confluence-result { text-align: left; }
-.cloud-avatar img { width: 22px; height: 22px; object-fit: contain; }
+/* Confluence and Wiki.js show their logo, not a photo; a photo fills the circle. */
+.cloud-avatar.service-logo img { width: 22px; height: 22px; object-fit: contain; }
 /* Wiki.js (wikijs.js) */
 .wikijs-method { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
 .wikijs-method select { width: 100%; max-width: 360px; }
@@ -1498,7 +1646,7 @@ fieldset legend {
   font-size: 12px; font-weight: 800; border: 2px solid var(--border);
 }
 .gh-stage.active .gh-stage-icon { border: none; color: var(--accent); }
-.gh-stage.done .gh-stage-icon { border: none; color: #fff; background: var(--ok); }
+.gh-stage.done .gh-stage-icon { border: none; color: var(--ok-fg); background: var(--ok); }
 .gh-stage-note { margin-left: auto; font-variant-numeric: tabular-nums; }
 .gh-upload { display: flex; flex-direction: column; gap: 6px; }
 .gh-progress { position: relative; height: 8px; border-radius: 999px; overflow: hidden; background: var(--panel-2); }
@@ -1509,7 +1657,7 @@ fieldset legend {
 .gh-published-title { display: flex; align-items: flex-start; gap: 8px; }
 .gh-published-icon {
   flex: none; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%;
-  font-size: 12px; font-weight: 800; color: #fff; background: var(--ok);
+  font-size: 12px; font-weight: 800; color: var(--ok-fg); background: var(--ok);
 }
 .gh-live { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
 .gh-live-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--caution); }
@@ -1524,7 +1672,8 @@ fieldset legend {
 .switch input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }
 .switch-track {
   position: relative; flex: none; width: 34px; height: 20px; border-radius: 999px;
-  background: color-mix(in srgb, var(--muted) 45%, var(--border)); transition: background 140ms ease;
+  /* Off track: 3:1 or better against the panel, so the switch state is visible without colour. */
+  background: color-mix(in srgb, var(--muted) 80%, var(--panel-solid)); transition: background 140ms ease;
 }
 .switch-track::after {
   content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%;
@@ -1550,22 +1699,28 @@ fieldset legend {
 .settings-nav-item:hover { background: color-mix(in srgb, var(--text) 6%, transparent); color: var(--text); }
 .settings-nav-item.active { background: var(--panel-solid); color: var(--text); font-weight: 600; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08); }
 .settings-content { overflow-y: auto; padding: 20px 24px 28px; }
-/* Settings scrolls with the wheel, trackpad, and keyboard without drawing a scroll bar. */
-.settings-nav, .settings-content { scrollbar-width: none; }
-.settings-nav::-webkit-scrollbar, .settings-content::-webkit-scrollbar { display: none; }
 .settings-pane { display: flex; flex-direction: column; gap: 14px; max-width: 760px; }
 .settings-pane[hidden] { display: none; }
 .settings-pane-head h3 { margin: 0 0 4px; font-size: 17px; }
 .settings-pane-head p { margin: 0; }
 
 .settings-card { border: 1px solid var(--border); border-radius: 12px; background: var(--panel-solid); padding: 4px 16px; }
-.settings-card-title { padding: 14px 0 4px; font-size: 13px; font-weight: 650; }
+/* Card heading: a size step above the setting names (sentence case, no capitals), so each
+   card reads as a section and the settings inside it as its items. */
+.settings-card-title {
+  margin: 0;
+  padding: 16px 0 4px;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.3;
+}
 .setting-row[hidden] { display: none; }
 .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 12px 0; }
 .setting-row + .setting-row, .setting-row + div > .setting-row { border-top: 1px solid var(--border); }
 .setting-row[hidden] + .setting-row { border-top: 0; }
 .setting-text { min-width: 0; flex: 1; }
-.setting-title { font-weight: 550; }
+.setting-title { font-weight: 500; color: var(--text); }
 .setting-desc { color: var(--muted); font-size: 12px; margin-top: 2px; }
 .setting-desc.error { color: var(--danger); }
 .setting-control { flex: none; display: flex; justify-content: flex-end; max-width: 55%; }
@@ -1831,7 +1986,7 @@ button.cmp-fold:hover { background: var(--border); color: var(--text); }
 .cmp-code-line { display: grid; grid-template-columns: 40px 40px 18px 1fr; min-width: max-content; }
 .cmp-code-line.del { background: var(--diff-del-bg); }
 .cmp-code-line.add { background: var(--diff-add-bg); }
-.cmp-ln { color: var(--muted); text-align: right; padding-right: 8px; user-select: none; opacity: 0.8; }
+.cmp-ln { color: var(--muted); text-align: right; padding-right: 8px; user-select: none; }
 .cmp-sign { user-select: none; text-align: center; color: var(--muted); }
 .cmp-code-line.del .cmp-sign { color: var(--diff-del-fg); }
 .cmp-code-line.add .cmp-sign { color: var(--diff-add-fg); }
@@ -1883,4 +2038,24 @@ button.cmp-fold:hover { background: var(--border); color: var(--text); }
 @media (max-width: 760px) {
   .cmp-row { grid-template-columns: 1fr; gap: 2px; }
   .cmp-image-pair { grid-template-columns: 1fr; }
+}
+
+.modal.add-step-modal { width: min(480px, 96vw); }
+.add-step-form { display: flex; flex-direction: column; gap: 16px; }
+.add-step-form label { display: flex; flex-direction: column; gap: 6px; }
+.add-step-form input { width: 100%; }
+.add-step-image p { margin: 6px 0 10px; overflow-wrap: anywhere; }
+.add-step-image .row { flex-wrap: wrap; }
+
+/* Export settings share one compact layout while retaining per-format controls. */
+.export-option-group { margin: 16px 0 2px; font-size: 12px; font-weight: 700; color: var(--muted); }
+.export-option-group:first-child { margin-top: 2px; }
+.export-option-group + .setting-row { border-top: 0; }
+.export-options .setting-text { min-width: 0; }
+.export-options .setting-control select { max-width: 100%; }
+.export-number { flex-wrap: nowrap; }
+.export-number > span { white-space: nowrap; }
+@media (max-width: 900px) {
+  .export-options .setting-row { flex-direction: column; align-items: stretch; gap: 6px; }
+  .export-options .setting-control { max-width: 100%; align-self: flex-start; }
 }

@@ -159,7 +159,7 @@ function makeWikiJsSettings(api) {
     say(t('Signed out. Pages you published stay on the wiki.'));
   }) }, t('Sign out'));
   const account = el('div.cloud-account', {},
-    el('div.cloud-avatar', { 'aria-hidden': 'true' }, el('img', { src: WIKIJS_ICON, alt: '' })),
+    el('div.cloud-avatar.service-logo', { 'aria-hidden': 'true' }, el('img', { src: WIKIJS_ICON, alt: '' })),
     el('div.cloud-account-info', {}, who, el('div.cloud-status-line', {}, siteLine)),
     el('div.cloud-account-actions', {}, disconnect));
   // Wiki.js ended a two-step session: a code signs in again.

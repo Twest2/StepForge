@@ -362,7 +362,7 @@ function makeGitHubSettings(api, { onPublishToWeb = null } = {}) {
         catch (err) { say(err.message, 'error'); }
       } }, t('Copy link'));
       const view = el('button', { type: 'button', onClick: open(guide.url) }, t('Open'));
-      const extend = el('button', { type: 'button', onClick: (event) => {
+      const extend = el('button', { type: 'button', 'aria-haspopup': 'menu', 'aria-expanded': 'false', onClick: (event) => {
         if (busy || disposed) return;
         const rect = event.currentTarget.getBoundingClientRect();
         contextMenu(rect.left, rect.bottom + 4, [1, 7, 30].map((days) => ({

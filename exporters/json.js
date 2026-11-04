@@ -16,6 +16,12 @@ const DEFAULT_TEMPLATE = {
   includeAnnotations: true,
 };
 
+const OPTION_INFO = {
+  pretty: { label: 'Readable formatting', hint: 'Indent the file so people can read it. Off makes it smaller.' },
+  includeImages: { label: 'Include screenshots' },
+  includeAnnotations: { label: 'Include annotations' },
+};
+
 function exportJson(ast, outDir, template = {}) {
   const tpl = { ...DEFAULT_TEMPLATE, ...template };
   fs.mkdirSync(outDir, { recursive: true });
@@ -63,4 +69,4 @@ function exportJson(ast, outDir, template = {}) {
   return { file, imageCount: images.size };
 }
 
-module.exports = { exportJson, DEFAULT_TEMPLATE };
+module.exports = { exportJson, DEFAULT_TEMPLATE, OPTION_INFO };

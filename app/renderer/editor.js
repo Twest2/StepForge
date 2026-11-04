@@ -3503,6 +3503,9 @@ class GuideEditor {
 
   onDocumentKeyDown(e) {
     if (!this.active || !this.guide) return;
+    // Keys typed in a dialog are the dialog's: Delete, letters, Ctrl+Z and
+    // the rest must not edit the guide behind it.
+    if (typeof modalIsOpen === 'function' && modalIsOpen()) return;
     // Plain keys in the Fill picker move through it and close it; they must
     // not nudge, deselect or delete the annotation. Ctrl/Cmd shortcuts still work.
     if (!e.ctrlKey && !e.metaKey && e.target?.closest?.('.fill-picker')) return;

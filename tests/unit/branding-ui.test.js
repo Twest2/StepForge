@@ -374,6 +374,9 @@ test('editor: Stop, or closing the editor, cancels the model’s request and dro
   // Write again, then leave with the editor's own Cancel while it's writing.
   e.t.click(e.shown('Write CSS')[0]);
   e.t.click(e.t.buttons(e.t.root, 'Cancel').at(-1));
+  // Cancel protects the current draft; only Discard leaves the editor.
+  assert.equal(e.api.cancelled.length, 1);
+  e.t.click(e.t.buttons(e.t.root, 'Discard').at(-1));
   await settle();
   assert.deepEqual(e.api.cancelled, ['branding-css', 'branding-css']);
   assert.equal(e.closed().value, null);

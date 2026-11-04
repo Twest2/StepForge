@@ -739,12 +739,15 @@ function showBrandProfileEditor(api, data = null) {
       }
     });
 
-    const { close } = openModal({
+    // Edits to the draft (any field, colors, images, CSS) count as unsaved until Save.
+    const isDraftDirty = unsavedChanges(() => draft);
+    const { close, requestDismiss } = openModal({
       title: base ? t('Edit brand profile') : t('New brand profile'),
       body,
       footer: [previewFormat, previewBtn, footerStatus,
-        el('button', { type: 'button', onClick: () => { stopAi(); close(); resolve(null); } }, t('Cancel')), saveBtn],
+        el('button', { type: 'button', onClick: () => requestDismiss() }, t('Cancel')), saveBtn],
       wide: true,
+      isDirty: isDraftDirty,
       onClose: () => { stopAi(); resolve(null); },
     });
     // A profile imported before its images were drawn as PNG gets them now.

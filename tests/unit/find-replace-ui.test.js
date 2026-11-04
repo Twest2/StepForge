@@ -119,6 +119,7 @@ function setupDialog({ find, replace }) {
   const context = { ...rendererI18n(),
     window: {}, setTimeout: () => {}, debounce: (fn) => fn,
     clearNode: (node) => { node.children = []; },
+    unsavedChanges: () => () => false,
     openModal: (options) => { context.modal = options; return { close() { context.closed = true; } }; },
     el(selector, attrs = {}, ...children) {
       const node = {

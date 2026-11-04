@@ -241,13 +241,14 @@ async function promptText({
       ? el('textarea', { rows: 6, placeholder }, value)
       : el('input', { type: 'text', value, placeholder });
 
-    const { close } = openModal({
+    const { close, requestDismiss } = openModal({
       title,
       body: labeledRow(label, field, { stacked: multiline }),
       footer: [
-        el('button', { onClick: () => { close(); resolve(null); } }, t('Cancel')),
+        el('button', { onClick: () => requestDismiss() }, t('Cancel')),
         el('button.primary', { onClick: () => { close(); resolve(field.value); } }, t('OK')),
       ],
+      isDirty: unsavedChanges(() => field.value),
       onClose: () => resolve(null),
     });
 
@@ -1041,89 +1042,94 @@ function showSettingsDialog({
     form.append(el('div.settings-layout', {}, nav, content));
     showSection(navButtons.has(initialSection) ? initialSection : 'general');
 
-    const { close } = openModal({
+    // Everything the form holds, as Save stores it. Also what unsaved-change checks compare.
+    const collect = () => ({
+      appearance: appearance.value,
+      language: language.value,
+      spellcheck: spellcheck.checked,
+      capture: {
+        ...settings.capture,
+        delayMs: Number(delayMs.value || 0),
+        mode: captureMode.value,
+        recordingControls: recordingControls.value,
+        clickMarker: clickMarker.checked,
+        smartCropping: smartCropping.checked,
+        focusAmount: Number(focusAmount.value),
+        fallbackTrigger: fallbackTrigger.value === 'interval' ? 'interval' : 'hotkey',
+        autoIntervalSec: Math.max(1, Number(autoIntervalSec.value || 5)),
+        hotkeyCapture: captureHotkey.value.trim(),
+        hotkeyPauseResume: pauseHotkey.value.trim(),
+        captureOutsideClicks: captureOutside.checked,
+      },
+      editor: {
+        ...settings.editor,
+        focusedViewDefaultForNewSteps: focusedDefault.checked,
+        returnToSelect: returnToSelect.checked,
+        dangerousDeletes: dangerousDeletes.checked,
+      },
+      branding: {
+        ...settings.branding,
+        activeProfileId: brandingPanel.value(),
+      },
+      exports: {
+        ...settings.exports,
+        previewStepCount: Number(previewCount.value || 3),
+        openFolderAfterExport: openFolder.checked,
+        codeTheme: codeTheme.value,
+      },
+      backups: {
+        ...settings.backups,
+        keepLast: Number(keepLast.value || 0),
+      },
+      library: {
+        ...settings.library,
+        trashDays: Number(trashDays.value),
+        reviewAfterDays: Number(reviewDefault.value),
+      },
+      redaction: {
+        ...settings.redaction,
+        onCapture: redactOnCapture.checked,
+        terms: [...new Set(redactTerms.value.split('\n').map((t) => t.trim()).filter(Boolean))].slice(0, 200),
+      },
+      ai: {
+        ...settings.ai,
+        enabled: aiEnabled.checked,
+        autoDoc: aiAutoDoc.checked,
+        attachScreenshots: aiScreenshots.checked,
+        agents: {
+          ...(settings.ai?.agents || {}),
+          enabled: agentsEnabled.checked,
+          screenshots: agentsScreenshots.checked,
+          branding: agentsBranding.checked,
+        },
+        ollama: {
+          ...(settings.ai?.ollama || {}),
+          host: ollamaHost.value.trim(),
+          model: ollamaModel.value.trim(),
+        },
+      },
+      placeholders: rows.reduce((acc, row) => {
+        const key = row.querySelector('.global-placeholder-name').value.trim().replace(/^\[\[(.*?)\]\]$/, '$1').trim();
+        const text = row.querySelector('.global-placeholder-value').value;
+        if (key) acc[key] = typeof row.placeholderValue === 'string' && row.placeholderValue && text === row.placeholderOriginalText
+          ? row.placeholderValue : { format: 'markdown', text };
+        return acc;
+      }, {}),
+    });
+    const savedState = unsavedChanges(collect);
+
+    const { close, requestDismiss } = openModal({
       title: t('Settings'),
       body: form,
       wide: true,
+      isDirty: savedState,
       footer: [
-        el('button', { type: 'button', onClick: () => { accountsPanel.dispose(); close(); resolve(false); } }, t('Cancel')),
+        el('button', { type: 'button', onClick: () => requestDismiss() }, t('Cancel')),
         el('button.primary', {
           type: 'submit',
           onClick: async (e) => {
             e.preventDefault();
-            const next = {
-              appearance: appearance.value,
-              language: language.value,
-              spellcheck: spellcheck.checked,
-              capture: {
-                ...settings.capture,
-                delayMs: Number(delayMs.value || 0),
-                mode: captureMode.value,
-                recordingControls: recordingControls.value,
-                clickMarker: clickMarker.checked,
-                smartCropping: smartCropping.checked,
-                focusAmount: Number(focusAmount.value),
-                fallbackTrigger: fallbackTrigger.value === 'interval' ? 'interval' : 'hotkey',
-                autoIntervalSec: Math.max(1, Number(autoIntervalSec.value || 5)),
-                hotkeyCapture: captureHotkey.value.trim(),
-                hotkeyPauseResume: pauseHotkey.value.trim(),
-                captureOutsideClicks: captureOutside.checked,
-              },
-              editor: {
-                ...settings.editor,
-                focusedViewDefaultForNewSteps: focusedDefault.checked,
-                returnToSelect: returnToSelect.checked,
-                dangerousDeletes: dangerousDeletes.checked,
-              },
-              branding: {
-                ...settings.branding,
-                activeProfileId: brandingPanel.value(),
-              },
-              exports: {
-                ...settings.exports,
-                previewStepCount: Number(previewCount.value || 3),
-                openFolderAfterExport: openFolder.checked,
-                codeTheme: codeTheme.value,
-              },
-              backups: {
-                ...settings.backups,
-                keepLast: Number(keepLast.value || 0),
-              },
-              library: {
-                ...settings.library,
-                trashDays: Number(trashDays.value),
-                reviewAfterDays: Number(reviewDefault.value),
-              },
-              redaction: {
-                ...settings.redaction,
-                onCapture: redactOnCapture.checked,
-                terms: [...new Set(redactTerms.value.split('\n').map((t) => t.trim()).filter(Boolean))].slice(0, 200),
-              },
-              ai: {
-                ...settings.ai,
-                enabled: aiEnabled.checked,
-                autoDoc: aiAutoDoc.checked,
-                attachScreenshots: aiScreenshots.checked,
-                agents: {
-                  ...(settings.ai?.agents || {}),
-                  enabled: agentsEnabled.checked,
-                  screenshots: agentsScreenshots.checked,
-                  branding: agentsBranding.checked,
-                },
-                ollama: {
-                  ...(settings.ai?.ollama || {}),
-                  host: ollamaHost.value.trim(),
-                  model: ollamaModel.value.trim(),
-                },
-              },
-              placeholders: rows.reduce((acc, row) => {
-                const key = row.querySelector('.global-placeholder-name').value.trim().replace(/^\[\[(.*?)\]\]$/, '$1').trim();
-                const text = row.querySelector('.global-placeholder-value').value;
-                if (key) acc[key] = typeof row.placeholderValue === 'string' && row.placeholderValue && text === row.placeholderOriginalText
-                  ? row.placeholderValue : { format: 'markdown', text };
-                return acc;
-              }, {}),
-            };
+            const next = collect();
             if (await onSave(next) === false) return;
             accountsPanel.dispose();
             close();
@@ -1352,7 +1358,9 @@ function showExportDialog({
     refreshFormatDesc();
     templateSelect.addEventListener('change', () => refreshOptions());
     refreshTemplates();
-    refreshOptions();
+    // Once the first options have loaded, what the dialog offers is the baseline for unsaved changes.
+    let optionsBaseline = null;
+    refreshOptions().then(() => { optionsBaseline = payloadKey(); });
 
     const effectiveOptions = () => {
       // only keep values that differ from defaults, so templates stay minimal
@@ -1410,8 +1418,9 @@ function showExportDialog({
       publish: publishing() ? { days: Number(publishDays.value) } : null,
       brandProfileId: branding ? brandChoice.value : undefined,
     });
+    const payloadKey = () => JSON.stringify(payload());
 
-    const cancelBtn = el('button', { onClick: () => { close(); resolve(false); } }, t('Cancel'));
+    const cancelBtn = el('button', { onClick: () => requestDismiss() }, t('Cancel'));
     const previewBtn = el('button', {
       onClick: async () => {
         if (typeof onPreview !== 'function') return;
@@ -1446,11 +1455,12 @@ function showExportDialog({
     }, t('Export'));
     refreshPublish();
 
-    const { close } = openModal({
+    const { close, requestDismiss } = openModal({
       title: t('Export'),
       body,
       footer: [cancelBtn, previewBtn, exportBtn],
       wide: true,
+      isDirty: () => optionsBaseline !== null && payloadKey() !== optionsBaseline,
       onClose: () => resolve(false),
     });
   });
@@ -1648,8 +1658,12 @@ function showPlaceholdersDialog({ title = t('Placeholders'), hint = '', values =
     };
     Object.entries(values || {}).forEach(([k, v]) => addRow(k, v));
     if (!Object.keys(values || {}).length) addRow();
+    const placeholderState = () => rows.map((row) => {
+      const inputs = row.querySelectorAll('input');
+      return [inputs[0].value, inputs[1].value];
+    });
 
-    const { close } = openModal({
+    const { close, requestDismiss } = openModal({
       title,
       body: el('div', {},
         hint ? el('div.muted', { style: { marginBottom: '10px' } }, hint) : null,
@@ -1658,7 +1672,7 @@ function showPlaceholdersDialog({ title = t('Placeholders'), hint = '', values =
           el('button', { type: 'button', onClick: () => addRow() }, t('Add placeholder'))),
       ),
       footer: [
-        el('button', { onClick: () => { close(); resolve(false); } }, t('Cancel')),
+        el('button', { onClick: () => requestDismiss() }, t('Cancel')),
         el('button.primary', {
           onClick: async () => {
             const next = rows.reduce((acc, row) => {
@@ -1673,6 +1687,7 @@ function showPlaceholdersDialog({ title = t('Placeholders'), hint = '', values =
           },
         }, t('Save')),
       ],
+      isDirty: unsavedChanges(placeholderState),
       onClose: () => resolve(false),
     });
   });
@@ -1725,8 +1740,18 @@ function showGuideInfoDialog({ values = {}, reviewDefaultDays, onSave, onCloudSn
       placeholder: t('A short summary of this guide.'),
     }, values.description || '');
     const shareInput = el('input', { type: 'checkbox', checked: values.sharingEnabled !== false });
+    const infoState = () => ({
+      author: authorInput.value,
+      coAuthors: coAuthorsInput.value,
+      organization: organizationInput.value,
+      softwareVersion: versionInput.value,
+      lastVerified: verifiedInput.value,
+      reviewAfterDays: readReviewDays(),
+      description: descriptionInput.value,
+      sharingEnabled: shareInput.checked,
+    });
 
-    const { close } = openModal({
+    const { close, requestDismiss } = openModal({
       title: t('Guide information'),
       body: el('div', {},
         el('div.muted', { style: { marginBottom: '10px' } },
@@ -1751,7 +1776,7 @@ function showGuideInfoDialog({ values = {}, reviewDefaultDays, onSave, onCloudSn
       footer: [
         el('button', { type: 'button', onClick: () => onCloudSnapshots?.() }, t('Cloud snapshots')),
         el('button', { type: 'button', className: 'danger', onClick: () => onDeleteCloudSnapshots?.() }, t('Remove cloud copies')),
-        el('button', { onClick: () => { close(); resolve(false); } }, t('Cancel')),
+        el('button', { onClick: () => requestDismiss() }, t('Cancel')),
         el('button.primary', {
           onClick: async () => {
             await onSave?.({
@@ -1769,6 +1794,7 @@ function showGuideInfoDialog({ values = {}, reviewDefaultDays, onSave, onCloudSn
           },
         }, t('Save')),
       ],
+      isDirty: unsavedChanges(infoState),
       onClose: () => resolve(false),
     });
   });

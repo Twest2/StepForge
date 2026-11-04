@@ -73,6 +73,10 @@ const DEFAULT_SETTINGS = {
     // After drawing one annotation (or cropping), switch back to the Select
     // tool. Off keeps the drawing tool picked until another is chosen.
     returnToSelect: true,
+    // Dangerous deletes: delete steps in the editor without asking first.
+    // Off by default; turned on in Settings → Editor.
+    // Guide, library and other deletes still ask.
+    dangerousDeletes: false,
     autoTitleTemplate: '[[Mode]] capture [[Time]]',
   },
   ai: {
@@ -109,6 +113,9 @@ const DEFAULT_SETTINGS = {
       branding: false,
     },
   },
+  // New screenshots: 'webp' uses lossless WebP when smaller; 'png'
+  // keeps PNG. Guides made before this are never changed by themselves.
+  images: { format: 'webp', lossless: true, webpQuality: 0.95 },
   // Settings → Branding: the brand profile (core/branding.js) every export
   // uses unless the Export dialog picks another; '' for no branding.
   branding: { activeProfileId: '' },
@@ -173,6 +180,11 @@ class Settings {
     // recorded the full screen; say so in the file too.
     if (data.capture && !['fullscreen', 'window'].includes(data.capture.mode)) data.capture.mode = 'fullscreen';
     if (!['floating', 'tray'].includes(data.capture.recordingControls)) data.capture.recordingControls = 'floating';
+    if (!data.images || typeof data.images !== 'object') data.images = deepClone(DEFAULT_SETTINGS.images);
+    if (!['webp', 'png'].includes(data.images.format)) data.images.format = DEFAULT_SETTINGS.images.format;
+    const quality = Number(data.images.webpQuality);
+    data.images.webpQuality = Number.isFinite(quality) ? Math.min(1, Math.max(0.95, quality)) : DEFAULT_SETTINGS.images.webpQuality;
+    data.images.lossless = data.images.lossless !== false;
     const position = data.capture.recordingBarPosition;
     if (!position || !Number.isFinite(position.x) || !Number.isFinite(position.y)) data.capture.recordingBarPosition = null;
     return data;

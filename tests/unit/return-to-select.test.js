@@ -48,10 +48,13 @@ function loadRenderer() {
 function editorWithCanvas(settings) {
   const { AnnotationCanvas, GuideEditor } = loadRenderer();
   const editor = Object.create(GuideEditor.prototype);
+  const button = (extra = {}) => ({ classList: { toggle() {} }, setAttribute() {}, ...extra });
   editor.dom = {
-    'tool-select': { dataset: { tool: 'select' }, classList: { toggle() {} } },
-    'tool-blur': { dataset: { tool: 'blur' }, classList: { toggle() {} } },
+    'tool-select': button({ dataset: { tool: 'select' } }),
+    'tool-blur': button({ dataset: { tool: 'blur' } }),
+    zoomSelect: { value: 'fit', children: [{ value: 'fit', dataset: {} }], append() {} },
   };
+  editor.currentZoom = 'fit';
   editor.setSettings(settings);
   const changes = [];
   editor.canvas = new AnnotationCanvas(fakeCanvasElement(), {

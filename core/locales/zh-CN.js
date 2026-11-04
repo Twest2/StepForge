@@ -1565,6 +1565,7 @@
   'Cloud sync status': '云同步状态',
   'Search guides…  (Ctrl+/ for quick actions)': '搜索指南…  (Ctrl+/ 打开快速操作)',
   'Beta': '测试版',
+  "Cloud sync": "云同步",
   "AI agents are cut off now. To let them back in, turn this on and save.": "AI 代理已立即断开。要重新允许，请打开此选项并保存。",
   "Could not turn off AI agent access: {error}": "无法关闭 AI 代理访问：{error}",
   "Turning off takes effect immediately, even if Settings is canceled. Turning on requires Save.": "关闭会立即生效，即使取消设置也是如此。开启需要保存。",

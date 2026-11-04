@@ -2962,7 +2962,11 @@ class GuideEditor {
   async openGuideInfo() {
     if (!this.guide) return;
     const description = await api.guide.descriptionToMarkdown({ html: this.guide.descriptionHtml || '' });
+    const cloud = await api.cloud.status().catch(() => null);
+    const cloudConnected = Boolean(cloud?.connected && ['google', 'onedrive', 'dropbox', 'webdav'].includes(cloud.provider)
+      && cloud.providers?.[cloud.provider]?.available !== false);
     await dialogs.showGuideInfoDialog({
+      cloudConnected,
       values: {
         ...this.guide.metadata,
         description,
@@ -2995,13 +2999,26 @@ class GuideEditor {
         } catch (err) { this.onToast(err.message); }
       },
       onDeleteCloudSnapshots: async () => {
+        const guideId = this.guideId;
         const ok = await confirmDialog(t('Remove every cloud snapshot for this guide? This also turns off cloud sync for the guide. The local guide is kept.'), { danger: true, okLabel: t('Remove cloud copies') });
         if (!ok) return;
         try {
-          await api.cloud.deleteGuideSnapshots({ guideId: this.guideId });
-          this.guide.cloud = { ...(this.guide.cloud || {}), sharingEnabled: false };
+          await api.cloud.deleteGuideSnapshots({ guideId });
+          if (this.guideId === guideId) this.guide.cloud = { ...(this.guide.cloud || {}), sharingEnabled: false };
           this.onToast(t('Cloud copies removed.'));
-        } catch (err) { this.onToast(err.message); }
+          return true;
+        } catch (err) {
+          // Removal opts out before deleting remote files. A partial failure
+          // must not let the dialog's next Save silently opt the guide back in.
+          const fresh = await api.guide.get({ guideId }).catch(() => null);
+          if (fresh?.guide?.cloud?.sharingEnabled === false) {
+            if (this.guideId === guideId) this.guide.cloud = { ...(this.guide.cloud || {}), sharingEnabled: false };
+            this.onToast(err.message);
+            return { sharingEnabled: false };
+          }
+          this.onToast(err.message);
+          return false;
+        }
       },
     });
   }

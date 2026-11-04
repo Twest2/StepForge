@@ -125,6 +125,10 @@ version and a short description. The description appears at the top of
 exports and accepts Markdown: `**bold**`, `*italic*`, `` `code` ``,
 `[links](https://example.com)`, and lists that start with `-` or `1.`.
 
+The cloud sync section appears only when a compatible sync account is connected.
+Cloud history and removal actions are grouped there; Save and Cancel stay in
+the footer. Removing cloud copies also turns off sync for this guide.
+
 **Working with many steps at once:** choose **Select**, click one step, then
 **Shift-click** another to select everything in between, including substeps.
 A normal click toggles a single step.

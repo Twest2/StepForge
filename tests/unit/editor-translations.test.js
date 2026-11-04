@@ -32,7 +32,7 @@ function fakeEl(spec, props = {}, ...children) {
 function loadEditor(language, extra = {}) {
   const context = {
     ...rendererI18n(language),
-    window: { stepforge: { ai: {} }, StepForgeOutline: require('../../core/step-outline'), StepForgeDialogs: {} },
+    window: { stepforge: { ai: {} }, StepForgeOutline: require('../../core/step-outline'), StepForgeDialogs: {}, StepForgePaneLayout: require('../../core/editor-layout') },
     document: { activeElement: null },
     el: fakeEl,
     clearNode() {},

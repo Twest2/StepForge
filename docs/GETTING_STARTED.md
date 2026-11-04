@@ -92,6 +92,12 @@ The editor has three panes:
   (drag sideways to change it). Or use **Alt+↑ / Alt+↓**, or right-click and
   choose **Move to…**. Use **Make substep of…** to nest a step under another
   one; substeps are numbered 1.1, 1.2, and so on.
+
+  A thin line runs from a step down past its substeps, like a comment
+  thread. Click the line (or right-click the step and choose **Collapse
+  step**) to fold its substeps away; the step then shows **+3**, how many are
+  hidden, and clicking that opens them again. Folding only changes what the
+  Steps pane shows: the substeps stay in the guide and in every export.
 - **Screenshot (middle).** The captured image with its annotations.
 - **Details (right).** The step title, description, status, and extra
   content blocks.

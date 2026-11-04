@@ -180,6 +180,12 @@ function blockLabel(kind) {
   return kind === 'text' ? t('Text block') : kind === 'code' ? t('Code block') : t('Table');
 }
 
+// Steps pane geometry (style.css): each level indents the row 18px, and a
+// thread line runs under the status dot, 14px into the row's padding box.
+const STEP_INDENT = 18;
+const THREAD_X = 14;
+const THREAD_HIT = 12; // clickable width of a thread line
+
 function stepDepth(step, stepMap) {
   let depth = 0;
   let parent = step.parentStepId;
@@ -233,6 +239,8 @@ class GuideEditor {
     this.stepSelectMode = false;
     this.selectedSteps = new Set();
     this.stepSelectionAnchor = null;
+    // Steps whose substeps are folded away in the Steps pane, per guide. View only: never saved or exported.
+    this.collapsedStepsByGuide = new Map();
     this.selectedAnnotationId = null;
     this.currentTool = 'select';
     this.currentZoom = 'fit';
@@ -1365,7 +1373,9 @@ class GuideEditor {
     this.dom.stepCount.textContent = tn(this.steps.length, '{count} step', '{count} steps');
     this.dom.selectStepsBtn.className = this.stepSelectMode ? 'primary' : '';
     this.dom.selectStepsBtn.setAttribute?.('aria-pressed', String(this.stepSelectMode));
-    for (const step of this.steps) {
+    // Threads (see stepThreads) are hidden while selecting, so every step is listed for range selection.
+    const threads = this.stepSelectMode ? null : this.stepThreads();
+    for (const step of threads ? threads.visible : this.steps) {
       const number = numbers.get(step.stepId) || '';
       const depth = stepDepth(step, this.stepMap);
       const selected = current && current.stepId === step.stepId;
@@ -1422,6 +1432,10 @@ class GuideEditor {
             { label: t('Move to…'), action: () => this.moveStepTo(step.stepId) },
             'sep',
             { label: t('Delete step'), danger: true, action: () => this.deleteSelectedStep() },
+            ...(threads?.parents.has(step.stepId) ? ['sep', {
+              label: threads.collapsed.has(step.stepId) ? t('Expand step') : t('Collapse step'),
+              action: () => void this.toggleStepCollapsed(step.stepId),
+            }] : []),
           ], { trigger });
         },
         onKeyDown: e => {
@@ -1464,6 +1478,7 @@ class GuideEditor {
             },
           }, el('span.status-dot', { className: `status-dot status-${step.status}`, 'aria-hidden': 'true' }),
           el('span.num', {}, number || '•'), el('span.t', {}, step.title || t('Untitled step'))),
+        threads ? this.stepFoldCount(step, number, threads) : null,
         el('span.flags', {}, [
           step.parentStepId ? t('Substep') : '',
           step.hidden ? t('Hidden') : '',
@@ -1474,6 +1489,7 @@ class GuideEditor {
           'aria-label': t('Actions for “{title}”', { title: step.title || t('Untitled step') }),
           onClick: e => { e.stopPropagation(); const rect = e.currentTarget.getBoundingClientRect(); void itemProps.onContextMenu({ clientX: rect.left, clientY: rect.bottom, currentTarget: e.currentTarget, preventDefault() {} }); },
         }, '⋯'),
+        ...(threads ? this.stepThreadLines(step, depth, number, threads) : []),
       );
       this.dom.stepsList.append(item);
     }
@@ -1487,6 +1503,116 @@ class GuideEditor {
   focusStepControl(key, { force = false } = {}) {
     if (!key || (!force && document.activeElement?.isConnected && document.activeElement !== document.body)) return;
     [...(this.dom.root?.querySelectorAll?.('[data-step-focus]') || [])].find(button => button.dataset.stepFocus === key && !button.disabled)?.focus();
+  }
+
+  /** The collapsed step ids of the open guide. */
+  collapsedSteps() {
+    if (!this.collapsedStepsByGuide.has(this.guideId)) this.collapsedStepsByGuide.set(this.guideId, new Set());
+    return this.collapsedStepsByGuide.get(this.guideId);
+  }
+
+  /**
+   * What the Steps pane draws, Reddit-thread style: `visible` rows (substeps
+   * of a collapsed step are left out), `parents` (steps that have substeps),
+   * each visible step's `ancestors` from the top level down, and `collapsed`.
+   */
+  stepThreads() {
+    const parentOf = outline.parentMap(this.steps);
+    const parents = new Set([...parentOf.values()].filter(Boolean));
+    const collapsed = this.collapsedSteps();
+    for (const id of [...collapsed]) if (!parents.has(id)) collapsed.delete(id); // its substeps are gone
+    const visible = outline.visibleSteps(this.steps, collapsed);
+    const ancestors = new Map(visible.map((step) => {
+      const chain = [];
+      for (let id = parentOf.get(step.stepId); id && !chain.includes(id); id = parentOf.get(id)) chain.unshift(id);
+      return [step.stepId, chain];
+    }));
+    return { visible, parents, ancestors, collapsed, parentOf };
+  }
+
+  /**
+   * The thread lines on a step row: one segment for each step it is a
+   * substep of, under that step's status dot, and on a step with open
+   * substeps, the start of its own line (a button: Enter or Space folds
+   * it). Clicking any segment of a thread collapses the step it belongs to.
+   */
+  stepThreadLines(step, depth, number, threads) {
+    const lines = [];
+    const chain = threads.ancestors.get(step.stepId);
+    const index = threads.visible.indexOf(step);
+    const nextChain = threads.ancestors.get(threads.visible[index + 1]?.stepId) || [];
+    chain.forEach((ancestorId, level) => {
+      lines.push(el('span.step-thread-line', {
+        className: `step-thread-line${nextChain.includes(ancestorId) ? '' : ' end'}`,
+        dataset: { thread: ancestorId },
+        style: { left: `${THREAD_X - (depth - level) * STEP_INDENT - THREAD_HIT / 2}px` },
+        'aria-hidden': 'true',
+        ...this.threadEvents(ancestorId),
+      }));
+    });
+    if (threads.parents.has(step.stepId) && !threads.collapsed.has(step.stepId)) {
+      const name = `${number} ${step.title || t('Untitled step')}`.trim();
+      lines.push(el('button.step-thread-start', {
+        type: 'button',
+        draggable: false,
+        title: t('Collapse step'),
+        'aria-label': t('Collapse step {step}', { step: name }),
+        'aria-expanded': 'true',
+        dataset: { thread: step.stepId },
+        ...this.threadEvents(step.stepId),
+      }));
+    }
+    return lines;
+  }
+
+  /** On a collapsed step, the "+3" that shows how many substeps are folded away and opens them. */
+  stepFoldCount(step, number, threads) {
+    if (!threads.collapsed.has(step.stepId)) return null;
+    const count = this.getStepDescendantIds(step.stepId).length;
+    return el('button.step-fold-count', {
+      type: 'button',
+      draggable: false,
+      title: tn(count, 'Show {count} substep', 'Show {count} substeps'),
+      'aria-label': t('Expand step {step}', { step: `${number} ${step.title || t('Untitled step')}`.trim() }),
+      'aria-expanded': 'false',
+      dataset: { thread: step.stepId },
+      onMouseDown: (e) => e.stopPropagation(),
+      onClick: (e) => { e.stopPropagation(); void this.toggleStepCollapsed(step.stepId); },
+    }, `+${count}`);
+  }
+
+  /** Clicking a thread folds its step; hovering lights up the whole thread. */
+  threadEvents(stepId) {
+    const light = (on) => {
+      for (const node of this.dom.stepsList.querySelectorAll(`[data-thread="${stepId}"]`)) node.classList.toggle('hot', on);
+    };
+    return {
+      onMouseDown: (e) => e.stopPropagation(), // not the start of a row drag
+      onMouseEnter: () => light(true),
+      onMouseLeave: () => light(false),
+      onClick: (e) => { e.stopPropagation(); void this.toggleStepCollapsed(stepId); },
+    };
+  }
+
+  /**
+   * Fold or unfold a step's substeps. A selected substep that folds away
+   * hands the selection to the step it is under, so the selection stays in view.
+   */
+  async toggleStepCollapsed(stepId) {
+    // A keyboard user on this step's control keeps focus on it; a mouse click or the menu doesn't move focus.
+    const hadFocus = globalThis.document?.activeElement?.dataset?.thread === stepId;
+    const collapsed = this.collapsedSteps();
+    const folding = !collapsed.has(stepId);
+    if (folding) collapsed.add(stepId);
+    else collapsed.delete(stepId);
+    if (folding && this.getStepDescendantIds(stepId).includes(this.selectedStepId)) {
+      await this.selectStep(stepId);
+    }
+    this.renderStepList();
+    if (!hadFocus) return;
+    const control = [...this.dom.stepsList.querySelectorAll('.step-thread-start, .step-fold-count')]
+      .find((node) => node.dataset.thread === stepId);
+    control?.focus();
   }
 
   toggleStepSelectMode() {
@@ -2612,6 +2738,11 @@ class GuideEditor {
 
   async selectStep(stepId) {
     if (!this.stepMap.has(stepId)) return;
+    // Page Down, search or Move to… can reach a substep that is folded away: unfold the steps above it.
+    const collapsed = this.collapsedSteps();
+    for (let parent = this.stepMap.get(stepId).parentStepId, seen = 0; parent && seen < this.steps.length; parent = this.stepMap.get(parent)?.parentStepId, seen++) {
+      collapsed.delete(parent);
+    }
     // Persist any unsaved edits on the outgoing step before switching, so a
     // later guide-wide reload (e.g. applyStyleAcross('guide')) doesn't
     // discard them by re-fetching a stale on-disk copy.
@@ -2910,7 +3041,9 @@ class GuideEditor {
     // Dragging sideways changes the level, one indent per 18px, relative to where the drag began.
     const hint = Math.max(0, drag.depth + Math.round((x - drag.startX) / 18));
     const parentOf = outline.parentMap(this.steps);
-    const moved = outline.moveSubtree(this.steps.map((s) => s.stepId), parentOf, drag.stepId, gap, hint);
+    // Rows are only the visible steps: a gap below a collapsed step lands after its folded substeps.
+    const before = gap < rows.length ? this.steps.findIndex((step) => step.stepId === rows[gap].dataset.stepId) : -1;
+    const moved = outline.moveSubtree(this.steps.map((s) => s.stepId), parentOf, drag.stepId, before >= 0 ? before : this.steps.length, hint);
     return { gap, rows, moved, depth: moved ? outline.depthOf(moved.parentOf, drag.stepId) : hint };
   }
 

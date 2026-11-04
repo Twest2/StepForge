@@ -119,6 +119,31 @@ const ANNOTATION_TYPE_LABELS = {
   cursor: t('Cursor'),
 };
 
+// Canvas toolbar icons: simple outlines drawn for StepForge (no icon font or
+// remote asset). Each uses stroke="currentColor", so it follows the theme and
+// the active state. The tool names are the button's title and aria-label.
+const TOOL_ICON_PATHS = {
+  select: '<path d="M5 3v15l4-3.5 2.5 5.5 2.2-1-2.4-5.3H17z"/>',
+  rect: '<rect x="3.5" y="5.5" width="17" height="13" rx="1.5"/>',
+  oval: '<ellipse cx="12" cy="12" rx="8.5" ry="6"/>',
+  line: '<path d="M4.5 19.5 19.5 4.5"/>',
+  arrow: '<path d="M4.5 19.5 19 5M9 5h10v10"/>',
+  text: '<path d="M5 6V4.5h14V6M12 4.5v15M9 19.5h6"/>',
+  tooltip: '<path d="M4 5h16v11H10l-4 3.5V16H4z"/>',
+  number: '<circle cx="12" cy="12" r="8.5"/><path d="M10.5 9.5 12 8.5v7"/>',
+  blur: '<path d="M4 8q2-2 4 0t4 0 4 0 4 0M4 12q2-2 4 0t4 0 4 0 4 0M4 16q2-2 4 0t4 0 4 0 4 0"/>',
+  highlight: '<path d="M14.5 4.5l5 5L11 18l-5-5zM4 20h7"/>',
+  magnify: '<circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5"/>',
+  cursor: '<path d="M6 4v12l3.2-2.8 2.2 5 2-.9-2.2-4.9h4.6z"/><path d="M17.5 3.5l1 1.5M20.5 8h1.5M3 3l1.5 1.5"/>',
+  crop: '<path d="M6 3v13h13M3 6h13v15"/>',
+  undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
+  redo: '<path d="M15 14l5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/>',
+};
+
+function toolIconSvg(name) {
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${TOOL_ICON_PATHS[name]}</svg>`;
+}
+
 /** White or near-black text, whichever reads better on a badge or tooltip of color `hex`. */
 function readableTextOn(hex) {
   const n = Number.parseInt(String(hex).slice(1), 16);
@@ -171,6 +196,7 @@ function isEditableTarget(target) {
   return target && (
     target.tagName === 'INPUT' ||
     target.tagName === 'TEXTAREA' ||
+    target.tagName === 'SELECT' ||
     target.isContentEditable
   );
 }
@@ -585,15 +611,16 @@ class GuideEditor {
   mountShell() {
     this.shellMounted = true;
     this.root.innerHTML = '';
+    // No Select button: Select is what the editor is in when no other tool
+    // is picked. Clicking the picked tool again, Escape or S goes back to it.
     const toolButtons = [
-      ['select', t('Select')],
       ['rect', t('Rectangle')],
       ['oval', t('Oval')],
       ['line', t('Line')],
       ['arrow', t('Arrow')],
       ['text', t('Text')],
       ['tooltip', t('Tooltip')],
-      ['number', '#', t('Number')],
+      ['number', t('Number')],
       ['blur', t('Blur')],
       ['highlight', t('Highlight')],
       ['magnify', t('Magnify')],
@@ -626,15 +653,17 @@ class GuideEditor {
       ),
       el('section.pane-canvas', {},
         el('div.canvas-toolbar', {},
-          ...toolButtons.map(([tool, label, name]) => this.dom[`tool-${tool}`] = el('button.tool', { type: 'button', dataset: { tool }, ...(name && { title: name, 'aria-label': name }) }, label)),
+          ...toolButtons.map(([tool, name]) => this.dom[`tool-${tool}`] = el('button.tool.tool-icon', { type: 'button', dataset: { tool }, title: name, 'aria-label': name, innerHTML: toolIconSvg(tool) })),
           el('span.sep'),
-          this.dom.zoomFitBtn = el('button.tool', { type: 'button' }, t('Fit')),
-          this.dom.zoom100Btn = el('button.tool', { type: 'button' }, '100%'),
-          this.dom.zoom125Btn = el('button.tool', { type: 'button' }, '125%'),
-          this.dom.zoom150Btn = el('button.tool', { type: 'button' }, '150%'),
+          this.dom.zoomSelect = el('select.zoom-select', { title: t('Zoom'), 'aria-label': t('Zoom') },
+            el('option', { value: 'fit' }, t('Fit')),
+            el('option', { value: '1' }, '100%'),
+            el('option', { value: '1.25' }, '125%'),
+            el('option', { value: '1.5' }, '150%'),
+          ),
           el('span.sep'),
-          this.dom.undoBtn = el('button.tool', { type: 'button' }, t('Undo')),
-          this.dom.redoBtn = el('button.tool', { type: 'button' }, t('Redo')),
+          this.dom.undoBtn = el('button.tool.tool-icon', { type: 'button', title: t('Undo'), 'aria-label': t('Undo'), innerHTML: toolIconSvg('undo') }),
+          this.dom.redoBtn = el('button.tool.tool-icon', { type: 'button', title: t('Redo'), 'aria-label': t('Redo'), innerHTML: toolIconSvg('redo') }),
         ),
         this.dom.canvasWrap = el('div.canvas-wrap', {},
           this.dom.canvas = el('canvas', { width: 1, height: 1 }),
@@ -780,16 +809,16 @@ class GuideEditor {
     this.dom.deleteBtn.addEventListener('click', () => this.deleteSelectedStep());
     this.dom.saveNowBtn.addEventListener('click', () => this.saveAll());
     this.dom.snapshotBtn.addEventListener('click', () => this.createSnapshot());
-    this.dom.zoomFitBtn.addEventListener('click', () => this.setZoom('fit'));
-    this.dom.zoom100Btn.addEventListener('click', () => this.setZoom(1));
-    this.dom.zoom125Btn.addEventListener('click', () => this.setZoom(1.25));
-    this.dom.zoom150Btn.addEventListener('click', () => this.setZoom(1.5));
+    this.dom.zoomSelect.addEventListener('change', () => {
+      const value = this.dom.zoomSelect.value;
+      this.setZoom(value === 'fit' ? 'fit' : Number(value));
+    });
     this.dom.undoBtn.addEventListener('click', () => this.undo());
     this.dom.redoBtn.addEventListener('click', () => this.redo());
 
     Object.entries(this.dom).forEach(([key, value]) => {
       if (key.startsWith('tool-')) {
-        value.addEventListener('click', () => this.setTool(value.dataset.tool));
+        value.addEventListener('click', () => this.setTool(this.currentTool === value.dataset.tool ? 'select' : value.dataset.tool));
       }
     });
 
@@ -1407,6 +1436,7 @@ class GuideEditor {
     const token = ++this.imageLoadToken;
     this.canvas.setTool(this.currentTool);
     this.canvas.setZoom(this.currentZoom);
+    this.syncToolbar();
     if (!step || !step.image) {
       this.canvas.setImage(null, 0, 0);
       this.showCanvasEmpty();
@@ -1759,10 +1789,35 @@ class GuideEditor {
   setTool(tool) {
     this.currentTool = tool;
     this.canvas.setTool(tool);
+    this.syncToolbar();
+  }
+
+  // Mirror currentTool and currentZoom onto their buttons, so the highlighted
+  // button is always the mode the canvas is really in.
+  syncToolbar() {
     for (const [key, node] of Object.entries(this.dom)) {
-      if (!key.startsWith('tool-')) continue;
-      node.classList.toggle('active', node.dataset.tool === tool);
+      if (key.startsWith('tool-')) this.setPressed(node, node.dataset.tool === this.currentTool);
     }
+    this.syncZoomSelect();
+  }
+
+  // Show the current zoom in the select. Ctrl+= and Ctrl+- can reach zooms that
+  // aren't listed (for example 175%), so such a zoom gets one extra option.
+  syncZoomSelect() {
+    const select = this.dom.zoomSelect;
+    const value = this.currentZoom === 'fit' ? 'fit' : String(Number(this.currentZoom));
+    for (const option of [...select.children]) {
+      if (option.dataset.custom) option.remove();
+    }
+    if (![...select.children].some((option) => option.value === value)) {
+      select.append(el('option', { value, dataset: { custom: 'yes' } }, `${Math.round(Number(value) * 100)}%`));
+    }
+    select.value = value;
+  }
+
+  setPressed(btn, pressed) {
+    btn.classList.toggle('active', pressed);
+    btn.setAttribute('aria-pressed', String(pressed));
   }
 
   // A drawing tool goes back to Select after one use unless Settings → Editor
@@ -1776,12 +1831,7 @@ class GuideEditor {
     this.currentZoom = mode;
     this.canvas.setZoom(mode);
     this.canvas.applyZoom();
-    const buttons = [this.dom.zoomFitBtn, this.dom.zoom100Btn, this.dom.zoom125Btn, this.dom.zoom150Btn];
-    buttons.forEach((btn) => btn.classList.remove('active'));
-    if (mode === 'fit') this.dom.zoomFitBtn.classList.add('active');
-    if (mode === 1) this.dom.zoom100Btn.classList.add('active');
-    if (mode === 1.25) this.dom.zoom125Btn.classList.add('active');
-    if (mode === 1.5) this.dom.zoom150Btn.classList.add('active');
+    this.syncToolbar();
   }
 
   applyZoomShortcut(kind) {
@@ -3531,10 +3581,15 @@ class GuideEditor {
       return;
     }
     if (e.key === 'Escape' && !isEditableTarget(e.target)) {
-      // Escape deselects; Delete is the destructive key.
+      // Escape deselects, or puts down a drawing tool; Delete is the destructive key.
       if (this.selectedAnnotationId) {
         e.preventDefault();
         this.canvas.select(null);
+        return;
+      }
+      if (this.currentTool !== 'select') {
+        e.preventDefault();
+        this.setTool('select');
         return;
       }
     }

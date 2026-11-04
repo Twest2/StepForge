@@ -56,16 +56,17 @@ function mountedEditor(language) {
 const TOOLS = ['select', 'rect', 'oval', 'line', 'arrow', 'text', 'tooltip', 'number', 'blur', 'highlight', 'magnify', 'cursor', 'crop'];
 
 test('the annotation toolbar names every tool in the interface language', () => {
+  // The tools are icons; each one's name is its tooltip and its name for screen readers.
+  const names = (editor) => TOOLS.filter((tool) => tool !== 'select').map((tool) => {
+    const { title, 'aria-label': label } = editor.dom[`tool-${tool}`].props;
+    assert.equal(title, label, tool);
+    return title;
+  });
   const zh = mountedEditor('zh-CN');
-  assert.deepEqual(TOOLS.map((tool) => zh.dom[`tool-${tool}`].text),
-    ['选择', '矩形', '椭圆', '直线', '箭头', '文本', '提示框', '#', '模糊', '高亮', '放大镜', '光标', '裁剪']);
-  // "#" is the same everywhere, so its name is in the tooltip and for screen readers.
-  assert.equal(zh.dom['tool-number'].props.title, '编号');
-  assert.equal(zh.dom['tool-number'].props['aria-label'], '编号');
-
-  const en = mountedEditor('en');
-  assert.deepEqual(TOOLS.map((tool) => en.dom[`tool-${tool}`].text),
-    ['Select', 'Rectangle', 'Oval', 'Line', 'Arrow', 'Text', 'Tooltip', '#', 'Blur', 'Highlight', 'Magnify', 'Cursor', 'Crop']);
+  assert.equal(zh.dom['tool-select'], undefined);
+  assert.deepEqual(names(zh), ['矩形', '椭圆', '直线', '箭头', '文本', '提示框', '编号', '模糊', '高亮', '放大镜', '光标', '裁剪']);
+  assert.deepEqual(names(mountedEditor('en')),
+    ['Rectangle', 'Oval', 'Line', 'Arrow', 'Text', 'Tooltip', 'Number', 'Blur', 'Highlight', 'Magnify', 'Cursor', 'Crop']);
 });
 
 test('the step panel’s checkboxes and description toolbar are translated', () => {

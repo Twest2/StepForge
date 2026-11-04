@@ -138,10 +138,12 @@ isn't available while a capture session is running.
 ## 3. Annotate screenshots
 
 Pick a tool from the toolbar above the screenshot and drag on the image.
+Hover over a tool to see its name. When no tool is picked, clicking selects
+annotations so you can move, resize and restyle them; to put a tool down
+without using it, click it again or press **Esc** (or **S**).
 
 | Tool | Key | Good for |
 | --- | --- | --- |
-| Select | `S` | Moving, resizing, and restyling existing annotations |
 | Rectangle / Oval | `R` / `O` | Framing a button or area |
 | Line / Arrow | `L` / `A` | Pointing from one thing to another |
 | Text / Tooltip | `T` / `G` | Labels and callouts |
@@ -152,7 +154,7 @@ Pick a tool from the toolbar above the screenshot and drag on the image.
 | Cursor | `U` | Adding a mouse pointer |
 | Crop | `C` | Trimming the screenshot |
 
-After each annotation or crop, StepForge switches back to **Select**, with the
+After each annotation or crop, StepForge puts the tool down again, with the
 new annotation selected so you can move or resize it straight away. To draw
 several with the same tool without picking it again each time, turn off
 **Settings → Editor → Go back to Select after each use**.

@@ -43,6 +43,7 @@ function makeEditor(language = 'en', api = {}) {
     },
   };
   editor.canvas = { setTool() {}, setZoom() {}, setImage() {}, setAnnotations() {}, setFocusedView() {} };
+  editor.syncToolbar = () => {}; // the toolbar is tested in editor-toolbar.test.js
   editor.currentTool = 'select';
   editor.currentZoom = 'fit';
   editor.imageLoadToken = 0;

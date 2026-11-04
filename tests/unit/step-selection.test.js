@@ -77,7 +77,8 @@ test('rendered rows and checkboxes carry Shift-click and normal mode still opens
   const rows = e.dom.stepsList.children;
   rows[0].props.onClick({ shiftKey: false });
   let stopped = false;
-  rows[2].children[0].props.onClick({ shiftKey: true, stopPropagation() { stopped = true; } });
+  const checkbox = rows[2].children[1].children.find((child) => child?.tag === 'input');
+  checkbox.props.onClick({ shiftKey: true, stopPropagation() { stopped = true; } });
   assert.equal(stopped, true);
   assert.deepEqual(selected(e), ['a', 'b', 'child']);
   rows[4].props.onClick({ shiftKey: true });

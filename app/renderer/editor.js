@@ -1834,7 +1834,6 @@ class GuideEditor {
     const valueInput = el('input', { type: 'number', value: Number.isFinite(selected.value) ? selected.value : '', placeholder: t('Value') });
     const strokeWidthInput = el('input', { type: 'number', min: 1, step: 1, value: style.strokeWidth || 3 });
     const fontSizeInput = el('input', { type: 'number', min: 0.01, max: 100, step: 0.01, value: window.StepForgeAnnotationProperties.percentage(style.fontSize || 0.022), 'aria-label': t('Font size (% of image height)') });
-    const textColorInput = el('input', { type: 'color', value: style.textColor || '#ffffff' });
     const zoomInput = el('input', { type: 'number', min: 1, step: 0.1, value: selected.zoom || 2 });
     const radiusInput = el('input', { type: 'number', min: 1, step: 1, value: selected.radius || 8 });
     const tailInput = makeSelect(style.tail || 'bottom', [
@@ -1892,7 +1891,14 @@ class GuideEditor {
     }
     if (fields.has('strokeWidth')) rows.push(labeledRow(t('Stroke width'), strokeWidthInput));
     if (fields.has('fontSize')) rows.push(labeledRow(t('Font size (% of image height)'), fontSizeInput, { stacked: true }));
-    if (fields.has('textColor')) rows.push(labeledRow(t('Text color'), textColorInput));
+    if (fields.has('textColor')) {
+      rows.push(labeledRow(t('Text color'), this.colorPicker(selected, (textColor, { record = true } = {}) => {
+        const ann = this.canvas.selected();
+        if (!ann) return;
+        if (record) this.pushCanvasHistory('annotation-text-color');
+        apply({ style: { ...ann.style, textColor } });
+      }, { field: 'textColor', label: t('Text color') })));
+    }
     if (fields.has('zoom')) rows.push(labeledRow(t('Zoom'), zoomInput));
     if (fields.has('radius')) rows.push(labeledRow(t('Radius'), radiusInput));
     if (fields.has('tail')) rows.push(labeledRow(t('Tail'), tailInput));
@@ -1944,11 +1950,6 @@ class GuideEditor {
       const fontSize = window.StepForgeAnnotationProperties.fontSizeFromPercent(fontSizeInput.value);
       if (fontSize !== null) await apply({ style: { ...ann.style, fontSize } });
     });
-    textColorInput.addEventListener('input', async () => {
-      const ann = this.canvas.selected();
-      if (!ann) return;
-      await apply({ style: { ...ann.style, textColor: textColorInput.value } });
-    });
     zoomInput.addEventListener('input', async () => {
       const ann = this.canvas.selected();
       if (!ann) return;
@@ -1993,8 +1994,9 @@ class GuideEditor {
   colorPicker(ann, onPick, { field = 'fill', label = t('Fill') } = {}) {
     const allowTransparent = field === 'fill' && CLEARABLE_FILL_TYPES.has(ann.type);
     const isNone = (fill) => !fill || fill === 'transparent';
-    // A tooltip without a fill is drawn #1F2937 (canvas.js, core/raster.js).
-    let current = isNone(ann.style?.[field]) ? (allowTransparent ? 'transparent' : field === 'stroke' ? '#E5484D' : '#1F2937') : ann.style[field];
+    // A tooltip without a fill is drawn #1F2937 and text without a color white (canvas.js, core/raster.js).
+    const fallback = { stroke: '#E5484D', textColor: '#FFFFFF' }[field] || '#1F2937';
+    let current = isNone(ann.style?.[field]) ? (allowTransparent ? 'transparent' : fallback) : ann.style[field];
     const name = (fill) => (isNone(fill) ? t('Transparent') : fill.toUpperCase());
     const chip = (fill) => (isNone(fill) ? el('span.fill-chip.none') : el('span.fill-chip', { style: { background: fill } }));
 

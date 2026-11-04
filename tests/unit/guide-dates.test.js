@@ -11,11 +11,11 @@ const { rendererI18n } = require('./helpers');
 function load() {
   const context = { ...rendererI18n('en'), window: {}, document: { addEventListener() {} } };
   const source = fs.readFileSync(path.join(__dirname, '../../app/renderer/app.js'), 'utf8');
-  const exposed = '\nwindow.formatGuideDate = formatGuideDate;\nwindow.timeAgo = timeAgo;\n';
+  const exposed = '\nwindow.formatGuideDate = formatGuideDate;\nwindow.timeAgo = timeAgo;\nwindow.savedAtTitle = savedAtTitle;\n';
   vm.runInNewContext(source.replace('\nboot();', exposed), context);
   return context.window;
 }
-const { formatGuideDate, timeAgo } = load();
+const { formatGuideDate, timeAgo, savedAtTitle } = load();
 
 // Local-time ISO string, the same shape the library stores (UTC, with Z).
 const local = (y, m, d, h = 12, min = 0) => new Date(y, m - 1, d, h, min).toISOString();
@@ -72,4 +72,9 @@ test('Trash retains relative deletion times and formats older dates consistently
   const old = daysAgo(40);
   assert.equal(timeAgo(old), formatGuideDate(old, 'en'));
   assert.match(timeAgo(old), /^\d{2}-[A-Z][a-z]{2}-\d{4}$/);
+});
+
+test('a card date’s tooltip adds the time it was saved', () => {
+  assert.match(savedAtTitle(local(2026, 11, 1, 14, 5)), /^01-Nov-2026 \S*0?2:05|^01-Nov-2026 14:05/);
+  assert.equal(savedAtTitle(''), '');
 });

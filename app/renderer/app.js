@@ -18,6 +18,13 @@ function formatGuideDate(iso, language = 'en') {
   return `${String(date.getDate()).padStart(2, '0')}-${GUIDE_MONTHS[date.getMonth()]}-${String(date.getFullYear()).padStart(4, '0')}`;
 }
 
+/** A card date's tooltip: the same date with the time it was saved. */
+function savedAtTitle(iso) {
+  const day = formatGuideDate(iso, uiLanguage);
+  if (!day) return '';
+  return `${day} ${new Date(iso).toLocaleTimeString(dateLocale, { hour: '2-digit', minute: '2-digit' })}`;
+}
+
 /** "just now", "5 min ago", "3 hr ago", "yesterday", "4 days ago", else formatGuideDate. */
 function timeAgo(iso) {
   const then = Date.parse(iso);
@@ -887,7 +894,7 @@ class StepForgeApp {
       guide.linkedSource ? el('span.badge', { title: t('Saved to a linked .sfgz file') }, t('Linked')) : null,
       guide.locked ? el('span.badge', { title: t('Open on another device') }, t('Locked')) : null,
       reviewState?.overdue ? el('span.badge.review-badge', { title: reviewBadgeTitle(reviewState) }, t('May need review')) : null,
-      el('span.card-updated', { title: formatGuideDate(guide.updatedAt, uiLanguage) }, formatGuideDate(guide.updatedAt, uiLanguage))));
+      el('span.card-updated', { title: savedAtTitle(guide.updatedAt) }, formatGuideDate(guide.updatedAt, uiLanguage))));
   }
 
   resultCard(result, guide, isStep) {

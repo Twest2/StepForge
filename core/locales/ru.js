@@ -1566,4 +1566,9 @@
   "Cloud sync": "Облачная синхронизация",
   "Block position": "Положение блока",
   "Message type": "Тип сообщения",
+  "Resize steps pane": "Изменить ширину панели шагов",
+  "Resize step details pane": "Изменить ширину панели свойств шага",
+  "Drag to resize. Use Left/Right arrows, Shift for larger changes, or Home/End.": "Перетащите для изменения ширины. Используйте стрелки влево/вправо, Shift для больших изменений или Home/End.",
+  "{count} pixels": {"one":"{count} пиксель","few":"{count} пикселя","many":"{count} пикселей","other":"{count} пикселя"},
+  "Could not save pane widths: {error}": "Не удалось сохранить ширину панелей: {error}",
 });

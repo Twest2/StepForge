@@ -1566,4 +1566,9 @@
   "Cloud sync": "クラウド同期",
   "Block position": "ブロックの位置",
   "Message type": "メッセージの種類",
+  "Resize steps pane": "ステップパネルの幅を変更",
+  "Resize step details pane": "ステップ詳細パネルの幅を変更",
+  "Drag to resize. Use Left/Right arrows, Shift for larger changes, or Home/End.": "ドラッグしてサイズを変更します。左右の矢印キー、Shiftで大きく変更、Home/Endも使えます。",
+  "{count} pixels": {"other":"{count} ピクセル"},
+  "Could not save pane widths: {error}": "パネルの幅を保存できませんでした: {error}",
 });

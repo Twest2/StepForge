@@ -91,6 +91,13 @@ The editor has three panes:
 - **Details (right).** The step title, description, status, and extra
   content blocks.
 
+Drag the thin divider beside either side pane to change its width. You can
+also Tab to a divider and use Left or Right (Shift for larger changes), or
+Home and End for the smallest and largest available width. Escape cancels
+an unfinished drag. Widths are remembered on this device. When the window
+grows, the screenshot area takes the extra space; a smaller window temporarily
+constrains the panes and restores your preferred widths when space returns.
+
 For each step you can:
 
 - **Write a description** with bold, italics, lists, quotes, and links.

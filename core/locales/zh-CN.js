@@ -1566,4 +1566,9 @@
   "Cloud sync": "云同步",
   "Block position": "块位置",
   "Message type": "消息类型",
+  "Resize steps pane": "调整步骤面板宽度",
+  "Resize step details pane": "调整步骤详情面板宽度",
+  "Drag to resize. Use Left/Right arrows, Shift for larger changes, or Home/End.": "拖动以调整大小。可使用左右方向键，按住 Shift 进行较大调整，或使用 Home/End。",
+  "{count} pixels": {"other":"{count} 像素"},
+  "Could not save pane widths: {error}": "无法保存面板宽度：{error}",
 });

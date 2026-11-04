@@ -81,8 +81,8 @@ class AnnotationCanvas {
     if (!this.image) return;
     const wrap = this.canvas.parentElement;
     if (this.zoomMode === 'fit') {
-      const availW = Math.max(100, wrap.clientWidth - 40);
-      const availH = Math.max(100, wrap.clientHeight - 40);
+      const availW = Math.max(1, wrap.clientWidth - 40);
+      const availH = Math.max(1, wrap.clientHeight - 40);
       this.scale = Math.min(availW / this.imgW, availH / this.imgH, 1);
     } else {
       this.scale = Number(this.zoomMode) || 1;

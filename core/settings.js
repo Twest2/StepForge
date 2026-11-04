@@ -4,6 +4,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { isDeepStrictEqual } = require('node:util');
 const { writeJsonSync, readJsonIfExists, deepClone } = require('./util');
+const { normalizeWidths } = require('./editor-layout');
 
 const DEFAULT_SETTINGS = {
   schemaVersion: 1,
@@ -69,6 +70,7 @@ const DEFAULT_SETTINGS = {
     captureTypedText: false,
   },
   editor: {
+    paneWidths: { steps: 320, properties: 330 },
     focusedViewDefaultForNewSteps: true,
     // After drawing one annotation (or cropping), switch back to the Select
     // tool. Off keeps the drawing tool picked until another is chosen.
@@ -168,6 +170,8 @@ class Settings {
   load() {
     const stored = readJsonIfExists(this.file, {});
     const data = mergeDeep(deepClone(DEFAULT_SETTINGS), stored);
+    if (!data.editor || typeof data.editor !== 'object' || Array.isArray(data.editor)) data.editor = deepClone(DEFAULT_SETTINGS.editor);
+    data.editor.paneWidths = normalizeWidths(data.editor.paneWidths);
     if (!data.capture || typeof data.capture !== 'object' || Array.isArray(data.capture)) data.capture = deepClone(DEFAULT_SETTINGS.capture);
     // 'region' (and anything else unknown) was offered once but always
     // recorded the full screen; say so in the file too.

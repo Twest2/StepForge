@@ -14,6 +14,7 @@ const { BUILT_IN_NAMES, cleanPlaceholderName, isValidPlaceholderName } = require
 const { withParent, parentMap, isValidOutline, moveSubtree } = require('./step-outline');
 const { Settings } = require('./settings');
 const { decodePng } = require('./png');
+const { sniffImageFormat, readImageSize } = require('./image-format');
 const { createAgentSnapshot } = require('./snapshots');
 const { forgetScreenshotChecks } = require('./redaction');
 const { createBrandTools, BRAND_INSTRUCTIONS } = require('./agent-brand-tools');
@@ -266,7 +267,7 @@ function createAgentTools({ store, agentSettings, onChange = () => {}, onBrandin
   /** A PNG file on this computer, named by its full path, as screenshot bytes and size. */
   const readScreenshot = (filePath) => {
     if (typeof filePath !== 'string' || !path.isAbsolute(filePath)) {
-      throw new AgentError('image_path must be the full path to a PNG file on this computer.');
+      throw new AgentError('image_path must be the full path to a PNG or WebP file on this computer.');
     }
     let stat, resolved;
     try { resolved = fs.realpathSync(filePath); stat = fs.statSync(resolved); } catch { throw new AgentError(`There's no file at ${filePath}.`); }
@@ -279,11 +280,17 @@ function createAgentTools({ store, agentSettings, onChange = () => {}, onBrandin
     if (!stat.isFile()) throw new AgentError(`${filePath} isn't a file.`);
     if (stat.size > MAX_SCREENSHOT_BYTES) throw new AgentError(`${filePath} is larger than ${MAX_SCREENSHOT_BYTES / 1024 / 1024} MB.`);
     const png = fs.readFileSync(resolved);
+    // WebP is kept as it is; its size comes from the header, so nothing is decoded here.
+    if (sniffImageFormat(png) === 'webp') {
+      const size = readImageSize(png);
+      if (!size) throw new AgentError(`StepForge can't read ${filePath} as a WebP image. Convert it to PNG and try again.`);
+      return { png, size };
+    }
     let image;
     try {
       image = decodePng(png);
     } catch {
-      throw new AgentError(`StepForge can't read ${filePath} as a PNG. Convert it to PNG and try again.`);
+      throw new AgentError(`StepForge can't read ${filePath} as a PNG or WebP image. Convert it to PNG and try again.`);
     }
     return { png, size: { width: image.width, height: image.height } };
   };
@@ -362,7 +369,7 @@ function createAgentTools({ store, agentSettings, onChange = () => {}, onBrandin
         required: ['guide_id', 'step_id'],
         additionalProperties: false,
       },
-      handler({ guide_id: guideId, step_id: stepId, include_screenshot: includeScreenshot = true } = {}) {
+      async handler({ guide_id: guideId, step_id: stepId, include_screenshot: includeScreenshot = true } = {}) {
         requireEnabled();
         const guide = loadGuide(guideId);
         const step = loadStep(guide, stepId);
@@ -371,7 +378,7 @@ function createAgentTools({ store, agentSettings, onChange = () => {}, onBrandin
           if (agentSettings()?.screenshots === false) {
             content.push(text('Screenshots are turned off in StepForge settings, so only the step text is available.'));
           } else {
-            const png = renderScreenshotForAi(
+            const png = await renderScreenshotForAi(
               store.stepImagePath(guideId, stepId, 'working') || store.stepImagePath(guideId, stepId, 'original'),
               step.annotations,
             );

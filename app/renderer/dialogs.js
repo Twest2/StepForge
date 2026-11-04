@@ -241,13 +241,14 @@ async function promptText({
       ? el('textarea', { rows: 6, placeholder }, value)
       : el('input', { type: 'text', value, placeholder });
 
-    const { close } = openModal({
+    const { close, requestDismiss } = openModal({
       title,
       body: labeledRow(label, field, { stacked: multiline }),
       footer: [
-        el('button', { onClick: () => { close(); resolve(null); } }, t('Cancel')),
+        el('button', { onClick: () => requestDismiss() }, t('Cancel')),
         el('button.primary', { onClick: () => { close(); resolve(field.value); } }, t('OK')),
       ],
+      isDirty: unsavedChanges(() => field.value),
       onClose: () => resolve(null),
     });
 
@@ -474,8 +475,8 @@ function showFindReplace({ stepNumbers = {}, find, replace } = {}) {
         el('div', { style: { height: '8px' } }),
         replacement,
         el('div.form-row', { style: { gap: '16px', margin: '8px 0' } },
-          el('label', {}, matchCase, ' Match case'),
-          el('label', {}, wholeWord, ' Whole word'),
+          el('label', {}, matchCase, ' ', t('Match case')),
+          el('label', {}, wholeWord, ' ', t('Whole word')),
           summary),
         list,
         el('div.muted', { style: { marginTop: '8px' } },
@@ -710,6 +711,19 @@ function showSettingsDialog({
       { value: 'dark', label: t('Dark') },
     ]);
     const spellcheck = el('input', { type: 'checkbox', checked: Boolean(settings.spellcheck) });
+    const imageCompression = makeSelect(settings.images?.format === 'png' ? 'off' : settings.images?.lossless === false ? 'lossy' : 'lossless', [
+      { value: 'lossless', label: t('Lossless WebP (recommended)') },
+      { value: 'lossy', label: t('Lossy WebP (smaller files)') },
+      { value: 'off', label: t('No automatic optimization') },
+    ]);
+    imageCompression.setAttribute('aria-label', t('Image compression'));
+    // Wide enough for its longest choice in any language, not the 220px other settings use.
+    Object.assign(imageCompression.style, { width: 'auto', minWidth: '220px' });
+    const imageQuality = makeInput(Math.round((settings.images?.webpQuality ?? 0.95) * 100), 'number', { min: 95, max: 100, step: 1, 'aria-label': t('Lossy quality (%)') });
+    const imageQualityRow = settingRow(t('Lossy quality (%)'), t('Text and small UI details are protected by falling back to lossless when needed.'), imageQuality);
+    const syncImageQuality = () => { imageQualityRow.hidden = imageCompression.value !== 'lossy'; };
+    imageCompression.addEventListener('change', syncImageQuality);
+    syncImageQuality();
     // Each language is listed in its own name, so anyone can find theirs.
     // Translations are new, so every language but English is marked Beta.
     const language = makeSelect(settings.language || 'system', [
@@ -753,6 +767,7 @@ function showSettingsDialog({
     const pauseHotkey = makeHotkeyInput(settings.capture?.hotkeyPauseResume || '');
     const focusedDefault = el('input', { type: 'checkbox', checked: settings.editor?.focusedViewDefaultForNewSteps !== false });
     const returnToSelect = el('input', { type: 'checkbox', checked: settings.editor?.returnToSelect !== false });
+    const dangerousDeletes = el('input', { type: 'checkbox', checked: settings.editor?.dangerousDeletes === true });
     const previewCount = makeInput(settings.exports?.previewStepCount ?? 3, 'number', { min: 1, step: 1 });
     const openFolder = el('input', { type: 'checkbox', checked: Boolean(settings.exports?.openFolderAfterExport) });
     const codeTheme = makeSelect(CODE_THEME_CHOICES.some((t) => t.value === settings.exports?.codeTheme) ? settings.exports.codeTheme : 'atom-one-dark',
@@ -939,6 +954,9 @@ function showSettingsDialog({
           settingRow(t('Delay'), t('Milliseconds to wait before each screenshot.'), delayMs),
           settingRow(t('Click marker'), t('Draw a marker where you clicked.'), makeSwitch(clickMarker, t('Click marker'))),
           settingRow(t('Capture outside clicks'), t('Record clicks in other apps while a capture session is running.'), makeSwitch(captureOutside, t('Capture outside clicks')))),
+        settingsCard(t('Image compression'),
+          settingRow(t('Compression'), t('Applies to new screenshots and imports. Existing guide images are unchanged.'), imageCompression),
+          imageQualityRow),
         settingsCard(t('When clicks can’t be detected'),
           settingRow(t('Capture with'), t('Some desktops don’t report clicks. Choose how steps are captured instead.'), fallbackTrigger),
           (intervalRow.append(settingRow(t('Timer interval'), t('Seconds between timed captures.'), autoIntervalSec)), intervalRow)),
@@ -954,6 +972,9 @@ function showSettingsDialog({
         settingsCard(t('Annotation tools'),
           settingRow(t('Go back to Select after each use'), t('After you draw a blur, shape, arrow or other annotation, or crop, the Select tool is picked again. Turn off to keep using the same tool.'),
             makeSwitch(returnToSelect, t('Go back to Select after each use')))),
+        settingsCard(t('Deleting'),
+          settingRow(t('Dangerous deletes'), t('Delete steps without asking for confirmation.'),
+            makeSwitch(dangerousDeletes, t('Dangerous deletes')))),
         settingsCard(t('Backups'),
           settingRow(t('Snapshots to keep'), t('Older backup snapshots of each guide are removed. 0 keeps all of them.'), keepLast)),
       ] },
@@ -1037,88 +1058,99 @@ function showSettingsDialog({
     form.append(el('div.settings-layout', {}, nav, content));
     showSection(navButtons.has(initialSection) ? initialSection : 'general');
 
-    const { close } = openModal({
+    // Everything the form holds, as Save stores it. Also what unsaved-change checks compare.
+    const collect = () => ({
+      images: {
+        format: imageCompression.value === 'off' ? 'png' : 'webp',
+        lossless: imageCompression.value === 'off' ? settings.images?.lossless !== false : imageCompression.value !== 'lossy',
+        webpQuality: Math.min(100, Math.max(95, Number(imageQuality.value) || 95)) / 100,
+      },
+      appearance: appearance.value,
+      language: language.value,
+      spellcheck: spellcheck.checked,
+      capture: {
+        ...settings.capture,
+        delayMs: Number(delayMs.value || 0),
+        mode: captureMode.value,
+        recordingControls: recordingControls.value,
+        clickMarker: clickMarker.checked,
+        smartCropping: smartCropping.checked,
+        focusAmount: Number(focusAmount.value),
+        fallbackTrigger: fallbackTrigger.value === 'interval' ? 'interval' : 'hotkey',
+        autoIntervalSec: Math.max(1, Number(autoIntervalSec.value || 5)),
+        hotkeyCapture: captureHotkey.value.trim(),
+        hotkeyPauseResume: pauseHotkey.value.trim(),
+        captureOutsideClicks: captureOutside.checked,
+      },
+      editor: {
+        ...settings.editor,
+        focusedViewDefaultForNewSteps: focusedDefault.checked,
+        returnToSelect: returnToSelect.checked,
+        dangerousDeletes: dangerousDeletes.checked,
+      },
+      branding: {
+        ...settings.branding,
+        activeProfileId: brandingPanel.value(),
+      },
+      exports: {
+        ...settings.exports,
+        previewStepCount: Number(previewCount.value || 3),
+        openFolderAfterExport: openFolder.checked,
+        codeTheme: codeTheme.value,
+      },
+      backups: {
+        ...settings.backups,
+        keepLast: Number(keepLast.value || 0),
+      },
+      library: {
+        ...settings.library,
+        trashDays: Number(trashDays.value),
+        reviewAfterDays: Number(reviewDefault.value),
+      },
+      redaction: {
+        ...settings.redaction,
+        onCapture: redactOnCapture.checked,
+        terms: [...new Set(redactTerms.value.split('\n').map((t) => t.trim()).filter(Boolean))].slice(0, 200),
+      },
+      ai: {
+        ...settings.ai,
+        enabled: aiEnabled.checked,
+        autoDoc: aiAutoDoc.checked,
+        attachScreenshots: aiScreenshots.checked,
+        agents: {
+          ...(settings.ai?.agents || {}),
+          enabled: agentsEnabled.checked,
+          screenshots: agentsScreenshots.checked,
+          branding: agentsBranding.checked,
+        },
+        ollama: {
+          ...(settings.ai?.ollama || {}),
+          host: ollamaHost.value.trim(),
+          model: ollamaModel.value.trim(),
+        },
+      },
+      placeholders: rows.reduce((acc, row) => {
+        const key = row.querySelector('.global-placeholder-name').value.trim().replace(/^\[\[(.*?)\]\]$/, '$1').trim();
+        const text = row.querySelector('.global-placeholder-value').value;
+        if (key) acc[key] = typeof row.placeholderValue === 'string' && row.placeholderValue && text === row.placeholderOriginalText
+          ? row.placeholderValue : { format: 'markdown', text };
+        return acc;
+      }, {}),
+    });
+    const savedState = unsavedChanges(collect);
+
+    const { close, requestDismiss } = openModal({
       title: t('Settings'),
       body: form,
       wide: true,
+      isDirty: savedState,
       footer: [
-        el('button', { type: 'button', onClick: () => { accountsPanel.dispose(); close(); resolve(false); } }, t('Cancel')),
+        el('button', { type: 'button', onClick: () => requestDismiss() }, t('Cancel')),
         el('button.primary', {
           type: 'submit',
           onClick: async (e) => {
             e.preventDefault();
-            const next = {
-              appearance: appearance.value,
-              language: language.value,
-              spellcheck: spellcheck.checked,
-              capture: {
-                ...settings.capture,
-                delayMs: Number(delayMs.value || 0),
-                mode: captureMode.value,
-                recordingControls: recordingControls.value,
-                clickMarker: clickMarker.checked,
-                smartCropping: smartCropping.checked,
-                focusAmount: Number(focusAmount.value),
-                fallbackTrigger: fallbackTrigger.value === 'interval' ? 'interval' : 'hotkey',
-                autoIntervalSec: Math.max(1, Number(autoIntervalSec.value || 5)),
-                hotkeyCapture: captureHotkey.value.trim(),
-                hotkeyPauseResume: pauseHotkey.value.trim(),
-                captureOutsideClicks: captureOutside.checked,
-              },
-              editor: {
-                ...settings.editor,
-                focusedViewDefaultForNewSteps: focusedDefault.checked,
-                returnToSelect: returnToSelect.checked,
-              },
-              branding: {
-                ...settings.branding,
-                activeProfileId: brandingPanel.value(),
-              },
-              exports: {
-                ...settings.exports,
-                previewStepCount: Number(previewCount.value || 3),
-                openFolderAfterExport: openFolder.checked,
-                codeTheme: codeTheme.value,
-              },
-              backups: {
-                ...settings.backups,
-                keepLast: Number(keepLast.value || 0),
-              },
-              library: {
-                ...settings.library,
-                trashDays: Number(trashDays.value),
-                reviewAfterDays: Number(reviewDefault.value),
-              },
-              redaction: {
-                ...settings.redaction,
-                onCapture: redactOnCapture.checked,
-                terms: [...new Set(redactTerms.value.split('\n').map((t) => t.trim()).filter(Boolean))].slice(0, 200),
-              },
-              ai: {
-                ...settings.ai,
-                enabled: aiEnabled.checked,
-                autoDoc: aiAutoDoc.checked,
-                attachScreenshots: aiScreenshots.checked,
-                agents: {
-                  ...(settings.ai?.agents || {}),
-                  enabled: agentsEnabled.checked,
-                  screenshots: agentsScreenshots.checked,
-                  branding: agentsBranding.checked,
-                },
-                ollama: {
-                  ...(settings.ai?.ollama || {}),
-                  host: ollamaHost.value.trim(),
-                  model: ollamaModel.value.trim(),
-                },
-              },
-              placeholders: rows.reduce((acc, row) => {
-                const key = row.querySelector('.global-placeholder-name').value.trim().replace(/^\[\[(.*?)\]\]$/, '$1').trim();
-                const text = row.querySelector('.global-placeholder-value').value;
-                if (key) acc[key] = typeof row.placeholderValue === 'string' && row.placeholderValue && text === row.placeholderOriginalText
-                  ? row.placeholderValue : { format: 'markdown', text };
-                return acc;
-              }, {}),
-            };
+            const next = collect();
             if (await onSave(next) === false) return;
             accountsPanel.dispose();
             close();
@@ -1347,7 +1379,9 @@ function showExportDialog({
     refreshFormatDesc();
     templateSelect.addEventListener('change', () => refreshOptions());
     refreshTemplates();
-    refreshOptions();
+    // Once the first options have loaded, what the dialog offers is the baseline for unsaved changes.
+    let optionsBaseline = null;
+    refreshOptions().then(() => { optionsBaseline = payloadKey(); });
 
     const effectiveOptions = () => {
       // only keep values that differ from defaults, so templates stay minimal
@@ -1405,8 +1439,9 @@ function showExportDialog({
       publish: publishing() ? { days: Number(publishDays.value) } : null,
       brandProfileId: branding ? brandChoice.value : undefined,
     });
+    const payloadKey = () => JSON.stringify(payload());
 
-    const cancelBtn = el('button', { onClick: () => { close(); resolve(false); } }, t('Cancel'));
+    const cancelBtn = el('button', { onClick: () => requestDismiss() }, t('Cancel'));
     const previewBtn = el('button', {
       onClick: async () => {
         if (typeof onPreview !== 'function') return;
@@ -1441,11 +1476,12 @@ function showExportDialog({
     }, t('Export'));
     refreshPublish();
 
-    const { close } = openModal({
+    const { close, requestDismiss } = openModal({
       title: t('Export'),
       body,
       footer: [cancelBtn, previewBtn, exportBtn],
       wide: true,
+      isDirty: () => optionsBaseline !== null && payloadKey() !== optionsBaseline,
       onClose: () => resolve(false),
     });
   });
@@ -1557,7 +1593,8 @@ function snapshotLabel(name) {
   if (!match) return name;
   const [, day, h, m, sec, ms, label] = match;
   const when = new Date(`${day}T${h}:${m}:${sec}.${ms}Z`).toLocaleString(dateLocale, { dateStyle: 'medium', timeStyle: 'short' });
-  return label ? `${when} · ${label.replace(/_/g, ' ')}` : when;
+  const text = label?.replace(/_/g, ' ');
+  return label ? `${when} · ${text === 'before optimizing images' ? t('Before optimizing images') : text}` : when;
 }
 
 function showBackupsDialog({ snapshots = [], onCreate, onRestore, onCompare } = {}) {
@@ -1643,8 +1680,12 @@ function showPlaceholdersDialog({ title = t('Placeholders'), hint = '', values =
     };
     Object.entries(values || {}).forEach(([k, v]) => addRow(k, v));
     if (!Object.keys(values || {}).length) addRow();
+    const placeholderState = () => rows.map((row) => {
+      const inputs = row.querySelectorAll('input');
+      return [inputs[0].value, inputs[1].value];
+    });
 
-    const { close } = openModal({
+    const { close, requestDismiss } = openModal({
       title,
       body: el('div', {},
         hint ? el('div.muted', { style: { marginBottom: '10px' } }, hint) : null,
@@ -1653,7 +1694,7 @@ function showPlaceholdersDialog({ title = t('Placeholders'), hint = '', values =
           el('button', { type: 'button', onClick: () => addRow() }, t('Add placeholder'))),
       ),
       footer: [
-        el('button', { onClick: () => { close(); resolve(false); } }, t('Cancel')),
+        el('button', { onClick: () => requestDismiss() }, t('Cancel')),
         el('button.primary', {
           onClick: async () => {
             const next = rows.reduce((acc, row) => {
@@ -1668,6 +1709,7 @@ function showPlaceholdersDialog({ title = t('Placeholders'), hint = '', values =
           },
         }, t('Save')),
       ],
+      isDirty: unsavedChanges(placeholderState),
       onClose: () => resolve(false),
     });
   });
@@ -1720,8 +1762,18 @@ function showGuideInfoDialog({ values = {}, reviewDefaultDays, onSave, onCloudSn
       placeholder: t('A short summary of this guide.'),
     }, values.description || '');
     const shareInput = el('input', { type: 'checkbox', checked: values.sharingEnabled !== false });
+    const infoState = () => ({
+      author: authorInput.value,
+      coAuthors: coAuthorsInput.value,
+      organization: organizationInput.value,
+      softwareVersion: versionInput.value,
+      lastVerified: verifiedInput.value,
+      reviewAfterDays: readReviewDays(),
+      description: descriptionInput.value,
+      sharingEnabled: shareInput.checked,
+    });
 
-    const { close } = openModal({
+    const { close, requestDismiss } = openModal({
       title: t('Guide information'),
       body: el('div', {},
         el('div.muted', { style: { marginBottom: '10px' } },
@@ -1746,7 +1798,7 @@ function showGuideInfoDialog({ values = {}, reviewDefaultDays, onSave, onCloudSn
       footer: [
         el('button', { type: 'button', onClick: () => onCloudSnapshots?.() }, t('Cloud snapshots')),
         el('button', { type: 'button', className: 'danger', onClick: () => onDeleteCloudSnapshots?.() }, t('Remove cloud copies')),
-        el('button', { onClick: () => { close(); resolve(false); } }, t('Cancel')),
+        el('button', { onClick: () => requestDismiss() }, t('Cancel')),
         el('button.primary', {
           onClick: async () => {
             await onSave?.({
@@ -1764,6 +1816,7 @@ function showGuideInfoDialog({ values = {}, reviewDefaultDays, onSave, onCloudSn
           },
         }, t('Save')),
       ],
+      isDirty: unsavedChanges(infoState),
       onClose: () => resolve(false),
     });
   });

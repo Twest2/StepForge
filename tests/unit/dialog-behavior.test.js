@@ -486,6 +486,21 @@ test('menu keys cannot trigger canvas tools, annotation movement or guide saving
   for (const key of ['ArrowDown', 'ArrowLeft', 'Escape', 'Delete', 'r']) editor.onDocumentKeyDown({ key, target, preventDefault() {} });
   editor.onDocumentKeyDown({ key: 's', ctrlKey: true, target, preventDefault() {} });
 });
+
+test('form labels connect to inputs with unique IDs and preserve explicit accessible names', () => {
+  const u = loadUtil(), first = u.el('input'), second = u.el('input', { 'aria-label': 'Exact value' }), label = u.el('label', {}, 'Width');
+  u.labelControl(label, u.el('div', {}, first, second));
+  assert.equal(label.getAttribute('for'), first.id);assert.equal(first.getAttribute('aria-labelledby'), label.id);
+  assert.equal(second.getAttribute('aria-label'), 'Exact value');
+  const otherLabel = u.el('label', {}, 'Height'), other = u.el('input');u.labelControl(otherLabel, other);
+  assert.notEqual(other.id, first.id);assert.notEqual(label.id, otherLabel.id);
+});
+
+test('setting labels include button text and descriptions without losing existing field descriptions', () => {
+  const u = loadUtil(), field = u.el('input', { 'aria-describedby': 'existing-help' }), heading = u.el('div', {}, 'Capture delay'), help = u.el('div', {}, 'Wait before capturing');
+  u.labelControl(heading, field, help);assert.equal(field.getAttribute('aria-labelledby'), heading.id);assert.equal(field.getAttribute('aria-describedby'), `existing-help ${help.id}`);
+  const button = u.el('button', {}, 'Ctrl+Shift+1');u.labelControl(heading, button);assert.equal(button.getAttribute('aria-labelledby'), `${heading.id} ${button.id}`);
+});
 test('a control in a dialog that uses Escape itself keeps it; Escape anywhere else still closes', () => {
   const u = loadUtil();
   let closed = 0;

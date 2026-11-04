@@ -1,6 +1,7 @@
 'use strict';
 
 (() => {
+let settingsDialogCount = 0;
 
 /**
  * Small modal factories used by the renderer. They stay intentionally plain:
@@ -8,8 +9,10 @@
  */
 
 function labeledRow(labelText, control, { stacked = false } = {}) {
+  const label = el('label', {}, labelText);
+  labelControl(label, control);
   return el(stacked ? 'div.form-row.stacked' : 'div.form-row', {},
-    el('label', {}, labelText),
+    label,
     control
   );
 }
@@ -1028,26 +1031,40 @@ function showSettingsDialog({
     ];
     const navButtons = new Map();
     const panes = new Map();
+    const settingsId = ++settingsDialogCount;
     const showSection = (id) => {
       for (const [key, button] of navButtons) {
         button.classList.toggle('active', key === id);
         button.setAttribute('aria-selected', String(key === id));
+        button.tabIndex = key === id ? 0 : -1;
       }
       for (const [key, pane] of panes) pane.hidden = key !== id;
       content.scrollTop = 0;
     };
     const nav = el('nav.settings-nav', { role: 'tablist', 'aria-label': t('Settings sections') });
+    const navMedia = typeof window.matchMedia === 'function' ? window.matchMedia('(max-width: 720px)') : null;
+    const syncNavOrientation = () => nav.setAttribute('aria-orientation', navMedia?.matches ? 'horizontal' : 'vertical');
+    syncNavOrientation(); navMedia?.addEventListener?.('change', syncNavOrientation);
+    const disposeSettings = () => { navMedia?.removeEventListener?.('change', syncNavOrientation); accountsPanel.dispose(); };
     const content = el('div.settings-content');
     for (const item of sections) {
-      const button = el('button.settings-nav-item', { type: 'button', role: 'tab', onClick: () => {
+      const button = el('button.settings-nav-item', { type: 'button', role: 'tab', id: `settings-tab-${settingsId}-${item.id}`, 'aria-controls': `settings-pane-${settingsId}-${item.id}`, onClick: () => {
         // Choosing Accounts always starts from the list of services.
         if (item.id === 'accounts') accountsPanel.show(null);
         showSection(item.id);
+      }, onKeyDown: event => {
+        const horizontal = navMedia?.matches;
+        const move = event.key === (horizontal ? 'ArrowRight' : 'ArrowDown') ? 1 : event.key === (horizontal ? 'ArrowLeft' : 'ArrowUp') ? -1 : 0;
+        if (!move && event.key !== 'Home' && event.key !== 'End') return;
+        event.preventDefault(); event.stopPropagation();
+        const buttons = [...navButtons.values()], at = buttons.indexOf(button);
+        const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : (at + move + buttons.length) % buttons.length;
+        buttons[next].click(); buttons[next].focus();
       } },
         item.label, item.badge ? betaBadge(item.badge) : null);
       navButtons.set(item.id, button);
       nav.append(button);
-      const pane = el('section.settings-pane', { role: 'tabpanel', 'aria-label': item.label },
+      const pane = el('section.settings-pane', { role: 'tabpanel', id: `settings-pane-${settingsId}-${item.id}`, 'aria-labelledby': button.id },
         item.id === 'about' ? null : el('header.settings-pane-head', {},
           el('h3', {}, item.label),
           item.description ? el('p.setting-desc', {}, item.description) : null),
@@ -1152,13 +1169,13 @@ function showSettingsDialog({
             e.preventDefault();
             const next = collect();
             if (await onSave(next) === false) return;
-            accountsPanel.dispose();
+            disposeSettings();
             close();
             resolve(true);
           },
         }, t('Save')),
       ],
-      onClose: () => { accountsPanel.dispose(); resolve(false); },
+      onClose: () => { disposeSettings(); resolve(false); },
     });
 
     form.addEventListener('submit', (e) => e.preventDefault());

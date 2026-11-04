@@ -33,6 +33,7 @@ function makeEditor(language = 'en', api = {}) {
   const editor = Object.create(GuideEditor.prototype);
   const node = { hidden: true, text: OLD_HINT }; // as mountShell() creates it
   editor.dom = {
+    canvas: { tabIndex: -1 }, // the screenshot, focusable once an image is drawn
     canvasEmpty: {
       get textContent() { return node.text; },
       set textContent(value) { node.text = value; },

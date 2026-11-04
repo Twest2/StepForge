@@ -7,7 +7,8 @@ const vm = require('node:vm');
 const { rendererI18n } = require('./helpers');
 
 function editor() {
-  const context = { ...rendererI18n(), window: { StepForgeOutline: require('../../core/step-outline') },
+  const context = { ...rendererI18n(), document: { activeElement: null }, window: { StepForgeOutline: require('../../core/step-outline') },
+    clone: value => JSON.parse(JSON.stringify(value)),
     el: (tag, props, ...children) => ({ tag, props, children }),
     clearNode: (node) => { node.children = []; },
   };
@@ -90,4 +91,24 @@ test('rendered rows and checkboxes carry Shift-click and normal mode still opens
   e.selectStep = (id) => { opened = id; };
   rows[3].props.onClick({ shiftKey: true });
   assert.equal(opened, 'd');
+});
+
+test('focused step/annotation controls and native selects keep plain keys without editing the canvas', () => {
+  const e = editor();let saved = 0;
+  Object.assign(e, { active: true, guide: {}, selectedAnnotationId: 'annotation', saveAll() { saved++; }, setTool() { assert.fail('changed a tool from a focused control'); }, canvas: { nudgeSelected() { assert.fail('nudged an annotation from a focused control'); }, select() { assert.fail('deselected an annotation from a focused control'); }, deleteSelected() { assert.fail('deleted an annotation from a focused control'); } } });
+  for (const className of ['.step-control', '.annotation-select']) {
+    const target = { tagName: 'BUTTON', closest: selector => selector === className ? {} : null };
+    for (const key of ['ArrowLeft', 'ArrowDown', 'Escape', 'Delete', 'r']) e.onDocumentKeyDown({ key, target, preventDefault() {} });
+    e.onDocumentKeyDown({ key: 's', ctrlKey: true, target, preventDefault() {} });
+  }
+  const select = { tagName: 'SELECT', closest: () => null };
+  for (const key of ['ArrowDown', 'r', 'Escape']) e.onDocumentKeyDown({ key, target: select, preventDefault() { assert.fail('intercepted native select keys'); } });
+  assert.equal(saved, 2, 'explicit save remains available from editor controls');
+});
+
+test('keyboard annotation movement records its previous geometry for undo', () => {
+  const e = editor(), ann = { id: 'annotation', x: 0.2 }, step = { stepId: 'a', annotations: [ann] };
+  Object.assign(e, { active: true, guide: {}, selectedStepId: 'a', selectedAnnotationId: ann.id, stepMap: new Map([['a', step]]), canvasHistory: [], canvasFuture: [], saveStepDebounced() {}, canvas: { annotations: [ann], selected: () => ann, nudgeSelected() { ann.x = 0.3;return true; } } });
+  e.onDocumentKeyDown({ key: 'ArrowRight', target: { tagName: 'CANVAS', closest: () => null }, preventDefault() {} });
+  assert.equal(e.canvasHistory.at(-1).step.annotations[0].x, 0.2);assert.equal(step.annotations[0].x, 0.3);
 });

@@ -2,7 +2,8 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { PdfBuilder, FONT_FAMILIES } = require('../core/pdf');
+const { PdfBuilder, FONT_FAMILIES, breakChunks, isWide } = require('../core/pdf');
+const { FallbackFonts, systemFontCandidates } = require('../core/pdf-fonts');
 const { guideSlug, renderAllImages, LEVEL_LABEL, stepContentGroups, codeBlockText } = require('./common');
 const { htmlToText } = require('../core/util');
 const { htmlToBlocks } = require('../core/htmlblocks');
@@ -55,13 +56,16 @@ function layoutCode(block, codeStyle, width) {
   for (const line of lines) {
     const chars = [];
     for (const run of line) {
-      for (const ch of run.text.replace(/\t/g, '    ')) chars.push({ ch, run });
+      // Chinese, Japanese and Korean characters take two columns.
+      for (const ch of run.text.replace(/\t/g, '    ')) chars.push({ ch, run, cols: isWide(ch) ? 2 : 1 });
     }
     let at = 0;
     let indent = 0;
     do {
       const room = Math.max(1, width - indent);
-      let end = Math.min(chars.length, at + room);
+      let end = at;
+      for (let used = 0; end < chars.length && used + chars[end].cols <= room; end++) used += chars[end].cols;
+      if (end === at) end = at + 1;
       if (end < chars.length) {
         for (let i = end - 1; i > at + room / 2; i--) {
           if (chars[i].ch === ' ') { end = i + 1; break; }
@@ -96,7 +100,8 @@ function wrapRuns(pdf, runs, size, maxWidth, fonts) {
     const font = fontForRun(run, fonts);
     for (const part of run.text.split(/(\s+)/)) {
       if (part === '') continue;
-      words.push({ text: part, font, href: run.href });
+      // Chinese, Japanese and Korean may break between any two characters.
+      for (const chunk of /^\s+$/.test(part) ? [part] : breakChunks(part)) words.push({ text: chunk, font, href: run.href });
     }
   }
   const lines = [];
@@ -191,7 +196,19 @@ const OPTION_INFO = {
   imageMaxHeightRatio: { label: 'Maximum screenshot height', group: 'Screenshots', unit: '%', scale: 0.01, min: 1, max: 100, step: 'any', hint: 'Percentage of the page height inside the margins.' },
 };
 
-function exportPdf(ast, outDir, template = {}) {
+/** Text that hints which East Asian fonts a guide needs. */
+function guideText(ast) {
+  return [ast.guide.title, ...(ast.steps || []).flatMap((step) => [
+    step.title, step.descriptionText,
+    ...(step.blocks || []).map((block) => [block.title, block.descriptionText].filter(Boolean).join(' ')),
+  ])].filter(Boolean).join('\n');
+}
+
+/**
+ * `fallbackFonts` draws characters the built-in PDF fonts lack (Chinese,
+ * Russian, ...); by default it finds installed fonts the first time one is needed.
+ */
+function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
   const tpl = withBrand('pdf', DEFAULT_TEMPLATE, ast, template);
   // A brand profile sets the text and link colors, and the closest built-in
   // fonts to its own (Helvetica, Times or Courier).
@@ -206,6 +223,7 @@ function exportPdf(ast, outDir, template = {}) {
     pageHeight: size.height,
     title: ast.guide.title || 'Untitled guide',
     author: ast.guide.metadata?.author || '',
+    fallbackFonts: fallbackFonts || new FallbackFonts(() => systemFontCandidates({ text: guideText(ast) })),
   });
   const M = tpl.margin;
   const usableW = size.width - 2 * M;

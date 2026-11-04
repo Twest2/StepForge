@@ -532,6 +532,7 @@ class StepForgeApp {
       el('button.primary', {
         type: 'button',
         title: t('Capture a screenshot step'),
+        'aria-haspopup': 'menu', 'aria-expanded': 'false',
         onClick: (e) => this.editor.openCaptureMenu(e),
       }, t('Capture ▾')),
       el('button', { type: 'button', onClick: () => this.editor.saveAll() }, t('Save')),
@@ -539,6 +540,7 @@ class StepForgeApp {
       el('button', {
         type: 'button',
         title: t('Share this guide as a file or on the web'),
+        'aria-haspopup': 'menu', 'aria-expanded': 'false',
         onClick: (e) => {
           const rect = e.currentTarget.getBoundingClientRect();
           contextMenu(rect.left, rect.bottom + 4, [
@@ -553,6 +555,7 @@ class StepForgeApp {
         type: 'button',
         className: this.editorMeta?.aiProgress ? 'ai-busy' : '',
         title: this.editorMeta?.aiProgress ? t('AI is writing. Click to stop.') : t('Let AI write this guide'),
+        'aria-haspopup': 'menu', 'aria-expanded': 'false',
         onClick: (e) => {
           const rect = e.currentTarget.getBoundingClientRect();
           contextMenu(rect.left, rect.bottom + 4, this.editor.aiMenuItems());
@@ -575,6 +578,7 @@ class StepForgeApp {
             { label: t('Settings…'), action: () => this.openSettings() },
           ]);
         },
+        'aria-haspopup': 'menu', 'aria-expanded': 'false',
       }, t('More ▾')),
       el('span.muted', { style: { marginLeft: '8px' } }, guide ? `${guide.title} · ${tn(this.editorMeta?.stepCount || 0, '{count} step', '{count} steps')}` : ''),
     );
@@ -625,7 +629,7 @@ class StepForgeApp {
               onClick: () => this.toggleSelectMode(),
             }, t('Select')) : null,
             trash && count && !this.state.selectMode ? el('button.danger', { type: 'button', onClick: () => this.purgeTrashItem() }, t('Empty trash')) : null,
-            trash ? null : el('button', { type: 'button', onClick: (e) => this.openImportMenu(e) }, t('Import ▾')),
+            trash ? null : el('button', { type: 'button', 'aria-haspopup': 'menu', 'aria-expanded': 'false', onClick: (e) => this.openImportMenu(e) }, t('Import ▾')),
             trash ? null : el('button.primary', { type: 'button', onClick: () => this.createGuide() }, t('New guide')),
           ),
         ),
@@ -1020,7 +1024,7 @@ class StepForgeApp {
     const allFavorite = selected.length > 0 && selected.every((g) => g.favorite);
     this.domBulkBar.append(bar(n, guides.length, allSelected, () => (allSelected ? this.clearSelection() : this.selectAllGuides()), [
       el('button', { type: 'button', disabled: !n, onClick: () => this.bulkSetFavorite(!allFavorite) }, allFavorite ? t('Unfavorite') : t('Favorite')),
-      el('button', { type: 'button', disabled: !n, onClick: (e) => this.openBulkMoveMenu(e) }, t('Move to ▾')),
+      el('button', { type: 'button', 'aria-haspopup': 'menu', 'aria-expanded': 'false', disabled: !n, onClick: (e) => this.openBulkMoveMenu(e) }, t('Move to ▾')),
       el('button', { type: 'button', disabled: !n, title: t('Record that these guides still match the software today'), onClick: () => this.markVerified([...this.state.selectedGuides]) }, t('Mark as verified')),
       el('button.danger', { type: 'button', disabled: !n, onClick: () => this.bulkDelete() }, t('Delete')),
     ]));

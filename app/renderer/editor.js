@@ -2658,7 +2658,8 @@ class GuideEditor {
 
   /** Capture menu anchored at a toolbar button. */
   async openCaptureMenu(event) {
-    const rect = event.target.getBoundingClientRect();
+    const trigger = event.currentTarget || event.target;
+    const rect = trigger.getBoundingClientRect();
     const session = (await api.capture.state())?.active;
     const items = [
       { label: t('Capture full screen'), action: () => this.captureStep('fullscreen') },
@@ -2671,7 +2672,7 @@ class GuideEditor {
     if (!session) {
       items.push('sep', { label: t('Start capture session (hotkey)'), action: () => this.startCaptureSession() });
     }
-    contextMenu(rect.left, rect.bottom + 4, items);
+    contextMenu(rect.left, rect.bottom + 4, items, { trigger });
   }
 
   async pasteClipboardStep() {
@@ -3479,6 +3480,7 @@ class GuideEditor {
   }
 
   onDocumentKeyDown(e) {
+    if (e.target?.closest?.('.ctx-menu')) return;
     if (!this.active || !this.guide) return;
     // Plain keys in the Fill picker move through it and close it; they must
     // not nudge, deselect or delete the annotation. Ctrl/Cmd shortcuts still work.

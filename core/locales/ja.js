@@ -1563,4 +1563,5 @@
   'Cloud sync status': 'クラウド同期の状態',
   'Search guides…  (Ctrl+/ for quick actions)': 'ガイドを検索…  (Ctrl+/ でクイックアクション)',
   'Beta': 'ベータ',
+  'Actions': '操作',
 });

@@ -115,10 +115,17 @@ function toast(message, { error = false, ms = 2600 } = {}) {
   const root = document.getElementById('toast-root');
   const node = el('div.toast', { className: `toast${error ? ' error' : ''}` }, message);
   root.append(node);
+  const announcer = document.getElementById(error ? 'toast-alert' : 'toast-status');
+  if (announcer) {
+    announcer.textContent = '';
+    setTimeout(() => { announcer.textContent = String(message); }, 20);
+  }
   setTimeout(() => node.remove(), ms);
 }
 
 const modalStack = [];
+let activeContextMenu = null;
+let contextMenuCount = 0;
 // Close function of the "Discard your changes?" prompt while it is open, so
 // Escape or × can't stack a second one.
 let discardPrompt = null;
@@ -168,6 +175,8 @@ function trapTab(e, dialogNode) {
 function onModalKeyDown(e) {
   const top = modalStack.at(-1);
   if (!top) return;
+  // Menus owned by this dialog handle their own Escape and Tab first.
+  if (activeContextMenu?.owner === top && activeContextMenu.root.contains(e.target)) return;
   if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); top.requestDismiss(); return; }
   if (e.key === 'Tab') { trapTab(e, top.node); return; }
   if (!top.node.contains?.(e.target)) { e.preventDefault(); e.stopPropagation(); }
@@ -219,6 +228,7 @@ function unsavedChanges(read) {
  * to focus on open (default: the first field, else the primary button).
  */
 function openModal({ title, body, footer, wide = false, onClose, isDirty = null, initialFocus = null }) {
+  activeContextMenu?.close();
   const root = document.getElementById('modal-root');
   const parent = modalStack.at(-1);
   const previousFocus = document.activeElement;
@@ -232,6 +242,7 @@ function openModal({ title, body, footer, wide = false, onClose, isDirty = null,
   const close = () => {
     if (closed) return;
     closed = true;
+    if (activeContextMenu?.owner === entry) activeContextMenu.close({ restoreFocus: false });
     const index = modalStack.indexOf(entry);
     // Closing a parent also resolves any child dialogs still open above it.
     for (const child of modalStack.slice(index + 1).reverse()) child.dismiss();
@@ -394,62 +405,118 @@ function promptDialog(title, { value = '', label = t('Name') } = {}) {
  * `submenu` is an array (or a function returning one) of the same item
  * shapes, shown in a scrollable panel beside the item on hover.
  */
-function contextMenu(x, y, items) {
-  document.querySelectorAll('.ctx-menu').forEach((n) => n.remove());
-  const menu = el('div.ctx-menu', { style: { left: `${x}px`, top: `${y}px` } });
-  let openSubmenu = null;
-  const closeSubmenu = () => {
-    if (openSubmenu) { openSubmenu.remove(); openSubmenu = null; }
+function contextMenu(x, y, items, { trigger = document.activeElement, label = '' } = {}) {
+  activeContextMenu?.close({ restoreFocus: false });
+  const owner = modalStack.at(-1);
+  const panels = [];
+  const menuId = `context-menu-${++contextMenuCount}`;
+  const menuName = label || trigger?.getAttribute?.('aria-label') || trigger?.textContent?.trim() || t('Actions');
+  let closed = false;
+  const isButton = tagOf(trigger || {}) === 'button';
+  const removeAfter = (index) => {
+    while (panels.length > index + 1) {
+      const panel = panels.pop();
+      panel.parentButton?.setAttribute('aria-expanded', 'false');
+      panel.parentButton?.removeAttribute?.('aria-controls');
+      panel.node.remove();
+    }
   };
-  const closeAll = () => { closeSubmenu(); menu.remove(); };
-  for (const item of items) {
-    if (item === 'sep') { menu.append(el('hr', { onMouseEnter: closeSubmenu })); continue; }
-    if (item.submenu) {
-      const mi = el('div.mi.has-submenu', {
-        onMouseEnter: () => {
-          closeSubmenu();
-          const subItems = typeof item.submenu === 'function' ? item.submenu() : item.submenu;
-          const sub = el('div.ctx-menu.ctx-submenu');
-          if (!subItems.length) {
-            sub.append(el('div.mi.disabled', {}, t('Nothing else to choose')));
-          }
-          for (const subItem of subItems) {
-            if (subItem === 'sep') { sub.append(el('hr')); continue; }
-            sub.append(el('div.mi', {
-              className: `mi${subItem.danger ? ' danger' : ''}`,
-              onClick: () => { closeAll(); subItem.action(); },
-            }, subItem.label));
-          }
-          document.body.append(sub);
-          const miRect = mi.getBoundingClientRect();
-          sub.style.left = `${miRect.right + 2}px`;
-          sub.style.top = `${miRect.top}px`;
-          const subRect = sub.getBoundingClientRect();
-          if (subRect.right > innerWidth) sub.style.left = `${Math.max(6, miRect.left - subRect.width - 2)}px`;
-          if (subRect.bottom > innerHeight) sub.style.top = `${Math.max(6, innerHeight - subRect.height - 6)}px`;
-          openSubmenu = sub;
+  const close = ({ restoreFocus = true } = {}) => {
+    if (closed) return;
+    closed = true;
+    document.removeEventListener('pointerdown', outside, true);
+    document.removeEventListener('focusin', focusOutside, true);
+    window.removeEventListener('resize', resize);
+    activeContextMenu = null;
+    removeAfter(-1);
+    if (isButton) { trigger.setAttribute('aria-expanded', 'false'); trigger.removeAttribute?.('aria-controls'); }
+    if (restoreFocus && trigger?.isConnected) trigger.focus();
+  };
+  const outside = event => { if (!panels[0]?.node.contains(event.target)) close({ restoreFocus: false }); };
+  const focusOutside = event => { if (!panels[0]?.node.contains(event.target)) close({ restoreFocus: false }); };
+  const resize = () => close();
+  const place = (node, left, top, parentButton = null) => {
+    node.style.left = `${left}px`; node.style.top = `${top}px`;
+    const rect = node.getBoundingClientRect();
+    if (rect.right > innerWidth - 6) node.style.left = `${Math.max(6, parentButton ? parentButton.getBoundingClientRect().left - rect.width - 2 : innerWidth - rect.width - 6)}px`;
+    if (rect.bottom > innerHeight - 6) node.style.top = `${Math.max(6, innerHeight - rect.height - 6)}px`;
+  };
+  const build = (entries, parentButton = null, depth = 0) => {
+    const node = el('div.ctx-menu', { className: `ctx-menu${depth ? ' ctx-submenu' : ''}`, role: 'menu',
+      id: depth ? `${menuId}-${depth}` : menuId, 'aria-label': parentButton?.textContent || menuName });
+    const panel = { node, parentButton, buttons: [], entries: [] };
+    panels.push(panel);
+    let prefix = '', typedAt = 0;
+    const openSubmenu = (item, button, focus = false) => {
+      if (panels[depth + 1]?.parentButton === button) {
+        if (focus) panels[depth + 1].buttons[0]?.focus();
+        return;
+      }
+      removeAfter(depth);
+      const children = typeof item.submenu === 'function' ? item.submenu() : item.submenu;
+      const child = build(children?.length ? children : [{ label: t('Nothing else to choose'), disabled: true }], button, depth + 1);
+      node.append(child.node);
+      button.setAttribute('aria-expanded', 'true');
+      button.setAttribute('aria-controls', child.node.id);
+      const rect = button.getBoundingClientRect();
+      place(child.node, rect.right + 2, rect.top, button);
+      if (focus) child.buttons[0]?.focus();
+    };
+    for (const item of entries) {
+      if (item === 'sep') { node.append(el('hr', { role: 'separator' })); continue; }
+      const button = el('button.mi', { type: 'button', role: 'menuitem', tabIndex: -1,
+        className: `mi${item.danger ? ' danger' : ''}${item.disabled ? ' disabled' : ''}${item.submenu ? ' has-submenu' : ''}`,
+        ...(item.disabled ? { 'aria-disabled': 'true' } : {}),
+        ...(item.submenu ? { 'aria-haspopup': 'menu', 'aria-expanded': 'false' } : {}),
+        onMouseEnter: () => { if (item.submenu && !item.disabled) openSubmenu(item, button); else removeAfter(depth); },
+        onClick: () => {
+          if (item.disabled) return;
+          if (item.submenu) { openSubmenu(item, button, true); return; }
+          close(); item.action?.();
         },
-      }, el('span', {}, item.label), el('span.submenu-arrow', {}, '›'));
-      menu.append(mi);
-      continue;
+      }, el('span', {}, item.label), item.badge ? betaBadge(item.badge) : null,
+      item.submenu ? el('span.submenu-arrow', { 'aria-hidden': 'true' }, '›') : null);
+      node.append(button); panel.buttons.push(button); panel.entries.push(item);
     }
-    if (item.disabled) {
-      menu.append(el('div.mi.disabled', { onMouseEnter: closeSubmenu, 'aria-disabled': 'true' }, item.label));
-      continue;
-    }
-    menu.append(el('div.mi', {
-      className: `mi${item.danger ? ' danger' : ''}`,
-      onMouseEnter: closeSubmenu,
-      onClick: () => { closeAll(); item.action(); },
-    }, item.label, item.badge ? betaBadge(item.badge) : null));
-  }
-  document.body.append(menu);
-  const rect = menu.getBoundingClientRect();
-  if (rect.right > innerWidth) menu.style.left = `${innerWidth - rect.width - 6}px`;
-  if (rect.bottom > innerHeight) menu.style.top = `${innerHeight - rect.height - 6}px`;
-  setTimeout(() => {
-    document.addEventListener('click', () => closeAll(), { once: true });
-  }, 0);
+    node.addEventListener('keydown', event => {
+      if (event.target.closest('.ctx-menu') !== node) return;
+      const at = panel.buttons.indexOf(document.activeElement);
+      const move = { ArrowDown: 1, ArrowUp: -1 }[event.key];
+      if (move || event.key === 'Home' || event.key === 'End') {
+        event.preventDefault(); event.stopPropagation(); removeAfter(depth);
+        const next = event.key === 'Home' ? 0 : event.key === 'End' ? panel.buttons.length - 1 : (at + move + panel.buttons.length) % panel.buttons.length;
+        panel.buttons[next]?.focus();
+      } else if (event.key === 'ArrowRight') {
+        event.preventDefault(); event.stopPropagation();
+        const item = panel.entries[at];
+        if (item?.submenu && !item.disabled) openSubmenu(item, panel.buttons[at], true);
+      } else if (event.key === 'Escape' || (event.key === 'ArrowLeft' && depth)) {
+        event.preventDefault(); event.stopPropagation();
+        if (depth) { removeAfter(depth - 1); parentButton.focus(); } else close();
+      } else if (event.key === 'Tab') {
+        close();
+        if (owner) trapTab(event, owner.node);
+      } else if (event.key.length === 1 && event.key.trim() && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        const now = Date.now(), letter = event.key.toLocaleLowerCase();
+        prefix = now - typedAt > 700 ? letter : prefix + letter; typedAt = now;
+        const search = [...prefix].every(char => char === letter) ? letter : prefix;
+        const ordered = [...panel.entries.slice(at + 1), ...panel.entries.slice(0, at + 1)];
+        const match = ordered.find(item => String(item.label).toLocaleLowerCase().startsWith(search));
+        if (match) { event.preventDefault(); removeAfter(depth); panel.buttons[panel.entries.indexOf(match)].focus(); }
+      }
+    });
+    return panel;
+  };
+  const root = build(items.length ? items : [{ label: t('Nothing else to choose'), disabled: true }]).node;
+  (owner?.node || document.body).append(root);
+  place(root, x, y);
+  if (isButton) { trigger.setAttribute('aria-haspopup', 'menu'); trigger.setAttribute('aria-expanded', 'true'); trigger.setAttribute('aria-controls', menuId); }
+  activeContextMenu = { root, owner, close };
+  panels[0].buttons[0]?.focus();
+  document.addEventListener('pointerdown', outside, true);
+  document.addEventListener('focusin', focusOutside, true);
+  window.addEventListener('resize', resize);
+  return { close, node: root };
 }
 
 function fmtDate(iso) {

@@ -1563,4 +1563,5 @@
   'Cloud sync status': '云同步状态',
   'Search guides…  (Ctrl+/ for quick actions)': '搜索指南…  (Ctrl+/ 打开快速操作)',
   'Beta': '测试版',
+  'Actions': '操作',
 });

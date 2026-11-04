@@ -54,9 +54,10 @@ function setup(t) {
   }
   function device(name, { folders = true, drive = driveFor({ folders }) } = {}) {
     const store = new GuideStore(path.join(root, name));
-    const sync = new CloudSync({ store, drive, enabled: () => true, settleMs: 0 });
+    const folderChanges = [];
+    const sync = new CloudSync({ store, drive, enabled: () => true, settleMs: 0, onFoldersChange: () => folderChanges.push(Date.now()) });
     t.after(() => sync.stop());
-    return { store, sync, drive };
+    return { store, sync, drive, folderChanges };
   }
   return { root, files, bytes, driveFor, device };
 }
@@ -523,4 +524,21 @@ test('moving a folder and renaming it on different devices preserves its subtree
   assert.equal(folderId(a.store, 'Renamed child'), childId);
   assert.deepEqual(view(a.store), { folders: ['/ > First', '/ > Second', 'Second > Renamed child'], placement: { 'Inside child': 'Renamed child' } });
   assert.deepEqual(view(a.store), view(b.store));
+});
+
+test('the window is told when a sync changes this computer’s folders, and only then', async (t) => {
+  const { device } = setup(t);
+  const a = device('a');
+  const b = device('b');
+  change(a, 1, () => a.store.createFolder('Work'));
+  await synced(a.sync);
+  // a's new folder took its synced id, so a's own window must reload it too.
+  assert.equal(a.folderChanges.length, 1);
+  await synced(b.sync);
+  assert.equal(b.folderChanges.length, 1, 'folders from another computer reach the window');
+  assert.deepEqual(view(b.store).folders, ['/ > Work']);
+  await synced(b.sync);
+  await synced(a.sync);
+  assert.equal(b.folderChanges.length, 1, 'nothing changed, no reload');
+  assert.equal(a.folderChanges.length, 1);
 });

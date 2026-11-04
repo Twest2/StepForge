@@ -142,9 +142,10 @@ class CloudSync {
   // and language too; `sharedReady` is false while Settings is open, so
   // saving it can't undo what arrived meanwhile.
   constructor({ store, drive, enabled, canReplace = () => true, canUpload = () => true, onChange = () => {}, onDelete = () => {}, onStatus = () => {}, settleMs = 3000,
-    inlineLimit = parts.INLINE_LIMIT, partGraceMs = PART_GRACE_MS, shared = null, sharedReady = () => true, onSharedChange = () => {} }) {
+    inlineLimit = parts.INLINE_LIMIT, partGraceMs = PART_GRACE_MS, shared = null, sharedReady = () => true, onSharedChange = () => {},
+    onFoldersChange = () => {} }) {
     Object.assign(this, { store, drive, enabled, canReplace, canUpload, onChange, onDelete, onStatus, settleMs, inlineLimit, partGraceMs,
-      shared, sharedReady, onSharedChange });
+      shared, sharedReady, onSharedChange, onFoldersChange });
     this.directory = path.join(store.root, 'cloud');
     this.partIndexCache = null;
     this.lastPartCleanup = 0;
@@ -942,10 +943,13 @@ class CloudSync {
     const stamp = base && fs.existsSync(this.store.foldersFile) ? Math.floor(fs.statSync(this.store.foldersFile).mtimeMs) : 0;
     const localTable = parts.localFolderTable(base, local, { stamp, applied: record.applied || {}, guideExists: (id) => this.store.guideExists(id) });
     const table = parts.mergeFolderTables([...remoteTables, ...(base ? [base] : []), localTable]);
-    const applied = parts.applyFolderTable(this.store, table, (id) => this.store.guideExists(id));
+    const { applied, changed } = parts.applyFolderTable(this.store, table, (id) => this.store.guideExists(id));
     const hash = parts.folderTableHash(table);
     this.state.folders = { table, applied, head: record.head, hash: record.hash, syncedAt: record.syncedAt };
     this.saveState();
+    // The window's library shows folders.json: folders from another computer,
+    // or new folders given their synced ids, must reach it before it acts on them.
+    if (changed) this.onFoldersChange();
     const hasContent = Object.keys(table.folders).length + Object.keys(table.guides).length > 0;
     const agreed = record.hash === hash && listed.some((file) => file.id === record.head);
     if (!agreed && (listed.length || hasContent)) {

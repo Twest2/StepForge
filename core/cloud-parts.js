@@ -400,9 +400,10 @@ function decodeFolderTable(buffer) {
 }
 
 /**
- * Write the table to folders.json (only if it changed) and return the guide
- * folders written: only guides that are on this computer get one, so a folder
- * entry never points at a guide that isn't here.
+ * Write the table to folders.json (only if it changed). Returns the guide
+ * folders written, as `applied` (only guides that are on this computer get
+ * one, so a folder entry never points at a guide that isn't here), and
+ * whether folders.json `changed`.
  */
 function applyFolderTable(store, table, guideExists) {
   const folders = Object.keys(table.folders).filter((id) => isLiveFolder(table.folders[id])).sort(compareKeys)
@@ -420,8 +421,9 @@ function applyFolderTable(store, table, guideExists) {
       guideFolders: Object.keys(local.guideFolders).sort(compareKeys).map((guideId) => [guideId, local.guideFolders[guideId]]),
     });
   };
-  if (key(current) !== key(view)) store.saveFolders({ ...current, folders, guideFolders });
-  return guideFolders;
+  const changed = key(current) !== key(view);
+  if (changed) store.saveFolders({ ...current, folders, guideFolders });
+  return { applied: guideFolders, changed };
 }
 
 module.exports = {

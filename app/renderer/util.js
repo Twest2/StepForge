@@ -9,6 +9,26 @@ const { t, tn, language: uiLanguage } = StepForgeI18n.createTranslator(
 // Dates follow the interface language; in English, the system's date format.
 const dateLocale = uiLanguage === 'en' ? undefined : uiLanguage;
 
+const GUIDE_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/**
+ * A guide date as DD-MMM-YYYY in local time, in every interface language:
+ * 03-Nov-2026, 03-nov-2026, 03-нояб-2026. Chinese and Japanese have no month
+ * abbreviations, so they show the month's number (03-11-2026). Display only:
+ * stored timestamps are unchanged. '' for a missing or invalid date.
+ */
+function formatGuideDate(iso, language = uiLanguage) {
+  if (iso == null || iso === '') return '';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  const two = (n) => String(n).padStart(2, '0');
+  let month;
+  if (language === 'en') month = GUIDE_MONTHS[date.getMonth()];
+  else if (language === 'ja' || language === 'zh-CN') month = two(date.getMonth() + 1);
+  else month = new Intl.DateTimeFormat(language, { month: 'short' }).format(date).replace(/\.$/, '');
+  return `${two(date.getDate())}-${month}-${String(date.getFullYear()).padStart(4, '0')}`;
+}
+
 // Between two sentences: Japanese and Chinese don't put a space there.
 const sentenceGap = uiLanguage === 'ja' || uiLanguage === 'zh-CN' ? '' : ' ';
 

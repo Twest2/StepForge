@@ -312,6 +312,25 @@ test('a tooltip gets the same picker without Transparent, since its text sits on
   assert.equal(setup([{ ...tooltip, style: { fill: 'transparent' } }]).picker().swatch.textContent, '#1F2937');
 });
 
+test('Text color on numbers and tooltips uses the same picker, keeps the other colors and records undo', async () => {
+  const number = { id: 'n1', type: 'number', x: 0.1, y: 0.1, w: 0.05, h: 0.05, value: 1, style: { fill: '#1f6feb', stroke: '#1f6feb', textColor: '#ffffff' } };
+  const tooltip = { id: 't1', type: 'tooltip', x: 0.1, y: 0.1, w: 0.3, h: 0.1, text: 'Hi', style: { fill: '#111827', stroke: '#111827' } };
+  for (const annotation of [number, tooltip]) {
+    const ui = setup([annotation]);
+    const picker = ui.picker('Text color');
+    assert.equal(picker.swatch.getAttribute('aria-label'), 'Text color: #FFFFFF', annotation.type);
+    picker.swatch.click();
+    assert.equal(picker.popover.querySelectorAll('[role^="menuitem"]').some((n) => n.textContent === 'Transparent'), false);
+    picker.popover.querySelectorAll('[role^="menuitem"]').find((n) => n.getAttribute('aria-label') === '#FFE066').click();
+    await ui.editor.colorSave;
+    const style = ui.steps[0].annotations[0].style;
+    assert.equal(style.textColor, '#FFE066');
+    assert.equal(style.fill, annotation.style.fill);
+    assert.equal(style.stroke, annotation.style.stroke);
+    assert.equal(ui.history.at(-1).label, 'annotation-text-color');
+  }
+});
+
 test('Apply to all carries Transparent to every rectangle in the guide', async () => {
   const ui = setup([rect('#ffd60a')]);
   ui.picker().swatch.click();

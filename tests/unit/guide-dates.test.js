@@ -7,13 +7,15 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { rendererI18n } = require('./helpers');
 
-// app.js is one IIFE that boots the app; load it without booting and expose the date helpers.
-function load() {
-  const context = { ...rendererI18n('en'), window: {}, document: { addEventListener() {} } };
+// util.js (formatGuideDate) and app.js (timeAgo, savedAtTitle) as the window
+// loads them, without booting the app.
+function load(language = 'en') {
+  const context = { ...rendererI18n(language), StepForgeLocales: require('../../core/locales'), window: {}, document: { addEventListener() {} } };
+  vm.createContext(context);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/util.js'), 'utf8'), context);
   const source = fs.readFileSync(path.join(__dirname, '../../app/renderer/app.js'), 'utf8');
-  const exposed = '\nwindow.formatGuideDate = formatGuideDate;\nwindow.timeAgo = timeAgo;\nwindow.savedAtTitle = savedAtTitle;\n';
-  vm.runInNewContext(source.replace('\nboot();', exposed), context);
-  return context.window;
+  vm.runInContext(source.replace('\nboot();', '\nwindow.timeAgo = timeAgo;\nwindow.savedAtTitle = savedAtTitle;\n'), context);
+  return { formatGuideDate: vm.runInContext('formatGuideDate', context), ...context.window };
 }
 const { formatGuideDate, timeAgo, savedAtTitle } = load();
 
@@ -51,18 +53,22 @@ test('an invalid or missing date formats as an empty string', () => {
   assert.equal(formatGuideDate(null), '');
 });
 
-test('other interfaces use their languages normal date conventions', () => {
+test('every interface language uses DD-MMM-YYYY, with its own month abbreviation', () => {
   const iso = local(2026, 11, 1);
-  assert.equal(formatGuideDate(iso, 'fr'), '1 nov. 2026');
-  assert.equal(formatGuideDate(iso, 'es'), '1 nov 2026');
-  assert.equal(formatGuideDate(iso, 'ru'), '1 нояб. 2026 г.');
-  assert.equal(formatGuideDate(iso, 'ja'), '2026/11/01');
-  assert.equal(formatGuideDate(iso, 'zh-CN'), '2026年11月1日');
+  assert.equal(load('fr').formatGuideDate(iso), '01-nov-2026');
+  assert.equal(load('es').formatGuideDate(iso), '01-nov-2026');
+  assert.equal(load('ru').formatGuideDate(iso), '01-нояб-2026');
+  // Chinese and Japanese have no month abbreviations: the month's number.
+  assert.equal(load('zh-CN').formatGuideDate(iso), '01-11-2026');
+  assert.equal(load('ja').formatGuideDate(iso), '01-11-2026');
+  // Abbreviations that end in a period lose it, so the dashes stay tidy.
+  assert.equal(load('fr').formatGuideDate(local(2026, 7, 4)), '04-juil-2026');
+  assert.equal(load('ru').formatGuideDate(local(2026, 5, 9)), '09-май-2026');
 });
 
 test('localized dates keep the local day near midnight', () => {
-  assert.equal(formatGuideDate(local(2026, 11, 1, 23, 59), 'ru'), '1 нояб. 2026 г.');
-  assert.equal(formatGuideDate(local(2026, 11, 2, 0, 1), 'ja'), '2026/11/02');
+  assert.equal(load('ru').formatGuideDate(local(2026, 11, 1, 23, 59)), '01-нояб-2026');
+  assert.equal(load('ja').formatGuideDate(local(2026, 11, 2, 0, 1)), '02-11-2026');
 });
 
 test('Trash retains relative deletion times and formats older dates consistently', () => {

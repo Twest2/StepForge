@@ -36,6 +36,7 @@ test('manually resizing either pane leaves the other pane unchanged and respects
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/editor.js'), 'utf8'), context);
   const editor = Object.create(context.window.GuideEditor.prototype);
   editor.dom = { root: { clientWidth: 1280 } };
+  editor.paneMinimums = () => layout.MIN_WIDTHS;
   editor.effectivePaneWidths = layout.layoutPanes(1280, layout.DEFAULT_WIDTHS);
   editor.applyPaneWidths = next => { editor.effectivePaneWidths = next; };
   editor.resizePane('steps', 410);
@@ -69,6 +70,40 @@ test('invalid stored widths cannot produce non-finite CSS or sizes below the pan
     assert.ok(result.steps >= layout.MIN_WIDTHS.steps && result.properties >= layout.MIN_WIDTHS.properties);
     assert.equal(result.steps + result.properties + result.canvas + 2 * layout.DIVIDER_WIDTH, 900);
   }
+});
+
+test('the steps pane minimum fits its header and its ↑ ↓ Duplicate Delete row', () => {
+  const context = { ...rendererI18n(), window: { StepForgePaneLayout: layout },
+    getComputedStyle: (node) => ({ columnGap: '8px', paddingLeft: node.pad || '0px', paddingRight: node.pad || '0px' }) };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/editor.js'), 'utf8'), context);
+  const item = (width) => ({ offsetWidth: width, classList: { contains: () => false }, getBoundingClientRect: () => ({ width }) });
+  const row = (...children) => ({ children, offsetWidth: 1, classList: { contains: (name) => name === 'row' }, getBoundingClientRect: () => ({ width: 0 }) });
+  const foot = { pad: '14px', children: [item(35), item(35), item(114), item(81), item(0)] }; // a hidden button doesn't count
+  const head = { pad: '14px', children: [item(51), row(item(80), item(92))] };
+  const editor = Object.create(context.window.GuideEditor.prototype);
+  editor.dom = { paneFoot: foot, stepsPane: { offsetWidth: 320, clientWidth: 320, querySelector: () => head } };
+  // 35 + 35 + 114 + 81, three 8px gaps and 14px padding each side.
+  assert.equal(editor.paneMinimums().steps, 317);
+  assert.equal(editor.paneMinimums().properties, layout.MIN_WIDTHS.properties);
+  // Select mode hides the row; the minimum stays where it was.
+  foot.children = [];
+  assert.equal(editor.paneMinimums().steps, 317);
+  // Short labels (Japanese) keep the usual minimum.
+  const short = Object.create(context.window.GuideEditor.prototype);
+  short.dom = { paneFoot: { pad: '14px', children: [item(35), item(35), item(40), item(40)] }, stepsPane: { offsetWidth: 320, clientWidth: 320, querySelector: () => ({ pad: '14px', children: [item(40), row(item(40), item(47))] }) } };
+  assert.equal(short.paneMinimums().steps, layout.MIN_WIDTHS.steps);
+});
+
+test('a raised steps minimum (its button row in a longer language) holds when resizing and laying out', () => {
+  const mins = { ...layout.MIN_WIDTHS, steps: 317 };
+  assert.equal(layout.clampPaneWidth('steps', 200, 1400, 330, mins), 317);
+  assert.equal(layout.paneBounds('steps', 1400, 330, mins).min, 317);
+  assert.equal(layout.layoutPanes(1400, { steps: 240, properties: 330 }, mins).steps, 317);
+  const narrow = layout.layoutPanes(900, { steps: 500, properties: 500 }, mins);
+  assert.equal(narrow.steps, 317);
+  assert.ok(narrow.canvas >= layout.MIN_CANVAS_WIDTH);
+  // Without a raised minimum nothing changes.
+  assert.equal(layout.clampPaneWidth('steps', 200, 1400, 330), layout.MIN_WIDTHS.steps);
 });
 
 test('Fit zoom still fits an image when manual pane resizing leaves less than 100 pixels', () => {

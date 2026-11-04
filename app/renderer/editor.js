@@ -828,7 +828,7 @@ class GuideEditor {
         // Plain keys on a separator must not switch canvas tools or move an annotation.
         event.stopPropagation();
         const other = side === 'steps' ? 'properties' : 'steps';
-        const bounds = layout.paneBounds(side, this.dom.root.clientWidth, this.effectivePaneWidths[other]);
+        const bounds = layout.paneBounds(side, this.dom.root.clientWidth, this.effectivePaneWidths[other], this.paneMinimums());
         let width;
         if (event.key === 'Home') width = bounds.min;
         else if (event.key === 'End') width = bounds.max;
@@ -859,7 +859,7 @@ class GuideEditor {
     this.dom.root.style.setProperty('--properties-pane-width', `${widths.properties}px`);
     for (const side of ['steps', 'properties']) {
       const other = side === 'steps' ? 'properties' : 'steps';
-      const bounds = window.StepForgePaneLayout.paneBounds(side, this.dom.root.clientWidth, widths[other]);
+      const bounds = window.StepForgePaneLayout.paneBounds(side, this.dom.root.clientWidth, widths[other], this.paneMinimums());
       const divider = this.dom[`${side}Divider`];
       divider.setAttribute('aria-valuemin', bounds.min);
       divider.setAttribute('aria-valuemax', bounds.max);
@@ -870,7 +870,29 @@ class GuideEditor {
 
   updatePaneLayout() {
     if (!this.dom?.root?.clientWidth) return;
-    this.applyPaneWidths(window.StepForgePaneLayout.layoutPanes(this.dom.root.clientWidth, this.paneWidths));
+    this.applyPaneWidths(window.StepForgePaneLayout.layoutPanes(this.dom.root.clientWidth, this.paneWidths, this.paneMinimums()));
+  }
+
+  /**
+   * The pane minimums, with the steps pane wide enough for its header and
+   * its ↑ ↓ Duplicate Delete row on one line in the current language and
+   * font. Kept at the widest seen, since the footer hides in Select mode.
+   */
+  paneMinimums() {
+    const mins = window.StepForgePaneLayout.MIN_WIDTHS;
+    const rowWidth = (row) => {
+      const items = [...row.children].filter((child) => child.offsetWidth);
+      if (!items.length) return 0;
+      const style = getComputedStyle(row);
+      const gap = parseFloat(style.columnGap) || 0;
+      // A nested .row (Add, Select) may already be wrapped, so add up its own items.
+      return items.reduce((sum, child) => sum + (child.classList.contains('row') ? rowWidth(child) : child.getBoundingClientRect().width), 0)
+        + gap * (items.length - 1) + (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0);
+    };
+    const pane = this.dom.stepsPane;
+    const needed = Math.ceil(Math.max(rowWidth(pane.querySelector('.pane-head')), rowWidth(this.dom.paneFoot)) + pane.offsetWidth - pane.clientWidth);
+    this.stepsPaneMinWidth = Math.max(this.stepsPaneMinWidth || 0, mins.steps, needed);
+    return { ...mins, steps: this.stepsPaneMinWidth };
   }
 
   resizePane(side, requested) {
@@ -878,7 +900,7 @@ class GuideEditor {
     const width = this.dom.root.clientWidth;
     const other = side === 'steps' ? 'properties' : 'steps';
     const next = { ...this.effectivePaneWidths };
-    next[side] = layout.clampPaneWidth(side, requested, width, next[other]);
+    next[side] = layout.clampPaneWidth(side, requested, width, next[other], this.paneMinimums());
     next.canvas = width - next.steps - next.properties - 2 * layout.DIVIDER_WIDTH;
     this.applyPaneWidths(next);
   }
@@ -1812,11 +1834,7 @@ class GuideEditor {
         },
         el('span.row', {}, el('strong', {}, ANNOTATION_TYPE_LABELS[ann.type] || ann.type),
           // Blurs StepForge added for a private detail say what they hide.
-          el('span.muted', {}, ann.redact ? t('Private detail: {kind}', { kind: PRIVATE_DETAIL_LABELS[ann.redact.kind] || t('added by StepForge') }) : ann.text || ann.value || '')),
-        el('span.muted', { style: { display: 'block' } }, t('Left {x}% · Top {y}% · Width {width}% · Height {height}%', {
-          x: window.StepForgeAnnotationProperties.percentage(ann.x), y: window.StepForgeAnnotationProperties.percentage(ann.y),
-          width: window.StepForgeAnnotationProperties.percentage(ann.w), height: window.StepForgeAnnotationProperties.percentage(ann.h),
-        }))));
+          el('span.muted', {}, ann.redact ? t('Private detail: {kind}', { kind: PRIVATE_DETAIL_LABELS[ann.redact.kind] || t('added by StepForge') }) : ann.text || ann.value || ''))));
       }
     }
 
@@ -1834,7 +1852,6 @@ class GuideEditor {
     const valueInput = el('input', { type: 'number', value: Number.isFinite(selected.value) ? selected.value : '', placeholder: t('Value') });
     const strokeWidthInput = el('input', { type: 'number', min: 1, step: 1, value: style.strokeWidth || 3 });
     const fontSizeInput = el('input', { type: 'number', min: 0.01, max: 100, step: 0.01, value: window.StepForgeAnnotationProperties.percentage(style.fontSize || 0.022), 'aria-label': t('Font size (% of image height)') });
-    const textColorInput = el('input', { type: 'color', value: style.textColor || '#ffffff' });
     const zoomInput = el('input', { type: 'number', min: 1, step: 0.1, value: selected.zoom || 2 });
     const radiusInput = el('input', { type: 'number', min: 1, step: 1, value: selected.radius || 8 });
     const tailInput = makeSelect(style.tail || 'bottom', [
@@ -1892,7 +1909,14 @@ class GuideEditor {
     }
     if (fields.has('strokeWidth')) rows.push(labeledRow(t('Stroke width'), strokeWidthInput));
     if (fields.has('fontSize')) rows.push(labeledRow(t('Font size (% of image height)'), fontSizeInput, { stacked: true }));
-    if (fields.has('textColor')) rows.push(labeledRow(t('Text color'), textColorInput));
+    if (fields.has('textColor')) {
+      rows.push(labeledRow(t('Text color'), this.colorPicker(selected, (textColor, { record = true } = {}) => {
+        const ann = this.canvas.selected();
+        if (!ann) return;
+        if (record) this.pushCanvasHistory('annotation-text-color');
+        apply({ style: { ...ann.style, textColor } });
+      }, { field: 'textColor', label: t('Text color') })));
+    }
     if (fields.has('zoom')) rows.push(labeledRow(t('Zoom'), zoomInput));
     if (fields.has('radius')) rows.push(labeledRow(t('Radius'), radiusInput));
     if (fields.has('tail')) rows.push(labeledRow(t('Tail'), tailInput));
@@ -1944,11 +1968,6 @@ class GuideEditor {
       const fontSize = window.StepForgeAnnotationProperties.fontSizeFromPercent(fontSizeInput.value);
       if (fontSize !== null) await apply({ style: { ...ann.style, fontSize } });
     });
-    textColorInput.addEventListener('input', async () => {
-      const ann = this.canvas.selected();
-      if (!ann) return;
-      await apply({ style: { ...ann.style, textColor: textColorInput.value } });
-    });
     zoomInput.addEventListener('input', async () => {
       const ann = this.canvas.selected();
       if (!ann) return;
@@ -1993,8 +2012,9 @@ class GuideEditor {
   colorPicker(ann, onPick, { field = 'fill', label = t('Fill') } = {}) {
     const allowTransparent = field === 'fill' && CLEARABLE_FILL_TYPES.has(ann.type);
     const isNone = (fill) => !fill || fill === 'transparent';
-    // A tooltip without a fill is drawn #1F2937 (canvas.js, core/raster.js).
-    let current = isNone(ann.style?.[field]) ? (allowTransparent ? 'transparent' : field === 'stroke' ? '#E5484D' : '#1F2937') : ann.style[field];
+    // A tooltip without a fill is drawn #1F2937 and text without a color white (canvas.js, core/raster.js).
+    const fallback = { stroke: '#E5484D', textColor: '#FFFFFF' }[field] || '#1F2937';
+    let current = isNone(ann.style?.[field]) ? (allowTransparent ? 'transparent' : fallback) : ann.style[field];
     const name = (fill) => (isNone(fill) ? t('Transparent') : fill.toUpperCase());
     const chip = (fill) => (isNone(fill) ? el('span.fill-chip.none') : el('span.fill-chip', { style: { background: fill } }));
 

@@ -177,15 +177,14 @@ test('library: review.js loads before the renderer scripts that use it', () => {
   assert.ok(pos('../../core/review.js') < pos('app.js'));
 });
 
-test('library: the "May need review" pill shows only when overdue, just left of the date', () => {
+test('library: the "May need review" pill shows only when overdue, in the status row', () => {
   const app = read('app/renderer/app.js');
-  const footer = app.slice(app.indexOf("el('div.card-footer', {},\n      el('span', {}, tn(steps, '{count} step'"));
+  const footer = app.slice(app.indexOf("el('div.card-footer', {},\n      el('span.card-step-count'"));
   const badge = footer.indexOf("reviewState?.overdue ? el('span.badge.review-badge'");
   const date = footer.indexOf("el('span.card-updated'");
-  assert.ok(badge > 0 && badge < date, 'the badge comes right before the date');
+  assert.ok(badge > 0 && badge < date, 'the badge is retained in the footer');
   assert.doesNotMatch(footer.slice(badge, date), /el\('span(?!\.badge\.review-badge)/);
   assert.match(app, /review\.reviewStatus\(guide, this\.state\.settings\?\.library\?\.reviewAfterDays\)/);
   const css = read('app/renderer/style.css');
-  assert.match(css, /\.guide-card \.review-badge \{ margin-left: auto;/);
-  assert.match(css, /\.guide-card \.review-badge \+ \.card-updated \{ margin-left: 0; \}/);
+  assert.match(css, /\.guide-card \.card-statuses \.review-badge \{ margin-left: 0; \}/);
 });

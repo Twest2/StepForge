@@ -10,7 +10,11 @@ const { DEFAULT_TEMPLATE, anchorFor, renderMarkdownGuide } = require('./markdown
  */
 
 const OPTION_INFO = {
-  githubAlerts: { label: 'GitHub Markdown', hint: 'Write callouts as GitHub alerts instead of styled HTML.' },
+  toc: { label: 'Add a table of contents', group: 'Contents' },
+  includeImages: { label: 'Include screenshots', group: 'Contents' },
+  githubAlerts: { label: 'GitHub Markdown', group: 'Compatibility', hint: 'Write callouts as GitHub alerts instead of styled HTML.' },
+  azureWiki: { label: 'Azure DevOps wiki', group: 'Compatibility', hint: 'Size screenshots with the image syntax Azure DevOps wikis use.' },
+  imageMaxWidth: { label: 'Maximum screenshot width', group: 'Compatibility', unit: 'px', min: 0, step: 10, dependsOn: 'azureWiki', hint: '0 keeps each screenshot at its own size.' },
 };
 
 function exportMarkdown(ast, outDir, template = {}) {

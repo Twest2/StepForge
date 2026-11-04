@@ -26,7 +26,10 @@ const TINY_PNG = Buffer.from(
 function rendererI18n(language = 'en') {
   const StepForgeI18n = require('../../core/i18n');
   const { t, tn } = StepForgeI18n.createTranslator(language, require('../../core/locales'));
-  return { StepForgeI18n, URLSearchParams, location: { search: `?lang=${language}` }, t, tn, uiLanguage: language, dateLocale: undefined };
+  return { StepForgeI18n, URLSearchParams, location: { search: `?lang=${language}` }, t, tn, uiLanguage: language, dateLocale: undefined,
+    // Lightweight renderer fixtures do not model label associations. util.js
+    // tests load and exercise the real helper against their richer DOM.
+    labelControl: (_label, control) => control };
 }
 
 module.exports = { makeTmpDir, rmrf, TINY_PNG, rendererI18n };

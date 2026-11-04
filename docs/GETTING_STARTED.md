@@ -116,6 +116,11 @@ exports and accepts Markdown: `**bold**`, `*italic*`, `` `code` ``,
 **Shift-click** another to select everything in between, including substeps.
 A normal click toggles a single step.
 
+**Deleting steps:** StepForge asks before it deletes a step or a selection
+of steps, and **Ctrl+Z** brings them back. To delete without being asked,
+turn on **Settings → Editor → Dangerous deletes**. Deleting a guide always
+asks.
+
 ### Replace or retake a screenshot
 
 When the software you documented changes, right-click the step:
@@ -133,10 +138,12 @@ isn't available while a capture session is running.
 ## 3. Annotate screenshots
 
 Pick a tool from the toolbar above the screenshot and drag on the image.
+Hover over a tool to see its name. When no tool is picked, clicking selects
+annotations so you can move, resize and restyle them; to put a tool down
+without using it, click it again or press **Esc** (or **S**).
 
 | Tool | Key | Good for |
 | --- | --- | --- |
-| Select | `S` | Moving, resizing, and restyling existing annotations |
 | Rectangle / Oval | `R` / `O` | Framing a button or area |
 | Line / Arrow | `L` / `A` | Pointing from one thing to another |
 | Text / Tooltip | `T` / `G` | Labels and callouts |
@@ -147,7 +154,7 @@ Pick a tool from the toolbar above the screenshot and drag on the image.
 | Cursor | `U` | Adding a mouse pointer |
 | Crop | `C` | Trimming the screenshot |
 
-After each annotation or crop, StepForge switches back to **Select**, with the
+After each annotation or crop, StepForge puts the tool down again, with the
 new annotation selected so you can move or resize it straight away. To draw
 several with the same tool without picking it again each time, turn off
 **Settings → Editor → Go back to Select after each use**.
@@ -226,6 +233,16 @@ footer on every export. Set one up in **Settings → Branding → Manage**. See
 or table cell. It's replaced when you export or publish (code blocks are left
 as written). A single guide can have its own placeholders under
 **More → Guide placeholders…**.
+
+**Other languages.** Guides in any language export to PDF: Chinese,
+Japanese, Korean, Russian, Greek and the rest use fonts already on your
+computer, and the text can still be searched and copied. On Windows that
+works out of the box. On Linux, Chinese, Japanese and Korean need a TrueType
+font such as WenQuanYi Zen Hei (`sudo apt install fonts-wqy-zenhei` or
+`sudo dnf install wqy-zenhei-fonts`); without one those characters show as
+`?`. Arabic and Hebrew letters appear, but are not joined or ordered right to
+left yet. Exported files are named after the guide in its own language, such
+as `重置密码.pdf`.
 
 **Accessibility.** Screenshots in HTML, Word, PowerPoint, Markdown and
 Confluence exports get alt text from the step title, such as "Screenshot for

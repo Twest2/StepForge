@@ -113,6 +113,22 @@ guide.json + step.json + settings
                ──► exporters/pptx.js        zip+XML (core/zip.js)
 ```
 
+PDF text uses the built-in Helvetica, Times and Courier where they can show
+it (WinAnsiEncoding, so Western PDFs are byte-for-byte what they always were).
+Any other character is drawn from an installed TrueType font:
+`core/pdf-fonts.js` lists candidates (Windows font folder by script, with
+Chinese, Japanese or Korean first depending on the guide's text; fontconfig's
+`fc-match -s` on Linux) and loads each only when an earlier one lacks a
+character. `core/ttf.js` reads `.ttf`/`.ttc` files (glyf outlines only; CFF
+fonts are skipped) and writes a subset that keeps glyph ids, which
+`core/pdf.js` embeds as a Type0/CIDFontType2 font with `/CIDToGIDMap
+/Identity`, real widths, and a ToUnicode CMap so viewers can copy and search
+the text. Lines may break between Chinese, Japanese and Korean characters
+(`breakChunks`), and those characters count two columns in code blocks.
+Not handled: right-to-left order and Arabic or Indic shaping. Export file
+names use `fileNameSlug` (letters of every script); step screenshots keep
+ASCII `slugify` names because Wiki.js and Confluence upload them by name.
+
 Image-bearing exporters rasterize annotations with `core/raster.js` on top of
 PNG pixels decoded by `core/png.js`. Before building the AST, export workers
 prepare referenced WebP screenshots as PNG through `core/image-format.js`;
@@ -367,6 +383,22 @@ opt-in and off by default:
   time in a background worker shared with linked-archive writes and
   automatic backups. See [CLOUD_ACCOUNTS.md](CLOUD_ACCOUNTS.md) and
   [SECURITY.md](SECURITY.md).
+- **Library folders** (`core/cloud-parts.js`, the folder phase of
+  `core/cloud-sync.js`): folder names, parents and each guide's folder travel
+  as one `folders-v1` version per account, a gzipped table with a hash, parent
+  and `merged` property like the others. Every field carries the time it last
+  changed here (the `library/folders.json` mtime, for changes since the last
+  applied state), so the newest change wins a conflict. Deletions are
+  tombstones; a folder deleted on another computer moves its guides and
+  sub-folders to the root, as `deleteFolder` does, and never removes a guide.
+  Accounts without folders store no version, and older StepForge versions
+  ignore the `folders-v1` objects. The state is `sync-<account>.json`'s
+  `folders` entry: the merged table, the guide folders written to
+  `folders.json`, and the head. Before their first upload, new folders receive
+  deterministic ids derived from their parent id, exact name and sibling
+  occurrence. Known ids and tombstones are preserved, and guide membership is
+  remapped together with the folder tree. This prevents concurrent creation
+  from adding duplicate cloud identities without adding remote metadata.
 - **Synced settings** (`core/shared-settings.js`): global placeholders, brand
   profiles with the assets they use, the active profile, the language and
   configurable recording shortcuts

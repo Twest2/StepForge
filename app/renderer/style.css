@@ -485,7 +485,9 @@ body.platform-linux #capture-status button {
 .pane-divider { width: 6px; flex: none; position: relative; cursor: col-resize; touch-action: none; background: var(--panel-solid); }
 .pane-divider::before { content: ''; position: absolute; top: 0; bottom: 0; left: 2px; width: 1px; background: var(--border); }
 .pane-divider:hover::before, .pane-divider.dragging::before { width: 2px; background: var(--accent); }
-.pane-divider:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* Keyboard focus shows on the divider line itself, not as a box around it. */
+.pane-divider:focus-visible { outline: none; }
+.pane-divider:focus-visible::before { left: 1px; width: 3px; background: var(--accent); }
 .editor.resizing-panes, .editor.resizing-panes * { cursor: col-resize; user-select: none; }
 .pane-steps .pane-head, .pane-steps .pane-head > .row { flex-wrap: wrap; }
 .pane-head,

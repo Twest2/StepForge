@@ -761,9 +761,11 @@ class GuideEditor {
       divider.addEventListener('pointerdown', event => {
         if (event.button !== 0) return;
         event.preventDefault();
+        // Focused for the drag so Escape can cancel it; a mouse drag hands focus back afterwards.
+        const keepFocus = document.activeElement === divider;
         divider.focus();
         this.paneDrag = { side, pointerId: event.pointerId, divider, startX: event.clientX,
-          startWidth: this.effectivePaneWidths[side] };
+          startWidth: this.effectivePaneWidths[side], keepFocus };
         divider.setPointerCapture(event.pointerId);
         divider.classList.add('dragging');
         this.dom.root.classList.add('resizing-panes');
@@ -849,6 +851,7 @@ class GuideEditor {
     this.paneDrag = null;
     if (drag?.divider.hasPointerCapture(drag.pointerId)) drag.divider.releasePointerCapture(drag.pointerId);
     drag?.divider.classList.remove('dragging');
+    if (drag && !drag.keepFocus) drag.divider.blur();
     this.dom?.root?.classList.remove('resizing-panes');
   }
 

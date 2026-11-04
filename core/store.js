@@ -2,6 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const crypto = require('node:crypto');
 const { isDeepStrictEqual } = require('node:util');
 const {
   newId, nowIso, writeJsonSync, readJsonSync, readJsonIfExists,
@@ -584,21 +585,29 @@ class GuideStore {
    * action. Each file is written under its new extension, then step.json
    * names it. The pixel size must not change; the caller checks that.
    */
-  rewriteStepImages(guideId, stepId, buffers) {
+  rewriteStepImages(guideId, stepId, buffers, { expectedRevision = null, expectedHashes = {} } = {}) {
     this.getGuide(guideId);
     const step = this.getStep(guideId, stepId);
     if (!step.image) throw new Error('step has no image');
+    if (expectedRevision !== null && step.revision !== expectedRevision) {
+      throw new RevisionConflictError('step', stepId, expectedRevision, step.revision);
+    }
     const dir = this.stepDir(guideId, stepId);
     const renamed = new Map();
     for (const [rel, bytes] of Object.entries(buffers)) {
-      const next = imageFileName(baseOfImageFile(rel), bytes);
+      if (![step.image.originalPath, step.image.workingPath].includes(rel)) throw new Error('Screenshot changed during optimization.');
+      const hash = (data) => crypto.createHash('sha256').update(data).digest('hex');
+      if (expectedHashes[rel] && hash(fs.readFileSync(path.join(dir, rel))) !== expectedHashes[rel]) throw new Error('Screenshot changed during optimization.');
+      // New content gets its own name, so a refused concurrent save cannot
+      // overwrite bytes that another editor is already using.
+      const next = imageFileName(`${baseOfImageFile(rel)}-${hash(bytes).slice(0, 16)}`, bytes);
       atomicWriteFileSync(path.join(dir, next), bytes);
       if (next !== rel) renamed.set(rel, next);
     }
     const retired = [...renamed.keys()];
     if (renamed.has(step.image.originalPath)) step.image.originalPath = renamed.get(step.image.originalPath);
     if (renamed.has(step.image.workingPath)) step.image.workingPath = renamed.get(step.image.workingPath);
-    const saved = this.saveStep(guideId, step, { imagePaths: true });
+    const saved = this.saveStep(guideId, step, { imagePaths: true, expectedRevision });
     for (const rel of retired) {
       if (rel !== saved.image.originalPath && rel !== saved.image.workingPath) fs.rmSync(path.join(dir, rel), { force: true });
     }

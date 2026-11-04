@@ -114,7 +114,9 @@ guide.json + step.json + settings
 ```
 
 Image-bearing exporters rasterize annotations with `core/raster.js` on top of
-PNG pixels decoded by `core/png.js`. Text in rasterized images (annotation
+PNG pixels decoded by `core/png.js`. Before building the AST, export workers
+prepare referenced WebP screenshots as PNG through `core/image-format.js`;
+preview preparation follows guide order and the preview step limit. Text in rasterized images (annotation
 labels, GIF captions) is anti-aliased from the glyph atlases in `core/fonts/`
 (rendered from Lato by `scripts/make-font-atlas.js`; SIL Open Font License). Every exporter accepts a template object
 (per-format settings persisted under `settings/templates/`, shareable as
@@ -128,7 +130,7 @@ active one (or the one the Export dialog picked) to file paths, and
 helpers in `exporters/branding.js` and render exactly as before when it is
 null. Uploaded images are sniffed by content and SVGs rebuilt from an
 allowlist (`core/svg-sanitize.js`); the renderer draws SVG and JPG images to a
-PNG once at upload, since the export worker has no image decoders beyond PNG.
+PNG once at upload, so branding continues to use the PNG rendering path.
 Option precedence is exporter defaults, then the brand, then the template or
 Export dialog choice. In the profile editor, **Pick from logo** runs
 `core/brand-palette.js` on a small canvas drawing of the logo, and **Write
@@ -443,3 +445,20 @@ compression defaults. A small real-RPM fixture checks both compression paths
 on every Fedora PR run.
 
 The full contributor process is in [CONTRIBUTING.md](CONTRIBUTING.md).
+
+### Screenshot storage optimization
+
+`core/image-codec.js` lazily loads Sharp (Apache-2.0, with platform-specific
+Node-API/libvips runtime dependencies) in Electron, export workers and headless
+MCP. Packagers must include its production optional platform packages.
+New capture/import paths prefer lossless WebP only when smaller; existing WebP
+is never recompressed. Optional lossy mode uses quality 95–100 and preserves
+alpha exactly, falling back to lossless above a channel error of 8 or RMS color
+error of 1.5/255. Unsupported bit depths and multi-frame inputs remain PNG.
+
+Manual optimization first estimates without writes. Its token binds image
+bytes, guide/step revisions and codec options; apply rejects stale estimates.
+A snapshot precedes content-addressed image writes, and step revisions are
+checked before retiring old files. PNG-only guides remain supported. Cloud sync
+transfers stored bytes unchanged. Long Windows preview paths use content-typed
+data URLs to avoid the Chromium file decoder path limit.

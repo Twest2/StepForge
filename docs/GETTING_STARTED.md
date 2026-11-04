@@ -286,6 +286,23 @@ Press **Ctrl+/** for the quick-actions palette, or open
 | `Ctrl+Delete` | Delete the current step |
 | `Ctrl+=` / `Ctrl+-` / `Ctrl+0` | Zoom in / out / fit |
 
+## Smaller guide images
+
+New screenshots use lossless WebP when it is smaller than PNG. Text, colors and
+transparency are preserved. Existing guides stay unchanged until you choose to
+optimize them.
+
+Under **Settings → General → Image compression**, choose lossless (recommended),
+optional lossy compression, or no automatic optimization. Lossy quality is
+limited to 95–100%; images that exceed the pixel-error limits fall back to
+lossless. StepForge keeps PNG whenever compression would increase the file size.
+
+To reduce an existing guide, open **More → Optimize guide images** (also available
+in Quick Actions). Review the estimated savings, then choose **Optimize**.
+StepForge saves a snapshot first; use **More → Backups & snapshots** to restore it.
+If the guide changes after the estimate, estimate again before applying.
+Annotations, exports and cloud sync continue to work with both PNG and WebP.
+
 ## Troubleshooting
 
 **I can't find how to stop recording.** See [Stop recording](#stop-recording).

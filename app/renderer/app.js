@@ -568,6 +568,7 @@ class StepForgeApp {
             { label: t('Guide placeholders…'), action: () => this.editor.openGuidePlaceholders() },
             { label: t('Backups & snapshots…'), action: () => this.editor.openBackupsDialog() },
             { label: t('Find private details…'), action: () => this.editor.findPrivateDetails() },
+            { label: t('Optimize guide images'), action: () => this.editor.optimizeImages() },
             { label: guide && guide.linkedSource ? t('Linked guide…') : t('Linked guide (not linked)'), action: () => this.editor.openLinkedGuide() },
             'sep',
             { label: t('Keyboard shortcuts…'), action: () => this.editor.openShortcutsHelp() },
@@ -1265,6 +1266,7 @@ class StepForgeApp {
         await api.settings.set({ keyPath: 'ai', value: next.ai });
         await api.settings.set({ keyPath: 'redaction', value: next.redaction });
         await api.settings.set({ keyPath: 'exports', value: next.exports });
+        await api.settings.set({ keyPath: 'images', value: next.images });
         await api.settings.set({ keyPath: 'branding', value: next.branding });
         await api.settings.set({ keyPath: 'backups', value: next.backups });
         await api.settings.set({ keyPath: 'library', value: next.library });

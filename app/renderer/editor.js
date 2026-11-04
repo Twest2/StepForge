@@ -2153,6 +2153,78 @@ class GuideEditor {
     if (show) this.canvas.select(show.annotationId);
   }
 
+  /** Explicit optimization: estimate first, then apply to those exact images. */
+  async optimizeImages() {
+    if (!this.guideId) return;
+    if (this.pendingSave) await this.flushStep();
+    if (this.pendingGuideSave) await this.flushGuide();
+    if (this.pendingSave || this.pendingGuideSave) {
+      this.onToast(t('Save your changes before optimizing guide images.'), { error: true });
+      return;
+    }
+    const guideId = this.guideId;
+    let estimate = null;
+    let closed = false;
+    const status = el('p', { role: 'status', 'aria-live': 'polite' }, t('Estimating image savings…'));
+    const errors = el('p.muted', { hidden: true });
+    const showErrors = (report) => {
+      errors.hidden = !report.errors.length;
+      errors.textContent = tn(report.errors.length, '{count} image could not be optimized.', '{count} images could not be optimized.');
+    };
+    const cancel = el('button', { type: 'button', onClick: () => { closed = true; close(); } }, t('Close'));
+    const again = el('button', { type: 'button', disabled: true, onClick: () => calculate() }, t('Estimate again'));
+    const apply = el('button.primary', { type: 'button', disabled: true, onClick: async () => {
+      if (!estimate) return;
+      apply.disabled = true;
+      again.disabled = true;
+      status.textContent = t('Optimizing guide images…');
+      try {
+        const report = await api.guide.optimizeImages({ guideId, dryRun: false, expectedHash: estimate.estimateHash });
+        const message = t('Saved {saved}.', { saved: formatBytes(report.savedBytes) });
+        status.textContent = message;
+        showErrors(report);
+        if (this.guideId === guideId) await this.reload(this.selectedStepId);
+        if (closed) this.onToast(message);
+      } catch (error) {
+        status.textContent = error.message;
+        if (closed) this.onToast(error.message, { error: true });
+      } finally {
+        estimate = null;
+        again.disabled = false;
+      }
+    } }, t('Optimize'));
+    const { close } = openModal({
+      title: t('Optimize guide images'),
+      body: el('div', {},
+        el('p.muted', {}, t('A snapshot is saved before applying. Images change only when you choose Optimize.')),
+        status, errors),
+      footer: [cancel, again, apply], initialFocus: cancel,
+      onClose: () => { closed = true; },
+    });
+    const calculate = async () => {
+      estimate = null;
+      again.disabled = true;
+      apply.disabled = true;
+      status.textContent = t('Estimating image savings…');
+      try {
+        const report = await api.guide.optimizeImages({ guideId, dryRun: true });
+        if (closed) return;
+        estimate = report;
+        status.textContent = report.savedBytes > 0
+          ? tn(report.proposedImages, 'Save {saved} by optimizing {count} image ({before} → {after}).', 'Save {saved} by optimizing {count} images ({before} → {after}).',
+            { saved: formatBytes(report.savedBytes), before: formatBytes(report.bytesBefore), after: formatBytes(report.bytesAfter) })
+          : t('No smaller images were found.');
+        showErrors(report);
+        apply.disabled = !(report.savedBytes > 0);
+      } catch (error) {
+        status.textContent = error.message;
+      } finally {
+        again.disabled = false;
+      }
+    };
+    await calculate();
+  }
+
   async saveAll() {
     if (this.currentStep) await this.flushStep();
     if (this.guide) await this.flushGuide();
@@ -3080,6 +3152,7 @@ class GuideEditor {
     const commands = [
       { kind: 'cmd', label: t('New guide'), description: t('Create a blank guide'), action: () => this.onBack('new') },
       { kind: 'cmd', label: t('Export'), description: t('Export the current guide'), action: () => this.openExportDialog() },
+      { kind: 'cmd', label: t('Optimize guide images'), action: () => this.optimizeImages() },
       { kind: 'cmd', label: t('Settings'), description: t('Open application settings'), action: () => this.openSettings() },
       { kind: 'cmd', label: t('Linked guide'), description: t('Show linked archive details'), action: () => this.openLinkedGuide() },
       { kind: 'cmd', label: t('Start capture session'), description: t('Enable hotkey capture for this guide'), action: () => this.startCaptureSession() },

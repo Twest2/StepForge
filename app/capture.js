@@ -2432,7 +2432,7 @@ ${WINDOW_BOUNDS_CS}
   async storeScreenshot(png) {
     if (this.settings.get('images.format') !== 'webp') return png;
     return (await optimizeScreenshot(png, {
-      format: 'webp', webpQuality: this.settings.get('images.webpQuality'), codec: getImageCodec(),
+      format: 'webp', lossless: this.settings.get('images.lossless') !== false, webpQuality: this.settings.get('images.webpQuality'), codec: getImageCodec(),
     })).buffer;
   }
 

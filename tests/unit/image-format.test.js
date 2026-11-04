@@ -112,18 +112,18 @@ test('optimizeScreenshot keeps WebP only when it is smaller and the size is unch
   assert.equal((await fmt.optimizeScreenshot(png, { codec: failing })).format, 'png');
 });
 
-test('optimizeScreenshot leaves partially transparent images and the PNG setting alone', async () => {
+test('optimizeScreenshot supports transparency and leaves the PNG setting alone', async () => {
   const codec = fakeCodec();
   const semi = rgbaPartial(40, 40);
   assert.equal(fmt.hasPartialAlpha(semi), true);
-  assert.equal((await fmt.optimizeScreenshot(semi, { codec })).format, 'png');
-  assert.equal(codec.calls.encode, 0);
+  assert.equal((await fmt.optimizeScreenshot(semi, { codec })).format, 'webp');
+  assert.equal(codec.calls.encode, 1);
   assert.equal((await fmt.optimizeScreenshot(solid(40, 40), { format: 'png', codec })).format, 'png');
-  assert.equal(codec.calls.encode, 0);
+  assert.equal(codec.calls.encode, 1);
 });
 
-test('WebP quality is clamped to the 0.8 to 1 range', () => {
-  assert.equal(fmt.clampWebpQuality(0.2), 0.8);
+test('WebP quality is clamped to the 0.95 to 1 range', () => {
+  assert.equal(fmt.clampWebpQuality(0.2), 0.95);
   assert.equal(fmt.clampWebpQuality(1.5), 1);
   assert.equal(fmt.clampWebpQuality('nonsense'), fmt.DEFAULT_WEBP_QUALITY);
 });
@@ -226,26 +226,26 @@ test('optimize guide images: dry run reports savings and writes nothing, apply c
     assert.equal(dry.steps, 2, 'steps with a screenshot');
     assert.equal(dry.screenshots, 3);
     assert.equal(dry.optimized, 0);
-    assert.equal(dry.changedSteps, 1);
+    assert.equal(dry.changedSteps, 2);
     assert.ok(dry.savedBytes > 0);
-    assert.equal(dry.keptPng, 1, 'partially transparent screenshot stays PNG');
+    assert.equal(dry.keptPng, 0, 'lossless encoding supports transparency');
     assert.deepEqual(fs.readFileSync(store.stepImagePath(guide.guideId, step.stepId, 'original')), before, 'dry run writes nothing');
     assert.equal(store.getStep(guide.guideId, step.stepId).image.originalPath, 'original.png');
 
     const applied = await optimizeGuideImages(store, guide.guideId, { dryRun: false, codec });
-    assert.equal(applied.optimized, 2);
+    assert.equal(applied.optimized, 3);
     const after = store.getStep(guide.guideId, step.stepId);
-    assert.equal(after.image.originalPath, 'original.webp');
-    assert.equal(after.image.workingPath, 'working.webp');
-    assert.equal(store.getStep(guide.guideId, translucent.stepId).image.originalPath, 'original.png');
-    assert.ok(fs.readdirSync(store.stepDir(guide.guideId, step.stepId)).includes('working.webp'));
+    assert.match(after.image.originalPath, /^original-[a-f0-9]+\.webp$/);
+    assert.match(after.image.workingPath, /^working-[a-f0-9]+\.webp$/);
+    assert.match(store.getStep(guide.guideId, translucent.stepId).image.originalPath, /\.webp$/);
+    assert.ok(fs.existsSync(store.stepImagePath(guide.guideId, step.stepId, 'working')));
     assert.ok(!fs.readdirSync(store.stepDir(guide.guideId, step.stepId)).includes('working.png'));
     assert.ok(fs.existsSync(path.join(dir, 'library', 'guides', guide.guideId, 'history', 'snapshots')));
 
     // Already optimized: a second run finds nothing to change and skips the WebP files.
     const again = await optimizeGuideImages(store, guide.guideId, { dryRun: true, codec });
     assert.equal(again.changedSteps, 0);
-    assert.equal(again.alreadyOptimized, 2);
+    assert.equal(again.alreadyOptimized, 3);
   } finally {
     rmrf(dir);
   }
@@ -257,7 +257,7 @@ test('optimize refuses to run without a codec and never runs on its own', async 
     const store = new GuideStore(dir);
     const guide = store.createGuide({ title: 'No codec' });
     store.addStep(guide.guideId, { title: 'Step' }, solid(20, 20), { width: 20, height: 20 });
-    await assert.rejects(optimizeGuideImages(store, guide.guideId, { dryRun: false, codec: null }), /needs the StepForge app/);
+    await assert.rejects(optimizeGuideImages(store, guide.guideId, { dryRun: false, codec: null }), /needs an image codec/);
     assert.equal(store.getStep(guide.guideId, store.listSteps(guide.guideId).keys().next().value).image.originalPath, 'original.png');
   } finally {
     rmrf(dir);

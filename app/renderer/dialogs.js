@@ -712,6 +712,17 @@ function showSettingsDialog({
       { value: 'dark', label: t('Dark') },
     ]);
     const spellcheck = el('input', { type: 'checkbox', checked: Boolean(settings.spellcheck) });
+    const imageCompression = makeSelect(settings.images?.format === 'png' ? 'off' : settings.images?.lossless === false ? 'lossy' : 'lossless', [
+      { value: 'lossless', label: t('Lossless WebP (recommended)') },
+      { value: 'lossy', label: t('Lossy WebP (smaller files)') },
+      { value: 'off', label: t('No automatic optimization') },
+    ]);
+    imageCompression.setAttribute('aria-label', t('Image compression'));
+    const imageQuality = makeInput(Math.round((settings.images?.webpQuality ?? 0.95) * 100), 'number', { min: 95, max: 100, step: 1, 'aria-label': t('Lossy quality (%)') });
+    const imageQualityRow = settingRow(t('Lossy quality (%)'), t('Text and small UI details are protected by falling back to lossless when needed.'), imageQuality);
+    const syncImageQuality = () => { imageQualityRow.hidden = imageCompression.value !== 'lossy'; };
+    imageCompression.addEventListener('change', syncImageQuality);
+    syncImageQuality();
     // Each language is listed in its own name, so anyone can find theirs.
     // Translations are new, so every language but English is marked Beta.
     const language = makeSelect(settings.language || 'system', [
@@ -920,6 +931,9 @@ function showSettingsDialog({
           settingRow(t('Open folder after export'), t('Show the exported file in your file manager.'), makeSwitch(openFolder, t('Open folder after export'))),
           settingRow(t('Preview step count'), t('How many steps the export preview renders.'), previewCount),
           settingRow(t('Code theme'), t('Syntax colors for code blocks in PDF, Word, HTML and Confluence exports.'), codeTheme)),
+        settingsCard(t('Image compression'),
+          settingRow(t('Compression'), t('Applies to new screenshots and imports. Existing guide images are unchanged.'), imageCompression),
+          imageQualityRow),
         settingsCard(t('Guide storage'),
           el('div.settings-storage', {}, storagePath, storageNote),
           storageWarningNote,
@@ -1041,6 +1055,11 @@ function showSettingsDialog({
 
     // Everything the form holds, as Save stores it. Also what unsaved-change checks compare.
     const collect = () => ({
+      images: {
+        format: imageCompression.value === 'off' ? 'png' : 'webp',
+        lossless: imageCompression.value === 'off' ? settings.images?.lossless !== false : imageCompression.value !== 'lossy',
+        webpQuality: Math.min(100, Math.max(95, Number(imageQuality.value) || 95)) / 100,
+      },
       appearance: appearance.value,
       language: language.value,
       spellcheck: spellcheck.checked,
@@ -1568,7 +1587,8 @@ function snapshotLabel(name) {
   if (!match) return name;
   const [, day, h, m, sec, ms, label] = match;
   const when = new Date(`${day}T${h}:${m}:${sec}.${ms}Z`).toLocaleString(dateLocale, { dateStyle: 'medium', timeStyle: 'short' });
-  return label ? `${when} · ${label.replace(/_/g, ' ')}` : when;
+  const text = label?.replace(/_/g, ' ');
+  return label ? `${when} · ${text === 'before optimizing images' ? t('Before optimizing images') : text}` : when;
 }
 
 function showBackupsDialog({ snapshots = [], onCreate, onRestore, onCompare } = {}) {

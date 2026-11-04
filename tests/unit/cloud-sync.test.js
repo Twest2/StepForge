@@ -1038,8 +1038,11 @@ test('WebP screenshots sync as the bytes they are stored as, and an old PNG besi
   const { device, files } = setup(t);
   const a = device('a'); const b = device('b');
   const id = addGuide(a.store, 0);
-  const webp = Buffer.concat([Buffer.from('RIFF', 'latin1'), Buffer.alloc(4), Buffer.from('WEBPVP8L', 'latin1'), Buffer.from([0x2f, 1, 2, 3, 4, 5, 6, 7, 8, 9])]);
-  const step = a.store.addStep(id, { title: 'Optimized' }, webp, { width: 1, height: 1 });
+  const { createImageCodec } = require('../../core/image-codec');
+  const { encodePng } = require('../../core/png');
+  const { createImage } = require('../../core/raster');
+  const webp = await createImageCodec().encodeWebp(encodePng(createImage(40, 30, [25, 75, 125, 128])));
+  const step = a.store.addStep(id, { title: 'Optimized' }, webp, { width: 40, height: 30 });
   await synced(a.sync); await synced(b.sync);
   const onB = b.store.getStep(id, step.stepId);
   assert.equal(onB.image.originalPath, 'original.webp');

@@ -3,6 +3,7 @@
 const { GuideStore } = require('./store');
 const { buildRenderAst } = require('./renderast');
 const { runExport } = require('../exporters');
+const { prepareExportImages } = require('./image-format');
 
 /**
  * Entry point for the export helper process (forked via
@@ -11,14 +12,13 @@ const { runExport } = require('../exporters');
  * etc. rendering never blocks the UI.
  */
 
-process.on('message', (job) => {
+process.on('message', async (job) => {
   let payload;
   try {
-    const { dataDir, guideId, format, options, outDir, globals, maxSteps, codeStyle, reviewDays, branding, preparedImages } = job;
+    const { dataDir, guideId, format, options, outDir, globals, maxSteps, codeStyle, reviewDays, branding } = job;
     const store = new GuideStore(dataDir);
-    // WebP screenshots arrive already decoded to PNG by the main process,
-    // which has the Chromium codec; this helper process has none.
-    const images = new Map((preparedImages || []).map(([file, base64]) => [file, Buffer.from(base64, 'base64')]));
+    // Decode stored screenshots in the worker through the shared codec.
+    const images = await prepareExportImages(store, guideId, { maxSteps });
     const ast = buildRenderAst(store, guideId, { globals, maxSteps, codeStyle, reviewDays, branding, images });
     const result = runExport(format, ast, outDir, options || {});
     payload = { ok: true, result };

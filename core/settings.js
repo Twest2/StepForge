@@ -109,10 +109,9 @@ const DEFAULT_SETTINGS = {
       branding: false,
     },
   },
-  // New screenshots: 'webp' stores opaque screenshots as WebP (Chromium's
-  // encoder at webpQuality, 0.8-1) when that is smaller than the PNG; 'png'
+  // New screenshots: 'webp' uses lossless WebP when smaller; 'png'
   // keeps PNG. Guides made before this are never changed by themselves.
-  images: { format: 'webp', webpQuality: 0.95 },
+  images: { format: 'webp', lossless: true, webpQuality: 0.95 },
   // Settings → Branding: the brand profile (core/branding.js) every export
   // uses unless the Export dialog picks another; '' for no branding.
   branding: { activeProfileId: '' },
@@ -180,7 +179,8 @@ class Settings {
     if (!data.images || typeof data.images !== 'object') data.images = deepClone(DEFAULT_SETTINGS.images);
     if (!['webp', 'png'].includes(data.images.format)) data.images.format = DEFAULT_SETTINGS.images.format;
     const quality = Number(data.images.webpQuality);
-    data.images.webpQuality = Number.isFinite(quality) ? Math.min(1, Math.max(0.8, quality)) : DEFAULT_SETTINGS.images.webpQuality;
+    data.images.webpQuality = Number.isFinite(quality) ? Math.min(1, Math.max(0.95, quality)) : DEFAULT_SETTINGS.images.webpQuality;
+    data.images.lossless = data.images.lossless !== false;
     const position = data.capture.recordingBarPosition;
     if (!position || !Number.isFinite(position.x) || !Number.isFinite(position.y)) data.capture.recordingBarPosition = null;
     return data;

@@ -36,9 +36,9 @@ const { BrandingStore, brandTemplateDefaults, checkFileSize, cssFromFile, MAX_CS
 const { MAX_REQUEST_CHARS: MAX_BRAND_CSS_REQUEST_CHARS } = require('../core/ai-brand-css');
 const { buildSampleAst } = require('../core/branding-sample');
 const { buildRenderAst } = require('../core/renderast');
-const { setImageCodec, rasterToPng, sniffImageFormat, readImageSize, optimizeScreenshot, prepareExportImages } = require('../core/image-format');
+const { setImageCodec, rasterToPng, sniffImageFormat, readImageSize, optimizeScreenshot, prepareExportImages, imagePreviewUrl } = require('../core/image-format');
 const { optimizeGuideImages } = require('../core/image-optimize');
-const { createChromiumImageCodec } = require('./image-codec');
+const { createImageCodec } = require('../core/image-codec');
 const { qualityFindings } = require('../core/quality');
 const { stepNumberMap } = require('../core/step-outline');
 const { AI_TARGETS } = require('../core/text-intel');
@@ -920,26 +920,27 @@ function setupIpc() {
   h('guide:descriptionFromMarkdown', ({ markdown }) => descriptionFromMarkdown(markdown),
     { validate: (a) => c.string(a.markdown, 2 * 1024 * 1024) });
   // A new screenshot in the form the store keeps: WebP when the setting asks
-  // for it and Chromium makes it smaller, otherwise the PNG unchanged.
+  // for it and encoding makes it smaller, otherwise the PNG unchanged.
   const storeScreenshot = async (bytes) => {
     if (settings.get('images.format') !== 'webp') return bytes;
     return (await optimizeScreenshot(bytes, {
-      format: 'webp', webpQuality: settings.get('images.webpQuality'), codec: imageCodec,
+      format: 'webp', lossless: settings.get('images.lossless') !== false, webpQuality: settings.get('images.webpQuality'), codec: imageCodec,
     })).buffer;
   };
   // A picked image file as stored bytes and size. WebP is kept as it is (no
   // second encode); other formats go through nativeImage to PNG first.
   const readImageFile = async (file) => {
     const raw = fs.readFileSync(file);
-    if (sniffImageFormat(raw) === 'webp') return { bytes: raw, size: readImageSize(raw) };
+    if (sniffImageFormat(raw) === 'webp') {
+      try {
+        const png = await rasterToPng(raw);
+        return { bytes: raw, size: readImageSize(png) };
+      } catch { return null; }
+    }
     const img = nativeImage.createFromBuffer(raw);
     if (img.isEmpty()) return null;
     return { bytes: await storeScreenshot(img.toPNG()), size: img.getSize() };
   };
-  // The guide's WebP screenshots as PNG, for the export helper (core/export-worker.js).
-  const preparedExportImages = async (guideId) => [...(await prepareExportImages(store, guideId, { codec: imageCodec }))]
-    .map(([file, png]) => [file, png.toString('base64')]);
-
   h('step:add', async ({ guideId, fields, imageBase64, size, position }) => {
     const buf = imageBase64 ? await storeScreenshot(Buffer.from(imageBase64, 'base64')) : null;
     const step = store.addStep(guideId, fields || {}, buf, size || null, { position });
@@ -984,22 +985,19 @@ function setupIpc() {
   h('step:imagePath', ({ guideId, stepId, which }) => {
     const p = store.stepImagePath(guideId, stepId, which || 'working');
     if (!p || !fs.existsSync(p)) return null;
-    // pathToFileURL correctly encodes spaces, #, %, drive letters, etc.; the
-    // mtime is a cache-buster so the renderer reloads after an edit.
-    const url = pathToFileURL(p);
-    url.searchParams.set('v', String(fs.statSync(p).mtimeMs));
-    return url.href;
+    return imagePreviewUrl(p);
   }, {
     validate: (a) => c.id(a.guideId) && c.id(a.stepId)
       && (a.which === undefined || a.which === null || c.oneOf(a.which, ['original', 'working'])),
   });
   // A screenshot's bytes as stored, for undo. Redrawing it through a canvas
   // would re-encode it, and an undone crop would become a second copy.
-  h('step:imageData', ({ guideId, stepId, which }) => {
+  h('step:imageData', async ({ guideId, stepId, which }) => {
     const p = store.stepImagePath(guideId, stepId, which || 'working');
     if (!p || !fs.existsSync(p)) return null;
     const data = fs.readFileSync(p);
-    const size = readImageSize(data) || nativeImage.createFromBuffer(data).getSize();
+    const size = sniffImageFormat(data) === 'webp' ? readImageSize(await rasterToPng(data))
+      : readImageSize(data) || nativeImage.createFromBuffer(data).getSize();
     return { base64: data.toString('base64'), size };
   }, {
     validate: (a) => c.id(a.guideId) && c.id(a.stepId)
@@ -1010,9 +1008,9 @@ function setupIpc() {
     maxChars: IMAGE_BUDGET,
     validate: (a) => c.id(a.guideId) && c.id(a.stepId) && c.base64(a.pngBase64),
   });
-  h('step:resetWorkingImage', ({ guideId, stepId }) => {
+  h('step:resetWorkingImage', async ({ guideId, stepId }) => {
     const p = store.stepImagePath(guideId, stepId, 'original');
-    const { width, height } = readImageSize(fs.readFileSync(p)) || nativeImage.createFromPath(p).getSize();
+    const { width, height } = readImageSize(await rasterToPng(fs.readFileSync(p)));
     return store.resetWorkingImage(guideId, stepId, { width, height });
   }, { validate: (a) => c.id(a.guideId) && c.id(a.stepId) });
   h('step:fromClipboard', async ({ guideId, position }) => {
@@ -1717,7 +1715,6 @@ function setupIpc() {
       globals: settings.getGlobalPlaceholders(),
       codeStyle: exportCodeStyle(), reviewDays: exportReviewDays(),
       branding: exportBranding(brandProfileId),
-      preparedImages: await preparedExportImages(guideId),
     });
     producedFiles.add(result.file);
     if (settings.get('exports.openFolderAfterExport')) shell.showItemInFolder(result.file);
@@ -1744,13 +1741,20 @@ function setupIpc() {
     return res.filePaths[0];
   }, { validate: (a) => validFormat(a.format) });
   // Optimize guide images (core/image-optimize.js). dryRun (default) only reports the saving.
-  h('guide:optimizeImages', ({ guideId, dryRun }) => optimizeGuideImages(store, guideId, {
-    dryRun: dryRun !== false,
-    format: 'webp',
-    webpQuality: settings.get('images.webpQuality'),
-    codec: imageCodec,
-  }), {
-    validate: (a) => c.id(a.guideId) && (a.dryRun === undefined || typeof a.dryRun === 'boolean'),
+  h('guide:optimizeImages', async ({ guideId, dryRun, expectedHash }) => {
+    try {
+      return await optimizeGuideImages(store, guideId, {
+        dryRun: dryRun !== false, expectedHash,
+        format: 'webp', lossless: settings.get('images.lossless') !== false,
+        webpQuality: settings.get('images.webpQuality'), codec: imageCodec,
+      });
+    } catch (error) {
+      if (error.code === 'IMAGE_ESTIMATE_CHANGED') throw new Error(t('Guide changed. Estimate image savings again before applying.'));
+      throw new Error(t('Could not optimize guide images: {error}', { error: error.message }));
+    }
+  }, {
+    validate: (a) => c.id(a.guideId) && (a.dryRun === undefined || typeof a.dryRun === 'boolean')
+      && (a.dryRun !== false || (typeof a.expectedHash === 'string' && /^[a-f0-9]{64}$/.test(a.expectedHash))),
   });
   h('export:preview', async ({ guideId, format, options, brandProfileId }) => {
     const previewDir = path.join(store.tempDir, `preview-${guideId}-${format}`);
@@ -1760,7 +1764,7 @@ function setupIpc() {
       maxSteps: settings.get('exports.previewStepCount') || 3,
       codeStyle: exportCodeStyle(), reviewDays: exportReviewDays(),
       branding: exportBranding(brandProfileId),
-      images: await prepareExportImages(store, guideId, { codec: imageCodec }),
+      images: await prepareExportImages(store, guideId, { codec: imageCodec, maxSteps: settings.get('exports.previewStepCount') || 3 }),
     });
     const result = runExport(format, ast, previewDir, options || {});
     // Folder-style exports (image bundle, Confluence) preview as their folder.
@@ -1998,8 +2002,8 @@ if (!gotLock) {
     const dataDir = libraryLocation.applyPending();
     store = new GuideStore(dataDir);
     settings = new Settings(store.settingsDir);
-    // Chromium's WebP encoder and decoder, used for every screenshot the app stores or reads.
-    imageCodec = createChromiumImageCodec();
+    // Shared lossless codec, also available in export workers and headless MCP.
+    imageCodec = createImageCodec();
     setImageCodec(imageCodec);
     branding = new BrandingStore(store.settingsDir);
     // Dev builds keep their sign-in to their own data folder instead of

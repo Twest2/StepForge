@@ -19,11 +19,13 @@ test('normal window growth changes the canvas width while both side panes remain
 
 test('narrow windows retain sensible side-pane minimums and restore at most the saved widths', () => {
   const preferred = { steps: 420, properties: 380 };
-  const narrow = layout.layoutPanes(584, preferred);
+  const narrow = layout.layoutPanes(864, preferred);
   assert.ok(narrow.steps >= layout.MIN_WIDTHS.steps);
   assert.ok(narrow.properties >= layout.MIN_WIDTHS.properties);
   assert.ok(narrow.canvas >= layout.MIN_CANVAS_WIDTH);
-  assert.equal(narrow.steps + narrow.properties + narrow.canvas + 2 * layout.DIVIDER_WIDTH, 584);
+  assert.equal(narrow.steps + narrow.properties + narrow.canvas + 2 * layout.DIVIDER_WIDTH, 864);
+  assert.equal(narrow.canvas, 320, 'the canvas must retain a usable minimum at the supported 880 px window width');
+  assert.equal(layout.layoutPanes(584, preferred).canvas, 320, 'an unsupported container size must not shrink the canvas');
   const restored = layout.layoutPanes(1500, preferred);
   assert.equal(restored.steps, 420);
   assert.equal(restored.properties, 380);
@@ -33,8 +35,8 @@ test('manually resizing either pane leaves the other pane unchanged and respects
   const context = { ...rendererI18n(), window: { StepForgePaneLayout: layout } };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/editor.js'), 'utf8'), context);
   const editor = Object.create(context.window.GuideEditor.prototype);
-  editor.dom = { root: { clientWidth: 1000 } };
-  editor.effectivePaneWidths = layout.layoutPanes(1000, layout.DEFAULT_WIDTHS);
+  editor.dom = { root: { clientWidth: 1280 } };
+  editor.effectivePaneWidths = layout.layoutPanes(1280, layout.DEFAULT_WIDTHS);
   editor.applyPaneWidths = next => { editor.effectivePaneWidths = next; };
   editor.resizePane('steps', 410);
   assert.equal(editor.effectivePaneWidths.steps, 410);

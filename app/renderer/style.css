@@ -466,7 +466,7 @@ body.platform-linux #capture-status button {
 }
 .pane-canvas {
   flex: 1;
-  min-width: 64px;
+  min-width: 320px;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -480,7 +480,7 @@ body.platform-linux #capture-status button {
   overflow-y: auto;
   background: color-mix(in srgb, var(--panel-solid) 88%, transparent);
 }
-.editor { min-width: 576px; overflow: hidden; }
+.editor { min-width: 832px; overflow: hidden; }
 #editor-host { min-width: 0; overflow: hidden; }
 .pane-divider { width: 6px; flex: none; position: relative; cursor: col-resize; touch-action: none; background: var(--panel-solid); }
 .pane-divider::before { content: ''; position: absolute; top: 0; bottom: 0; left: 2px; width: 1px; background: var(--border); }

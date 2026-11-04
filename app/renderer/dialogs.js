@@ -1,6 +1,7 @@
 'use strict';
 
 (() => {
+let settingsDialogCount = 0;
 
 /**
  * Small modal factories used by the renderer. They stay intentionally plain:
@@ -8,8 +9,10 @@
  */
 
 function labeledRow(labelText, control, { stacked = false } = {}) {
+  const label = el('label', {}, labelText);
+  labelControl(label, control);
   return el(stacked ? 'div.form-row.stacked' : 'div.form-row', {},
-    el('label', {}, labelText),
+    label,
     control
   );
 }
@@ -475,8 +478,8 @@ function showFindReplace({ stepNumbers = {}, find, replace } = {}) {
         el('div', { style: { height: '8px' } }),
         replacement,
         el('div.form-row', { style: { gap: '16px', margin: '8px 0' } },
-          el('label', {}, matchCase, ' Match case'),
-          el('label', {}, wholeWord, ' Whole word'),
+          el('label', {}, matchCase, ' ', t('Match case')),
+          el('label', {}, wholeWord, ' ', t('Whole word')),
           summary),
         list,
         el('div.muted', { style: { marginTop: '8px' } },
@@ -486,7 +489,6 @@ function showFindReplace({ stepNumbers = {}, find, replace } = {}) {
         el('button', { onClick: () => { close(); resolve(false); } }, t('Close')),
         replaceButton,
       ],
-      isDirty: unsavedChanges(() => [query.value, replacement.value]),
       onClose: () => resolve(false),
     });
 
@@ -712,6 +714,19 @@ function showSettingsDialog({
       { value: 'dark', label: t('Dark') },
     ]);
     const spellcheck = el('input', { type: 'checkbox', checked: Boolean(settings.spellcheck) });
+    const imageCompression = makeSelect(settings.images?.format === 'png' ? 'off' : settings.images?.lossless === false ? 'lossy' : 'lossless', [
+      { value: 'lossless', label: t('Lossless WebP (recommended)') },
+      { value: 'lossy', label: t('Lossy WebP (smaller files)') },
+      { value: 'off', label: t('No automatic optimization') },
+    ]);
+    imageCompression.setAttribute('aria-label', t('Image compression'));
+    // Wide enough for its longest choice in any language, not the 220px other settings use.
+    Object.assign(imageCompression.style, { width: 'auto', minWidth: '220px' });
+    const imageQuality = makeInput(Math.round((settings.images?.webpQuality ?? 0.95) * 100), 'number', { min: 95, max: 100, step: 1, 'aria-label': t('Lossy quality (%)') });
+    const imageQualityRow = settingRow(t('Lossy quality (%)'), t('Text and small UI details are protected by falling back to lossless when needed.'), imageQuality);
+    const syncImageQuality = () => { imageQualityRow.hidden = imageCompression.value !== 'lossy'; };
+    imageCompression.addEventListener('change', syncImageQuality);
+    syncImageQuality();
     // Each language is listed in its own name, so anyone can find theirs.
     // Translations are new, so every language but English is marked Beta.
     const language = makeSelect(settings.language || 'system', [
@@ -755,6 +770,7 @@ function showSettingsDialog({
     const pauseHotkey = makeHotkeyInput(settings.capture?.hotkeyPauseResume || '');
     const focusedDefault = el('input', { type: 'checkbox', checked: settings.editor?.focusedViewDefaultForNewSteps !== false });
     const returnToSelect = el('input', { type: 'checkbox', checked: settings.editor?.returnToSelect !== false });
+    const dangerousDeletes = el('input', { type: 'checkbox', checked: settings.editor?.dangerousDeletes === true });
     const previewCount = makeInput(settings.exports?.previewStepCount ?? 3, 'number', { min: 1, step: 1 });
     const openFolder = el('input', { type: 'checkbox', checked: Boolean(settings.exports?.openFolderAfterExport) });
     const codeTheme = makeSelect(CODE_THEME_CHOICES.some((t) => t.value === settings.exports?.codeTheme) ? settings.exports.codeTheme : 'atom-one-dark',
@@ -788,6 +804,7 @@ function showSettingsDialog({
     ollamaModel.setAttribute('list', 'ollama-models');
     const aiScreenshots = el('input', { type: 'checkbox', checked: settings.ai?.attachScreenshots !== false });
     const agentsEnabled = el('input', { type: 'checkbox', checked: Boolean(settings.ai?.agents?.enabled) });
+    const agentAccessStatus = el('div.setting-desc', { role: 'status', 'aria-live': 'polite', hidden: true });
     const agentsScreenshots = el('input', { type: 'checkbox', checked: settings.ai?.agents?.screenshots !== false });
     const agentsBranding = el('input', { type: 'checkbox', checked: Boolean(settings.ai?.agents?.branding) });
     // How Claude Code, Codex, or any MCP app starts StepForge for agents.
@@ -911,6 +928,47 @@ function showSettingsDialog({
       onClick: () => addPlaceholderRow(),
     }, t('Add placeholder'));
 
+    // Keep controls mounted so hiding them never resets their saved/draft values.
+    const aiOptions = el('div', { dataset: { aiDependent: 'local' } },
+      settingRow(t('Auto-document captures'), t('Write a title and description for each new capture as you record. Turn off to use AI only when you ask.'), makeSwitch(aiAutoDoc, t('Auto-document captures'))),
+      settingRow(t('Let the model see screenshots'), t('Models that can read images see each step’s screenshot, with blurred areas already hidden. Turn off to send text only.'), makeSwitch(aiScreenshots, t('Let the model see screenshots'))));
+    const ollamaCard = settingsCard(t('Ollama'),
+      el('div.setting-desc', {}, t('Runs on your computer, so your screenshots and text stay here.')),
+      settingRow(t('Host'), t('Where Ollama is running.'), ollamaHost),
+      settingRow(t('Model'), el('span', {}, t('Any installed model. Choose Test connection to list them.'), ' ',
+        docLink(t('AI guide'), AI_GUIDE_URL), ' · ', docLink(t('Recommended models'), `${AI_GUIDE_URL}#recommended-models`)), ollamaModel),
+      el('div.settings-test', {}, aiStatus, testAiBtn, ollamaModels));
+    const agentOptions = el('div', { dataset: { aiDependent: 'agents' } },
+      settingRow(t('Agents can see screenshots'), t('Blurred areas are filled in first. Turn off to share step text only.'), makeSwitch(agentsScreenshots, t('Agents can see screenshots'))),
+      settingRow(t('Let AI agents edit brand profiles'), t('Agents can make and change brand profiles: logo, colors, fonts and CSS, and choose the one exports use. They can’t delete a profile.'), makeSwitch(agentsBranding, t('Let AI agents edit brand profiles'))), agentSetup);
+    const updateAiVisibility = () => {
+      aiOptions.hidden = !aiEnabled.checked;
+      ollamaCard.hidden = !aiEnabled.checked;
+      agentOptions.hidden = !agentsEnabled.checked;
+    };
+    updateAiVisibility();
+    agentsEnabled.addEventListener('change', async () => {
+      updateAiVisibility();
+      if (agentsEnabled.checked) return;
+      const restoreFocus = document.activeElement === agentsEnabled;
+      agentsEnabled.disabled = true;
+      try {
+        // Revocation is immediate; enabling remains an explicit Settings Save.
+        await api.settings.set({ keyPath: 'ai.agents.enabled', value: false });
+        settingsBaseline.ai.agents.enabled = false;
+        agentAccessStatus.textContent = t('AI agents are cut off now. To let them back in, turn this on and save.');
+        agentAccessStatus.hidden = false;
+      } catch (error) {
+        agentsEnabled.checked = true;
+        updateAiVisibility();
+        agentAccessStatus.textContent = t('Could not turn off AI agent access: {error}', { error: error.message });
+        agentAccessStatus.hidden = false;
+      } finally {
+        agentsEnabled.disabled = false;
+        if (restoreFocus && agentsEnabled.isConnected) agentsEnabled.focus();
+      }
+    });
+
     const sections = [
       { id: 'general', label: t('General'), description: t('Appearance, exports, where your guides and deleted guides are kept, and when guides are due for review.'), content: [
         settingsCard(t('Appearance'),
@@ -937,10 +995,13 @@ function showSettingsDialog({
       { id: 'capture', label: t('Capture'), description: t('How StepForge records steps.'), content: [
         settingsCard(t('Recording'),
           recordingControlsRow,
-          settingRow(t('Default mode'), t('Record the whole screen or the active window. For a region, use Capture → Capture region….'), captureMode),
+          settingRow(t('Default mode'), t('Record the whole screen or the active window. For a region, use Capture → Capture region.'), captureMode),
           settingRow(t('Delay'), t('Milliseconds to wait before each screenshot.'), delayMs),
           settingRow(t('Click marker'), t('Draw a marker where you clicked.'), makeSwitch(clickMarker, t('Click marker'))),
           settingRow(t('Capture outside clicks'), t('Record clicks in other apps while a capture session is running.'), makeSwitch(captureOutside, t('Capture outside clicks')))),
+        settingsCard(t('Image compression'),
+          settingRow(t('Compression'), t('Applies to new screenshots and imports. Existing guide images are unchanged.'), imageCompression),
+          imageQualityRow),
         settingsCard(t('When clicks can’t be detected'),
           settingRow(t('Capture with'), t('Some desktops don’t report clicks. Choose how steps are captured instead.'), fallbackTrigger),
           (intervalRow.append(settingRow(t('Timer interval'), t('Seconds between timed captures.'), autoIntervalSec)), intervalRow)),
@@ -956,6 +1017,9 @@ function showSettingsDialog({
         settingsCard(t('Annotation tools'),
           settingRow(t('Go back to Select after each use'), t('After you draw a blur, shape, arrow or other annotation, or crop, the Select tool is picked again. Turn off to keep using the same tool.'),
             makeSwitch(returnToSelect, t('Go back to Select after each use')))),
+        settingsCard(t('Deleting'),
+          settingRow(t('Dangerous deletes'), t('Delete steps without asking for confirmation.'),
+            makeSwitch(dangerousDeletes, t('Dangerous deletes')))),
         settingsCard(t('Backups'),
           settingRow(t('Snapshots to keep'), t('Older backup snapshots of each guide are removed. 0 keeps all of them.'), keepLast)),
       ] },
@@ -968,22 +1032,12 @@ function showSettingsDialog({
       { id: 'ai', label: t('AI'), description: t('Let AI write your guides: a model on your own computer through Ollama, or an AI agent such as Claude or Codex.'), content: [
         settingsCard(null,
           settingRow(t('Enable AI'), t('Turn on the AI ▾ menu in the guide toolbar: write a whole guide, a step, or one field.'), makeSwitch(aiEnabled, t('Enable AI'))),
-          settingRow(t('Auto-document captures'), t('Write a title and description for each new capture as you record. Turn off to use AI only when you ask.'), makeSwitch(aiAutoDoc, t('Auto-document captures'))),
-          settingRow(t('Let the model see screenshots'), t('Models that can read images see each step’s screenshot, with blurred areas already hidden. Turn off to send text only.'), makeSwitch(aiScreenshots, t('Let the model see screenshots')))),
-        settingsCard(t('Ollama'),
-          el('div.setting-desc', {}, t('Runs on your computer, so your screenshots and text stay here.')),
-          settingRow(t('Host'), t('Where Ollama is running.'), ollamaHost),
-          settingRow(t('Model'), el('span', {},
-            t('Any installed model. Choose Test connection to list them.'), ' ',
-            docLink(t('AI guide'), AI_GUIDE_URL), ' · ', docLink(t('Recommended models'), `${AI_GUIDE_URL}#recommended-models`)),
-          ollamaModel),
-          el('div.settings-test', {}, aiStatus, testAiBtn, ollamaModels)),
+          aiOptions),
+        ollamaCard,
         settingsCard(t('AI agents (Claude, Codex)'),
           el('div.setting-desc', {}, t('AI apps such as Claude and Codex can connect to StepForge and edit your guides. They can create and delete guides and steps, reorder steps, replace or remove screenshots, edit text, add placeholders, and add or delete annotations except blurs. StepForge saves snapshots before step creation, moves, deletions and screenshot changes; restore them from More → Backups & snapshots. Deleted guides go to the Trash.')),
-          settingRow(t('Let AI agents edit your guides'), t('Turn off to cut off every connected agent at once.'), makeSwitch(agentsEnabled, t('Let AI agents edit your guides'))),
-          settingRow(t('Agents can see screenshots'), t('Blurred areas are filled in first. Turn off to share step text only.'), makeSwitch(agentsScreenshots, t('Agents can see screenshots'))),
-          settingRow(t('Let AI agents edit brand profiles'), t('Agents can make and change brand profiles: logo, colors, fonts and CSS, and choose the one exports use. They can’t delete a profile.'), makeSwitch(agentsBranding, t('Let AI agents edit brand profiles'))),
-          agentSetup),
+          settingRow(t('Let AI agents edit your guides'), t('Turning off takes effect immediately, even if Settings is canceled. Turning on requires Save.'), makeSwitch(agentsEnabled, t('Let AI agents edit your guides'))),
+          agentAccessStatus, agentOptions),
       ] },
       { id: 'accounts', label: t('Accounts'), description: t('Sync guides with Google Drive, OneDrive, Dropbox or Nextcloud, share them on the web with GitHub, or publish them to Confluence or Wiki.js.'), content: [accountsPanel.node] },
       { id: 'placeholders', label: t('Placeholders'), description: t('Reusable text for every guide. Type [[name]] in a guide to insert it.'), content: [
@@ -1009,26 +1063,40 @@ function showSettingsDialog({
     ];
     const navButtons = new Map();
     const panes = new Map();
+    const settingsId = ++settingsDialogCount;
     const showSection = (id) => {
       for (const [key, button] of navButtons) {
         button.classList.toggle('active', key === id);
         button.setAttribute('aria-selected', String(key === id));
+        button.tabIndex = key === id ? 0 : -1;
       }
       for (const [key, pane] of panes) pane.hidden = key !== id;
       content.scrollTop = 0;
     };
     const nav = el('nav.settings-nav', { role: 'tablist', 'aria-label': t('Settings sections') });
+    const navMedia = typeof window.matchMedia === 'function' ? window.matchMedia('(max-width: 720px)') : null;
+    const syncNavOrientation = () => nav.setAttribute('aria-orientation', navMedia?.matches ? 'horizontal' : 'vertical');
+    syncNavOrientation(); navMedia?.addEventListener?.('change', syncNavOrientation);
+    const disposeSettings = () => { navMedia?.removeEventListener?.('change', syncNavOrientation); accountsPanel.dispose(); };
     const content = el('div.settings-content');
     for (const item of sections) {
-      const button = el('button.settings-nav-item', { type: 'button', role: 'tab', onClick: () => {
+      const button = el('button.settings-nav-item', { type: 'button', role: 'tab', id: `settings-tab-${settingsId}-${item.id}`, 'aria-controls': `settings-pane-${settingsId}-${item.id}`, onClick: () => {
         // Choosing Accounts always starts from the list of services.
         if (item.id === 'accounts') accountsPanel.show(null);
         showSection(item.id);
+      }, onKeyDown: event => {
+        const horizontal = navMedia?.matches;
+        const move = event.key === (horizontal ? 'ArrowRight' : 'ArrowDown') ? 1 : event.key === (horizontal ? 'ArrowLeft' : 'ArrowUp') ? -1 : 0;
+        if (!move && event.key !== 'Home' && event.key !== 'End') return;
+        event.preventDefault(); event.stopPropagation();
+        const buttons = [...navButtons.values()], at = buttons.indexOf(button);
+        const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : (at + move + buttons.length) % buttons.length;
+        buttons[next].click(); buttons[next].focus();
       } },
         item.label, item.badge ? betaBadge(item.badge) : null);
       navButtons.set(item.id, button);
       nav.append(button);
-      const pane = el('section.settings-pane', { role: 'tabpanel', 'aria-label': item.label },
+      const pane = el('section.settings-pane', { role: 'tabpanel', id: `settings-pane-${settingsId}-${item.id}`, 'aria-labelledby': button.id },
         item.id === 'about' ? null : el('header.settings-pane-head', {},
           el('h3', {}, item.label),
           item.description ? el('p.setting-desc', {}, item.description) : null),
@@ -1041,6 +1109,11 @@ function showSettingsDialog({
 
     // Everything the form holds, as Save stores it. Also what unsaved-change checks compare.
     const collect = () => ({
+      images: {
+        format: imageCompression.value === 'off' ? 'png' : 'webp',
+        lossless: imageCompression.value === 'off' ? settings.images?.lossless !== false : imageCompression.value !== 'lossy',
+        webpQuality: Math.min(100, Math.max(95, Number(imageQuality.value) || 95)) / 100,
+      },
       appearance: appearance.value,
       language: language.value,
       spellcheck: spellcheck.checked,
@@ -1062,6 +1135,7 @@ function showSettingsDialog({
         ...settings.editor,
         focusedViewDefaultForNewSteps: focusedDefault.checked,
         returnToSelect: returnToSelect.checked,
+        dangerousDeletes: dangerousDeletes.checked,
       },
       branding: {
         ...settings.branding,
@@ -1112,7 +1186,8 @@ function showSettingsDialog({
         return acc;
       }, {}),
     });
-    const savedState = unsavedChanges(collect);
+    const settingsBaseline = JSON.parse(JSON.stringify(collect()));
+    const savedState = () => JSON.stringify(collect()) !== JSON.stringify(settingsBaseline);
 
     const { close, requestDismiss } = openModal({
       title: t('Settings'),
@@ -1127,18 +1202,19 @@ function showSettingsDialog({
             e.preventDefault();
             const next = collect();
             if (await onSave(next) === false) return;
-            accountsPanel.dispose();
+            disposeSettings();
             close();
             resolve(true);
           },
         }, t('Save')),
       ],
-      onClose: () => { accountsPanel.dispose(); resolve(false); },
+      onClose: () => { disposeSettings(); resolve(false); },
     });
 
     form.addEventListener('submit', (e) => e.preventDefault());
     testAiBtn.addEventListener('click', testAiConnection);
     aiEnabled.addEventListener('change', () => {
+      updateAiVisibility();
       updateAiStatus(
         aiEnabled.checked
           ? t('Save, then use the AI ▾ menu in a guide. Test connection checks that Ollama is ready.')
@@ -1150,12 +1226,50 @@ function showSettingsDialog({
 
 // Export options an exporter doesn't name (no OPTION_INFO label) are named
 // from their key, as in English here; these give that name in every language.
-const EXPORT_OPTION_LABELS = {
-  pretty: t('Pretty'), includeImages: t('Include Images'), includeAnnotations: t('Include Annotations'), toc: t('Toc'),
-  azureWiki: t('Azure Wiki'), imageMaxWidth: t('Image Max Width'), pageSize: t('Page Size'), margin: t('Margin'),
-  includeCover: t('Include Cover'), includeToc: t('Include Toc'), imageMaxHeightRatio: t('Image Max Height Ratio'),
-  imageWidthTwips: t('Image Width Twips'), titleSlide: t('Title Slide'),
-};
+/** Draft title and image; choosing a file never creates a step. */
+function showAddStepDialog({ onChooseImage } = {}) {
+  return new Promise(resolve => {
+    let image = null;
+    let closed = false;
+    let choosing = false;
+    const title = makeInput('', 'text', { placeholder: t('Untitled step'), maxLength: 1000 });
+    const imageStatus = el('p.muted', { role: 'status', 'aria-live': 'polite' }, t('No image selected. The step can be added without one.'));
+    const error = el('p', { role: 'alert', hidden: true });
+    const refreshImage = () => {
+      imageStatus.textContent = image
+        ? t('{name} ({width} × {height} px)', { name: image.name, width: image.size.width, height: image.size.height })
+        : t('No image selected. The step can be added without one.');
+      remove.hidden = !image;
+    };
+    const remove = el('button', { type: 'button', hidden: true, onClick: () => { image = null; refreshImage(); choose.focus(); } }, t('Remove image'));
+    const choose = el('button', { type: 'button', onClick: async () => {
+      choosing = true; choose.disabled = true; add.disabled = true; error.hidden = true;
+      try {
+        const picked = await onChooseImage?.();
+        if (!closed && picked) { image = picked; refreshImage(); }
+      } catch (cause) {
+        error.textContent = t('Could not choose an image: {error}', { error: cause.message });
+        error.hidden = false;
+      } finally { choosing = false; choose.disabled = false; add.disabled = false; }
+    } }, t('Choose image…'));
+    const accept = () => {
+      if (closed || choosing) return;
+      const draft = { title: title.value.trim(), image };
+      closed = true; close(); resolve(draft);
+    };
+    const add = el('button.primary', { type: 'button', onClick: accept }, t('Add'));
+    const form = el('form.add-step-form', { onSubmit: event => { event.preventDefault(); accept(); } },
+      el('label', {}, t('Step title'), title),
+      el('div.add-step-image', {}, el('div', {}, t('Image (optional)')), imageStatus, el('div.row', {}, choose, remove)), error);
+    const { close, requestDismiss, node } = openModal({
+      title: t('Add Step'), body: form, initialFocus: title,
+      isDirty: () => Boolean(title.value || image),
+      footer: [el('button', { type: 'button', onClick: () => requestDismiss() }, t('Cancel')), add],
+      onClose: () => { closed = true; resolve(null); },
+    });
+    node.classList.add('add-step-modal');
+  });
+}
 
 function showExportDialog({
   formats,
@@ -1208,6 +1322,8 @@ function showExportDialog({
     // The effective option set shown to (and edited by) the user.
     let defaults = {};
     let current = {};
+    const optionInputs = [];
+    const validOptions = () => optionInputs.every((input) => input.reportValidity?.() !== false);
 
     const toColorValue = (v) => (/^#[0-9a-f]{6}$/i.test(String(v)) ? String(v).toLowerCase() : '#000000');
 
@@ -1217,6 +1333,13 @@ function showExportDialog({
         // Options that only apply when this one is set show or hide with it.
         if (Object.values(formatInfo(formatSelect.value).options || {}).some((o) => o.dependsOn === key)) renderOptions();
       };
+      if (info.choices) {
+        const selected = info.choices.some((choice) => choice.value === value) ? value : defVal;
+        const input = makeSelect(selected, info.choices);
+        input.setAttribute('aria-label', info.label);
+        input.addEventListener('change', () => set(input.value));
+        return input;
+      }
       if (typeof defVal === 'boolean') {
         const input = el('input', { type: 'checkbox', checked: Boolean(value) });
         input.addEventListener('change', () => set(input.checked));
@@ -1225,10 +1348,12 @@ function showExportDialog({
       if (typeof defVal === 'number') {
         const scale = info.scale || 1;
         const input = makeInput(Math.round((value / scale) * 1000) / 1000, 'number', {
-          step: info.step ?? 'any', min: info.min ?? '', max: info.max ?? '',
+          step: info.step ?? 'any', min: info.min ?? '', max: info.max ?? '', required: true,
         });
+        input.setAttribute('aria-label', info.unit ? `${info.label} (${info.unit})` : info.label);
+        optionInputs.push(input);
         input.addEventListener('input', () => {
-          if (input.value !== '') set(Math.round(Number(input.value) * scale * 1000) / 1000);
+          if (input.value !== '' && Number.isFinite(Number(input.value))) set(Math.round(Number(input.value) * scale * 1000) / 1000);
         });
         return info.unit ? el('div.row.export-number', {}, input, el('span.muted', {}, info.unit)) : input;
       }
@@ -1261,6 +1386,7 @@ function showExportDialog({
 
     function renderOptions() {
       clearNode(optionsHost);
+      optionInputs.length = 0;
       const meta = formatInfo(formatSelect.value).options || {};
       const entries = Object.entries(defaults)
         .filter(([key, v]) => ['boolean', 'number', 'string'].includes(typeof v) && !meta[key]?.hidden)
@@ -1269,10 +1395,16 @@ function showExportDialog({
         optionsHost.append(el('div.muted', {}, t('This format has no adjustable options.')));
         return;
       }
+      let group = null;
       for (const [key, defVal] of entries) {
         const info = meta[key] || {};
+        if (info.group && info.group !== group) {
+          group = info.group;
+          optionsHost.append(el('h3.export-option-group', {}, group));
+        }
         const value = current[key] ?? defVal;
-        const label = info.label || EXPORT_OPTION_LABELS[key] || key.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase());
+        // Every built-in option has a label in its exporter's OPTION_INFO; this fallback is only for unknown keys.
+        const label = info.label || key.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase());
         optionsHost.append(settingRow(label, info.hint || '', optionControl(key, defVal, value, { ...info, label })));
       }
     }
@@ -1370,6 +1502,7 @@ function showExportDialog({
     const saveTplBtn = el('button', {
       type: 'button',
       onClick: async () => {
+        if (!validOptions()) return;
         const name = await promptText({ title: t('Save template'), label: t('Template name'), value: templateSelect.value || '' });
         if (!name || !name.trim()) return;
         await onSaveTemplate?.(formatSelect.value, name.trim(), effectiveOptions());
@@ -1419,7 +1552,7 @@ function showExportDialog({
     const cancelBtn = el('button', { onClick: () => requestDismiss() }, t('Cancel'));
     const previewBtn = el('button', {
       onClick: async () => {
-        if (typeof onPreview !== 'function') return;
+        if (typeof onPreview !== 'function' || !validOptions()) return;
         setButtonLoading(previewBtn, true, t('Preview…'));
         try {
           await onPreview(payload()); // keep dialog open so settings can be tweaked
@@ -1430,7 +1563,7 @@ function showExportDialog({
     }, t('Preview'));
     const exportBtn = el('button.primary', {
       onClick: async () => {
-        if (typeof onExport !== 'function') return;
+        if (typeof onExport !== 'function' || !validOptions()) return;
         cancelBtn.disabled = true;
         previewBtn.disabled = true;
         setButtonLoading(exportBtn, true, t('Exporting…'));
@@ -1568,7 +1701,8 @@ function snapshotLabel(name) {
   if (!match) return name;
   const [, day, h, m, sec, ms, label] = match;
   const when = new Date(`${day}T${h}:${m}:${sec}.${ms}Z`).toLocaleString(dateLocale, { dateStyle: 'medium', timeStyle: 'short' });
-  return label ? `${when} · ${label.replace(/_/g, ' ')}` : when;
+  const text = label?.replace(/_/g, ' ');
+  return label ? `${when} · ${text === 'before optimizing images' ? t('Before optimizing images') : text}` : when;
 }
 
 function showBackupsDialog({ snapshots = [], onCreate, onRestore, onCompare } = {}) {
@@ -1929,6 +2063,7 @@ window.StepForgeDialogs = {
   makeUpdateCheck,
   storageWarning,
   showExportDialog,
+  showAddStepDialog,
   showLinkedGuideDialog,
   showInfoDialog,
   showBackupsDialog,

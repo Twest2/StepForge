@@ -39,7 +39,12 @@ function ui() {
       ? (n.spec?.startsWith('button') && n.children.includes(label) ? n : n.children.map(walk).find(Boolean)) : null;
     return walk(within);
   };
-  const escape = () => { for (const fn of [...keys]) { let stop = false; fn({ key: 'Escape', preventDefault() {}, stopPropagation() {}, stopImmediatePropagation() { stop = true; } }); if (stop) break; } };
+  // Capture listeners run first; stopping propagation or preventing the default skips the rest, as in a browser.
+  const escape = () => {
+    const event = { key: 'Escape', defaultPrevented: false, stopped: false,
+      preventDefault() { this.defaultPrevented = true; }, stopPropagation() { this.stopped = true; }, stopImmediatePropagation() { this.stopped = true; } };
+    for (const fn of [...keys]) { fn(event); if (event.stopped) break; }
+  };
   return { context, root, nodes, el, button, escape };
 }
 const settle = () => new Promise((resolve) => setImmediate(resolve));

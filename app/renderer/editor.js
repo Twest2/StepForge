@@ -636,7 +636,6 @@ class GuideEditor {
           ),
           el('div.row', {},
             this.dom.addStepBtn = el('button.primary', { type: 'button' }, t('Add')),
-            this.dom.importBtn = el('button', { type: 'button' }, t('Import')),
             this.dom.selectStepsBtn = el('button', { type: 'button', title: t('Select steps; Shift-click to select a range') }, t('Select')),
           ),
         ),
@@ -801,7 +800,6 @@ class GuideEditor {
 
   bindShellEvents() {
     this.dom.addStepBtn.addEventListener('click', () => this.addEmptyStep());
-    this.dom.importBtn.addEventListener('click', () => this.importImageSteps());
     this.dom.selectStepsBtn.addEventListener('click', () => this.toggleStepSelectMode());
     this.dom.stepsList.addEventListener('dragover', (e) => this.onStepDragOver(e));
     this.dom.stepsList.addEventListener('dragleave', (e) => {
@@ -2492,23 +2490,15 @@ class GuideEditor {
   }
 
   async addEmptyStep() {
-    const title = await dialogs.promptText({
-      title: t('Add Step'),
-      label: t('Step title'),
-      value: '',
-      placeholder: t('Untitled step'),
-    });
-    if (title == null) return;
+    const guideId = this.guideId;
+    const draft = await dialogs.showAddStepDialog({ onChooseImage: () => api.step.pickImage() });
+    if (!draft) return;
     const step = await api.step.add({
-      guideId: this.guideId,
-      fields: {
-        kind: 'empty',
-        title: title.trim() || t('Untitled step'),
-        status: 'todo',
-      },
-      position: this.steps.length,
+      guideId,
+      fields: { kind: 'empty', title: draft.title || t('Untitled step'), status: 'todo' },
+      ...(draft.image ? { imageBase64: draft.image.imageBase64, size: draft.image.size } : {}),
     });
-    await this.reload(step.stepId);
+    if (this.guideId === guideId) await this.reload(step.stepId);
     this.onToast(t('Step added.'));
   }
 

@@ -2013,6 +2013,13 @@ button.cmp-fold:hover { background: var(--border); color: var(--text); }
   .cmp-image-pair { grid-template-columns: 1fr; }
 }
 
+.modal.add-step-modal { width: min(480px, 96vw); }
+.add-step-form { display: flex; flex-direction: column; gap: 16px; }
+.add-step-form label { display: flex; flex-direction: column; gap: 6px; }
+.add-step-form input { width: 100%; }
+.add-step-image p { margin: 6px 0 10px; overflow-wrap: anywhere; }
+.add-step-image .row { flex-wrap: wrap; }
+
 /* Export settings share one compact layout while retaining per-format controls. */
 .export-option-group { margin: 16px 0 2px; font-size: 12px; font-weight: 700; color: var(--muted); }
 .export-option-group:first-child { margin-top: 2px; }

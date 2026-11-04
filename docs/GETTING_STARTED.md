@@ -76,7 +76,12 @@ right of the StepForge window.
 | Capture with the keyboard | Press **Ctrl+Shift+1** (change it in **Settings → Capture → Hotkeys**) |
 | Pause and resume a session | Press **Ctrl+Shift+2**. StepForge stays hidden while paused |
 | Use an image you already have | Paste it with **Ctrl+V**, or use **Capture → Import images…** |
-| Add a text-only step | Choose **Add** in the steps list |
+| Add a step with or without an image | Choose **Add** in the steps list, enter a title, and optionally choose an image |
+
+**Add** opens a compact dialog. Choosing an image does not create a step until
+you select **Add**. Canceling keeps the guide unchanged. Save, Capture and Add
+remain the main editor actions; autosave continues to work. Bulk image import
+is still available under **Capture → Import images…**.
 
 ## 2. Edit your steps
 

@@ -55,6 +55,7 @@ const api = {
     resetWorkingImage: invoke('step:resetWorkingImage'),
     fromClipboard: invoke('step:fromClipboard'),
     importImage: invoke('step:importImage'),
+    pickImage: invoke('step:pickImage'),
     chooseImage: invoke('step:chooseImage'),
     retake: invoke('step:retake'),
     setImages: invoke('step:setImages'),

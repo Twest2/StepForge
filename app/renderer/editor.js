@@ -1930,7 +1930,7 @@ class GuideEditor {
         }, t('This step')),
         el('button', {
           type: 'button',
-          title: t('Overwrite the style of every “{type}” annotation across all steps in this guide with the style shown above.', { type: typeLabel }),
+          title: t('Overwrite the style of every “{type}” annotation across all steps in this guide with the style shown above. New ones you add will use it too.', { type: typeLabel }),
           onClick: () => this.applyStyleAcross('guide'),
         }, t('Entire guide')),
       ),
@@ -2115,7 +2115,12 @@ class GuideEditor {
     return wrapper;
   }
 
+  /** A new annotation's style: the guide's remembered style for its type over the defaults. */
   defaultStyleForTool(tool) {
+    return { ...this.baseStyleForTool(tool), ...clone(this.guide?.annotationStyles?.[tool] || {}) };
+  }
+
+  baseStyleForTool(tool) {
     // A brand profile's own colors for shapes, number badges and tooltips.
     const brand = this.brandAnnotations;
     switch (tool) {
@@ -2215,11 +2220,13 @@ class GuideEditor {
    *                                the guide's step order and each step's parent
    *                                (stepId -> parentStepId | null); see
    *                                outlineRecord().
-   *   { type: 'multi-step', steps, after }
+   *   { type: 'multi-step', steps, after, annotationStyles? }
    *                                full clones of several steps, restored by id
    *                                with no images; `after` is each step's
    *                                stepFingerprint() right after the edit, to
    *                                spot later changes. See multiStepRecord().
+   *                                annotationStyles: the guide's remembered
+   *                                styles to put back (applyStyleAcross).
    * Typed records do not need a current step.
    */
   pushCanvasHistory(recordOrLabel = 'change') {
@@ -2315,6 +2322,19 @@ class GuideEditor {
     const saved = [];
     const failed = [];
     let error = null;
+    // The guide's remembered annotation styles (Apply style to the entire guide).
+    let stylesReplaced;
+    if (record.annotationStyles !== undefined && this.guide) {
+      stylesReplaced = clone(this.guide.annotationStyles || {});
+      this.guide.annotationStyles = clone(record.annotationStyles);
+      try {
+        await this.saveGuideEdits();
+      } catch (err) {
+        this.guide.annotationStyles = stylesReplaced;
+        stylesReplaced = undefined;
+        error = err;
+      }
+    }
     for (const step of targets) {
       const current = this.stepMap.get(step.stepId);
       const restored = clone(step);
@@ -2330,13 +2350,15 @@ class GuideEditor {
     }
     if (error) this.onToast(t('Could not undo every step: {error}', { error: error.message || error }), { error: true });
     await this.reload(this.selectedStepId);
-    if (!saved.length) return null;
+    if (!saved.length && stylesReplaced === undefined) return null;
     const inverse = this.multiStepRecord(replaced, saved);
-    if (!failed.length) return inverse;
-    // Some steps were put back and some were not. The ones put back can be
-    // redone; the ones that failed stay on this stack, so pressing the key
-    // again retries just those and no step's earlier state is lost.
+    if (stylesReplaced !== undefined) inverse.annotationStyles = stylesReplaced;
+    if (!failed.length && (stylesReplaced !== undefined || record.annotationStyles === undefined)) return inverse;
+    // Some of the record was put back and some was not. What was put back can
+    // be redone; the rest stays on this stack, so pressing the key again
+    // retries just that and no earlier state is lost.
     const rest = { ...record, steps: failed };
+    if (stylesReplaced !== undefined) delete rest.annotationStyles;
     return { partial: true, inverse, rest };
   }
 
@@ -3346,6 +3368,17 @@ class GuideEditor {
       const undo = this.pushStyleHistory(before, after);
       this.onToast(`${t('Style applied to all “{type}” annotations in this step.', { type: ANNOTATION_TYPE_LABELS[source.type] || source.type })}${undo}`);
     } else {
+      // The guide remembers the style, so annotations of this type added later match.
+      if (this.pendingGuideSave) await this.flushGuide();
+      const stylesBefore = clone(this.guide.annotationStyles || {});
+      this.guide.annotationStyles = { ...stylesBefore, [source.type]: patch };
+      try {
+        await this.saveGuideEdits();
+      } catch (err) {
+        this.guide.annotationStyles = stylesBefore;
+        this.onToast(t('Could not save the style: {error}', { error: err?.message || err }), { error: true });
+        return;
+      }
       for (const step of this.steps) {
         const touched = restyle(step);
         if (touched || step.stepId === this.currentStep?.stepId) {
@@ -3353,16 +3386,22 @@ class GuideEditor {
           if (touched) after.push(saved);
         }
       }
-      const undo = this.pushStyleHistory(before, after);
+      const undo = this.pushStyleHistory(before, after, stylesBefore);
       await this.reload(this.selectedStepId);
-      this.onToast(`${t('Style applied to all “{type}” annotations in the guide.', { type: ANNOTATION_TYPE_LABELS[source.type] || source.type })}${undo}`);
+      this.onToast(`${t('Style applied to all “{type}” annotations in the guide, and new ones will use it.', { type: ANNOTATION_TYPE_LABELS[source.type] || source.type })}${undo}`);
     }
   }
 
-  /** One undo step for a style applied to several steps. Returns the toast hint, or '' if nothing changed. */
-  pushStyleHistory(before, after) {
-    if (!before.length) return '';
-    this.pushCanvasHistory(this.multiStepRecord(before, after));
+  /**
+   * One undo step for a style applied to several steps, and for the guide's
+   * remembered styles as they were before (annotationStyles), if given.
+   * Returns the toast hint, or '' if nothing changed.
+   */
+  pushStyleHistory(before, after, annotationStyles) {
+    if (!before.length && annotationStyles === undefined) return '';
+    const record = this.multiStepRecord(before, after);
+    if (annotationStyles !== undefined) record.annotationStyles = annotationStyles;
+    this.pushCanvasHistory(record);
     return ` ${t('Press Ctrl+Z to undo.')}`;
   }
 

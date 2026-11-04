@@ -88,7 +88,7 @@ function setup(annotations, { brandColors = null } = {}) {
   const saved = [];
   const context = {
     ...rendererI18n(),
-    window: { stepforge: { settings: { set: async () => ({}) }, step: { save: async ({ step }) => { saved.push(JSON.parse(JSON.stringify(step))); return step; } } }, StepForgeDialogs: {}, StepForgeAnnotationProperties: require('../../core/annotation-properties') },
+    window: { stepforge: { settings: { set: async () => ({}) }, guide: { save: async ({ guide }) => JSON.parse(JSON.stringify(guide)) }, step: { save: async ({ step }) => { saved.push(JSON.parse(JSON.stringify(step))); return step; } } }, StepForgeDialogs: {}, StepForgeAnnotationProperties: require('../../core/annotation-properties') },
     document: dom.document,
     el: dom.el,
     clearNode: dom.clearNode,
@@ -108,6 +108,7 @@ function setup(annotations, { brandColors = null } = {}) {
   panelRoot.append(annotationEditor);
   Object.assign(editor, {
     guideId: 'g1',
+    guide: { guideId: 'g1' },
     selectedStepId: 's1',
     selectedAnnotationId: canvasAnnotations[0].id,
     steps,

@@ -15,10 +15,17 @@ function setup({ steps, confirm = async () => true }) {
   const db = {
     order: steps.map((s) => s.stepId),
     steps: new Map(steps.map((s) => [s.stepId, { revision: 1, annotations: [], ...s }])),
+    guide: { guideId: 'g1', revision: 1 },
   };
   const toasts = [];
   const api = {
-    guide: { get: async () => ({ guide: { stepsOrder: db.order }, steps: db.order.map((id) => JSON.parse(JSON.stringify(db.steps.get(id)))) }) },
+    guide: {
+      get: async () => ({ guide: { ...JSON.parse(JSON.stringify(db.guide)), stepsOrder: db.order }, steps: db.order.map((id) => JSON.parse(JSON.stringify(db.steps.get(id)))) }),
+      save: async ({ guide }) => {
+        db.guide = { ...JSON.parse(JSON.stringify(guide)), revision: db.guide.revision + 1 };
+        return JSON.parse(JSON.stringify(db.guide));
+      },
+    },
     step: {
       imagePath: async () => null,
       imageData: async () => null,
@@ -62,7 +69,8 @@ function setup({ steps, confirm = async () => true }) {
     canvas: { setAnnotations() {}, select() {}, selected: () => null },
     syncStepFields() {}, renderAnnotationPanel() {}, dom: { annotationEditor: { contains: () => false } },
     reload: async (stepId) => {
-      const { steps: fresh } = await api.guide.get();
+      const { guide, steps: fresh } = await api.guide.get();
+      editor.guide = guide;
       editor.steps = fresh;
       editor.stepMap = new Map(fresh.map((s) => [s.stepId, s]));
       editor.selectedStepId = stepId && editor.stepMap.has(stepId) ? stepId : fresh[0].stepId;
@@ -135,6 +143,32 @@ test('one undo reverses a Style across guide on every step it touched', async ()
   await editor.redo();
   assert.equal(db.steps.get('a').annotations[1].style.stroke, 'red');
   assert.equal(db.steps.get('c').annotations[0].style.stroke, 'red');
+});
+
+test('Style across guide is remembered for new annotations of that type, and undo forgets it', async () => {
+  const rect = (id, color) => ({ id, type: 'rect', style: { stroke: color, strokeWidth: 6 } });
+  const { editor, db } = setup({ steps: [{ stepId: 'a', annotations: [rect('a1', '#00FF00')] }, { stepId: 'b', annotations: [] }] });
+  await editor.reload('a');
+  assert.equal(editor.defaultStyleForTool('rect').stroke, '#E5484D');
+  editor.canvas.selected = () => rect('a1', '#00FF00');
+  // No other rectangle to restyle: the style is still remembered, and undo is offered.
+  await editor.applyStyleAcross('guide');
+  assert.deepEqual(db.guide.annotationStyles, { rect: { stroke: '#00FF00', strokeWidth: 6 } });
+  assert.equal(editor.defaultStyleForTool('rect').stroke, '#00FF00');
+  assert.equal(editor.defaultStyleForTool('rect').strokeWidth, 6);
+  assert.equal(editor.defaultStyleForTool('rect').fill, 'transparent', 'other defaults stay');
+  assert.equal(editor.defaultStyleForTool('oval').stroke, '#E5484D', 'other types are unchanged');
+  assert.equal(editor.canvasHistory.length, 1);
+  await editor.undo();
+  assert.deepEqual(db.guide.annotationStyles, {});
+  assert.equal(editor.defaultStyleForTool('rect').stroke, '#E5484D');
+  await editor.redo();
+  assert.deepEqual(db.guide.annotationStyles, { rect: { stroke: '#00FF00', strokeWidth: 6 } });
+  // This step only restyles; it doesn't change what new ones start with.
+  editor.canvas.selected = () => rect('a1', '#0000FF');
+  editor.flushStep = async (step) => step;
+  await editor.applyStyleAcross('step');
+  assert.equal(db.guide.annotationStyles.rect.stroke, '#00FF00');
 });
 
 test('Write this step with AI can be undone, and undo asks before overwriting a later change', async () => {
@@ -473,4 +507,16 @@ test('bulk paste skips only an identical annotation, not a different one in the 
   editor.annotationClipboard = label('Click Apply');
   await editor.pasteAnnotationToSelectedSteps();
   assert.deepEqual(db.steps.get('b').annotations.map((x) => x.text), ['Click Save', 'Click Apply']);
+});
+
+test('a guide keeps only well-formed remembered styles when it is loaded', () => {
+  const { normalizeGuide } = require('../../core/schema');
+  const guide = normalizeGuide({ guideId: 'g', annotationStyles: {
+    rect: { stroke: '#00FF00', strokeWidth: 6, bad: { nested: true }, huge: 'x'.repeat(100) },
+    tooltip: { fill: '#111827', tail: 'top' },
+    nope: { stroke: 'red' },
+    oval: [],
+  } });
+  assert.deepEqual(guide.annotationStyles, { rect: { stroke: '#00FF00', strokeWidth: 6 }, tooltip: { fill: '#111827', tail: 'top' } });
+  assert.deepEqual(normalizeGuide({ guideId: 'g' }).annotationStyles, {});
 });

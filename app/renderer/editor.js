@@ -1366,15 +1366,15 @@ class GuideEditor {
    * Asks before deleting steps, unless Settings → Editor → Dangerous deletes
    * is on. Resolves true to delete.
    */
-  async confirmDelete(message) {
+  async confirmDelete(message, title) {
     if (this.settings?.editor?.dangerousDeletes === true) return true;
-    return confirmDialog(message, { danger: true, okLabel: t('Delete') });
+    return confirmDialog(message, { title, danger: true, okLabel: t('Delete') });
   }
 
   async deleteSelectedSteps() {
     const ids = [...this.selectedSteps];
     if (!ids.length) return;
-    const ok = await this.confirmDelete(tn(ids.length, 'Delete {count} step?', 'Delete {count} steps?'));
+    const ok = await this.confirmDelete(tn(ids.length, 'Delete {count} step?', 'Delete {count} steps?'), t('Delete selected steps'));
     if (!ok) return;
     if (this.pendingSave) await this.flushStep();
     const order = this.steps.map((s) => s.stepId);
@@ -2606,7 +2606,7 @@ class GuideEditor {
   async deleteSelectedStep() {
     const step = this.currentStep;
     if (!step) return;
-    const ok = await this.confirmDelete(t('Delete “{title}”?', { title: step.title || t('Untitled step') }));
+    const ok = await this.confirmDelete(t('Delete “{title}”?', { title: step.title || t('Untitled step') }), t('Delete step'));
     if (!ok) return;
     if (this.pendingSave) await this.flushStep();
     const order = this.steps.map((s) => s.stepId);
@@ -2820,7 +2820,7 @@ class GuideEditor {
     const items = [
       { label: t('Capture full screen'), action: () => this.captureStep('fullscreen') },
       { label: t('Capture window'), action: () => this.captureStep('window') },
-      { label: t('Capture region…'), action: () => this.captureStep('region') },
+      { label: t('Capture region'), action: () => this.captureStep('region') },
       'sep',
       { label: t('Paste image as step'), action: () => this.pasteClipboardStep() },
       { label: t('Import images…'), action: () => this.importImageSteps() },
@@ -3506,7 +3506,7 @@ class GuideEditor {
   async onCanvasCrop(rect) {
     const step = this.currentStep;
     if (!step || !step.image) return;
-    const ok = await confirmDialog(t('Crop the working image to the selected area?'));
+    const ok = await confirmDialog(t('Crop the working image to the selected area?'), { title: t('Crop image'), okLabel: t('Crop') });
     if (!ok) return;
     this.saveStepDebounced.cancel();
     const snapshot = this.beforeCanvasSnapshot || await this.snapshotCurrentStep(true);

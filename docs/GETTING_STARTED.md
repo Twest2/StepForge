@@ -229,8 +229,11 @@ dialog points you there when you pick either format. See
 [Publish to Confluence](CONFLUENCE.md) and [Publish to Wiki.js](WIKIJS.md).
 
 **Templates.** Each format has options such as page size, table of contents
-and image width. Save the ones you like as a template so every guide exports
-the same way, and share it with teammates as a `.sfglt` file.
+and image width. PDF page sizes are A4 or US Letter; margins are in points
+(72 points = 1 inch), and maximum screenshot height is a percentage of the
+page height inside the margins. Word screenshot widths are shown in centimeters.
+Saved templates keep their existing values until you edit them. Save the ones
+you like as a template so every guide exports the same way, and share it with teammates as a `.sfglt` file.
 
 **Branding.** A brand profile puts your logo, colors, fonts, cover, header and
 footer on every export. Set one up in **Settings → Branding → Manage**. See

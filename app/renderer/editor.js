@@ -268,12 +268,15 @@ class GuideEditor {
   }
 
   destroy() {
+    this.cancelPaneDrag();
+    this.paneLayoutObserver?.disconnect();
     document.removeEventListener('keydown', this.onDocumentKeyDown, true);
     if (this.resizeObserver) this.resizeObserver.disconnect();
   }
 
   setActive(active) {
     this.active = Boolean(active);
+    if (!this.active) this.cancelPaneDrag();
     if (api.editor && typeof api.editor.setCanvasZoomActive === 'function') {
       api.editor.setCanvasZoomActive(this.active);
     }
@@ -290,7 +293,12 @@ class GuideEditor {
   }
 
   setSettings(settings) {
+    const previousWidths = JSON.stringify(this.settings?.editor?.paneWidths);
     this.settings = settings || {};
+    if (this.shellMounted && previousWidths !== JSON.stringify(this.settings.editor?.paneWidths)) {
+      this.paneWidths = window.StepForgePaneLayout.normalizeWidths(this.settings.editor?.paneWidths);
+      this.updatePaneLayout();
+    }
     void this.loadBrandAnnotations();
   }
 
@@ -628,7 +636,7 @@ class GuideEditor {
 
     this.dom = {};
     this.dom.root = el('div.editor', {},
-      el('aside.pane-steps', {},
+      this.dom.stepsPane = el('aside.pane-steps', { id: 'editor-steps-pane' },
         el('div.pane-head', {},
           el('div', {},
             el('div.eyebrow', {}, t('Steps')),
@@ -648,7 +656,9 @@ class GuideEditor {
           this.dom.deleteBtn = el('button.danger', { type: 'button' }, t('Delete')),
         ),
       ),
-      el('section.pane-canvas', {},
+      this.dom.stepsDivider = el('div.pane-divider', { role: 'separator', tabIndex: 0, 'aria-orientation': 'vertical',
+        'aria-label': t('Resize steps pane'), 'aria-controls': 'editor-steps-pane' }),
+      this.dom.canvasPane = el('section.pane-canvas', {},
         el('div.canvas-toolbar', {},
           ...toolButtons.map(([tool, name]) => this.dom[`tool-${tool}`] = el('button.tool.tool-icon', { type: 'button', dataset: { tool }, title: name, 'aria-label': name, innerHTML: toolIconSvg(tool) })),
           el('span.sep'),
@@ -668,7 +678,9 @@ class GuideEditor {
           this.dom.canvasEmpty = el('div.canvas-empty', {}, t('Select an image step to edit annotations.')),
         ),
       ),
-      el('aside.pane-props', {},
+      this.dom.propertiesDivider = el('div.pane-divider', { role: 'separator', tabIndex: 0, 'aria-orientation': 'vertical',
+        'aria-label': t('Resize step details pane'), 'aria-controls': 'editor-details-pane' }),
+      this.dom.propertiesPane = el('aside.pane-props', { id: 'editor-details-pane' },
         el('section', {},
           el('h3', {}, t('Step')),
           el('div.row', {},
@@ -763,6 +775,133 @@ class GuideEditor {
     this.resizeObserver.observe(this.dom.canvasWrap);
 
     this.bindShellEvents();
+    this.setupPaneResizing();
+  }
+
+  setupPaneResizing() {
+    const layout = window.StepForgePaneLayout;
+    this.paneWidths = layout.normalizeWidths(this.settings?.editor?.paneWidths);
+    this.lastSavedPaneWidths = JSON.stringify(this.paneWidths);
+    const hint = t('Drag to resize. Use Left/Right arrows, Shift for larger changes, or Home/End.');
+    for (const side of ['steps', 'properties']) {
+      const divider = this.dom[`${side}Divider`];
+      divider.title = hint;
+      divider.setAttribute('aria-description', hint);
+      divider.addEventListener('pointerdown', event => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        // Focused for the drag so Escape can cancel it; a mouse drag hands focus back afterwards.
+        const keepFocus = document.activeElement === divider;
+        divider.focus();
+        this.paneDrag = { side, pointerId: event.pointerId, divider, startX: event.clientX,
+          startWidth: this.effectivePaneWidths[side], keepFocus };
+        divider.setPointerCapture(event.pointerId);
+        divider.classList.add('dragging');
+        this.dom.root.classList.add('resizing-panes');
+      });
+      divider.addEventListener('pointermove', event => {
+        if (this.paneDrag?.divider !== divider) return;
+        const direction = side === 'steps' ? 1 : -1;
+        this.resizePane(side, this.paneDrag.startWidth + direction * (event.clientX - this.paneDrag.startX));
+      });
+      divider.addEventListener('pointerup', () => {
+        if (this.paneDrag?.divider !== divider) return;
+        this.paneWidths[side] = this.effectivePaneWidths[side];
+        this.finishPaneDrag();
+        this.persistPaneWidths();
+      });
+      divider.addEventListener('pointercancel', () => this.cancelPaneDrag());
+      divider.addEventListener('lostpointercapture', () => this.cancelPaneDrag());
+      divider.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && this.paneDrag) {
+          event.preventDefault(); event.stopPropagation(); this.cancelPaneDrag(); return;
+        }
+        if (event.ctrlKey || event.metaKey || event.altKey) return;
+        // Plain keys on a separator must not switch canvas tools or move an annotation.
+        event.stopPropagation();
+        const other = side === 'steps' ? 'properties' : 'steps';
+        const bounds = layout.paneBounds(side, this.dom.root.clientWidth, this.effectivePaneWidths[other]);
+        let width;
+        if (event.key === 'Home') width = bounds.min;
+        else if (event.key === 'End') width = bounds.max;
+        else if (['ArrowLeft', 'ArrowRight'].includes(event.key)) {
+          const direction = (event.key === 'ArrowRight' ? 1 : -1) * (side === 'steps' ? 1 : -1);
+          width = this.effectivePaneWidths[side] + direction * (event.shiftKey ? 40 : 10);
+        } else return;
+        event.preventDefault();
+        this.resizePane(side, width);
+        this.paneWidths[side] = this.effectivePaneWidths[side];
+      });
+      divider.addEventListener('keyup', event => {
+        if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) this.persistPaneWidths();
+      });
+      divider.addEventListener('blur', () => this.persistPaneWidths());
+    }
+    this.paneLayoutObserver = new ResizeObserver(() => {
+      this.cancelPaneDrag();
+      this.updatePaneLayout();
+    });
+    this.paneLayoutObserver.observe(this.dom.root);
+    this.updatePaneLayout();
+  }
+
+  applyPaneWidths(widths) {
+    this.effectivePaneWidths = widths;
+    this.dom.root.style.setProperty('--steps-pane-width', `${widths.steps}px`);
+    this.dom.root.style.setProperty('--properties-pane-width', `${widths.properties}px`);
+    for (const side of ['steps', 'properties']) {
+      const other = side === 'steps' ? 'properties' : 'steps';
+      const bounds = window.StepForgePaneLayout.paneBounds(side, this.dom.root.clientWidth, widths[other]);
+      const divider = this.dom[`${side}Divider`];
+      divider.setAttribute('aria-valuemin', bounds.min);
+      divider.setAttribute('aria-valuemax', bounds.max);
+      divider.setAttribute('aria-valuenow', widths[side]);
+      divider.setAttribute('aria-valuetext', tn(widths[side], '{count} pixel', '{count} pixels'));
+    }
+  }
+
+  updatePaneLayout() {
+    if (!this.dom?.root?.clientWidth) return;
+    this.applyPaneWidths(window.StepForgePaneLayout.layoutPanes(this.dom.root.clientWidth, this.paneWidths));
+  }
+
+  resizePane(side, requested) {
+    const layout = window.StepForgePaneLayout;
+    const width = this.dom.root.clientWidth;
+    const other = side === 'steps' ? 'properties' : 'steps';
+    const next = { ...this.effectivePaneWidths };
+    next[side] = layout.clampPaneWidth(side, requested, width, next[other]);
+    next.canvas = width - next.steps - next.properties - 2 * layout.DIVIDER_WIDTH;
+    this.applyPaneWidths(next);
+  }
+
+  finishPaneDrag() {
+    const drag = this.paneDrag;
+    this.paneDrag = null;
+    if (drag?.divider.hasPointerCapture(drag.pointerId)) drag.divider.releasePointerCapture(drag.pointerId);
+    drag?.divider.classList.remove('dragging');
+    if (drag && !drag.keepFocus) drag.divider.blur();
+    this.dom?.root?.classList.remove('resizing-panes');
+  }
+
+  cancelPaneDrag() {
+    if (!this.paneDrag) return;
+    this.finishPaneDrag();
+    this.updatePaneLayout();
+  }
+
+  persistPaneWidths() {
+    if (!this.paneWidths) return;
+    const key = JSON.stringify(this.paneWidths);
+    if (key === this.lastSavedPaneWidths) return this.paneSavePromise;
+    this.lastSavedPaneWidths = key;
+    this.settings.editor ||= {};
+    this.settings.editor.paneWidths = { ...this.paneWidths };
+    this.paneSavePromise = api.settings.set({ keyPath: 'editor.paneWidths', value: { ...this.paneWidths } }).catch(error => {
+      if (this.lastSavedPaneWidths === key) this.lastSavedPaneWidths = null;
+      this.onToast(t('Could not save pane widths: {error}', { error: error.message }), { error: true });
+    });
+    return this.paneSavePromise;
   }
 
   toolbarBtn(action, label, block = null) {
@@ -3709,9 +3848,8 @@ class GuideEditor {
     // Keys typed in a dialog are the dialog's: Delete, letters, Ctrl+Z and
     // the rest must not edit the guide behind it.
     if (typeof modalIsOpen === 'function' && modalIsOpen()) return;
-    // Plain keys in the Fill picker move through it and close it; they must
-    // not nudge, deselect or delete the annotation. Ctrl/Cmd shortcuts still work.
-    if (!e.ctrlKey && !e.metaKey && e.target?.closest?.('.fill-picker')) return;
+    // Pickers and pane dividers own their plain keys. Ctrl/Cmd shortcuts still work.
+    if (!e.ctrlKey && !e.metaKey && (e.target?.closest?.('.fill-picker') || e.target?.closest?.('.pane-divider'))) return;
     const zoomShortcut = zoomShortcutFromEvent(e);
     if (zoomShortcut) {
       e.preventDefault();

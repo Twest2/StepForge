@@ -542,30 +542,40 @@ body.platform-linux #capture-status button {
 .empty-state button { margin-top: 12px; }
 
 .pane-steps {
-  width: 320px;
-  min-width: 320px;
+  width: var(--steps-pane-width, 320px);
+  min-width: 0;
+  flex: none;
   display: flex;
   flex-direction: column;
   min-height: 0;
   background: color-mix(in srgb, var(--panel-solid) 86%, transparent);
-  border-right: 1px solid var(--border);
 }
 .pane-canvas {
   flex: 1;
-  min-width: 0;
+  min-width: 320px;
   display: flex;
   flex-direction: column;
   min-height: 0;
   background: linear-gradient(180deg, color-mix(in srgb, var(--bg) 76%, var(--panel-solid) 24%), var(--bg));
 }
 .pane-props {
-  width: 330px;
-  min-width: 330px;
+  width: var(--properties-pane-width, 330px);
+  min-width: 0;
+  flex: none;
   padding: 14px;
   overflow-y: auto;
-  border-left: 1px solid var(--border);
   background: color-mix(in srgb, var(--panel-solid) 88%, transparent);
 }
+.editor { min-width: 832px; overflow: hidden; }
+#editor-host { min-width: 0; overflow: hidden; }
+.pane-divider { width: 6px; flex: none; position: relative; cursor: col-resize; touch-action: none; background: var(--panel-solid); }
+.pane-divider::before { content: ''; position: absolute; top: 0; bottom: 0; left: 2px; width: 1px; background: var(--border); }
+.pane-divider:hover::before, .pane-divider.dragging::before { width: 2px; background: var(--accent); }
+/* Keyboard focus shows on the divider line itself, not as a box around it. */
+.pane-divider:focus-visible { outline: none; }
+.pane-divider:focus-visible::before { left: 1px; width: 3px; background: var(--accent); }
+.editor.resizing-panes, .editor.resizing-panes * { cursor: col-resize; user-select: none; }
+.pane-steps .pane-head, .pane-steps .pane-head > .row { flex-wrap: wrap; }
 .pane-head,
 .pane-foot {
   display: flex;
@@ -697,6 +707,8 @@ body.platform-linux #capture-status button {
   font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
+/* The toolbar wraps at narrow widths; past a few rows it scrolls rather than squeezing the canvas. */
+.canvas-toolbar { max-height: min(220px, 35vh); min-width: 0; overflow: auto; flex-shrink: 0; }
 .canvas-wrap {
   flex: 1;
   min-height: 0;

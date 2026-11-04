@@ -120,10 +120,7 @@ privacy terms apply to that data.
 - Agents never get the text you typed while recording, field values, or the
   text StepForge read from the screen.
 - Turning off **Let AI agents edit your guides** cuts off every connected
-  agent at its next request immediately, even if you cancel Settings afterward.
-  Turning access back on requires **Save**. No restart is needed.
-- Agent screenshot, branding and setup options are hidden while agent access
-  is off. Their values are kept and reappear when you turn access on.
+  agent at once, even if you then cancel Settings. No restart is needed.
 
 The [privacy policy](PRIVACY.md#optional-ai-agents) has the full details.
 

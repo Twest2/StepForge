@@ -99,16 +99,11 @@ sync**.
   computer and it comes back everywhere.
 - **Going offline is fine.** Local edits are kept and sync resumes when you're
   back online.
-- **Folders combine like guides.** Creating, renaming, moving and deleting
-  folders on different computers all survive. When two computers changed the
-  same folder or guide, the most recent change is kept. Deleting a folder
-  moves its guides and sub-folders to the top of the library, as it does on
-  the computer where you deleted it; no guide is deleted. The first time a
-  computer syncs its folders, a folder with the same name (matched exactly)
-  and in the same place as one already in the cloud is treated as that folder,
-  so the two aren't listed twice. Matching new folders also converge when
-  computers upload at the same time. Intentionally creating two sibling
-  folders with the same name keeps two folders.
+- **Folders sync too.** New, renamed, moved and deleted folders reach your
+  other computers; if two computers change the same folder, the latest change
+  wins. Deleting a folder never deletes its guides: they move to the top of
+  the library. A folder created with the same name in the same place on two
+  computers becomes one.
 
 ### Settings that sync
 
@@ -205,11 +200,7 @@ If your computers have drifted apart and you want one of them to win, open
   one attempt.
 - The first sync of a guide sends all of it. After that, only new or changed
   files are sent.
-- Folders are stored as one list per account: about 2 KB for 10 folders with
-  50 guides in them, and about 16 KB for 50 folders with 500 guides. A library
-  without folders stores no folder list at all.
-  Computers on older versions of StepForge ignore it and keep syncing guides
-  as before.
+- Older versions of StepForge keep syncing guides, but not folders.
 
 ## Service details
 

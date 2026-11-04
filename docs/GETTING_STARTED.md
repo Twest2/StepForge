@@ -72,16 +72,11 @@ right of the StepForge window.
 
 | To... | Do this |
 | --- | --- |
-| Take a single screenshot | **Capture → Capture full screen**, **Capture window**, or **Capture region…** |
+| Take a single screenshot | **Capture → Capture full screen**, **Capture window**, or **Capture region** |
 | Capture with the keyboard | Press **Ctrl+Shift+1** (change it in **Settings → Capture → Hotkeys**) |
 | Pause and resume a session | Press **Ctrl+Shift+2**. StepForge stays hidden while paused |
 | Use an image you already have | Paste it with **Ctrl+V**, or use **Capture → Import images…** |
-| Add a step with or without an image | Choose **Add** in the steps list, enter a title, and optionally choose an image |
-
-**Add** opens a compact dialog. Choosing an image does not create a step until
-you select **Add**. Canceling keeps the guide unchanged. Save, Capture and Add
-remain the main editor actions; autosave continues to work. Bulk image import
-is still available under **Capture → Import images…**.
+| Add a step by hand | Choose **Add** in the steps list, type a title, and optionally pick an image |
 
 ## 2. Edit your steps
 
@@ -93,23 +88,17 @@ The editor has three panes:
   choose **Move to…**. Use **Make substep of…** to nest a step under another
   one; substeps are numbered 1.1, 1.2, and so on.
 
-  A thin line runs from a step down past its substeps, like a comment
-  thread. Click the line (or right-click the step and choose **Collapse
-  step**) to fold its substeps away; the step then shows **+3**, how many are
-  hidden, and clicking that opens them again. Folding only changes what the
-  Steps pane shows: the substeps stay in the guide and in every export.
+  A thin line runs from a step past its substeps. Click it (or right-click
+  the step and choose **Collapse step**) to fold them away; **+3** shows how
+  many are hidden, and clicking it brings them back. Folded substeps are still
+  exported.
 - **Screenshot (middle).** The captured image with its annotations.
 - **Details (right).** The step title, description, status, and extra
   content blocks.
 
-Drag the thin divider beside either side pane to change its width. You can
-also Tab to a divider and use Left or Right (Shift for larger changes), or
-Home and End for the smallest and largest available width. Escape cancels
-an unfinished drag. Widths are remembered on this device. When the window
-grows, the screenshot area takes the extra space; a smaller window temporarily
-constrains the panes and restores your preferred widths when space returns.
-The center canvas keeps at least 320 pixels of width; both dividers stop before
-reducing it further. All three panes fit at the app's minimum window width.
+Drag the thin divider beside either side pane to resize it. StepForge
+remembers the widths, and a larger window gives the extra room to the
+screenshot.
 
 For each step you can:
 
@@ -127,22 +116,10 @@ For each step you can:
   to frame every screenshot the same way (pan 0% is the left or top edge).
 - Start a **New page** at this step in paged formats such as PDF.
 
-Annotation cards show position and size as percentages of the full screenshot.
-Font size is a percentage of screenshot height (for example, 2.2%); changing
-the display does not alter an existing annotation until you edit the value.
-Stroke and Fill use the same compact picker with default colors, recently used
-colors and, when active, branding colors. Recent choices are shared across
-guides and saved on this device. Transparent remains available for rectangle
-and oval fills. **Custom color…** opens the system color picker.
-
 **Guide details:** choose **More → Guide information…** to add an author,
 version and a short description. The description appears at the top of
 exports and accepts Markdown: `**bold**`, `*italic*`, `` `code` ``,
 `[links](https://example.com)`, and lists that start with `-` or `1.`.
-
-The cloud sync section appears only when a compatible sync account is connected.
-Cloud history and removal actions are grouped there; Save and Cancel stay in
-the footer. Removing cloud copies also turns off sync for this guide.
 
 **Working with many steps at once:** choose **Select**, click one step, then
 **Shift-click** another to select everything in between, including substeps.
@@ -170,9 +147,9 @@ isn't available while a capture session is running.
 ## 3. Annotate screenshots
 
 Pick a tool from the toolbar above the screenshot and drag on the image.
-Hover over a tool to see its name. When no tool is picked, clicking selects
-annotations so you can move, resize and restyle them; to put a tool down
-without using it, click it again or press **Esc** (or **S**).
+Hover over a tool to see its name. With no tool picked, click an annotation
+to move, resize or restyle it. To put a tool down without using it, click it
+again or press **Esc**.
 
 | Tool | Key | Good for |
 | --- | --- | --- |
@@ -192,7 +169,9 @@ several with the same tool without picking it again each time, turn off
 **Settings → Editor → Go back to Select after each use**.
 
 Annotations stay editable. The original screenshot is never modified, so you
-can always change or remove them later.
+can always change or remove them later. The **Stroke** and **Fill** pickers
+offer default colors, your recent colors, and your brand colors when a brand
+profile is active.
 
 A blur replaces what's under it with the colors around it, rather than
 softening it. Nothing it covers is kept in exported or published images, so
@@ -252,12 +231,9 @@ the screenshots, and updates the same page when you publish again. The Export
 dialog points you there when you pick either format. See
 [Publish to Confluence](CONFLUENCE.md) and [Publish to Wiki.js](WIKIJS.md).
 
-**Templates.** Each format has options such as page size, table of contents
-and image width. PDF page sizes are A4 or US Letter; margins are in points
-(72 points = 1 inch), and maximum screenshot height is a percentage of the
-page height inside the margins. Word screenshot widths are shown in centimeters.
-Saved templates keep their existing values until you edit them. Save the ones
-you like as a template so every guide exports the same way, and share it with teammates as a `.sfglt` file.
+**Templates.** Each format has options such as page size, margins, table of
+contents and screenshot size. Save the ones you like as a template so every
+guide exports the same way, and share it with teammates as a `.sfglt` file.
 
 **Branding.** A brand profile puts your logo, colors, fonts, cover, header and
 footer on every export. Set one up in **Settings → Branding → Manage**. See
@@ -321,30 +297,10 @@ and verifies your library before switching to the new location.
 
 ## Keyboard shortcuts
 
-In Steps, Tab reaches each step and its **⋯** Actions button. Use Up/Down or
-Home/End on a step button to navigate, and Shift+F10 for its context menu.
-Select-mode checkboxes and Select all retain keyboard focus as the list updates.
-
-Tab to an annotation card and press Enter or Space to select it. **Focus
-screenshot** moves focus to the screenshot for arrow-key movement and Delete;
-Ctrl+Z undoes those changes. The screenshot itself is also in the Tab order
-while an image is available. Annotation controls keep their own plain keys.
-
-Settings tabs use one Tab stop. Use Up/Down in the vertical layout, Left/Right
-in the narrow horizontal layout, or Home/End to change sections. Visible form
-labels are linked to their controls, including descriptions used as help text.
-
-In the library, Tab reaches sidebar filters, guide titles, favorites and the
-**⋯** Actions buttons. Enter or Space activates the focused control. Native
-checkboxes select guides in Select mode. Use Shift+F10 (or the context-menu
-key) on a guide, folder or trash control for its context actions. Focus stays
-with the corresponding control after filtering, selecting or changing a favorite.
-
-Open a menu button with Enter or Space. Inside a menu, use Up/Down, Home/End
-or type the start of a command. Right opens a submenu; Left returns to its
-parent. Escape closes one menu level and restores focus. Tab leaves the menu
-and continues through the surrounding controls. Unavailable commands remain
-readable but do not run.
+**Without a mouse:** Tab reaches every control. Use the arrow keys in lists,
+menus and Settings sections, Enter or Space to choose, **Shift+F10** (or the
+Menu key) for a step's or guide's right-click menu, and **Esc** to close. To
+move a selected annotation with the arrow keys, Tab to the screenshot.
 
 Press **Ctrl+/** for the quick-actions palette, or open
 **More → Keyboard shortcuts…** for the full list.
@@ -365,20 +321,12 @@ Press **Ctrl+/** for the quick-actions palette, or open
 
 ## Smaller guide images
 
-New screenshots use lossless WebP when it is smaller than PNG. Text, colors and
-transparency are preserved. Existing guides stay unchanged until you choose to
-optimize them.
+New screenshots are saved in a smaller format (lossless WebP) whenever that
+saves space, with no visible change. **Settings → Capture → Image compression**
+can shrink them further or turn this off.
 
-Under **Settings → Capture → Image compression**, choose lossless (recommended),
-optional lossy compression, or no automatic optimization. Lossy quality is
-limited to 95–100%; images that exceed the pixel-error limits fall back to
-lossless. StepForge keeps PNG whenever compression would increase the file size.
-
-To reduce an existing guide, open **More → Optimize guide images** (also available
-in Quick Actions). Review the estimated savings, then choose **Optimize**.
-StepForge saves a snapshot first; use **More → Backups & snapshots** to restore it.
-If the guide changes after the estimate, estimate again before applying.
-Annotations, exports and cloud sync continue to work with both PNG and WebP.
+To shrink a guide you already have, choose **More → Optimize guide images**. It
+shows the savings first and saves a snapshot before changing anything.
 
 ## Troubleshooting
 

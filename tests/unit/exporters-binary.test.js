@@ -123,6 +123,24 @@ test('PDF export: valid document, bookmarks per step, images embedded', (t) => {
   assert.equal((text.match(/\/Subtype \/Image/g) || []).length, 2);
 });
 
+test('PDF export: every page size in the Export dialog sizes every page', (t) => {
+  const { ast, root } = fixtureAst(t, 'pdfsize');
+  const { PAGE_SIZES, OPTION_INFO } = require('../../exporters/pdf');
+  assert.deepEqual(OPTION_INFO.pageSize.choices.map((choice) => choice.value), ['a3', 'a4', 'a5', 'letter', 'legal', 'tabloid']);
+  const mm = (value) => Math.round((value / 72) * 25.4);
+  const inches = (value) => value / 72;
+  assert.deepEqual([mm(PAGE_SIZES.a3.width), mm(PAGE_SIZES.a3.height)], [297, 420]);
+  assert.deepEqual([mm(PAGE_SIZES.a5.width), mm(PAGE_SIZES.a5.height)], [148, 210]);
+  assert.deepEqual([inches(PAGE_SIZES.legal.width), inches(PAGE_SIZES.legal.height)], [8.5, 14]);
+  assert.deepEqual([inches(PAGE_SIZES.tabloid.width), inches(PAGE_SIZES.tabloid.height)], [11, 17]);
+  for (const [name, size] of Object.entries(PAGE_SIZES)) {
+    const { file, pageCount } = exportPdf(ast, path.join(root, name), { pageSize: name });
+    const boxes = fs.readFileSync(file).toString('latin1').match(/\/MediaBox \[[^\]]*\]/g);
+    assert.equal(boxes.length, pageCount, name);
+    assert.ok(boxes.every((box) => box === `/MediaBox [0 0 ${size.width} ${size.height}]`), name);
+  }
+});
+
 /** Parse the trailer's /Info reference and return that object's dictionary text. */
 function pdfInfoDict(buf) {
   const text = buf.toString('latin1');

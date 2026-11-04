@@ -231,9 +231,10 @@ the screenshots, and updates the same page when you publish again. The Export
 dialog points you there when you pick either format. See
 [Publish to Confluence](CONFLUENCE.md) and [Publish to Wiki.js](WIKIJS.md).
 
-**Templates.** Each format has options such as page size, margins, table of
-contents and screenshot size. Save the ones you like as a template so every
-guide exports the same way, and share it with teammates as a `.sfglt` file.
+**Templates.** Each format has options such as page size (A3, A4, A5, US
+Letter, US Legal or Tabloid for PDF), margins, table of contents and
+screenshot size. Save the ones you like as a template so every guide exports
+the same way, and share it with teammates as a `.sfglt` file.
 
 **Branding.** A brand profile puts your logo, colors, fonts, cover, header and
 footer on every export. Set one up in **Settings → Branding → Manage**. See

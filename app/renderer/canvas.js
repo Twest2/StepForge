@@ -458,7 +458,7 @@ class AnnotationCanvas {
       id: `ann-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`,
       type: this.tool,
       x: pt.x, y: pt.y, w: 0, h: 0,
-      text: this.tool === 'tooltip' ? 'Tooltip' : this.tool === 'text' ? 'Text' : '',
+      text: this.tool === 'tooltip' ? t('Tooltip') : this.tool === 'text' ? t('Text') : '',
       style: this.cb.defaultStyle ? this.cb.defaultStyle(this.tool) : {},
     };
     if (this.tool === 'number') ann.value = this.cb.nextNumber ? this.cb.nextNumber() : 1;

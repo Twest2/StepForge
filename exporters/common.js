@@ -2,7 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { slugify, escapeXml } = require('../core/util');
+const { slugify, fileNameSlug, escapeXml } = require('../core/util');
 const { encodePng } = require('../core/png');
 const { renderStepImage } = require('../core/renderast');
 const { orderedBlocks, blockText } = require('../core/blocks');
@@ -12,8 +12,9 @@ const { orderedBlocks, blockText } = require('../core/blocks');
  * step images through the same pipeline so output is consistent.
  */
 
+/** The guide's export file name, in the title's own script. */
 function guideSlug(ast) {
-  return slugify(ast.guide.title, 'guide');
+  return fileNameSlug(ast.guide.title, 'guide');
 }
 
 function imagesDirName(ast) {
@@ -34,6 +35,7 @@ function writeStepImages(ast, outDir) {
     const img = renderStepImage(step);
     if (!img) continue;
     fs.mkdirSync(dir, { recursive: true });
+    // ASCII on purpose: Markdown screenshots are uploaded to Wiki.js under these names.
     const fileName = `${String(n).padStart(3, '0')}-${slugify(step.title || step.stepId, step.stepId)}.png`;
     fs.writeFileSync(path.join(dir, fileName), encodePng(img));
     result.set(step.stepId, { relPath: `${dirName}/${fileName}`, width: img.width, height: img.height });

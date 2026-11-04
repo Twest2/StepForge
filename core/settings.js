@@ -4,6 +4,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { isDeepStrictEqual } = require('node:util');
 const { writeJsonSync, readJsonIfExists, deepClone } = require('./util');
+const { colors } = require('./annotation-properties');
 const { normalizeWidths } = require('./editor-layout');
 
 const DEFAULT_SETTINGS = {
@@ -70,11 +71,16 @@ const DEFAULT_SETTINGS = {
     captureTypedText: false,
   },
   editor: {
+    recentColors: [],
     paneWidths: { steps: 320, properties: 330 },
     focusedViewDefaultForNewSteps: true,
     // After drawing one annotation (or cropping), switch back to the Select
     // tool. Off keeps the drawing tool picked until another is chosen.
     returnToSelect: true,
+    // Dangerous deletes: delete steps in the editor without asking first.
+    // Off by default; turned on in Settings → Editor.
+    // Guide, library and other deletes still ask.
+    dangerousDeletes: false,
     autoTitleTemplate: '[[Mode]] capture [[Time]]',
   },
   ai: {
@@ -111,6 +117,9 @@ const DEFAULT_SETTINGS = {
       branding: false,
     },
   },
+  // New screenshots: 'webp' uses lossless WebP when smaller; 'png'
+  // keeps PNG. Guides made before this are never changed by themselves.
+  images: { format: 'webp', lossless: true, webpQuality: 0.95 },
   // Settings → Branding: the brand profile (core/branding.js) every export
   // uses unless the Export dialog picks another; '' for no branding.
   branding: { activeProfileId: '' },
@@ -171,12 +180,18 @@ class Settings {
     const stored = readJsonIfExists(this.file, {});
     const data = mergeDeep(deepClone(DEFAULT_SETTINGS), stored);
     if (!data.editor || typeof data.editor !== 'object' || Array.isArray(data.editor)) data.editor = deepClone(DEFAULT_SETTINGS.editor);
+    data.editor.recentColors = colors(data.editor.recentColors);
     data.editor.paneWidths = normalizeWidths(data.editor.paneWidths);
     if (!data.capture || typeof data.capture !== 'object' || Array.isArray(data.capture)) data.capture = deepClone(DEFAULT_SETTINGS.capture);
     // 'region' (and anything else unknown) was offered once but always
     // recorded the full screen; say so in the file too.
     if (data.capture && !['fullscreen', 'window'].includes(data.capture.mode)) data.capture.mode = 'fullscreen';
     if (!['floating', 'tray'].includes(data.capture.recordingControls)) data.capture.recordingControls = 'floating';
+    if (!data.images || typeof data.images !== 'object') data.images = deepClone(DEFAULT_SETTINGS.images);
+    if (!['webp', 'png'].includes(data.images.format)) data.images.format = DEFAULT_SETTINGS.images.format;
+    const quality = Number(data.images.webpQuality);
+    data.images.webpQuality = Number.isFinite(quality) ? Math.min(1, Math.max(0.95, quality)) : DEFAULT_SETTINGS.images.webpQuality;
+    data.images.lossless = data.images.lossless !== false;
     const position = data.capture.recordingBarPosition;
     if (!position || !Number.isFinite(position.x) || !Number.isFinite(position.y)) data.capture.recordingBarPosition = null;
     return data;

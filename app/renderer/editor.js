@@ -195,7 +195,6 @@ function stepDepth(step, stepMap) {
 function isEditableTarget(target) {
   return target && (
     target.tagName === 'INPUT' ||
-    target.tagName === 'SELECT' ||
     target.tagName === 'TEXTAREA' ||
     target.tagName === 'SELECT' ||
     target.isContentEditable
@@ -744,8 +743,8 @@ class GuideEditor {
       ),
     );
     this.root.append(this.dom.root);
-    this.dom.statusSelect.setAttribute('aria-label', t('Status'));
-    for (const row of this.dom.focusedControls.querySelectorAll('.form-row')) labelControl(row.querySelector('label'), [...row.querySelectorAll('input')]);
+    this.dom.statusSelect.setAttribute?.('aria-label', t('Status'));
+    for (const row of this.dom.focusedControls.querySelectorAll?.('.form-row') || []) labelControl(row.querySelector('label'), [...row.querySelectorAll('input')]);
 
     // canvas interactions need to snapshot the current step before the drag
     // mutates it, so undo can restore the pre-edit annotations.
@@ -773,9 +772,10 @@ class GuideEditor {
     const labels = { bold: t('Bold'), italic: t('Italic'), insertUnorderedList: t('Bulleted list'), insertOrderedList: t('Numbered list'), formatBlock: t('Quote'), createLink: t('Link'), removeFormat: t('Clear') };
     const btn = el('button', {
       type: 'button',
+      'aria-label': labels[action] || label,
       ...(!['createLink', 'removeFormat'].includes(action) ? { 'aria-pressed': 'false' } : {}),
       onClick: () => this.formatDescription(action, block),
-    }, labels[action] || t(label));
+    }, labels[action] || label);
     btn.dataset.action = action;
     if (block) btn.dataset.block = block;
     return btn;
@@ -1487,7 +1487,7 @@ class GuideEditor {
   }
 
   async renderCanvas() {
-    this.dom.canvas.tabIndex = -1;
+    if (this.dom.canvas) this.dom.canvas.tabIndex = -1;
     const step = this.currentStep;
     const token = ++this.imageLoadToken;
     this.canvas.setTool(this.currentTool);
@@ -1513,7 +1513,7 @@ class GuideEditor {
     const img = new Image();
     img.onload = () => {
       if (token !== this.imageLoadToken) return;
-      this.dom.canvas.tabIndex = 0;
+      if (this.dom.canvas) this.dom.canvas.tabIndex = 0;
       this.canvas.setImage(img, img.naturalWidth || img.width, img.naturalHeight || img.height);
       this.canvas.setAnnotations(step.annotations || []);
       this.canvas.setFocusedView(step.focusedView);

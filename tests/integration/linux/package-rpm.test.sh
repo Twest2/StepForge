@@ -65,11 +65,11 @@ for requirement in 'nss' 'gnome-shell >= 50' 'gnome-shell < 51' 'python3-gobject
   'xdg-desktop-portal-gnome' 'pipewire' 'wireplumber'; do
   grep -qFx "$requirement" <<< "$requires" || fail "missing dependency: $requirement"
 done
-if grep -q '^libffmpeg[.]so' <<< "$requires"; then
-  fail 'private bundled FFmpeg incorrectly required from system repositories'
+if grep -qE '^lib(ffmpeg|vips-cpp)[.]so' <<< "$requires"; then
+  fail 'private bundled FFmpeg/libvips incorrectly required from system repositories'
 fi
 provides="$(rpm -qp --provides "$RPM")"
-if grep -qE 'lib(EGL|GLESv2|ffmpeg|vulkan)' <<< "$provides"; then
+if grep -qE 'lib(EGL|GLESv2|ffmpeg|vulkan|vips)' <<< "$provides"; then
   fail 'private Electron libraries exposed as system capabilities'
 fi
 ( cd "$(dirname "$RPM")" && sha256sum --check "$(basename "$RPM").sha256" )

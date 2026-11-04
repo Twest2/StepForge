@@ -36,6 +36,23 @@ assert width > 100 and height > 100, 'App rendered an empty window'
 print(f'Installed Fedora RPM smoke test passed ({width}x{height})')
 PY
 
+# Exercise the installed native codec, not just module presence in the archive.
+cat > "$smoke_dir/image-codec.cjs" <<'JS'
+const assert = require('node:assert/strict');
+const sharp = require('/opt/stepforge/node_modules/sharp');
+const { createImageCodec } = require('/opt/stepforge/core/image-codec');
+(async () => {
+  const png = await sharp({ create: { width: 32, height: 24, channels: 4,
+    background: { r: 10, g: 20, b: 30, alpha: 0.4 } } }).png().toBuffer();
+  const codec = createImageCodec();
+  const webp = await codec.encodeWebp(png);
+  const decoded = await codec.decodeToPng(webp);
+  assert.deepEqual(await sharp(decoded).raw().toBuffer(), await sharp(png).raw().toBuffer());
+  console.log('Installed Fedora Sharp lossless round-trip passed');
+})().catch(error => { console.error(error); process.exitCode = 1; });
+JS
+ELECTRON_RUN_AS_NODE=1 /opt/stepforge/node_modules/electron/dist/electron "$smoke_dir/image-codec.cjs"
+
 # A downloaded RPM adds the StepForge DNF repository so it updates with
 # dnf upgrade; an upgrade keeps it and removing the package removes it.
 repo=/etc/yum.repos.d/stepforge-rpm.repo

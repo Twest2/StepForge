@@ -116,6 +116,11 @@ exports and accepts Markdown: `**bold**`, `*italic*`, `` `code` ``,
 **Shift-click** another to select everything in between, including substeps.
 A normal click toggles a single step.
 
+**Deleting steps:** StepForge asks before it deletes a step or a selection
+of steps, and **Ctrl+Z** brings them back. To delete without being asked,
+turn on **Settings → Editor → Dangerous deletes**. Deleting a guide always
+asks.
+
 ### Replace or retake a screenshot
 
 When the software you documented changes, right-click the step:
@@ -226,6 +231,16 @@ footer on every export. Set one up in **Settings → Branding → Manage**. See
 or table cell. It's replaced when you export or publish (code blocks are left
 as written). A single guide can have its own placeholders under
 **More → Guide placeholders…**.
+
+**Other languages.** Guides in any language export to PDF: Chinese,
+Japanese, Korean, Russian, Greek and the rest use fonts already on your
+computer, and the text can still be searched and copied. On Windows that
+works out of the box. On Linux, Chinese, Japanese and Korean need a TrueType
+font such as WenQuanYi Zen Hei (`sudo apt install fonts-wqy-zenhei` or
+`sudo dnf install wqy-zenhei-fonts`); without one those characters show as
+`?`. Arabic and Hebrew letters appear, but are not joined or ordered right to
+left yet. Exported files are named after the guide in its own language, such
+as `重置密码.pdf`.
 
 **Accessibility.** Screenshots in HTML, Word, PowerPoint, Markdown and
 Confluence exports get alt text from the step title, such as "Screenshot for

@@ -113,6 +113,22 @@ guide.json + step.json + settings
                ──► exporters/pptx.js        zip+XML (core/zip.js)
 ```
 
+PDF text uses the built-in Helvetica, Times and Courier where they can show
+it (WinAnsiEncoding, so Western PDFs are byte-for-byte what they always were).
+Any other character is drawn from an installed TrueType font:
+`core/pdf-fonts.js` lists candidates (Windows font folder by script, with
+Chinese, Japanese or Korean first depending on the guide's text; fontconfig's
+`fc-match -s` on Linux) and loads each only when an earlier one lacks a
+character. `core/ttf.js` reads `.ttf`/`.ttc` files (glyf outlines only; CFF
+fonts are skipped) and writes a subset that keeps glyph ids, which
+`core/pdf.js` embeds as a Type0/CIDFontType2 font with `/CIDToGIDMap
+/Identity`, real widths, and a ToUnicode CMap so viewers can copy and search
+the text. Lines may break between Chinese, Japanese and Korean characters
+(`breakChunks`), and those characters count two columns in code blocks.
+Not handled: right-to-left order and Arabic or Indic shaping. Export file
+names use `fileNameSlug` (letters of every script); step screenshots keep
+ASCII `slugify` names because Wiki.js and Confluence upload them by name.
+
 Image-bearing exporters rasterize annotations with `core/raster.js` on top of
 PNG pixels decoded by `core/png.js`. Text in rasterized images (annotation
 labels, GIF captions) is anti-aliased from the glyph atlases in `core/fonts/`

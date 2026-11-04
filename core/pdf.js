@@ -1,6 +1,7 @@
 'use strict';
 
 const zlib = require('node:zlib');
+const crypto = require('node:crypto');
 
 /**
  * Minimal PDF 1.4 writer: pages, Helvetica, Times and Courier text (regular,
@@ -8,6 +9,11 @@ const zlib = require('node:zlib');
  * alpha soft mask when they have transparency) as XObjects, and a simple
  * outline (bookmarks). Coordinates passed in are top-left based in points;
  * converted to PDF's bottom-left space internally.
+ *
+ * The built-in fonts only cover WinAnsiEncoding (Western European). With
+ * `fallbackFonts` (core/pdf-fonts.js), every other character is drawn from an
+ * installed TrueType font, embedded as a subset with a ToUnicode map so the
+ * text stays selectable and searchable; without one, such characters are "?".
  */
 
 const FONTS = {
@@ -55,6 +61,38 @@ const WINANSI_EXTRA = {
   0x2122: 0x99, // ™
 };
 
+// Characters the built-in fonts can't show: they need an installed font.
+const OUTSIDE_WINANSI = new RegExp(`[^\\x00-\\xff${Object.keys(WINANSI_EXTRA).map((c) => `\\u${Number(c).toString(16)}`).join('')}]`, 'u');
+const encodable = (code) => code <= 0xff || WINANSI_EXTRA[code] !== undefined;
+const BOLD_FONTS = new Set(['F2', 'F5', 'F6', 'F8', 'F10', 'F12']);
+
+// Chinese, Japanese and Korean have no spaces between words: a line may
+// break between any two of these characters.
+const WIDE = /[\u1100-\u11ff\u2e80-\u303f\u3040-\u30ff\u3100-\u31ff\u3200-\u9fff\uac00-\ud7af\uf900-\ufaff\ufe30-\ufe4f\uff00-\uffef\u{20000}-\u{3134f}]/u;
+// ...except before closing punctuation, or after opening punctuation.
+const NO_BREAK_BEFORE = new Set([...'、。，．：；！？）」』】〉》〕｝〙〗”’ゝゞーヽヾ々ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮヵヶ']);
+const NO_BREAK_AFTER = new Set([...'（「『【〈《〔｛〘〖“‘']);
+
+/** True for a character that takes two columns in monospaced text. */
+const isWide = (ch) => WIDE.test(ch);
+
+/**
+ * Split a word (no spaces) into the pieces a line may break between: each
+ * Chinese, Japanese or Korean character on its own, other text kept whole.
+ */
+function breakChunks(word) {
+  const chunks = [];
+  let prev = '';
+  for (const ch of String(word)) {
+    const breakable = chunks.length && (isWide(ch) || isWide(prev))
+      && !NO_BREAK_BEFORE.has(ch) && !NO_BREAK_AFTER.has(prev);
+    if (!chunks.length || breakable) chunks.push(ch);
+    else chunks[chunks.length - 1] += ch;
+    prev = ch;
+  }
+  return chunks;
+}
+
 function toLatin1(text) {
   let out = '';
   for (const ch of String(text)) {
@@ -85,8 +123,36 @@ function col(c) {
   return `${(c[0] / 255).toFixed(3)} ${(c[1] / 255).toFixed(3)} ${(c[2] / 255).toFixed(3)}`;
 }
 
+/** A 6-letter subset tag (PDF 32000-1, 9.6.4) that differs per subset. */
+function subsetTag(name, glyphs) {
+  const hash = crypto.createHash('sha1').update(`${name}:${glyphs.join(',')}`).digest();
+  return [...hash.subarray(0, 6)].map((b) => String.fromCharCode(65 + (b % 26))).join('');
+}
+
+/** A ToUnicode CMap: glyph id -> the text it shows, for copy and search. */
+function toUnicodeCMap(glyphs) {
+  const hex4 = (n) => n.toString(16).toUpperCase().padStart(4, '0');
+  const utf16 = (text) => Buffer.from(text, 'utf16le').swap16().toString('hex').toUpperCase();
+  const entries = [...glyphs].sort((a, b) => a[0] - b[0]).map(([glyph, text]) => `<${hex4(glyph)}> <${utf16(text)}>`);
+  const blocks = [];
+  for (let i = 0; i < entries.length; i += 100) {
+    const block = entries.slice(i, i + 100);
+    blocks.push(`${block.length} beginbfchar\n${block.join('\n')}\nendbfchar`);
+  }
+  return [
+    '/CIDInit /ProcSet findresource begin', '12 dict begin', 'begincmap',
+    '/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def',
+    '/CMapName /Adobe-Identity-UCS def', '/CMapType 2 def',
+    '1 begincodespacerange', '<0000> <FFFF>', 'endcodespacerange',
+    ...blocks,
+    'endcmap', 'CMapName currentdict /CMap defineresource pop', 'end', 'end',
+  ].join('\n');
+}
+
 class PdfBuilder {
-  constructor({ pageWidth = 595.28, pageHeight = 841.89, title = '', author = '' } = {}) {
+  constructor({ pageWidth = 595.28, pageHeight = 841.89, title = '', author = '', fallbackFonts = null } = {}) {
+    this.fallbackFonts = fallbackFonts; // see core/pdf-fonts.js
+    this.embedded = new Map(); // TrueTypeFont -> { res: 'U1', glyphs: Map<glyph id, text> }
     this.pageWidth = pageWidth;
     this.pageHeight = pageHeight;
     this.title = title; // document metadata for the /Info dictionary
@@ -115,11 +181,70 @@ class PdfBuilder {
     try { draw(); } finally { this.targetPage = null; }
   }
 
-  textWidth(text, size, font = 'F1') {
-    return String(text).length * size * (FONT_WIDTH_FACTOR[font] || 0.51);
+  /** True when `text` has characters only an installed font can draw. */
+  needsFallback(text) {
+    return Boolean(this.fallbackFonts) && OUTSIDE_WINANSI.test(text);
   }
 
-  /** Greedy word wrap to maxWidth points. */
+  /**
+   * Split text into runs drawn by one font: `font: null` for the built-in
+   * font, or an installed font with the glyph id of each character.
+   */
+  segments(text, font) {
+    const runs = [];
+    for (const ch of String(text)) {
+      const code = ch.codePointAt(0);
+      const hit = encodable(code) ? null : this.fallbackFonts.fontFor(code, BOLD_FONTS.has(font));
+      const last = runs[runs.length - 1];
+      const run = last && last.font === (hit ? hit.font : null) ? last : null;
+      if (run) { run.text += ch; if (hit) run.glyphs.push(hit.glyph); } else {
+        runs.push({ font: hit ? hit.font : null, text: ch, glyphs: hit ? [hit.glyph] : [] });
+      }
+    }
+    return runs;
+  }
+
+  textWidth(text, size, font = 'F1') {
+    if (!this.needsFallback(text)) return String(text).length * size * (FONT_WIDTH_FACTOR[font] || 0.51);
+    let width = 0;
+    for (const run of this.segments(text, font)) {
+      if (!run.font) width += [...run.text].length * size * (FONT_WIDTH_FACTOR[font] || 0.51);
+      else for (const glyph of run.glyphs) width += (run.font.advance(glyph) / run.font.unitsPerEm) * size;
+    }
+    return width;
+  }
+
+  /**
+   * PDF text-showing operators for `text`, switching to an installed font
+   * where the built-in one has no glyph. `state.font` tracks the current
+   * resource so a run only sets the font when it changes.
+   */
+  showText(text, font, size, state) {
+    const ops = [];
+    const runs = this.needsFallback(text) ? this.segments(text, font) : [{ font: null, text }];
+    for (const run of runs) {
+      let res = font;
+      let shown;
+      if (run.font) {
+        if (!this.embedded.has(run.font)) this.embedded.set(run.font, { res: `U${this.embedded.size + 1}`, glyphs: new Map() });
+        const entry = this.embedded.get(run.font);
+        res = entry.res;
+        const chars = [...run.text];
+        run.glyphs.forEach((glyph, i) => { if (!entry.glyphs.has(glyph)) entry.glyphs.set(glyph, chars[i]); });
+        shown = `<${run.glyphs.map((g) => g.toString(16).toUpperCase().padStart(4, '0')).join('')}>`;
+      } else {
+        shown = `(${esc(toLatin1(run.text))})`;
+      }
+      if (state.font !== res) { ops.push(`/${res} ${size} Tf`); state.font = res; }
+      ops.push(`${shown} Tj`);
+    }
+    return ops.join(' ');
+  }
+
+  /**
+   * Greedy word wrap to maxWidth points. Lines break at spaces, and between
+   * Chinese, Japanese or Korean characters.
+   */
   wrapText(text, size, maxWidth, font = 'F1') {
     const lines = [];
     for (const para of String(text).split('\n')) {
@@ -127,9 +252,11 @@ class PdfBuilder {
       if (!words.length) { lines.push(''); continue; }
       let line = '';
       for (const word of words) {
-        const candidate = line ? `${line} ${word}` : word;
-        if (this.textWidth(candidate, size, font) <= maxWidth || !line) line = candidate;
-        else { lines.push(line); line = word; }
+        breakChunks(word).forEach((chunk, i) => {
+          const candidate = line ? `${line}${i ? '' : ' '}${chunk}` : chunk;
+          if (this.textWidth(candidate, size, font) <= maxWidth || !line) line = candidate;
+          else { lines.push(line); line = chunk; }
+        });
       }
       lines.push(line);
     }
@@ -140,8 +267,14 @@ class PdfBuilder {
     const y = this.pageHeight - yTop - size;
     // Tabs have no glyph in WinAnsiEncoding and render as "?"; expand to spaces.
     const clean = String(str).replace(/\t/g, '    ');
+    if (!this.needsFallback(clean)) {
+      this.currentPage.ops.push(
+        `BT /${font} ${size} Tf ${col(color)} rg 1 0 0 1 ${x.toFixed(2)} ${y.toFixed(2)} Tm (${esc(toLatin1(clean))}) Tj ET`
+      );
+      return;
+    }
     this.currentPage.ops.push(
-      `BT /${font} ${size} Tf ${col(color)} rg 1 0 0 1 ${x.toFixed(2)} ${y.toFixed(2)} Tm (${esc(toLatin1(clean))}) Tj ET`
+      `BT ${col(color)} rg 1 0 0 1 ${x.toFixed(2)} ${y.toFixed(2)} Tm ${this.showText(clean, font, size, { font: null })} ET`
     );
   }
 
@@ -155,20 +288,21 @@ class PdfBuilder {
   textRun(parts, x, yTop, size) {
     const y = this.pageHeight - yTop - size;
     const ops = [`BT 1 0 0 1 ${x.toFixed(2)} ${y.toFixed(2)} Tm`];
-    let curFont = null;
+    const state = { font: null };
     let curColor = null;
     for (const part of parts) {
       if (!part.text) continue;
-      if (part.font !== curFont) {
+      const clean = String(part.text).replace(/\t/g, '    ');
+      const plain = !this.needsFallback(clean);
+      if (plain && part.font !== state.font) {
         ops.push(`/${part.font} ${size} Tf`);
-        curFont = part.font;
+        state.font = part.font;
       }
       if (!curColor || part.color[0] !== curColor[0] || part.color[1] !== curColor[1] || part.color[2] !== curColor[2]) {
         ops.push(`${col(part.color)} rg`);
         curColor = part.color;
       }
-      const clean = String(part.text).replace(/\t/g, '    ');
-      ops.push(`(${esc(toLatin1(clean))}) Tj`);
+      ops.push(plain ? `(${esc(toLatin1(clean))}) Tj` : this.showText(clean, part.font, size, state));
     }
     ops.push('ET');
     this.currentPage.ops.push(ops.join(' '));
@@ -233,6 +367,30 @@ class PdfBuilder {
     this.links.push({ pageIndex, x, yTop, w, h, target });
   }
 
+  /** Write an installed font's subset as a Type0 font; returns its object id. */
+  embedFont(font, entry, addObj) {
+    const glyphs = [...entry.glyphs.keys()].sort((a, b) => a - b);
+    const program = font.subset(glyphs);
+    const data = zlib.deflateSync(program);
+    const scale = (v) => Math.round((v * 1000) / font.unitsPerEm);
+    const name = `${subsetTag(font.postScriptName, glyphs)}+${(font.postScriptName || 'Font').replace(/[^A-Za-z0-9-]/g, '') || 'Font'}`;
+    const fileId = addObj({ dict: `<< /Length ${data.length} /Length1 ${program.length} /Filter /FlateDecode >>`, stream: data });
+    const descriptorId = addObj(
+      `<< /Type /FontDescriptor /FontName /${name} /Flags 4 /FontBBox [${font.bbox.map(scale).join(' ')}] /ItalicAngle 0 ` +
+      `/Ascent ${scale(font.ascent)} /Descent ${scale(font.descent)} /CapHeight ${scale(font.capHeight)} /StemV 80 /FontFile2 ${fileId} 0 R >>`
+    );
+    const widths = glyphs.map((g) => `${g} [${scale(font.advance(g))}]`).join(' ');
+    const cidId = addObj(
+      `<< /Type /Font /Subtype /CIDFontType2 /BaseFont /${name} /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> ` +
+      `/FontDescriptor ${descriptorId} 0 R /DW ${scale(font.advance(0))} /W [${widths}] /CIDToGIDMap /Identity >>`
+    );
+    const cmap = zlib.deflateSync(Buffer.from(toUnicodeCMap(entry.glyphs), 'latin1'));
+    const cmapId = addObj({ dict: `<< /Filter /FlateDecode /Length ${cmap.length} >>`, stream: cmap });
+    return addObj(
+      `<< /Type /Font /Subtype /Type0 /BaseFont /${name} /Encoding /Identity-H /DescendantFonts [${cidId} 0 R] /ToUnicode ${cmapId} 0 R >>`
+    );
+  }
+
   build() {
     if (!this.pages.length) this.addPage();
     const objects = []; // 1-based; objects[i] = body string|Buffer after header
@@ -246,6 +404,7 @@ class PdfBuilder {
     for (const [res, base] of Object.entries(FONTS)) {
       fontIds[res] = addObj(`<< /Type /Font /Subtype /Type1 /BaseFont /${base} /Encoding /WinAnsiEncoding >>`);
     }
+    for (const [font, entry] of this.embedded) fontIds[entry.res] = this.embedFont(font, entry, addObj);
     const imageIds = {};
     for (const img of this.images) {
       const smaskId = img.smask ? addObj({
@@ -359,4 +518,4 @@ class PdfBuilder {
   }
 }
 
-module.exports = { PdfBuilder, FONTS, FONT_FAMILIES };
+module.exports = { PdfBuilder, FONTS, FONT_FAMILIES, breakChunks, isWide };

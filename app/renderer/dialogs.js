@@ -474,8 +474,8 @@ function showFindReplace({ stepNumbers = {}, find, replace } = {}) {
         el('div', { style: { height: '8px' } }),
         replacement,
         el('div.form-row', { style: { gap: '16px', margin: '8px 0' } },
-          el('label', {}, matchCase, ' Match case'),
-          el('label', {}, wholeWord, ' Whole word'),
+          el('label', {}, matchCase, ' ', t('Match case')),
+          el('label', {}, wholeWord, ' ', t('Whole word')),
           summary),
         list,
         el('div.muted', { style: { marginTop: '8px' } },
@@ -753,6 +753,7 @@ function showSettingsDialog({
     const pauseHotkey = makeHotkeyInput(settings.capture?.hotkeyPauseResume || '');
     const focusedDefault = el('input', { type: 'checkbox', checked: settings.editor?.focusedViewDefaultForNewSteps !== false });
     const returnToSelect = el('input', { type: 'checkbox', checked: settings.editor?.returnToSelect !== false });
+    const dangerousDeletes = el('input', { type: 'checkbox', checked: settings.editor?.dangerousDeletes === true });
     const previewCount = makeInput(settings.exports?.previewStepCount ?? 3, 'number', { min: 1, step: 1 });
     const openFolder = el('input', { type: 'checkbox', checked: Boolean(settings.exports?.openFolderAfterExport) });
     const codeTheme = makeSelect(CODE_THEME_CHOICES.some((t) => t.value === settings.exports?.codeTheme) ? settings.exports.codeTheme : 'atom-one-dark',
@@ -954,6 +955,9 @@ function showSettingsDialog({
         settingsCard(t('Annotation tools'),
           settingRow(t('Go back to Select after each use'), t('After you draw a blur, shape, arrow or other annotation, or crop, the Select tool is picked again. Turn off to keep using the same tool.'),
             makeSwitch(returnToSelect, t('Go back to Select after each use')))),
+        settingsCard(t('Deleting'),
+          settingRow(t('Dangerous deletes'), t('Delete steps without asking for confirmation.'),
+            makeSwitch(dangerousDeletes, t('Dangerous deletes')))),
         settingsCard(t('Backups'),
           settingRow(t('Snapshots to keep'), t('Older backup snapshots of each guide are removed. 0 keeps all of them.'), keepLast)),
       ] },
@@ -1069,6 +1073,7 @@ function showSettingsDialog({
                 ...settings.editor,
                 focusedViewDefaultForNewSteps: focusedDefault.checked,
                 returnToSelect: returnToSelect.checked,
+                dangerousDeletes: dangerousDeletes.checked,
               },
               branding: {
                 ...settings.branding,

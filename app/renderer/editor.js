@@ -95,8 +95,6 @@ const ANNOTATION_FIELDS = {
 };
 // Types whose fill can be Transparent. A tooltip's text sits on its fill, so it keeps one.
 const CLEARABLE_FILL_TYPES = new Set(['rect', 'oval']);
-// Fill colors offered when no brand profile is active.
-const DEFAULT_FILL_PRESETS = ['#FFE066', '#E5484D', '#1F6FEB', '#10B981', '#111827', '#FFFFFF'];
 
 // Display names for annotation types in the "Type" dropdown.
 // What a blur added by Find private details hides (core/redaction.js KINDS).
@@ -118,6 +116,31 @@ const ANNOTATION_TYPE_LABELS = {
   magnify: t('Magnify'),
   cursor: t('Cursor'),
 };
+
+// Canvas toolbar icons: simple outlines drawn for StepForge (no icon font or
+// remote asset). Each uses stroke="currentColor", so it follows the theme and
+// the active state. The tool names are the button's title and aria-label.
+const TOOL_ICON_PATHS = {
+  select: '<path d="M5 3v15l4-3.5 2.5 5.5 2.2-1-2.4-5.3H17z"/>',
+  rect: '<rect x="3.5" y="5.5" width="17" height="13" rx="1.5"/>',
+  oval: '<ellipse cx="12" cy="12" rx="8.5" ry="6"/>',
+  line: '<path d="M4.5 19.5 19.5 4.5"/>',
+  arrow: '<path d="M4.5 19.5 19 5M9 5h10v10"/>',
+  text: '<path d="M5 6V4.5h14V6M12 4.5v15M9 19.5h6"/>',
+  tooltip: '<path d="M4 5h16v11H10l-4 3.5V16H4z"/>',
+  number: '<circle cx="12" cy="12" r="8.5"/><path d="M10.5 9.5 12 8.5v7"/>',
+  blur: '<path d="M4 8q2-2 4 0t4 0 4 0 4 0M4 12q2-2 4 0t4 0 4 0 4 0M4 16q2-2 4 0t4 0 4 0 4 0"/>',
+  highlight: '<path d="M14.5 4.5l5 5L11 18l-5-5zM4 20h7"/>',
+  magnify: '<circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5"/>',
+  cursor: '<path d="M6 4v12l3.2-2.8 2.2 5 2-.9-2.2-4.9h4.6z"/><path d="M17.5 3.5l1 1.5M20.5 8h1.5M3 3l1.5 1.5"/>',
+  crop: '<path d="M6 3v13h13M3 6h13v15"/>',
+  undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
+  redo: '<path d="M15 14l5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/>',
+};
+
+function toolIconSvg(name) {
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${TOOL_ICON_PATHS[name]}</svg>`;
+}
 
 /** White or near-black text, whichever reads better on a badge or tooltip of color `hex`. */
 function readableTextOn(hex) {
@@ -177,6 +200,7 @@ function isEditableTarget(target) {
   return target && (
     target.tagName === 'INPUT' ||
     target.tagName === 'TEXTAREA' ||
+    target.tagName === 'SELECT' ||
     target.isContentEditable
   );
 }
@@ -469,7 +493,7 @@ class GuideEditor {
         }
       }
       if (!run.cancelled && written) {
-        this.setAiProgress('organizing');
+        this.setAiProgress(t('organizing'));
         if (this.pendingSave) await this.flushStep();
         if (this.pendingGuideSave) await this.flushGuide();
         const organized = await api.ai.organizeGuide({ guideId }).catch((err) => ({ ok: false, reason: err.message }));
@@ -481,7 +505,7 @@ class GuideEditor {
         }
       }
       if (!run.cancelled && written) {
-        this.setAiProgress('guide title');
+        this.setAiProgress(t('guide title'));
         if (this.pendingGuideSave) await this.flushGuide();
         const result = await api.ai.fillGuide({ guideId }).catch((err) => ({ ok: false, reason: err.message }));
         if (!run.cancelled && result?.ok) {
@@ -565,7 +589,7 @@ class GuideEditor {
         this.saveStepDebounced.cancel();
         this.pendingSave = false;
         this.saveError = null;
-        this.onToast('An AI agent deleted the step you were editing. Its saved version is in Backups & snapshots.');
+        this.onToast(t('An AI agent deleted the step you were editing. Its saved version is in Backups & snapshots.'));
       } else {
         await this.flushStep();
         if (this.pendingSave) return; // Keep unsaved edits if the write failed.
@@ -601,20 +625,21 @@ class GuideEditor {
   mountShell() {
     this.shellMounted = true;
     this.root.innerHTML = '';
+    // No Select button: Select is what the editor is in when no other tool
+    // is picked. Clicking the picked tool again, Escape or S goes back to it.
     const toolButtons = [
-      ['select', 'Select'],
-      ['rect', 'Rectangle'],
-      ['oval', 'Oval'],
-      ['line', 'Line'],
-      ['arrow', 'Arrow'],
-      ['text', 'Text'],
-      ['tooltip', 'Tip'],
-      ['number', '#'],
-      ['blur', 'Blur'],
-      ['highlight', 'Highlight'],
-      ['magnify', 'Mag'],
-      ['cursor', 'Cursor'],
-      ['crop', 'Crop'],
+      ['rect', t('Rectangle')],
+      ['oval', t('Oval')],
+      ['line', t('Line')],
+      ['arrow', t('Arrow')],
+      ['text', t('Text')],
+      ['tooltip', t('Tooltip')],
+      ['number', t('Number')],
+      ['blur', t('Blur')],
+      ['highlight', t('Highlight')],
+      ['magnify', t('Magnify')],
+      ['cursor', t('Cursor')],
+      ['crop', t('Crop')],
     ];
 
     this.dom = {};
@@ -627,15 +652,14 @@ class GuideEditor {
           ),
           el('div.row', {},
             this.dom.addStepBtn = el('button.primary', { type: 'button' }, t('Add')),
-            this.dom.importBtn = el('button', { type: 'button' }, t('Import')),
             this.dom.selectStepsBtn = el('button', { type: 'button', title: t('Select steps; Shift-click to select a range') }, t('Select')),
           ),
         ),
-        this.dom.stepsList = el('div.steps-list'),
+        this.dom.stepsList = el('div.steps-list', { role: 'list', 'aria-label': t('Steps') }),
         this.dom.stepBulkBar = el('div'),
         this.dom.paneFoot = el('div.pane-foot', {},
-          this.dom.moveUpBtn = el('button.icon', { type: 'button', title: t('Move step up') }, '↑'),
-          this.dom.moveDownBtn = el('button.icon', { type: 'button', title: t('Move step down') }, '↓'),
+          this.dom.moveUpBtn = el('button.icon', { type: 'button', title: t('Move step up'), 'aria-label': t('Move step up') }, '↑'),
+          this.dom.moveDownBtn = el('button.icon', { type: 'button', title: t('Move step down'), 'aria-label': t('Move step down') }, '↓'),
           this.dom.duplicateBtn = el('button', { type: 'button' }, t('Duplicate')),
           this.dom.deleteBtn = el('button.danger', { type: 'button' }, t('Delete')),
         ),
@@ -644,18 +668,21 @@ class GuideEditor {
         'aria-label': t('Resize steps pane'), 'aria-controls': 'editor-steps-pane' }),
       this.dom.canvasPane = el('section.pane-canvas', {},
         el('div.canvas-toolbar', {},
-          ...toolButtons.map(([tool, label]) => this.dom[`tool-${tool}`] = el('button.tool', { type: 'button', dataset: { tool } }, label)),
+          ...toolButtons.map(([tool, name]) => this.dom[`tool-${tool}`] = el('button.tool.tool-icon', { type: 'button', dataset: { tool }, title: name, 'aria-label': name, innerHTML: toolIconSvg(tool) })),
           el('span.sep'),
-          this.dom.zoomFitBtn = el('button.tool', { type: 'button' }, t('Fit')),
-          this.dom.zoom100Btn = el('button.tool', { type: 'button' }, '100%'),
-          this.dom.zoom125Btn = el('button.tool', { type: 'button' }, '125%'),
-          this.dom.zoom150Btn = el('button.tool', { type: 'button' }, '150%'),
+          this.dom.zoomSelect = el('select.zoom-select', { title: t('Zoom'), 'aria-label': t('Zoom') },
+            el('option', { value: 'fit' }, t('Fit')),
+            el('option', { value: '1' }, '100%'),
+            el('option', { value: '1.25' }, '125%'),
+            el('option', { value: '1.5' }, '150%'),
+          ),
           el('span.sep'),
-          this.dom.undoBtn = el('button.tool', { type: 'button' }, t('Undo')),
-          this.dom.redoBtn = el('button.tool', { type: 'button' }, t('Redo')),
+          this.dom.undoBtn = el('button.tool.tool-icon', { type: 'button', title: t('Undo'), 'aria-label': t('Undo'), innerHTML: toolIconSvg('undo') }),
+          this.dom.redoBtn = el('button.tool.tool-icon', { type: 'button', title: t('Redo'), 'aria-label': t('Redo'), innerHTML: toolIconSvg('redo') }),
         ),
         this.dom.canvasWrap = el('div.canvas-wrap', {},
-          this.dom.canvas = el('canvas', { width: 1, height: 1 }),
+          this.dom.canvas = el('canvas', { width: 1, height: 1, tabIndex: -1, role: 'group', 'aria-label': t('Screenshot editor'), 'aria-describedby': 'screenshot-keyboard-help' }, t('Select annotations in the list to edit their properties.')),
+          el('span.sr-only', { id: 'screenshot-keyboard-help' }, t('Select an annotation from the list, then focus the screenshot. Use arrow keys to move it and Delete to remove it.')),
           this.dom.canvasEmpty = el('div.canvas-empty', {}, t('Select an image step to edit annotations.')),
         ),
       ),
@@ -665,7 +692,7 @@ class GuideEditor {
         el('section', {},
           el('h3', {}, t('Step')),
           el('div.row', {},
-            this.dom.titleInput = el('input', { type: 'text', placeholder: t('Step title'), style: { flex: 1 } }),
+            this.dom.titleInput = el('input', { type: 'text', placeholder: t('Step title'), 'aria-label': t('Step title'), style: { flex: 1 } }),
           ),
           this.dom.statusSelect = makeSelect('todo', [
             { value: 'todo', label: t('Todo') },
@@ -673,26 +700,26 @@ class GuideEditor {
             { value: 'done', label: t('Done') },
           ]),
           el('div.row', {},
-            this.dom.hiddenToggle = el('label', {}, el('input', { type: 'checkbox' }), ' Hidden'),
-            this.dom.skippedToggle = el('label', {}, el('input', { type: 'checkbox' }), ' Skipped'),
+            this.dom.hiddenToggle = el('label', {}, el('input', { type: 'checkbox' }), ' ', t('Hidden')),
+            this.dom.skippedToggle = el('label', {}, el('input', { type: 'checkbox' }), ' ', t('Skipped')),
           ),
           el('div.row', {},
-            this.dom.forceNewPageToggle = el('label', {}, el('input', { type: 'checkbox' }), ' New page'),
-            this.dom.focusedViewToggle = el('label', {}, el('input', { type: 'checkbox' }), ' Focused'),
+            this.dom.forceNewPageToggle = el('label', {}, el('input', { type: 'checkbox' }), ' ', t('New page')),
+            this.dom.focusedViewToggle = el('label', {}, el('input', { type: 'checkbox' }), ' ', t('Focused')),
           ),
           // Pan shows as a percentage, 0% at the left and top edges (core/focused-view.js).
           this.dom.focusedControls = el('div.focused-controls.hidden', {},
             el('div.form-row', {}, el('label', {}, t('Zoom')),
               this.dom.fvZoom = el('input', { type: 'range', min: 1, max: 3, step: 0.05, value: 1.5, 'aria-label': t('Zoom') }),
-              this.dom.fvZoomNum = el('input', { type: 'number', min: 1, max: 3, step: 0.05, value: '1.50', 'aria-label': t('Zoom') }),
+              this.dom.fvZoomNum = el('input', { type: 'number', min: 1, max: 3, step: 0.05, value: '1.50', 'aria-label': t('{label} value', { label: t('Zoom') }) }),
               el('span.fv-unit', {}, '×')),
             el('div.form-row', { title: t('0% is the left edge, 100% the right edge.') }, el('label', {}, t('Pan X')),
               this.dom.fvPanX = el('input', { type: 'range', min: 0, max: 100, step: 1, value: 50, 'aria-label': t('Pan X') }),
-              this.dom.fvPanXNum = el('input', { type: 'number', min: 0, max: 100, step: 1, value: 50, 'aria-label': t('Pan X') }),
+              this.dom.fvPanXNum = el('input', { type: 'number', min: 0, max: 100, step: 1, value: 50, 'aria-label': t('{label} value', { label: t('Pan X') }) }),
               el('span.fv-unit', {}, '%')),
             el('div.form-row', { title: t('0% is the top edge, 100% the bottom edge.') }, el('label', {}, t('Pan Y')),
               this.dom.fvPanY = el('input', { type: 'range', min: 0, max: 100, step: 1, value: 50, 'aria-label': t('Pan Y') }),
-              this.dom.fvPanYNum = el('input', { type: 'number', min: 0, max: 100, step: 1, value: 50, 'aria-label': t('Pan Y') }),
+              this.dom.fvPanYNum = el('input', { type: 'number', min: 0, max: 100, step: 1, value: 50, 'aria-label': t('{label} value', { label: t('Pan Y') }) }),
               el('span.fv-unit', {}, '%')),
             el('div.muted', {}, t('Exports crop to this view; the original image is never modified.')),
           ),
@@ -700,15 +727,15 @@ class GuideEditor {
         el('section', {},
           el('h3', {}, t('Description')),
           this.dom.richToolbar = el('div.rich-toolbar', {},
-            this.toolbarBtn('bold', 'Bold'),
-            this.toolbarBtn('italic', 'Italic'),
-            this.toolbarBtn('insertUnorderedList', 'Bullet'),
-            this.toolbarBtn('insertOrderedList', 'Number'),
-            this.toolbarBtn('formatBlock', 'Quote', 'blockquote'),
-            this.toolbarBtn('createLink', 'Link'),
-            this.toolbarBtn('removeFormat', 'Clear'),
+            this.toolbarBtn('bold', t('Bold')),
+            this.toolbarBtn('italic', t('Italic')),
+            this.toolbarBtn('insertUnorderedList', t('Bullet')),
+            this.toolbarBtn('insertOrderedList', t('Number')),
+            this.toolbarBtn('formatBlock', t('Quote'), 'blockquote'),
+            this.toolbarBtn('createLink', t('Link')),
+            this.toolbarBtn('removeFormat', t('Clear')),
           ),
-          this.dom.descEditor = el('div.rich-editor', { contentEditable: 'true', spellcheck: true }),
+          this.dom.descEditor = el('div.rich-editor', { contentEditable: 'true', spellcheck: true, role: 'textbox', 'aria-label': t('Description'), 'aria-multiline': 'true' }),
         ),
         el('section', {},
           el('h3', {}, t('Annotations')),
@@ -733,6 +760,8 @@ class GuideEditor {
       ),
     );
     this.root.append(this.dom.root);
+    this.dom.statusSelect.setAttribute?.('aria-label', t('Status'));
+    for (const row of this.dom.focusedControls.querySelectorAll?.('.form-row') || []) labelControl(row.querySelector('label'), [...row.querySelectorAll('input')]);
 
     // canvas interactions need to snapshot the current step before the drag
     // mutates it, so undo can restore the pre-edit annotations.
@@ -769,9 +798,11 @@ class GuideEditor {
       divider.addEventListener('pointerdown', event => {
         if (event.button !== 0) return;
         event.preventDefault();
+        // Focused for the drag so Escape can cancel it; a mouse drag hands focus back afterwards.
+        const keepFocus = document.activeElement === divider;
         divider.focus();
         this.paneDrag = { side, pointerId: event.pointerId, divider, startX: event.clientX,
-          startWidth: this.effectivePaneWidths[side] };
+          startWidth: this.effectivePaneWidths[side], keepFocus };
         divider.setPointerCapture(event.pointerId);
         divider.classList.add('dragging');
         this.dom.root.classList.add('resizing-panes');
@@ -857,6 +888,7 @@ class GuideEditor {
     this.paneDrag = null;
     if (drag?.divider.hasPointerCapture(drag.pointerId)) drag.divider.releasePointerCapture(drag.pointerId);
     drag?.divider.classList.remove('dragging');
+    if (drag && !drag.keepFocus) drag.divider.blur();
     this.dom?.root?.classList.remove('resizing-panes');
   }
 
@@ -881,10 +913,13 @@ class GuideEditor {
   }
 
   toolbarBtn(action, label, block = null) {
+    const labels = { bold: t('Bold'), italic: t('Italic'), insertUnorderedList: t('Bulleted list'), insertOrderedList: t('Numbered list'), formatBlock: t('Quote'), createLink: t('Link'), removeFormat: t('Clear') };
     const btn = el('button', {
       type: 'button',
+      'aria-label': labels[action] || label,
+      ...(!['createLink', 'removeFormat'].includes(action) ? { 'aria-pressed': 'false' } : {}),
       onClick: () => this.formatDescription(action, block),
-    }, label);
+    }, labels[action] || label);
     btn.dataset.action = action;
     if (block) btn.dataset.block = block;
     return btn;
@@ -906,12 +941,12 @@ class GuideEditor {
         active = false;
       }
       btn.classList.toggle('active', active);
+      if (!['createLink', 'removeFormat'].includes(action)) btn.setAttribute('aria-pressed', String(active));
     }
   }
 
   bindShellEvents() {
     this.dom.addStepBtn.addEventListener('click', () => this.addEmptyStep());
-    this.dom.importBtn.addEventListener('click', () => this.importImageSteps());
     this.dom.selectStepsBtn.addEventListener('click', () => this.toggleStepSelectMode());
     this.dom.stepsList.addEventListener('dragover', (e) => this.onStepDragOver(e));
     this.dom.stepsList.addEventListener('dragleave', (e) => {
@@ -924,16 +959,16 @@ class GuideEditor {
     this.dom.deleteBtn.addEventListener('click', () => this.deleteSelectedStep());
     this.dom.saveNowBtn.addEventListener('click', () => this.saveAll());
     this.dom.snapshotBtn.addEventListener('click', () => this.createSnapshot());
-    this.dom.zoomFitBtn.addEventListener('click', () => this.setZoom('fit'));
-    this.dom.zoom100Btn.addEventListener('click', () => this.setZoom(1));
-    this.dom.zoom125Btn.addEventListener('click', () => this.setZoom(1.25));
-    this.dom.zoom150Btn.addEventListener('click', () => this.setZoom(1.5));
+    this.dom.zoomSelect.addEventListener('change', () => {
+      const value = this.dom.zoomSelect.value;
+      this.setZoom(value === 'fit' ? 'fit' : Number(value));
+    });
     this.dom.undoBtn.addEventListener('click', () => this.undo());
     this.dom.redoBtn.addEventListener('click', () => this.redo());
 
     Object.entries(this.dom).forEach(([key, value]) => {
       if (key.startsWith('tool-')) {
-        value.addEventListener('click', () => this.setTool(value.dataset.tool));
+        value.addEventListener('click', () => this.setTool(this.currentTool === value.dataset.tool ? 'select' : value.dataset.tool));
       }
     });
 
@@ -1027,6 +1062,7 @@ class GuideEditor {
       const item = e.target.closest('[data-ann-id]');
       if (!item) return;
       this.canvas.select(item.dataset.annId);
+      [...this.dom.annotationList.querySelectorAll('[data-ann-id]')].find(button => button.dataset.annId === item.dataset.annId)?.focus();
     });
 
   }
@@ -1088,6 +1124,7 @@ class GuideEditor {
     for (const [range, box, value] of rows) {
       if (range !== keep) range.value = value;
       if (box !== keep) box.value = value;
+      range.setAttribute?.('aria-valuetext', `${value}${range === this.dom.fvZoom ? '×' : '%'}`);
     }
   }
 
@@ -1109,7 +1146,7 @@ class GuideEditor {
       step.codeBlocks.push({ id, order: nextBlockOrder(step), language: '', code: '' });
     } else if (kind === 'table') {
       step.tableBlocks = step.tableBlocks || [];
-      step.tableBlocks.push({ id, order: nextBlockOrder(step), rows: [['Column A', 'Column B'], ['', '']] });
+      step.tableBlocks.push({ id, order: nextBlockOrder(step), rows: [[t('Column A'), t('Column B')], ['', '']] });
     }
     this.pendingSave = true;
     this.saveStepDebounced();
@@ -1205,7 +1242,7 @@ class GuideEditor {
       reflowBlockCards();
     };
     const removeBtn = (onRemove) => el('button.icon.danger', {
-      type: 'button', title: t('Remove block'),
+      type: 'button', title: t('Remove block'), 'aria-label': t('Remove block'),
       onClick: () => { onRemove(); save(); this.renderBlocksPanel(); },
     }, '✕');
 
@@ -1231,8 +1268,8 @@ class GuideEditor {
         el('strong', {}, blockLabel(kind)),
         el('span.muted', { dataset: { blockOrder: 'true' } }, `#${Number.isFinite(block.order) ? block.order : index + 1}`),
         el('span.spacer'),
-        el('button.icon', { type: 'button', title: t('Move block up'), disabled: !canMoveUp, onClick: moveUp, dataset: { blockMove: 'up' } }, '↑'),
-        el('button.icon', { type: 'button', title: t('Move block down'), disabled: !canMoveDown, onClick: moveDown, dataset: { blockMove: 'down' } }, '↓'),
+        el('button.icon', { type: 'button', title: t('Move block up'), 'aria-label': t('Move block up'), disabled: !canMoveUp, onClick: moveUp, dataset: { blockMove: 'up' } }, '↑'),
+        el('button.icon', { type: 'button', title: t('Move block down'), 'aria-label': t('Move block down'), disabled: !canMoveDown, onClick: moveDown, dataset: { blockMove: 'down' } }, '↓'),
         removeBtn(() => {
           if (kind === 'text') step.textBlocks = (step.textBlocks || []).filter((b) => b !== block);
           else if (kind === 'code') step.codeBlocks = (step.codeBlocks || []).filter((b) => b !== block);
@@ -1281,9 +1318,9 @@ class GuideEditor {
         ]);
         level.dataset.blockField = 'level';
         level.setAttribute('aria-label', t('Message type'));
-        const title = el('input', { type: 'text', value: block.title || '', placeholder: t('Block title') });
+        const title = el('input', { type: 'text', value: block.title || '', placeholder: t('Block title'), 'aria-label': t('Block title') });
         title.dataset.blockField = 'title';
-        const body = el('textarea', { rows: 2, placeholder: t('Block text') });
+        const body = el('textarea', { rows: 2, placeholder: t('Block text'), 'aria-label': t('Block text') });
         body.dataset.blockField = 'body';
         body.value = (block.descriptionHtml || '').replace(/<[^>]+>/g, '');
         position.addEventListener('change', () => { block.position = position.value; save(); });
@@ -1296,9 +1333,9 @@ class GuideEditor {
           body,
         );
       } else if (kind === 'code') {
-        const lang = el('input', { type: 'text', value: block.language || '', placeholder: t('Language (e.g. bash)') });
+        const lang = el('input', { type: 'text', value: block.language || '', placeholder: t('Language (e.g. bash)'), 'aria-label': t('Language') });
         lang.dataset.blockField = 'language';
-        const code = el('textarea', { rows: 3, placeholder: t('Code'), spellcheck: false });
+        const code = el('textarea', { rows: 3, placeholder: t('Code'), spellcheck: false, 'aria-label': t('Code') });
         code.dataset.blockField = 'code';
         code.value = blockText(block);
         code.style.fontFamily = 'monospace';
@@ -1306,7 +1343,7 @@ class GuideEditor {
         code.addEventListener('input', () => { block.code = code.value; save(); });
         card.append(lang, code);
       } else if (kind === 'table') {
-        const grid = el('textarea', { rows: 3, placeholder: t('One row per line, cells separated by |'), spellcheck: false });
+        const grid = el('textarea', { rows: 3, placeholder: t('One row per line, cells separated by |'), spellcheck: false, 'aria-label': t('Table rows') });
         grid.dataset.blockField = 'rows';
         grid.value = (block.rows || []).map((r) => r.join(' | ')).join('\n');
         grid.addEventListener('input', () => {
@@ -1329,11 +1366,13 @@ class GuideEditor {
   }
 
   renderStepList() {
+    const focusKey = document.activeElement?.dataset?.stepFocus;
     const current = this.currentStep;
     const numbers = stepNumberMap(this.steps);
     clearNode(this.dom.stepsList);
     this.dom.stepCount.textContent = tn(this.steps.length, '{count} step', '{count} steps');
     this.dom.selectStepsBtn.className = this.stepSelectMode ? 'primary' : '';
+    this.dom.selectStepsBtn.setAttribute?.('aria-pressed', String(this.stepSelectMode));
     // Threads (see stepThreads) are hidden while selecting, so every step is listed for range selection.
     const threads = this.stepSelectMode ? null : this.stepThreads();
     for (const step of threads ? threads.visible : this.steps) {
@@ -1342,6 +1381,7 @@ class GuideEditor {
       const selected = current && current.stepId === step.stepId;
       const checked = this.selectedSteps.has(step.stepId);
       const itemProps = {
+        role: 'listitem',
         className: `step-item${selected ? ' selected' : ''}${depth ? ' sub' : ''}${step.skipped ? ' skipped' : ''}${step.hidden ? ' hiddenstep' : ''}`,
         dataset: { stepId: step.stepId },
         draggable: !this.stepSelectMode,
@@ -1354,10 +1394,14 @@ class GuideEditor {
           if (this.stepSelectMode) this.toggleStepSelection(step.stepId, e.shiftKey);
           else this.selectStep(step.stepId);
         },
-        onContextMenu: (e) => {
+        onContextMenu: async (e) => {
           e.preventDefault();
           if (this.stepSelectMode) return;
-          this.selectStep(step.stepId);
+          const kind = e.currentTarget?.classList?.contains('step-select') ? 'select' : 'actions';
+          const guideId = this.guideId;
+          await this.selectStep(step.stepId);
+          if (this.guideId !== guideId || !this.stepMap.has(step.stepId)) return;
+          const trigger = [...this.dom.stepsList.querySelectorAll('[data-step-focus]')].find(button => button.dataset.stepFocus === `${kind}:${step.stepId}`);
           contextMenu(e.clientX, e.clientY, [
             { label: t('Add substep'), action: () => this.addSubstep(step.stepId) },
             {
@@ -1392,31 +1436,59 @@ class GuideEditor {
               label: threads.collapsed.has(step.stepId) ? t('Expand step') : t('Collapse step'),
               action: () => void this.toggleStepCollapsed(step.stepId),
             }] : []),
-          ]);
+          ], { trigger });
+        },
+        onKeyDown: e => {
+          if (e.key !== 'ContextMenu' && !(e.shiftKey && e.key === 'F10')) return;
+          e.preventDefault(); e.stopPropagation();
+          const trigger = e.target.closest('button') || e.currentTarget;
+          const rect = trigger.getBoundingClientRect();
+          void itemProps.onContextMenu({ clientX: rect.left, clientY: rect.bottom, currentTarget: trigger, preventDefault() {} });
         },
       };
       if (depth) itemProps.style = { marginLeft: `${depth * 18}px` };
       const item = el('div.step-item', itemProps,
         this.stepSelectMode
-          ? el('input', {
+          ? el('input.step-control', {
             type: 'checkbox',
             checked,
-            'aria-label': t('Select step {step}', { step: number || step.title || '' }),
+            dataset: { stepFocus: `check:${step.stepId}` },
+            'aria-label': t('Select step {step}', { step: `${number} ${step.title || t('Untitled step')}` }),
             onClick: (e) => {
               e.stopPropagation();
               this.toggleStepSelection(step.stepId, e.shiftKey);
             },
           })
           : null,
-        el('span.status-dot', { className: `status-dot status-${step.status}` }),
-        el('span.num', {}, number || '•'),
-        el('span.t', {}, step.title || t('Untitled step')),
+        this.stepSelectMode ? el('span.step-summary', {},
+          el('span.num', {}, number || '•'), el('span.t', {}, step.title || t('Untitled step')))
+          : el('button.step-select.step-control', {
+            type: 'button', dataset: { stepFocus: `select:${step.stepId}` },
+            'aria-label': t('Select step {step}', { step: `${number} ${step.title || t('Untitled step')}` }),
+            'aria-current': selected ? 'step' : 'false',
+            onClick: e => { e.stopPropagation(); void this.selectStep(step.stepId); },
+            onKeyDown: async e => {
+              if (e.ctrlKey || e.metaKey || e.altKey || !['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(e.key)) return;
+              e.preventDefault(); e.stopPropagation();
+              const at = this.steps.findIndex(s => s.stepId === step.stepId);
+              const next = e.key === 'Home' ? 0 : e.key === 'End' ? this.steps.length - 1 : Math.max(0, Math.min(this.steps.length - 1, at + (e.key === 'ArrowDown' ? 1 : -1)));
+              const nextId = this.steps[next].stepId, guideId = this.guideId;
+              await this.selectStep(nextId);
+              if (this.guideId === guideId && document.activeElement?.dataset?.stepFocus === `select:${step.stepId}`) this.focusStepControl(`select:${nextId}`, { force: true });
+            },
+          }, el('span.status-dot', { className: `status-dot status-${step.status}`, 'aria-hidden': 'true' }),
+          el('span.num', {}, number || '•'), el('span.t', {}, step.title || t('Untitled step'))),
         threads ? this.stepFoldCount(step, number, threads) : null,
         el('span.flags', {}, [
-          step.parentStepId ? 'sub' : '',
-          step.hidden ? 'hidden' : '',
-          step.skipped ? 'skipped' : '',
+          step.parentStepId ? t('Substep') : '',
+          step.hidden ? t('Hidden') : '',
+          step.skipped ? t('Skipped') : '',
         ].filter(Boolean).join(' · ')),
+        this.stepSelectMode ? null : el('button.step-actions.step-control', {
+          type: 'button', 'aria-haspopup': 'menu', 'aria-expanded': 'false', dataset: { stepFocus: `actions:${step.stepId}` },
+          'aria-label': t('Actions for “{title}”', { title: step.title || t('Untitled step') }),
+          onClick: e => { e.stopPropagation(); const rect = e.currentTarget.getBoundingClientRect(); void itemProps.onContextMenu({ clientX: rect.left, clientY: rect.bottom, currentTarget: e.currentTarget, preventDefault() {} }); },
+        }, '⋯'),
         ...(threads ? this.stepThreadLines(step, depth, number, threads) : []),
       );
       this.dom.stepsList.append(item);
@@ -1425,6 +1497,12 @@ class GuideEditor {
       this.dom.stepsList.append(el('div.empty-state', { style: { marginTop: '40px' } }, t('No steps yet.')));
     }
     this.renderStepBulkBar();
+    this.focusStepControl(focusKey);
+  }
+
+  focusStepControl(key, { force = false } = {}) {
+    if (!key || (!force && document.activeElement?.isConnected && document.activeElement !== document.body)) return;
+    [...(this.dom.root?.querySelectorAll?.('[data-step-focus]') || [])].find(button => button.dataset.stepFocus === key && !button.disabled)?.focus();
   }
 
   /** The collapsed step ids of the open guide. */
@@ -1573,6 +1651,7 @@ class GuideEditor {
   }
 
   renderStepBulkBar() {
+    const focusKey = document.activeElement?.dataset?.stepFocus;
     clearNode(this.dom.stepBulkBar);
     this.dom.paneFoot.classList.toggle('hidden', this.stepSelectMode);
     if (!this.stepSelectMode) return;
@@ -1580,10 +1659,11 @@ class GuideEditor {
     const allSelected = this.steps.length > 0 && n === this.steps.length;
     this.dom.stepBulkBar.append(
       el('div.bulk-bar', {},
-        el('span', {}, `${n} step${n === 1 ? '' : 's'} selected`),
+        el('span', {}, tn(n, '{count} step selected', '{count} steps selected')),
         el('span.spacer', {}),
         el('button', {
           type: 'button',
+          dataset: { stepFocus: 'bulk:all' },
           onClick: () => (allSelected ? this.clearStepSelection() : this.selectAllSteps()),
         }, allSelected ? t('Clear') : t('Select all')),
         this.annotationClipboard
@@ -1594,15 +1674,25 @@ class GuideEditor {
             onClick: () => this.pasteAnnotationToSelectedSteps(),
           }, tn(n, 'Paste annotation to {count} step', 'Paste annotation to {count} steps'))
           : null,
-        el('button.danger', { type: 'button', disabled: !n, onClick: () => this.deleteSelectedSteps() }, t('Delete')),
+        el('button.danger', { type: 'button', disabled: !n, dataset: { stepFocus: 'bulk:delete' }, onClick: () => this.deleteSelectedSteps() }, t('Delete')),
       ),
     );
+    this.focusStepControl(focusKey);
+  }
+
+  /**
+   * Asks before deleting steps, unless Settings → Editor → Dangerous deletes
+   * is on. Resolves true to delete.
+   */
+  async confirmDelete(message, title) {
+    if (this.settings?.editor?.dangerousDeletes === true) return true;
+    return confirmDialog(message, { title, danger: true, okLabel: t('Delete') });
   }
 
   async deleteSelectedSteps() {
     const ids = [...this.selectedSteps];
     if (!ids.length) return;
-    const ok = await confirmDialog(`Delete ${ids.length} step${ids.length === 1 ? '' : 's'}?`, { danger: true, okLabel: t('Delete') });
+    const ok = await this.confirmDelete(tn(ids.length, 'Delete {count} step?', 'Delete {count} steps?'), t('Delete selected steps'));
     if (!ok) return;
     if (this.pendingSave) await this.flushStep();
     const order = this.steps.map((s) => s.stepId);
@@ -1619,7 +1709,7 @@ class GuideEditor {
     this.selectedSteps = new Set();
     this.stepSelectionAnchor = null;
     await this.reload(null);
-    this.onToast(`${ids.length} step${ids.length === 1 ? '' : 's'} deleted. Press Ctrl+Z to undo.`);
+    this.onToast(tn(ids.length, '{count} step deleted. Press Ctrl+Z to undo.', '{count} steps deleted. Press Ctrl+Z to undo.'));
   }
 
   syncStepFields() {
@@ -1648,14 +1738,25 @@ class GuideEditor {
       : '';
   }
 
+  // A guide with no steps needs a first capture or import; otherwise the
+  // canvas is waiting for a step to be selected or to have an image.
+  showCanvasEmpty() {
+    this.dom.canvasEmpty.textContent = this.steps.length
+      ? t('Select an image step to edit annotations.')
+      : t('Start recording or import images to begin.');
+    this.dom.canvasEmpty.classList.remove('hidden');
+  }
+
   async renderCanvas() {
+    if (this.dom.canvas) this.dom.canvas.tabIndex = -1;
     const step = this.currentStep;
     const token = ++this.imageLoadToken;
     this.canvas.setTool(this.currentTool);
     this.canvas.setZoom(this.currentZoom);
+    this.syncToolbar();
     if (!step || !step.image) {
       this.canvas.setImage(null, 0, 0);
-      this.dom.canvasEmpty.classList.remove('hidden');
+      this.showCanvasEmpty();
       return;
     }
     this.dom.canvasEmpty.classList.add('hidden');
@@ -1664,10 +1765,16 @@ class GuideEditor {
       stepId: step.stepId,
       which: 'working',
     });
-    if (token !== this.imageLoadToken || !src) return;
+    if (token !== this.imageLoadToken) return;
+    if (!src) {
+      this.canvas.setImage(null, 0, 0);
+      this.showCanvasEmpty();
+      return;
+    }
     const img = new Image();
     img.onload = () => {
       if (token !== this.imageLoadToken) return;
+      if (this.dom.canvas) this.dom.canvas.tabIndex = 0;
       this.canvas.setImage(img, img.naturalWidth || img.width, img.naturalHeight || img.height);
       this.canvas.setAnnotations(step.annotations || []);
       this.canvas.setFocusedView(step.focusedView);
@@ -1677,7 +1784,7 @@ class GuideEditor {
     img.onerror = () => {
       if (token !== this.imageLoadToken) return;
       this.canvas.setImage(null, 0, 0);
-      this.dom.canvasEmpty.classList.remove('hidden');
+      this.showCanvasEmpty();
     };
     img.src = src;
   }
@@ -1698,14 +1805,18 @@ class GuideEditor {
     } else {
       for (const ann of anns) {
         const selected = this.canvas.selected() && this.canvas.selected().id === ann.id;
-        this.dom.annotationList.append(el('div.block-card', {
+        this.dom.annotationList.append(el('button.block-card.annotation-select', {
+          type: 'button', 'aria-pressed': String(Boolean(selected)),
           dataset: { annId: ann.id },
           style: { cursor: 'pointer', borderColor: selected ? 'var(--accent)' : '' },
         },
-        el('div.row', {}, el('strong', {}, ANNOTATION_TYPE_LABELS[ann.type] || ann.type),
+        el('span.row', {}, el('strong', {}, ANNOTATION_TYPE_LABELS[ann.type] || ann.type),
           // Blurs StepForge added for a private detail say what they hide.
           el('span.muted', {}, ann.redact ? t('Private detail: {kind}', { kind: PRIVATE_DETAIL_LABELS[ann.redact.kind] || t('added by StepForge') }) : ann.text || ann.value || '')),
-        el('div.muted', {}, `${ann.x.toFixed(3)}, ${ann.y.toFixed(3)} · ${ann.w.toFixed(3)} × ${ann.h.toFixed(3)}`)));
+        el('span.muted', { style: { display: 'block' } }, t('Left {x}% · Top {y}% · Width {width}% · Height {height}%', {
+          x: window.StepForgeAnnotationProperties.percentage(ann.x), y: window.StepForgeAnnotationProperties.percentage(ann.y),
+          width: window.StepForgeAnnotationProperties.percentage(ann.w), height: window.StepForgeAnnotationProperties.percentage(ann.h),
+        }))));
       }
     }
 
@@ -1721,9 +1832,8 @@ class GuideEditor {
       'rect', 'oval', 'line', 'arrow', 'text', 'tooltip', 'number', 'blur', 'highlight', 'magnify', 'cursor',
     ].map((type) => ({ value: type, label: ANNOTATION_TYPE_LABELS[type] || type })));
     const valueInput = el('input', { type: 'number', value: Number.isFinite(selected.value) ? selected.value : '', placeholder: t('Value') });
-    const strokeInput = el('input', { type: 'color', value: style.stroke || '#E5484D' });
     const strokeWidthInput = el('input', { type: 'number', min: 1, step: 1, value: style.strokeWidth || 3 });
-    const fontSizeInput = el('input', { type: 'number', min: 0.01, step: 0.001, value: style.fontSize || 0.022 });
+    const fontSizeInput = el('input', { type: 'number', min: 0.01, max: 100, step: 0.01, value: window.StepForgeAnnotationProperties.percentage(style.fontSize || 0.022), 'aria-label': t('Font size (% of image height)') });
     const textColorInput = el('input', { type: 'color', value: style.textColor || '#ffffff' });
     const zoomInput = el('input', { type: 'number', min: 1, step: 0.1, value: selected.zoom || 2 });
     const radiusInput = el('input', { type: 'number', min: 1, step: 1, value: selected.radius || 8 });
@@ -1763,10 +1873,15 @@ class GuideEditor {
       : el('input', { type: 'text', value: selected.text || '', placeholder: t('Annotation text') });
     if (fields.has('text')) textInput.value = selected.text || '';
 
-    const rows = [labeledRow(t('Type'), typeSelect)];
+    const rows = [el('button.skip-to-canvas', { type: 'button', disabled: !this.canvas.image, onClick: () => this.dom.canvas.focus() }, t('Focus screenshot')), labeledRow(t('Type'), typeSelect)];
     if (fields.has('text')) rows.push(labeledRow(t('Text'), textInput, { stacked: true }));
     if (fields.has('value')) rows.push(labeledRow(t('Value'), valueInput));
-    if (fields.has('stroke')) rows.push(labeledRow(strokeLabel, strokeInput));
+    if (fields.has('stroke')) rows.push(labeledRow(strokeLabel, this.colorPicker(selected, (stroke, { record = true } = {}) => {
+      const ann = this.canvas.selected();
+      if (!ann) return;
+      if (record) this.pushCanvasHistory('annotation-stroke');
+      apply({ style: { ...ann.style, stroke } });
+    }, { field: 'stroke', label: strokeLabel })));
     if (fields.has('fill')) {
       rows.push(labeledRow(t('Fill'), this.fillPicker(selected, (fill, { record = true } = {}) => {
         const ann = this.canvas.selected();
@@ -1776,7 +1891,7 @@ class GuideEditor {
       })));
     }
     if (fields.has('strokeWidth')) rows.push(labeledRow(t('Stroke width'), strokeWidthInput));
-    if (fields.has('fontSize')) rows.push(labeledRow(t('Font size'), fontSizeInput));
+    if (fields.has('fontSize')) rows.push(labeledRow(t('Font size (% of image height)'), fontSizeInput, { stacked: true }));
     if (fields.has('textColor')) rows.push(labeledRow(t('Text color'), textColorInput));
     if (fields.has('zoom')) rows.push(labeledRow(t('Zoom'), zoomInput));
     if (fields.has('radius')) rows.push(labeledRow(t('Radius'), radiusInput));
@@ -1818,11 +1933,6 @@ class GuideEditor {
       const next = valueInput.value === '' ? null : Number(valueInput.value);
       await apply({ value: Number.isFinite(next) ? next : null });
     });
-    strokeInput.addEventListener('input', async () => {
-      const ann = this.canvas.selected();
-      if (!ann) return;
-      await apply({ style: { ...ann.style, stroke: strokeInput.value } });
-    });
     strokeWidthInput.addEventListener('input', async () => {
       const ann = this.canvas.selected();
       if (!ann) return;
@@ -1831,7 +1941,8 @@ class GuideEditor {
     fontSizeInput.addEventListener('input', async () => {
       const ann = this.canvas.selected();
       if (!ann) return;
-      await apply({ style: { ...ann.style, fontSize: Number(fontSizeInput.value || 0.022) } });
+      const fontSize = window.StepForgeAnnotationProperties.fontSizeFromPercent(fontSizeInput.value);
+      if (fontSize !== null) await apply({ style: { ...ann.style, fontSize } });
     });
     textColorInput.addEventListener('input', async () => {
       const ann = this.canvas.selected();
@@ -1863,17 +1974,34 @@ class GuideEditor {
    * record is false for the live updates while the custom picker is open.
    */
   fillPicker(ann, onPick) {
-    const allowTransparent = CLEARABLE_FILL_TYPES.has(ann.type);
+    return this.colorPicker(ann, onPick, { field: 'fill', label: t('Fill') });
+  }
+
+  rememberAnnotationColor(color) {
+    const helpers = window.StepForgeAnnotationProperties;
+    const next = helpers.recentColor(this.settings?.editor?.recentColors, color);
+    if (!helpers.colors([color]).length) return;
+    this.settings ||= {};
+    this.settings.editor ||= {};
+    this.settings.editor.recentColors = next;
+    // Serialize rapid selections so the last choice also wins on disk.
+    this.colorSave = (this.colorSave || Promise.resolve()).catch(() => {}).then(() => api.settings.set({ keyPath: 'editor.recentColors', value: next })).catch(() => {
+      this.onToast(t('Could not save recent colors.'));
+    });
+  }
+
+  colorPicker(ann, onPick, { field = 'fill', label = t('Fill') } = {}) {
+    const allowTransparent = field === 'fill' && CLEARABLE_FILL_TYPES.has(ann.type);
     const isNone = (fill) => !fill || fill === 'transparent';
     // A tooltip without a fill is drawn #1F2937 (canvas.js, core/raster.js).
-    let current = isNone(ann.style?.fill) ? (allowTransparent ? 'transparent' : '#1F2937') : ann.style.fill;
+    let current = isNone(ann.style?.[field]) ? (allowTransparent ? 'transparent' : field === 'stroke' ? '#E5484D' : '#1F2937') : ann.style[field];
     const name = (fill) => (isNone(fill) ? t('Transparent') : fill.toUpperCase());
     const chip = (fill) => (isNone(fill) ? el('span.fill-chip.none') : el('span.fill-chip', { style: { background: fill } }));
 
     const swatch = el('button.fill-swatch', { type: 'button', 'aria-haspopup': 'menu', 'aria-expanded': 'false' });
     const showCurrent = () => {
       swatch.replaceChildren(chip(current), el('span.fill-name', {}, name(current)));
-      swatch.setAttribute('aria-label', `${t('Fill')}: ${name(current)}`);
+      swatch.setAttribute('aria-label', `${label}: ${name(current)}`);
     };
     showCurrent();
 
@@ -1887,9 +2015,9 @@ class GuideEditor {
       customStarted = true;
     };
     custom.addEventListener('input', pickCustom);
-    custom.addEventListener('change', () => { if (!customStarted) pickCustom(); });
+    custom.addEventListener('change', () => { if (!customStarted) pickCustom(); this.rememberAnnotationColor(current); });
 
-    const popover = el('div.fill-popover', { role: 'menu', 'aria-label': t('Fill'), hidden: true });
+    const popover = el('div.fill-popover', { role: 'menu', 'aria-label': label, hidden: true });
     const wrapper = el('div.fill-picker', {}, swatch, popover, custom);
     const items = () => [...popover.querySelectorAll('[role^="menuitem"]')];
     const onOutside = (event) => {
@@ -1904,8 +2032,9 @@ class GuideEditor {
     };
     const choose = (fill) => {
       close({ focus: true });
+      this.rememberAnnotationColor(fill);
       if (fill.toLowerCase() === current.toLowerCase()) return;
-      if (fill === 'transparent' && !isNone(current)) (this.clearedFills ||= new Map()).set(ann.id, current);
+      if (field === 'fill' && fill === 'transparent' && !isNone(current)) (this.clearedFills ||= new Map()).set(ann.id, current);
       current = fill;
       showCurrent();
       onPick(fill);
@@ -1917,9 +2046,16 @@ class GuideEditor {
         popover.append(el('button.fill-item', { type: 'button', ...entry('transparent'), onClick: () => choose('transparent') },
           chip('transparent'), t('Transparent')), el('hr'));
       }
-      popover.append(el('div.fill-presets', {}, this.fillPresets(ann, current).map((fill) => el('button.fill-preset', {
-        type: 'button', ...entry(fill), title: fill, 'aria-label': fill, style: { background: fill }, onClick: () => choose(fill),
-      }))), el('hr'), el('button.fill-item', {
+      const groups = window.StepForgeAnnotationProperties.colorGroups([current, this.clearedFills?.get(ann.id), ...(this.settings?.editor?.recentColors || [])], this.brandColors);
+      const section = (title, fills, empty) => el('div.fill-color-section', { role: 'group', 'aria-label': title },
+        el('div.fill-section-label', {}, title),
+        fills.length ? el('div.fill-presets', {}, fills.map((fill) => el('button.fill-preset', {
+          type: 'button', ...entry(fill), title: fill, 'aria-label': fill, style: { background: fill }, onClick: () => choose(fill),
+        }))) : el('div.fill-section-empty', {}, empty));
+      popover.append(section(t('Default Colors'), groups.defaults), el('hr'),
+        section(t('Recently Used Colors'), groups.recent, t('No other recent colors.')));
+      if (this.brandColors) popover.append(el('hr'), section(t('Branding'), groups.brand, t('Brand colors already appear above.')));
+      popover.append(el('hr'), el('button.fill-item', {
         type: 'button', role: 'menuitem', tabIndex: -1,
         onClick: () => {
           close({ focus: true });
@@ -1959,20 +2095,6 @@ class GuideEditor {
     return wrapper;
   }
 
-  /** Fill colors to offer: the current one, then the brand profile's colors or StepForge's. */
-  fillPresets(ann, current) {
-    const colors = [];
-    const add = (fill) => {
-      if (typeof fill === 'string' && /^#[0-9a-f]{6}$/i.test(fill) && !colors.some((c) => c.toLowerCase() === fill.toLowerCase())) {
-        colors.push(fill.toUpperCase());
-      }
-    };
-    add(current);
-    add(this.clearedFills?.get(ann.id));
-    for (const fill of this.brandColors || DEFAULT_FILL_PRESETS) add(fill);
-    return colors.slice(0, 8);
-  }
-
   defaultStyleForTool(tool) {
     // A brand profile's own colors for shapes, number badges and tooltips.
     const brand = this.brandAnnotations;
@@ -2000,10 +2122,35 @@ class GuideEditor {
   setTool(tool) {
     this.currentTool = tool;
     this.canvas.setTool(tool);
+    this.syncToolbar();
+  }
+
+  // Mirror currentTool and currentZoom onto their buttons, so the highlighted
+  // button is always the mode the canvas is really in.
+  syncToolbar() {
     for (const [key, node] of Object.entries(this.dom)) {
-      if (!key.startsWith('tool-')) continue;
-      node.classList.toggle('active', node.dataset.tool === tool);
+      if (key.startsWith('tool-')) this.setPressed(node, node.dataset.tool === this.currentTool);
     }
+    this.syncZoomSelect();
+  }
+
+  // Show the current zoom in the select. Ctrl+= and Ctrl+- can reach zooms that
+  // aren't listed (for example 175%), so such a zoom gets one extra option.
+  syncZoomSelect() {
+    const select = this.dom.zoomSelect;
+    const value = this.currentZoom === 'fit' ? 'fit' : String(Number(this.currentZoom));
+    for (const option of [...select.children]) {
+      if (option.dataset.custom) option.remove();
+    }
+    if (![...select.children].some((option) => option.value === value)) {
+      select.append(el('option', { value, dataset: { custom: 'yes' } }, `${Math.round(Number(value) * 100)}%`));
+    }
+    select.value = value;
+  }
+
+  setPressed(btn, pressed) {
+    btn.classList.toggle('active', pressed);
+    btn.setAttribute('aria-pressed', String(pressed));
   }
 
   // A drawing tool goes back to Select after one use unless Settings → Editor
@@ -2017,12 +2164,7 @@ class GuideEditor {
     this.currentZoom = mode;
     this.canvas.setZoom(mode);
     this.canvas.applyZoom();
-    const buttons = [this.dom.zoomFitBtn, this.dom.zoom100Btn, this.dom.zoom125Btn, this.dom.zoom150Btn];
-    buttons.forEach((btn) => btn.classList.remove('active'));
-    if (mode === 'fit') this.dom.zoomFitBtn.classList.add('active');
-    if (mode === 1) this.dom.zoom100Btn.classList.add('active');
-    if (mode === 1.25) this.dom.zoom125Btn.classList.add('active');
-    if (mode === 1.5) this.dom.zoom150Btn.classList.add('active');
+    this.syncToolbar();
   }
 
   applyZoomShortcut(kind) {
@@ -2417,6 +2559,78 @@ class GuideEditor {
     if (show) this.canvas.select(show.annotationId);
   }
 
+  /** Explicit optimization: estimate first, then apply to those exact images. */
+  async optimizeImages() {
+    if (!this.guideId) return;
+    if (this.pendingSave) await this.flushStep();
+    if (this.pendingGuideSave) await this.flushGuide();
+    if (this.pendingSave || this.pendingGuideSave) {
+      this.onToast(t('Save your changes before optimizing guide images.'), { error: true });
+      return;
+    }
+    const guideId = this.guideId;
+    let estimate = null;
+    let closed = false;
+    const status = el('p', { role: 'status', 'aria-live': 'polite' }, t('Estimating image savings…'));
+    const errors = el('p.muted', { hidden: true });
+    const showErrors = (report) => {
+      errors.hidden = !report.errors.length;
+      errors.textContent = tn(report.errors.length, '{count} image could not be optimized.', '{count} images could not be optimized.');
+    };
+    const cancel = el('button', { type: 'button', onClick: () => { closed = true; close(); } }, t('Close'));
+    const again = el('button', { type: 'button', disabled: true, onClick: () => calculate() }, t('Estimate again'));
+    const apply = el('button.primary', { type: 'button', disabled: true, onClick: async () => {
+      if (!estimate) return;
+      apply.disabled = true;
+      again.disabled = true;
+      status.textContent = t('Optimizing guide images…');
+      try {
+        const report = await api.guide.optimizeImages({ guideId, dryRun: false, expectedHash: estimate.estimateHash });
+        const message = t('Saved {saved}.', { saved: formatBytes(report.savedBytes) });
+        status.textContent = message;
+        showErrors(report);
+        if (this.guideId === guideId) await this.reload(this.selectedStepId);
+        if (closed) this.onToast(message);
+      } catch (error) {
+        status.textContent = error.message;
+        if (closed) this.onToast(error.message, { error: true });
+      } finally {
+        estimate = null;
+        again.disabled = false;
+      }
+    } }, t('Optimize'));
+    const { close } = openModal({
+      title: t('Optimize guide images'),
+      body: el('div', {},
+        el('p.muted', {}, t('A snapshot is saved before applying. Images change only when you choose Optimize.')),
+        status, errors),
+      footer: [cancel, again, apply], initialFocus: cancel,
+      onClose: () => { closed = true; },
+    });
+    const calculate = async () => {
+      estimate = null;
+      again.disabled = true;
+      apply.disabled = true;
+      status.textContent = t('Estimating image savings…');
+      try {
+        const report = await api.guide.optimizeImages({ guideId, dryRun: true });
+        if (closed) return;
+        estimate = report;
+        status.textContent = report.savedBytes > 0
+          ? tn(report.proposedImages, 'Save {saved} by optimizing {count} image ({before} → {after}).', 'Save {saved} by optimizing {count} images ({before} → {after}).',
+            { saved: formatBytes(report.savedBytes), before: formatBytes(report.bytesBefore), after: formatBytes(report.bytesAfter) })
+          : t('No smaller images were found.');
+        showErrors(report);
+        apply.disabled = !(report.savedBytes > 0);
+      } catch (error) {
+        status.textContent = error.message;
+      } finally {
+        again.disabled = false;
+      }
+    };
+    await calculate();
+  }
+
   async saveAll() {
     if (this.currentStep) await this.flushStep();
     if (this.guide) await this.flushGuide();
@@ -2546,23 +2760,15 @@ class GuideEditor {
   }
 
   async addEmptyStep() {
-    const title = await dialogs.promptText({
-      title: t('Add Step'),
-      label: t('Step title'),
-      value: '',
-      placeholder: t('Untitled step'),
-    });
-    if (title == null) return;
+    const guideId = this.guideId;
+    const draft = await dialogs.showAddStepDialog({ onChooseImage: () => api.step.pickImage() });
+    if (!draft) return;
     const step = await api.step.add({
-      guideId: this.guideId,
-      fields: {
-        kind: 'empty',
-        title: title.trim() || t('Untitled step'),
-        status: 'todo',
-      },
-      position: this.steps.length,
+      guideId,
+      fields: { kind: 'empty', title: draft.title || t('Untitled step'), status: 'todo' },
+      ...(draft.image ? { imageBase64: draft.image.imageBase64, size: draft.image.size } : {}),
     });
-    await this.reload(step.stepId);
+    if (this.guideId === guideId) await this.reload(step.stepId);
     this.onToast(t('Step added.'));
   }
 
@@ -2647,7 +2853,7 @@ class GuideEditor {
     if (!step) return;
     const copy = clone(step);
     copy.stepId = undefined;
-    copy.title = copy.title ? `${copy.title} copy` : t('Untitled step copy');
+    copy.title = copy.title ? t('{title} copy', { title: copy.title }) : t('Untitled step copy');
     const image = await this.currentStepImageToBase64();
     const newStep = await api.step.add({
       guideId: this.guideId,
@@ -2718,7 +2924,7 @@ class GuideEditor {
   async deleteSelectedStep() {
     const step = this.currentStep;
     if (!step) return;
-    const ok = await confirmDialog(`Delete “${step.title || 'Untitled step'}”?`, { danger: true, okLabel: t('Delete') });
+    const ok = await this.confirmDelete(t('Delete “{title}”?', { title: step.title || t('Untitled step') }), t('Delete step'));
     if (!ok) return;
     if (this.pendingSave) await this.flushStep();
     const order = this.steps.map((s) => s.stepId);
@@ -2789,12 +2995,12 @@ class GuideEditor {
         levels.set(parentId || '', {
           value: String(depth),
           depth: parentId ? outline.depthOf(result.parentOf, parentId) + 1 : 0,
-          label: parentId ? `Substep of ${nameOf(parentId)}` : t('Top level'),
+          label: parentId ? t('Substep of {step}', { step: nameOf(parentId) }) : t('Top level'),
         });
       }
       positions.push({
         value: String(gap),
-        label: gap === 0 ? t('At the top') : `After ${nameOf(order[gap - 1])}`,
+        label: gap === 0 ? t('At the top') : t('After {step}', { step: nameOf(order[gap - 1]) }),
         current: gap === index,
         levels: [...levels.values()].sort((a, b) => a.depth - b.depth),
       });
@@ -2929,12 +3135,13 @@ class GuideEditor {
 
   /** Capture menu anchored at a toolbar button. */
   async openCaptureMenu(event) {
-    const rect = event.target.getBoundingClientRect();
+    const trigger = event.currentTarget || event.target;
+    const rect = trigger.getBoundingClientRect();
     const session = (await api.capture.state())?.active;
     const items = [
       { label: t('Capture full screen'), action: () => this.captureStep('fullscreen') },
       { label: t('Capture window'), action: () => this.captureStep('window') },
-      { label: t('Capture region…'), action: () => this.captureStep('region') },
+      { label: t('Capture region'), action: () => this.captureStep('region') },
       'sep',
       { label: t('Paste image as step'), action: () => this.pasteClipboardStep() },
       { label: t('Import images…'), action: () => this.importImageSteps() },
@@ -2942,7 +3149,7 @@ class GuideEditor {
     if (!session) {
       items.push('sep', { label: t('Start capture session (hotkey)'), action: () => this.startCaptureSession() });
     }
-    contextMenu(rect.left, rect.bottom + 4, items);
+    contextMenu(rect.left, rect.bottom + 4, items, { trigger });
   }
 
   async pasteClipboardStep() {
@@ -3257,7 +3464,7 @@ class GuideEditor {
       onLoadTemplate: async (format, name) => api.templates.load({ format, name }),
       onSaveTemplate: async (format, name, options) => {
         await api.templates.save({ format, name, options });
-        this.onToast(`Template “${name}” saved.`);
+        this.onToast(t('Template “{name}” saved.', { name }));
       },
       onManageTemplates: async (format, mode) => {
         if (mode === 'manage') {
@@ -3300,7 +3507,7 @@ class GuideEditor {
       onExport: async ({ format, options, outDir, publish, brandProfileId }) => {
         const result = await api.export.run({ guideId: this.guideId, format, options, outDir, brandProfileId });
         if (result && result.ok === false) return false;
-        if (result && result.file) this.onToast(`Exported ${format}.`);
+        if (result && result.file) this.onToast(t('Exported {format}.', { format }));
         // Published after the Export dialog closes, in a dialog that shows
         // progress. The local export is done either way.
         if (publish) publishRequest = { days: publish.days, format, options, brandProfileId };
@@ -3339,7 +3546,7 @@ class GuideEditor {
 
   async openLinkedGuide() {
     if (!this.guide || !this.guide.linkedSource) {
-      await dialogs.showInfoDialog(t('Linked Guide'), 'This guide is stored locally and is not linked to a shared archive.');
+      await dialogs.showInfoDialog(t('Linked Guide'), t('This guide is stored locally and is not linked to a shared archive.'));
       return;
     }
     const library = await api.library.list();
@@ -3368,6 +3575,7 @@ class GuideEditor {
     const commands = [
       { kind: 'cmd', label: t('New guide'), description: t('Create a blank guide'), action: () => this.onBack('new') },
       { kind: 'cmd', label: t('Export'), description: t('Export the current guide'), action: () => this.openExportDialog() },
+      { kind: 'cmd', label: t('Optimize guide images'), action: () => this.optimizeImages() },
       { kind: 'cmd', label: t('Settings'), description: t('Open application settings'), action: () => this.openSettings() },
       { kind: 'cmd', label: t('Linked guide'), description: t('Show linked archive details'), action: () => this.openLinkedGuide() },
       { kind: 'cmd', label: t('Start capture session'), description: t('Enable hotkey capture for this guide'), action: () => this.startCaptureSession() },
@@ -3412,7 +3620,7 @@ class GuideEditor {
   async replaceMatches(matches, replacement) {
     // Stop if the current step's edits can't be saved: the reload at the end
     // would otherwise replace them with what is on disk.
-    if (!(await this.settlePendingSave())) throw new Error('This step’s changes could not be saved, so nothing was replaced.');
+    if (!(await this.settlePendingSave())) throw new Error(t('This step’s changes could not be saved, so nothing was replaced.'));
     const result = await api.findReplace.apply({ guideId: this.guideId, matches, replacement });
     const saved = [];
     try {
@@ -3493,7 +3701,7 @@ class GuideEditor {
       }
     }
     if (record.steps.some((entry) => entry.childIds.length)) await this.reload(record.steps[0].step.stepId);
-    this.onToast(`Restored ${record.steps.length} step${record.steps.length === 1 ? '' : 's'}.`);
+    this.onToast(tn(record.steps.length, 'Restored {count} step.', 'Restored {count} steps.'));
   }
 
   /** Redo of an undone 'delete-step' record: delete those steps again. */
@@ -3506,7 +3714,7 @@ class GuideEditor {
     this.saveStepDebounced.cancel();
     this.pendingSave = false;
     await this.reload(remaining[0] || null);
-    this.onToast(`Deleted ${record.steps.length} step${record.steps.length === 1 ? '' : 's'}.`);
+    this.onToast(tn(record.steps.length, 'Deleted {count} step.', 'Deleted {count} steps.'));
   }
 
   async onCanvasChange(annotations) {
@@ -3636,7 +3844,7 @@ class GuideEditor {
   async onCanvasCrop(rect) {
     const step = this.currentStep;
     if (!step || !step.image) return;
-    const ok = await confirmDialog(t('Crop the working image to the selected area?'));
+    const ok = await confirmDialog(t('Crop the working image to the selected area?'), { title: t('Crop image'), okLabel: t('Crop') });
     if (!ok) return;
     this.saveStepDebounced.cancel();
     const snapshot = this.beforeCanvasSnapshot || await this.snapshotCurrentStep(true);
@@ -3767,7 +3975,12 @@ class GuideEditor {
   }
 
   onDocumentKeyDown(e) {
+    if (e.target?.closest?.('.ctx-menu')) return;
+    if (!e.ctrlKey && !e.metaKey && !e.altKey && (e.target?.closest?.('.step-control') || e.target?.closest?.('.annotation-select'))) return;
     if (!this.active || !this.guide) return;
+    // Keys typed in a dialog are the dialog's: Delete, letters, Ctrl+Z and
+    // the rest must not edit the guide behind it.
+    if (typeof modalIsOpen === 'function' && modalIsOpen()) return;
     // Pickers and pane dividers own their plain keys. Ctrl/Cmd shortcuts still work.
     if (!e.ctrlKey && !e.metaKey && (e.target?.closest?.('.fill-picker') || e.target?.closest?.('.pane-divider'))) return;
     const zoomShortcut = zoomShortcutFromEvent(e);
@@ -3792,10 +4005,15 @@ class GuideEditor {
       return;
     }
     if (e.key === 'Escape' && !isEditableTarget(e.target)) {
-      // Escape deselects; Delete is the destructive key.
+      // Escape deselects, or puts down a drawing tool; Delete is the destructive key.
       if (this.selectedAnnotationId) {
         e.preventDefault();
         this.canvas.select(null);
+        return;
+      }
+      if (this.currentTool !== 'select') {
+        e.preventDefault();
+        this.setTool('select');
         return;
       }
     }
@@ -3845,6 +4063,7 @@ class GuideEditor {
       }
       if ((e.key === 'Delete' || e.key === 'Backspace') && this.selectedAnnotationId) {
         e.preventDefault();
+        if (this.canvas.selected?.()) this.pushCanvasHistory('delete-annotation');
         if (this.canvas.deleteSelected()) this.saveStepDebounced();
         return;
       }
@@ -3868,6 +4087,7 @@ class GuideEditor {
         const dx = (e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowRight' ? 1 : 0) * speed;
         const dy = (e.key === 'ArrowUp' ? -1 : e.key === 'ArrowDown' ? 1 : 0) * speed;
         if (dx || dy) {
+          if (this.canvas.selected?.()) this.pushCanvasHistory('move-annotation');
           const moved = this.canvas.nudgeSelected(dx, dy);
           if (moved) {
             const step = this.currentStep;
@@ -3884,8 +4104,10 @@ class GuideEditor {
   }
 }
 
-function labeledRow(labelText, control) {
-  return el('div.form-row', {}, el('label', {}, labelText), control);
+function labeledRow(labelText, control, { stacked = false } = {}) {
+  const label = el('label', {}, labelText);
+  labelControl(label, control);
+  return el('div.form-row', { className: `form-row${stacked ? ' stacked' : ''}` }, label, control);
 }
 
 function makeSelect(value, options) {

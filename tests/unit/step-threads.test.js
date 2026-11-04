@@ -34,7 +34,8 @@ const STEPS = [
 function editor(language = 'en') {
   const menus = [];
   const context = { ...rendererI18n(language), window: { StepForgeOutline: require('../../core/step-outline') },
-    el: node, clearNode: (n) => { n.children = []; }, contextMenu: (x, y, items) => menus.push(items) };
+    el: node, clearNode: (n) => { n.children = []; }, contextMenu: (x, y, items) => menus.push(items),
+    document: { activeElement: null } };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/editor.js'), 'utf8'), context);
   const e = Object.create(context.window.GuideEditor.prototype);
   const steps = STEPS.map((s) => ({ ...s, status: 'todo' }));
@@ -118,15 +119,15 @@ test('folding away the selected step selects the step it is under; opening a fol
 
 test('the right-click menu ends with Collapse step / Expand step, in its own section, for steps with substeps', async () => {
   const { list, menus } = editor('ru');
-  row(list, 'A').props.onContextMenu({ preventDefault() {}, clientX: 0, clientY: 0 });
+  await row(list, 'A').props.onContextMenu({ preventDefault() {}, clientX: 0, clientY: 0 });
   let items = menus.pop();
   assert.equal(items.at(-2), 'sep');
   assert.equal(items.at(-1).label, 'Свернуть шаг');
   await items.at(-1).action();
-  row(list, 'A').props.onContextMenu({ preventDefault() {}, clientX: 0, clientY: 0 });
+  await row(list, 'A').props.onContextMenu({ preventDefault() {}, clientX: 0, clientY: 0 });
   items = menus.pop();
   assert.equal(items.at(-1).label, 'Развернуть шаг');
-  row(list, 'B').props.onContextMenu({ preventDefault() {}, clientX: 0, clientY: 0 });
+  await row(list, 'B').props.onContextMenu({ preventDefault() {}, clientX: 0, clientY: 0 });
   assert.equal(menus.pop().at(-1).label, 'Удалить шаг', 'no collapse item on a step without substeps');
 });
 

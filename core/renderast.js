@@ -6,6 +6,7 @@ const { sanitizeHtml } = require('./sanitize');
 const { htmlToText, linkifyMarkdownLinks, deepClone } = require('./util');
 const { systemPlaceholders, resolveScopes, expandPlaceholders, expandRichPlaceholders } = require('./placeholders');
 const { decodePng } = require('./png');
+const { sniffImageFormat } = require('./image-format');
 const { renderAnnotations, applyFocusedView } = require('./raster');
 const { orderedBlocks, blockText } = require('./blocks');
 const { DEFAULT_CODE_STYLE } = require('./code-highlight');
@@ -32,7 +33,12 @@ function screenshotAltText(number, title) {
   return clean ? `Screenshot for step ${number}: ${clean}` : `Screenshot for step ${number}`;
 }
 
-function buildRenderAst(store, guideId, { globals = {}, now = new Date(), maxSteps = 0, codeStyle = DEFAULT_CODE_STYLE, reviewDays = DEFAULT_REVIEW_DAYS, branding = null } = {}) {
+/**
+ * `images` (optional): Map of absolute screenshot path -> PNG bytes, for the
+ * screenshots the store keeps as WebP (see prepareExportImages in
+ * core/image-format.js). The exporters only ever see PNG pixels.
+ */
+function buildRenderAst(store, guideId, { globals = {}, now = new Date(), maxSteps = 0, codeStyle = DEFAULT_CODE_STYLE, reviewDays = DEFAULT_REVIEW_DAYS, branding = null, images = null } = {}) {
   const guide = store.getGuide(guideId);
   const stepsMap = store.listSteps(guideId);
 
@@ -124,6 +130,7 @@ function buildRenderAst(store, guideId, { globals = {}, now = new Date(), maxSte
       const absPath = path.join(store.stepDir(guideId, step.stepId), step.image.workingPath);
       if (fs.existsSync(absPath)) {
         ast.image = { absPath, width: step.image.size.width, height: step.image.size.height };
+        if (images && images.has(absPath)) ast.image.png = images.get(absPath);
       }
     }
     steps.push(ast);
@@ -175,7 +182,11 @@ function buildRenderAst(store, guideId, { globals = {}, now = new Date(), maxSte
  */
 function renderStepImage(astStep) {
   if (!astStep.image) return null;
-  const base = decodePng(fs.readFileSync(astStep.image.absPath));
+  const bytes = astStep.image.png || fs.readFileSync(astStep.image.absPath);
+  if (sniffImageFormat(bytes) === 'webp') {
+    throw new Error('A WebP screenshot was not prepared for export (prepareExportImages).');
+  }
+  const base = decodePng(bytes);
   const annotated = renderAnnotations(base, astStep.annotations);
   return applyFocusedView(annotated, astStep.focusedView);
 }

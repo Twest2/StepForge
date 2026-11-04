@@ -16,7 +16,7 @@ function library(guides) {
   app.renderLibrary = () => renders.push('library');
   app.renderGuideGrid = () => renders.push('grid');
   app.renderBulkBar = () => {};
-  return { app, renders, selected: () => [...app.state.selectedGuides].sort() };
+  return { app, renders, document: context.document, selected: () => [...app.state.selectedGuides].sort() };
 }
 const guides = ['a', 'b', 'c', 'd', 'e'].map((guideId) => ({ guideId, title: guideId }));
 
@@ -49,4 +49,23 @@ test('select all and leaving select mode cover only guides in the current view',
   app.toggleSelectMode();
   assert.equal(app.state.selectMode, false);
   assert.deepEqual(selected(), []);
+});
+
+test('keyboard context commands use the focused control position and do not intercept normal activation', () => {
+  const { app } = library(guides);let opened = 0, prevented = 0, stopped = 0;
+  const button = { getBoundingClientRect: () => ({ left: 30, bottom: 90 }) };
+  const event = { key: 'F10', shiftKey: true, target: { closest: () => button }, preventDefault() { prevented++; }, stopPropagation() { stopped++; } };
+  app.libraryContextKey(event, point => { opened++;assert.equal(point.clientX, 30);assert.equal(point.clientY, 90);assert.equal(point.currentTarget, button); });
+  app.libraryContextKey({ ...event, key: 'Enter', shiftKey: false }, () => assert.fail('Enter opened context actions'));
+  assert.equal(opened, 1);assert.equal(prevented, 1);assert.equal(stopped, 1);
+});
+
+test('library rerenders restore the logical selection control without stealing focus from another field', () => {
+  const { app, document } = library(guides);document.body = {};
+  const control = key => ({ dataset: { libraryFocus: key }, focus() { document.activeElement = this; } });
+  const selected = control('select:a'), filter = control('filter:all');
+  app.libraryHost = { querySelectorAll: () => [selected, filter] };document.activeElement = document.body;
+  app.restoreLibraryFocus('open:a');assert.equal(document.activeElement, selected);
+  const search = { isConnected: true };document.activeElement = search;app.restoreLibraryFocus('open:a');assert.equal(document.activeElement, search);
+  selected.disabled = true;document.activeElement = document.body;app.restoreLibraryFocus('select:a');assert.equal(document.activeElement, filter);
 });

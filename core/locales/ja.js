@@ -1586,7 +1586,6 @@
   'New page': '改ページ',
   'Focused': 'フォーカス表示',
   'Status': '状態',
-  'Substep': 'サブステップ',
   '{count} steps selected': { other: '{count} ステップを選択中' },
   'Welcome': 'ホーム',
   '{label} value': '{label}の値',

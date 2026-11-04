@@ -2,6 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const openAI = require('./openai-compatible');
 
 const {
   DEFAULT_CAPTURE_TITLES,
@@ -70,11 +71,13 @@ class TextIntelService {
     fetchImpl = global.fetch,
     screenApi = null,
     windowContextProvider = null,
+    safeStorage = null,
   }) {
     this.store = store;
     this.settings = settings;
     this.getWindow = getWindow;
     this.dataDir = dataDir;
+    this.aiKeys = new openAI.AiKeyStore(store?.settingsDir || dataDir, safeStorage);
     this.fetch = fetchImpl;
     this.screen = screenApi;
     // OS-specific foreground-window/element detection is a platform adapter.
@@ -109,17 +112,15 @@ class TextIntelService {
       ? ai.maxImageBytes
       : 12 * 1024 * 1024;
     return {
-      allowRemote: Boolean(ai.allowRemoteHost),
       attachScreenshots: ai.attachScreenshots !== false,
       timeoutMs,
       maxImageBytes,
     };
   }
 
-  // Resolve the endpoint against the local-first policy or throw a clear error.
+  // The configured Ollama endpoint, or a clear error for one that isn't a URL.
   resolveHost(host) {
-    const { allowRemote } = this.aiNetworkOptions();
-    const result = validateOllamaHost(host, { allowRemote });
+    const result = validateOllamaHost(host);
     if (!result.ok) {
       const err = new Error(result.reason);
       err.code = 'STEPFORGE_AI_HOST_BLOCKED';
@@ -130,7 +131,7 @@ class TextIntelService {
 
   // fetch with a hard deadline and cooperative cancellation. Every AI network
   // call goes through here so a dead endpoint can never hang the UI.
-  async fetchJson(url, { method = 'GET', body = null, guideId = null } = {}) {
+  async fetchJson(url, { method = 'GET', body = null, guideId = null, headers = {}, parseBody = false } = {}) {
     const { timeoutMs } = this.aiNetworkOptions();
     const controller = new AbortController();
     if (guideId) controller._guideId = guideId;
@@ -139,10 +140,19 @@ class TextIntelService {
     try {
       const res = await this.fetch(url, {
         method,
-        headers: body ? { 'Content-Type': 'application/json' } : undefined,
+        headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), ...headers },
+        redirect: 'error',
         body: body ? JSON.stringify(body) : undefined,
         signal: controller.signal,
       });
+      if (parseBody && res.ok) {
+        let payload;
+        try { payload = await res.json(); } catch (error) {
+          if (controller.signal.aborted) throw error;
+          throw new Error('The endpoint did not return a compatible JSON response.');
+        }
+        return { ok: res.ok, status: res.status, json: async () => payload };
+      }
       return res;
     } catch (err) {
       if (controller.signal.aborted) {
@@ -381,6 +391,7 @@ class TextIntelService {
         ...(stored.ollama || {}),
         ...(override.ollama || {}),
       },
+      openai: { ...(stored.openai || {}), ...(override.openai || {}) },
     } : stored;
     return {
       ...merged,
@@ -396,6 +407,20 @@ class TextIntelService {
 
   async testAiConnection(override = null) {
     const config = this.aiConfig(override);
+    if (config.provider === 'openai') {
+      // A real (tiny) chat request: many compatible servers have no model list to check against.
+      try {
+        const host = openAI.baseUrl(config.openai?.baseUrl);
+        const model = normalizeWhitespace(config.openai?.model);
+        if (!model) throw new Error('Enter the model name your server expects.');
+        // A key typed in Settings but not saved yet is tried as is; otherwise the saved one.
+        const apiKey = config.openai.apiKey || this.aiKeys.get(host);
+        await openAI.chat(this, { host, model, prompt: 'Reply with OK.', systemPrompt: 'This is a connection test.', apiKey });
+        return { ok: true, provider: 'openai', installed: true, host, model, models: [model], vision: Boolean(config.openai.vision) };
+      } catch (err) {
+        return { ok: false, reason: err.message };
+      }
+    }
     if (!config.ollama.host) {
       return { ok: false, reason: 'Set an Ollama host first.' };
     }
@@ -464,6 +489,7 @@ class TextIntelService {
   }
 
   async modelSupportsVision({ host, model }) {
+    if (this.aiConfig().provider === 'openai') return Boolean(this.aiConfig().openai?.vision);
     const capabilities = await this.modelCapabilities({ host, model });
     return capabilities.includes('vision');
   }
@@ -500,17 +526,30 @@ class TextIntelService {
   readyAiConfig() {
     const config = this.aiConfig();
     if (!config.enabled) return { ok: false, reason: 'Turn on AI in Settings first.' };
+    if (config.provider === 'openai') {
+      try {
+        const host = openAI.baseUrl(config.openai?.baseUrl);
+        const model = normalizeWhitespace(config.openai?.model);
+        if (!model) throw new Error('Choose an OpenAI-compatible server and model in Settings → AI.');
+        return { ok: true, host, model, provider: 'openai' };
+      } catch (err) {
+        return { ok: false, reason: err.message };
+      }
+    }
     if (!config.ollama.host || !config.ollama.model) {
       return { ok: false, reason: 'Choose an Ollama host and model in Settings → AI.' };
     }
     try {
-      return { ok: true, host: this.resolveHost(config.ollama.host), model: config.ollama.model };
+      return { ok: true, host: this.resolveHost(config.ollama.host), model: config.ollama.model, provider: 'ollama' };
     } catch (err) {
       return { ok: false, reason: err.message };
     }
   }
 
-  async callOllama({ host, model, prompt, systemPrompt, images = [], guideId = null }) {
+  // Sends one prompt to the chosen provider: Ollama's /api/chat, or an
+  // OpenAI-compatible server's /chat/completions (app/openai-compatible.js).
+  async callOllama({ host, model, prompt, systemPrompt, images = [], guideId = null, provider = this.aiConfig().provider }) {
+    if (provider === 'openai') return openAI.chat(this, { host, model, prompt, systemPrompt, images, guideId, apiKey: this.aiKeys.get(host) });
     const url = new URL('/api/chat', `${host.replace(/\/+$/, '')}/`);
     const userMessage = { role: 'user', content: prompt };
     if (Array.isArray(images) && images.length) {
@@ -638,6 +677,7 @@ class TextIntelService {
       });
 
       const raw = await this.callOllama({
+        provider: ready.provider,
         host,
         model,
         prompt,
@@ -706,6 +746,7 @@ class TextIntelService {
       const placeholders = this.placeholdersFor(guide);
       const { systemPrompt, prompt } = buildGuideAiPrompt({ guide, steps, placeholders });
       const raw = await this.callOllama({
+        provider: ready.provider,
         host: ready.host,
         model: ready.model,
         prompt,
@@ -747,7 +788,7 @@ class TextIntelService {
       const parentOf = parentMap(steps);
       const globals = this.globalPlaceholders();
       const { systemPrompt, prompt } = buildOrganizePrompt({ steps, parentOf, placeholders: this.placeholdersFor(guide) });
-      const raw = await this.callOllama({ host: ready.host, model: ready.model, prompt, systemPrompt, guideId });
+      const raw = await this.callOllama({ provider: ready.provider, host: ready.host, model: ready.model, prompt, systemPrompt, guideId });
       const existingNames = [
         ...Object.keys(guide.placeholders || {}), ...Object.keys(globals), ...Object.keys(systemPlaceholders(guide)),
       ];
@@ -806,8 +847,8 @@ class TextIntelService {
   }
 
   /**
-   * Whether AI features can be offered: AI is on, and Ollama answers with the
-   * chosen model installed. No request is made while AI is off.
+   * Whether AI features can be offered: AI is on, and the selected provider
+   * accepts the chosen model. No request is made while AI is off.
    */
   async aiStatus() {
     const config = this.aiConfig();
@@ -822,7 +863,7 @@ class TextIntelService {
       const ready = this.readyAiConfig();
       if (!ready.ok) return ready;
       const { systemPrompt, prompt } = buildBrandCssPrompt({ request, css, profile });
-      const raw = await this.callOllama({ host: ready.host, model: ready.model, prompt, systemPrompt, guideId: BRAND_CSS_REQUEST });
+      const raw = await this.callOllama({ provider: ready.provider, host: ready.host, model: ready.model, prompt, systemPrompt, guideId: BRAND_CSS_REQUEST });
       return { ok: true, css: normalizeBrandCss(parseAiJson(raw)) };
     } catch (err) {
       return { ok: false, reason: err && err.message ? err.message : 'AI couldn’t write the CSS.' };

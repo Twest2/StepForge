@@ -802,6 +802,20 @@ function showSettingsDialog({
     // Filled with the installed models after Test connection, so the model box suggests them.
     const ollamaModels = el('datalist', { id: 'ollama-models' });
     ollamaModel.setAttribute('list', 'ollama-models');
+    // Where prompts go: Ollama, or a server with an OpenAI-style API (app/openai-compatible.js).
+    const aiProvider = makeSelect(settings.ai?.provider === 'openai' ? 'openai' : 'ollama', [
+      { value: 'ollama', label: t('Ollama') },
+      { value: 'openai', label: t('OpenAI-compatible server') },
+    ]);
+    const openaiUrl = makeInput(settings.ai?.openai?.baseUrl || 'http://127.0.0.1:8000/v1', 'url', { spellcheck: false });
+    const openaiModel = makeInput(settings.ai?.openai?.model || '', 'text', { spellcheck: false, placeholder: 'qwen2.5-7b-instruct' });
+    // The key is never shown again once saved: the field only says whether one is.
+    const openaiKey = makeInput('', 'password', { autocomplete: 'off', spellcheck: false, 'aria-label': t('API key (optional)') });
+    const removeKeyBtn = el('button', { type: 'button', hidden: true }, t('Remove key'));
+    const keyDesc = el('span', { role: 'status', 'aria-live': 'polite' });
+    const openaiVision = el('input', { type: 'checkbox', checked: Boolean(settings.ai?.openai?.vision) });
+    let keySaved = false;
+    let keySave = null;
     const aiScreenshots = el('input', { type: 'checkbox', checked: settings.ai?.attachScreenshots !== false });
     const agentsEnabled = el('input', { type: 'checkbox', checked: Boolean(settings.ai?.agents?.enabled) });
     const agentAccessStatus = el('div.setting-desc', { role: 'status', 'aria-live': 'polite', hidden: true });
@@ -856,9 +870,11 @@ function showSettingsDialog({
 
     const testAiConnection = async () => {
       setButtonLoading(testAiBtn, true, t('Testing…'));
-      updateAiStatus(t('Checking Ollama at the configured host…'));
+      updateAiStatus(aiProvider.value === 'openai' ? t('Checking the server…') : t('Checking Ollama at the configured host…'));
       try {
         const result = await api.ai.test({
+          provider: aiProvider.value,
+          openai: { baseUrl: openaiUrl.value.trim(), model: openaiModel.value.trim(), apiKey: openaiKey.value, vision: openaiVision.checked },
           ollama: {
             host: ollamaHost.value.trim(),
             model: ollamaModel.value.trim(),
@@ -866,6 +882,10 @@ function showSettingsDialog({
         });
         if (!result.ok) {
           updateAiStatus(result.reason || t('Could not connect to Ollama.'), { error: true });
+          return;
+        }
+        if (result.provider === 'openai') {
+          updateAiStatus(t('Connected to {host} with {model}.', { host: result.host, model: result.model }), { ok: true });
           return;
         }
         ollamaModels.replaceChildren(...(result.models || []).map((model) => el('option', { value: model })));
@@ -885,6 +905,56 @@ function showSettingsDialog({
         setButtonLoading(testAiBtn, false);
       }
     };
+    // The API key saves as soon as it is entered (Enter, or leaving the field), and
+    // Remove key deletes it at once: neither waits for Settings' Save.
+    const showKeyState = (message = '', { error = false } = {}) => {
+      keyDesc.textContent = message || (keySaved
+        ? t('A key is saved for this server. Entering a new one replaces it.')
+        : t('Only if your server needs one. Entering a key saves it, encrypted, on this computer.'));
+      keyDesc.classList.toggle('error', error);
+      removeKeyBtn.hidden = !keySaved;
+      openaiKey.placeholder = keySaved ? '••••••••' : '';
+    };
+    const refreshKeyState = () => api.ai.keyStatus({ baseUrl: openaiUrl.value.trim() })
+      .then((status) => { keySaved = Boolean(status?.saved); showKeyState(); })
+      .catch(() => { keySaved = false; showKeyState(); });
+    const saveKey = () => {
+      const key = openaiKey.value.trim();
+      if (!key) return Promise.resolve(true);
+      keySave ||= api.ai.setKey({ baseUrl: openaiUrl.value.trim(), apiKey: key })
+        .then(() => {
+          openaiKey.value = '';
+          keySaved = true;
+          showKeyState(t('Key saved, encrypted on this computer.'));
+          return true;
+        })
+        .catch((err) => { showKeyState(err.message, { error: true }); return false; })
+        .finally(() => { keySave = null; });
+      return keySave;
+    };
+    openaiKey.addEventListener('change', () => { void saveKey(); });
+    openaiKey.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter') return;
+      event.preventDefault(); // saves the key, not all of Settings
+      void saveKey();
+    });
+    openaiUrl.addEventListener('change', () => { void refreshKeyState(); });
+    removeKeyBtn.addEventListener('click', async () => {
+      if (!await confirmDialog(t('Remove the API key saved for this server?'), { danger: true, okLabel: t('Remove key') })) return;
+      removeKeyBtn.disabled = true;
+      try {
+        await api.ai.setKey({ baseUrl: openaiUrl.value.trim(), apiKey: '' });
+        keySaved = false;
+        showKeyState(t('Key removed.'));
+        openaiKey.focus();
+      } catch (err) {
+        showKeyState(t('Could not remove the key: {error}', { error: err.message }), { error: true });
+      } finally {
+        removeKeyBtn.disabled = false;
+      }
+    });
+    showKeyState();
+    void refreshKeyState();
     ollamaModel.addEventListener('input', () => persistOllamaModel());
     ollamaModel.addEventListener('blur', () => persistOllamaModel.flush());
 
@@ -932,11 +1002,37 @@ function showSettingsDialog({
     const aiOptions = el('div', { dataset: { aiDependent: 'local' } },
       settingRow(t('Auto-document captures'), t('Write a title and description for each new capture as you record. Turn off to use AI only when you ask.'), makeSwitch(aiAutoDoc, t('Auto-document captures'))),
       settingRow(t('Let the model see screenshots'), t('Models that can read images see each step’s screenshot, with blurred areas already hidden. Turn off to send text only.'), makeSwitch(aiScreenshots, t('Let the model see screenshots'))));
-    const ollamaCard = settingsCard(t('Ollama'),
-      el('div.setting-desc', {}, t('Runs on your computer, so your screenshots and text stay here.')),
+    // Shown only while AI is on (updateAiVisibility). The provider shows Ollama's
+    // fields or the OpenAI-compatible server's.
+    const ollamaFields = el('div.ai-provider-fields', {},
       settingRow(t('Host'), t('Where Ollama is running.'), ollamaHost),
       settingRow(t('Model'), el('span', {}, t('Any installed model. Choose Test connection to list them.'), ' ',
-        docLink(t('AI guide'), AI_GUIDE_URL), ' · ', docLink(t('Recommended models'), `${AI_GUIDE_URL}#recommended-models`)), ollamaModel),
+        docLink(t('AI guide'), AI_GUIDE_URL), ' · ', docLink(t('Recommended models'), `${AI_GUIDE_URL}#recommended-models`)), ollamaModel));
+    const openaiFields = el('div.ai-provider-fields', {},
+      settingRow(t('Server URL'), t('The API’s base address, including /v1. Works with vLLM, LM Studio, LocalAI, LiteLLM and other OpenAI-compatible servers.'), openaiUrl),
+      settingRow(t('Model'), t('The model name your server expects.'), openaiModel),
+      settingRow(t('API key (optional)'), keyDesc, el('div.row.ai-key-control', {}, openaiKey, removeKeyBtn)),
+      settingRow(t('Model can read images'), t('Turn on only for a model that accepts images. It then sees each step’s screenshot, with blurred areas hidden.'),
+        makeSwitch(openaiVision, t('Model can read images'))));
+    const providerDesc = el('span');
+    const syncProvider = () => {
+      const custom = aiProvider.value === 'openai';
+      openaiFields.hidden = !custom;
+      ollamaFields.hidden = custom;
+      providerDesc.textContent = custom
+        ? t('Prompts go to your own server, set below.')
+        : t('Runs on your computer, so your screenshots and text stay here.');
+    };
+    aiProvider.addEventListener('change', () => {
+      syncProvider();
+      // A result from the other provider would be misleading.
+      updateAiStatus(t('Not tested yet. Vision-capable models can also inspect each step’s screenshot.'));
+    });
+    syncProvider();
+    const ollamaCard = settingsCard(t('AI connection'),
+      settingRow(t('Provider'), providerDesc, aiProvider),
+      ollamaFields,
+      openaiFields,
       el('div.settings-test', {}, aiStatus, testAiBtn, ollamaModels));
     const agentOptions = el('div', { dataset: { aiDependent: 'agents' } },
       settingRow(t('Agents can see screenshots'), t('Blurred areas are filled in first. Turn off to share step text only.'), makeSwitch(agentsScreenshots, t('Agents can see screenshots'))),
@@ -1163,6 +1259,8 @@ function showSettingsDialog({
       },
       ai: {
         ...settings.ai,
+        provider: aiProvider.value,
+        openai: { baseUrl: openaiUrl.value.trim(), model: openaiModel.value.trim(), vision: openaiVision.checked },
         enabled: aiEnabled.checked,
         autoDoc: aiAutoDoc.checked,
         attachScreenshots: aiScreenshots.checked,
@@ -1186,8 +1284,10 @@ function showSettingsDialog({
         return acc;
       }, {}),
     });
-    const settingsBaseline = JSON.parse(JSON.stringify(collect()));
-    const savedState = () => JSON.stringify(collect()) !== JSON.stringify(settingsBaseline);
+    // A typed API key isn't a setting, but leaving with it set still loses an edit.
+    const draftState = () => ({ ...collect(), apiKeyDraft: openaiKey.value });
+    const settingsBaseline = JSON.parse(JSON.stringify(draftState()));
+    const savedState = () => JSON.stringify(draftState()) !== JSON.stringify(settingsBaseline);
 
     const { close, requestDismiss } = openModal({
       title: t('Settings'),
@@ -1201,6 +1301,8 @@ function showSettingsDialog({
           onClick: async (e) => {
             e.preventDefault();
             const next = collect();
+            // A key typed just before Save is saved too; if that fails, stay on AI to say why.
+            if (!await saveKey()) { showSection('ai'); return; }
             if (await onSave(next) === false) return;
             disposeSettings();
             close();
@@ -1217,7 +1319,7 @@ function showSettingsDialog({
       updateAiVisibility();
       updateAiStatus(
         aiEnabled.checked
-          ? t('Save, then use the AI ▾ menu in a guide. Test connection checks that Ollama is ready.')
+          ? t('Save, then use the AI ▾ menu in a guide. Test connection checks that the model is ready.')
           : t('AI is off. These settings are kept for later.'),
       );
     });

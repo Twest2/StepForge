@@ -92,12 +92,10 @@ AI descriptions are **off by default**. When you enable them
 ([setup guide](getting_started_with_ai.md)):
 
 - StepForge sends the step's text and capture details, and for image-capable
-  models the screenshot, to the [Ollama](https://ollama.com) server you
-  configure.
-- **By default that server must be on your own computer** (a loopback address
-  such as `127.0.0.1`). StepForge refuses other addresses unless you
-  explicitly set `ai.allowRemoteHost`. If you do, your screenshots and text go
-  to that server, and StepForge can't control what it does with them.
+  models the screenshot, to the server you configure: [Ollama](https://ollama.com)
+  (by default on your own computer, `127.0.0.1`) or an OpenAI-compatible server.
+- If that server is on another computer, your screenshots and text go to it,
+  and StepForge can't control what it does with them. Only use a server you trust.
 - Screenshots are sent with your blurs filled in, so the model never sees
   what you hid, and the text read near a click is left out for steps that
   have blurs.

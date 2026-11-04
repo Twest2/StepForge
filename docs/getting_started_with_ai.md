@@ -1,9 +1,30 @@
-# AI-written guides with Ollama
+# AI-written guides with Ollama or compatible servers
 
 StepForge can write your guides for you, a whole guide, one step, or a single
 field, using an AI model that runs **on your own computer** through
-[Ollama](https://ollama.com). Your screenshots and text never go to a cloud AI
-service.
+[Ollama](https://ollama.com), or your organization's own OpenAI-compatible
+server. Nothing goes to a cloud AI service unless you point StepForge at one.
+
+## Using an OpenAI-compatible server
+
+If your organization runs its own AI server, such as vLLM, LM Studio, LocalAI
+or LiteLLM Proxy, StepForge can use it instead of Ollama. In
+**Settings → AI → AI connection**:
+
+1. Set **Provider** to **OpenAI-compatible server**.
+2. Enter the **Server URL**: the API's base address, including `/v1` (or your
+   server's API path), for example `http://localhost:8000/v1` or
+   `https://llm.internal.example.com/v1`. StepForge sends requests to
+   `/chat/completions` under it.
+3. Enter the **Model** name your server expects.
+4. If the server needs an **API key**, type it and press **Enter** (or move to
+   another field). Entering a key saves it straight away, encrypted with your
+   operating system's keyring, for this server URL only. It isn't stored in
+   your guides or settings file, and StepForge never shows it again: the field
+   just says a key is saved. **Remove key** next to the field deletes it.
+5. Turn on **Model can read images** only if the model accepts images.
+6. Choose **Test connection**. It sends one short message, with no guide or
+   screenshot, to check the URL, model and key.
 
 Prefer Claude or Codex? They can write your guides too: see
 [Let Claude or Codex write your guides](AI_AGENTS.md).
@@ -149,11 +170,10 @@ October 2026; newer models appear in the
 - To keep requests text-only even with a vision model, turn off
   **Settings → AI → Let the model see screenshots**.
 
-**Running Ollama on another machine?** Add `"allowRemoteHost": true` to the
-`ai` section of `settings/app-settings.json` in your
-[data folder](GETTING_STARTED.md#troubleshooting), then set **Host** to that
-machine's address. Only do this for a host you trust: your screenshots and
-text are sent to it, and StepForge can't control what it does with them.
+**Running Ollama on another machine?** Set **Host** to that machine's
+address, for example `http://192.168.1.20:11434`. Only use a server you trust:
+step text, and screenshots if the model can read them, are sent to it, and
+StepForge can't control what it does with them.
 
 The [privacy policy](PRIVACY.md#optional-ai) has the full details.
 

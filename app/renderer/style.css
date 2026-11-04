@@ -18,6 +18,7 @@
   --accent-strong: #0054cc;
   --accent-fg: #ffffff;
   --danger: #c52d2d;
+  --danger-strong: #a32424;
   --danger-fg: #ffffff;
   --warn: #ffe7b7;
   --ok: #15803d;
@@ -50,6 +51,7 @@
     --accent-strong: #69a1ff;
     --accent-fg: #08101a;
     --danger: #ff6b6b;
+    --danger-strong: #ff8787;
     --danger-fg: #08101a;
     --warn: #4a3410;
     --ok: #4ade80;

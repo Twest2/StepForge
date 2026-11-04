@@ -171,9 +171,14 @@ function layoutDescription(pdf, html, maxWidth, baseSize, fonts = FONT_FAMILIES.
  * rationale). Bookmarks navigate to each step.
  */
 
+// In points (1/72 in).
 const PAGE_SIZES = {
+  a3: { width: 841.89, height: 1190.55 },
   a4: { width: 595.28, height: 841.89 },
+  a5: { width: 419.53, height: 595.28 },
   letter: { width: 612, height: 792 },
+  legal: { width: 612, height: 1008 },
+  tabloid: { width: 792, height: 1224 },
 };
 
 const DEFAULT_TEMPLATE = {
@@ -188,7 +193,14 @@ const DEFAULT_TEMPLATE = {
 
 // The Export dialog's labels, groups and units for these options (exporters/index.js FORMAT_INFO).
 const OPTION_INFO = {
-  pageSize: { label: 'Page size', group: 'Page layout', choices: [{ value: 'a4', label: 'A4 (210 × 297 mm)' }, { value: 'letter', label: 'US Letter (8.5 × 11 in)' }] },
+  pageSize: { label: 'Page size', group: 'Page layout', choices: [
+    { value: 'a3', label: 'A3 (297 × 420 mm)' },
+    { value: 'a4', label: 'A4 (210 × 297 mm)' },
+    { value: 'a5', label: 'A5 (148 × 210 mm)' },
+    { value: 'letter', label: 'US Letter (8.5 × 11 in)' },
+    { value: 'legal', label: 'US Legal (8.5 × 14 in)' },
+    { value: 'tabloid', label: 'Tabloid (11 × 17 in)' },
+  ] },
   margin: { label: 'Page margins', group: 'Page layout', unit: 'pt', min: 0, step: 'any', hint: 'Applied on every side. 72 points = 1 inch.' },
   includeCover: { label: 'Add a cover page', group: 'Contents' },
   includeToc: { label: 'Add a table of contents', group: 'Contents' },

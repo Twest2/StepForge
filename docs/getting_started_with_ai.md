@@ -1,30 +1,10 @@
-# AI-written guides with Ollama or compatible servers
+# AI-written guides with Ollama
 
 StepForge can write your guides for you, a whole guide, one step, or a single
 field, using an AI model that runs **on your own computer** through
-[Ollama](https://ollama.com), or your organization's own OpenAI-compatible
-server. Nothing goes to a cloud AI service unless you point StepForge at one.
-
-## Using an OpenAI-compatible server
-
-If your organization runs its own AI server, such as vLLM, LM Studio, LocalAI
-or LiteLLM Proxy, StepForge can use it instead of Ollama. In
-**Settings → AI → AI connection**:
-
-1. Set **Provider** to **OpenAI-compatible server**.
-2. Enter the **Server URL**: the API's base address, including `/v1` (or your
-   server's API path), for example `http://localhost:8000/v1` or
-   `https://llm.internal.example.com/v1`. StepForge sends requests to
-   `/chat/completions` under it.
-3. Enter the **Model** name your server expects.
-4. If the server needs an **API key**, type it and press **Enter** (or move to
-   another field). Entering a key saves it straight away, encrypted with your
-   operating system's keyring, for this server URL only. It isn't stored in
-   your guides or settings file, and StepForge never shows it again: the field
-   just says a key is saved. **Remove key** next to the field deletes it.
-5. Turn on **Model can read images** only if the model accepts images.
-6. Choose **Test connection**. It sends one short message, with no guide or
-   screenshot, to check the URL, model and key.
+[Ollama](https://ollama.com). Your organization's own AI server works too: see
+[Use your own AI server](#use-your-own-ai-server). Nothing goes to a cloud AI
+service unless you point StepForge at one.
 
 Prefer Claude or Codex? They can write your guides too: see
 [Let Claude or Codex write your guides](AI_AGENTS.md).
@@ -64,8 +44,7 @@ You can switch models at any time.
 ## 3. Connect StepForge
 
 1. Open **Settings → AI**.
-2. Turn on **Enable AI**. Its capture, screenshot and Ollama options appear
-   immediately; turning it off hides them while keeping their values.
+2. Turn on **Enable AI**.
 3. Leave **Host** as `http://127.0.0.1:11434` unless you changed Ollama's
    address.
 4. Set **Model** to the model you downloaded, for example `gemma4:e4b`.
@@ -113,6 +92,21 @@ guide stops any request that's still running.
 has **Write with AI…**: describe a change to how your HTML exports look, and
 the model writes the CSS for you to review. See
 [Write CSS with AI](BRANDING.md#write-css-with-ai).
+
+## Use your own AI server
+
+If your organization runs an OpenAI-compatible server, such as vLLM, LM Studio,
+LocalAI or LiteLLM Proxy, use it instead of Ollama in
+**Settings → AI → AI connection**:
+
+1. Set **Provider** to **OpenAI-compatible server**.
+2. Enter the **Server URL**, including `/v1`, for example
+   `https://llm.internal.example.com/v1`, and the **Model** name.
+3. If the server needs an **API key**, type it and press **Enter**. It's saved
+   straight away, encrypted, and only sent to this server. **Remove key**
+   deletes it.
+4. Turn on **Model can read images** if the model accepts images.
+5. Choose **Test connection**.
 
 ## Recommended models
 

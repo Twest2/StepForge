@@ -795,10 +795,32 @@ function showSettingsDialog({
     const aiEnabled = el('input', { type: 'checkbox', checked: Boolean(settings.ai?.enabled) });
     const aiAutoDoc = el('input', { type: 'checkbox', checked: Boolean(settings.ai?.autoDoc) });
     const ollamaHost = makeInput(settings.ai?.ollama?.host || 'http://127.0.0.1:11434');
+    const aiProvider = makeSelect(settings.ai?.provider || 'ollama', [{ value: 'ollama', label: t('Ollama') }, { value: 'openai', label: t('OpenAI-compatible') }]);
+    aiProvider.setAttribute('aria-label', t('Provider'));
+    const openaiUrl = makeInput(settings.ai?.openai?.baseUrl || 'http://127.0.0.1:8000/v1', 'url', { 'aria-label': t('Base URL') });
+    const openaiModel = makeInput(settings.ai?.openai?.model || '', 'text', { 'aria-label': t('Model') });
+    const openaiKey = makeInput('', 'password', { autocomplete: 'off', spellcheck: false, 'aria-label': t('API key (optional)') });
+    const removeKey = el('input', { type: 'checkbox' });
+    const openaiVision = el('input', { type: 'checkbox', checked: Boolean(settings.ai?.openai?.vision) });
+    const remoteAi = el('input', { type: 'checkbox', checked: Boolean(settings.ai?.allowRemoteHost) });
+    const openaiFields = el('div', {},
+      settingRow(t('Base URL'), t('Include the API prefix, such as /v1.'), openaiUrl),
+      settingRow(t('Model'), t('Enter the model identifier accepted by your server.'), openaiModel),
+      settingRow(t('API key (optional)'), t('Leave blank to keep the saved key for this URL. Keys are stored with OS encryption.'), openaiKey),
+      settingRow(t('Remove saved API key'), '', makeSwitch(removeKey, t('Remove saved API key'))),
+      settingRow(t('Model supports images'), t('Enable only for a vision-capable model. The screenshot preference above still applies.'), makeSwitch(openaiVision, t('Model supports images'))));
+    let ollamaNote = null;
+    const syncProvider = () => {
+      const custom = aiProvider.value === 'openai';openaiFields.hidden = !custom;
+      for (const input of [ollamaHost, ollamaModel]) { input.disabled = custom;const row = input.closest?.('.setting-row');if (row) row.hidden = custom; }
+      if (ollamaNote) ollamaNote.hidden = custom;
+    };
+    aiProvider.addEventListener('change', syncProvider);
     const ollamaModel = makeInput(settings.ai?.ollama?.model || 'llama3.2:1b');
     // Filled with the installed models after Test connection, so the model box suggests them.
     const ollamaModels = el('datalist', { id: 'ollama-models' });
     ollamaModel.setAttribute('list', 'ollama-models');
+    syncProvider();
     const aiScreenshots = el('input', { type: 'checkbox', checked: settings.ai?.attachScreenshots !== false });
     const agentsEnabled = el('input', { type: 'checkbox', checked: Boolean(settings.ai?.agents?.enabled) });
     const agentsScreenshots = el('input', { type: 'checkbox', checked: settings.ai?.agents?.screenshots !== false });
@@ -852,9 +874,11 @@ function showSettingsDialog({
 
     const testAiConnection = async () => {
       setButtonLoading(testAiBtn, true, t('Testing…'));
-      updateAiStatus(t('Checking Ollama at the configured host…'));
+      updateAiStatus(t('Checking AI endpoint…'));
       try {
         const result = await api.ai.test({
+          provider: aiProvider.value, allowRemoteHost: remoteAi.checked,
+          openai: { baseUrl: openaiUrl.value.trim(), model: openaiModel.value.trim(), apiKey: openaiKey.value, clearKey: removeKey.checked, vision: openaiVision.checked },
           ollama: {
             host: ollamaHost.value.trim(),
             model: ollamaModel.value.trim(),
@@ -864,6 +888,7 @@ function showSettingsDialog({
           updateAiStatus(result.reason || t('Could not connect to Ollama.'), { error: true });
           return;
         }
+        if (result.provider === 'openai') { updateAiStatus(t('Connected to {host} with {model}.', { host: result.host, model: result.model }), { ok: true });return; }
         ollamaModels.replaceChildren(...(result.models || []).map((model) => el('option', { value: model })));
         if (result.installed) {
           updateAiStatus(result.vision
@@ -989,13 +1014,15 @@ function showSettingsDialog({
           settingRow(t('Enable AI'), t('Turn on the AI ▾ menu in the guide toolbar: write a whole guide, a step, or one field.'), makeSwitch(aiEnabled, t('Enable AI'))),
           settingRow(t('Auto-document captures'), t('Write a title and description for each new capture as you record. Turn off to use AI only when you ask.'), makeSwitch(aiAutoDoc, t('Auto-document captures'))),
           settingRow(t('Let the model see screenshots'), t('Models that can read images see each step’s screenshot, with blurred areas already hidden. Turn off to send text only.'), makeSwitch(aiScreenshots, t('Let the model see screenshots')))),
-        settingsCard(t('Ollama'),
-          el('div.setting-desc', {}, t('Runs on your computer, so your screenshots and text stay here.')),
+        settingsCard(t('AI connection'),
+          settingRow(t('Provider'), '', aiProvider), openaiFields,
+          ollamaNote = el('div.setting-desc', {}, t('Runs on your computer, so your screenshots and text stay here.')),
           settingRow(t('Host'), t('Where Ollama is running.'), ollamaHost),
           settingRow(t('Model'), el('span', {},
             t('Any installed model. Choose Test connection to list them.'), ' ',
             docLink(t('AI guide'), AI_GUIDE_URL), ' · ', docLink(t('Recommended models'), `${AI_GUIDE_URL}#recommended-models`)),
           ollamaModel),
+          settingRow(t('Allow remote AI host'), t('Allow screenshots and text to be sent to the configured server outside this computer.'), makeSwitch(remoteAi, t('Allow remote AI host'))),
           el('div.settings-test', {}, aiStatus, testAiBtn, ollamaModels)),
         settingsCard(t('AI agents (Claude, Codex)'),
           el('div.setting-desc', {}, t('AI apps such as Claude and Codex can connect to StepForge and edit your guides. They can create and delete guides and steps, reorder steps, replace or remove screenshots, edit text, add placeholders, and add or delete annotations except blurs. StepForge saves snapshots before step creation, moves, deletions and screenshot changes; restore them from More → Backups & snapshots. Deleted guides go to the Trash.')),
@@ -1057,6 +1084,7 @@ function showSettingsDialog({
     }
     form.append(el('div.settings-layout', {}, nav, content));
     showSection(navButtons.has(initialSection) ? initialSection : 'general');
+    syncProvider();
 
     // Everything the form holds, as Save stores it. Also what unsaved-change checks compare.
     const collect = () => ({
@@ -1114,6 +1142,9 @@ function showSettingsDialog({
       },
       ai: {
         ...settings.ai,
+        provider: aiProvider.value,
+        allowRemoteHost: remoteAi.checked,
+        openai: { baseUrl: openaiUrl.value.trim(), model: openaiModel.value.trim(), vision: openaiVision.checked },
         enabled: aiEnabled.checked,
         autoDoc: aiAutoDoc.checked,
         attachScreenshots: aiScreenshots.checked,
@@ -1137,7 +1168,7 @@ function showSettingsDialog({
         return acc;
       }, {}),
     });
-    const savedState = unsavedChanges(collect);
+    const savedState = unsavedChanges(() => ({ ...collect(), apiKeyDraft: openaiKey.value, removeKey: removeKey.checked }));
 
     const { close, requestDismiss } = openModal({
       title: t('Settings'),
@@ -1151,6 +1182,10 @@ function showSettingsDialog({
           onClick: async (e) => {
             e.preventDefault();
             const next = collect();
+            if (openaiKey.value || removeKey.checked) {
+              try { await api.ai.setKey({ baseUrl: openaiUrl.value.trim(), apiKey: removeKey.checked ? '' : openaiKey.value });openaiKey.value = '';removeKey.checked = false; }
+              catch (error) { showSection('ai');updateAiStatus(error.message, { error: true });return; }
+            }
             if (await onSave(next) === false) return;
             accountsPanel.dispose();
             close();
@@ -1166,7 +1201,7 @@ function showSettingsDialog({
     aiEnabled.addEventListener('change', () => {
       updateAiStatus(
         aiEnabled.checked
-          ? t('Save, then use the AI ▾ menu in a guide. Test connection checks that Ollama is ready.')
+          ? t('Not tested yet. Vision-capable models can also inspect each step’s screenshot.')
           : t('AI is off. These settings are kept for later.'),
       );
     });

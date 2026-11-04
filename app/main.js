@@ -1427,12 +1427,14 @@ function setupIpc() {
     if (keyPath === 'capture' || keyPath.startsWith('capture.hotkey')) registerHotkeys();
     return settings.data;
   }, { validate: (a) => c.settingsKeyPath(a.keyPath) });
-  h('ai:test', async ({ enabled = null, ollama = null } = {}) => {
+  h('ai:setKey', ({ baseUrl, apiKey }) => { textIntel.aiKeys.set(baseUrl, apiKey);return { ok: true }; }, { validate: a => typeof a.baseUrl === 'string' && a.baseUrl.length <= 4096 && typeof a.apiKey === 'string' && a.apiKey.length <= 16384 });
+  h('ai:test', async ({ enabled = null, ollama = null, provider = null, openai = null, allowRemoteHost = null } = {}) => {
     return textIntel.testAiConnection({
       enabled,
       ollama,
+      ...(provider ? { provider } : {}), openai, ...(allowRemoteHost === null ? {} : { allowRemoteHost: Boolean(allowRemoteHost) }),
     });
-  }, { validate: (a) => (a.ollama === undefined || a.ollama === null || security.isPlainArgs(a.ollama)) });
+  }, { validate: (a) => (a.ollama == null || security.isPlainArgs(a.ollama)) && (a.openai == null || security.isPlainArgs(a.openai)) && (a.provider === undefined || ['ollama', 'openai'].includes(a.provider)) });
   h('ai:fillStep', async ({ guideId, stepId, target = 'all' } = {}) => {
     const result = await textIntel.generateStepPatch({ guideId, stepId, target });
     if (result.ok) reindex(guideId);
@@ -2100,6 +2102,7 @@ if (!gotLock) {
     setTimeout(convertOldSnapshots, 60 * 1000);
     templates = new TemplateManager(store.templatesDir);
     textIntel = new TextIntelService({
+      safeStorage,
       store,
       settings,
       getWindow: () => mainWindow,

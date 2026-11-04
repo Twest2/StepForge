@@ -163,6 +163,7 @@ const api = {
     onProgress: (fn) => { const listener = (e, payload) => fn(payload); ipcRenderer.on('redact:progress', listener); return () => ipcRenderer.removeListener('redact:progress', listener); },
   },
   ai: {
+    setKey: invoke('ai:setKey'),
     test: invoke('ai:test'),
     fillStep: invoke('ai:fillStep'),
     fillGuide: invoke('ai:fillGuide'),

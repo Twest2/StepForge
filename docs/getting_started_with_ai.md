@@ -1,9 +1,37 @@
-# AI-written guides with Ollama
+# AI-written guides with Ollama or compatible servers
 
 StepForge can write your guides for you, a whole guide, one step, or a single
 field, using an AI model that runs **on your own computer** through
-[Ollama](https://ollama.com). Your screenshots and text never go to a cloud AI
-service.
+[Ollama](https://ollama.com) by default. You can alternatively connect a
+self-hosted OpenAI-compatible server. Remote servers require explicit opt-in;
+guide text and permitted screenshots are sent to the server you configure.
+
+## Using an OpenAI-compatible server
+
+In **Settings → AI**, choose **OpenAI-compatible** under **Provider**. Enter
+the complete base URL including its API prefix, such as
+`http://localhost:8000/v1` or `https://llm.internal.company/v1`, and the exact
+model identifier your server accepts. StepForge uses `/chat/completions` under
+that prefix and does not require a model-list endpoint.
+
+An API key is optional for keyless local servers. If required, enter it and
+Save. Keys are encrypted using the operating system and bound to the exact
+base URL. They are not stored in guide files or app-settings.json. Leave the
+field blank to reuse the saved key for that URL, or use **Remove saved API key**.
+Saving a key requires an available OS keyring; keyless connections still work
+without one. Unsaved key edits are discarded with Settings.
+
+Enable **Allow remote AI host** for a server outside this computer, including
+an internal LAN server. This consent applies to both providers. Choose **Test
+connection** to send a small chat request using the entered model and key;
+the test sends no guide or screenshot. A successful test verifies the chat
+response format and model access, not image capability. Enable **Model supports
+images** only for a vision model; **Let the model see screenshots** remains
+the separate master screenshot preference. Redactions, size limits, request
+timeouts and cancellation apply to both providers. Redirects are not followed.
+
+vLLM, LM Studio, LocalAI and LiteLLM Proxy can expose this protocol; configure
+their server address and model name as supplied by your administrator.
 
 Prefer Claude or Codex? They can write your guides too: see
 [Let Claude or Codex write your guides](AI_AGENTS.md).

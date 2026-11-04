@@ -80,11 +80,13 @@ const DEFAULT_SETTINGS = {
     autoTitleTemplate: '[[Mode]] capture [[Time]]',
   },
   ai: {
+    provider: 'ollama',
+    openai: { baseUrl: 'http://127.0.0.1:8000/v1', model: '', vision: false },
     enabled: false,
     // Auto-document captured steps in the background when a session capture
     // lands. Requires enabled + a reachable model.
     autoDoc: false,
-    // Local-first: only a loopback Ollama endpoint is contacted unless this
+    // Local-first: only a loopback AI endpoint is contacted unless this
     // is explicitly turned on. Turning it on sends screenshots and text to
     // the configured remote host.
     allowRemoteHost: false,

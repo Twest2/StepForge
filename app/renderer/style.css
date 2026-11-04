@@ -146,6 +146,8 @@ button.primary {
 }
 button.primary:hover { background: var(--accent-strong); border-color: var(--accent-strong); }
 button.danger { color: var(--danger); }
+button.danger-outline { color: var(--danger); border-color: var(--danger); background: transparent; }
+button.danger-outline:hover { border-color: var(--danger-strong); background: color-mix(in srgb, var(--danger) 9%, var(--panel-solid)); }
 /* A dialog's destructive confirm button (primary + danger): filled with the
    danger color rather than red text on the blue primary fill, which was
    unreadable. */
@@ -1794,6 +1796,8 @@ fieldset legend {
 .settings-range input[type="range"] { width: 150px; }
 .settings-range output { min-width: 44px; font-variant-numeric: tabular-nums; color: var(--muted); }
 .settings-actions { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 0 12px; }
+.ai-key-actions { flex-direction: column; align-items: flex-start; }
+.ai-key-actions[hidden] { display: none; }
 .settings-storage { display: flex; flex-direction: column; gap: 4px; padding: 12px 0 10px; }
 .settings-path {
   display: block; padding: 7px 10px; border-radius: 8px; background: var(--panel-2); font-size: 12px;

@@ -17,7 +17,9 @@ that prefix and does not require a model-list endpoint.
 An API key is optional for keyless local servers. If required, enter it and
 Save. Keys are encrypted using the operating system and bound to the exact
 base URL. They are not stored in guide files or app-settings.json. Leave the
-field blank to reuse the saved key for that URL, or use **Remove saved API key**.
+field blank to reuse the saved key for that URL. To delete it, choose the
+red-outlined **Remove saved API key** button at the bottom of the AI settings
+and confirm. Removal takes effect immediately, even if you later cancel Settings.
 Saving a key requires an available OS keyring; keyless connections still work
 without one. Unsaved key edits are discarded with Settings.
 

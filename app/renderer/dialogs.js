@@ -803,18 +803,21 @@ function showSettingsDialog({
     const openaiUrl = makeInput(settings.ai?.openai?.baseUrl || 'http://127.0.0.1:8000/v1', 'url', { 'aria-label': t('Base URL') });
     const openaiModel = makeInput(settings.ai?.openai?.model || '', 'text', { 'aria-label': t('Model') });
     const openaiKey = makeInput('', 'password', { autocomplete: 'off', spellcheck: false, 'aria-label': t('API key (optional)') });
-    const removeKey = el('input', { type: 'checkbox' });
+    const removeKeyBtn = el('button.danger-outline', { type: 'button' }, t('Remove saved API key'));
+    const removeKeyStatus = el('div.setting-desc', { role: 'status', 'aria-live': 'polite' });
+    const removeKeyActions = el('div.settings-actions.ai-key-actions', {}, removeKeyBtn, removeKeyStatus);
+    let removingKey = false;
     const openaiVision = el('input', { type: 'checkbox', checked: Boolean(settings.ai?.openai?.vision) });
     const remoteAi = el('input', { type: 'checkbox', checked: Boolean(settings.ai?.allowRemoteHost) });
     const openaiFields = el('div', {},
       settingRow(t('Base URL'), t('Include the API prefix, such as /v1.'), openaiUrl),
       settingRow(t('Model'), t('Enter the model identifier accepted by your server.'), openaiModel),
       settingRow(t('API key (optional)'), t('Leave blank to keep the saved key for this URL. Keys are stored with OS encryption.'), openaiKey),
-      settingRow(t('Remove saved API key'), '', makeSwitch(removeKey, t('Remove saved API key'))),
       settingRow(t('Model supports images'), t('Enable only for a vision-capable model. The screenshot preference above still applies.'), makeSwitch(openaiVision, t('Model supports images'))));
     let ollamaNote = null;
     const syncProvider = () => {
       const custom = aiProvider.value === 'openai';openaiFields.hidden = !custom;
+      removeKeyActions.hidden = !custom || !aiEnabled.checked;
       for (const input of [ollamaHost, ollamaModel]) { input.disabled = custom;const row = input.closest?.('.setting-row');if (row) row.hidden = custom; }
       if (ollamaNote) ollamaNote.hidden = custom;
     };
@@ -877,12 +880,13 @@ function showSettingsDialog({
     };
 
     const testAiConnection = async () => {
+      if (removingKey) return;
       setButtonLoading(testAiBtn, true, t('Testing…'));
       updateAiStatus(t('Checking AI endpoint…'));
       try {
         const result = await api.ai.test({
           provider: aiProvider.value, allowRemoteHost: remoteAi.checked,
-          openai: { baseUrl: openaiUrl.value.trim(), model: openaiModel.value.trim(), apiKey: openaiKey.value, clearKey: removeKey.checked, vision: openaiVision.checked },
+          openai: { baseUrl: openaiUrl.value.trim(), model: openaiModel.value.trim(), apiKey: openaiKey.value, vision: openaiVision.checked },
           ollama: {
             host: ollamaHost.value.trim(),
             model: ollamaModel.value.trim(),
@@ -910,6 +914,27 @@ function showSettingsDialog({
         setButtonLoading(testAiBtn, false);
       }
     };
+    removeKeyBtn.addEventListener('click', async () => {
+      if (removingKey) return;
+      removingKey = true;
+      try {
+        if (!await confirmDialog(t('Remove the saved API key? This takes effect immediately.'), { danger: true, okLabel: t('Remove saved API key') })) return;
+        removeKeyBtn.disabled = true;
+        await api.ai.setKey({ baseUrl: openaiUrl.value.trim(), apiKey: '' });
+        // Clear the draft too, so a later Save cannot put the removed key back.
+        openaiKey.value = '';
+        removeKeyStatus.classList.remove('error');
+        removeKeyStatus.textContent = t('Saved API key removed.');
+        updateAiStatus(t('Not tested yet. Vision-capable models can also inspect each step’s screenshot.'));
+      } catch {
+        removeKeyStatus.classList.add('error');
+        removeKeyStatus.textContent = t('Could not remove the saved API key.');
+      } finally {
+        removingKey = false;
+        removeKeyBtn.disabled = false;
+        if (document.activeElement === document.body && removeKeyBtn.isConnected) removeKeyBtn.focus();
+      }
+    });
     ollamaModel.addEventListener('input', () => persistOllamaModel());
     ollamaModel.addEventListener('blur', () => persistOllamaModel.flush());
 
@@ -970,6 +995,7 @@ function showSettingsDialog({
       settingRow(t('Agents can see screenshots'), t('Blurred areas are filled in first. Turn off to share step text only.'), makeSwitch(agentsScreenshots, t('Agents can see screenshots'))),
       settingRow(t('Let AI agents edit brand profiles'), t('Agents can make and change brand profiles: logo, colors, fonts and CSS, and choose the one exports use. They can’t delete a profile.'), makeSwitch(agentsBranding, t('Let AI agents edit brand profiles'))), agentSetup);
     const updateAiVisibility = () => {
+      syncProvider();
       aiOptions.hidden = !aiEnabled.checked;
       ollamaCard.hidden = !aiEnabled.checked;
       agentOptions.hidden = !agentsEnabled.checked;
@@ -1066,6 +1092,7 @@ function showSettingsDialog({
           el('div.setting-desc', {}, t('AI apps such as Claude and Codex can connect to StepForge and edit your guides. They can create and delete guides and steps, reorder steps, replace or remove screenshots, edit text, add placeholders, and add or delete annotations except blurs. StepForge saves snapshots before step creation, moves, deletions and screenshot changes; restore them from More → Backups & snapshots. Deleted guides go to the Trash.')),
           settingRow(t('Let AI agents edit your guides'), t('Turning off takes effect immediately, even if Settings is canceled. Turning on requires Save.'), makeSwitch(agentsEnabled, t('Let AI agents edit your guides'))),
           agentAccessStatus, agentOptions),
+        removeKeyActions,
       ] },
       { id: 'accounts', label: t('Accounts'), description: t('Sync guides with Google Drive, OneDrive, Dropbox or Nextcloud, share them on the web with GitHub, or publish them to Confluence or Wiki.js.'), content: [accountsPanel.node] },
       { id: 'placeholders', label: t('Placeholders'), description: t('Reusable text for every guide. Type [[name]] in a guide to insert it.'), content: [
@@ -1218,8 +1245,8 @@ function showSettingsDialog({
         return acc;
       }, {}),
     });
-    // The typed API key and Remove-key switch aren't settings, but leaving with them set still loses an edit.
-    const draftState = () => ({ ...collect(), apiKeyDraft: openaiKey.value, removeKey: removeKey.checked });
+    // A typed API key isn't a setting, but leaving with it set still loses an edit.
+    const draftState = () => ({ ...collect(), apiKeyDraft: openaiKey.value });
     const settingsBaseline = JSON.parse(JSON.stringify(draftState()));
     const savedState = () => JSON.stringify(draftState()) !== JSON.stringify(settingsBaseline);
 
@@ -1234,9 +1261,10 @@ function showSettingsDialog({
           type: 'submit',
           onClick: async (e) => {
             e.preventDefault();
+            if (removingKey) return;
             const next = collect();
-            if (openaiKey.value || removeKey.checked) {
-              try { await api.ai.setKey({ baseUrl: openaiUrl.value.trim(), apiKey: removeKey.checked ? '' : openaiKey.value });openaiKey.value = '';removeKey.checked = false; }
+            if (openaiKey.value) {
+              try { await api.ai.setKey({ baseUrl: openaiUrl.value.trim(), apiKey: openaiKey.value });openaiKey.value = ''; }
               catch (error) { showSection('ai');updateAiStatus(error.message, { error: true });return; }
             }
             if (await onSave(next) === false) return;

@@ -1128,6 +1128,7 @@ class GuideEditor {
           { value: 'after-description', label: t('After description') },
         ]);
         position.dataset.blockField = 'position';
+        position.setAttribute('aria-label', t('Block position'));
         const level = makeSelect(block.level, [
           { value: 'info', label: t('Note') },
           { value: 'warn', label: t('Warning') },
@@ -1135,6 +1136,7 @@ class GuideEditor {
           { value: 'success', label: t('Tip') },
         ]);
         level.dataset.blockField = 'level';
+        level.setAttribute('aria-label', t('Message type'));
         const title = el('input', { type: 'text', value: block.title || '', placeholder: t('Block title') });
         title.dataset.blockField = 'title';
         const body = el('textarea', { rows: 2, placeholder: t('Block text') });
@@ -1145,7 +1147,7 @@ class GuideEditor {
         title.addEventListener('input', () => { block.title = title.value; save(); });
         body.addEventListener('input', () => { block.descriptionHtml = `<p>${escapeHtml(body.value)}</p>`; save(); });
         card.append(
-          el('div.row', {}, level, position),
+          el('div.row.block-text-options', {}, level, position),
           title,
           body,
         );

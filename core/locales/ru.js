@@ -1564,4 +1564,6 @@
   'Search guides…  (Ctrl+/ for quick actions)': 'Поиск руководств…  (Ctrl+/ — быстрые действия)',
   'Beta': 'Бета',
   "Cloud sync": "Облачная синхронизация",
+  "Block position": "Положение блока",
+  "Message type": "Тип сообщения",
 });

@@ -1564,4 +1564,6 @@
   'Search guides…  (Ctrl+/ for quick actions)': 'ガイドを検索…  (Ctrl+/ でクイックアクション)',
   'Beta': 'ベータ',
   "Cloud sync": "クラウド同期",
+  "Block position": "ブロックの位置",
+  "Message type": "メッセージの種類",
 });

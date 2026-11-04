@@ -1194,6 +1194,16 @@ function showExportDialog({
     const formatDesc = el('div.muted.export-format-desc');
     const templateSelect = makeSelect('', [{ value: '', label: t('Default template') }]);
     const outDirInput = makeInput(defaultOutDir, 'text', { placeholder: t('Choose an output folder') });
+    // The input already exposes the complete value to assistive technology.
+    const outDirHelp = el('div.muted.export-output-path', { 'aria-hidden': 'true' });
+    outDirInput.setAttribute('aria-label', t('Output folder'));
+    const refreshOutDir = () => {
+      outDirHelp.textContent = outDirInput.value;
+      outDirHelp.hidden = !outDirInput.value;
+      outDirInput.title = outDirInput.value;
+    };
+    outDirInput.addEventListener('input', refreshOutDir);
+    refreshOutDir();
     const optionsHost = el('div', { className: 'export-options' });
     // Branding: the active profile unless another (or none) is picked for this export.
     const brandProfiles = branding?.profiles || [];
@@ -1393,15 +1403,15 @@ function showExportDialog({
       labeledRow(t('Format'), el('div.export-format', {}, formatSelect, formatDesc, publishInsteadNote)),
       labeledRow(t('Template'), el('div.row', {}, templateSelect, saveTplBtn, manageBtn)),
       branding ? labeledRow(t('Branding'), el('div.row', {}, brandChoice, brandNote)) : null,
-      labeledRow(t('Output folder'), el('div.row', {}, outDirInput, el('button', {
+      labeledRow(t('Output folder'), el('div.export-output-folder', {}, el('div.row', {}, outDirInput, el('button', {
         type: 'button',
         disabled: typeof onChooseDir !== 'function',
         onClick: async () => {
           if (typeof onChooseDir !== 'function') return;
           const chosen = await onChooseDir(formatSelect.value);
-          if (chosen) outDirInput.value = chosen;
+          if (chosen) { outDirInput.value = chosen; refreshOutDir(); }
         },
-      }, t('Choose…')))),
+      }, t('Choose…'))), outDirHelp)),
       el('fieldset', {}, el('legend', {}, t('Options')), optionsHost),
       publishBox,
     );
@@ -1764,7 +1774,7 @@ function showGuideInfoDialog({ values = {}, reviewDefaultDays, cloudConnected = 
 
     const { close, requestDismiss } = openModal({
       title: t('Guide information'),
-      body: el('div', {},
+      body: el('div.guide-info-body', {},
         el('div.muted', { style: { marginBottom: '10px' } },
           t('All fields are optional. They appear below the title on the guide and on the PDF cover page.')),
         labeledRow(t('Author'), authorInput),

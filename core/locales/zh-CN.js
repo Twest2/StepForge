@@ -1564,4 +1564,6 @@
   'Search guides…  (Ctrl+/ for quick actions)': '搜索指南…  (Ctrl+/ 打开快速操作)',
   'Beta': '测试版',
   "Cloud sync": "云同步",
+  "Block position": "块位置",
+  "Message type": "消息类型",
 });

@@ -1564,4 +1564,6 @@
   'Search guides…  (Ctrl+/ for quick actions)': 'Rechercher des guides…  (Ctrl+/ pour les actions rapides)',
   'Beta': 'Bêta',
   "Cloud sync": "Synchronisation cloud",
+  "Block position": "Position du bloc",
+  "Message type": "Type de message",
 });

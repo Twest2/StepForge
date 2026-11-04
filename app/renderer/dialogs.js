@@ -804,6 +804,7 @@ function showSettingsDialog({
     ollamaModel.setAttribute('list', 'ollama-models');
     const aiScreenshots = el('input', { type: 'checkbox', checked: settings.ai?.attachScreenshots !== false });
     const agentsEnabled = el('input', { type: 'checkbox', checked: Boolean(settings.ai?.agents?.enabled) });
+    const agentAccessStatus = el('div.setting-desc', { role: 'status', 'aria-live': 'polite', hidden: true });
     const agentsScreenshots = el('input', { type: 'checkbox', checked: settings.ai?.agents?.screenshots !== false });
     const agentsBranding = el('input', { type: 'checkbox', checked: Boolean(settings.ai?.agents?.branding) });
     // How Claude Code, Codex, or any MCP app starts StepForge for agents.
@@ -927,6 +928,47 @@ function showSettingsDialog({
       onClick: () => addPlaceholderRow(),
     }, t('Add placeholder'));
 
+    // Keep controls mounted so hiding them never resets their saved/draft values.
+    const aiOptions = el('div', { dataset: { aiDependent: 'local' } },
+      settingRow(t('Auto-document captures'), t('Write a title and description for each new capture as you record. Turn off to use AI only when you ask.'), makeSwitch(aiAutoDoc, t('Auto-document captures'))),
+      settingRow(t('Let the model see screenshots'), t('Models that can read images see each step’s screenshot, with blurred areas already hidden. Turn off to send text only.'), makeSwitch(aiScreenshots, t('Let the model see screenshots'))));
+    const ollamaCard = settingsCard(t('Ollama'),
+      el('div.setting-desc', {}, t('Runs on your computer, so your screenshots and text stay here.')),
+      settingRow(t('Host'), t('Where Ollama is running.'), ollamaHost),
+      settingRow(t('Model'), el('span', {}, t('Any installed model. Choose Test connection to list them.'), ' ',
+        docLink(t('AI guide'), AI_GUIDE_URL), ' · ', docLink(t('Recommended models'), `${AI_GUIDE_URL}#recommended-models`)), ollamaModel),
+      el('div.settings-test', {}, aiStatus, testAiBtn, ollamaModels));
+    const agentOptions = el('div', { dataset: { aiDependent: 'agents' } },
+      settingRow(t('Agents can see screenshots'), t('Blurred areas are filled in first. Turn off to share step text only.'), makeSwitch(agentsScreenshots, t('Agents can see screenshots'))),
+      settingRow(t('Let AI agents edit brand profiles'), t('Agents can make and change brand profiles: logo, colors, fonts and CSS, and choose the one exports use. They can’t delete a profile.'), makeSwitch(agentsBranding, t('Let AI agents edit brand profiles'))), agentSetup);
+    const updateAiVisibility = () => {
+      aiOptions.hidden = !aiEnabled.checked;
+      ollamaCard.hidden = !aiEnabled.checked;
+      agentOptions.hidden = !agentsEnabled.checked;
+    };
+    updateAiVisibility();
+    agentsEnabled.addEventListener('change', async () => {
+      updateAiVisibility();
+      if (agentsEnabled.checked) return;
+      const restoreFocus = document.activeElement === agentsEnabled;
+      agentsEnabled.disabled = true;
+      try {
+        // Revocation is immediate; enabling remains an explicit Settings Save.
+        await api.settings.set({ keyPath: 'ai.agents.enabled', value: false });
+        settingsBaseline.ai.agents.enabled = false;
+        agentAccessStatus.textContent = t('AI agents are cut off now. To let them back in, turn this on and save.');
+        agentAccessStatus.hidden = false;
+      } catch (error) {
+        agentsEnabled.checked = true;
+        updateAiVisibility();
+        agentAccessStatus.textContent = t('Could not turn off AI agent access: {error}', { error: error.message });
+        agentAccessStatus.hidden = false;
+      } finally {
+        agentsEnabled.disabled = false;
+        if (restoreFocus && agentsEnabled.isConnected) agentsEnabled.focus();
+      }
+    });
+
     const sections = [
       { id: 'general', label: t('General'), description: t('Appearance, exports, where your guides and deleted guides are kept, and when guides are due for review.'), content: [
         settingsCard(t('Appearance'),
@@ -990,22 +1032,12 @@ function showSettingsDialog({
       { id: 'ai', label: t('AI'), description: t('Let AI write your guides: a model on your own computer through Ollama, or an AI agent such as Claude or Codex.'), content: [
         settingsCard(null,
           settingRow(t('Enable AI'), t('Turn on the AI ▾ menu in the guide toolbar: write a whole guide, a step, or one field.'), makeSwitch(aiEnabled, t('Enable AI'))),
-          settingRow(t('Auto-document captures'), t('Write a title and description for each new capture as you record. Turn off to use AI only when you ask.'), makeSwitch(aiAutoDoc, t('Auto-document captures'))),
-          settingRow(t('Let the model see screenshots'), t('Models that can read images see each step’s screenshot, with blurred areas already hidden. Turn off to send text only.'), makeSwitch(aiScreenshots, t('Let the model see screenshots')))),
-        settingsCard(t('Ollama'),
-          el('div.setting-desc', {}, t('Runs on your computer, so your screenshots and text stay here.')),
-          settingRow(t('Host'), t('Where Ollama is running.'), ollamaHost),
-          settingRow(t('Model'), el('span', {},
-            t('Any installed model. Choose Test connection to list them.'), ' ',
-            docLink(t('AI guide'), AI_GUIDE_URL), ' · ', docLink(t('Recommended models'), `${AI_GUIDE_URL}#recommended-models`)),
-          ollamaModel),
-          el('div.settings-test', {}, aiStatus, testAiBtn, ollamaModels)),
+          aiOptions),
+        ollamaCard,
         settingsCard(t('AI agents (Claude, Codex)'),
           el('div.setting-desc', {}, t('AI apps such as Claude and Codex can connect to StepForge and edit your guides. They can create and delete guides and steps, reorder steps, replace or remove screenshots, edit text, add placeholders, and add or delete annotations except blurs. StepForge saves snapshots before step creation, moves, deletions and screenshot changes; restore them from More → Backups & snapshots. Deleted guides go to the Trash.')),
-          settingRow(t('Let AI agents edit your guides'), t('Turn off to cut off every connected agent at once.'), makeSwitch(agentsEnabled, t('Let AI agents edit your guides'))),
-          settingRow(t('Agents can see screenshots'), t('Blurred areas are filled in first. Turn off to share step text only.'), makeSwitch(agentsScreenshots, t('Agents can see screenshots'))),
-          settingRow(t('Let AI agents edit brand profiles'), t('Agents can make and change brand profiles: logo, colors, fonts and CSS, and choose the one exports use. They can’t delete a profile.'), makeSwitch(agentsBranding, t('Let AI agents edit brand profiles'))),
-          agentSetup),
+          settingRow(t('Let AI agents edit your guides'), t('Turning off takes effect immediately, even if Settings is canceled. Turning on requires Save.'), makeSwitch(agentsEnabled, t('Let AI agents edit your guides'))),
+          agentAccessStatus, agentOptions),
       ] },
       { id: 'accounts', label: t('Accounts'), description: t('Sync guides with Google Drive, OneDrive, Dropbox or Nextcloud, share them on the web with GitHub, or publish them to Confluence or Wiki.js.'), content: [accountsPanel.node] },
       { id: 'placeholders', label: t('Placeholders'), description: t('Reusable text for every guide. Type [[name]] in a guide to insert it.'), content: [
@@ -1154,7 +1186,8 @@ function showSettingsDialog({
         return acc;
       }, {}),
     });
-    const savedState = unsavedChanges(collect);
+    const settingsBaseline = JSON.parse(JSON.stringify(collect()));
+    const savedState = () => JSON.stringify(collect()) !== JSON.stringify(settingsBaseline);
 
     const { close, requestDismiss } = openModal({
       title: t('Settings'),
@@ -1181,6 +1214,7 @@ function showSettingsDialog({
     form.addEventListener('submit', (e) => e.preventDefault());
     testAiBtn.addEventListener('click', testAiConnection);
     aiEnabled.addEventListener('change', () => {
+      updateAiVisibility();
       updateAiStatus(
         aiEnabled.checked
           ? t('Save, then use the AI ▾ menu in a guide. Test connection checks that Ollama is ready.')

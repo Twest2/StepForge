@@ -996,7 +996,7 @@ function setupIpc() {
     if (img.isEmpty()) return { ok: false, reason: 'clipboard has no image' };
     const { width, height } = img.getSize();
     const step = store.addStep(guideId, {
-      title: 'Pasted image',
+      title: t('Pasted image'),
       focusedView: { enabled: false, zoom: 1, panX: 0.5, panY: 0.5 },
     }, img.toPNG(), { width, height }, { position });
     reindex(guideId);
@@ -1005,7 +1005,7 @@ function setupIpc() {
   h('step:importImage', async ({ guideId }) => {
     const res = await dialog.showOpenDialog(mainWindow, {
       title: t('Import images as steps'),
-      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp'] }],
+      filters: [{ name: t('Images'), extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp'] }],
       properties: ['openFile', 'multiSelections'],
     });
     if (res.canceled) return { ok: false };
@@ -1039,12 +1039,12 @@ function setupIpc() {
     store.getStep(guideId, stepId); // throws for a step that does not exist, before any dialog
     const res = await dialog.showOpenDialog(mainWindow, {
       title: t('Choose a screenshot for this step'),
-      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'] }],
+      filters: [{ name: t('Images'), extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'] }],
       properties: ['openFile'],
     });
     if (res.canceled || !res.filePaths[0]) return { ok: false };
     const img = nativeImage.createFromPath(res.filePaths[0]);
-    if (img.isEmpty()) throw new Error('StepForge couldn’t open that file as an image. Choose a PNG, JPEG, GIF, WebP or BMP file.');
+    if (img.isEmpty()) throw new Error(t('StepForge couldn’t open that file as an image. Choose a PNG, JPEG, GIF, WebP or BMP file.'));
     return swapStepImage(guideId, stepId, img.toPNG(), img.getSize());
   }, { validate: (a) => c.id(a.guideId) && c.id(a.stepId) });
   // Right-click a step → Retake screenshot: hide StepForge, count down, grab a
@@ -1114,7 +1114,7 @@ function setupIpc() {
     return cloudStatus();
   });
   h('cloud:connect', async ({ provider = activeCloud().id, server, username, password } = {}) => {
-    if (cloudTesting || cloudConnecting) throw new Error('Wait for sign-in or testing to finish.');
+    if (cloudTesting || cloudConnecting) throw new Error(t('Wait for sign-in or testing to finish.'));
     const target = cloudProviders[provider];
     cloudConnecting = true;
     cloudConnectingTo = target;
@@ -1160,9 +1160,9 @@ function setupIpc() {
     return cloudStatus();
   });
   h('cloud:enable', async ({ enabled }) => {
-    if (cloudConnecting || cloudTesting) throw new Error('Wait for sign-in or connection testing to finish.');
+    if (cloudConnecting || cloudTesting) throw new Error(t('Wait for sign-in or connection testing to finish.'));
     const drive = activeCloud();
-    if (enabled && !drive.status().connected) throw new Error(`Sign in to ${drive.label} first.`);
+    if (enabled && !drive.status().connected) throw new Error(t('Sign in to {service} first.', { service: drive.label }));
     settings.set('cloud.enabled', enabled);
     if (enabled) cloudSync.start();
     else { cloudSync.stop(); await cloudSync.running; cloudSync.publish('off', `${drive.label} sharing is off.`); }
@@ -1187,7 +1187,7 @@ function setupIpc() {
   h('cloud:deleteGuideSnapshots', ({ guideId }) => cloudSync.removeGuideSnapshots(guideId),
     { validate: (a) => c.id(a.guideId) });
   h('cloud:test', async () => {
-    if (cloudConnecting || cloudTesting) throw new Error('Sign-in or testing is already in progress.');
+    if (cloudConnecting || cloudTesting) throw new Error(t('Sign-in or testing is already in progress.'));
     cloudTesting = true;
     cloudSync.stop();
     try {
@@ -1239,7 +1239,7 @@ function setupIpc() {
     { validate: (a) => spaceArg(a.space) && parentArg(a.parent) });
   h('confluence:published', ({ guideId }) => confluence.publishedFor(guideId), { validate: (a) => c.id(a.guideId) });
   h('confluence:publish', async ({ guideId, space, parent = null, parentPicked = false, replace = false }) => {
-    if (!store.guideExists(guideId)) throw new Error('Guide not found.');
+    if (!store.guideExists(guideId)) throw new Error(t('Guide not found.'));
     const progress = (update) => sendToRenderer('confluence:progress', { guideId, ...update });
     const outDir = path.join(store.tempDir, `confluence-${guideId}`);
     fs.rmSync(outDir, { recursive: true, force: true });
@@ -1268,13 +1268,13 @@ function setupIpc() {
   h('wikijs:cancel', () => { wikijs.cancel(); return { ok: true }; });
   h('wikijs:disconnect', () => wikijs.disconnect());
   h('wikijs:defaults', ({ guideId }) => {
-    if (!store.guideExists(guideId)) throw new Error('Guide not found.');
+    if (!store.guideExists(guideId)) throw new Error(t('Guide not found.'));
     // The title as exported, with placeholders filled in, names the page.
     const { guide } = buildRenderAst(store, guideId, { globals: settings.getGlobalPlaceholders() });
     return wikijs.defaultsFor(guideId, guide.title);
   }, { validate: (a) => c.id(a.guideId) });
   h('wikijs:publish', async ({ guideId, path: pagePath, title, locale = 'en', replace = false }) => {
-    if (!store.guideExists(guideId)) throw new Error('Guide not found.');
+    if (!store.guideExists(guideId)) throw new Error(t('Guide not found.'));
     // A path or language Wiki.js would refuse is reported before any work starts.
     const target = normalizePagePath(pagePath);
     const language = normalizeLocale(locale);
@@ -1314,7 +1314,7 @@ function setupIpc() {
 
   h('github:publish', async ({ guideId, days, format = 'html-rich', options = {}, brandProfileId }) => {
     const guide = store.getGuide(guideId);
-    if (!guide) throw new Error('Guide not found.');
+    if (!guide) throw new Error(t('Guide not found.'));
     const progress = (update) => sendToRenderer('github:progress', { task: 'publish', guideId, ...update });
     const outDir = path.join(store.tempDir, `publish-${guideId}`);
     fs.rmSync(outDir, { recursive: true, force: true });
@@ -1322,9 +1322,9 @@ function setupIpc() {
       // Nothing goes on the web unchecked: blur private details in any
       // screenshot not checked since it last changed. Usually already done
       // by the publish dialog, so this is instant.
-      progress({ stage: 'export', detail: 'Checking screenshots for private details…' });
+      progress({ stage: 'export', detail: t('Checking screenshots for private details…') });
       await redactor.checkGuide(guideId, { onProgress: ({ done, total }) => {
-        if (total) progress({ stage: 'export', detail: `Checking screenshots for private details (${done} of ${total})…` });
+        if (total) progress({ stage: 'export', detail: t('Checking screenshots for private details ({done} of {total})…', { done, total }) });
       } });
       progress({ stage: 'export' });
       const result = await runExportInWorker({
@@ -1382,7 +1382,7 @@ function setupIpc() {
   };
   h('storage:status', () => storageStatus(libraryLocation.status()));
   h('storage:choose', async () => {
-    if (libraryLocation.status().locked) throw new Error('STEPFORGE_DATA_DIR controls this session. Remove that override before changing storage.');
+    if (libraryLocation.status().locked) throw new Error(t('STEPFORGE_DATA_DIR controls this session. Remove that override before changing storage.'));
     const result = await dialog.showOpenDialog(mainWindow, {
       title: t('Choose guide storage folder'),
       properties: ['openDirectory', 'createDirectory'],
@@ -1530,7 +1530,7 @@ function setupIpc() {
     const res = await dialog.showSaveDialog(mainWindow, {
       title: t('Share guide as file'),
       defaultPath: `${guide.title.replace(/[/\\:]+/g, '-')}.sfgz`,
-      filters: [{ name: 'StepForge guide archive', extensions: ['sfgz'] }],
+      filters: [{ name: t('StepForge guide archive'), extensions: ['sfgz'] }],
     });
     if (res.canceled) return { ok: false };
     exportGuideArchive(store, guideId, res.filePath);
@@ -1539,7 +1539,7 @@ function setupIpc() {
   h('archive:open', async ({ mode }) => {
     const res = await dialog.showOpenDialog(mainWindow, {
       title: t('Open guide archive'),
-      filters: [{ name: 'StepForge guide archive', extensions: ['sfgz'] }],
+      filters: [{ name: t('StepForge guide archive'), extensions: ['sfgz'] }],
       properties: ['openFile'],
     });
     if (res.canceled) return { ok: false };
@@ -1618,7 +1618,7 @@ function setupIpc() {
   h('templates:export', async ({ format, name }) => {
     const res = await dialog.showSaveDialog(mainWindow, {
       defaultPath: `${name}.sfglt`,
-      filters: [{ name: 'StepForge template', extensions: ['sfglt'] }],
+      filters: [{ name: t('StepForge template'), extensions: ['sfglt'] }],
     });
     if (res.canceled) return { ok: false };
     templates.exportTemplate(format, name, res.filePath);
@@ -1626,7 +1626,7 @@ function setupIpc() {
   }, { validate: (a) => validFormat(a.format) && c.fileName(a.name) });
   h('templates:import', async () => {
     const res = await dialog.showOpenDialog(mainWindow, {
-      filters: [{ name: 'StepForge template', extensions: ['sfglt'] }],
+      filters: [{ name: t('StepForge template'), extensions: ['sfglt'] }],
       properties: ['openFile'],
     });
     if (res.canceled) return { ok: false };
@@ -1634,11 +1634,15 @@ function setupIpc() {
   });
 
   // export + preview
+  // exporters/ describe formats and options in English; the Export dialog shows them in the interface language.
+  const translatedOptions = (options = {}) => Object.fromEntries(Object.entries(options).map(([key, info]) => [key, {
+    ...info, ...(info.label && { label: t(info.label) }), ...(info.hint && { hint: t(info.hint) }), ...(info.unit && { unit: t(info.unit) }),
+  }]));
   h('export:formats', () => FORMAT_ORDER.filter((f) => FORMATS.includes(f) && EXPORTERS[f]).map((format) => ({
     id: format,
-    label: FORMAT_LABELS[format] || format,
-    description: FORMAT_INFO[format]?.description || '',
-    options: FORMAT_INFO[format]?.options || {},
+    label: t(FORMAT_LABELS[format] || format),
+    description: t(FORMAT_INFO[format]?.description || ''),
+    options: translatedOptions(FORMAT_INFO[format]?.options),
     badge: FORMAT_INFO[format]?.badge || '',
   })));
   h('export:defaults', ({ format, brandProfileId }) => {
@@ -1701,7 +1705,7 @@ function setupIpc() {
   h('export:chooseImage', async () => {
     const res = await dialog.showOpenDialog(mainWindow, {
       title: t('Choose an image'), properties: ['openFile'],
-      filters: [{ name: 'PNG image', extensions: ['png'] }],
+      filters: [{ name: t('PNG image'), extensions: ['png'] }],
     });
     return res.canceled ? null : res.filePaths[0];
   });
@@ -1747,9 +1751,9 @@ function setupIpc() {
   };
   const assetId = (v) => typeof v === 'string' && /^[a-f0-9]{32}$/.test(v);
   const ASSET_FILTERS = {
-    image: { title: () => t('Choose an image'), filters: [{ name: 'Images (PNG, JPG, SVG)', extensions: ['png', 'jpg', 'jpeg', 'svg'] }] },
-    font: { title: () => t('Choose a font file'), filters: [{ name: 'Fonts (WOFF2, WOFF, TTF, OTF)', extensions: ['woff2', 'woff', 'ttf', 'otf'] }] },
-    css: { title: () => t('Choose a CSS file'), filters: [{ name: 'CSS', extensions: ['css'] }] },
+    image: { title: () => t('Choose an image'), filters: () => [{ name: t('Images (PNG, JPG, SVG)'), extensions: ['png', 'jpg', 'jpeg', 'svg'] }] },
+    font: { title: () => t('Choose a font file'), filters: () => [{ name: t('Fonts (WOFF2, WOFF, TTF, OTF)'), extensions: ['woff2', 'woff', 'ttf', 'otf'] }] },
+    css: { title: () => t('Choose a CSS file'), filters: () => [{ name: 'CSS', extensions: ['css'] }] },
   };
   h('branding:list', () => branding.list());
   h('branding:get', ({ id }) => brandProfile(id), { validate: (a) => validBrandId(a.id) });
@@ -1762,7 +1766,7 @@ function setupIpc() {
   }, { validate: (a) => validBrandId(a.id) });
   h('branding:duplicate', ({ id }) => brandProfile(branding.duplicate(id).id), { validate: (a) => validBrandId(a.id) });
   h('branding:chooseAsset', async ({ kind }) => {
-    const res = await dialog.showOpenDialog(mainWindow, { ...ASSET_FILTERS[kind], title: ASSET_FILTERS[kind].title(), properties: ['openFile'] });
+    const res = await dialog.showOpenDialog(mainWindow, { title: ASSET_FILTERS[kind].title(), filters: ASSET_FILTERS[kind].filters(), properties: ['openFile'] });
     if (res.canceled) return null;
     const file = res.filePaths[0];
     // Too large is refused as soon as it's picked, before the file is read.
@@ -1777,10 +1781,10 @@ function setupIpc() {
     { maxChars: 33 * 1024 * 1024, validate: (a) => assetId(a.id) && c.base64(a.png, 32 * 1024 * 1024) });
   h('branding:export', async ({ id }) => {
     const profile = branding.get(id);
-    if (!profile) throw new Error('That brand profile no longer exists.');
+    if (!profile) throw new Error(t('That brand profile no longer exists.'));
     const res = await dialog.showSaveDialog(mainWindow, {
       defaultPath: `${profile.name.replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'Brand profile'}.sfbrand`,
-      filters: [{ name: 'StepForge brand profile', extensions: ['sfbrand'] }],
+      filters: [{ name: t('StepForge brand profile'), extensions: ['sfbrand'] }],
     });
     if (res.canceled) return { ok: false };
     branding.exportProfile(id, res.filePath);
@@ -1788,7 +1792,7 @@ function setupIpc() {
   }, { validate: (a) => validBrandId(a.id) });
   h('branding:import', async () => {
     const res = await dialog.showOpenDialog(mainWindow, {
-      filters: [{ name: 'StepForge brand profile', extensions: ['sfbrand'] }],
+      filters: [{ name: t('StepForge brand profile'), extensions: ['sfbrand'] }],
       properties: ['openFile'],
     });
     if (res.canceled) return { ok: false };
@@ -2026,6 +2030,7 @@ if (!gotLock) {
         searchIndex.removeGuide(guideId);
         sendToRenderer('cloud:library-changed', { guideId });
       },
+      onFoldersChange: () => sendToRenderer('cloud:library-changed', {}),
       onStatus: () => sendToRenderer('cloud:status', cloudStatus()),
       shared: new SharedSettings({ settings, branding }),
       sharedReady: () => !settingsOpen,
@@ -2064,7 +2069,7 @@ if (!gotLock) {
       readLines: (image) => textIntel.readLines(image),
       loadImage: async (file) => {
         const image = nativeImage.createFromPath(file);
-        if (image.isEmpty()) throw new Error('A screenshot in this guide couldn’t be read.');
+        if (image.isEmpty()) throw new Error(t('A screenshot in this guide couldn’t be read.'));
         const { width, height } = image.getSize();
         return { width, height, encode: (scale) => {
           const sized = scale === 1 ? image : image.resize({ width: Math.round(width * scale), height: Math.round(height * scale), quality: 'best' });

@@ -1565,6 +1565,7 @@
   'Cloud sync status': 'Состояние облачной синхронизации',
   'Search guides…  (Ctrl+/ for quick actions)': 'Поиск руководств…  (Ctrl+/ — быстрые действия)',
   'Beta': 'Бета',
+  'Actions': 'Действия',
   'Left {x}% · Top {y}% · Width {width}% · Height {height}%': 'Слева {x}% · Сверху {y}% · Ширина {width}% · Высота {height}%',
   'Font size (% of image height)': 'Размер шрифта (% высоты изображения)',
   'Could not save recent colors.': 'Не удалось сохранить последние цвета.',

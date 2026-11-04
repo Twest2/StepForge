@@ -297,6 +297,12 @@ and verifies your library before switching to the new location.
 
 ## Keyboard shortcuts
 
+Open a menu button with Enter or Space. Inside a menu, use Up/Down, Home/End
+or type the start of a command. Right opens a submenu; Left returns to its
+parent. Escape closes one menu level and restores focus. Tab leaves the menu
+and continues through the surrounding controls. Unavailable commands remain
+readable but do not run.
+
 Press **Ctrl+/** for the quick-actions palette, or open
 **More → Keyboard shortcuts…** for the full list.
 

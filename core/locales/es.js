@@ -1565,6 +1565,7 @@
   'Cloud sync status': 'Estado de la sincronización en la nube',
   'Search guides…  (Ctrl+/ for quick actions)': 'Buscar guías…  (Ctrl+/ para acciones rápidas)',
   'Beta': 'Beta',
+  'Actions': 'Acciones',
   'Left {x}% · Top {y}% · Width {width}% · Height {height}%': 'Izquierda {x} % · Arriba {y} % · Ancho {width} % · Alto {height} %',
   'Font size (% of image height)': 'Tamaño del texto (% de la altura de la imagen)',
   'Could not save recent colors.': 'No se pudieron guardar los colores recientes.',

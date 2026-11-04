@@ -1565,6 +1565,7 @@
   'Cloud sync status': 'クラウド同期の状態',
   'Search guides…  (Ctrl+/ for quick actions)': 'ガイドを検索…  (Ctrl+/ でクイックアクション)',
   'Beta': 'ベータ',
+  'Actions': '操作',
   'Left {x}% · Top {y}% · Width {width}% · Height {height}%': '左 {x}% · 上 {y}% · 幅 {width}% · 高さ {height}%',
   'Font size (% of image height)': '文字サイズ（画像の高さに対する%）',
   'Could not save recent colors.': '最近使った色を保存できませんでした。',

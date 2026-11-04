@@ -486,7 +486,6 @@ function showFindReplace({ stepNumbers = {}, find, replace } = {}) {
         el('button', { onClick: () => { close(); resolve(false); } }, t('Close')),
         replaceButton,
       ],
-      isDirty: unsavedChanges(() => [query.value, replacement.value]),
       onClose: () => resolve(false),
     });
 
@@ -718,6 +717,8 @@ function showSettingsDialog({
       { value: 'off', label: t('No automatic optimization') },
     ]);
     imageCompression.setAttribute('aria-label', t('Image compression'));
+    // Wide enough for its longest choice in any language, not the 220px other settings use.
+    Object.assign(imageCompression.style, { width: 'auto', minWidth: '220px' });
     const imageQuality = makeInput(Math.round((settings.images?.webpQuality ?? 0.95) * 100), 'number', { min: 95, max: 100, step: 1, 'aria-label': t('Lossy quality (%)') });
     const imageQualityRow = settingRow(t('Lossy quality (%)'), t('Text and small UI details are protected by falling back to lossless when needed.'), imageQuality);
     const syncImageQuality = () => { imageQualityRow.hidden = imageCompression.value !== 'lossy'; };
@@ -931,9 +932,6 @@ function showSettingsDialog({
           settingRow(t('Open folder after export'), t('Show the exported file in your file manager.'), makeSwitch(openFolder, t('Open folder after export'))),
           settingRow(t('Preview step count'), t('How many steps the export preview renders.'), previewCount),
           settingRow(t('Code theme'), t('Syntax colors for code blocks in PDF, Word, HTML and Confluence exports.'), codeTheme)),
-        settingsCard(t('Image compression'),
-          settingRow(t('Compression'), t('Applies to new screenshots and imports. Existing guide images are unchanged.'), imageCompression),
-          imageQualityRow),
         settingsCard(t('Guide storage'),
           el('div.settings-storage', {}, storagePath, storageNote),
           storageWarningNote,
@@ -955,6 +953,9 @@ function showSettingsDialog({
           settingRow(t('Delay'), t('Milliseconds to wait before each screenshot.'), delayMs),
           settingRow(t('Click marker'), t('Draw a marker where you clicked.'), makeSwitch(clickMarker, t('Click marker'))),
           settingRow(t('Capture outside clicks'), t('Record clicks in other apps while a capture session is running.'), makeSwitch(captureOutside, t('Capture outside clicks')))),
+        settingsCard(t('Image compression'),
+          settingRow(t('Compression'), t('Applies to new screenshots and imports. Existing guide images are unchanged.'), imageCompression),
+          imageQualityRow),
         settingsCard(t('When clicks can’t be detected'),
           settingRow(t('Capture with'), t('Some desktops don’t report clicks. Choose how steps are captured instead.'), fallbackTrigger),
           (intervalRow.append(settingRow(t('Timer interval'), t('Seconds between timed captures.'), autoIntervalSec)), intervalRow)),

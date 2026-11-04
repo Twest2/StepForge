@@ -27,6 +27,22 @@ const DEFAULT_ANNOTATION_STYLE = {
   fontSize: 0.022, // fraction of image height
 };
 
+/** Keep only known annotation types, each with plain string or number style values. */
+function normalizeAnnotationStyles(value) {
+  const styles = {};
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return styles;
+  for (const type of ANNOTATION_TYPES) {
+    const style = Object.hasOwn(value, type) ? value[type] : null;
+    if (!style || typeof style !== 'object' || Array.isArray(style)) continue;
+    const clean = {};
+    for (const [key, v] of Object.entries(style).slice(0, 20)) {
+      if (key !== '__proto__' && ((typeof v === 'string' && v.length <= 64) || Number.isFinite(v))) clean[key] = v;
+    }
+    if (Object.keys(clean).length) styles[type] = clean;
+  }
+  return styles;
+}
+
 function createGuide(fields = {}) {
   const now = nowIso();
   return {
@@ -66,6 +82,9 @@ function createGuide(fields = {}) {
     },
     linkedSource: fields.linkedSource || null,
     exportProfiles: { ...(fields.exportProfiles || {}) },
+    // Annotation type -> style that new annotations of that type start with,
+    // set by Apply style to the entire guide.
+    annotationStyles: normalizeAnnotationStyles(fields.annotationStyles),
     // Monotonic revision for optimistic concurrency. Absent in v1 data (reads
     // as 0), bumped on every store write.
     revision: Number.isInteger(fields.revision) && fields.revision >= 0 ? fields.revision : 0,
@@ -244,6 +263,7 @@ module.exports = {
   createGuide,
   createStep,
   normalizeAnnotation,
+  normalizeAnnotationStyles,
   normalizeTextBlock,
   normalizeCodeBlock,
   normalizeTableBlock,

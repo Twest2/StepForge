@@ -1571,4 +1571,9 @@
   "Drag to resize. Use Left/Right arrows, Shift for larger changes, or Home/End.": "ドラッグしてサイズを変更します。左右の矢印キー、Shiftで大きく変更、Home/Endも使えます。",
   "{count} pixels": {"other":"{count} ピクセル"},
   "Could not save pane widths: {error}": "パネルの幅を保存できませんでした: {error}",
+  'Collapse step': 'ステップを折りたたむ',
+  'Expand step': 'ステップを展開',
+  'Collapse step {step}': 'ステップ {step} を折りたたむ',
+  'Expand step {step}': 'ステップ {step} を展開',
+  'Show {count} substeps': { other: 'サブステップを {count} 件表示' },
 });

@@ -205,5 +205,21 @@
     return numbers;
   }
 
-  return { isValidOutline, withParent, parentMap, planSubsteps, depthOf, repairOutline, subtreeOf, moveSubtree, moveSubtreeBy, stepNumberMap };
+  /**
+   * The steps the Steps pane lists when the steps in `collapsed` have their
+   * substeps folded away. View only: steps, parents, numbers and exports are unchanged.
+   */
+  function visibleSteps(steps, collapsed) {
+    const parents = parentMap(steps);
+    return steps.filter((step) => {
+      const seen = new Set([step.stepId]);
+      for (let parent = parents.get(step.stepId); parent && !seen.has(parent); parent = parents.get(parent)) {
+        if (collapsed.has(parent)) return false;
+        seen.add(parent);
+      }
+      return true;
+    });
+  }
+
+  return { isValidOutline, withParent, parentMap, planSubsteps, depthOf, repairOutline, subtreeOf, moveSubtree, moveSubtreeBy, stepNumberMap, visibleSteps };
 });

@@ -1571,4 +1571,9 @@
   "Drag to resize. Use Left/Right arrows, Shift for larger changes, or Home/End.": "Arrastra para cambiar el tamaño. Usa las flechas izquierda/derecha, Mayús para cambios mayores, o Inicio/Fin.",
   "{count} pixels": {"one":"{count} píxel","other":"{count} píxeles"},
   "Could not save pane widths: {error}": "No se pudo guardar el ancho de los paneles: {error}",
+  'Collapse step': 'Contraer paso',
+  'Expand step': 'Expandir paso',
+  'Collapse step {step}': 'Contraer paso {step}',
+  'Expand step {step}': 'Expandir paso {step}',
+  'Show {count} substeps': { one: 'Mostrar {count} subpaso', other: 'Mostrar {count} subpasos' },
 });

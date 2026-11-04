@@ -547,6 +547,58 @@ body.platform-linux #capture-status button {
   letter-spacing: 0.04em;
 }
 .step-item.dragging { opacity: 0.45; }
+/* Threads, as in a Reddit comment thread: a thin line runs from a step's status
+   dot down past its substeps (editor.js stepThreadLines). Clicking it folds the
+   substeps away; hovering lights up the whole thread. */
+.step-item { position: relative; }
+.step-thread-line, .step-thread-start {
+  position: absolute;
+  width: 12px;
+  cursor: pointer;
+}
+/* Each substep row carries a piece of every thread it is in, reaching across the 4px row gap. */
+.step-thread-line { top: -1px; bottom: -5px; }
+.step-thread-line.end { bottom: 6px; }
+.step-thread-start {
+  left: 8px;
+  top: calc(50% + 6px);
+  bottom: -5px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+}
+.step-thread-line::before, .step-thread-start::before {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--border);
+}
+.step-thread-line.hot::before, .step-thread-start.hot::before { background: var(--accent); }
+.step-thread-start:hover, .step-thread-start:active { background: none; transform: none; }
+/* Keyboard focus shows on the line itself, not as a box around it. */
+.step-thread-start:focus-visible { outline: none; }
+.step-thread-start:focus-visible::before { left: 4px; width: 4px; border-radius: 2px; background: var(--accent); }
+/* A collapsed step: "+3", how many substeps are folded away. Clicking it opens them. */
+.step-fold-count {
+  flex: none;
+  min-width: 0;
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
+}
+.step-fold-count:hover, .step-fold-count.hot { color: var(--accent); border-color: var(--accent); }
 /* Shows where a dragged step lands; its left edge is the level it will have. */
 .step-drop-line {
   position: absolute;

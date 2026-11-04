@@ -1571,4 +1571,9 @@
   "Drag to resize. Use Left/Right arrows, Shift for larger changes, or Home/End.": "Faites glisser pour redimensionner. Utilisez les flèches gauche/droite, Maj pour des changements plus grands, ou Début/Fin.",
   "{count} pixels": {"one":"{count} pixel","other":"{count} pixels"},
   "Could not save pane widths: {error}": "Impossible d’enregistrer la largeur des volets : {error}",
+  'Collapse step': 'Replier l’étape',
+  'Expand step': 'Déplier l’étape',
+  'Collapse step {step}': 'Replier l’étape {step}',
+  'Expand step {step}': 'Déplier l’étape {step}',
+  'Show {count} substeps': { one: 'Afficher {count} sous-étape', other: 'Afficher {count} sous-étapes' },
 });

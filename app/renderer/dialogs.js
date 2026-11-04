@@ -1961,7 +1961,7 @@ function showGuideInfoDialog({ values = {}, reviewDefaultDays, cloudConnected = 
       }, defaultDays);
       reviewHint.textContent = status
         ? t('After you save, “May need review” shows in the library on {date} unless the guide is saved or verified again first.',
-          { date: new Date(status.due).toLocaleDateString(dateLocale, { dateStyle: 'medium' }) })
+          { date: formatGuideDate(status.due) })
         : t('This guide is never flagged for review.');
     };
     const todayBtn = el('button', {

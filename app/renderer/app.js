@@ -119,6 +119,7 @@ class StepForgeApp {
     });
 
     document.addEventListener('keydown', (e) => {
+      if (modalIsOpen()) return;
       if ((e.ctrlKey || e.metaKey) && e.key === '/' && !e.shiftKey) {
         e.preventDefault();
         this.openQuickActions();

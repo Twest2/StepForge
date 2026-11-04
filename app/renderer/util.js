@@ -160,17 +160,37 @@ function trapTab(e, dialogNode) {
   }
 }
 
+/** True while any dialog is open: the app's own shortcuts stand down. */
+function modalIsOpen() {
+  return modalStack.length > 0;
+}
+
 /**
- * Keys aimed at the top dialog reach it; Escape closes it (asking first when
- * it has unsaved changes); Tab is trapped; keys aimed at anything behind it
- * are stopped before the app's own shortcut handlers see them.
+ * Keys aimed at the top dialog reach it; Tab is trapped; keys aimed at
+ * anything behind it are stopped before the app's own shortcut handlers see
+ * them (Escape among them still closes the dialog).
  */
 function onModalKeyDown(e) {
   const top = modalStack.at(-1);
   if (!top) return;
-  if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); top.requestDismiss(); return; }
   if (e.key === 'Tab') { trapTab(e, top.node); return; }
-  if (!top.node.contains?.(e.target)) { e.preventDefault(); e.stopPropagation(); }
+  if (top.node.contains?.(e.target)) return;
+  e.preventDefault();
+  e.stopPropagation();
+  if (e.key === 'Escape') top.requestDismiss();
+}
+
+/**
+ * Escape closes the top dialog (asking first when it has unsaved changes),
+ * once it has bubbled back up: a control in the dialog that uses Escape
+ * itself (the shortcut recorder in Settings, a search list) handles it first
+ * and stops it or prevents its default.
+ */
+function onModalEscape(e) {
+  const top = modalStack.at(-1);
+  if (!top || e.key !== 'Escape' || e.defaultPrevented) return;
+  e.preventDefault();
+  top.requestDismiss();
 }
 
 /**
@@ -195,8 +215,10 @@ function syncAppInert() {
 if (typeof document !== 'undefined') {
   if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
     window.addEventListener('keydown', onModalKeyDown, true);
+    window.addEventListener('keydown', onModalEscape);
   } else {
     document.addEventListener('keydown', onModalKeyDown, true);
+    document.addEventListener('keydown', onModalEscape);
   }
   document.addEventListener('focusin', keepFocusInDialog, true);
 }

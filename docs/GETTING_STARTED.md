@@ -112,6 +112,14 @@ For each step you can:
   to frame every screenshot the same way (pan 0% is the left or top edge).
 - Start a **New page** at this step in paged formats such as PDF.
 
+Annotation cards show position and size as percentages of the full screenshot.
+Font size is a percentage of screenshot height (for example, 2.2%); changing
+the display does not alter an existing annotation until you edit the value.
+Stroke and Fill use the same compact picker with default colors, recently used
+colors and, when active, branding colors. Recent choices are shared across
+guides and saved on this device. Transparent remains available for rectangle
+and oval fills. **Custom color…** opens the system color picker.
+
 **Guide details:** choose **More → Guide information…** to add an author,
 version and a short description. The description appears at the top of
 exports and accepts Markdown: `**bold**`, `*italic*`, `` `code` ``,
@@ -120,6 +128,11 @@ exports and accepts Markdown: `**bold**`, `*italic*`, `` `code` ``,
 **Working with many steps at once:** choose **Select**, click one step, then
 **Shift-click** another to select everything in between, including substeps.
 A normal click toggles a single step.
+
+**Deleting steps:** StepForge asks before it deletes a step or a selection
+of steps, and **Ctrl+Z** brings them back. To delete without being asked,
+turn on **Settings → Editor → Dangerous deletes**. Deleting a guide always
+asks.
 
 ### Replace or retake a screenshot
 
@@ -138,10 +151,12 @@ isn't available while a capture session is running.
 ## 3. Annotate screenshots
 
 Pick a tool from the toolbar above the screenshot and drag on the image.
+Hover over a tool to see its name. When no tool is picked, clicking selects
+annotations so you can move, resize and restyle them; to put a tool down
+without using it, click it again or press **Esc** (or **S**).
 
 | Tool | Key | Good for |
 | --- | --- | --- |
-| Select | `S` | Moving, resizing, and restyling existing annotations |
 | Rectangle / Oval | `R` / `O` | Framing a button or area |
 | Line / Arrow | `L` / `A` | Pointing from one thing to another |
 | Text / Tooltip | `T` / `G` | Labels and callouts |
@@ -152,7 +167,7 @@ Pick a tool from the toolbar above the screenshot and drag on the image.
 | Cursor | `U` | Adding a mouse pointer |
 | Crop | `C` | Trimming the screenshot |
 
-After each annotation or crop, StepForge switches back to **Select**, with the
+After each annotation or crop, StepForge puts the tool down again, with the
 new annotation selected so you can move or resize it straight away. To draw
 several with the same tool without picking it again each time, turn off
 **Settings → Editor → Go back to Select after each use**.
@@ -219,8 +234,11 @@ dialog points you there when you pick either format. See
 [Publish to Confluence](CONFLUENCE.md) and [Publish to Wiki.js](WIKIJS.md).
 
 **Templates.** Each format has options such as page size, table of contents
-and image width. Save the ones you like as a template so every guide exports
-the same way, and share it with teammates as a `.sfglt` file.
+and image width. PDF page sizes are A4 or US Letter; margins are in points
+(72 points = 1 inch), and maximum screenshot height is a percentage of the
+page height inside the margins. Word screenshot widths are shown in centimeters.
+Saved templates keep their existing values until you edit them. Save the ones
+you like as a template so every guide exports the same way, and share it with teammates as a `.sfglt` file.
 
 **Branding.** A brand profile puts your logo, colors, fonts, cover, header and
 footer on every export. Set one up in **Settings → Branding → Manage**. See
@@ -231,6 +249,16 @@ footer on every export. Set one up in **Settings → Branding → Manage**. See
 or table cell. It's replaced when you export or publish (code blocks are left
 as written). A single guide can have its own placeholders under
 **More → Guide placeholders…**.
+
+**Other languages.** Guides in any language export to PDF: Chinese,
+Japanese, Korean, Russian, Greek and the rest use fonts already on your
+computer, and the text can still be searched and copied. On Windows that
+works out of the box. On Linux, Chinese, Japanese and Korean need a TrueType
+font such as WenQuanYi Zen Hei (`sudo apt install fonts-wqy-zenhei` or
+`sudo dnf install wqy-zenhei-fonts`); without one those characters show as
+`?`. Arabic and Hebrew letters appear, but are not joined or ordered right to
+left yet. Exported files are named after the guide in its own language, such
+as `重置密码.pdf`.
 
 **Accessibility.** Screenshots in HTML, Word, PowerPoint, Markdown and
 Confluence exports get alt text from the step title, such as "Screenshot for
@@ -273,6 +301,31 @@ and verifies your library before switching to the new location.
   [Sync your guides between computers](CLOUD_ACCOUNTS.md).
 
 ## Keyboard shortcuts
+
+In Steps, Tab reaches each step and its **⋯** Actions button. Use Up/Down or
+Home/End on a step button to navigate, and Shift+F10 for its context menu.
+Select-mode checkboxes and Select all retain keyboard focus as the list updates.
+
+Tab to an annotation card and press Enter or Space to select it. **Focus
+screenshot** moves focus to the screenshot for arrow-key movement and Delete;
+Ctrl+Z undoes those changes. The screenshot itself is also in the Tab order
+while an image is available. Annotation controls keep their own plain keys.
+
+Settings tabs use one Tab stop. Use Up/Down in the vertical layout, Left/Right
+in the narrow horizontal layout, or Home/End to change sections. Visible form
+labels are linked to their controls, including descriptions used as help text.
+
+In the library, Tab reaches sidebar filters, guide titles, favorites and the
+**⋯** Actions buttons. Enter or Space activates the focused control. Native
+checkboxes select guides in Select mode. Use Shift+F10 (or the context-menu
+key) on a guide, folder or trash control for its context actions. Focus stays
+with the corresponding control after filtering, selecting or changing a favorite.
+
+Open a menu button with Enter or Space. Inside a menu, use Up/Down, Home/End
+or type the start of a command. Right opens a submenu; Left returns to its
+parent. Escape closes one menu level and restores focus. Tab leaves the menu
+and continues through the surrounding controls. Unavailable commands remain
+readable but do not run.
 
 Press **Ctrl+/** for the quick-actions palette, or open
 **More → Keyboard shortcuts…** for the full list.

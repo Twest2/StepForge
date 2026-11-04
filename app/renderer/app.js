@@ -6,7 +6,26 @@ const api = window.stepforge;
 const dialogs = window.StepForgeDialogs || {};
 const review = window.StepForgeReview;
 
-/** "just now", "5 min ago", "3 hr ago", "yesterday", "4 days ago", else a short date. */
+// English uses the requested DD-MMM-YYYY; other interfaces use their locale's dates.
+const GUIDE_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** A display-only date in local time; stored timestamps are unchanged. */
+function formatGuideDate(iso, language = 'en') {
+  if (iso == null || iso === '') return '';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  if (language !== 'en') return new Intl.DateTimeFormat(language, { dateStyle: 'medium' }).format(date);
+  return `${String(date.getDate()).padStart(2, '0')}-${GUIDE_MONTHS[date.getMonth()]}-${String(date.getFullYear()).padStart(4, '0')}`;
+}
+
+/** A card date's tooltip: the same date with the time it was saved. */
+function savedAtTitle(iso) {
+  const day = formatGuideDate(iso, uiLanguage);
+  if (!day) return '';
+  return `${day} ${new Date(iso).toLocaleTimeString(dateLocale, { hour: '2-digit', minute: '2-digit' })}`;
+}
+
+/** "just now", "5 min ago", "3 hr ago", "yesterday", "4 days ago", else formatGuideDate. */
 function timeAgo(iso) {
   const then = Date.parse(iso);
   if (!Number.isFinite(then)) return '';
@@ -18,14 +37,14 @@ function timeAgo(iso) {
   const days = Math.round(hours / 24);
   if (days === 1) return t('yesterday');
   if (days < 7) return tn(days, '{count} day ago', '{count} days ago');
-  return new Date(then).toLocaleDateString(dateLocale, { month: 'short', day: 'numeric', year: new Date(then).getFullYear() === new Date().getFullYear() ? undefined : 'numeric' });
+  return formatGuideDate(iso, uiLanguage);
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** The "May need review" pill's tooltip: why the guide is flagged. */
 function reviewBadgeTitle(status) {
-  const since = new Date(status.since).toLocaleDateString(dateLocale, { dateStyle: 'medium' });
+  const since = formatGuideDate(status.since, uiLanguage);
   const what = status.sinceKind === 'verified' ? t('Last verified {date}', { date: since }) : t('Last saved {date}', { date: since });
   return t('{since}, over {interval} ago. Open the guide to check it still matches the software, or right-click → Mark as verified.',
     { since: what, interval: intervalText(status.days) });
@@ -346,7 +365,7 @@ class StepForgeApp {
         },
         el('span.welcome-recent-details', {},
           el('span.welcome-recent-title', {}, guide.title),
-          el('span.muted', {}, `${tn(guide.stepCount, '{count} step', '{count} steps')} • ${fmtDate(guide.updatedAt)}`),
+          el('span.muted', {}, `${tn(guide.stepCount, '{count} step', '{count} steps')} • ${formatGuideDate(guide.updatedAt, uiLanguage)}`),
         ),
         el('span.muted', { 'aria-hidden': 'true' }, '›'),
         ),
@@ -533,6 +552,7 @@ class StepForgeApp {
       el('button.primary', {
         type: 'button',
         title: t('Capture a screenshot step'),
+        'aria-haspopup': 'menu', 'aria-expanded': 'false',
         onClick: (e) => this.editor.openCaptureMenu(e),
       }, t('Capture ▾')),
       el('button', { type: 'button', onClick: () => this.editor.saveAll() }, t('Save')),
@@ -540,6 +560,7 @@ class StepForgeApp {
       el('button', {
         type: 'button',
         title: t('Share this guide as a file or on the web'),
+        'aria-haspopup': 'menu', 'aria-expanded': 'false',
         onClick: (e) => {
           const rect = e.currentTarget.getBoundingClientRect();
           contextMenu(rect.left, rect.bottom + 4, [
@@ -554,6 +575,7 @@ class StepForgeApp {
         type: 'button',
         className: this.editorMeta?.aiProgress ? 'ai-busy' : '',
         title: this.editorMeta?.aiProgress ? t('AI is writing. Click to stop.') : t('Let AI write this guide'),
+        'aria-haspopup': 'menu', 'aria-expanded': 'false',
         onClick: (e) => {
           const rect = e.currentTarget.getBoundingClientRect();
           contextMenu(rect.left, rect.bottom + 4, this.editor.aiMenuItems());
@@ -577,12 +599,14 @@ class StepForgeApp {
             { label: t('Settings…'), action: () => this.openSettings() },
           ]);
         },
+        'aria-haspopup': 'menu', 'aria-expanded': 'false',
       }, t('More ▾')),
       el('span.muted', { style: { marginLeft: '8px' } }, guide ? `${guide.title} · ${tn(this.editorMeta?.stepCount || 0, '{count} step', '{count} steps')}` : ''),
     );
   }
 
   async renderLibrary() {
+    const focusKey = document.activeElement?.dataset?.libraryFocus;
     this.setView('library');
     this.editor.setActive(false);
     clearNode(this.libraryHost);
@@ -622,12 +646,13 @@ class StepForgeApp {
           el('div.lib-header-actions', {},
             canSelect && count ? el('button', {
               type: 'button',
+              dataset: { libraryFocus: 'select-mode' },
               className: this.state.selectMode ? 'primary' : '',
               'aria-pressed': String(this.state.selectMode),
               onClick: () => this.toggleSelectMode(),
             }, t('Select')) : null,
             trash && count && !this.state.selectMode ? el('button.danger', { type: 'button', onClick: () => this.purgeTrashItem() }, t('Empty trash')) : null,
-            trash ? null : el('button', { type: 'button', onClick: (e) => this.openImportMenu(e) }, t('Import ▾')),
+            trash ? null : el('button', { type: 'button', 'aria-haspopup': 'menu', 'aria-expanded': 'false', onClick: (e) => this.openImportMenu(e) }, t('Import ▾')),
             trash ? null : el('button.primary', { type: 'button', onClick: () => this.createGuide() }, t('New guide')),
           ),
         ),
@@ -646,6 +671,7 @@ class StepForgeApp {
     }
     this.renderBulkBar();
     this.renderTopbar();
+    this.restoreLibraryFocus(focusKey);
   }
 
   openImportMenu(event) {
@@ -666,13 +692,15 @@ class StepForgeApp {
 
   libraryNavItem(id, label, count) {
     const props = {
+      type: 'button', dataset: { libraryFocus: `filter:${id}` },
+      'aria-pressed': String(this.state.folderFilter === id),
       className: `nav-item${this.state.folderFilter === id ? ' active' : ''}`,
       onClick: () => this.setFolderFilter(id),
     };
     if (!['all', 'favorites', 'trash'].includes(id)) {
       props.onContextMenu = (e) => this.folderContextMenu(e, id);
     }
-    return el('div.nav-item', props,
+    return el('button.nav-item', props,
     el('span', {}, label),
     el('span.count', {}, count));
   }
@@ -685,11 +713,15 @@ class StepForgeApp {
     for (const folder of children) {
       const count = Object.entries(this.state.library.guideFolders || {})
         .filter(([, fid]) => fid === folder.id).length;
-      out.push(el('div.nav-item', {
+      out.push(el('button.nav-item', {
+        type: 'button', dataset: { libraryFocus: `filter:${folder.id}` },
+        'aria-pressed': String(this.state.folderFilter === folder.id), 'aria-keyshortcuts': 'Shift+F10',
         className: `nav-item${this.state.folderFilter === folder.id ? ' active' : ''}`,
-        style: { paddingLeft: `${8 + depth * 12}px` },
+        style: { paddingLeft: `${10 + depth * 14}px` },
+        title: folder.name,
         onClick: () => this.setFolderFilter(folder.id),
         onContextMenu: (e) => this.folderContextMenu(e, folder.id),
+        onKeyDown: e => this.libraryContextKey(e, event => this.folderContextMenu(event, folder.id)),
       },
       el('span', {}, folder.name),
       el('span.count', {}, count)));
@@ -705,7 +737,7 @@ class StepForgeApp {
     contextMenu(event.clientX, event.clientY, [
       { label: t('Rename folder'), action: () => this.renameFolder(folderId) },
       { label: t('Delete folder'), danger: true, action: () => this.deleteFolder(folderId) },
-    ]);
+    ], { trigger: event.currentTarget });
   }
 
   filterLabel() {
@@ -758,6 +790,7 @@ class StepForgeApp {
   }
 
   renderGuideGrid() {
+    const focusKey = document.activeElement?.dataset?.libraryFocus;
     const guides = this.visibleGuides();
     clearNode(this.domLibraryResults);
     if (!guides.length) {
@@ -768,12 +801,15 @@ class StepForgeApp {
         : filter === 'favorites'
           ? this.emptyState(t('No favorites'), t('Star a guide to keep it here.'))
           : this.emptyState(t('This folder is empty'), t('Right-click a guide, or select guides, to move them here.')));
+      this.restoreLibraryFocus(focusKey);
       return;
     }
     this.domLibraryResults.append(el('div.guide-grid', {}, ...guides.map((guide) => this.guideCard(guide))));
+    this.restoreLibraryFocus(focusKey);
   }
 
   renderTrashView() {
+    const focusKey = document.activeElement?.dataset?.libraryFocus;
     clearNode(this.domLibraryResults);
     if (!this.state.trash.length) {
       const days = this.state.settings?.library?.trashDays ?? 30;
@@ -787,45 +823,67 @@ class StepForgeApp {
     const items = this.state.trash.map((item) => {
       const selected = this.state.selectedTrash.has(item.name);
       const countdown = trashCountdown(item, this.state.settings?.library);
-      return el('div.guide-card.trash-card', {
+      const showMenu = event => {
+        event.preventDefault?.();
+        if (selectMode) return;
+        const trigger = event.currentTarget?.tagName === 'BUTTON' ? event.currentTarget : event.currentTarget?.querySelector?.('.card-actions');
+        contextMenu(event.clientX, event.clientY, [
+          { label: t('Restore'), action: () => this.restoreTrashItem(item.name) },
+          'sep', { label: t('Empty trash'), danger: true, action: () => this.purgeTrashItem() },
+        ], { trigger });
+      };
+      return el('article.guide-card.trash-card', {
+        'aria-label': item.title,
         className: `guide-card trash-card${selected ? ' selected' : ''}${selectMode ? ' selecting' : ''}`,
         onClick: () => {
           if (selectMode) this.toggleTrashSelection(item.name);
         },
-        onContextMenu: (e) => {
-          e.preventDefault();
-          if (selectMode) return;
-          contextMenu(e.clientX, e.clientY, [
-            { label: t('Restore'), action: () => this.restoreTrashItem(item.name) },
-            'sep',
-            { label: t('Empty trash'), danger: true, action: () => this.purgeTrashItem() },
-          ]);
-        },
+        onContextMenu: showMenu,
+        onKeyDown: e => { if (!selectMode) this.libraryContextKey(e, showMenu); },
       },
       selectMode ? this.selectionCheck(selected, (e) => {
         e.stopPropagation();
         this.toggleTrashSelection(item.name);
-      }) : null,
+      }, { title: item.title, focusKey: `trash-select:${item.name}` }) : null,
       el('h4', {}, item.title),
       countdown ? el('div.trash-countdown', {}, countdown) : null,
       el('div.card-footer', {},
         el('span', {}, tn(item.stepCount, '{count} step', '{count} steps')),
         item.deletedAt ? el('span', {}, t('Deleted {when}', { when: timeAgo(item.deletedAt) })) : null,
-        el('button.card-restore', { type: 'button', onClick: (e) => { e.stopPropagation(); this.restoreTrashItem(item.name); } }, t('Restore'))));
+        selectMode ? null : el('button.card-actions', { type: 'button', 'aria-haspopup': 'menu', 'aria-expanded': 'false',
+          'aria-label': t('Actions for “{title}”', { title: item.title }), dataset: { libraryFocus: `trash-actions:${item.name}` },
+          onClick: e => { e.stopPropagation(); const rect = e.currentTarget.getBoundingClientRect(); showMenu({ clientX: rect.left, clientY: rect.bottom, currentTarget: e.currentTarget }); },
+        }, '⋯'),
+        el('button.card-restore', { type: 'button', disabled: selectMode, dataset: { libraryFocus: `trash-restore:${item.name}` }, onClick: (e) => { e.stopPropagation(); this.restoreTrashItem(item.name); } }, t('Restore'))));
     });
     this.domLibraryResults.append(el('div.guide-grid', {}, ...items));
+    this.restoreLibraryFocus(focusKey);
   }
 
-  selectionCheck(selected, onClick) {
-    return el('button.select-check', {
-      type: 'button',
-      className: `select-check${selected ? ' on' : ''}`,
-      role: 'checkbox',
-      'aria-checked': String(selected),
-      'aria-label': selected ? t('Deselect') : t('Select'),
+  selectionCheck(selected, onClick, { title = '', focusKey = '' } = {}) {
+    return el('input.select-check', {
+      type: 'checkbox', checked: selected, dataset: { libraryFocus: focusKey },
+      className: 'select-check',
+      'aria-label': title ? t('{action}: {title}', { action: selected ? t('Deselect') : t('Select'), title }) : selected ? t('Deselect') : t('Select'),
       title: selected ? t('Deselect') : t('Select'),
       onClick,
-    }, selected ? '✓' : '');
+    });
+  }
+
+  restoreLibraryFocus(key) {
+    if (!key || (document.activeElement?.isConnected && document.activeElement !== document.body)) return;
+    const controls = [...(this.libraryHost?.querySelectorAll?.('[data-library-focus]') || [])].filter(button => !button.disabled);
+    const alternative = key.startsWith('open:') ? key.replace('open:', 'select:') : key.replace('select:', 'open:');
+    (controls.find(button => button.dataset.libraryFocus === key) || controls.find(button => button.dataset.libraryFocus === alternative)
+      || controls.find(button => button.dataset.libraryFocus === `filter:${this.state.folderFilter}`))?.focus();
+  }
+
+  libraryContextKey(event, open) {
+    if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) return;
+    event.preventDefault(); event.stopPropagation();
+    const trigger = event.target.closest('button, input') || event.currentTarget;
+    const rect = trigger.getBoundingClientRect();
+    open({ clientX: rect.left, clientY: rect.bottom, currentTarget: trigger, preventDefault() {} });
   }
 
   guideCard(guide) {
@@ -838,26 +896,32 @@ class StepForgeApp {
     const description = (guide.descriptionHtml || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
     const steps = guide.stepCount || 0;
     const reviewState = review.reviewStatus(guide, this.state.settings?.library?.reviewAfterDays);
-    return el('div.guide-card', {
+    const activate = e => {
+      if (selectMode || e.ctrlKey || e.metaKey || e.shiftKey) this.selectGuideFromClick(guide.guideId, e);
+      else this.openGuideAndArmCapture(guide.guideId);
+    };
+    return el('article.guide-card', {
+      'aria-label': guide.title || t('Untitled guide'), dataset: { guideId: guide.guideId },
       className: `guide-card${selected ? ' selected' : ''}${selectMode ? ' selecting' : ''}`,
       title: selectMode ? '' : t('Open guide · Ctrl-click to select'),
       onClick: (e) => {
         // Ctrl/Cmd-click starts or extends a selection; Shift-click selects a range.
-        if (selectMode || e.ctrlKey || e.metaKey || e.shiftKey) this.selectGuideFromClick(guide.guideId, e);
-        else this.openGuideAndArmCapture(guide.guideId);
+        activate(e);
       },
       onContextMenu: (e) => {
         e.preventDefault();
         if (selectMode) return;
         this.guideContextMenu(e, guide);
       },
+      onKeyDown: e => { if (!selectMode) this.libraryContextKey(e, event => this.guideContextMenu(event, guide)); },
     },
     selectMode ? this.selectionCheck(selected, (e) => {
       e.stopPropagation();
       this.selectGuideFromClick(guide.guideId, e, { toggle: true });
-    }) : null,
+    }, { title: guide.title || t('Untitled guide'), focusKey: `select:${guide.guideId}` }) : null,
     el('button.fav', {
       type: 'button',
+      disabled: selectMode, dataset: { libraryFocus: `favorite:${guide.guideId}` },
       className: `fav${guide.favorite ? ' on' : ''}`,
       title: guide.favorite ? t('Remove from favorites') : t('Add to favorites'),
       'aria-label': guide.favorite ? t('Remove from favorites') : t('Add to favorites'),
@@ -869,28 +933,39 @@ class StepForgeApp {
         await this.refreshLibrary();
       },
     }, '★'),
-    el('h4', {}, guide.title || t('Untitled guide')),
+    // Actions (the right-click menu) for keyboard users: shown on hover or focus, beside the star.
+    selectMode ? null : el('button.card-actions', { type: 'button', 'aria-haspopup': 'menu', 'aria-expanded': 'false',
+      title: t('Actions'), 'aria-label': t('Actions for “{title}”', { title: guide.title || t('Untitled guide') }), dataset: { libraryFocus: `actions:${guide.guideId}` },
+      onClick: (e) => { e.stopPropagation(); const rect = e.currentTarget.getBoundingClientRect(); this.guideContextMenu({ clientX: rect.left, clientY: rect.bottom, currentTarget: e.currentTarget }, guide); },
+    }, '⋯'),
+    el('h4', {}, selectMode ? guide.title || t('Untitled guide') : el('button.card-open', {
+      type: 'button', dataset: { libraryFocus: `open:${guide.guideId}` },
+      'aria-label': t('Open “{title}”', { title: guide.title || t('Untitled guide') }),
+      onClick: e => { e.stopPropagation(); activate(e); },
+    }, guide.title || t('Untitled guide'))),
     description ? el('div.snippet', {}, description) : null,
     el('div.card-footer', {},
-      el('span', {}, tn(steps, '{count} step', '{count} steps')),
-      showFolder ? el('span.card-folder', {}, folder.name) : null,
-      guide.linkedSource ? el('span.badge', { title: t('Saved to a linked .sfgz file') }, t('Linked')) : null,
-      guide.locked ? el('span.badge', { title: t('Open on another device') }, t('Locked')) : null,
-      reviewState?.overdue ? el('span.badge.review-badge', { title: reviewBadgeTitle(reviewState) }, t('May need review')) : null,
-      el('span.card-updated', { title: fmtDate(guide.updatedAt) }, timeAgo(guide.updatedAt))));
+      el('span.card-step-count', {}, tn(steps, '{count} step', '{count} steps')),
+      showFolder ? el('span.card-folder', { title: folder.name }, el('span.card-folder-name', {}, folder.name)) : null,
+      guide.linkedSource || guide.locked || reviewState?.overdue ? el('div.card-statuses', {},
+        guide.linkedSource ? el('span.badge', { title: t('Saved to a linked .sfgz file') }, t('Linked')) : null,
+        guide.locked ? el('span.badge', { title: t('Open on another device') }, t('Locked')) : null,
+        reviewState?.overdue ? el('span.badge.review-badge', { title: reviewBadgeTitle(reviewState) }, t('May need review')) : null) : null,
+      el('span.card-updated', { title: savedAtTitle(guide.updatedAt) }, formatGuideDate(guide.updatedAt, uiLanguage))));
   }
 
   resultCard(result, guide, isStep) {
-    return el('div.guide-card', {
+    return el('article.guide-card', {
       onClick: () => this.openGuideAndArmCapture(result.guideId, result.stepId || null),
     },
     isStep ? el('div.card-eyebrow', {}, guide.title) : null,
-    el('h4', {}, result.title || guide.title),
+    el('h4', {}, el('button.card-open', { type: 'button', onClick: e => { e.stopPropagation(); this.openGuideAndArmCapture(result.guideId, result.stepId || null); } }, result.title || guide.title)),
     result.snippet ? el('div.snippet', {}, result.snippet) : null,
     el('div.card-footer', {}, el('span.badge', {}, isStep ? t('Step') : t('Guide'))));
   }
 
   guideContextMenu(event, guide) {
+    const trigger = event.currentTarget?.tagName === 'BUTTON' ? event.currentTarget : event.currentTarget?.querySelector?.('.card-actions') || document.activeElement;
     const currentFolderId = (this.state.library.guideFolders || {})[guide.guideId] || null;
     const folderItems = (this.state.library.folders || [])
       .filter((folder) => folder.id !== currentFolderId)
@@ -913,7 +988,7 @@ class StepForgeApp {
       ...moveItems,
       'sep',
       { label: t('Delete guide'), danger: true, action: () => this.deleteGuide(guide.guideId) },
-    ]);
+    ], { trigger });
   }
 
   toggleSelectMode() {
@@ -998,6 +1073,11 @@ class StepForgeApp {
 
   renderBulkBar() {
     if (!this.domBulkBar) return;
+    const focusKey = document.activeElement?.dataset?.libraryFocus;
+    const finish = () => {
+      [...this.domBulkBar.querySelectorAll('button')].forEach((button, index) => { button.dataset.libraryFocus = `bulk:${index}`; });
+      this.restoreLibraryFocus(focusKey);
+    };
     clearNode(this.domBulkBar);
     if (!this.state.selectMode) return;
     const bar = (n, total, allSelected, onToggleAll, actions) => el('div.bulk-bar', { role: 'toolbar', 'aria-label': t('Selection actions') },
@@ -1013,6 +1093,7 @@ class StepForgeApp {
         el('button', { type: 'button', disabled: !n, onClick: () => this.bulkRestoreTrash() }, t('Restore')),
         el('button.danger', { type: 'button', disabled: !n, onClick: () => this.bulkPurgeTrash() }, t('Delete forever')),
       ]));
+      finish();
       return;
     }
     const guides = this.visibleGuides();
@@ -1022,10 +1103,11 @@ class StepForgeApp {
     const allFavorite = selected.length > 0 && selected.every((g) => g.favorite);
     this.domBulkBar.append(bar(n, guides.length, allSelected, () => (allSelected ? this.clearSelection() : this.selectAllGuides()), [
       el('button', { type: 'button', disabled: !n, onClick: () => this.bulkSetFavorite(!allFavorite) }, allFavorite ? t('Unfavorite') : t('Favorite')),
-      el('button', { type: 'button', disabled: !n, onClick: (e) => this.openBulkMoveMenu(e) }, t('Move to ▾')),
+      el('button', { type: 'button', 'aria-haspopup': 'menu', 'aria-expanded': 'false', disabled: !n, onClick: (e) => this.openBulkMoveMenu(e) }, t('Move to ▾')),
       el('button', { type: 'button', disabled: !n, title: t('Record that these guides still match the software today'), onClick: () => this.markVerified([...this.state.selectedGuides]) }, t('Mark as verified')),
       el('button.danger', { type: 'button', disabled: !n, onClick: () => this.bulkDelete() }, t('Delete')),
     ]));
+    finish();
   }
 
   openBulkMoveMenu(event) {
@@ -1102,7 +1184,7 @@ class StepForgeApp {
   async deleteFolder(folderId) {
     const folder = (this.state.library.folders || []).find((f) => f.id === folderId);
     if (!folder) return;
-    const ok = await confirmDialog(t('Delete the folder “{folder}”? Guides stay in the library.', { folder: folder.name }));
+    const ok = await confirmDialog(t('Delete the folder “{folder}”? Guides stay in the library.', { folder: folder.name }), { title: t('Delete folder'), danger: true, okLabel: t('Delete') });
     if (!ok) return;
     await api.folders.delete({ folderId });
     await this.refreshLibrary();
@@ -1133,7 +1215,7 @@ class StepForgeApp {
   async deleteGuide(guideId) {
     const guide = this.state.library.guides.find((g) => g.guideId === guideId);
     if (!guide) return;
-    const ok = await confirmDialog(t('Delete “{title}”? It moves to Trash. If it syncs to the cloud, it is also removed from your other devices and one cloud recovery snapshot is retained.', { title: guide.title }), { danger: true, okLabel: t('Delete') });
+    const ok = await confirmDialog(t('Delete “{title}”? It moves to Trash. If it syncs to the cloud, it is also removed from your other devices and one cloud recovery snapshot is retained.', { title: guide.title }), { title: t('Delete guide'), danger: true, okLabel: t('Delete') });
     if (!ok) return;
     await api.library.delete({ guideId });
     await this.refreshLibrary();

@@ -1,6 +1,7 @@
 'use strict';
 
 (() => {
+let settingsDialogCount = 0;
 
 /**
  * Small modal factories used by the renderer. They stay intentionally plain:
@@ -8,8 +9,10 @@
  */
 
 function labeledRow(labelText, control, { stacked = false } = {}) {
+  const label = el('label', {}, labelText);
+  labelControl(label, control);
   return el(stacked ? 'div.form-row.stacked' : 'div.form-row', {},
-    el('label', {}, labelText),
+    label,
     control
   );
 }
@@ -475,8 +478,8 @@ function showFindReplace({ stepNumbers = {}, find, replace } = {}) {
         el('div', { style: { height: '8px' } }),
         replacement,
         el('div.form-row', { style: { gap: '16px', margin: '8px 0' } },
-          el('label', {}, matchCase, ' Match case'),
-          el('label', {}, wholeWord, ' Whole word'),
+          el('label', {}, matchCase, ' ', t('Match case')),
+          el('label', {}, wholeWord, ' ', t('Whole word')),
           summary),
         list,
         el('div.muted', { style: { marginTop: '8px' } },
@@ -767,6 +770,7 @@ function showSettingsDialog({
     const pauseHotkey = makeHotkeyInput(settings.capture?.hotkeyPauseResume || '');
     const focusedDefault = el('input', { type: 'checkbox', checked: settings.editor?.focusedViewDefaultForNewSteps !== false });
     const returnToSelect = el('input', { type: 'checkbox', checked: settings.editor?.returnToSelect !== false });
+    const dangerousDeletes = el('input', { type: 'checkbox', checked: settings.editor?.dangerousDeletes === true });
     const previewCount = makeInput(settings.exports?.previewStepCount ?? 3, 'number', { min: 1, step: 1 });
     const openFolder = el('input', { type: 'checkbox', checked: Boolean(settings.exports?.openFolderAfterExport) });
     const codeTheme = makeSelect(CODE_THEME_CHOICES.some((t) => t.value === settings.exports?.codeTheme) ? settings.exports.codeTheme : 'atom-one-dark',
@@ -949,7 +953,7 @@ function showSettingsDialog({
       { id: 'capture', label: t('Capture'), description: t('How StepForge records steps.'), content: [
         settingsCard(t('Recording'),
           recordingControlsRow,
-          settingRow(t('Default mode'), t('Record the whole screen or the active window. For a region, use Capture → Capture region….'), captureMode),
+          settingRow(t('Default mode'), t('Record the whole screen or the active window. For a region, use Capture → Capture region.'), captureMode),
           settingRow(t('Delay'), t('Milliseconds to wait before each screenshot.'), delayMs),
           settingRow(t('Click marker'), t('Draw a marker where you clicked.'), makeSwitch(clickMarker, t('Click marker'))),
           settingRow(t('Capture outside clicks'), t('Record clicks in other apps while a capture session is running.'), makeSwitch(captureOutside, t('Capture outside clicks')))),
@@ -971,6 +975,9 @@ function showSettingsDialog({
         settingsCard(t('Annotation tools'),
           settingRow(t('Go back to Select after each use'), t('After you draw a blur, shape, arrow or other annotation, or crop, the Select tool is picked again. Turn off to keep using the same tool.'),
             makeSwitch(returnToSelect, t('Go back to Select after each use')))),
+        settingsCard(t('Deleting'),
+          settingRow(t('Dangerous deletes'), t('Delete steps without asking for confirmation.'),
+            makeSwitch(dangerousDeletes, t('Dangerous deletes')))),
         settingsCard(t('Backups'),
           settingRow(t('Snapshots to keep'), t('Older backup snapshots of each guide are removed. 0 keeps all of them.'), keepLast)),
       ] },
@@ -1024,26 +1031,40 @@ function showSettingsDialog({
     ];
     const navButtons = new Map();
     const panes = new Map();
+    const settingsId = ++settingsDialogCount;
     const showSection = (id) => {
       for (const [key, button] of navButtons) {
         button.classList.toggle('active', key === id);
         button.setAttribute('aria-selected', String(key === id));
+        button.tabIndex = key === id ? 0 : -1;
       }
       for (const [key, pane] of panes) pane.hidden = key !== id;
       content.scrollTop = 0;
     };
     const nav = el('nav.settings-nav', { role: 'tablist', 'aria-label': t('Settings sections') });
+    const navMedia = typeof window.matchMedia === 'function' ? window.matchMedia('(max-width: 720px)') : null;
+    const syncNavOrientation = () => nav.setAttribute('aria-orientation', navMedia?.matches ? 'horizontal' : 'vertical');
+    syncNavOrientation(); navMedia?.addEventListener?.('change', syncNavOrientation);
+    const disposeSettings = () => { navMedia?.removeEventListener?.('change', syncNavOrientation); accountsPanel.dispose(); };
     const content = el('div.settings-content');
     for (const item of sections) {
-      const button = el('button.settings-nav-item', { type: 'button', role: 'tab', onClick: () => {
+      const button = el('button.settings-nav-item', { type: 'button', role: 'tab', id: `settings-tab-${settingsId}-${item.id}`, 'aria-controls': `settings-pane-${settingsId}-${item.id}`, onClick: () => {
         // Choosing Accounts always starts from the list of services.
         if (item.id === 'accounts') accountsPanel.show(null);
         showSection(item.id);
+      }, onKeyDown: event => {
+        const horizontal = navMedia?.matches;
+        const move = event.key === (horizontal ? 'ArrowRight' : 'ArrowDown') ? 1 : event.key === (horizontal ? 'ArrowLeft' : 'ArrowUp') ? -1 : 0;
+        if (!move && event.key !== 'Home' && event.key !== 'End') return;
+        event.preventDefault(); event.stopPropagation();
+        const buttons = [...navButtons.values()], at = buttons.indexOf(button);
+        const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : (at + move + buttons.length) % buttons.length;
+        buttons[next].click(); buttons[next].focus();
       } },
         item.label, item.badge ? betaBadge(item.badge) : null);
       navButtons.set(item.id, button);
       nav.append(button);
-      const pane = el('section.settings-pane', { role: 'tabpanel', 'aria-label': item.label },
+      const pane = el('section.settings-pane', { role: 'tabpanel', id: `settings-pane-${settingsId}-${item.id}`, 'aria-labelledby': button.id },
         item.id === 'about' ? null : el('header.settings-pane-head', {},
           el('h3', {}, item.label),
           item.description ? el('p.setting-desc', {}, item.description) : null),
@@ -1082,6 +1103,7 @@ function showSettingsDialog({
         ...settings.editor,
         focusedViewDefaultForNewSteps: focusedDefault.checked,
         returnToSelect: returnToSelect.checked,
+        dangerousDeletes: dangerousDeletes.checked,
       },
       branding: {
         ...settings.branding,
@@ -1147,13 +1169,13 @@ function showSettingsDialog({
             e.preventDefault();
             const next = collect();
             if (await onSave(next) === false) return;
-            accountsPanel.dispose();
+            disposeSettings();
             close();
             resolve(true);
           },
         }, t('Save')),
       ],
-      onClose: () => { accountsPanel.dispose(); resolve(false); },
+      onClose: () => { disposeSettings(); resolve(false); },
     });
 
     form.addEventListener('submit', (e) => e.preventDefault());
@@ -1170,13 +1192,6 @@ function showSettingsDialog({
 
 // Export options an exporter doesn't name (no OPTION_INFO label) are named
 // from their key, as in English here; these give that name in every language.
-const EXPORT_OPTION_LABELS = {
-  pretty: t('Pretty'), includeImages: t('Include Images'), includeAnnotations: t('Include Annotations'), toc: t('Toc'),
-  azureWiki: t('Azure Wiki'), imageMaxWidth: t('Image Max Width'), pageSize: t('Page Size'), margin: t('Margin'),
-  includeCover: t('Include Cover'), includeToc: t('Include Toc'), imageMaxHeightRatio: t('Image Max Height Ratio'),
-  imageWidthTwips: t('Image Width Twips'), titleSlide: t('Title Slide'),
-};
-
 /** Draft title and image; choosing a file never creates a step. */
 function showAddStepDialog({ onChooseImage } = {}) {
   return new Promise(resolve => {
@@ -1273,6 +1288,8 @@ function showExportDialog({
     // The effective option set shown to (and edited by) the user.
     let defaults = {};
     let current = {};
+    const optionInputs = [];
+    const validOptions = () => optionInputs.every((input) => input.reportValidity?.() !== false);
 
     const toColorValue = (v) => (/^#[0-9a-f]{6}$/i.test(String(v)) ? String(v).toLowerCase() : '#000000');
 
@@ -1282,6 +1299,13 @@ function showExportDialog({
         // Options that only apply when this one is set show or hide with it.
         if (Object.values(formatInfo(formatSelect.value).options || {}).some((o) => o.dependsOn === key)) renderOptions();
       };
+      if (info.choices) {
+        const selected = info.choices.some((choice) => choice.value === value) ? value : defVal;
+        const input = makeSelect(selected, info.choices);
+        input.setAttribute('aria-label', info.label);
+        input.addEventListener('change', () => set(input.value));
+        return input;
+      }
       if (typeof defVal === 'boolean') {
         const input = el('input', { type: 'checkbox', checked: Boolean(value) });
         input.addEventListener('change', () => set(input.checked));
@@ -1290,10 +1314,12 @@ function showExportDialog({
       if (typeof defVal === 'number') {
         const scale = info.scale || 1;
         const input = makeInput(Math.round((value / scale) * 1000) / 1000, 'number', {
-          step: info.step ?? 'any', min: info.min ?? '', max: info.max ?? '',
+          step: info.step ?? 'any', min: info.min ?? '', max: info.max ?? '', required: true,
         });
+        input.setAttribute('aria-label', info.unit ? `${info.label} (${info.unit})` : info.label);
+        optionInputs.push(input);
         input.addEventListener('input', () => {
-          if (input.value !== '') set(Math.round(Number(input.value) * scale * 1000) / 1000);
+          if (input.value !== '' && Number.isFinite(Number(input.value))) set(Math.round(Number(input.value) * scale * 1000) / 1000);
         });
         return info.unit ? el('div.row.export-number', {}, input, el('span.muted', {}, info.unit)) : input;
       }
@@ -1326,6 +1352,7 @@ function showExportDialog({
 
     function renderOptions() {
       clearNode(optionsHost);
+      optionInputs.length = 0;
       const meta = formatInfo(formatSelect.value).options || {};
       const entries = Object.entries(defaults)
         .filter(([key, v]) => ['boolean', 'number', 'string'].includes(typeof v) && !meta[key]?.hidden)
@@ -1334,10 +1361,16 @@ function showExportDialog({
         optionsHost.append(el('div.muted', {}, t('This format has no adjustable options.')));
         return;
       }
+      let group = null;
       for (const [key, defVal] of entries) {
         const info = meta[key] || {};
+        if (info.group && info.group !== group) {
+          group = info.group;
+          optionsHost.append(el('h3.export-option-group', {}, group));
+        }
         const value = current[key] ?? defVal;
-        const label = info.label || EXPORT_OPTION_LABELS[key] || key.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase());
+        // Every built-in option has a label in its exporter's OPTION_INFO; this fallback is only for unknown keys.
+        const label = info.label || key.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase());
         optionsHost.append(settingRow(label, info.hint || '', optionControl(key, defVal, value, { ...info, label })));
       }
     }
@@ -1435,6 +1468,7 @@ function showExportDialog({
     const saveTplBtn = el('button', {
       type: 'button',
       onClick: async () => {
+        if (!validOptions()) return;
         const name = await promptText({ title: t('Save template'), label: t('Template name'), value: templateSelect.value || '' });
         if (!name || !name.trim()) return;
         await onSaveTemplate?.(formatSelect.value, name.trim(), effectiveOptions());
@@ -1484,7 +1518,7 @@ function showExportDialog({
     const cancelBtn = el('button', { onClick: () => requestDismiss() }, t('Cancel'));
     const previewBtn = el('button', {
       onClick: async () => {
-        if (typeof onPreview !== 'function') return;
+        if (typeof onPreview !== 'function' || !validOptions()) return;
         setButtonLoading(previewBtn, true, t('Preview…'));
         try {
           await onPreview(payload()); // keep dialog open so settings can be tweaked
@@ -1495,7 +1529,7 @@ function showExportDialog({
     }, t('Preview'));
     const exportBtn = el('button.primary', {
       onClick: async () => {
-        if (typeof onExport !== 'function') return;
+        if (typeof onExport !== 'function' || !validOptions()) return;
         cancelBtn.disabled = true;
         previewBtn.disabled = true;
         setButtonLoading(exportBtn, true, t('Exporting…'));

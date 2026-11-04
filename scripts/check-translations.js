@@ -28,7 +28,7 @@ const CALLS = [
 ];
 
 // Format names that stay as they are in every language.
-const EXPORT_NAMES = new Set(['Markdown', 'Wiki.js', 'Confluence', 'GitHub Markdown']);
+const EXPORT_NAMES = new Set(['Markdown', 'Wiki.js', 'Confluence', 'GitHub Markdown', 'JSON', 'PDF', 'GIF', 'DOCX', 'PPTX', 'px']);
 
 const unescape = (text) => text.replace(/\\(.)/g, '$1');
 const placeholders = (text) => [...String(text).matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(',');
@@ -53,11 +53,14 @@ function findMessages() {
   const exportText = [...Object.values(FORMAT_LABELS)];
   for (const info of Object.values(FORMAT_INFO)) {
     exportText.push(info.description);
-    for (const option of Object.values(info.options || {})) exportText.push(option.label, option.hint, option.unit);
+    for (const option of Object.values(info.options || {})) {
+      exportText.push(option.label, option.hint, option.unit, option.group);
+      for (const choice of option.choices || []) exportText.push(choice.label);
+    }
   }
   for (const text of exportText) {
     // Leave out names and units that read the same in every language (PDF, px).
-    if (text && /[a-z]{3}/.test(text) && !EXPORT_NAMES.has(text) && !found.has(text)) found.set(text, { plural: false, where: 'exporters (Export dialog)' });
+    if (text && /[A-Za-z]/.test(text) && !EXPORT_NAMES.has(text) && !found.has(text)) found.set(text, { plural: false, where: 'exporters (Export dialog)' });
   }
   const html = fs.readFileSync(path.join(ROOT, 'app/renderer/index.html'), 'utf8');
   for (const match of html.matchAll(/(title|placeholder|aria-label)="([^"]+)"([^>]*?)data-i18n-(title|placeholder|label)/g)) {

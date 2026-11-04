@@ -1671,6 +1671,8 @@ function setupIpc() {
   // exporters/ describe formats and options in English; the Export dialog shows them in the interface language.
   const translatedOptions = (options = {}) => Object.fromEntries(Object.entries(options).map(([key, info]) => [key, {
     ...info, ...(info.label && { label: t(info.label) }), ...(info.hint && { hint: t(info.hint) }), ...(info.unit && { unit: t(info.unit) }),
+    ...(info.group && { group: t(info.group) }),
+    ...(info.choices && { choices: info.choices.map((choice) => ({ ...choice, label: t(choice.label) })) }),
   }]));
   h('export:formats', () => FORMAT_ORDER.filter((f) => FORMATS.includes(f) && EXPORTERS[f]).map((format) => ({
     id: format,
@@ -2084,6 +2086,7 @@ if (!gotLock) {
         searchIndex.removeGuide(guideId);
         sendToRenderer('cloud:library-changed', { guideId });
       },
+      onFoldersChange: () => sendToRenderer('cloud:library-changed', {}),
       onStatus: () => sendToRenderer('cloud:status', cloudStatus()),
       shared: new SharedSettings({ settings, branding }),
       sharedReady: () => !settingsOpen,

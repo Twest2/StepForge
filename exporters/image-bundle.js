@@ -2,7 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { slugify, htmlToText } = require('../core/util');
+const { fileNameSlug, htmlToText } = require('../core/util');
 const { guideSlug, renderAllImages } = require('./common');
 const { tocEntries, guideSummary } = require('./document-layout');
 const raster = require('../core/raster');
@@ -86,7 +86,7 @@ function exportImageBundle(ast, outDir, template = {}) {
     if (!img) continue;
     if (mark) overlayWatermark(img, mark, markStyle);
     if (tpl.captions) img = addCaption(img, step, accent, ink);
-    const fileName = `step-${fileNumber(step.number)}-${slugify(step.title || step.stepId, 'step')}.png`;
+    const fileName = `step-${fileNumber(step.number)}-${fileNameSlug(step.title || step.stepId, 'step')}.png`;
     fs.writeFileSync(path.join(folder, fileName), encodePng(img));
     files.set(step.stepId, { fileName, width: img.width, height: img.height });
   }

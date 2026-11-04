@@ -387,6 +387,23 @@ test('dialogs are modal dialogs labelled by their heading', () => {
   assert.equal(u.text(heading), 'Brand profiles');
 });
 
+test('confirmation headings identify the action, with a more specific title when supplied', async () => {
+  const u = loadUtil();
+  const pending = u.confirmDialog('Replace the existing page?', { okLabel: 'Replace page' });
+  let dialog = u.modalRoot.children[0];
+  let heading = u.walk(dialog).find((n) => n.id === dialog.getAttribute('aria-labelledby'));
+  assert.equal(u.text(heading), 'Replace page');
+  u.button(dialog, 'Cancel').click();
+  assert.equal(await pending, false);
+  const deletion = u.confirmDialog('Delete this step?', { title: 'Delete step', okLabel: 'Delete', danger: true });
+  dialog = u.modalRoot.children[0];
+  heading = u.walk(dialog).find((n) => n.id === dialog.getAttribute('aria-labelledby'));
+  assert.equal(u.text(heading), 'Delete step');
+  assert.equal(u.doc.activeElement, u.button(dialog, 'Cancel'));
+  u.button(dialog, 'Delete').click();
+  assert.equal(await deletion, true);
+});
+
 test('Cancel uses the dirty dismissal guard and resolves only after discarding', async () => {
   const u = loadUtil();
   const pending = u.promptDialog('Rename', { value: 'Old' });

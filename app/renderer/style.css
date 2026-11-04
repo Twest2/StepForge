@@ -804,6 +804,7 @@ body.platform-linux #capture-status button {
 .annotation-editor .form-row > label:first-child {
   width: 118px;
 }
+.annotation-editor .form-row.stacked > label:first-child { width: auto; }
 /* Fill: a swatch that opens a short list of fills (editor.js fillPicker). */
 .fill-picker { position: relative; flex: 1; min-width: 0; }
 .fill-swatch {
@@ -836,6 +837,9 @@ body.platform-linux #capture-status button {
   box-shadow: var(--shadow);
 }
 .fill-popover[hidden] { display: none; }
+.fill-popover { max-height: min(360px, 60vh); overflow-y: auto; max-width: calc(100vw - 36px); }
+.fill-section-label { padding: 4px 8px 0; font-size: 12px; font-weight: 600; }
+.fill-section-empty { padding: 5px 8px; font-size: 12px; color: var(--muted); }
 .fill-popover .fill-item {
   display: flex;
   align-items: center;
@@ -1082,6 +1086,9 @@ fieldset legend {
   overflow: hidden;
 }
 .modal.wide { width: min(1020px, 96vw); }
+.modal.compact { width: fit-content; min-width: min(320px, 92vw); max-width: min(520px, 92vw); }
+.modal.compact > header, .modal.compact .body { overflow-wrap: anywhere; }
+.modal.compact > footer { flex-wrap: wrap; }
 .modal > header {
   display: flex;
   align-items: center;
@@ -1297,7 +1304,7 @@ fieldset legend {
 .blocks-list .block-card textarea,
 .blocks-list .block-card input { width: 100%; }
 .blocks-list .block-card { gap: 6px; }
-.export-options { display: flex; flex-direction: column; padding: 0 4px; max-height: 320px; overflow-y: auto; }
+.export-options { display: flex; flex-direction: column; padding: 0 4px; }
 .export-options .setting-row { padding: 9px 0; }
 .export-options .setting-control { flex: none; max-width: 55%; }
 .export-options .setting-control input[type="number"] { width: 90px; }
@@ -1965,4 +1972,17 @@ button.cmp-fold:hover { background: var(--border); color: var(--text); }
 @media (max-width: 760px) {
   .cmp-row { grid-template-columns: 1fr; gap: 2px; }
   .cmp-image-pair { grid-template-columns: 1fr; }
+}
+
+/* Export settings share one compact layout while retaining per-format controls. */
+.export-option-group { margin: 16px 0 2px; font-size: 12px; font-weight: 700; color: var(--muted); }
+.export-option-group:first-child { margin-top: 2px; }
+.export-option-group + .setting-row { border-top: 0; }
+.export-options .setting-text { min-width: 0; }
+.export-options .setting-control select { max-width: 100%; }
+.export-number { flex-wrap: nowrap; }
+.export-number > span { white-space: nowrap; }
+@media (max-width: 900px) {
+  .export-options .setting-row { flex-direction: column; align-items: stretch; gap: 6px; }
+  .export-options .setting-control { max-width: 100%; align-self: flex-start; }
 }

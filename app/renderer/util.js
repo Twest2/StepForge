@@ -240,7 +240,7 @@ function unsavedChanges(read) {
  * back to what opened it when it closes. `initialFocus` picks the element
  * to focus on open (default: the first field, else the primary button).
  */
-function openModal({ title, body, footer, wide = false, onClose, isDirty = null, initialFocus = null }) {
+function openModal({ title, body, footer, wide = false, compact = false, onClose, isDirty = null, initialFocus = null }) {
   const root = document.getElementById('modal-root');
   const parent = modalStack.at(-1);
   const previousFocus = document.activeElement;
@@ -287,6 +287,7 @@ function openModal({ title, body, footer, wide = false, onClose, isDirty = null,
     const discard = el('button', { type: 'button', className: 'danger', onClick: () => finish(true) }, t('Discard'));
     ({ close: closePrompt } = openModal({
       title: t('Discard your changes?'),
+      compact: true,
       body: el('div', {}, t('Your unsaved changes will be lost.')),
       footer: [keep, discard],
       initialFocus: keep,
@@ -299,7 +300,7 @@ function openModal({ title, body, footer, wide = false, onClose, isDirty = null,
   const closeButton = el('button', {
     type: 'button', className: 'close', title: t('Close (Esc)'), 'aria-label': t('Close (Esc)'), onClick: requestDismiss,
   }, '✕');
-  const modal = el('div.modal', { className: `modal${wide ? ' wide' : ''}`, role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titleId },
+  const modal = el('div.modal', { className: `modal${wide ? ' wide' : ''}${compact ? ' compact' : ''}`, role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titleId },
     el('header', {}, el('h2.modal-title', { id: titleId }, title), closeButton),
     bodyEl,
     footerEl,
@@ -318,11 +319,12 @@ function openModal({ title, body, footer, wide = false, onClose, isDirty = null,
  * Simple confirm dialog returning a promise<boolean>. A destructive one
  * (`danger`) opens with Cancel focused, so Enter can't confirm it by accident.
  */
-function confirmDialog(message, { danger = false, okLabel = t('OK') } = {}) {
+function confirmDialog(message, { danger = false, okLabel = t('OK'), title = okLabel } = {}) {
   return new Promise((resolve) => {
     const cancel = el('button', { type: 'button', onClick: () => { close(); resolve(false); } }, t('Cancel'));
     const { close } = openModal({
-      title: t('Confirm'),
+      title,
+      compact: true,
       body: el('div', {}, message),
       footer: [
         cancel,
@@ -376,6 +378,7 @@ function confirmReplaceEdits(api, edited, { where, history }) {
     const cancel = el('button', { type: 'button', onClick: () => { close(); resolve(false); } }, t('Cancel'));
     const { close } = openModal({
       title: t('Page edited since you published'),
+      compact: true,
       body: el('div.cloud-confirm', {},
         el('strong', {}, edits),
         el('p', {}, history)),

@@ -950,7 +950,7 @@ function showSettingsDialog({
       { id: 'capture', label: t('Capture'), description: t('How StepForge records steps.'), content: [
         settingsCard(t('Recording'),
           recordingControlsRow,
-          settingRow(t('Default mode'), t('Record the whole screen or the active window. For a region, use Capture → Capture region….'), captureMode),
+          settingRow(t('Default mode'), t('Record the whole screen or the active window. For a region, use Capture → Capture region.'), captureMode),
           settingRow(t('Delay'), t('Milliseconds to wait before each screenshot.'), delayMs),
           settingRow(t('Click marker'), t('Draw a marker where you clicked.'), makeSwitch(clickMarker, t('Click marker'))),
           settingRow(t('Capture outside clicks'), t('Record clicks in other apps while a capture session is running.'), makeSwitch(captureOutside, t('Capture outside clicks')))),

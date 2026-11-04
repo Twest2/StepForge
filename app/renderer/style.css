@@ -1082,6 +1082,9 @@ fieldset legend {
   overflow: hidden;
 }
 .modal.wide { width: min(1020px, 96vw); }
+.modal.compact { width: fit-content; min-width: min(320px, 92vw); max-width: min(520px, 92vw); }
+.modal.compact > header, .modal.compact .body { overflow-wrap: anywhere; }
+.modal.compact > footer { flex-wrap: wrap; }
 .modal > header {
   display: flex;
   align-items: center;

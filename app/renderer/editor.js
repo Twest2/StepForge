@@ -706,7 +706,7 @@ class GuideEditor {
         el('section', {},
           el('h3', {}, t('Guide')),
           this.dom.guideSummary = el('div.muted', {}),
-          this.dom.saveNowBtn = el('button', { type: 'button', title: t('Save changes. For guides linked to a shared archive, also writes the archive file.') }, t('Save now')),
+          this.dom.saveNowBtn = el('button.primary', { type: 'button', title: t('Save changes. For guides linked to a shared archive, also writes the archive file.') }, t('Save now')),
           this.dom.snapshotBtn = el('button', { type: 'button' }, t('Snapshot')),
         ),
       ),

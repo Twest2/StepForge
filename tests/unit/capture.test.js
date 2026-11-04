@@ -1631,6 +1631,20 @@ test('a window frame with captureBounds gets a click marker placed inside those 
   assert.equal(mark.y + mark.h / 2, 0.5);
 });
 
+test('a capture without a click gets no marker, wherever the mouse is', async () => {
+  const { service, added } = markerService();
+  const bounds = { x: 0, y: 0, width: 400, height: 300 };
+  // Capture full screen, the hotkey and timed captures: the frame knows the
+  // mouse position, but nothing was clicked.
+  const frame = makeFrame('full', 0, { mode: 'fullscreen', display: { bounds }, size: { width: 400, height: 300 } });
+  frame.cursor = { x: 200, y: 150 };
+  assert.equal((await service.storeFrameAsStep('g', 'fullscreen', frame)).ok, true);
+  assert.deepEqual(added[0].annotations, []);
+  // A click is still marked.
+  await service.storeFrameAsStep('g', 'fullscreen', frame, { x: 100, y: 100 });
+  assert.equal(added[1].annotations.length, 1);
+});
+
 test('click markers use the brand profile’s shape color when it sets one, else the setting', async () => {
   const frame = () => {
     const bounds = { x: 0, y: 0, width: 400, height: 300 };

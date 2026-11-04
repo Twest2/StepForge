@@ -252,7 +252,7 @@ test('the capture hotkey in a Window recording stores the active window from its
   assert.equal(added[0].fields.title, 'Window capture');
 });
 
-test('Capture window outside a recording grabs the active window’s monitor and keeps the real cursor', async () => {
+test('Capture window outside a recording grabs the active window’s monitor, with no click marker', async () => {
   const { service, added } = windowsService({ cursor: { x: 3700, y: 300 } });
   service.readActiveWindow = async () => ({ left: 3440, top: 127, right: 4400, bottom: 667, pid: 4242 });
   const grabs = [];
@@ -269,8 +269,7 @@ test('Capture window outside a recording grabs the active window’s monitor and
   assert.equal(grabs[0].mode, 'fullscreen');
   assert.deepEqual(grabs[0].point, { x: 3700, y: 300 }, 'the cursor is on the window, so its monitor is grabbed');
   assert.deepEqual(pngRect(added[0].png), { x: 0, y: 0, width: 960, height: 540 });
-  const [marker] = added[0].fields.annotations;
-  near(marker.x + marker.w / 2, (3700 - 3440) / 640, 'marker at the cursor');
+  assert.deepEqual(added[0].fields.annotations, [], 'nothing was clicked, so the mouse isn’t circled');
 });
 
 test('a Window retake on Windows returns the active window cut from the screen', async () => {

@@ -2384,9 +2384,10 @@ ${WINDOW_BOUNDS_CS}
   async storeFrameAsStep(guideId, mode, frame, clickPos = null, clickMeta = null) {
     if (!frame) return { ok: false, reason: 'no capture frame available' };
     const annotations = [];
-    // The click position (DIP, read at event time) wins over the frame's
-    // grab-time cursor; stream-backend frames carry no cursor at all.
-    const cursor = clickPos || frame.cursor || null;
+    // The marker shows where the user clicked (DIP, read at event time). A
+    // capture without a click (Capture full screen, the hotkey, timed
+    // captures) gets no marker, wherever the mouse happens to be.
+    const cursor = clickPos || null;
     // Window frames have a reliable origin only when the backend reports the
     // captured bounds (GNOME crops to the focused window and sets them).
     const markable = mode !== 'window' || Boolean(frame.captureBounds);

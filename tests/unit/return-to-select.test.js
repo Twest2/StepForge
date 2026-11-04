@@ -52,11 +52,9 @@ function editorWithCanvas(settings) {
   editor.dom = {
     'tool-select': button({ dataset: { tool: 'select' } }),
     'tool-blur': button({ dataset: { tool: 'blur' } }),
-    zoomFitBtn: button(),
-    zoom100Btn: button(),
-    zoom125Btn: button(),
-    zoom150Btn: button(),
+    zoomSelect: { value: 'fit', children: [{ value: 'fit', dataset: {} }], append() {} },
   };
+  editor.currentZoom = 'fit';
   editor.setSettings(settings);
   const changes = [];
   editor.canvas = new AnnotationCanvas(fakeCanvasElement(), {

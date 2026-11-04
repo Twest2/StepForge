@@ -357,6 +357,7 @@
   'Recording': '录制',
   'Default mode': '默认模式',
   'Record the whole screen or the active window. For a region, use Capture → Capture region….': '录制整个屏幕或活动窗口。如需录制区域，请使用“捕获 → 捕获区域…”。',
+  'Crop': '裁剪',
   'Delay': '延迟',
   'Milliseconds to wait before each screenshot.': '每次截图前等待的毫秒数。',
   'Click marker': '单击标记',

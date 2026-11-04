@@ -357,6 +357,7 @@
   'Recording': '録画',
   'Default mode': '既定のモード',
   'Record the whole screen or the active window. For a region, use Capture → Capture region….': '画面全体またはアクティブなウィンドウを録画します。範囲を指定するには キャプチャ → 範囲をキャプチャ… を使います。',
+  'Crop': 'トリミング',
   'Delay': '遅延',
   'Milliseconds to wait before each screenshot.': '各スクリーンショットの前に待つミリ秒数。',
   'Click marker': 'クリックマーカー',

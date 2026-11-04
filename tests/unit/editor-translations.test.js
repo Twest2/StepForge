@@ -21,6 +21,8 @@ function fakeEl(spec, props = {}, ...children) {
     classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
     style: {},
     addEventListener() {},
+    setAttribute(name, value) { node.props[name] = value; },
+    querySelectorAll: () => [],
     append(...more) { node.children.push(...more); },
     get text() { return node.children.map((c) => (typeof c === 'object' ? c.text : String(c))).join(''); },
   };
@@ -30,7 +32,7 @@ function fakeEl(spec, props = {}, ...children) {
 function loadEditor(language, extra = {}) {
   const context = {
     ...rendererI18n(language),
-    window: { stepforge: { ai: {} }, StepForgeOutline: require('../../core/step-outline'), StepForgeDialogs: {} },
+    window: { stepforge: { ai: {} }, StepForgeOutline: require('../../core/step-outline'), StepForgeDialogs: {}, StepForgePaneLayout: require('../../core/editor-layout') },
     document: { activeElement: null },
     el: fakeEl,
     clearNode() {},
@@ -73,7 +75,7 @@ test('the step panel’s checkboxes and description toolbar are translated', () 
   const ja = mountedEditor('ja');
   assert.deepEqual([ja.dom.hiddenToggle, ja.dom.skippedToggle, ja.dom.forceNewPageToggle, ja.dom.focusedViewToggle].map((n) => n.text.trim()),
     ['非表示', 'スキップ', '改ページ', 'フォーカス表示']);
-  assert.deepEqual(ja.dom.richToolbar.children.map((n) => n.text), ['太字', '斜体', '箇条書き', '番号', '引用', 'リンク', 'クリア']);
+  assert.deepEqual(ja.dom.richToolbar.children.map((n) => n.text), ['太字', '斜体', '箇条書き', '番号付きリスト', '引用', 'リンク', 'クリア']);
 });
 
 test('deleting a step asks in the interface language, with the step’s name', async () => {

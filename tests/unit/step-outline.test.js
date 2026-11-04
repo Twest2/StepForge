@@ -18,6 +18,20 @@ function outline(spec) {
 }
 const show = (result) => result && result.order.map((id) => (result.parentOf.get(id) ? `${id}>${result.parentOf.get(id)}` : id)).join(' ');
 
+test('collapsed step groups filter only the view, preserve nested collapse state and do not change export inputs', () => {
+  const { visibleSteps, stepNumberMap } = require('../../core/step-outline');
+  const steps = [{ stepId: 'a' }, { stepId: 'b', parentStepId: 'a' }, { stepId: 'c', parentStepId: 'b' }, { stepId: 'd' }];
+  const original = JSON.stringify(steps), numbers = [...stepNumberMap(steps)];
+  const collapsed = new Set(['a', 'b']);
+  assert.deepEqual(visibleSteps(steps, collapsed).map(s => s.stepId), ['a', 'd']);
+  collapsed.delete('a');
+  assert.deepEqual(visibleSteps(steps, collapsed).map(s => s.stepId), ['a', 'b', 'd']);
+  collapsed.delete('b');
+  assert.deepEqual(visibleSteps(steps, collapsed), steps);
+  assert.equal(JSON.stringify(steps), original);
+  assert.deepEqual([...stepNumberMap(steps)], numbers);
+});
+
 test('repairOutline leaves a valid outline alone and flattens a broken one', () => {
   const good = outline('A a1>A a2>A B');
   assert.deepEqual([...repairOutline(good.order, good.parentOf)], [...good.parentOf]);

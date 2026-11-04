@@ -568,3 +568,58 @@ test('replacing a screenshot preserves automatic private-detail blurs too', asyn
   const p = (5 * png.width + 5) * 4;
   assert.notDeepEqual([...png.data.subarray(p, p + 3)], [255, 0, 0], 'private pixels remain hidden');
 });
+
+
+test('revoking access denies every tool on an existing tool set without changing guides', async t => {
+  const { tools, call, settings, store, guide, first } = makeLibrary(t, { enabled: true, screenshots: true, branding: true });
+  assert.equal((await call('update_step', { guide_id: guide.guideId, step_id: first.stepId, title: 'Allowed' })).isError, undefined);
+  const before = JSON.stringify(store.getStep(guide.guideId, first.stepId));
+  const snapshots = listSnapshots(store, guide.guideId);
+  settings.set('ai.agents.enabled', false);
+  for (const tool of tools) {
+    const denied = await tool.handler({});
+    assert.equal(denied.isError, true, tool.name);
+    assert.match(denied.content[0].text, /AI agent access turned off/, tool.name);
+  }
+  assert.equal(JSON.stringify(store.getStep(guide.guideId, first.stepId)), before);
+  assert.deepEqual(listSnapshots(store, guide.guideId), snapshots);
+  settings.set('ai.agents.enabled', true);
+  assert.equal((await call('list_guides')).isError, undefined);
+});
+
+test('a live MCP stdio connection loses permissions as soon as access is saved off', { timeout: 15000 }, async t => {
+  const { dir, settings, store, guide, first } = makeLibrary(t);
+  const child = spawn(process.execPath, [path.join(ROOT, 'app', 'boot.js'), '--mcp'], {
+    env: { ...process.env, STEPFORGE_DATA_DIR: dir }, stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  t.after(() => child.kill());
+  const pending = new Map(); let id = 0; let text = '';
+  child.stdout.setEncoding('utf8');
+  child.stdout.on('data', chunk => {
+    text += chunk;
+    let end;
+    while ((end = text.indexOf('\n')) >= 0) {
+      const reply = JSON.parse(text.slice(0, end)); text = text.slice(end + 1);
+      pending.get(reply.id)?.(reply);
+    }
+  });
+  const request = (method, params) => new Promise((resolve, reject) => {
+    const key = ++id;
+    const timer = setTimeout(() => { pending.delete(key); reject(Error('MCP reply timed out')); }, 5000);
+    pending.set(key, reply => { clearTimeout(timer); pending.delete(key); resolve(reply); });
+    child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: key, method, params }) + '\n');
+  });
+  await request('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'access-revocation-test', version: '1' } });
+  child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
+  const write = title => request('tools/call', { name: 'update_step', arguments: { guide_id: guide.guideId, step_id: first.stepId, title } });
+  assert.equal((await write('Allowed before disabling')).result.isError, undefined);
+  settings.set('ai.agents.enabled', false);
+  assert.equal((await write('Must not be written')).result.isError, true);
+  const read = await request('tools/call', { name: 'get_step', arguments: { guide_id: guide.guideId, step_id: first.stepId } });
+  assert.equal(read.result.isError, true);
+  assert.equal(store.getStep(guide.guideId, first.stepId).title, 'Allowed before disabling');
+  settings.set('ai.agents.enabled', true);
+  assert.equal((await write('Allowed after re-enabling')).result.isError, undefined);
+  child.stdin.end();
+  assert.equal(await new Promise(resolve => child.on('close', resolve)), 0);
+});

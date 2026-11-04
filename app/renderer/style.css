@@ -322,6 +322,9 @@ body.platform-linux #capture-status button {
   color: var(--text);
 }
 .lib-side .nav-item:hover { background: var(--panel-2); }
+.lib-side button.nav-item { width: 100%; border: 0; background: transparent; text-align: left; font: inherit; }
+.lib-side button.nav-item:hover { background: var(--panel-2); }
+.lib-side .nav-item > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lib-side .nav-item.active {
   background: color-mix(in srgb, var(--accent) 12%, var(--panel-solid));
   color: var(--accent-strong);
@@ -375,11 +378,31 @@ body.platform-linux #capture-status button {
   box-shadow: 0 0 0 1px var(--accent), var(--shadow);
 }
 .guide-card.selecting { transform: none; }
+/* Keyboard focus anywhere in a card outlines the card; a mouse click doesn't. */
+.guide-card:has(:focus-visible) { border-color: var(--accent); }
+.guide-card .card-open {
+  width: 100%; border: 0; border-radius: 3px; background: transparent; padding: 0; color: inherit; font: inherit; text-align: left;
+  /* Buttons don't wrap by default; a title wraps to two lines, as it did before it was a button. */
+  white-space: normal; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.guide-card .card-open:hover { background: transparent; text-decoration: underline; }
+.guide-card .card-open:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.guide-card .card-actions {
+  position: absolute; top: 10px; right: 40px; width: 28px; height: 28px; min-width: 0; padding: 0;
+  border: 0; border-radius: 8px; background: transparent; color: var(--muted); font-size: 18px; line-height: 1;
+  opacity: 0; transition: opacity 120ms ease;
+}
+/* Like the star: shown when the card is hovered or the button has keyboard focus. */
+.guide-card:hover .card-actions { opacity: 0.75; }
+.guide-card .card-actions:hover, .guide-card .card-actions:focus-visible, .guide-card .card-actions[aria-expanded="true"] { opacity: 1; background: var(--panel-2); }
+.trash-card .card-actions { position: static; opacity: 1; margin-left: auto; }
+.guide-card input.select-check { appearance: auto; display: block; width: 20px; height: 20px; margin: 0; padding: 0; border: 0; box-shadow: none; background: transparent; accent-color: var(--accent); }
 .guide-card h4 {
   margin: 0 0 6px;
   font-size: 15px;
   line-height: 1.3;
-  padding-right: 26px;
+  padding-right: 56px; /* room for the actions button and the star */
   word-break: break-word;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -419,6 +442,7 @@ body.platform-linux #capture-status button {
 .guide-card .fav:focus-visible { opacity: 1; transition: none; }
 .guide-card .fav:hover { opacity: 1; background: var(--panel-2); }
 .guide-card .fav.on { opacity: 1; color: var(--caution); }
+.guide-card .fav:focus-visible { opacity: 1; transition: none; outline: 2px solid var(--accent); }
 .guide-card.selecting .fav:not(.on) { display: none; }
 
 /* Round checkbox on every card while Select is on. */
@@ -518,30 +542,40 @@ body.platform-linux #capture-status button {
 .empty-state button { margin-top: 12px; }
 
 .pane-steps {
-  width: 320px;
-  min-width: 320px;
+  width: var(--steps-pane-width, 320px);
+  min-width: 0;
+  flex: none;
   display: flex;
   flex-direction: column;
   min-height: 0;
   background: color-mix(in srgb, var(--panel-solid) 86%, transparent);
-  border-right: 1px solid var(--border);
 }
 .pane-canvas {
   flex: 1;
-  min-width: 0;
+  min-width: 320px;
   display: flex;
   flex-direction: column;
   min-height: 0;
   background: linear-gradient(180deg, color-mix(in srgb, var(--bg) 76%, var(--panel-solid) 24%), var(--bg));
 }
 .pane-props {
-  width: 330px;
-  min-width: 330px;
+  width: var(--properties-pane-width, 330px);
+  min-width: 0;
+  flex: none;
   padding: 14px;
   overflow-y: auto;
-  border-left: 1px solid var(--border);
   background: color-mix(in srgb, var(--panel-solid) 88%, transparent);
 }
+.editor { min-width: 832px; overflow: hidden; }
+#editor-host { min-width: 0; overflow: hidden; }
+.pane-divider { width: 6px; flex: none; position: relative; cursor: col-resize; touch-action: none; background: var(--panel-solid); }
+.pane-divider::before { content: ''; position: absolute; top: 0; bottom: 0; left: 2px; width: 1px; background: var(--border); }
+.pane-divider:hover::before, .pane-divider.dragging::before { width: 2px; background: var(--accent); }
+/* Keyboard focus shows on the divider line itself, not as a box around it. */
+.pane-divider:focus-visible { outline: none; }
+.pane-divider:focus-visible::before { left: 1px; width: 3px; background: var(--accent); }
+.editor.resizing-panes, .editor.resizing-panes * { cursor: col-resize; user-select: none; }
+.pane-steps .pane-head, .pane-steps .pane-head > .row { flex-wrap: wrap; }
 .pane-head,
 .pane-foot {
   display: flex;
@@ -601,6 +635,74 @@ body.platform-linux #capture-status button {
   letter-spacing: 0.04em;
 }
 .step-item.dragging { opacity: 0.45; }
+.step-select, .step-summary { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+/* Two classes, so body.platform-linux button { padding } doesn't win on Linux. */
+.step-item .step-select { border: 0; background: transparent; padding: 2px 0; color: inherit; text-align: left; font: inherit; }
+.step-item .step-select:hover { background: transparent; }
+.step-select:focus-visible, .step-actions:focus-visible, .annotation-select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.step-item .step-actions { flex: none; width: 22px; min-width: 0; height: 22px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font-size: 16px; line-height: 1; opacity: 0; }
+/* Like the library cards' ⋯: shown on hover, keyboard focus, or while its menu is open. */
+.step-item:hover .step-actions, .step-item .step-actions:focus-visible, .step-item .step-actions[aria-expanded="true"] { opacity: 1; }
+/* "Focus screenshot" is a skip link for keyboard users: hidden until Tab reaches it. */
+.annotation-editor .skip-to-canvas:not(:focus-visible) { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.step-item .flags:empty { display: none; }
+.block-card.annotation-select { width: 100%; padding: 10px; background: var(--panel); text-align: left; color: var(--text); font: inherit; }
+.annotation-editor .form-row.stacked > label:first-child { width: auto; }
+.canvas-wrap canvas:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+#btn-home.brand { border: 0; background: transparent; padding: 2px 0; color: var(--text); }
+/* Threads, as in a Reddit comment thread: a thin line runs from a step's status
+   dot down past its substeps (editor.js stepThreadLines). Clicking it folds the
+   substeps away; hovering lights up the whole thread. */
+.step-item { position: relative; }
+.step-item .step-thread-line, .step-item .step-thread-start {
+  position: absolute;
+  width: 12px;
+  cursor: pointer;
+}
+/* Each substep row carries a piece of every thread it is in, reaching across the 4px row gap. */
+.step-thread-line { top: -1px; bottom: -5px; }
+.step-thread-line.end { bottom: 6px; }
+/* Two classes, so body.platform-linux button { padding } doesn't win on Linux. */
+.step-item .step-thread-start {
+  left: 8px;
+  top: calc(50% + 6px);
+  bottom: -5px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+}
+.step-thread-line::before, .step-thread-start::before {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--border);
+}
+.step-thread-line.hot::before, .step-thread-start.hot::before { background: var(--accent); }
+.step-item .step-thread-start:hover, .step-item .step-thread-start:active { background: none; transform: none; }
+/* Keyboard focus shows on the line itself, not as a box around it. */
+.step-item .step-thread-start:focus-visible { outline: none; }
+.step-thread-start:focus-visible::before { left: 4px; width: 4px; border-radius: 2px; background: var(--accent); }
+/* A collapsed step: "+3", how many substeps are folded away. Clicking it opens them. */
+.step-item .step-fold-count {
+  flex: none;
+  min-width: 0;
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
+}
+.step-item .step-fold-count:hover, .step-item .step-fold-count.hot { color: var(--accent); border-color: var(--accent); }
 /* Shows where a dragged step lands; its left edge is the level it will have. */
 .step-drop-line {
   position: absolute;
@@ -658,6 +760,8 @@ body.platform-linux #capture-status button {
   font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
+/* The toolbar wraps at narrow widths; past a few rows it scrolls rather than squeezing the canvas. */
+.canvas-toolbar { max-height: min(220px, 35vh); min-width: 0; overflow: auto; flex-shrink: 0; }
 .canvas-wrap {
   flex: 1;
   min-height: 0;
@@ -804,6 +908,7 @@ body.platform-linux #capture-status button {
 .annotation-editor .form-row > label:first-child {
   width: 118px;
 }
+.annotation-editor .form-row.stacked > label:first-child { width: auto; }
 /* Fill: a swatch that opens a short list of fills (editor.js fillPicker). */
 .fill-picker { position: relative; flex: 1; min-width: 0; }
 .fill-swatch {
@@ -836,6 +941,9 @@ body.platform-linux #capture-status button {
   box-shadow: var(--shadow);
 }
 .fill-popover[hidden] { display: none; }
+.fill-popover { max-height: min(360px, 60vh); overflow-y: auto; max-width: calc(100vw - 36px); }
+.fill-section-label { padding: 4px 8px 0; font-size: 12px; font-weight: 600; }
+.fill-section-empty { padding: 5px 8px; font-size: 12px; color: var(--muted); }
 .fill-popover .fill-item {
   display: flex;
   align-items: center;
@@ -1082,6 +1190,9 @@ fieldset legend {
   overflow: hidden;
 }
 .modal.wide { width: min(1020px, 96vw); }
+.modal.compact { width: fit-content; min-width: min(320px, 92vw); max-width: min(520px, 92vw); }
+.modal.compact > header, .modal.compact .body { overflow-wrap: anywhere; }
+.modal.compact > footer { flex-wrap: wrap; }
 .modal > header {
   display: flex;
   align-items: center;
@@ -1141,13 +1252,25 @@ fieldset legend {
   border: 1px solid var(--border);
   border-radius: 14px;
   box-shadow: var(--shadow);
+  max-width: calc(100vw - 12px);
+  max-height: calc(100vh - 12px);
+  overflow-y: auto;
 }
 .ctx-menu .mi {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  white-space: normal;
   padding: 7px 10px;
   border-radius: 9px;
   cursor: pointer;
 }
 .ctx-menu .mi:hover { background: var(--panel-2); }
+.ctx-menu .mi:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; background: var(--panel-2); }
 .ctx-menu .mi.danger { color: var(--danger); }
 .ctx-menu .mi.disabled {
   color: var(--muted);
@@ -1285,7 +1408,7 @@ fieldset legend {
 .blocks-list .block-card textarea,
 .blocks-list .block-card input { width: 100%; }
 .blocks-list .block-card { gap: 6px; }
-.export-options { display: flex; flex-direction: column; padding: 0 4px; max-height: 320px; overflow-y: auto; }
+.export-options { display: flex; flex-direction: column; padding: 0 4px; }
 .export-options .setting-row { padding: 9px 0; }
 .export-options .setting-control { flex: none; max-width: 55%; }
 .export-options .setting-control input[type="number"] { width: 90px; }
@@ -1862,6 +1985,33 @@ button.cmp-fold:hover { background: var(--border); color: var(--text); }
 .cmp-step.deleted .cmp-step-title { text-decoration: line-through; text-decoration-color: var(--danger); }
 .cmp-step-body { display: flex; flex-direction: column; gap: 10px; padding: 12px; }
 .cmp-step-body[hidden] { display: none; }
+
+.guide-description-help { font-size: 12px; line-height: 1.5; }
+.guide-info-cloud { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.guide-info-cloud h3 { margin: 0 0 10px; }
+.guide-info-cloud > .row { margin-top: 10px; flex-wrap: wrap; }
+
+/* Give localized values room instead of shrinking two full-width selects. */
+.blocks-list .block-text-options { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
+.blocks-list .block-text-options select { min-width: 0; width: 100%; }
+.export-output-folder { flex: 1; min-width: 0; }
+.export-dialog > .form-row > .export-output-folder { flex-wrap: nowrap; }
+.export-output-folder input { flex: 1; min-width: 0; width: 100%; }
+.export-output-folder button { flex: none; }
+.export-dialog > .form-row > .row { flex: 1; min-width: 0; flex-wrap: wrap; }
+.export-dialog > .form-row > .row > select { min-width: 0; max-width: 100%; }
+.export-dialog .export-format { flex: 1; min-width: 0; }
+.guide-info-body > .form-row > input,
+.guide-info-body > .form-row > select,
+.guide-info-body > .form-row > .row { flex: 1; min-width: 0; width: 100%; }
+.guide-info-body > .form-row > .row { flex-wrap: wrap; }
+.guide-info-body input[type="date"] { width: auto; max-width: 100%; }
+@media (max-width: 680px) {
+  .guide-info-body > .form-row:not(.stacked) { flex-direction: column; align-items: stretch; }
+  .guide-info-body > .form-row > label:first-child { width: auto; }
+  .export-dialog > .form-row { flex-direction: column; align-items: stretch; }
+  .export-dialog > .form-row > label:first-child { width: auto; }
+}
 .cmp-viewed {
   display: inline-flex; align-items: center; gap: 5px;
   margin-left: 6px; padding: 2px 8px;
@@ -1953,4 +2103,24 @@ button.cmp-fold:hover { background: var(--border); color: var(--text); }
 @media (max-width: 760px) {
   .cmp-row { grid-template-columns: 1fr; gap: 2px; }
   .cmp-image-pair { grid-template-columns: 1fr; }
+}
+
+.modal.add-step-modal { width: min(480px, 96vw); }
+.add-step-form { display: flex; flex-direction: column; gap: 16px; }
+.add-step-form label { display: flex; flex-direction: column; gap: 6px; }
+.add-step-form input { width: 100%; }
+.add-step-image p { margin: 6px 0 10px; overflow-wrap: anywhere; }
+.add-step-image .row { flex-wrap: wrap; }
+
+/* Export settings share one compact layout while retaining per-format controls. */
+.export-option-group { margin: 16px 0 2px; font-size: 12px; font-weight: 700; color: var(--muted); }
+.export-option-group:first-child { margin-top: 2px; }
+.export-option-group + .setting-row { border-top: 0; }
+.export-options .setting-text { min-width: 0; }
+.export-options .setting-control select { max-width: 100%; }
+.export-number { flex-wrap: nowrap; }
+.export-number > span { white-space: nowrap; }
+@media (max-width: 900px) {
+  .export-options .setting-row { flex-direction: column; align-items: stretch; gap: 6px; }
+  .export-options .setting-control { max-width: 100%; align-self: flex-start; }
 }

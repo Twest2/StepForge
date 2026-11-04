@@ -10,7 +10,7 @@
 <body>
 <div id="app">
   <header id="topbar">
-    <div class="brand" id="btn-home" title="Guide library" data-i18n-title>StepForge</div>
+    <button type="button" class="brand" id="btn-home" title="Welcome" data-i18n-title>StepForge</button>
     <div id="topbar-context"></div>
     <div class="spacer"></div>
     <button id="cloud-status" class="tool muted hidden" type="button" aria-label="Cloud sync status" data-i18n-label></button>
@@ -20,7 +20,9 @@
   <main id="view"></main>
 </div>
 <div id="modal-root"></div>
-<div id="toast-root"></div>
+<div id="toast-root" aria-hidden="true"></div>
+<div id="toast-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+<div id="toast-alert" class="sr-only" role="alert" aria-live="assertive" aria-atomic="true"></div>
 <script src="../../core/i18n.js"></script>
 <script src="../../core/locales/fr.js"></script>
 <script src="../../core/locales/es.js"></script>
@@ -33,6 +35,7 @@
 <script src="../../core/step-outline.js"></script>
 <script src="../../core/focused-view.js"></script>
 <script src="../../core/review.js"></script>
+<script src="../../core/editor-layout.js"></script>
 <script src="../../core/brand-palette.js"></script>
 <script src="canvas.js"></script>
 <script src="cloud.js"></script>
@@ -44,6 +47,7 @@
 <script src="branding.js"></script>
 <script src="dialogs.js"></script>
 <script src="compare.js"></script>
+<script src="../../core/annotation-properties.js"></script>
 <script src="editor.js"></script>
 <script src="app.js"></script>
 </body>

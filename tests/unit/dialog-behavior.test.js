@@ -14,11 +14,12 @@ const { rendererI18n } = require('./helpers');
  */
 
 function makeDom() {
-  const win = { listeners: [], addEventListener(type, fn, capture) { this.listeners.push({ type, fn, capture: Boolean(capture) }); } };
+  const win = { listeners: [], addEventListener(type, fn, capture) { this.listeners.push({ type, fn, capture: Boolean(capture) }); }, removeEventListener(type, fn) { this.listeners = this.listeners.filter(l => l.type !== type || l.fn !== fn); } };
   const doc = {
     activeElement: null,
     listeners: [],
     addEventListener(type, fn, capture) { this.listeners.push({ type, fn, capture: Boolean(capture) }); },
+    removeEventListener(type, fn) { this.listeners = this.listeners.filter(l => l.type !== type || l.fn !== fn); },
     createElement: (tag) => makeNode(tag),
     createTextNode: (text) => makeText(text),
     getElementById: (id) => walk(doc.documentElement).find((n) => n.id === id) || null,
@@ -63,6 +64,8 @@ function makeDom() {
         if (doc.activeElement && (doc.activeElement === this || this.contains(doc.activeElement))) doc.activeElement = null;
       },
       contains(other) { for (let n = other; n; n = n.parent) if (n === this) return true; return false; },
+      closest(selector) { for (let n = this; n; n = n.parent) if (n.classList.contains(selector.slice(1))) return n; return null; },
+      getBoundingClientRect() { return { left: 10, top: 10, right: 210, bottom: 110, width: 200, height: 100 }; },
       setAttribute(name, value) { attrs.set(name, String(value)); if (name === 'id') this.id = String(value); },
       getAttribute(name) { return attrs.has(name) ? attrs.get(name) : null; },
       hasAttribute(name) { return attrs.has(name); },
@@ -133,13 +136,14 @@ function makeDom() {
   return { win, doc, body, app, modalRoot, press, walk, textOf, dispatch };
 }
 
-function loadUtil(language = 'en') {
+function loadUtil(language = 'en', withDialogs = false) {
   const dom = makeDom();
-  const context = { ...rendererI18n(language), document: dom.doc, window: dom.win,
+  const context = { ...rendererI18n(language), document: dom.doc, window: dom.win, innerWidth: 1000, innerHeight: 800,
     location: { search: `?lang=${language}` }, setTimeout, clearTimeout,
     StepForgeLocales: require('../../core/locales') };
   vm.createContext(context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/util.js'), 'utf8'), context);
+  if (withDialogs) vm.runInContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/dialogs.js'), 'utf8'), context);
   const button = (within, label) => dom.walk(within).find((n) => n.localName === 'button' && dom.textOf(n) === label);
   return { ...dom, ...context, context, button, text: (node) => dom.textOf(node) };
 }
@@ -384,6 +388,23 @@ test('dialogs are modal dialogs labelled by their heading', () => {
   assert.equal(u.text(heading), 'Brand profiles');
 });
 
+test('confirmation headings identify the action, with a more specific title when supplied', async () => {
+  const u = loadUtil();
+  const pending = u.confirmDialog('Replace the existing page?', { okLabel: 'Replace page' });
+  let dialog = u.modalRoot.children[0];
+  let heading = u.walk(dialog).find((n) => n.id === dialog.getAttribute('aria-labelledby'));
+  assert.equal(u.text(heading), 'Replace page');
+  u.button(dialog, 'Cancel').click();
+  assert.equal(await pending, false);
+  const deletion = u.confirmDialog('Delete this step?', { title: 'Delete step', okLabel: 'Delete', danger: true });
+  dialog = u.modalRoot.children[0];
+  heading = u.walk(dialog).find((n) => n.id === dialog.getAttribute('aria-labelledby'));
+  assert.equal(u.text(heading), 'Delete step');
+  assert.equal(u.doc.activeElement, u.button(dialog, 'Cancel'));
+  u.button(dialog, 'Delete').click();
+  assert.equal(await deletion, true);
+});
+
 test('Cancel uses the dirty dismissal guard and resolves only after discarding', async () => {
   const u = loadUtil();
   const pending = u.promptDialog('Rename', { value: 'Old' });
@@ -402,6 +423,132 @@ test('Cancel uses the dirty dismissal guard and resolves only after discarding',
   assert.equal(u.modalRoot.children.length, 0);
 });
 
+
+test('Add step accepts a title without an image and initially focuses its labelled input', async () => {
+  const u = loadUtil('en', true);
+  const done = u.window.StepForgeDialogs.showAddStepDialog();
+  const field = u.doc.activeElement;
+  assert.equal(field.localName, 'input');
+  field.value = '  Check settings  ';
+  u.button(u.modalRoot, 'Add').click();
+  const draft = await done;
+  assert.equal(draft.title, 'Check settings');
+  assert.equal(draft.image, null);
+});
+
+test('Add step keeps the title when the picker is cancelled, allows removing a selected image, and guards dismissal', async () => {
+  const u = loadUtil('en', true);
+  let result = null;
+  const done = u.window.StepForgeDialogs.showAddStepDialog({ onChooseImage: async () => result });
+  const field = u.doc.activeElement;
+  field.value = 'Keep this title';
+  u.button(u.modalRoot, 'Choose image…').click(); await settle();
+  assert.equal(field.value, 'Keep this title');
+  result = { name: 'Example.webp', size: { width: 320, height: 200 }, imageBase64: 'bytes' };
+  u.button(u.modalRoot, 'Choose image…').click(); await settle();
+  assert.ok(u.text(u.modalRoot).includes('Example.webp'));
+  u.button(u.modalRoot, 'Cancel').click();
+  assert.equal(u.modalRoot.children.length, 2);
+  u.button(u.modalRoot.children.at(-1), 'Keep editing').click();
+  u.button(u.modalRoot, 'Remove image').click();
+  u.button(u.modalRoot, 'Add').click();
+  const draft = await done;
+  assert.equal(draft.title, 'Keep this title'); assert.equal(draft.image, null);
+});
+
+test('Add step returns the selected draft image and reports picker failures without clearing edits', async () => {
+  const u = loadUtil('en', true); let fail = true;
+  const image = { name: 'Screenshot.png', size: { width: 160, height: 90 }, imageBase64: 'bytes' };
+  const done = u.window.StepForgeDialogs.showAddStepDialog({ onChooseImage: async () => { if (fail) throw Error('Cannot read'); return image; } });
+  u.doc.activeElement.value = 'Imported screenshot';
+  u.button(u.modalRoot, 'Choose image…').click(); await settle();
+  assert.ok(u.text(u.modalRoot).includes('Could not choose an image: Cannot read'));
+  fail = false;
+  u.button(u.modalRoot, 'Choose image…').click(); await settle();
+  u.button(u.modalRoot, 'Add').click();
+  const draft = await done;
+  assert.equal(draft.image, image); assert.equal(draft.title, 'Imported screenshot');
+});
+
+test('menus use buttons, identify unavailable actions, wrap arrow navigation and return focus on Escape', () => {
+  const u = loadUtil(), trigger = u.el('button', {}, 'Actions');u.app.append(trigger);trigger.focus();
+  const { node } = u.contextMenu(20, 30, [{ label: 'Alpha', action() {} }, 'sep', { label: 'Unavailable', disabled: true, action() { assert.fail('disabled action ran'); } }, { label: 'Beta', action() {} }]);
+  const buttons = u.walk(node).filter(n => n.localName === 'button');
+  assert.equal(node.role, 'menu');assert.equal(u.doc.activeElement, buttons[0]);
+  assert.equal(buttons[1].getAttribute('aria-disabled'), 'true');buttons[1].click();assert.ok(node.isConnected);
+  u.press('ArrowUp');assert.equal(u.doc.activeElement, buttons[2]);
+  u.press('Home');assert.equal(u.doc.activeElement, buttons[0]);
+  u.press('End');assert.equal(u.doc.activeElement, buttons[2]);
+  u.press('a');assert.equal(u.doc.activeElement, buttons[0]);
+  u.press('Escape');assert.equal(node.isConnected, false);assert.equal(u.doc.activeElement, trigger);assert.equal(trigger.getAttribute('aria-expanded'), 'false');
+});
+
+test('submenus support Right/Left and Escape without activating unrelated commands', () => {
+  const u = loadUtil(), trigger = u.el('button', {}, 'Capture');u.app.append(trigger);trigger.focus();let used = 0;
+  const { node } = u.contextMenu(20, 30, [{ label: 'Retake', submenu: [{ label: 'Window', action() { used++; } }] }]);
+  const parent = u.doc.activeElement;u.press('ArrowRight');
+  const child = u.doc.activeElement;assert.notEqual(child, parent);assert.equal(parent.getAttribute('aria-expanded'), 'true');
+  u.press('ArrowLeft');assert.equal(u.doc.activeElement, parent);assert.equal(parent.getAttribute('aria-expanded'), 'false');assert.equal(used, 0);
+  u.press('ArrowRight');u.press('Escape');assert.equal(u.doc.activeElement, parent);assert.ok(node.isConnected);
+  u.press('ArrowRight');u.doc.activeElement.click();assert.equal(used, 1);assert.equal(node.isConnected, false);assert.equal(u.doc.activeElement, trigger);
+});
+
+test('a modal-owned menu receives focus and Escape closes only the menu, then the dialog', () => {
+  const u = loadUtil(), trigger = u.el('button', {}, 'Options');
+  const outer = u.openModal({ title: 'Settings', body: u.el('div', {}, trigger) });trigger.focus();
+  const { node } = u.contextMenu(20, 30, [{ label: 'Choice', action() {} }]);
+  assert.ok(outer.node.contains(node));assert.ok(node.contains(u.doc.activeElement));
+  u.press('Escape');assert.ok(outer.node.isConnected);assert.equal(node.isConnected, false);assert.equal(u.doc.activeElement, trigger);
+  u.press('Escape');assert.equal(outer.node.isConnected, false);
+});
+
+test('Tab exits a menu and respects the surrounding modal focus trap', () => {
+  const u = loadUtil(), first = u.el('button', {}, 'First'), trigger = u.el('button', {}, 'Last');
+  const outer = u.openModal({ title: 'Settings', body: u.el('div', {}, first, trigger) });trigger.focus();
+  const { node } = u.contextMenu(20, 30, [{ label: 'Choice', action() {} }]);
+  u.press('Tab');assert.equal(node.isConnected, false);assert.ok(outer.node.contains(u.doc.activeElement));
+  outer.close();
+});
+
+test('outside pointer/focus and opening a new dialog clean up menus and their event listeners', () => {
+  const u = loadUtil(), trigger = u.el('button', {}, 'Actions'), other = u.el('button', {}, 'Other');u.app.append(trigger, other);trigger.focus();
+  const make = () => u.contextMenu(20, 30, [{ label: 'Choice', action() {} }]);
+  let menu = make();u.dispatch(other, { type: 'pointerdown' });assert.equal(menu.node.isConnected, false);
+  trigger.focus();menu = make();other.focus();assert.equal(menu.node.isConnected, false);assert.equal(u.doc.activeElement, other);
+  trigger.focus();menu = make();const modal = u.openModal({ title: 'Next', body: u.el('input') });assert.equal(menu.node.isConnected, false);
+  assert.equal(u.doc.listeners.filter(l => l.type === 'pointerdown').length, 0);modal.close();
+});
+
+test('toast announcements use separate persistent polite and urgent regions and can repeat text', async () => {
+  const u = loadUtil(), visual = u.el('div', { id: 'toast-root' }), status = u.el('div', { id: 'toast-status' }), alert = u.el('div', { id: 'toast-alert' });u.body.append(visual, status, alert);
+  u.toast('Saved', { ms: 50 });await new Promise(resolve => setTimeout(resolve, 25));assert.equal(u.text(status), 'Saved');assert.equal(u.text(alert), '');
+  u.toast('Saved', { ms: 50 });assert.equal(u.text(status), '');
+  u.toast('Save failed', { error: true, ms: 50 });await new Promise(resolve => setTimeout(resolve, 25));assert.equal(u.text(status), 'Saved');assert.equal(u.text(alert), 'Save failed');
+});
+
+test('menu keys cannot trigger canvas tools, annotation movement or guide saving', () => {
+  const u = loadUtil(), context = { ...rendererI18n(), window: {}, document: u.doc };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/editor.js'), 'utf8'), context);
+  const editor = Object.create(context.window.GuideEditor.prototype), target = u.el('button');u.el('div.ctx-menu', {}, target);
+  Object.assign(editor, { active: true, guide: {}, selectedAnnotationId: 'selected', saveAll() { assert.fail('saved guide from menu'); }, setTool() { assert.fail('changed tool from menu'); }, canvas: { nudgeSelected() { assert.fail('moved annotation from menu'); }, select() { assert.fail('changed annotation selection from menu'); } } });
+  for (const key of ['ArrowDown', 'ArrowLeft', 'Escape', 'Delete', 'r']) editor.onDocumentKeyDown({ key, target, preventDefault() {} });
+  editor.onDocumentKeyDown({ key: 's', ctrlKey: true, target, preventDefault() {} });
+});
+
+test('form labels connect to inputs with unique IDs and preserve explicit accessible names', () => {
+  const u = loadUtil(), first = u.el('input'), second = u.el('input', { 'aria-label': 'Exact value' }), label = u.el('label', {}, 'Width');
+  u.labelControl(label, u.el('div', {}, first, second));
+  assert.equal(label.getAttribute('for'), first.id);assert.equal(first.getAttribute('aria-labelledby'), label.id);
+  assert.equal(second.getAttribute('aria-label'), 'Exact value');
+  const otherLabel = u.el('label', {}, 'Height'), other = u.el('input');u.labelControl(otherLabel, other);
+  assert.notEqual(other.id, first.id);assert.notEqual(label.id, otherLabel.id);
+});
+
+test('setting labels include button text and descriptions without losing existing field descriptions', () => {
+  const u = loadUtil(), field = u.el('input', { 'aria-describedby': 'existing-help' }), heading = u.el('div', {}, 'Capture delay'), help = u.el('div', {}, 'Wait before capturing');
+  u.labelControl(heading, field, help);assert.equal(field.getAttribute('aria-labelledby'), heading.id);assert.equal(field.getAttribute('aria-describedby'), `existing-help ${help.id}`);
+  const button = u.el('button', {}, 'Ctrl+Shift+1');u.labelControl(heading, button);assert.equal(button.getAttribute('aria-labelledby'), `${heading.id} ${button.id}`);
+});
 test('a control in a dialog that uses Escape itself keeps it; Escape anywhere else still closes', () => {
   const u = loadUtil();
   let closed = 0;

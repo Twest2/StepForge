@@ -76,7 +76,12 @@ right of the StepForge window.
 | Capture with the keyboard | Press **Ctrl+Shift+1** (change it in **Settings → Capture → Hotkeys**) |
 | Pause and resume a session | Press **Ctrl+Shift+2**. StepForge stays hidden while paused |
 | Use an image you already have | Paste it with **Ctrl+V**, or use **Capture → Import images…** |
-| Add a text-only step | Choose **Add** in the steps list |
+| Add a step with or without an image | Choose **Add** in the steps list, enter a title, and optionally choose an image |
+
+**Add** opens a compact dialog. Choosing an image does not create a step until
+you select **Add**. Canceling keeps the guide unchanged. Save, Capture and Add
+remain the main editor actions; autosave continues to work. Bulk image import
+is still available under **Capture → Import images…**.
 
 ## 2. Edit your steps
 
@@ -87,9 +92,24 @@ The editor has three panes:
   (drag sideways to change it). Or use **Alt+↑ / Alt+↓**, or right-click and
   choose **Move to…**. Use **Make substep of…** to nest a step under another
   one; substeps are numbered 1.1, 1.2, and so on.
+
+  A thin line runs from a step down past its substeps, like a comment
+  thread. Click the line (or right-click the step and choose **Collapse
+  step**) to fold its substeps away; the step then shows **+3**, how many are
+  hidden, and clicking that opens them again. Folding only changes what the
+  Steps pane shows: the substeps stay in the guide and in every export.
 - **Screenshot (middle).** The captured image with its annotations.
 - **Details (right).** The step title, description, status, and extra
   content blocks.
+
+Drag the thin divider beside either side pane to change its width. You can
+also Tab to a divider and use Left or Right (Shift for larger changes), or
+Home and End for the smallest and largest available width. Escape cancels
+an unfinished drag. Widths are remembered on this device. When the window
+grows, the screenshot area takes the extra space; a smaller window temporarily
+constrains the panes and restores your preferred widths when space returns.
+The center canvas keeps at least 320 pixels of width; both dividers stop before
+reducing it further. All three panes fit at the app's minimum window width.
 
 For each step you can:
 
@@ -107,10 +127,22 @@ For each step you can:
   to frame every screenshot the same way (pan 0% is the left or top edge).
 - Start a **New page** at this step in paged formats such as PDF.
 
+Annotation cards show position and size as percentages of the full screenshot.
+Font size is a percentage of screenshot height (for example, 2.2%); changing
+the display does not alter an existing annotation until you edit the value.
+Stroke and Fill use the same compact picker with default colors, recently used
+colors and, when active, branding colors. Recent choices are shared across
+guides and saved on this device. Transparent remains available for rectangle
+and oval fills. **Custom color…** opens the system color picker.
+
 **Guide details:** choose **More → Guide information…** to add an author,
 version and a short description. The description appears at the top of
 exports and accepts Markdown: `**bold**`, `*italic*`, `` `code` ``,
 `[links](https://example.com)`, and lists that start with `-` or `1.`.
+
+The cloud sync section appears only when a compatible sync account is connected.
+Cloud history and removal actions are grouped there; Save and Cancel stay in
+the footer. Removing cloud copies also turns off sync for this guide.
 
 **Working with many steps at once:** choose **Select**, click one step, then
 **Shift-click** another to select everything in between, including substeps.
@@ -221,8 +253,11 @@ dialog points you there when you pick either format. See
 [Publish to Confluence](CONFLUENCE.md) and [Publish to Wiki.js](WIKIJS.md).
 
 **Templates.** Each format has options such as page size, table of contents
-and image width. Save the ones you like as a template so every guide exports
-the same way, and share it with teammates as a `.sfglt` file.
+and image width. PDF page sizes are A4 or US Letter; margins are in points
+(72 points = 1 inch), and maximum screenshot height is a percentage of the
+page height inside the margins. Word screenshot widths are shown in centimeters.
+Saved templates keep their existing values until you edit them. Save the ones
+you like as a template so every guide exports the same way, and share it with teammates as a `.sfglt` file.
 
 **Branding.** A brand profile puts your logo, colors, fonts, cover, header and
 footer on every export. Set one up in **Settings → Branding → Manage**. See
@@ -285,6 +320,31 @@ and verifies your library before switching to the new location.
   [Sync your guides between computers](CLOUD_ACCOUNTS.md).
 
 ## Keyboard shortcuts
+
+In Steps, Tab reaches each step and its **⋯** Actions button. Use Up/Down or
+Home/End on a step button to navigate, and Shift+F10 for its context menu.
+Select-mode checkboxes and Select all retain keyboard focus as the list updates.
+
+Tab to an annotation card and press Enter or Space to select it. **Focus
+screenshot** moves focus to the screenshot for arrow-key movement and Delete;
+Ctrl+Z undoes those changes. The screenshot itself is also in the Tab order
+while an image is available. Annotation controls keep their own plain keys.
+
+Settings tabs use one Tab stop. Use Up/Down in the vertical layout, Left/Right
+in the narrow horizontal layout, or Home/End to change sections. Visible form
+labels are linked to their controls, including descriptions used as help text.
+
+In the library, Tab reaches sidebar filters, guide titles, favorites and the
+**⋯** Actions buttons. Enter or Space activates the focused control. Native
+checkboxes select guides in Select mode. Use Shift+F10 (or the context-menu
+key) on a guide, folder or trash control for its context actions. Focus stays
+with the corresponding control after filtering, selecting or changing a favorite.
+
+Open a menu button with Enter or Space. Inside a menu, use Up/Down, Home/End
+or type the start of a command. Right opens a submenu; Left returns to its
+parent. Escape closes one menu level and restores focus. Tab leaves the menu
+and continues through the surrounding controls. Unavailable commands remain
+readable but do not run.
 
 Press **Ctrl+/** for the quick-actions palette, or open
 **More → Keyboard shortcuts…** for the full list.

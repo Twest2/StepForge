@@ -71,7 +71,8 @@ You can switch models at any time.
 ## 3. Connect StepForge
 
 1. Open **Settings → AI**.
-2. Turn on **Enable AI**.
+2. Turn on **Enable AI**. Its capture, screenshot and Ollama options appear
+   immediately; turning it off hides them while keeping their values.
 3. Leave **Host** as `http://127.0.0.1:11434` unless you changed Ollama's
    address.
 4. Set **Model** to the model you downloaded, for example `gemma4:e4b`.

@@ -99,6 +99,7 @@ function loadEditorClass(api) {
   // their bare references (AnnotationCanvas, debounce) resolve.
   context.window = context;
   context.stepforge = api;
+  context.StepForgePaneLayout = require('../../core/editor-layout');
   for (const file of ['util.js', 'canvas.js', 'editor.js']) {
     vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../app/renderer', file), 'utf8'), context);
   }

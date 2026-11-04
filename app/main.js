@@ -1024,6 +1024,18 @@ function setupIpc() {
     reindex(guideId);
     return { ok: true, step };
   }, { validate: (a) => c.id(a.guideId) && c.optionalNumber(a.position, 0, 100000) });
+  // Pick a draft with the import decoder; no step or library file is created.
+  h('step:pickImage', async () => {
+    const res = await dialog.showOpenDialog(mainWindow, {
+      title: t('Choose an image for the new step'),
+      filters: [{ name: t('Images'), extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'] }],
+      properties: ['openFile'],
+    });
+    if (res.canceled || !res.filePaths[0]) return null;
+    const picked = await readImageFile(res.filePaths[0]);
+    if (!picked) throw new Error(t('StepForge couldn’t open that file as an image. Choose a PNG, JPEG, GIF, WebP or BMP file.'));
+    return { imageBase64: picked.bytes.toString('base64'), size: picked.size, name: path.basename(res.filePaths[0]) };
+  });
   h('step:importImage', async ({ guideId }) => {
     const res = await dialog.showOpenDialog(mainWindow, {
       title: t('Import images as steps'),
@@ -1661,6 +1673,8 @@ function setupIpc() {
   // exporters/ describe formats and options in English; the Export dialog shows them in the interface language.
   const translatedOptions = (options = {}) => Object.fromEntries(Object.entries(options).map(([key, info]) => [key, {
     ...info, ...(info.label && { label: t(info.label) }), ...(info.hint && { hint: t(info.hint) }), ...(info.unit && { unit: t(info.unit) }),
+    ...(info.group && { group: t(info.group) }),
+    ...(info.choices && { choices: info.choices.map((choice) => ({ ...choice, label: t(choice.label) })) }),
   }]));
   h('export:formats', () => FORMAT_ORDER.filter((f) => FORMATS.includes(f) && EXPORTERS[f]).map((format) => ({
     id: format,

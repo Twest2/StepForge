@@ -111,7 +111,7 @@ function makeSwitch(input, label) {
 }
 
 function settingsCard(title, ...rows) {
-  return el('div.settings-card', {}, title ? el('div.settings-card-title', {}, title) : null, ...rows);
+  return el('div.settings-card', {}, title ? el('h4.settings-card-title', {}, title) : null, ...rows);
 }
 
 function clearNode(node) {

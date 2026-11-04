@@ -399,6 +399,11 @@ class GoogleDrive {
     return this.listAppData("trashed = false and appProperties has { key='stepforge' and value='settings-v1' }");
   }
 
+  // The library's folder list (see core/cloud-parts.js).
+  async listFolders() {
+    return this.listAppData("trashed = false and appProperties has { key='stepforge' and value='folders-v1' }");
+  }
+
   // Files shared between versions (see core/cloud-parts.js).
   async listParts() {
     return this.listAppData("trashed = false and appProperties has { key='stepforge' and value='part-v1' }");

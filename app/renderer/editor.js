@@ -1834,11 +1834,7 @@ class GuideEditor {
         },
         el('span.row', {}, el('strong', {}, ANNOTATION_TYPE_LABELS[ann.type] || ann.type),
           // Blurs StepForge added for a private detail say what they hide.
-          el('span.muted', {}, ann.redact ? t('Private detail: {kind}', { kind: PRIVATE_DETAIL_LABELS[ann.redact.kind] || t('added by StepForge') }) : ann.text || ann.value || '')),
-        el('span.muted', { style: { display: 'block' } }, t('Left {x}% · Top {y}% · Width {width}% · Height {height}%', {
-          x: window.StepForgeAnnotationProperties.percentage(ann.x), y: window.StepForgeAnnotationProperties.percentage(ann.y),
-          width: window.StepForgeAnnotationProperties.percentage(ann.w), height: window.StepForgeAnnotationProperties.percentage(ann.h),
-        }))));
+          el('span.muted', {}, ann.redact ? t('Private detail: {kind}', { kind: PRIVATE_DETAIL_LABELS[ann.redact.kind] || t('added by StepForge') }) : ann.text || ann.value || ''))));
       }
     }
 

@@ -1600,7 +1600,6 @@
   'Select annotations in the list to edit their properties.': 'Selecciona anotaciones en la lista para editar sus propiedades.',
   'Select an annotation from the list, then focus the screenshot. Use arrow keys to move it and Delete to remove it.': 'Selecciona una anotación de la lista y activa la captura. Usa las flechas para moverla y Supr para eliminarla.',
   'Focus screenshot': 'Activar captura',
-  'Left {x}% · Top {y}% · Width {width}% · Height {height}%': 'Izquierda {x} % · Arriba {y} % · Ancho {width} % · Alto {height} %',
   'Font size (% of image height)': 'Tamaño del texto (% de la altura de la imagen)',
   'Could not save recent colors.': 'No se pudieron guardar los colores recientes.',
   'Default Colors': 'Colores predeterminados',

@@ -1600,7 +1600,6 @@
   'Select annotations in the list to edit their properties.': '在列表中选择注释以编辑其属性。',
   'Select an annotation from the list, then focus the screenshot. Use arrow keys to move it and Delete to remove it.': '在列表中选择注释，然后将焦点移至截图。使用方向键移动注释，按 Delete 删除注释。',
   'Focus screenshot': '移至截图',
-  'Left {x}% · Top {y}% · Width {width}% · Height {height}%': '左侧 {x}% · 顶部 {y}% · 宽度 {width}% · 高度 {height}%',
   'Font size (% of image height)': '字号（占图像高度的百分比）',
   'Could not save recent colors.': '无法保存最近使用的颜色。',
   'Default Colors': '默认颜色',

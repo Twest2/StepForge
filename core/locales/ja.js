@@ -1600,7 +1600,6 @@
   'Select annotations in the list to edit their properties.': '一覧から注釈を選択してプロパティを編集します。',
   'Select an annotation from the list, then focus the screenshot. Use arrow keys to move it and Delete to remove it.': '一覧から注釈を選択してからスクリーンショットに移動します。矢印キーで移動し、Deleteキーで削除できます。',
   'Focus screenshot': 'スクリーンショットに移動',
-  'Left {x}% · Top {y}% · Width {width}% · Height {height}%': '左 {x}% · 上 {y}% · 幅 {width}% · 高さ {height}%',
   'Font size (% of image height)': '文字サイズ（画像の高さに対する%）',
   'Could not save recent colors.': '最近使った色を保存できませんでした。',
   'Default Colors': '標準の色',

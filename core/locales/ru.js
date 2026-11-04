@@ -1600,7 +1600,6 @@
   'Select annotations in the list to edit their properties.': 'Выберите аннотации в списке, чтобы изменить их свойства.',
   'Select an annotation from the list, then focus the screenshot. Use arrow keys to move it and Delete to remove it.': 'Выберите аннотацию в списке, затем перейдите к снимку. Используйте стрелки для перемещения и Delete для удаления.',
   'Focus screenshot': 'Перейти к снимку',
-  'Left {x}% · Top {y}% · Width {width}% · Height {height}%': 'Слева {x}% · Сверху {y}% · Ширина {width}% · Высота {height}%',
   'Font size (% of image height)': 'Размер шрифта (% высоты изображения)',
   'Could not save recent colors.': 'Не удалось сохранить последние цвета.',
   'Default Colors': 'Стандартные цвета',

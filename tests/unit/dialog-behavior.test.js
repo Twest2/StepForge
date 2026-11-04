@@ -141,7 +141,7 @@ function loadUtil(language = 'en') {
   vm.createContext(context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/util.js'), 'utf8'), context);
   const button = (within, label) => dom.walk(within).find((n) => n.localName === 'button' && dom.textOf(n) === label);
-  return { ...dom, ...context, button, text: (node) => dom.textOf(node) };
+  return { ...dom, ...context, context, button, text: (node) => dom.textOf(node) };
 }
 
 const settle = () => new Promise((resolve) => setImmediate(resolve));
@@ -417,4 +417,61 @@ test('Cancel uses the dirty dismissal guard and resolves only after discarding',
   u.button(u.modalRoot.children[1], 'Discard').click();
   assert.equal(await pending, null);
   assert.equal(u.modalRoot.children.length, 0);
+});
+
+test('a control in a dialog that uses Escape itself keeps it; Escape anywhere else still closes', () => {
+  const u = loadUtil();
+  let closed = 0;
+  // Like Settings' shortcut recorder: a window capture listener added after util.js loaded.
+  const recorder = u.el('button', {}, 'Record shortcut');
+  u.win.addEventListener('keydown', (e) => {
+    if (e.target !== recorder) return;
+    e.preventDefault();
+    e.stopPropagation();
+  }, true);
+  // Like the quick-actions list: a field that handles Escape where it is typed.
+  const search = u.el('input', { value: '' });
+  search.addEventListener('keydown', (e) => { if (e.key === 'Escape') e.preventDefault(); });
+  const plain = u.el('button', {}, 'Plain');
+  u.openModal({ title: 'Settings', body: u.el('div', {}, recorder, search, plain), onClose: () => closed++ });
+
+  u.press('Escape', { target: recorder });
+  u.press('Escape', { target: search });
+  assert.equal(closed, 0);
+  assert.equal(u.modalRoot.children.length, 1);
+  u.press('Escape', { target: plain });
+  assert.equal(closed, 1);
+
+  u.openModal({ title: 'Settings', body: u.el('div', {}, u.el('input')), onClose: () => closed++ });
+  u.press('Escape', { target: u.body });
+  assert.equal(closed, 2, 'Escape aimed behind the dialog closes it');
+});
+
+test('editor shortcuts stand down while a dialog is open', () => {
+  const u = loadUtil();
+  u.win.stepforge = {};
+  u.win.StepForgeOutline = require('../../core/step-outline');
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/editor.js'), 'utf8'), u.context);
+  const editor = Object.create(u.win.GuideEditor.prototype);
+  let deleted = 0;
+  const tools = [];
+  Object.assign(editor, {
+    active: true, guide: {}, selectedAnnotationId: 'a1', settings: {},
+    canvas: { deleteSelected: () => { deleted++; return false; }, setTool() {} },
+    setTool: (tool) => tools.push(tool),
+  });
+  const key = (k, target) => editor.onDocumentKeyDown({ key: k, target, preventDefault() {}, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false });
+
+  const cancel = u.el('button', {}, 'Cancel');
+  const { close } = u.openModal({ title: 'Confirm', body: u.el('div', {}, 'Delete?'), footer: [cancel] });
+  key('Delete', cancel);
+  key('r', cancel);
+  assert.equal(deleted, 0, 'Delete in a dialog does not delete the annotation behind it');
+  assert.deepEqual(tools, []);
+
+  close();
+  key('Delete', u.body);
+  key('r', u.body);
+  assert.equal(deleted, 1);
+  assert.deepEqual(tools, ['rect']);
 });

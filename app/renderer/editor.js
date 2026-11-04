@@ -119,6 +119,31 @@ const ANNOTATION_TYPE_LABELS = {
   cursor: t('Cursor'),
 };
 
+// Canvas toolbar icons: simple outlines drawn for StepForge (no icon font or
+// remote asset). Each uses stroke="currentColor", so it follows the theme and
+// the active state. The tool names are the button's title and aria-label.
+const TOOL_ICON_PATHS = {
+  select: '<path d="M5 3v15l4-3.5 2.5 5.5 2.2-1-2.4-5.3H17z"/>',
+  rect: '<rect x="3.5" y="5.5" width="17" height="13" rx="1.5"/>',
+  oval: '<ellipse cx="12" cy="12" rx="8.5" ry="6"/>',
+  line: '<path d="M4.5 19.5 19.5 4.5"/>',
+  arrow: '<path d="M4.5 19.5 19 5M9 5h10v10"/>',
+  text: '<path d="M5 6V4.5h14V6M12 4.5v15M9 19.5h6"/>',
+  tooltip: '<path d="M4 5h16v11H10l-4 3.5V16H4z"/>',
+  number: '<circle cx="12" cy="12" r="8.5"/><path d="M10.5 9.5 12 8.5v7"/>',
+  blur: '<path d="M4 8q2-2 4 0t4 0 4 0 4 0M4 12q2-2 4 0t4 0 4 0 4 0M4 16q2-2 4 0t4 0 4 0 4 0"/>',
+  highlight: '<path d="M14.5 4.5l5 5L11 18l-5-5zM4 20h7"/>',
+  magnify: '<circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5"/>',
+  cursor: '<path d="M6 4v12l3.2-2.8 2.2 5 2-.9-2.2-4.9h4.6z"/><path d="M17.5 3.5l1 1.5M20.5 8h1.5M3 3l1.5 1.5"/>',
+  crop: '<path d="M6 3v13h13M3 6h13v15"/>',
+  undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
+  redo: '<path d="M15 14l5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/>',
+};
+
+function toolIconSvg(name) {
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${TOOL_ICON_PATHS[name]}</svg>`;
+}
+
 /** White or near-black text, whichever reads better on a badge or tooltip of color `hex`. */
 function readableTextOn(hex) {
   const n = Number.parseInt(String(hex).slice(1), 16);
@@ -171,6 +196,7 @@ function isEditableTarget(target) {
   return target && (
     target.tagName === 'INPUT' ||
     target.tagName === 'TEXTAREA' ||
+    target.tagName === 'SELECT' ||
     target.isContentEditable
   );
 }
@@ -453,7 +479,7 @@ class GuideEditor {
         }
       }
       if (!run.cancelled && written) {
-        this.setAiProgress('organizing');
+        this.setAiProgress(t('organizing'));
         if (this.pendingSave) await this.flushStep();
         if (this.pendingGuideSave) await this.flushGuide();
         const organized = await api.ai.organizeGuide({ guideId }).catch((err) => ({ ok: false, reason: err.message }));
@@ -465,7 +491,7 @@ class GuideEditor {
         }
       }
       if (!run.cancelled && written) {
-        this.setAiProgress('guide title');
+        this.setAiProgress(t('guide title'));
         if (this.pendingGuideSave) await this.flushGuide();
         const result = await api.ai.fillGuide({ guideId }).catch((err) => ({ ok: false, reason: err.message }));
         if (!run.cancelled && result?.ok) {
@@ -549,7 +575,7 @@ class GuideEditor {
         this.saveStepDebounced.cancel();
         this.pendingSave = false;
         this.saveError = null;
-        this.onToast('An AI agent deleted the step you were editing. Its saved version is in Backups & snapshots.');
+        this.onToast(t('An AI agent deleted the step you were editing. Its saved version is in Backups & snapshots.'));
       } else {
         await this.flushStep();
         if (this.pendingSave) return; // Keep unsaved edits if the write failed.
@@ -585,20 +611,21 @@ class GuideEditor {
   mountShell() {
     this.shellMounted = true;
     this.root.innerHTML = '';
+    // No Select button: Select is what the editor is in when no other tool
+    // is picked. Clicking the picked tool again, Escape or S goes back to it.
     const toolButtons = [
-      ['select', 'Select'],
-      ['rect', 'Rectangle'],
-      ['oval', 'Oval'],
-      ['line', 'Line'],
-      ['arrow', 'Arrow'],
-      ['text', 'Text'],
-      ['tooltip', 'Tip'],
-      ['number', '#'],
-      ['blur', 'Blur'],
-      ['highlight', 'Highlight'],
-      ['magnify', 'Mag'],
-      ['cursor', 'Cursor'],
-      ['crop', 'Crop'],
+      ['rect', t('Rectangle')],
+      ['oval', t('Oval')],
+      ['line', t('Line')],
+      ['arrow', t('Arrow')],
+      ['text', t('Text')],
+      ['tooltip', t('Tooltip')],
+      ['number', t('Number')],
+      ['blur', t('Blur')],
+      ['highlight', t('Highlight')],
+      ['magnify', t('Magnify')],
+      ['cursor', t('Cursor')],
+      ['crop', t('Crop')],
     ];
 
     this.dom = {};
@@ -626,15 +653,17 @@ class GuideEditor {
       ),
       el('section.pane-canvas', {},
         el('div.canvas-toolbar', {},
-          ...toolButtons.map(([tool, label]) => this.dom[`tool-${tool}`] = el('button.tool', { type: 'button', dataset: { tool } }, label)),
+          ...toolButtons.map(([tool, name]) => this.dom[`tool-${tool}`] = el('button.tool.tool-icon', { type: 'button', dataset: { tool }, title: name, 'aria-label': name, innerHTML: toolIconSvg(tool) })),
           el('span.sep'),
-          this.dom.zoomFitBtn = el('button.tool', { type: 'button' }, t('Fit')),
-          this.dom.zoom100Btn = el('button.tool', { type: 'button' }, '100%'),
-          this.dom.zoom125Btn = el('button.tool', { type: 'button' }, '125%'),
-          this.dom.zoom150Btn = el('button.tool', { type: 'button' }, '150%'),
+          this.dom.zoomSelect = el('select.zoom-select', { title: t('Zoom'), 'aria-label': t('Zoom') },
+            el('option', { value: 'fit' }, t('Fit')),
+            el('option', { value: '1' }, '100%'),
+            el('option', { value: '1.25' }, '125%'),
+            el('option', { value: '1.5' }, '150%'),
+          ),
           el('span.sep'),
-          this.dom.undoBtn = el('button.tool', { type: 'button' }, t('Undo')),
-          this.dom.redoBtn = el('button.tool', { type: 'button' }, t('Redo')),
+          this.dom.undoBtn = el('button.tool.tool-icon', { type: 'button', title: t('Undo'), 'aria-label': t('Undo'), innerHTML: toolIconSvg('undo') }),
+          this.dom.redoBtn = el('button.tool.tool-icon', { type: 'button', title: t('Redo'), 'aria-label': t('Redo'), innerHTML: toolIconSvg('redo') }),
         ),
         this.dom.canvasWrap = el('div.canvas-wrap', {},
           this.dom.canvas = el('canvas', { width: 1, height: 1 }),
@@ -653,12 +682,12 @@ class GuideEditor {
             { value: 'done', label: t('Done') },
           ]),
           el('div.row', {},
-            this.dom.hiddenToggle = el('label', {}, el('input', { type: 'checkbox' }), ' Hidden'),
-            this.dom.skippedToggle = el('label', {}, el('input', { type: 'checkbox' }), ' Skipped'),
+            this.dom.hiddenToggle = el('label', {}, el('input', { type: 'checkbox' }), ' ', t('Hidden')),
+            this.dom.skippedToggle = el('label', {}, el('input', { type: 'checkbox' }), ' ', t('Skipped')),
           ),
           el('div.row', {},
-            this.dom.forceNewPageToggle = el('label', {}, el('input', { type: 'checkbox' }), ' New page'),
-            this.dom.focusedViewToggle = el('label', {}, el('input', { type: 'checkbox' }), ' Focused'),
+            this.dom.forceNewPageToggle = el('label', {}, el('input', { type: 'checkbox' }), ' ', t('New page')),
+            this.dom.focusedViewToggle = el('label', {}, el('input', { type: 'checkbox' }), ' ', t('Focused')),
           ),
           // Pan shows as a percentage, 0% at the left and top edges (core/focused-view.js).
           this.dom.focusedControls = el('div.focused-controls.hidden', {},
@@ -680,13 +709,13 @@ class GuideEditor {
         el('section', {},
           el('h3', {}, t('Description')),
           this.dom.richToolbar = el('div.rich-toolbar', {},
-            this.toolbarBtn('bold', 'Bold'),
-            this.toolbarBtn('italic', 'Italic'),
-            this.toolbarBtn('insertUnorderedList', 'Bullet'),
-            this.toolbarBtn('insertOrderedList', 'Number'),
-            this.toolbarBtn('formatBlock', 'Quote', 'blockquote'),
-            this.toolbarBtn('createLink', 'Link'),
-            this.toolbarBtn('removeFormat', 'Clear'),
+            this.toolbarBtn('bold', t('Bold')),
+            this.toolbarBtn('italic', t('Italic')),
+            this.toolbarBtn('insertUnorderedList', t('Bullet')),
+            this.toolbarBtn('insertOrderedList', t('Number')),
+            this.toolbarBtn('formatBlock', t('Quote'), 'blockquote'),
+            this.toolbarBtn('createLink', t('Link')),
+            this.toolbarBtn('removeFormat', t('Clear')),
           ),
           this.dom.descEditor = el('div.rich-editor', { contentEditable: 'true', spellcheck: true }),
         ),
@@ -780,16 +809,16 @@ class GuideEditor {
     this.dom.deleteBtn.addEventListener('click', () => this.deleteSelectedStep());
     this.dom.saveNowBtn.addEventListener('click', () => this.saveAll());
     this.dom.snapshotBtn.addEventListener('click', () => this.createSnapshot());
-    this.dom.zoomFitBtn.addEventListener('click', () => this.setZoom('fit'));
-    this.dom.zoom100Btn.addEventListener('click', () => this.setZoom(1));
-    this.dom.zoom125Btn.addEventListener('click', () => this.setZoom(1.25));
-    this.dom.zoom150Btn.addEventListener('click', () => this.setZoom(1.5));
+    this.dom.zoomSelect.addEventListener('change', () => {
+      const value = this.dom.zoomSelect.value;
+      this.setZoom(value === 'fit' ? 'fit' : Number(value));
+    });
     this.dom.undoBtn.addEventListener('click', () => this.undo());
     this.dom.redoBtn.addEventListener('click', () => this.redo());
 
     Object.entries(this.dom).forEach(([key, value]) => {
       if (key.startsWith('tool-')) {
-        value.addEventListener('click', () => this.setTool(value.dataset.tool));
+        value.addEventListener('click', () => this.setTool(this.currentTool === value.dataset.tool ? 'select' : value.dataset.tool));
       }
     });
 
@@ -965,7 +994,7 @@ class GuideEditor {
       step.codeBlocks.push({ id, order: nextBlockOrder(step), language: '', code: '' });
     } else if (kind === 'table') {
       step.tableBlocks = step.tableBlocks || [];
-      step.tableBlocks.push({ id, order: nextBlockOrder(step), rows: [['Column A', 'Column B'], ['', '']] });
+      step.tableBlocks.push({ id, order: nextBlockOrder(step), rows: [[t('Column A'), t('Column B')], ['', '']] });
     }
     this.pendingSave = true;
     this.saveStepDebounced();
@@ -1260,9 +1289,9 @@ class GuideEditor {
         el('span.num', {}, number || '•'),
         el('span.t', {}, step.title || t('Untitled step')),
         el('span.flags', {}, [
-          step.parentStepId ? 'sub' : '',
-          step.hidden ? 'hidden' : '',
-          step.skipped ? 'skipped' : '',
+          step.parentStepId ? t('Substep') : '',
+          step.hidden ? t('Hidden') : '',
+          step.skipped ? t('Skipped') : '',
         ].filter(Boolean).join(' · ')),
       );
       this.dom.stepsList.append(item);
@@ -1316,7 +1345,7 @@ class GuideEditor {
     const allSelected = this.steps.length > 0 && n === this.steps.length;
     this.dom.stepBulkBar.append(
       el('div.bulk-bar', {},
-        el('span', {}, `${n} step${n === 1 ? '' : 's'} selected`),
+        el('span', {}, tn(n, '{count} step selected', '{count} steps selected')),
         el('span.spacer', {}),
         el('button', {
           type: 'button',
@@ -1335,10 +1364,19 @@ class GuideEditor {
     );
   }
 
+  /**
+   * Asks before deleting steps, unless Settings → Editor → Dangerous deletes
+   * is on. Resolves true to delete.
+   */
+  async confirmDelete(message, title) {
+    if (this.settings?.editor?.dangerousDeletes === true) return true;
+    return confirmDialog(message, { title, danger: true, okLabel: t('Delete') });
+  }
+
   async deleteSelectedSteps() {
     const ids = [...this.selectedSteps];
     if (!ids.length) return;
-    const ok = await confirmDialog(tn(ids.length, 'Delete {count} step?', 'Delete {count} steps?'), { title: t('Delete selected steps'), danger: true, okLabel: t('Delete') });
+    const ok = await this.confirmDelete(tn(ids.length, 'Delete {count} step?', 'Delete {count} steps?'), t('Delete selected steps'));
     if (!ok) return;
     if (this.pendingSave) await this.flushStep();
     const order = this.steps.map((s) => s.stepId);
@@ -1355,7 +1393,7 @@ class GuideEditor {
     this.selectedSteps = new Set();
     this.stepSelectionAnchor = null;
     await this.reload(null);
-    this.onToast(`${ids.length} step${ids.length === 1 ? '' : 's'} deleted. Press Ctrl+Z to undo.`);
+    this.onToast(tn(ids.length, '{count} step deleted. Press Ctrl+Z to undo.', '{count} steps deleted. Press Ctrl+Z to undo.'));
   }
 
   syncStepFields() {
@@ -1384,14 +1422,24 @@ class GuideEditor {
       : '';
   }
 
+  // A guide with no steps needs a first capture or import; otherwise the
+  // canvas is waiting for a step to be selected or to have an image.
+  showCanvasEmpty() {
+    this.dom.canvasEmpty.textContent = this.steps.length
+      ? t('Select an image step to edit annotations.')
+      : t('Start recording or import images to begin.');
+    this.dom.canvasEmpty.classList.remove('hidden');
+  }
+
   async renderCanvas() {
     const step = this.currentStep;
     const token = ++this.imageLoadToken;
     this.canvas.setTool(this.currentTool);
     this.canvas.setZoom(this.currentZoom);
+    this.syncToolbar();
     if (!step || !step.image) {
       this.canvas.setImage(null, 0, 0);
-      this.dom.canvasEmpty.classList.remove('hidden');
+      this.showCanvasEmpty();
       return;
     }
     this.dom.canvasEmpty.classList.add('hidden');
@@ -1400,7 +1448,12 @@ class GuideEditor {
       stepId: step.stepId,
       which: 'working',
     });
-    if (token !== this.imageLoadToken || !src) return;
+    if (token !== this.imageLoadToken) return;
+    if (!src) {
+      this.canvas.setImage(null, 0, 0);
+      this.showCanvasEmpty();
+      return;
+    }
     const img = new Image();
     img.onload = () => {
       if (token !== this.imageLoadToken) return;
@@ -1413,7 +1466,7 @@ class GuideEditor {
     img.onerror = () => {
       if (token !== this.imageLoadToken) return;
       this.canvas.setImage(null, 0, 0);
-      this.dom.canvasEmpty.classList.remove('hidden');
+      this.showCanvasEmpty();
     };
     img.src = src;
   }
@@ -1736,10 +1789,35 @@ class GuideEditor {
   setTool(tool) {
     this.currentTool = tool;
     this.canvas.setTool(tool);
+    this.syncToolbar();
+  }
+
+  // Mirror currentTool and currentZoom onto their buttons, so the highlighted
+  // button is always the mode the canvas is really in.
+  syncToolbar() {
     for (const [key, node] of Object.entries(this.dom)) {
-      if (!key.startsWith('tool-')) continue;
-      node.classList.toggle('active', node.dataset.tool === tool);
+      if (key.startsWith('tool-')) this.setPressed(node, node.dataset.tool === this.currentTool);
     }
+    this.syncZoomSelect();
+  }
+
+  // Show the current zoom in the select. Ctrl+= and Ctrl+- can reach zooms that
+  // aren't listed (for example 175%), so such a zoom gets one extra option.
+  syncZoomSelect() {
+    const select = this.dom.zoomSelect;
+    const value = this.currentZoom === 'fit' ? 'fit' : String(Number(this.currentZoom));
+    for (const option of [...select.children]) {
+      if (option.dataset.custom) option.remove();
+    }
+    if (![...select.children].some((option) => option.value === value)) {
+      select.append(el('option', { value, dataset: { custom: 'yes' } }, `${Math.round(Number(value) * 100)}%`));
+    }
+    select.value = value;
+  }
+
+  setPressed(btn, pressed) {
+    btn.classList.toggle('active', pressed);
+    btn.setAttribute('aria-pressed', String(pressed));
   }
 
   // A drawing tool goes back to Select after one use unless Settings → Editor
@@ -1753,12 +1831,7 @@ class GuideEditor {
     this.currentZoom = mode;
     this.canvas.setZoom(mode);
     this.canvas.applyZoom();
-    const buttons = [this.dom.zoomFitBtn, this.dom.zoom100Btn, this.dom.zoom125Btn, this.dom.zoom150Btn];
-    buttons.forEach((btn) => btn.classList.remove('active'));
-    if (mode === 'fit') this.dom.zoomFitBtn.classList.add('active');
-    if (mode === 1) this.dom.zoom100Btn.classList.add('active');
-    if (mode === 1.25) this.dom.zoom125Btn.classList.add('active');
-    if (mode === 1.5) this.dom.zoom150Btn.classList.add('active');
+    this.syncToolbar();
   }
 
   applyZoomShortcut(kind) {
@@ -2153,6 +2226,78 @@ class GuideEditor {
     if (show) this.canvas.select(show.annotationId);
   }
 
+  /** Explicit optimization: estimate first, then apply to those exact images. */
+  async optimizeImages() {
+    if (!this.guideId) return;
+    if (this.pendingSave) await this.flushStep();
+    if (this.pendingGuideSave) await this.flushGuide();
+    if (this.pendingSave || this.pendingGuideSave) {
+      this.onToast(t('Save your changes before optimizing guide images.'), { error: true });
+      return;
+    }
+    const guideId = this.guideId;
+    let estimate = null;
+    let closed = false;
+    const status = el('p', { role: 'status', 'aria-live': 'polite' }, t('Estimating image savings…'));
+    const errors = el('p.muted', { hidden: true });
+    const showErrors = (report) => {
+      errors.hidden = !report.errors.length;
+      errors.textContent = tn(report.errors.length, '{count} image could not be optimized.', '{count} images could not be optimized.');
+    };
+    const cancel = el('button', { type: 'button', onClick: () => { closed = true; close(); } }, t('Close'));
+    const again = el('button', { type: 'button', disabled: true, onClick: () => calculate() }, t('Estimate again'));
+    const apply = el('button.primary', { type: 'button', disabled: true, onClick: async () => {
+      if (!estimate) return;
+      apply.disabled = true;
+      again.disabled = true;
+      status.textContent = t('Optimizing guide images…');
+      try {
+        const report = await api.guide.optimizeImages({ guideId, dryRun: false, expectedHash: estimate.estimateHash });
+        const message = t('Saved {saved}.', { saved: formatBytes(report.savedBytes) });
+        status.textContent = message;
+        showErrors(report);
+        if (this.guideId === guideId) await this.reload(this.selectedStepId);
+        if (closed) this.onToast(message);
+      } catch (error) {
+        status.textContent = error.message;
+        if (closed) this.onToast(error.message, { error: true });
+      } finally {
+        estimate = null;
+        again.disabled = false;
+      }
+    } }, t('Optimize'));
+    const { close } = openModal({
+      title: t('Optimize guide images'),
+      body: el('div', {},
+        el('p.muted', {}, t('A snapshot is saved before applying. Images change only when you choose Optimize.')),
+        status, errors),
+      footer: [cancel, again, apply], initialFocus: cancel,
+      onClose: () => { closed = true; },
+    });
+    const calculate = async () => {
+      estimate = null;
+      again.disabled = true;
+      apply.disabled = true;
+      status.textContent = t('Estimating image savings…');
+      try {
+        const report = await api.guide.optimizeImages({ guideId, dryRun: true });
+        if (closed) return;
+        estimate = report;
+        status.textContent = report.savedBytes > 0
+          ? tn(report.proposedImages, 'Save {saved} by optimizing {count} image ({before} → {after}).', 'Save {saved} by optimizing {count} images ({before} → {after}).',
+            { saved: formatBytes(report.savedBytes), before: formatBytes(report.bytesBefore), after: formatBytes(report.bytesAfter) })
+          : t('No smaller images were found.');
+        showErrors(report);
+        apply.disabled = !(report.savedBytes > 0);
+      } catch (error) {
+        status.textContent = error.message;
+      } finally {
+        again.disabled = false;
+      }
+    };
+    await calculate();
+  }
+
   async saveAll() {
     if (this.currentStep) await this.flushStep();
     if (this.guide) await this.flushGuide();
@@ -2378,7 +2523,7 @@ class GuideEditor {
     if (!step) return;
     const copy = clone(step);
     copy.stepId = undefined;
-    copy.title = copy.title ? `${copy.title} copy` : t('Untitled step copy');
+    copy.title = copy.title ? t('{title} copy', { title: copy.title }) : t('Untitled step copy');
     const image = await this.currentStepImageToBase64();
     const newStep = await api.step.add({
       guideId: this.guideId,
@@ -2449,7 +2594,7 @@ class GuideEditor {
   async deleteSelectedStep() {
     const step = this.currentStep;
     if (!step) return;
-    const ok = await confirmDialog(t('Delete “{title}”?', { title: step.title || t('Untitled step') }), { title: t('Delete step'), danger: true, okLabel: t('Delete') });
+    const ok = await this.confirmDelete(t('Delete “{title}”?', { title: step.title || t('Untitled step') }), t('Delete step'));
     if (!ok) return;
     if (this.pendingSave) await this.flushStep();
     const order = this.steps.map((s) => s.stepId);
@@ -2520,12 +2665,12 @@ class GuideEditor {
         levels.set(parentId || '', {
           value: String(depth),
           depth: parentId ? outline.depthOf(result.parentOf, parentId) + 1 : 0,
-          label: parentId ? `Substep of ${nameOf(parentId)}` : t('Top level'),
+          label: parentId ? t('Substep of {step}', { step: nameOf(parentId) }) : t('Top level'),
         });
       }
       positions.push({
         value: String(gap),
-        label: gap === 0 ? t('At the top') : `After ${nameOf(order[gap - 1])}`,
+        label: gap === 0 ? t('At the top') : t('After {step}', { step: nameOf(order[gap - 1]) }),
         current: gap === index,
         levels: [...levels.values()].sort((a, b) => a.depth - b.depth),
       });
@@ -2969,7 +3114,7 @@ class GuideEditor {
       onLoadTemplate: async (format, name) => api.templates.load({ format, name }),
       onSaveTemplate: async (format, name, options) => {
         await api.templates.save({ format, name, options });
-        this.onToast(`Template “${name}” saved.`);
+        this.onToast(t('Template “{name}” saved.', { name }));
       },
       onManageTemplates: async (format, mode) => {
         if (mode === 'manage') {
@@ -3012,7 +3157,7 @@ class GuideEditor {
       onExport: async ({ format, options, outDir, publish, brandProfileId }) => {
         const result = await api.export.run({ guideId: this.guideId, format, options, outDir, brandProfileId });
         if (result && result.ok === false) return false;
-        if (result && result.file) this.onToast(`Exported ${format}.`);
+        if (result && result.file) this.onToast(t('Exported {format}.', { format }));
         // Published after the Export dialog closes, in a dialog that shows
         // progress. The local export is done either way.
         if (publish) publishRequest = { days: publish.days, format, options, brandProfileId };
@@ -3051,7 +3196,7 @@ class GuideEditor {
 
   async openLinkedGuide() {
     if (!this.guide || !this.guide.linkedSource) {
-      await dialogs.showInfoDialog(t('Linked Guide'), 'This guide is stored locally and is not linked to a shared archive.');
+      await dialogs.showInfoDialog(t('Linked Guide'), t('This guide is stored locally and is not linked to a shared archive.'));
       return;
     }
     const library = await api.library.list();
@@ -3080,6 +3225,7 @@ class GuideEditor {
     const commands = [
       { kind: 'cmd', label: t('New guide'), description: t('Create a blank guide'), action: () => this.onBack('new') },
       { kind: 'cmd', label: t('Export'), description: t('Export the current guide'), action: () => this.openExportDialog() },
+      { kind: 'cmd', label: t('Optimize guide images'), action: () => this.optimizeImages() },
       { kind: 'cmd', label: t('Settings'), description: t('Open application settings'), action: () => this.openSettings() },
       { kind: 'cmd', label: t('Linked guide'), description: t('Show linked archive details'), action: () => this.openLinkedGuide() },
       { kind: 'cmd', label: t('Start capture session'), description: t('Enable hotkey capture for this guide'), action: () => this.startCaptureSession() },
@@ -3124,7 +3270,7 @@ class GuideEditor {
   async replaceMatches(matches, replacement) {
     // Stop if the current step's edits can't be saved: the reload at the end
     // would otherwise replace them with what is on disk.
-    if (!(await this.settlePendingSave())) throw new Error('This step’s changes could not be saved, so nothing was replaced.');
+    if (!(await this.settlePendingSave())) throw new Error(t('This step’s changes could not be saved, so nothing was replaced.'));
     const result = await api.findReplace.apply({ guideId: this.guideId, matches, replacement });
     const saved = [];
     try {
@@ -3205,7 +3351,7 @@ class GuideEditor {
       }
     }
     if (record.steps.some((entry) => entry.childIds.length)) await this.reload(record.steps[0].step.stepId);
-    this.onToast(`Restored ${record.steps.length} step${record.steps.length === 1 ? '' : 's'}.`);
+    this.onToast(tn(record.steps.length, 'Restored {count} step.', 'Restored {count} steps.'));
   }
 
   /** Redo of an undone 'delete-step' record: delete those steps again. */
@@ -3218,7 +3364,7 @@ class GuideEditor {
     this.saveStepDebounced.cancel();
     this.pendingSave = false;
     await this.reload(remaining[0] || null);
-    this.onToast(`Deleted ${record.steps.length} step${record.steps.length === 1 ? '' : 's'}.`);
+    this.onToast(tn(record.steps.length, 'Deleted {count} step.', 'Deleted {count} steps.'));
   }
 
   async onCanvasChange(annotations) {
@@ -3480,6 +3626,9 @@ class GuideEditor {
 
   onDocumentKeyDown(e) {
     if (!this.active || !this.guide) return;
+    // Keys typed in a dialog are the dialog's: Delete, letters, Ctrl+Z and
+    // the rest must not edit the guide behind it.
+    if (typeof modalIsOpen === 'function' && modalIsOpen()) return;
     // Plain keys in the Fill picker move through it and close it; they must
     // not nudge, deselect or delete the annotation. Ctrl/Cmd shortcuts still work.
     if (!e.ctrlKey && !e.metaKey && e.target?.closest?.('.fill-picker')) return;
@@ -3505,10 +3654,15 @@ class GuideEditor {
       return;
     }
     if (e.key === 'Escape' && !isEditableTarget(e.target)) {
-      // Escape deselects; Delete is the destructive key.
+      // Escape deselects, or puts down a drawing tool; Delete is the destructive key.
       if (this.selectedAnnotationId) {
         e.preventDefault();
         this.canvas.select(null);
+        return;
+      }
+      if (this.currentTool !== 'select') {
+        e.preventDefault();
+        this.setTool('select');
         return;
       }
     }

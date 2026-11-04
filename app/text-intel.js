@@ -20,6 +20,7 @@ const {
   parseAiJson,
 } = require('../core/text-intel');
 const { renderScreenshotForAi } = require('../core/ai-image');
+const { rasterToPng } = require('../core/image-format');
 const { usablePlaceholders, substitutePlaceholders } = require('../core/ai-placeholders');
 const { buildOrganizePrompt, planOrganize } = require('../core/ai-organize');
 const { buildBrandCssPrompt, normalizeBrandCss } = require('../core/ai-brand-css');
@@ -472,13 +473,13 @@ class TextIntelService {
    * drawn, downscaled), base64-encoded, or '' when there is none or it is
    * over the size budget.
    */
-  screenshotForAi(guideId, step) {
+  async screenshotForAi(guideId, step) {
     if (!step.image) return '';
     const imagePath = this.store.stepImagePath(guideId, step.stepId, 'working')
       || this.store.stepImagePath(guideId, step.stepId, 'original');
     let png = null;
     try {
-      png = renderScreenshotForAi(imagePath, step.annotations);
+      png = await renderScreenshotForAi(imagePath, step.annotations);
     } catch {
       return ''; // unreadable image: fall back to a text-only request
     }
@@ -569,7 +570,7 @@ class TextIntelService {
       const visionModel = netOptions.attachScreenshots && step.image
         ? await this.modelSupportsVision({ host, model })
         : false;
-      const screenshotBase64 = visionModel ? this.screenshotForAi(guideId, step) : '';
+      const screenshotBase64 = visionModel ? await this.screenshotForAi(guideId, step) : '';
       const screenshotAttached = Boolean(screenshotBase64);
 
       let captureContext = null;
@@ -598,8 +599,14 @@ class TextIntelService {
         const imagePath = this.store.stepImagePath(guideId, stepId, 'working') || this.store.stepImagePath(guideId, stepId, 'original');
         if (imagePath && fs.existsSync(imagePath)) {
           const { nativeImage } = require('electron');
-          const image = nativeImage.createFromPath(imagePath);
-          if (!image.isEmpty()) {
+          // WebP screenshots go through the app's codec; nativeImage can't read them.
+          let image = null;
+          try {
+            image = nativeImage.createFromBuffer(await rasterToPng(fs.readFileSync(imagePath)));
+          } catch {
+            image = null; // unreadable: the request goes out without window context
+          }
+          if (image && !image.isEmpty()) {
             const clickPoint = this.clickPointFromStep(step, image);
             const [metadata, ocr] = await Promise.all([
               this.collectForegroundWindowContext(),

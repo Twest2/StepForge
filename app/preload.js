@@ -37,6 +37,7 @@ const api = {
     get: invoke('guide:get'),
     save: invoke('guide:save'),
     quality: invoke('guide:quality'),
+    optimizeImages: invoke('guide:optimizeImages'),
     descriptionToMarkdown: invoke('guide:descriptionToMarkdown'),
     descriptionFromMarkdown: invoke('guide:descriptionFromMarkdown'),
     // An AI agent changed a guide through `StepForge --mcp`.

@@ -1563,7 +1563,7 @@
   'Cloud sync status': 'Estado de la sincronización en la nube',
   'Search guides…  (Ctrl+/ for quick actions)': 'Buscar guías…  (Ctrl+/ para acciones rápidas)',
   'Beta': 'Beta',
-  "AI agent access is off. Save to turn it back on.": "El acceso de agentes de IA está desactivado. Guarda para volver a activarlo.",
+  "AI agents are cut off now. To let them back in, turn this on and save.": "Los agentes de IA ya no tienen acceso. Para volver a permitirlo, actívalo y guarda.",
   "Could not turn off AI agent access: {error}": "No se pudo desactivar el acceso de agentes de IA: {error}",
   "Turning off takes effect immediately, even if Settings is canceled. Turning on requires Save.": "La desactivación es inmediata, aunque canceles los ajustes. Para activarlo, debes guardar.",
 });

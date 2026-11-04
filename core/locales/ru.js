@@ -1563,7 +1563,7 @@
   'Cloud sync status': 'Состояние облачной синхронизации',
   'Search guides…  (Ctrl+/ for quick actions)': 'Поиск руководств…  (Ctrl+/ — быстрые действия)',
   'Beta': 'Бета',
-  "AI agent access is off. Save to turn it back on.": "Доступ ИИ-агентов отключён. Чтобы включить его снова, сохраните настройки.",
+  "AI agents are cut off now. To let them back in, turn this on and save.": "ИИ-агенты отключены. Чтобы снова разрешить доступ, включите этот параметр и сохраните.",
   "Could not turn off AI agent access: {error}": "Не удалось отключить доступ ИИ-агентов: {error}",
   "Turning off takes effect immediately, even if Settings is canceled. Turning on requires Save.": "Отключение действует сразу, даже при отмене настроек. Для включения нужно сохранить настройки.",
 });

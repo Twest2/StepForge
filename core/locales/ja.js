@@ -1563,7 +1563,7 @@
   'Cloud sync status': 'クラウド同期の状態',
   'Search guides…  (Ctrl+/ for quick actions)': 'ガイドを検索…  (Ctrl+/ でクイックアクション)',
   'Beta': 'ベータ',
-  "AI agent access is off. Save to turn it back on.": "AIエージェントのアクセスは無効です。再度有効にするには保存してください。",
+  "AI agents are cut off now. To let them back in, turn this on and save.": "AI エージェントのアクセスを今すぐ遮断しました。再び許可するには、オンにして保存してください。",
   "Could not turn off AI agent access: {error}": "AIエージェントのアクセスを無効にできませんでした: {error}",
   "Turning off takes effect immediately, even if Settings is canceled. Turning on requires Save.": "無効化は設定をキャンセルしても直ちに適用されます。有効化には保存が必要です。",
 });

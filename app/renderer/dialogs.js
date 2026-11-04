@@ -940,7 +940,7 @@ function showSettingsDialog({
         // Revocation is immediate; enabling remains an explicit Settings Save.
         await api.settings.set({ keyPath: 'ai.agents.enabled', value: false });
         settingsBaseline.ai.agents.enabled = false;
-        agentAccessStatus.textContent = t('AI agent access is off. Save to turn it back on.');
+        agentAccessStatus.textContent = t('AI agents are cut off now. To let them back in, turn this on and save.');
         agentAccessStatus.hidden = false;
       } catch (error) {
         agentsEnabled.checked = true;

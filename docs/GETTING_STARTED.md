@@ -292,7 +292,7 @@ New screenshots use lossless WebP when it is smaller than PNG. Text, colors and
 transparency are preserved. Existing guides stay unchanged until you choose to
 optimize them.
 
-Under **Settings → General → Image compression**, choose lossless (recommended),
+Under **Settings → Capture → Image compression**, choose lossless (recommended),
 optional lossy compression, or no automatic optimization. Lossy quality is
 limited to 95–100%; images that exceed the pixel-error limits fall back to
 lossless. StepForge keeps PNG whenever compression would increase the file size.

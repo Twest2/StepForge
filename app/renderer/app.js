@@ -534,7 +534,7 @@ class StepForgeApp {
         title: t('Capture a screenshot step'),
         onClick: (e) => this.editor.openCaptureMenu(e),
       }, t('Capture ▾')),
-      el('button', { type: 'button', onClick: () => this.editor.saveAll() }, t('Save')),
+      el('button.primary', { type: 'button', onClick: () => this.editor.saveAll() }, t('Save')),
       el('button', { type: 'button', onClick: () => this.editor.openExportDialog() }, t('Export')),
       el('button', {
         type: 'button',

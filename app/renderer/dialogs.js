@@ -1176,6 +1176,51 @@ const EXPORT_OPTION_LABELS = {
   imageWidthTwips: t('Image Width Twips'), titleSlide: t('Title Slide'),
 };
 
+/** Draft title and image; choosing a file never creates a step. */
+function showAddStepDialog({ onChooseImage } = {}) {
+  return new Promise(resolve => {
+    let image = null;
+    let closed = false;
+    let choosing = false;
+    const title = makeInput('', 'text', { placeholder: t('Untitled step'), maxLength: 1000 });
+    const imageStatus = el('p.muted', { role: 'status', 'aria-live': 'polite' }, t('No image selected. The step can be added without one.'));
+    const error = el('p', { role: 'alert', hidden: true });
+    const refreshImage = () => {
+      imageStatus.textContent = image
+        ? t('{name} ({width} × {height} px)', { name: image.name, width: image.size.width, height: image.size.height })
+        : t('No image selected. The step can be added without one.');
+      remove.hidden = !image;
+    };
+    const remove = el('button', { type: 'button', hidden: true, onClick: () => { image = null; refreshImage(); choose.focus(); } }, t('Remove image'));
+    const choose = el('button', { type: 'button', onClick: async () => {
+      choosing = true; choose.disabled = true; add.disabled = true; error.hidden = true;
+      try {
+        const picked = await onChooseImage?.();
+        if (!closed && picked) { image = picked; refreshImage(); }
+      } catch (cause) {
+        error.textContent = t('Could not choose an image: {error}', { error: cause.message });
+        error.hidden = false;
+      } finally { choosing = false; choose.disabled = false; add.disabled = false; }
+    } }, t('Choose image…'));
+    const accept = () => {
+      if (closed || choosing) return;
+      const draft = { title: title.value.trim(), image };
+      closed = true; close(); resolve(draft);
+    };
+    const add = el('button.primary', { type: 'button', onClick: accept }, t('Add'));
+    const form = el('form.add-step-form', { onSubmit: event => { event.preventDefault(); accept(); } },
+      el('label', {}, t('Step title'), title),
+      el('div.add-step-image', {}, el('div', {}, t('Image (optional)')), imageStatus, el('div.row', {}, choose, remove)), error);
+    const { close, requestDismiss, node } = openModal({
+      title: t('Add Step'), body: form, initialFocus: title,
+      isDirty: () => Boolean(title.value || image),
+      footer: [el('button', { type: 'button', onClick: () => requestDismiss() }, t('Cancel')), add],
+      onClose: () => { closed = true; resolve(null); },
+    });
+    node.classList.add('add-step-modal');
+  });
+}
+
 function showExportDialog({
   formats,
   templatesByFormat = {},
@@ -1931,6 +1976,7 @@ window.StepForgeDialogs = {
   makeUpdateCheck,
   storageWarning,
   showExportDialog,
+  showAddStepDialog,
   showLinkedGuideDialog,
   showInfoDialog,
   showBackupsDialog,

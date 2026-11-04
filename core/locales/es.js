@@ -1585,4 +1585,10 @@
   "Before optimizing images": "Antes de optimizar las imágenes",
   "{count} images could not be optimized.": {"one":"No se pudo optimizar {count} imagen.","other":"No se pudieron optimizar {count} imágenes."},
   "Save {saved} by optimizing {count} images ({before} → {after}).": {"one":"Ahorra {saved} al optimizar {count} imagen ({before} → {after}).","other":"Ahorra {saved} al optimizar {count} imágenes ({before} → {after})."},
+  "Choose an image for the new step": "Elegir una imagen para el nuevo paso",
+  "No image selected. The step can be added without one.": "No hay ninguna imagen seleccionada. Puedes añadir el paso sin imagen.",
+  "{name} ({width} × {height} px)": "{name} ({width} × {height} px)",
+  "Remove image": "Quitar imagen",
+  "Could not choose an image: {error}": "No se pudo elegir una imagen: {error}",
+  "Image (optional)": "Imagen (opcional)",
 });

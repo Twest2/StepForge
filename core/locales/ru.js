@@ -1585,4 +1585,10 @@
   "Before optimizing images": "До оптимизации изображений",
   "{count} images could not be optimized.": {"one":"{count} изображение не удалось оптимизировать.","few":"{count} изображения не удалось оптимизировать.","many":"{count} изображений не удалось оптимизировать.","other":"{count} изображения не удалось оптимизировать."},
   "Save {saved} by optimizing {count} images ({before} → {after}).": {"one":"Можно сэкономить {saved}, оптимизировав {count} изображение ({before} → {after}).","few":"Можно сэкономить {saved}, оптимизировав {count} изображения ({before} → {after}).","many":"Можно сэкономить {saved}, оптимизировав {count} изображений ({before} → {after}).","other":"Можно сэкономить {saved}, оптимизировав {count} изображения ({before} → {after})."},
+  "Choose an image for the new step": "Выберите изображение для нового шага",
+  "No image selected. The step can be added without one.": "Изображение не выбрано. Шаг можно добавить без него.",
+  "{name} ({width} × {height} px)": "{name} ({width} × {height} пикс.)",
+  "Remove image": "Убрать изображение",
+  "Could not choose an image: {error}": "Не удалось выбрать изображение: {error}",
+  "Image (optional)": "Изображение (необязательно)",
 });

@@ -133,13 +133,14 @@ function makeDom() {
   return { win, doc, body, app, modalRoot, press, walk, textOf, dispatch };
 }
 
-function loadUtil(language = 'en') {
+function loadUtil(language = 'en', withDialogs = false) {
   const dom = makeDom();
   const context = { ...rendererI18n(language), document: dom.doc, window: dom.win,
     location: { search: `?lang=${language}` }, setTimeout, clearTimeout,
     StepForgeLocales: require('../../core/locales') };
   vm.createContext(context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/util.js'), 'utf8'), context);
+  if (withDialogs) vm.runInContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/dialogs.js'), 'utf8'), context);
   const button = (within, label) => dom.walk(within).find((n) => n.localName === 'button' && dom.textOf(n) === label);
   return { ...dom, ...context, button, text: (node) => dom.textOf(node) };
 }
@@ -400,4 +401,51 @@ test('Cancel uses the dirty dismissal guard and resolves only after discarding',
   u.button(u.modalRoot.children[1], 'Discard').click();
   assert.equal(await pending, null);
   assert.equal(u.modalRoot.children.length, 0);
+});
+
+
+test('Add step accepts a title without an image and initially focuses its labelled input', async () => {
+  const u = loadUtil('en', true);
+  const done = u.window.StepForgeDialogs.showAddStepDialog();
+  const field = u.doc.activeElement;
+  assert.equal(field.localName, 'input');
+  field.value = '  Check settings  ';
+  u.button(u.modalRoot, 'Add').click();
+  const draft = await done;
+  assert.equal(draft.title, 'Check settings');
+  assert.equal(draft.image, null);
+});
+
+test('Add step keeps the title when the picker is cancelled, allows removing a selected image, and guards dismissal', async () => {
+  const u = loadUtil('en', true);
+  let result = null;
+  const done = u.window.StepForgeDialogs.showAddStepDialog({ onChooseImage: async () => result });
+  const field = u.doc.activeElement;
+  field.value = 'Keep this title';
+  u.button(u.modalRoot, 'Choose image…').click(); await settle();
+  assert.equal(field.value, 'Keep this title');
+  result = { name: 'Example.webp', size: { width: 320, height: 200 }, imageBase64: 'bytes' };
+  u.button(u.modalRoot, 'Choose image…').click(); await settle();
+  assert.ok(u.text(u.modalRoot).includes('Example.webp'));
+  u.button(u.modalRoot, 'Cancel').click();
+  assert.equal(u.modalRoot.children.length, 2);
+  u.button(u.modalRoot.children.at(-1), 'Keep editing').click();
+  u.button(u.modalRoot, 'Remove image').click();
+  u.button(u.modalRoot, 'Add').click();
+  const draft = await done;
+  assert.equal(draft.title, 'Keep this title'); assert.equal(draft.image, null);
+});
+
+test('Add step returns the selected draft image and reports picker failures without clearing edits', async () => {
+  const u = loadUtil('en', true); let fail = true;
+  const image = { name: 'Screenshot.png', size: { width: 160, height: 90 }, imageBase64: 'bytes' };
+  const done = u.window.StepForgeDialogs.showAddStepDialog({ onChooseImage: async () => { if (fail) throw Error('Cannot read'); return image; } });
+  u.doc.activeElement.value = 'Imported screenshot';
+  u.button(u.modalRoot, 'Choose image…').click(); await settle();
+  assert.ok(u.text(u.modalRoot).includes('Could not choose an image: Cannot read'));
+  fail = false;
+  u.button(u.modalRoot, 'Choose image…').click(); await settle();
+  u.button(u.modalRoot, 'Add').click();
+  const draft = await done;
+  assert.equal(draft.image, image); assert.equal(draft.title, 'Imported screenshot');
 });

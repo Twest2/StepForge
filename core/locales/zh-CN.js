@@ -1585,4 +1585,10 @@
   "Before optimizing images": "图片优化前",
   "{count} images could not be optimized.": {"other":"有 {count} 张图片无法优化。"},
   "Save {saved} by optimizing {count} images ({before} → {after}).": {"other":"优化 {count} 张图片可节省 {saved}（{before} → {after}）。"},
+  "Choose an image for the new step": "为新步骤选择图片",
+  "No image selected. The step can be added without one.": "未选择图片。可以添加不带图片的步骤。",
+  "{name} ({width} × {height} px)": "{name}（{width} × {height} 像素）",
+  "Remove image": "移除图片",
+  "Could not choose an image: {error}": "无法选择图片：{error}",
+  "Image (optional)": "图片（可选）",
 });

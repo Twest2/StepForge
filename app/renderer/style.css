@@ -1857,3 +1857,10 @@ button.cmp-fold:hover { background: var(--border); color: var(--text); }
   .cmp-row { grid-template-columns: 1fr; gap: 2px; }
   .cmp-image-pair { grid-template-columns: 1fr; }
 }
+
+.modal.add-step-modal { width: min(480px, 96vw); }
+.add-step-form { display: flex; flex-direction: column; gap: 16px; }
+.add-step-form label { display: flex; flex-direction: column; gap: 6px; }
+.add-step-form input { width: 100%; }
+.add-step-image p { margin: 6px 0 10px; overflow-wrap: anywhere; }
+.add-step-image .row { flex-wrap: wrap; }

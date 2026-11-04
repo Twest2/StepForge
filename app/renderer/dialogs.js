@@ -1208,6 +1208,8 @@ function showExportDialog({
     // The effective option set shown to (and edited by) the user.
     let defaults = {};
     let current = {};
+    const optionInputs = [];
+    const validOptions = () => optionInputs.every(input => input.reportValidity?.() !== false);
 
     const toColorValue = (v) => (/^#[0-9a-f]{6}$/i.test(String(v)) ? String(v).toLowerCase() : '#000000');
 
@@ -1217,6 +1219,13 @@ function showExportDialog({
         // Options that only apply when this one is set show or hide with it.
         if (Object.values(formatInfo(formatSelect.value).options || {}).some((o) => o.dependsOn === key)) renderOptions();
       };
+      if (info.choices) {
+        const selected = info.choices.some(choice => choice.value === value) ? value : defVal;
+        const input = makeSelect(selected, info.choices);
+        input.setAttribute('aria-label', info.label);
+        input.addEventListener('change', () => set(input.value));
+        return input;
+      }
       if (typeof defVal === 'boolean') {
         const input = el('input', { type: 'checkbox', checked: Boolean(value) });
         input.addEventListener('change', () => set(input.checked));
@@ -1225,10 +1234,12 @@ function showExportDialog({
       if (typeof defVal === 'number') {
         const scale = info.scale || 1;
         const input = makeInput(Math.round((value / scale) * 1000) / 1000, 'number', {
-          step: info.step ?? 'any', min: info.min ?? '', max: info.max ?? '',
+          step: info.step ?? 'any', min: info.min ?? '', max: info.max ?? '', required: true,
         });
+        input.setAttribute('aria-label', info.unit ? `${info.label} (${info.unit})` : info.label);
+        optionInputs.push(input);
         input.addEventListener('input', () => {
-          if (input.value !== '') set(Math.round(Number(input.value) * scale * 1000) / 1000);
+          if (input.value !== '' && Number.isFinite(Number(input.value))) set(Math.round(Number(input.value) * scale * 1000) / 1000);
         });
         return info.unit ? el('div.row.export-number', {}, input, el('span.muted', {}, info.unit)) : input;
       }
@@ -1261,6 +1272,7 @@ function showExportDialog({
 
     function renderOptions() {
       clearNode(optionsHost);
+      optionInputs.length = 0;
       const meta = formatInfo(formatSelect.value).options || {};
       const entries = Object.entries(defaults)
         .filter(([key, v]) => ['boolean', 'number', 'string'].includes(typeof v) && !meta[key]?.hidden)
@@ -1269,8 +1281,13 @@ function showExportDialog({
         optionsHost.append(el('div.muted', {}, t('This format has no adjustable options.')));
         return;
       }
+      let group = null;
       for (const [key, defVal] of entries) {
         const info = meta[key] || {};
+        if (info.group && info.group !== group) {
+          group = info.group;
+          optionsHost.append(el('h3.export-option-group', {}, group));
+        }
         const value = current[key] ?? defVal;
         const label = info.label || EXPORT_OPTION_LABELS[key] || key.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase());
         optionsHost.append(settingRow(label, info.hint || '', optionControl(key, defVal, value, { ...info, label })));
@@ -1370,6 +1387,7 @@ function showExportDialog({
     const saveTplBtn = el('button', {
       type: 'button',
       onClick: async () => {
+        if (!validOptions()) return;
         const name = await promptText({ title: t('Save template'), label: t('Template name'), value: templateSelect.value || '' });
         if (!name || !name.trim()) return;
         await onSaveTemplate?.(formatSelect.value, name.trim(), effectiveOptions());
@@ -1419,7 +1437,7 @@ function showExportDialog({
     const cancelBtn = el('button', { onClick: () => requestDismiss() }, t('Cancel'));
     const previewBtn = el('button', {
       onClick: async () => {
-        if (typeof onPreview !== 'function') return;
+        if (typeof onPreview !== 'function' || !validOptions()) return;
         setButtonLoading(previewBtn, true, t('Preview…'));
         try {
           await onPreview(payload()); // keep dialog open so settings can be tweaked
@@ -1430,7 +1448,7 @@ function showExportDialog({
     }, t('Preview'));
     const exportBtn = el('button.primary', {
       onClick: async () => {
-        if (typeof onExport !== 'function') return;
+        if (typeof onExport !== 'function' || !validOptions()) return;
         cancelBtn.disabled = true;
         previewBtn.disabled = true;
         setButtonLoading(exportBtn, true, t('Exporting…'));

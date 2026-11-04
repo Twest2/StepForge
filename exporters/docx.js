@@ -25,6 +25,12 @@ const DEFAULT_TEMPLATE = {
   imageWidthTwips: 9000, // ~15.9cm inside A4 margins
 };
 
+
+const OPTION_INFO = {
+  includeImages: { label: 'Include screenshots', group: 'Contents' },
+  includeToc: { label: 'Add a table of contents', group: 'Contents' },
+  imageWidthTwips: { label: 'Screenshot width', group: 'Screenshots', unit: 'cm', scale: 1440 / 2.54, min: 0.1, step: 'any' },
+};
 // Callout styling per text-block level, matching the colors used in the
 // HTML/PDF exports so a "Tip" looks distinct from a "Warning" at a glance.
 const LEVEL_STYLE = {
@@ -479,4 +485,4 @@ ${rels.join('\n')}
   return { file, imageCount: stepImageCount };
 }
 
-module.exports = { exportDocx, DEFAULT_TEMPLATE };
+module.exports = { exportDocx, DEFAULT_TEMPLATE, OPTION_INFO };

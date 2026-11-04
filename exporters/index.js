@@ -33,10 +33,10 @@ const EXPORTERS = {
  * without an entry fall back to a label derived from the key.
  */
 const FORMAT_INFO = {
-  pdf: { description: 'A print-ready document with a cover page and contents.' },
+  pdf: { description: 'A print-ready document with a cover page and contents.', options: require('./pdf').OPTION_INFO },
   markdown: { description: 'A .md file plus a folder of screenshots, for GitHub, GitLab, Azure DevOps and other wikis.', options: require('./markdown').OPTION_INFO },
-  docx: { description: 'A Word document you can keep editing.' },
-  pptx: { description: 'A PowerPoint deck with one slide per step.' },
+  docx: { description: 'A Word document you can keep editing.', options: require('./docx').OPTION_INFO },
+  pptx: { description: 'A PowerPoint deck with one slide per step.', options: require('./pptx').OPTION_INFO },
   'html-simple': { description: 'A single web page with screenshots built in. Easy to email, share or print.', options: require('./html').OPTION_INFO },
   'html-rich': { description: 'An interactive checklist page: contents sidebar, "done" toggles and zoomable screenshots.', options: require('./html').OPTION_INFO },
   gif: { description: 'An animated slideshow of the screenshots for chat, tickets and READMEs.', options: require('./gif').OPTION_INFO },

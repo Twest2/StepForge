@@ -181,6 +181,15 @@ const DEFAULT_TEMPLATE = {
   accentColor: [37, 99, 235],
 };
 
+
+const OPTION_INFO = {
+  pageSize: { label: 'Page size', group: 'Page layout', choices: [{ value: 'a4', label: 'A4 (210 × 297 mm)' }, { value: 'letter', label: 'US Letter (8.5 × 11 in)' }] },
+  margin: { label: 'Page margins', group: 'Page layout', unit: 'pt', min: 0, step: 'any', hint: 'Applied on every side. 72 points = 1 inch.' },
+  includeCover: { label: 'Add a cover page', group: 'Contents' },
+  includeToc: { label: 'Add a table of contents', group: 'Contents' },
+  includeImages: { label: 'Include screenshots', group: 'Screenshots' },
+  imageMaxHeightRatio: { label: 'Maximum screenshot height', group: 'Screenshots', unit: '%', scale: 0.01, min: 1, max: 100, step: 'any', hint: 'Percentage of the page height inside the margins.' },
+};
 function exportPdf(ast, outDir, template = {}) {
   const tpl = withBrand('pdf', DEFAULT_TEMPLATE, ast, template);
   // A brand profile sets the text and link colors, and the closest built-in
@@ -587,4 +596,4 @@ function exportPdf(ast, outDir, template = {}) {
   return { file, imageCount: images.size, pageCount: pdf.pages.length };
 }
 
-module.exports = { exportPdf, DEFAULT_TEMPLATE };
+module.exports = { exportPdf, DEFAULT_TEMPLATE, OPTION_INFO, PAGE_SIZES };

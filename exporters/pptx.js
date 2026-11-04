@@ -24,6 +24,12 @@ const DEFAULT_TEMPLATE = {
   includeToc: true,
 };
 
+
+const OPTION_INFO = {
+  titleSlide: { label: 'Add a title slide', group: 'Contents' },
+  includeToc: { label: 'Add a table of contents', group: 'Contents' },
+  includeImages: { label: 'Include screenshots', group: 'Contents' },
+};
 const SLIDE_W = 12192000; // EMU, 16:9
 const SLIDE_H = 6858000;
 const EMU_PER_PX = 9525;
@@ -470,4 +476,4 @@ ${logoBox ? '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/off
   return { file, slideCount: slides.length, imageCount: mediaCounter };
 }
 
-module.exports = { exportPptx, DEFAULT_TEMPLATE };
+module.exports = { exportPptx, DEFAULT_TEMPLATE, OPTION_INFO };

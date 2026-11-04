@@ -492,6 +492,9 @@ error of 1.5/255. Unsupported bit depths and multi-frame inputs remain PNG.
 
 Manual optimization first estimates without writes. Its token binds image
 bytes, guide/step revisions and codec options; apply rejects stale estimates.
+Both passes read, hash and encode screenshots several at a time
+(`defaultConcurrency()`: half the hardware threads, at most 8 and one per GB of
+memory) and tally the results in step order.
 A snapshot precedes content-addressed image writes, and step revisions are
 checked before retiring old files. PNG-only guides remain supported. Cloud sync
 transfers stored bytes unchanged. Long Windows preview paths use content-typed

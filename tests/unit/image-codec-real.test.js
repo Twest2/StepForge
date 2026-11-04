@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { createImageCodec } = require('../../core/image-codec');
 const { optimizeScreenshot, prepareExportImages, sniffImageFormat } = require('../../core/image-format');
-const { optimizeGuideImages } = require('../../core/image-optimize');
+const { optimizeGuideImages, mapLimit, defaultConcurrency } = require('../../core/image-optimize');
 const { encodePng, decodePng } = require('../../core/png');
 const raster = require('../../core/raster');
 const { GuideStore } = require('../../core/store');
@@ -105,6 +105,57 @@ test('an estimate never edits guide files; applying preserves rendered annotatio
   assert.equal(snapshots.length, 1);
   restoreSnapshot(store, guide.guideId, snapshots[0]);
   assert.deepEqual(fs.readFileSync(store.stepImagePath(guide.guideId, step.stepId)), png);
+});
+
+test('screenshots are encoded several at a time, with the same result as one at a time', async (t) => {
+  const { store, guide, png } = library(t);
+  for (let i = 0; i < 7; i++) store.addStep(guide.guideId, { title: `Step ${i}` }, png, { width: 480, height: 240 });
+  const missing = store.addStep(guide.guideId, { title: 'Missing file' }, png, { width: 480, height: 240 });
+  fs.rmSync(store.stepImagePath(guide.guideId, missing.stepId));
+  const counting = () => {
+    const seen = { running: 0, most: 0 };
+    const wrapped = { ...codec, async encodeWebp(bytes, options) {
+      seen.most = Math.max(seen.most, ++seen.running);
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        return await codec.encodeWebp(bytes, options);
+      } finally { seen.running--; }
+    } };
+    return { seen, wrapped };
+  };
+  const one = counting();
+  const serial = await optimizeGuideImages(store, guide.guideId, { codec: one.wrapped, concurrency: 1 });
+  assert.equal(one.seen.most, 1);
+  const four = counting();
+  const parallel = await optimizeGuideImages(store, guide.guideId, { codec: four.wrapped, concurrency: 4 });
+  assert.equal(four.seen.most, 4, 'four encodes run at once');
+  for (const report of [serial, parallel]) delete report.elapsedMs;
+  assert.deepEqual(parallel, serial, 'same estimate, counts, hash and errors');
+  assert.equal(parallel.proposedImages, 8);
+  assert.deepEqual(parallel.errors.map((e) => e.stepId), [missing.stepId]);
+
+  const applied = await optimizeGuideImages(store, guide.guideId, { codec, concurrency: 4, dryRun: false, expectedHash: parallel.estimateHash });
+  assert.equal(applied.optimized, 8);
+  assert.equal(applied.savedBytes, parallel.savedBytes);
+  for (const [stepId, step] of store.listSteps(guide.guideId)) {
+    if (stepId !== missing.stepId) assert.equal(sniffImageFormat(fs.readFileSync(store.stepImagePath(guide.guideId, stepId))), 'webp', step.title);
+  }
+});
+
+test('mapLimit keeps item order and never runs more than the limit', async () => {
+  let running = 0;
+  let most = 0;
+  const out = await mapLimit([30, 5, 20, 1, 10], 2, async (ms) => {
+    most = Math.max(most, ++running);
+    await new Promise((resolve) => setTimeout(resolve, ms));
+    running--;
+    return ms * 2;
+  });
+  assert.deepEqual(out, [60, 10, 40, 2, 20]);
+  assert.equal(most, 2);
+  assert.deepEqual(await mapLimit([], 4, async () => 1), []);
+  const n = defaultConcurrency();
+  assert.ok(Number.isInteger(n) && n >= 1 && n <= 8);
 });
 
 test('changes after an estimate or during encoding cannot overwrite current guide content', async (t) => {

@@ -1615,13 +1615,22 @@ fieldset legend {
 .settings-pane-head p { margin: 0; }
 
 .settings-card { border: 1px solid var(--border); border-radius: 12px; background: var(--panel-solid); padding: 4px 16px; }
-.settings-card-title { padding: 14px 0 4px; font-size: 13px; font-weight: 650; }
+/* Card heading: a size step above the setting names (sentence case, no capitals), so each
+   card reads as a section and the settings inside it as its items. */
+.settings-card-title {
+  margin: 0;
+  padding: 16px 0 4px;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.3;
+}
 .setting-row[hidden] { display: none; }
 .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 12px 0; }
 .setting-row + .setting-row, .setting-row + div > .setting-row { border-top: 1px solid var(--border); }
 .setting-row[hidden] + .setting-row { border-top: 0; }
 .setting-text { min-width: 0; flex: 1; }
-.setting-title { font-weight: 550; }
+.setting-title { font-weight: 500; color: var(--text); }
 .setting-desc { color: var(--muted); font-size: 12px; margin-top: 2px; }
 .setting-desc.error { color: var(--danger); }
 .setting-control { flex: none; display: flex; justify-content: flex-end; max-width: 55%; }

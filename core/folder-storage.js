@@ -134,6 +134,10 @@ class FolderStorage {
     return (await this.objects()).filter((file) => file.appProperties.stepforge === 'settings-v1');
   }
 
+  async listFolders() {
+    return (await this.objects()).filter((file) => file.appProperties.stepforge === 'folders-v1');
+  }
+
   async listParts() {
     return (await this.backend.list('parts')).filter((entry) => SHA.test(entry.name)).map((entry) => ({
       id: `${PART_PREFIX}${entry.name}`, name: `part-${entry.name}`, createdTime: isoTime(entry.modified),

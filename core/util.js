@@ -88,8 +88,10 @@ function decodeEntities(text) {
 function htmlToText(html) {
   if (!html) return '';
   let text = String(html)
-    .replace(/<(br|\/p|\/div|\/li|\/h[1-6]|\/tr)\s*\/?>/gi, '\n')
-    .replace(/<li[\s>]/gi, '• <')
+    // Table cells stay apart: "A | B".
+    .replace(/<\/t[hd]>\s*(?=<t[hd][\s>])/gi, ' | ')
+    .replace(/<(br|hr|ul|ol|\/p|\/div|\/li|\/h[1-6]|\/tr)\s*\/?>/gi, '\n')
+    .replace(/<li(\s[^>]*)?>/gi, '• ')
     .replace(/<[^>]*>/g, '');
   text = decodeEntities(text);
   return text.replace(/[ \t]+/g, ' ').replace(/\s*\n\s*/g, '\n').trim();

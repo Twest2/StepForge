@@ -7,6 +7,7 @@ const { FallbackFonts, systemFontCandidates } = require('../core/pdf-fonts');
 const { guideSlug, renderAllImages, LEVEL_LABEL, stepContentGroups, codeBlockText } = require('./common');
 const { htmlToText } = require('../core/util');
 const { htmlToBlocks } = require('../core/htmlblocks');
+const { standardTextWidth } = require('../core/pdf-metrics');
 const { highlightCode } = require('../core/code-highlight');
 const { guideMetaLines } = require('./document-layout');
 const { withBrand, brandRaster, fitSize, fontKind, textOn, hexToRgb } = require('./branding');
@@ -101,7 +102,7 @@ function wrapRuns(pdf, runs, size, maxWidth, fonts) {
     for (const part of run.text.split(/(\s+)/)) {
       if (part === '') continue;
       // Chinese, Japanese and Korean may break between any two characters.
-      for (const chunk of /^\s+$/.test(part) ? [part] : breakChunks(part)) words.push({ text: chunk, font, href: run.href });
+      for (const chunk of /^\s+$/.test(part) ? [part] : breakChunks(part)) words.push({ text: chunk, font, href: run.href, strike: run.strike });
     }
   }
   const lines = [];
@@ -121,6 +122,21 @@ function wrapRuns(pdf, runs, size, maxWidth, fonts) {
   }
   if (line.length) lines.push(line);
   return lines;
+}
+
+/**
+ * A line through each ~~struck~~ word of a wrapped line drawn at (x, yTop).
+ * The viewer places the words with the font's real widths, so measure them
+ * the same way where the widths are known (textWidth is only an estimate).
+ */
+function strikeWords(pdf, line, x, yTop, size, color) {
+  if (!line.some((word) => word.strike)) return;
+  let wx = x;
+  for (const word of line) {
+    const ww = standardTextWidth(word.text, size, word.font) ?? pdf.textWidth(word.text, size, word.font);
+    if (word.strike) pdf.rect(wx, yTop + size * 0.62, ww, Math.max(0.5, size * 0.06), { fill: color });
+    wx += ww;
+  }
 }
 
 /**
@@ -279,6 +295,7 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
           color: word.href ? linkColor : (item.muted ? [100, 100, 100] : color),
         }));
         pdf.textRun(parts, textX, y, item.size);
+        strikeWords(pdf, line, textX, y, item.size, item.muted ? [100, 100, 100] : color);
         y += item.lineHeight;
       });
       y += 4;
@@ -591,6 +608,7 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
           color: word.href ? linkColor : (item.muted ? [100, 100, 100] : ink),
         }));
         pdf.textRun(parts, textX, by, item.size);
+        strikeWords(pdf, line, textX, by, item.size, item.muted ? [100, 100, 100] : ink);
         by += item.lineHeight;
       });
       by += 4;

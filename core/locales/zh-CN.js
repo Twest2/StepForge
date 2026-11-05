@@ -1269,7 +1269,7 @@
   'Organization': '组织',
   'Description': '描述',
   'Shown on the first page of the PDF and at the top of other export formats.': '显示在 PDF 第一页及其他导出格式的顶部。',
-  'Markdown works here: **bold**, *italic*, `code`, [link](https://example.com), and lists that start with - or 1.': '支持 Markdown：**粗体**、*斜体*、`代码`、[链接](https://example.com)，以及以 - 或 1. 开头的列表。',
+  'Markdown works here: **bold**, *italic*, `code`, [link](https://example.com), ~~strikethrough~~, # headings, > quotes, | tables |, --- for a divider, and lists that start with - or 1. (indent an item to nest it).': '此处支持 Markdown：**粗体**、*斜体*、`代码`、[链接](https://example.com)、~~删除线~~、# 标题、> 引用、| 表格 |、--- 分隔线，以及以 - 或 1. 开头的列表（缩进项目可嵌套）。',
   'Review': '审阅',
   'Software version': '软件版本',
   'Last verified': '上次验证',

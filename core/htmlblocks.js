@@ -8,10 +8,13 @@ const { decodeEntities } = require('./util');
  * preserve bold/italic/links/lists rather than flattening to plain text.
  *
  * Each block: { type, runs, indent, n? }
- *   type:   'p' | 'h1'..'h4' | 'blockquote' | 'li' | 'oli' | 'hr'
- *   runs:   [{ text, bold, italic, code, href }] (absent for 'hr')
+ *   type:   'p' | 'h1'..'h4' | 'blockquote' | 'li' | 'oli' | 'hr' | 'tr'
+ *   runs:   [{ text, bold, italic, strike, code, href }] (absent for 'hr')
  *   indent: list/quote nesting depth (0 = top level)
  *   n:      list item number, only for 'oli'
+ *   cells:  for 'tr', each cell's text; its runs show the cells joined by
+ *           " | " (header cells bold), for renderers without tables
+ *   header: for 'tr', true for a row of <th> cells
  */
 
 const TAG_RE = /<\s*(\/?)\s*([a-zA-Z][a-zA-Z0-9]*)((?:"[^"]*"|'[^']*'|[^>"'])*)>/g;
@@ -26,6 +29,7 @@ function htmlToBlocks(html) {
   const indentLevel = () => context.length;
   const currentStyle = () => styleStack[styleStack.length - 1];
 
+  let cellStart = null; // runs index where the open table cell began
   const flushBlock = () => {
     if (!current) return;
     if (current.type === 'hr' || current.runs.some((r) => r.text.trim() !== '')) blocks.push(current);
@@ -81,8 +85,31 @@ function htmlToBlocks(html) {
           else startBlock('li', { indent: depth });
         }
         break;
-      case 'br':
+      case 'table':
         flushBlock();
+        break;
+      case 'tr':
+        if (closing) flushBlock();
+        else startBlock('tr', { cells: [], header: false });
+        break;
+      case 'td':
+      case 'th':
+        if (!current || current.type !== 'tr') break;
+        if (closing) {
+          if (cellStart === null) break;
+          styleStack.pop();
+          current.cells.push(current.runs.slice(cellStart).map((r) => r.text).join('').trim());
+          cellStart = null;
+        } else {
+          if (current.cells.length) current.runs.push({ text: ' | ' });
+          if (tag === 'th') current.header = true;
+          cellStart = current.runs.length;
+          styleStack.push(tag === 'th' ? { ...currentStyle(), bold: true } : { ...currentStyle() });
+        }
+        break;
+      case 'br':
+        if (current && current.type === 'tr') pushText(' ');
+        else flushBlock();
         break;
       case 'hr':
         flushBlock();
@@ -98,6 +125,11 @@ function htmlToBlocks(html) {
         if (closing) styleStack.pop();
         else styleStack.push({ ...currentStyle(), italic: true });
         break;
+      case 's':
+      case 'del':
+        if (closing) styleStack.pop();
+        else styleStack.push({ ...currentStyle(), strike: true });
+        break;
       case 'code':
       case 'pre':
         if (closing) styleStack.pop();
@@ -111,7 +143,7 @@ function htmlToBlocks(html) {
         }
         break;
       default:
-        // Unrecognized/transparent allowed tags (table*, span, u, s, sub, sup):
+        // Unrecognized/transparent allowed tags (thead, tbody, span, u, sub, sup):
         // no block or style change.
         break;
     }

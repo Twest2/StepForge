@@ -118,8 +118,12 @@ For each step you can:
 
 **Guide details:** choose **More → Guide information…** to add an author,
 version and a short description. The description appears at the top of
-exports and accepts Markdown: `**bold**`, `*italic*`, `` `code` ``,
-`[links](https://example.com)`, and lists that start with `-` or `1.`.
+exports and accepts Markdown: `**bold**`, `*italic*`, `~~strikethrough~~`,
+`` `code` ``, `[links](https://example.com)`, `#` headings (`#` to `####`),
+`>` quotes, `---` dividers, tables (`| A | B |` with a `| --- | --- |` line
+under the header), and lists that start with `-` or `1.`. Indent a list item
+by two spaces to nest it. Word, PowerPoint and GIF exports show the
+description as plain text.
 
 **Working with many steps at once:** choose **Select**, click one step, then
 **Shift-click** another to select everything in between, including substeps.

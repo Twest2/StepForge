@@ -1271,6 +1271,8 @@
   'Shown on the first page of the PDF and at the top of other export formats.': 'PDF の 1 ページ目と、その他のエクスポート形式の冒頭に表示されます。',
   'Markdown works here: **bold**, *italic*, `code`, [link](https://example.com), and lists that start with - or 1.': 'Markdown が使えます: **太字**、*斜体*、`コード`、[リンク](https://example.com)、- または 1. で始まるリスト。',
   'Review': '見直し',
+  'Guide version': 'ガイドのバージョン',
+  'e.g. 1.1': '例: 1.1',
   'Software version': 'ソフトウェアのバージョン',
   'Last verified': '最終確認日',
   'Review again': '次回の見直し',

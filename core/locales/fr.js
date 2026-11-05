@@ -1271,6 +1271,8 @@
   'Shown on the first page of the PDF and at the top of other export formats.': 'Affiché sur la première page du PDF et en haut des autres formats d’exportation.',
   'Markdown works here: **bold**, *italic*, `code`, [link](https://example.com), and lists that start with - or 1.': 'Markdown est pris en charge : **gras**, *italique*, `code`, [lien](https://example.com) et listes commençant par - ou 1.',
   'Review': 'Révision',
+  'Guide version': 'Version du guide',
+  'e.g. 1.1': 'p. ex. 1.1',
   'Software version': 'Version du logiciel',
   'Last verified': 'Dernière vérification',
   'Review again': 'Revoir à nouveau',

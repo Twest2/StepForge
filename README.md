@@ -68,14 +68,9 @@ teams writing SOPs and runbooks, trainers and teachers, support teams answering
 
 ## See a real guide
 
-<p align="center">
-  <a href="https://wiki.twestbrook.com/en/public/stepforge-examples/set-up-onlyoffice-in-seafile-with-coolify"><img src="docs/media/example-guide-onlyoffice.png" alt="A published StepForge guide on a wiki: the title, a contents sidebar listing numbered steps and substeps, and the first steps, each with a description and a screenshot with a red circle on the click" width="800"></a>
-</p>
-
 **[Set up ONLYOFFICE in Seafile with Coolify](https://wiki.twestbrook.com/en/public/stepforge-examples/set-up-onlyoffice-in-seafile-with-coolify)** is a 29-step guide
 made with StepForge and published on a Wiki.js site. Open it to see what your
-readers get: numbered steps and substeps, screenshots with each click marked,
-private details blurred, and code blocks.
+readers get: Step-by-step documentation that's easy to understand and follow.
 
 ## Why StepForge
 

@@ -35,7 +35,7 @@
   <a href="#install"><strong>Download</strong></a> ·
   <a href="docs/GETTING_STARTED.md"><strong>Getting started</strong></a> ·
   <a href="#share-a-guide-with-a-web-link"><strong>Share with a link</strong></a> ·
-  <a href="docs/windows_installation.md"><strong>See a real guide made with it</strong></a> ·
+  <a href="#see-a-real-guide"><strong>See a real guide made with it</strong></a> ·
   <a href="https://stepforge.twestbrook.com"><strong>Website</strong></a>
 </p>
 
@@ -65,6 +65,17 @@ teams writing SOPs and runbooks, trainers and teachers, support teams answering
 > click, and turns the result into a guide you can edit and share instead of a
 > zipped web page. It's also a free, open-source alternative to tools like
 > Scribe, Tango and Folge.
+
+## See a real guide
+
+<p align="center">
+  <a href="https://wiki.twestbrook.com/en/public/stepforge-examples/set-up-onlyoffice-in-seafile-with-coolify"><img src="docs/media/example-guide-onlyoffice.png" alt="A published StepForge guide on a wiki: the title, a contents sidebar listing numbered steps and substeps, and the first steps, each with a description and a screenshot with a red circle on the click" width="800"></a>
+</p>
+
+**[Set up ONLYOFFICE in Seafile with Coolify](https://wiki.twestbrook.com/en/public/stepforge-examples/set-up-onlyoffice-in-seafile-with-coolify)** is a 29-step guide
+made with StepForge and published on a Wiki.js site. Open it to see what your
+readers get: numbered steps and substeps, screenshots with each click marked,
+private details blurred, and code blocks.
 
 ## Why StepForge
 

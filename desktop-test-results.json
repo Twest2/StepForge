@@ -1,0 +1,175 @@
+{
+  "passed": [
+    {
+      "name": "real shortcut and monitor consent dialogs"
+    },
+    {
+      "name": "pre-click PipeWire pixels, title, dimensions and marker"
+    },
+    {
+      "name": "capture hotkey, pause/resume, static frame and right-click recording"
+    },
+    {
+      "name": "tray pause excludes its mouse click"
+    },
+    {
+      "name": "window crop and Finish excludes both tray/menu clicks",
+      "width": 800,
+      "height": 578
+    },
+    {
+      "name": "Spectacle region selection",
+      "width": 401,
+      "height": 251
+    },
+    {
+      "name": "region cancellation leaves guide unchanged"
+    }
+  ],
+  "steps": [
+    {
+      "id": "step-3ee39314-bb0c-4fdd-8c4a-3fbdc3c200a0",
+      "title": "Open StepForge KDE recording target",
+      "size": {
+        "width": 1280,
+        "height": 900
+      },
+      "metadata": {
+        "ocrText": "",
+        "windowTitle": "StepForge KDE recording target",
+        "appName": "org.stepforge.KdeTarget",
+        "elementLabel": "",
+        "elementRole": "",
+        "elementValue": "",
+        "elementIsPassword": false,
+        "parentTabTitle": "",
+        "inTitleBar": false,
+        "elementAutomationId": "",
+        "recentTyped": "",
+        "recentShortcut": "",
+        "clickKind": "left",
+        "mode": "fullscreen"
+      }
+    },
+    {
+      "id": "step-ef92a993-4de5-46cb-99f8-85074f27579c",
+      "title": "Open StepForge KDE recording target",
+      "size": {
+        "width": 1280,
+        "height": 900
+      },
+      "metadata": {
+        "ocrText": "",
+        "windowTitle": "StepForge KDE recording target",
+        "appName": "org.stepforge.KdeTarget",
+        "elementLabel": "",
+        "elementRole": "",
+        "elementValue": "",
+        "elementIsPassword": false,
+        "parentTabTitle": "",
+        "inTitleBar": false,
+        "elementAutomationId": "",
+        "recentTyped": "",
+        "recentShortcut": "",
+        "clickKind": "left",
+        "mode": "fullscreen"
+      }
+    },
+    {
+      "id": "step-558b4ed2-ff7d-493f-96fa-bf0723deaf51",
+      "title": "Screen capture",
+      "size": {
+        "width": 1280,
+        "height": 900
+      },
+      "metadata": {
+        "ocrText": "",
+        "windowTitle": "",
+        "appName": "",
+        "elementLabel": "",
+        "elementRole": "",
+        "elementValue": "",
+        "elementIsPassword": false,
+        "parentTabTitle": "",
+        "inTitleBar": false,
+        "elementAutomationId": "",
+        "recentTyped": "",
+        "recentShortcut": "",
+        "clickKind": "",
+        "mode": "fullscreen"
+      }
+    },
+    {
+      "id": "step-0816cddc-a7c6-4d40-b0d0-c75cc6882798",
+      "title": "Open StepForge KDE recording target",
+      "size": {
+        "width": 1280,
+        "height": 900
+      },
+      "metadata": {
+        "ocrText": "",
+        "windowTitle": "StepForge KDE recording target",
+        "appName": "org.stepforge.KdeTarget",
+        "elementLabel": "",
+        "elementRole": "",
+        "elementValue": "",
+        "elementIsPassword": false,
+        "parentTabTitle": "",
+        "inTitleBar": false,
+        "elementAutomationId": "",
+        "recentTyped": "",
+        "recentShortcut": "",
+        "clickKind": "right",
+        "mode": "fullscreen"
+      }
+    },
+    {
+      "id": "step-8cd4c910-3f4f-45c3-bdf7-be9a638f0a44",
+      "title": "Open StepForge KDE recording target",
+      "size": {
+        "width": 800,
+        "height": 578
+      },
+      "metadata": {
+        "ocrText": "",
+        "windowTitle": "StepForge KDE recording target",
+        "appName": "org.stepforge.KdeTarget",
+        "elementLabel": "",
+        "elementRole": "",
+        "elementValue": "",
+        "elementIsPassword": false,
+        "parentTabTitle": "",
+        "inTitleBar": false,
+        "elementAutomationId": "",
+        "recentTyped": "",
+        "recentShortcut": "",
+        "clickKind": "left",
+        "mode": "window"
+      }
+    },
+    {
+      "id": "step-05050b50-7a7c-4134-86c6-81e0775a2d7f",
+      "title": "Region capture",
+      "size": {
+        "width": 401,
+        "height": 251
+      },
+      "metadata": {
+        "ocrText": "",
+        "windowTitle": "",
+        "appName": "",
+        "elementLabel": "",
+        "elementRole": "",
+        "elementValue": "",
+        "elementIsPassword": false,
+        "parentTabTitle": "",
+        "inTitleBar": false,
+        "elementAutomationId": "",
+        "recentTyped": "",
+        "recentShortcut": "",
+        "clickKind": "",
+        "mode": "region"
+      }
+    }
+  ]
+}

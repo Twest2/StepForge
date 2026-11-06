@@ -1,0 +1,8 @@
+PASS real shortcut and monitor consent dialogs {}
+PASS pre-click PipeWire pixels, title, dimensions and marker {}
+PASS capture hotkey, pause/resume, static frame and right-click recording {}
+PASS tray pause excludes its mouse click {}
+PASS window crop and Finish excludes both tray/menu clicks {"width":800,"height":578}
+PASS Spectacle region selection {"width":401,"height":251}
+PASS region cancellation leaves guide unchanged {}
+Full Plasma desktop integration passed.

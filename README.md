@@ -123,8 +123,8 @@ page and hands you a link to send. It's usually online in under a minute.
 | Platform | Recommended | Guide |
 | --- | --- | --- |
 | **Windows 10 / 11** (64-bit) | **Microsoft Store** | [Microsoft Store](docs/windows/microsoft-store.md) |
-| **Ubuntu 26.04** | APT repository | [Ubuntu](docs/linux/apt.md) |
-| **Fedora 44 Workstation** | DNF repository | [Fedora](docs/linux/dnf.md) |
+| **Ubuntu / Kubuntu 26.04** | APT repository | [Ubuntu](docs/linux/apt.md) |
+| **Fedora 44 Workstation / KDE** | DNF repository | [Fedora](docs/linux/dnf.md) |
 | **Other Linux** | Portable `.tar.gz` | [Linux overview](docs/linux/linux_install.md) |
 
 ### Windows: get it from the Microsoft Store
@@ -303,6 +303,7 @@ each optional feature sends.
 **Installing**
 
 - [Microsoft Store](docs/windows/microsoft-store.md) (recommended for Windows) · [Windows installer](docs/windows_installation.md) · [Chocolatey](docs/windows/chocolatey.md)
+- [KDE Plasma 6](docs/linux/kde-plasma.md)
 - [Linux overview](docs/linux/linux_install.md) · [Ubuntu](docs/linux/apt.md) · [Fedora](docs/linux/dnf.md)
 
 **Contributing**

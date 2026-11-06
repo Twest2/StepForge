@@ -1332,6 +1332,7 @@
   'Before recording starts': 'Antes de empezar a grabar',
   'Recording tip': 'Consejo de grabación',
   'To stop, use StepForge REC in the GNOME top panel, or restore StepForge from the dock.': 'Para detener, usa StepForge REC en la barra superior de GNOME, o restaura StepForge desde el dock.',
+  "To pause or finish, use the StepForge tray icon beside the clock, or restore StepForge from the taskbar.": "Para pausar o terminar, usa el icono de StepForge junto al reloj o restaura StepForge desde la barra de tareas.",
   "Use the floating bar to pause or finish. If you use the tray icon, look for the red dot beside the clock.": "Usa la barra flotante para pausar o finalizar. Si usas el icono de la bandeja, busca el punto rojo junto al reloj.",
   '{count} matches, {selected} selected, {blocked} cannot take this replacement.': { one: '{count} coincidencia, {selected} seleccionada, {blocked} no admite este reemplazo.', other: '{count} coincidencias, {selected} seleccionadas, {blocked} no admiten este reemplazo.' },
   '{count} matches, {selected} selected.': { one: '{count} coincidencia, {selected} seleccionada.', other: '{count} coincidencias, {selected} seleccionadas.' },

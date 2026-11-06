@@ -1332,6 +1332,7 @@
   'Before recording starts': 'Перед началом записи',
   'Recording tip': 'Совет по записи',
   'To stop, use StepForge REC in the GNOME top panel, or restore StepForge from the dock.': 'Чтобы остановить запись, используйте StepForge REC на верхней панели GNOME или восстановите StepForge из дока.',
+  "To pause or finish, use the StepForge tray icon beside the clock, or restore StepForge from the taskbar.": "Чтобы приостановить или завершить запись, используйте значок StepForge рядом с часами или восстановите StepForge с панели задач.",
   "Use the floating bar to pause or finish. If you use the tray icon, look for the red dot beside the clock.": "Используйте плавающую панель для приостановки или завершения. Если выбран значок в трее, найдите красную точку рядом с часами.",
   '{count} matches, {selected} selected, {blocked} cannot take this replacement.': { one: '{count} совпадение, выбрано: {selected}, не подходят для замены: {blocked}.', few: '{count} совпадения, выбрано: {selected}, не подходят для замены: {blocked}.', many: '{count} совпадений, выбрано: {selected}, не подходят для замены: {blocked}.', other: '{count} совпадений, выбрано: {selected}, не подходят для замены: {blocked}.' },
   '{count} matches, {selected} selected.': { one: '{count} совпадение, выбрано: {selected}.', few: '{count} совпадения, выбрано: {selected}.', many: '{count} совпадений, выбрано: {selected}.', other: '{count} совпадений, выбрано: {selected}.' },

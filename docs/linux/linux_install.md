@@ -1,8 +1,8 @@
 # StepForge on Linux
 
-StepForge ships native packages for **Ubuntu 26.04** and **Fedora 44
-Workstation** on 64-bit Intel/AMD (x86_64). Both are tested on **GNOME 50
-with Wayland**, the default desktop on each.
+StepForge ships native packages for **Ubuntu / Kubuntu 26.04** and **Fedora 44
+Workstation / KDE Plasma Desktop** on 64-bit Intel/AMD (x86_64), with
+**GNOME 50 or KDE Plasma 6 on Wayland**.
 
 ## Choose how to install
 
@@ -15,8 +15,8 @@ with Wayland**, the default desktop on each.
 | From source | Contributors | `git pull` | [Contributing](../CONTRIBUTING.md#run-stepforge-from-source) |
 
 The package repositories are recommended: StepForge then updates alongside
-the rest of your system, and the packages install the GNOME integration that
-click recording needs.
+the rest of your system, and the packages install the desktop integration that
+click recording needs. For Plasma, see [KDE Plasma recording](kde-plasma.md).
 
 ## Recording on GNOME Wayland
 

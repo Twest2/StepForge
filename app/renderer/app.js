@@ -240,6 +240,7 @@ class StepForgeApp {
     ]);
     this.state.info = info;
     document.body.classList.toggle('platform-linux', info.platform === 'linux');
+    document.body.classList.toggle('desktop-plasma', info.captureDesktop === 'plasma');
     this.state.settings = settings;
     this.state.library = {
       guides: library.guides || [],
@@ -495,7 +496,7 @@ class StepForgeApp {
 
     // What is currently triggering captures, so the user knows what to do.
     const notStarted = s.paused && !s.count;
-    const trigger = s.gnomeRequired && s.warmingUp ? t('waiting for screen sharing')
+    const trigger = (s.gnomeRequired || s.plasmaRequired) && s.warmingUp ? t('waiting for screen sharing')
       : notStarted ? t('ready')
       : s.paused ? t('paused')
         : s.clickCapture ? t('on click')

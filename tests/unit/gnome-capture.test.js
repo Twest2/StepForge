@@ -18,7 +18,7 @@ test('Windows selects exactly the existing capture class regardless of Linux env
 test('Fedora GNOME Wayland selects the shared companion without changing other desktops', () => {
   assert.equal(captureServiceClass('linux', { XDG_SESSION_TYPE: 'wayland', XDG_CURRENT_DESKTOP: 'GNOME' }), Gnome);
   assert.equal(captureServiceClass('linux', { WAYLAND_DISPLAY: 'wayland-0', XDG_CURRENT_DESKTOP: 'GNOME' }), Gnome);
-  assert.equal(captureServiceClass('linux', { XDG_SESSION_TYPE: 'wayland', XDG_CURRENT_DESKTOP: 'KDE' }), Base);
+  assert.equal(captureServiceClass('linux', { XDG_SESSION_TYPE: 'wayland', XDG_CURRENT_DESKTOP: 'sway' }), Base);
 });
 
 test('Shell button transitions produce one step per press, including simultaneous and held buttons', async () => {

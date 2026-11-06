@@ -1,19 +1,28 @@
-# StepForge least-privilege input access (OPTIONAL, opt-in).
+# StepForge least-privilege input access.
 #
-# Grants the user at the ACTIVE local session read/write access to MOUSE input
-# devices only, via systemd-logind's `uaccess` ACL. This is the least-privilege
-# alternative to joining the broad `input` group, which would grant access to
-# ALL input devices — including keyboards — for the user permanently, on every
-# session. StepForge never needs keystrokes, so this rule deliberately EXCLUDES
-# keyboards.
+# Installed by the StepForge .deb and .rpm, because recording clicks on KDE
+# Plasma reads mouse buttons from the input devices. It only takes effect on
+# systems with KDE Plasma's compositor (/usr/bin/kwin_wayland): GNOME uses the
+# StepForge Shell extension instead, so a GNOME-only system gets no extra
+# device access from this file.
+#
+# Grants the user at the ACTIVE local session access to MICE and TOUCHPADS
+# only (read and write, which is what logind's ACL grants; StepForge only
+# reads), via systemd-logind's `uaccess` ACL. This is the
+# least-privilege alternative to joining the broad `input` group, which would
+# grant access to ALL input devices, including keyboards, for the user
+# permanently, on every session. StepForge never needs keystrokes, so this
+# rule deliberately EXCLUDES keyboards.
 #
 # Scope of what this grants:
-#   * only devices udev classifies as a mouse (ID_INPUT_MOUSE=1),
+#   * only devices udev classifies as a mouse (ID_INPUT_MOUSE=1) or a touchpad
+#     (ID_INPUT_TOUCHPAD=1),
 #   * only when they are NOT also a keyboard (ID_INPUT_KEYBOARD!=1),
 #   * only to whoever is logged in at the physical seat (uaccess is
-#     session-scoped, not a permanent group membership).
+#     session-scoped, not a permanent group membership),
+#   * only where KDE Plasma is installed.
 #
-# StepForge uses this only for the optional Wayland per-click *trigger* (button
-# presses, no coordinates). It is not required — the safe default is a global
-# hotkey or interval capture.
-SUBSYSTEM=="input", KERNEL=="event*", ENV{ID_INPUT_MOUSE}=="1", ENV{ID_INPUT_KEYBOARD}!="1", TAG+="uaccess"
+# To turn it off, mask it:
+#   sudo ln -s /dev/null /etc/udev/rules.d/60-stepforge-input.rules
+SUBSYSTEM=="input", KERNEL=="event*", ENV{ID_INPUT_MOUSE}=="1", ENV{ID_INPUT_KEYBOARD}!="1", TEST=="/usr/bin/kwin_wayland", TAG+="uaccess"
+SUBSYSTEM=="input", KERNEL=="event*", ENV{ID_INPUT_TOUCHPAD}=="1", ENV{ID_INPUT_KEYBOARD}!="1", TEST=="/usr/bin/kwin_wayland", TAG+="uaccess"

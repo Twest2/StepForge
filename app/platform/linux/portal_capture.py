@@ -1,10 +1,14 @@
 #!/usr/bin/python3
-"""GNOME-only capture helper. JSON lines on stdin/stdout; no network or evdev.
+"""GNOME and KDE Plasma capture helper. JSON lines on stdin/stdout; no network.
 
 Gio negotiates a consented ScreenCast session, then GStreamer reads the granted
 PipeWire FDs. Raw RGB frames stay in bounded memory; only requested frames are
 PNG encoded. Coordinates use portal logical geometry, never Electron's guessed
 primary monitor. This process and all screen streams die with the parent pipe.
+
+Clicks, the pointer and windows come from a desktop companion: the StepForge
+GNOME Shell extension (default), or with `--desktop plasma` the KWin script
+and input-device reader in kwin_companion.py.
 """
 import base64
 import collections
@@ -30,6 +34,53 @@ EXT_IFACE = 'org.stepforge.Capture1'
 LOCK = threading.Lock()
 
 
+class GnomeCompanion:
+    """The StepForge GNOME Shell extension, over its D-Bus object."""
+    label = 'GNOME'
+
+    def __init__(self, bus, on_event):
+        self.bus = bus
+        self.on_event = on_event
+        self.owner = bus.call_sync('org.freedesktop.DBus', '/org/freedesktop/DBus',
+            'org.freedesktop.DBus', 'GetNameOwner', GLib.Variant('(s)', ['org.gnome.Shell']),
+            None, Gio.DBusCallFlags.NONE, 3000, None).unpack()[0]
+        self.subscription = bus.signal_subscribe(self.owner, EXT_IFACE, None,
+            EXT_PATH, None, Gio.DBusSignalFlags.NONE, self.signal)
+
+    def call(self, method):
+        result = self.bus.call_sync(self.owner, EXT_PATH, EXT_IFACE, method, None,
+            None, Gio.DBusCallFlags.NONE, 3000, None)
+        return json.loads(result.unpack()[0]) if method != 'Stop' else None
+
+    def signal(self, _bus, _sender, _path, _iface, name, params):
+        self.on_event(name, json.loads(params.unpack()[0]))
+
+    def check(self):
+        if self.call('GetInfo').get('protocol') != 1:
+            raise RuntimeError('The StepForge GNOME extension needs updating (protocol mismatch).')
+
+    def arm(self):
+        self.call('Start')
+
+    def disarm(self):
+        self.call('Stop')
+
+    def context(self, done, _failed):
+        done(self.call('GetInfo'))
+
+    def region(self):
+        result = self.bus.call_sync('org.gnome.Shell.Screenshot', '/org/gnome/Shell/Screenshot',
+            'org.gnome.Shell.Screenshot', 'SelectArea', None, None,
+            Gio.DBusCallFlags.NONE, 120000, None).unpack()
+        return dict(zip(('x', 'y', 'width', 'height'), result))
+
+    def stream_bounds(self, bounds):
+        return bounds
+
+    def close(self):
+        self.bus.signal_unsubscribe(self.subscription)
+
+
 def emit(value):
     with LOCK:
         print(json.dumps(value, separators=(',', ':')), flush=True)
@@ -49,7 +100,7 @@ def contains(bounds, point):
 
 
 class Capture:
-    def __init__(self):
+    def __init__(self, desktop='gnome'):
         Gst.init(None)
         self.bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
         self.loop = GLib.MainLoop()
@@ -63,16 +114,13 @@ class Capture:
         self.pool = concurrent.futures.ThreadPoolExecutor(max_workers=2)
         self.slots = threading.BoundedSemaphore(32)
         self.started_at = time.monotonic()
-        self.ext_owner = self.bus.call_sync('org.freedesktop.DBus', '/org/freedesktop/DBus',
-            'org.freedesktop.DBus', 'GetNameOwner', GLib.Variant('(s)', ['org.gnome.Shell']),
-            None, Gio.DBusCallFlags.NONE, 3000, None).unpack()[0]
-        self.subscriptions = [self.bus.signal_subscribe(self.ext_owner, EXT_IFACE, None,
-            EXT_PATH, None, Gio.DBusSignalFlags.NONE, self.extension_event)]
-
-    def extension(self, method):
-        result = self.bus.call_sync(self.ext_owner, EXT_PATH, EXT_IFACE, method, None,
-            None, Gio.DBusCallFlags.NONE, 3000, None)
-        return json.loads(result.unpack()[0]) if method != 'Stop' else None
+        self.subscriptions = []
+        if desktop == 'plasma':
+            from kwin_companion import KWinCompanion
+            self.companion = KWinCompanion(self.bus, self.companion_event)
+        else:
+            self.companion = GnomeCompanion(self.bus, self.companion_event)
+        self.label = self.companion.label
 
     def request(self, method, signature, args):
         token = 'sfg' + uuid.uuid4().hex
@@ -104,9 +152,7 @@ class Capture:
             self.request_path = None
 
     def start(self, options):
-        info = self.extension('GetInfo')
-        if info.get('protocol') != 1:
-            raise RuntimeError('The StepForge GNOME extension needs updating (protocol mismatch).')
+        self.companion.check()
         self.sample_ms = max(20, min(250, int(options.get('sampleMs', 50))))
         result = self.request('CreateSession', '(a{sv})', [{
             'session_handle_token': GLib.Variant('s', 'sfg' + uuid.uuid4().hex)}])
@@ -125,7 +171,7 @@ class Capture:
             raise RuntimeError('No monitors were shared.')
         for node, props in nodes:
             if 'position' not in props or 'size' not in props:
-                raise RuntimeError('The GNOME portal did not provide monitor geometry. Share a monitor, not a window.')
+                raise RuntimeError(f'The {self.label} portal did not provide monitor geometry. Share a monitor, not a window.')
             x, y = props['position']
             w, h = props['size']
             if w <= 0 or h <= 0:
@@ -140,7 +186,7 @@ class Capture:
                 'queue max-size-buffers=2 leaky=downstream ! videoconvert ! '
                 'video/x-raw,format=RGB ! appsink name=frames emit-signals=true '
                 'max-buffers=1 drop=true sync=false')
-            stream = {'bounds': {'x': x, 'y': y, 'width': w, 'height': h},
+            stream = {'bounds': self.companion.stream_bounds({'x': x, 'y': y, 'width': w, 'height': h}),
                       'id': int(node), 'ring': collections.deque(), 'bytes': 0,
                       'lock': threading.Lock(), 'last': 0, 'latest': None, 'pipeline': pipeline}
             self.streams.append(stream)
@@ -187,7 +233,7 @@ class Capture:
                   'displays': [dict(id=s['id'], bounds=s['bounds']) for s in self.streams]})
             return GLib.SOURCE_REMOVE
         if time.monotonic() - self.started_at > 140:
-            self.fail('PipeWire did not deliver screen frames. Check the GNOME portal and PipeWire services.')
+            self.fail('PipeWire did not deliver screen frames. Check the ' + self.label + ' portal and PipeWire services.')
             return GLib.SOURCE_REMOVE
         return GLib.SOURCE_CONTINUE
 
@@ -211,10 +257,9 @@ class Capture:
             self.append_frame(stream, frame)
         return Gst.FlowReturn.OK
 
-    def extension_event(self, _bus, _sender, _path, _iface, name, params):
-        payload = json.loads(params.unpack()[0])
+    def companion_event(self, name, payload):
         if name == 'Stopped':
-            self.fail(payload.get('reason', 'GNOME recording stopped.'))
+            self.fail(payload.get('reason', f'{self.label} recording stopped.'))
         elif name == 'Click' and self.armed:
             emit(dict(payload, type='click'))
 
@@ -259,22 +304,22 @@ class Capture:
             elif kind == 'arm':
                 if not self.ready:
                     raise RuntimeError('Screen stream is not ready.')
-                self.extension('Start')
+                self.companion.arm()
                 self.armed = True
                 emit({'type': 'armed'})
             elif kind == 'frame':
                 self.frame(value)
             elif kind == 'disarm':
                 if self.armed:
-                    self.extension('Stop')
+                    self.companion.disarm()
                 self.armed = False
             elif kind == 'context':
-                emit({'type': 'context', 'id': value['id'], **self.extension('GetInfo')})
+                request_id = value['id']
+                self.companion.context(
+                    lambda info: emit({'type': 'context', 'id': request_id, **info}),
+                    lambda reason: emit({'type': 'context', 'id': request_id, 'error': reason}))
             elif kind == 'region':
-                result = self.bus.call_sync('org.gnome.Shell.Screenshot', '/org/gnome/Shell/Screenshot',
-                    'org.gnome.Shell.Screenshot', 'SelectArea', None, None,
-                    Gio.DBusCallFlags.NONE, 120000, None).unpack()
-                emit({'type': 'region', 'id': value['id'], 'rect': dict(zip(('x', 'y', 'width', 'height'), result))})
+                emit({'type': 'region', 'id': value['id'], 'rect': self.companion.region()})
             elif kind == 'stop':
                 self.close()
         except Exception as error:
@@ -295,9 +340,13 @@ class Capture:
         self.closed = True
         if self.armed:
             try:
-                self.extension('Stop')
+                self.companion.disarm()
             except Exception:
                 pass
+        try:
+            self.companion.close()
+        except Exception:
+            pass
         for path, interface in ((self.request_path, 'org.freedesktop.portal.Request'),
                                 (self.session, 'org.freedesktop.portal.Session')):
             if path:
@@ -329,7 +378,7 @@ class Capture:
 if __name__ == '__main__':
     capture = None
     try:
-        capture = Capture()
+        capture = Capture('plasma' if sys.argv[1:] == ['--desktop', 'plasma'] else 'gnome')
         threading.Thread(target=capture.read_commands, daemon=True).start()
         capture.loop.run()
     except Exception as error:

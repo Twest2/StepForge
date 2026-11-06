@@ -45,6 +45,9 @@ for needle in \
   './opt/stepforge/node_modules/electron/dist/electron' \
   './opt/stepforge/app/main.js' \
   './opt/stepforge/app/boot.js' \
+  './opt/stepforge/app/platform/linux/kwin_companion.py' \
+  './opt/stepforge/app/platform/linux/kwin/stepforge-capture.js' \
+  './usr/lib/udev/rules.d/60-stepforge-input.rules' \
   './opt/stepforge/app/assets/stepforge.png' \
   './usr/share/keyrings/stepforge-archive-keyring.gpg' \
   './usr/share/doc/stepforge/copyright'; do

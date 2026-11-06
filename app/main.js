@@ -92,6 +92,15 @@ if (process.platform === 'linux') {
   if (passwordStore) app.commandLine.appendSwitch('password-store', passwordStore);
 }
 
+// On KDE Plasma Wayland, global hotkeys only work through the GlobalShortcuts
+// portal; Plasma asks once which shortcuts StepForge may use. Keep any
+// features the launcher already enabled.
+const plasmaWayland = require('./platform/linux/desktop').waylandCaptureDesktop() === 'plasma';
+if (plasmaWayland) {
+  const features = app.commandLine.getSwitchValue('enable-features');
+  app.commandLine.appendSwitch('enable-features', [features, 'GlobalShortcutsPortal'].filter(Boolean).join(','));
+}
+
 /**
  * StepForge main process. Optional AI and Google Drive integrations are opt-in.
  * No telemetry or update checks. The renderer is sandboxed; this is the full
@@ -321,8 +330,10 @@ function createWindow() {
     event.preventDefault();
     handleZoomShortcut(kind);
   });
-  loadMainPage();
-  mainWindow.once('ready-to-show', () => {
+  // On native Plasma Wayland, an unmapped surface may not receive the first
+  // paint that ready-to-show waits for. Map it once its document has loaded.
+  const readyEmitter = plasmaWayland ? mainWindow.webContents : mainWindow;
+  readyEmitter.once(plasmaWayland ? 'did-finish-load' : 'ready-to-show', () => {
     mainWindow.show();
     // Dev-only verification hook: optionally navigate, then write a
     // screenshot locally and exit. Used by the smoke tooling.
@@ -593,6 +604,7 @@ function createWindow() {
       }, 1500);
     }
   });
+  loadMainPage();
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 
@@ -609,7 +621,9 @@ function registerHotkeys() {
     ['CommandOrControl+0', 'fit'],
     ['CommandOrControl+num0', 'fit'],
   ];
-  for (const [accel, kind] of zoomBindings) {
+  // Through Plasma's portal these would become desktop-wide shortcuts that
+  // other apps lose; the window's own key handler already zooms.
+  for (const [accel, kind] of plasmaWayland ? [] : zoomBindings) {
     try {
       if (globalShortcut.register(accel, () => handleZoomShortcut(kind))) {
         // Keep registering the other spellings so keyboards with different
@@ -1953,6 +1967,7 @@ function setupIpc() {
     devBuild,
     dataDir: store.root,
     platform: process.platform,
+    captureDesktop: require('./platform/linux/desktop').waylandCaptureDesktop(),
     license: PACKAGE_JSON.license || 'Apache-2.0',
   }));
   // Settings → About "Check for updates". Runs only when the user presses the
@@ -2057,7 +2072,9 @@ if (!gotLock) {
     libraryLocation.scheduleMigration();
     const dataDir = libraryLocation.applyPending();
     store = new GuideStore(dataDir);
-    settings = new Settings(store.settingsDir);
+    settings = new Settings(store.settingsDir, {
+      defaultOverrides: plasmaWayland ? { capture: require('./platform/linux/desktop').PLASMA_HOTKEYS } : {},
+    });
     // Shared lossless codec, also available in export workers and headless MCP.
     imageCodec = createImageCodec();
     setImageCodec(imageCodec);

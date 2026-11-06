@@ -1332,6 +1332,7 @@
   'Before recording starts': '开始录制之前',
   'Recording tip': '录制提示',
   'To stop, use StepForge REC in the GNOME top panel, or restore StepForge from the dock.': '要停止录制，请使用 GNOME 顶部面板中的 StepForge REC，或从程序坞恢复 StepForge。',
+  "To pause or finish, use the StepForge tray icon beside the clock, or restore StepForge from the taskbar.": "要暂停或结束录制，请使用时钟旁的 StepForge 托盘图标，或从任务栏恢复 StepForge。",
   "Use the floating bar to pause or finish. If you use the tray icon, look for the red dot beside the clock.": "使用悬浮栏暂停或结束录制。如果使用托盘图标，请在时钟旁查找红点。",
   '{count} matches, {selected} selected, {blocked} cannot take this replacement.': { other: '{count} 个匹配项，已选择 {selected} 个，{blocked} 个无法进行此替换。' },
   '{count} matches, {selected} selected.': { other: '{count} 个匹配项，已选择 {selected} 个。' },

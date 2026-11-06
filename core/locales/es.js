@@ -1269,7 +1269,7 @@
   'Organization': 'Organización',
   'Description': 'Descripción',
   'Shown on the first page of the PDF and at the top of other export formats.': 'Se muestra en la primera página del PDF y al principio de los demás formatos de exportación.',
-  'Markdown works here: **bold**, *italic*, `code`, [link](https://example.com), and lists that start with - or 1.': 'Admite Markdown: **negrita**, *cursiva*, `código`, [enlace](https://example.com) y listas que empiezan con - o 1.',
+  'Markdown works here: **bold**, *italic*, `code`, [link](https://example.com), ~~strikethrough~~, # headings, > quotes, | tables |, --- for a divider, and lists that start with - or 1. (indent an item to nest it).': 'Aquí funciona Markdown: **negrita**, *cursiva*, `código`, [enlace](https://example.com), ~~tachado~~, # títulos, > citas, | tablas |, --- para un separador y listas que empiezan con - o 1. (aplique sangría a un elemento para anidarlo).',
   'Review': 'Revisión',
   'Guide version': 'Versión de la guía',
   'e.g. 1.1': 'p. ej., 1.1',

@@ -1269,7 +1269,7 @@
   'Organization': 'Organisation',
   'Description': 'Description',
   'Shown on the first page of the PDF and at the top of other export formats.': 'Affiché sur la première page du PDF et en haut des autres formats d’exportation.',
-  'Markdown works here: **bold**, *italic*, `code`, [link](https://example.com), and lists that start with - or 1.': 'Markdown est pris en charge : **gras**, *italique*, `code`, [lien](https://example.com) et listes commençant par - ou 1.',
+  'Markdown works here: **bold**, *italic*, `code`, [link](https://example.com), ~~strikethrough~~, # headings, > quotes, | tables |, --- for a divider, and lists that start with - or 1. (indent an item to nest it).': 'Markdown est pris en charge : **gras**, *italique*, `code`, [lien](https://example.com), ~~barré~~, # titres, > citations, | tableaux |, --- pour un séparateur, et listes commençant par - ou 1. (indentez un élément pour l’imbriquer).',
   'Review': 'Révision',
   'Guide version': 'Version du guide',
   'e.g. 1.1': 'p. ex. 1.1',

@@ -119,7 +119,11 @@ For each step you can:
 **Guide details:** choose **More → Guide information…** to add an author,
 a guide version (such as `1.1`) and a short description. The description appears at the top of
 exports and accepts Markdown: `**bold**`, `*italic*`, `` `code` ``,
-`[links](https://example.com)`, and lists that start with `-` or `1.`.
+`[links](https://example.com)`, lists that start with `-` or `1.` (indent an
+item by two spaces to nest it), `~~strikethrough~~`, `#` headings (`#` to
+`####`), `>` quotes, `---` dividers, and tables (`| A | B |` with a
+`| --- | --- |` line under the header). Word, PowerPoint and GIF exports show
+the description as plain text.
 
 **Working with many steps at once:** choose **Select**, click one step, then
 **Shift-click** another to select everything in between, including substeps.

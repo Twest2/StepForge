@@ -1269,7 +1269,7 @@
   'Organization': '組織',
   'Description': '説明',
   'Shown on the first page of the PDF and at the top of other export formats.': 'PDF の 1 ページ目と、その他のエクスポート形式の冒頭に表示されます。',
-  'Markdown works here: **bold**, *italic*, `code`, [link](https://example.com), and lists that start with - or 1.': 'Markdown が使えます: **太字**、*斜体*、`コード`、[リンク](https://example.com)、- または 1. で始まるリスト。',
+  'Markdown works here: **bold**, *italic*, `code`, [link](https://example.com), ~~strikethrough~~, # headings, > quotes, | tables |, --- for a divider, and lists that start with - or 1. (indent an item to nest it).': 'ここでは Markdown が使えます: **太字**、*斜体*、`コード`、[リンク](https://example.com)、~~取り消し線~~、# 見出し、> 引用、| 表 |、--- で区切り線、- または 1. で始まるリスト（項目をインデントすると入れ子になります）。',
   'Review': '見直し',
   'Guide version': 'ガイドのバージョン',
   'e.g. 1.1': '例: 1.1',

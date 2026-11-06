@@ -2018,7 +2018,7 @@ function showGuideInfoDialog({ values = {}, reviewDefaultDays, cloudConnected = 
           el('label', { htmlFor: descriptionId }, t('Description')),
           el('div.muted.guide-description-help', { id: descriptionHelpId },
             t('Shown on the first page of the PDF and at the top of other export formats.'), sentenceGap,
-            t('Markdown works here: **bold**, *italic*, `code`, [link](https://example.com), and lists that start with - or 1.')),
+            t('Markdown works here: **bold**, *italic*, `code`, [link](https://example.com), ~~strikethrough~~, # headings, > quotes, | tables |, --- for a divider, and lists that start with - or 1. (indent an item to nest it).')),
           descriptionInput),
         el('h3', { style: { margin: '14px 0 6px' } }, t('Review')),
         labeledRow(t('Guide version'), guideVersionInput),

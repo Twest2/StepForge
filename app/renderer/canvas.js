@@ -218,13 +218,16 @@ class AnnotationCanvas {
   // drawn from the same areas as core/raster.js drawSpotlights.
   drawSpotlights() {
     const view = this.viewRect();
-    const spots = window.StepForgeAnnotationProperties.spotlightAreas(this.annotations, (a) => this.px(a), this.canvas.width / 1000 / view.w);
+    const width = this.viewW || this.canvas.width;
+    const height = this.viewH || this.canvas.height;
+    const ratio = this.dpr || 1;
+    const spots = window.StepForgeAnnotationProperties.spotlightAreas(this.annotations, (a) => this.px(a), width / 1000 / view.w);
     if (!spots || !(spots.darkness > 0)) return;
-    const { width, height } = this.canvas;
     const layer = this.spotlightLayer || (this.spotlightLayer = document.createElement('canvas'));
-    layer.width = width;
-    layer.height = height;
+    layer.width = Math.round(width * ratio);
+    layer.height = Math.round(height * ratio);
     const lctx = layer.getContext('2d');
+    lctx.setTransform(ratio, 0, 0, ratio, 0, 0);
     lctx.fillStyle = `rgba(0, 0, 0, ${Math.min(1, spots.darkness)})`;
     lctx.fillRect(0, 0, width, height);
     lctx.globalCompositeOperation = 'destination-out';
@@ -235,7 +238,7 @@ class AnnotationCanvas {
       else lctx.roundRect(s.x, s.y, s.w, s.h, s.radius);
       lctx.fill();
     }
-    this.ctx.drawImage(layer, 0, 0);
+    this.ctx.drawImage(layer, 0, 0, width, height);
   }
 
   drawAnnotation(ann) {

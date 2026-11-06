@@ -235,8 +235,9 @@ was recorded with StepForge.
 
 - **Three-pane editor.** Steps on the left, the screenshot in the middle, the
   words on the right. Reorder, nest substeps, and mark steps as done.
-- **Annotations.** Rectangles, ovals, arrows, text, tooltips, numbered badges,
-  highlights, magnifiers, and **blur** for passwords and personal data.
+- **Annotations.** Rectangles, ovals, straight and curved arrows, a freehand
+  pen, text, tooltips, numbered badges, highlights, magnifiers, and **blur**
+  for passwords and personal data.
 - **Notes, tips, warnings, code blocks and tables** in any step. Code blocks
   are syntax-highlighted on export, in Atom One Dark or seven other themes.
 - **Reusable content.** Placeholders (`[[Product]]`) and export templates keep

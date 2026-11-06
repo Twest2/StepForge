@@ -9,9 +9,13 @@
  * editor shows what exports produce.
  */
 
-const DRAW_ORDER = { blur: 0, highlight: 1, magnify: 2, rect: 3, oval: 3, line: 3, arrow: 3, cursor: 4, number: 5, text: 6, tooltip: 7 };
-const POINT_TOOLS = new Set(['line', 'arrow']);
+const DRAW_ORDER = { blur: 0, highlight: 1, magnify: 2, rect: 3, oval: 3, line: 3, arrow: 3, curvedArrow: 3, pen: 3, cursor: 4, number: 5, text: 6, tooltip: 7 };
+const POINT_TOOLS = new Set(['line', 'arrow', 'curvedArrow']);
+// Drawn strokes are picked by distance to the stroke, not by their box.
+const STROKE_TOOLS = new Set(['curvedArrow', 'pen']);
 const HANDLE_SIZE = 8;
+// Pen and curved arrow geometry, shared with exports (core/annotation-shapes.js).
+const shapes = () => window.StepForgeAnnotationShapes;
 
 class AnnotationCanvas {
   constructor(canvasEl, callbacks = {}) {
@@ -141,6 +145,20 @@ class AnnotationCanvas {
     };
   }
 
+  // A canvas-pixel point as full-image fractions (the inverse of px).
+  fromPx(x, y) {
+    const r = this.viewRect();
+    return { x: r.x + x / this.canvas.width * r.w, y: r.y + y / this.canvas.height * r.h };
+  }
+
+  // A pen or curved arrow as a polyline in canvas pixels.
+  strokeLine(ann) {
+    const { x, y, w, h } = this.px(ann);
+    if (ann.type === 'pen') return shapes().penPolyline(shapes().penPoints(ann.points, x, y, w, h));
+    const g = shapes().curvedArrowGeometry(x, y, x + w, y + h, ann.bend, this.strokePx(ann));
+    return [...shapes().shaftPolyline({ x0: x, y0: y, cx: g.control.x, cy: g.control.y, x1: x + w, y1: y + h }), ...g.head];
+  }
+
   // Converts a canvas-pixel point to image-pixel coordinates in the
   // full (uncropped) source image, for sampling `this.image` directly.
   toImagePx(x, y) {
@@ -252,6 +270,31 @@ class AnnotationCanvas {
         ctx.fillStyle = stroke; ctx.fill();
         break;
       }
+      case 'curvedArrow': {
+        const g = shapes().curvedArrowGeometry(x, y, x + w, y + h, ann.bend, ctx.lineWidth);
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(g.shaft.x0, g.shaft.y0);
+        ctx.quadraticCurveTo(g.shaft.cx, g.shaft.cy, g.shaft.x1, g.shaft.y1);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(...g.head[0]); ctx.lineTo(...g.head[1]); ctx.lineTo(...g.head[2]);
+        ctx.closePath();
+        ctx.fillStyle = stroke; ctx.fill();
+        break;
+      }
+      case 'pen': {
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.beginPath();
+        for (const seg of shapes().penPath(shapes().penPoints(ann.points, x, y, w, h))) {
+          if (seg.type === 'move') ctx.moveTo(seg.x, seg.y);
+          else if (seg.type === 'quad') ctx.quadraticCurveTo(seg.cx, seg.cy, seg.x, seg.y);
+          else ctx.lineTo(seg.x, seg.y);
+        }
+        ctx.stroke();
+        break;
+      }
       case 'blur': {
         try { this.drawBlur(ann); } catch { /* region may be degenerate while dragging */ }
         // Blurs added by Find private details get a dashed outline here (never
@@ -356,7 +399,13 @@ class AnnotationCanvas {
 
   drawSelection(ann) {
     const { ctx } = this;
-    const { x, y, w, h } = this.px(ann);
+    let { x, y, w, h } = this.px(ann);
+    if (ann.type === 'curvedArrow') {
+      // The bend can take the curve outside its two ends' box.
+      const line = this.strokeLine(ann);
+      const xs = line.map((p) => p[0]), ys = line.map((p) => p[1]);
+      x = Math.min(...xs); y = Math.min(...ys); w = Math.max(...xs) - x; h = Math.max(...ys) - y;
+    }
     ctx.save();
     ctx.strokeStyle = '#2563eb';
     ctx.setLineDash([5, 4]);
@@ -373,10 +422,14 @@ class AnnotationCanvas {
   handles(ann) {
     const { x, y, w, h } = this.px(ann);
     if (POINT_TOOLS.has(ann.type)) {
-      return [
+      const ends = [
         { id: 'p1', px: x, py: y },
         { id: 'p2', px: x + w, py: y + h },
       ];
+      if (ann.type !== 'curvedArrow') return ends;
+      // The bend handle sits on the curve, halfway along.
+      const mid = shapes().curveMidpoint(x, y, x + w, y + h, ann.bend);
+      return [...ends, { id: 'bend', px: mid.x, py: mid.y }];
     }
     return [
       { id: 'nw', px: x, py: y }, { id: 'n', px: x + w / 2, py: y }, { id: 'ne', px: x + w, py: y },
@@ -409,7 +462,13 @@ class AnnotationCanvas {
   hitTest(pt) {
     // topmost first (reverse draw order)
     const ordered = [...this.annotations].sort((a, b) => (DRAW_ORDER[b.type] ?? 3) - (DRAW_ORDER[a.type] ?? 3));
+    const at = this.px({ x: pt.x, y: pt.y, w: 0, h: 0 });
     for (const ann of ordered) {
+      if (STROKE_TOOLS.has(ann.type)) {
+        const reach = Math.max(6, this.strokePx(ann) / 2 + 4);
+        if (shapes().polylineDistance(at.x, at.y, this.strokeLine(ann)) <= reach) return ann;
+        continue;
+      }
       const x0 = Math.min(ann.x, ann.x + ann.w) - 0.008;
       const y0 = Math.min(ann.y, ann.y + ann.h) - 0.008;
       const x1 = Math.max(ann.x, ann.x + ann.w) + 0.008;
@@ -464,9 +523,13 @@ class AnnotationCanvas {
     if (this.tool === 'number') ann.value = this.cb.nextNumber ? this.cb.nextNumber() : 1;
     if (this.tool === 'magnify') ann.zoom = 2;
     if (this.tool === 'blur') ann.radius = 8;
+    if (this.tool === 'curvedArrow') ann.bend = [...shapes().DEFAULT_BEND];
+    if (this.tool === 'pen') ann.points = [[0, 0]];
     this.annotations.push(ann);
     this.selectedId = ann.id;
-    this.drag = { kind: 'create', start: pt, ann };
+    this.drag = this.tool === 'pen'
+      ? { kind: 'pen', ann, stroke: [[pt.x, pt.y]], last: { x: e.clientX, y: e.clientY } }
+      : { kind: 'create', start: pt, ann };
   }
 
   onMove(e) {
@@ -477,6 +540,15 @@ class AnnotationCanvas {
     if (d.kind === 'crop') {
       this.cropRect.x1 = pt.x;
       this.cropRect.y1 = pt.y;
+      this.render();
+      return;
+    }
+    if (d.kind === 'pen') {
+      // Skip pointer moves of under 2 screen pixels; onUp thins the rest.
+      if (Math.hypot(e.clientX - d.last.x, e.clientY - d.last.y) < 2) return;
+      d.last = { x: e.clientX, y: e.clientY };
+      d.stroke.push([pt.x, pt.y]);
+      Object.assign(d.ann, shapes().penFromStroke(d.stroke));
       this.render();
       return;
     }
@@ -505,6 +577,12 @@ class AnnotationCanvas {
     const h = d.handle;
     if (h === 'p1') { ann.x = o.x + dx; ann.y = o.y + dy; ann.w = o.w - dx; ann.h = o.h - dy; return; }
     if (h === 'p2') { ann.w = o.w + dx; ann.h = o.h + dy; return; }
+    if (h === 'bend') {
+      const p = this.px(ann);
+      const at = this.px({ x: pt.x, y: pt.y, w: 0, h: 0 });
+      ann.bend = shapes().bendThrough(p.x, p.y, p.x + p.w, p.y + p.h, at.x, at.y);
+      return;
+    }
     if (h.includes('w')) { ann.x = o.x + dx; ann.w = o.w - dx; }
     if (h.includes('e')) { ann.w = o.w + dx; }
     if (h.includes('n')) { ann.y = o.y + dy; ann.h = o.h - dy; }
@@ -527,6 +605,23 @@ class AnnotationCanvas {
         if (this.cb.onCrop) this.cb.onCrop(rect);
         if (this.cb.onToolUsed) this.cb.onToolUsed('crop');
       }
+      return;
+    }
+    if (d.kind === 'pen') {
+      if (d.stroke.length < 2) {
+        // A click without a stroke draws nothing.
+        this.annotations = this.annotations.filter((a) => a !== d.ann);
+        this.selectedId = null;
+        this.render();
+        return;
+      }
+      // Thin the stroke in screen pixels, so it keeps its look at any zoom.
+      const inPx = d.stroke.map(([nx, ny]) => { const p = this.px({ x: nx, y: ny, w: 0, h: 0 }); return [p.x, p.y]; });
+      const kept = shapes().simplifyStroke(inPx).map(([cx, cy]) => { const n = this.fromPx(cx, cy); return [n.x, n.y]; });
+      Object.assign(d.ann, shapes().penFromStroke(kept));
+      this.changed();
+      this.select(d.ann.id);
+      if (this.cb.onToolUsed) this.cb.onToolUsed(d.ann.type);
       return;
     }
     if (d.kind === 'create') {
@@ -554,8 +649,12 @@ class AnnotationCanvas {
 
   normalizeRect(ann) {
     if (POINT_TOOLS.has(ann.type)) return; // lines keep direction
-    if (ann.w < 0) { ann.x += ann.w; ann.w = -ann.w; }
-    if (ann.h < 0) { ann.y += ann.h; ann.h = -ann.h; }
+    // A pen's points are fractions of its box, so flip them with it.
+    const flip = (axis) => {
+      if (ann.type === 'pen' && Array.isArray(ann.points)) ann.points = ann.points.map((p) => (axis === 0 ? [1 - p[0], p[1]] : [p[0], 1 - p[1]]));
+    };
+    if (ann.w < 0) { ann.x += ann.w; ann.w = -ann.w; flip(0); }
+    if (ann.h < 0) { ann.y += ann.h; ann.h = -ann.h; flip(1); }
   }
 
   onDblClick(e) {

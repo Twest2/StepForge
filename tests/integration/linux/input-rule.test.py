@@ -31,7 +31,8 @@ UI_SET_RELBIT = 0x40045566
 EV_KEY, EV_REL = 1, 2
 REL_X, REL_Y = 0, 1
 BTN_LEFT, BTN_RIGHT, BTN_MIDDLE = 0x110, 0x111, 0x112
-KEYS_A_TO_Z = [30, 48, 46, 32, 18, 33, 34, 35, 23, 36, 37, 38, 50, 49, 24, 25, 16, 19, 31, 20, 22, 47, 17, 45, 21, 44]
+# udev calls a device a keyboard when it has Esc, the digits and Q to D (codes 1-31).
+KEYBOARD_KEYS = range(1, 60)
 
 
 def fail(message):
@@ -54,7 +55,7 @@ class VirtualDevice:
         for axis in (REL_X, REL_Y):
             fcntl.ioctl(self.fd, UI_SET_RELBIT, axis)
         if keyboard:
-            for key in KEYS_A_TO_Z:
+            for key in KEYBOARD_KEYS:
                 fcntl.ioctl(self.fd, UI_SET_KEYBIT, key)
         setup = struct.pack('HHHH80sI', 0x03, 0x1234, 0x5678 + keyboard, 1, name.encode(), 0)
         fcntl.ioctl(self.fd, UI_DEV_SETUP, setup)

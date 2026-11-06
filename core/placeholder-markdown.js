@@ -22,7 +22,8 @@ function inline(text) {
 }
 
 const HEADING = /^ {0,3}(#{1,6})\s+(.*?)(?:\s+#+)?\s*$/;
-const RULE = /^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
+// Any spacing counts, including non-breaking spaces that pasted text often has.
+const RULE = /^\s{0,3}([-*_])(?:\s*\1){2,}\s*$/;
 const QUOTE = /^ {0,3}> ?(.*)$/;
 const ITEM = /^(\s*)(?:([-*+])|\d+[.)])\s+(.*)$/;
 const TABLE_DIVIDER = /^\s*\|?\s*:?-+:?\s*(?:\|\s*:?-+:?\s*)*\|?\s*$/;

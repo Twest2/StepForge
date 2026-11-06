@@ -124,7 +124,18 @@ test('rich exports: PDF shows table cells apart and strikes text, Word gets a re
   const table = '| Setting | Value |\n| --- | --- |\n| Port | 443 |';
   assert.deepEqual(htmlToBlocks(descriptionFromMarkdown(table)).map((b) => [b.type, b.header, b.cells]),
     [['tr', true, ['Setting', 'Value']], ['tr', false, ['Port', '443']]]);
-  assert.match(coverOps(withDescription(table), 'pdf-table'), /\(Port\) Tj[\s\S]*?\(\|\) Tj[\s\S]*?\(443\) Tj/);
+  // A real table: a bordered cell per column on each row, a shaded header,
+  // and each column's text starting one column width further right.
+  const tableOps = coverOps(withDescription(table), 'pdf-table');
+  const cellX = (word) => Number(new RegExp(`1 0 0 1 ([\\d.]+) ([\\d.]+) Tm [^\\n]*\\(${word}\\) Tj`).exec(tableOps)[1]);
+  const cells = [...tableOps.matchAll(/([\d.]+) ([\d.]+) ([\d.]+) ([\d.]+) re S/g)].map((m) => m.slice(1).map(Number));
+  assert.equal(cells.length, 4, 'two rows of two bordered cells');
+  const colW = cells[0][2];
+  assert.ok(Math.abs(cellX('443') - cellX('Port') - colW) < 0.01);
+  assert.ok(Math.abs(cellX('Value') - cellX('Setting') - colW) < 0.01);
+  assert.ok(Math.abs(cellX('Port') - cellX('Setting')) < 0.01);
+  assert.match(tableOps, /\/F2 [\d.]+ Tf [^\n]*\(Setting\) Tj/, 'header cells are bold');
+  assert.ok(!/\(\|\) Tj/.test(tableOps), 'no text separators between cells');
 
   const fills = (ops) => (ops.match(/ re f\b/g) || []).length;
   assert.equal(fills(coverOps(withDescription('Use ~~old~~ new'), 'pdf-strike')) - fills(coverOps(withDescription('Use old new'), 'pdf-plain')), 1);
@@ -147,4 +158,61 @@ test('rich exports: PDF shows table cells apart and strikes text, Word gets a re
 
   const md = fs.readFileSync(exportMarkdown(withDescription('- One\n  - Sub\n> Quote **bold**'), path.join(root, 'md')).file, 'utf8');
   assert.match(md, /- One\n {2}- Sub\n\n> Quote \*\*bold\*\*/);
+});
+
+test('PDF headings get a size per level; continued list lines and pasted dividers keep their structure', (t) => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const zlib = require('node:zlib');
+  const { buildFixtureGuide } = require('./fixture-guide');
+  const { makeTmpDir, rmrf } = require('./helpers');
+  const { buildRenderAst } = require('../../core/renderast');
+  const { exportPdf } = require('../../exporters/pdf');
+  const { buildConfluenceWord } = require('../../exporters/confluence-word');
+  const { unzipSync } = require('../../core/zip');
+
+  const root = makeTmpDir('desc-md-levels');
+  t.after(() => rmrf(root));
+  const { store, guide } = buildFixtureGuide(path.join(root, 'data'));
+  const withDescription = (markdown) => {
+    const g = store.getGuide(guide.guideId);
+    g.descriptionHtml = descriptionFromMarkdown(markdown);
+    store.saveGuide(g);
+    return buildRenderAst(store, guide.guideId);
+  };
+  const coverOps = (ast, name) => {
+    const buf = fs.readFileSync(exportPdf(ast, path.join(root, name), { includeImages: false }).file);
+    const m = /\d+ 0 obj\n<< \/Filter \/FlateDecode \/Length (\d+) >>\nstream\n/.exec(buf.toString('latin1'));
+    return zlib.inflateSync(buf.subarray(m.index + m[0].length, m.index + m[0].length + Number(m[1]))).toString('latin1');
+  };
+  // Font size and x position of the text run that draws `word`.
+  const drawn = (ops, word) => {
+    const m = new RegExp(`1 0 0 1 ([\\d.]+) ([\\d.]+) Tm /F\\d+ ([\\d.]+) Tf [^\\n]*\\(${word}\\) Tj`).exec(ops);
+    return m && { x: Number(m[1]), y: Number(m[2]), size: Number(m[3]) };
+  };
+
+  const headings = coverOps(withDescription('# One\n## Two\n### Three\n#### Four\n\nBody'), 'pdf-headings');
+  const sizes = ['One', 'Two', 'Three', 'Four', 'Body'].map((word) => drawn(headings, word).size);
+  for (let i = 1; i < sizes.length; i++) assert.ok(sizes[i - 1] - sizes[i] >= 0.5, `level ${i} (${sizes[i - 1]}pt) is clearly bigger than the next (${sizes[i]}pt)`);
+  assert.ok(sizes[0] >= sizes[4] * 1.5, 'a top heading is at least half again the body size');
+
+  // Pasted text often has non-breaking spaces; "* * *" is still a divider.
+  assert.equal(descriptionFromMarkdown('Above\n\n* * *\n\nBelow'), '<p>Above</p><hr><p>Below</p>');
+
+  // The indented line continues the bullet: no second bullet, aligned with the item's text.
+  const list = coverOps(withDescription('- Third bullet\n  continued below\n- Next'), 'pdf-cont');
+  const item = drawn(list, 'Third');
+  const cont = drawn(list, 'continued');
+  // The bullet is byte 0x95 (WinAnsi •), drawn on its own before each item.
+  assert.equal((list.match(/\(\x95\) Tj/g) || []).length, 2, 'two bullets for two items');
+  assert.ok(Math.abs(cont.x - item.x) < 0.01 && cont.y < item.y);
+
+  // Word (Confluence): the continuation is an indented paragraph without a list number.
+  const docx = unzipSync(buildConfluenceWord(withDescription('1. First\n   still first\n2. Second'), new Map(), { includeImages: false }));
+  const xml = docx.find((entry) => entry.name === 'word/document.xml').data.toString('utf8');
+  const paragraphOf = (word) => xml.split('</w:p>').find((p) => p.includes(`>${word}`));
+  assert.match(paragraphOf('First'), /<w:numPr>/);
+  assert.doesNotMatch(paragraphOf('still first'), /<w:numPr>/);
+  assert.match(paragraphOf('still first'), /<w:ind w:left="720"\/>/);
+  assert.match(paragraphOf('Second'), /<w:numPr>/);
 });

@@ -188,3 +188,23 @@ test('library: the "May need review" pill shows only when overdue, in the status
   const css = read('app/renderer/style.css');
   assert.match(css, /\.guide-card \.card-statuses \.review-badge \{ margin-left: 0; \}/);
 });
+
+test('guide version: kept on the guide and shown after the organization in exports', (t) => {
+  assert.equal(createGuide().metadata.guideVersion, '');
+  assert.equal(createGuide({ metadata: { guideVersion: 2 } }).metadata.guideVersion, '');
+  assert.equal(createGuide({ metadata: { guideVersion: '9'.repeat(80) } }).metadata.guideVersion.length, 50);
+
+  const root = makeTmpDir('guide-version');
+  t.after(() => rmrf(root));
+  const { store, guide } = buildFixtureGuide(path.join(root, 'data'));
+  const g = store.getGuide(guide.guideId);
+  g.metadata = { ...g.metadata, organization: 'Acme', guideVersion: '[[Rev]]', softwareVersion: 'AcmeSync 4' };
+  g.placeholders = { ...g.placeholders, Rev: '1.1' };
+  store.saveGuide(g);
+  const ast = buildRenderAst(store, guide.guideId);
+  const lines = guideMetaLines(ast);
+  assert.equal(lines.indexOf('Guide version: 1.1'), lines.indexOf('Organization: Acme') + 1);
+  assert.equal(lines.indexOf('Software version: AcmeSync 4'), lines.indexOf('Guide version: 1.1') + 1);
+  const md = fs.readFileSync(exportMarkdown(ast, path.join(root, 'md')).file, 'utf8');
+  assert.match(md, /Organization: Acme · Guide version: 1\.1 · Software version: AcmeSync 4/);
+});

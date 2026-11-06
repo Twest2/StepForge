@@ -166,6 +166,7 @@ function buildRenderAst(store, guideId, { globals = {}, now = new Date(), maxSte
         coAuthors: expand(guide.metadata?.coAuthors || ''),
         organization: expand(guide.metadata?.organization || ''),
         lastVerified: guide.metadata?.lastVerified || '',
+        guideVersion: expand(guide.metadata?.guideVersion || ''),
         softwareVersion: expand(guide.metadata?.softwareVersion || ''),
         // Only for guides someone has verified, so other exports don't pick
         // up a review date nobody chose.

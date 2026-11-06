@@ -142,3 +142,17 @@ test('Guide information only offers cloud actions for a connected compatible act
     assert.equal(shown.cloudConnected, expected, JSON.stringify(status));
   }
 });
+
+test('Guide version sits under Review, above Software version, and saves trimmed', async () => {
+  const u = ui(); let saved;
+  u.context.window.StepForgeDialogs.showGuideInfoDialog({ values: { guideVersion: '1.0' }, onSave: async value => { saved = value; } });
+  const body = u.all(u.root).find(n => n.classes?.has('guide-info-body'));
+  const labels = body.children.map(n => (n.tag === 'h3' ? `# ${n.textContent}` : n.children?.[0]?.textContent));
+  assert.equal(labels.indexOf('Guide version'), labels.indexOf('# Review') + 1);
+  assert.equal(labels.indexOf('Software version'), labels.indexOf('Guide version') + 1);
+  const input = body.children[labels.indexOf('Guide version')].children[1];
+  assert.equal(input.value, '1.0');
+  input.value = ' 1.1 ';
+  await u.all(u.all(u.root).find(n => n.tag === 'footer')).find(n => n.textContent === 'Save').listeners.click();
+  assert.equal(saved.guideVersion, '1.1');
+});

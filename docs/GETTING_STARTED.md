@@ -117,7 +117,7 @@ For each step you can:
 - Start a **New page** at this step in paged formats such as PDF.
 
 **Guide details:** choose **More → Guide information…** to add an author,
-version and a short description. The description appears at the top of
+a guide version (such as `1.1`) and a short description. The description appears at the top of
 exports and accepts Markdown: `**bold**`, `*italic*`, `` `code` ``,
 `[links](https://example.com)`, and lists that start with `-` or `1.`.
 

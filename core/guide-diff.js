@@ -387,7 +387,7 @@ function stepChanges(before, after, beforeSha, afterSha) {
   return changes.filter(Boolean);
 }
 
-const METADATA_LABELS = { author: 'Author', coAuthors: 'Co-authors', organization: 'Organization' };
+const METADATA_LABELS = { author: 'Author', coAuthors: 'Co-authors', organization: 'Organization', guideVersion: 'Guide version' };
 const FLAG_LABELS = {
   focusedViewDefault: 'Focused view for new steps',
   hideSkippedStepsInExports: 'Hide skipped steps in exports',

@@ -1939,6 +1939,7 @@ function showPlaceholdersDialog({ title = t('Placeholders'), hint = '', values =
 let guideInfoDialogId = 0;
 function showGuideInfoDialog({ values = {}, reviewDefaultDays, cloudConnected = false, onSave, onCloudSnapshots, onDeleteCloudSnapshots } = {}) {
   return new Promise((resolve) => {
+    const guideVersionInput = makeInput(values.guideVersion || '', 'text', { placeholder: t('e.g. 1.1'), maxLength: 50 });
     const versionInput = makeInput(values.softwareVersion || '', 'text', { placeholder: t('e.g. Windows 11 24H2'), maxLength: 200 });
     const verifiedInput = makeInput(review.normalizeDateOnly(values.lastVerified), 'date', { max: review.toDateOnly(Date.now()) });
     const reviewDays = review.normalizeReviewDays(values.reviewAfterDays);
@@ -1986,6 +1987,7 @@ function showGuideInfoDialog({ values = {}, reviewDefaultDays, cloudConnected = 
       author: authorInput.value,
       coAuthors: coAuthorsInput.value,
       organization: organizationInput.value,
+      guideVersion: guideVersionInput.value,
       softwareVersion: versionInput.value,
       lastVerified: verifiedInput.value,
       reviewAfterDays: readReviewDays(),
@@ -2019,6 +2021,7 @@ function showGuideInfoDialog({ values = {}, reviewDefaultDays, cloudConnected = 
             t('Markdown works here: **bold**, *italic*, `code`, [link](https://example.com), and lists that start with - or 1.')),
           descriptionInput),
         el('h3', { style: { margin: '14px 0 6px' } }, t('Review')),
+        labeledRow(t('Guide version'), guideVersionInput),
         labeledRow(t('Software version'), versionInput),
         labeledRow(t('Last verified'), el('div.row', {}, verifiedInput, todayBtn)),
         labeledRow(t('Review again'), reviewSelect),
@@ -2039,6 +2042,7 @@ function showGuideInfoDialog({ values = {}, reviewDefaultDays, cloudConnected = 
               author: authorInput.value.trim(),
               coAuthors: coAuthorsInput.value.trim(),
               organization: organizationInput.value.trim(),
+              guideVersion: guideVersionInput.value.trim(),
               softwareVersion: versionInput.value.trim(),
               lastVerified: review.normalizeDateOnly(verifiedInput.value),
               reviewAfterDays: readReviewDays(),

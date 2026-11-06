@@ -35,6 +35,10 @@ to title the step, so you'll usually see titles like *Click Releases* or
 > you plan to click on. See [Linux recording](linux/linux_install.md#recording-on-gnome-wayland)
 > for details.
 
+On **KDE Plasma 6 Wayland**, select the monitors to share when prompted and
+use the StepForge tray menu to pause or finish. See [KDE Plasma](linux/kde-plasma.md)
+for mouse access, shortcuts and region selection.
+
 ### Stop recording
 
 **On Windows,** a small floating bar appears when you start recording.
@@ -335,7 +339,9 @@ shows the savings first and saves a snapshot before changing anything.
 On Windows, use **Finish** on the floating bar. If you chose the tray icon,
 the red dot may be hidden behind the **^** arrow beside the clock.
 
-**Clicks aren't creating steps on Linux.** Make sure you're on a GNOME Wayland
+**Clicks aren't creating steps on KDE Plasma.** Check [mouse access and setup](linux/kde-plasma.md).
+
+**Clicks aren't creating steps on GNOME.** Make sure you're on a GNOME Wayland
 session, that you logged out and back in after installing StepForge, and that
 you enabled the StepForge extension when prompted. If your desktop can't report
 clicks, **Settings → Capture → When clicks can't be detected** lets you capture

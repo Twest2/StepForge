@@ -2,6 +2,7 @@
 
 const fs = require('node:fs');
 const { execFileSync } = require('node:child_process');
+const { detectLinuxDesktop } = require('./desktop');
 
 /**
  * Linux capture-capability diagnostics. Detects the session type, portal /
@@ -38,7 +39,9 @@ function detectLinuxCapabilities({
 } = {}) {
   const sessionType = detectSessionType(env);
   const isWayland = sessionType === 'wayland';
-  const gnomeRequired = isWayland && /gnome|ubuntu/i.test(env.XDG_CURRENT_DESKTOP || '');
+  const desktop = detectLinuxDesktop(env);
+  const gnomeRequired = isWayland && desktop === 'gnome';
+  const plasmaRequired = isWayland && desktop === 'plasma';
 
   // XDG Desktop Portal + PipeWire are how Wayland screen capture works.
   const hasPortalBus = Boolean(env.DBUS_SESSION_BUS_ADDRESS);
@@ -64,6 +67,7 @@ function detectLinuxCapabilities({
   // Determine the click-capture profile for this session.
   let clickCapture;
   if (gnomeRequired) clickCapture = 'gnome-extension-required';
+  else if (plasmaRequired) clickCapture = 'kwin-script-required';
   else if (!isWayland && hasXinput) clickCapture = 'x11-xinput';
   else if (readableInputDevices > 0) clickCapture = isWayland ? 'evdev-wayland' : 'evdev-x11';
   else clickCapture = 'hotkey-or-interval-only';
@@ -78,6 +82,9 @@ function detectLinuxCapabilities({
   if (!isWayland && !hasXinput) {
     messages.push('xinput not found: per-click capture with a marker is unavailable on X11 without it.');
   }
+  if (plasmaRequired && readableInputDevices === 0) {
+    messages.push('StepForge cannot read mouse buttons. Install the StepForge package, then unplug and replug the mouse or log out and back in.');
+  }
   if (clickCapture === 'hotkey-or-interval-only') {
     messages.push('No global click source available. Recording falls back to a hotkey or interval trigger.');
   }
@@ -87,6 +94,7 @@ function detectLinuxCapabilities({
     sessionType,
     isWayland,
     gnomeRequired,
+    plasmaRequired,
     hasPortalBus,
     hasPipeWire,
     hasXinput,
@@ -115,6 +123,12 @@ function chooseCaptureTrigger(capabilities, userTriggerPreference = 'hotkey') {
     return { trigger: 'click', clickSource: 'gnome-extension-required',
       coordinates: true, marker: true,
       note: 'Requires StepForge Capture for GNOME 50. Records sampled mouse-button transitions with logical coordinates; recording is blocked until the extension and portal streams are ready.' };
+  }
+
+  if (click === 'kwin-script-required') {
+    return { trigger: 'click', clickSource: 'kwin-script-required',
+      coordinates: true, marker: true,
+      note: 'KDE Plasma 6: mouse buttons come from the input devices, and KWin reports the pointer position and window for each click. Recording is blocked until KWin and the portal streams are ready.' };
   }
 
   if (click === 'x11-xinput') {

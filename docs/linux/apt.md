@@ -1,9 +1,11 @@
 # Install StepForge on Ubuntu
 
-StepForge provides a `.deb` package for **Ubuntu 26.04 (GNOME 50) on amd64**.
+StepForge provides a `.deb` package for **Ubuntu 26.04 (GNOME 50) and Kubuntu 26.04 (Plasma 6) on amd64**.
 
 The recommended way to install is the StepForge APT repository, so StepForge
 updates with the rest of your system. On Fedora, see the [Fedora guide](dnf.md).
+
+For KDE recording, see [KDE Plasma setup](kde-plasma.md).
 
 ## Install from the StepForge repository
 

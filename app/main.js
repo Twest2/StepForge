@@ -91,6 +91,15 @@ if (process.platform === 'linux') {
   if (passwordStore) app.commandLine.appendSwitch('password-store', passwordStore);
 }
 
+// On KDE Plasma Wayland, global hotkeys only work through the GlobalShortcuts
+// portal; Plasma asks once which shortcuts StepForge may use. Keep any
+// features the launcher already enabled.
+const plasmaWayland = require('./platform/linux/desktop').waylandCaptureDesktop() === 'plasma';
+if (plasmaWayland) {
+  const features = app.commandLine.getSwitchValue('enable-features');
+  app.commandLine.appendSwitch('enable-features', [features, 'GlobalShortcutsPortal'].filter(Boolean).join(','));
+}
+
 /**
  * StepForge main process. Optional AI and Google Drive integrations are opt-in.
  * No telemetry or update checks. The renderer is sandboxed; this is the full
@@ -608,7 +617,9 @@ function registerHotkeys() {
     ['CommandOrControl+0', 'fit'],
     ['CommandOrControl+num0', 'fit'],
   ];
-  for (const [accel, kind] of zoomBindings) {
+  // Through Plasma's portal these would become desktop-wide shortcuts that
+  // other apps lose; the window's own key handler already zooms.
+  for (const [accel, kind] of plasmaWayland ? [] : zoomBindings) {
     try {
       if (globalShortcut.register(accel, () => handleZoomShortcut(kind))) {
         // Keep registering the other spellings so keyboards with different

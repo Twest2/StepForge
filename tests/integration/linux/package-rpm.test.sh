@@ -43,6 +43,9 @@ for needle in \
   '/opt/stepforge/app/boot.js' \
   '/opt/stepforge/app/assets/stepforge.png' \
   '/opt/stepforge/app/platform/linux/portal_capture.py' \
+  '/opt/stepforge/app/platform/linux/kwin_companion.py' \
+  '/opt/stepforge/app/platform/linux/kwin/stepforge-capture.js' \
+  '/usr/lib/udev/rules.d/60-stepforge-input.rules' \
   '/usr/share/gnome-shell/extensions/com.twestbrook.stepforge/metadata.json' \
   '/usr/share/gnome-shell/extensions/com.twestbrook.stepforge/extension.js' \
   '/usr/share/gnome-shell/extensions/com.twestbrook.stepforge/buttons.js'; do
@@ -60,10 +63,14 @@ done
 expected_version="$(node -p "require('./package.json').buildVersion || require('./package.json').version")"
 [[ "$(rpm -qp --qf '%{VERSION}' "$RPM")" == "$expected_version" ]] || fail 'release version was truncated'
 requires="$(rpm -qp --requires "$RPM")"
-for requirement in 'nodejs >= 22.12.0' 'nss' 'gnome-shell >= 50' 'gnome-shell < 51' 'python3-gobject' \
+for requirement in 'nodejs >= 22.12.0' 'nss' 'python3-gobject' \
   'gstreamer1-plugins-base' 'pipewire-gstreamer' 'gdk-pixbuf2' \
-  'xdg-desktop-portal-gnome' 'pipewire' 'wireplumber'; do
+  '(xdg-desktop-portal-gnome or xdg-desktop-portal-kde)' '(spectacle if xdg-desktop-portal-kde)' 'pipewire' 'wireplumber'; do
   grep -qFx "$requirement" <<< "$requires" || fail "missing dependency: $requirement"
+done
+conflicts="$(rpm -qp --conflicts "$RPM")"
+for constraint in 'gnome-shell < 50' 'gnome-shell >= 51'; do
+  grep -qFx "$constraint" <<< "$conflicts" || fail "missing incompatible GNOME constraint: $constraint"
 done
 if grep -qE '^lib(ffmpeg|vips-cpp)[.]so' <<< "$requires"; then
   fail 'private bundled FFmpeg/libvips incorrectly required from system repositories'

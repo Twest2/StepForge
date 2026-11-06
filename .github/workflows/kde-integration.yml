@@ -1,0 +1,70 @@
+name: KDE Plasma integration
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: kde-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Build the exact PR commit; install it on Plasma without GNOME.
+  plasma:
+    name: Plasma 6 (${{ matrix.os }})
+    runs-on: ubuntu-24.04
+    container: ${{ matrix.image }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: Kubuntu 26.04
+            image: ubuntu:26.04
+            format: deb
+          - os: Fedora 44 KDE
+            image: fedora:44
+            format: rpm
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Install checkout tools
+        run: |
+          if command -v apt-get >/dev/null; then
+            apt-get update
+            apt-get install -y --no-install-recommends git ca-certificates tar gzip xz-utils
+          else
+            dnf install -y git ca-certificates tar gzip xz
+          fi
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install packaging tools
+        run: |
+          if [[ '${{ matrix.format }}' == deb ]]; then
+            bash scripts/linux/apt/install-build-deps.sh
+          else
+            bash scripts/linux/dnf/install-build-deps.sh --rpm-only
+          fi
+      - run: npm ci
+      - name: Build the package under test
+        env:
+          STEPFORGE_RPM_FAST: '1'
+        run: npm run package:linux:${{ matrix.format }}
+      - name: Install on Plasma and exercise real KWin
+        run: |
+          if [[ '${{ matrix.format }}' == deb ]]; then
+            packages=(build/artifacts/*.deb)
+          else
+            packages=(build/artifacts/x86_64/*.rpm)
+          fi
+          [[ ${#packages[@]} == 1 && -f "${packages[0]}" ]]
+          bash tests/integration/linux/kde-installed.test.sh "${packages[0]}" 2>&1 | tee kde-installed.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: kde-${{ matrix.format }}-integration-log
+          path: kde-installed.log

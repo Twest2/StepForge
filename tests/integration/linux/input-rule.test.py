@@ -5,7 +5,8 @@ Run only as root on a disposable CI runner (see kde-integration.yml). It
 installs the rule, creates virtual devices through /dev/uinput, and reads
 the tags udev gave them:
 
-* a plain mouse is tagged `uaccess` only while /usr/bin/kwin_wayland exists,
+* a plain mouse is tagged `uaccess` only while /usr/bin/kwin_wayland exists
+  (checked when the device is added or changed),
 * a device that is also a keyboard is never tagged.
 """
 import fcntl
@@ -127,9 +128,15 @@ def main():
             print('with KWin: the mouse is tagged uaccess, the keyboard device is not')
         finally:
             os.unlink(KWIN)
-        retrigger(mouse, combo)
-        if mouse.tagged():
-            fail('the mouse kept its access after KDE Plasma was removed')
+        # udev keeps a tag it already gave a device until that device is added
+        # again; a mouse connected after KDE is gone gets no access.
+        later = VirtualDevice('StepForge rule test mouse 2')
+        try:
+            if later.tagged():
+                fail('a mouse connected after KDE Plasma was removed got access')
+        finally:
+            later.close()
+        print('after removing KWin: a newly connected mouse is not tagged')
     finally:
         mouse.close()
         combo.close()

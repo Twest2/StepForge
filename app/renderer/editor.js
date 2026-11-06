@@ -276,6 +276,7 @@ class GuideEditor {
   }
 
   destroy() {
+    this.canvas?.destroy();
     this.cancelPaneDrag();
     this.paneLayoutObserver?.disconnect();
     document.removeEventListener('keydown', this.onDocumentKeyDown, true);

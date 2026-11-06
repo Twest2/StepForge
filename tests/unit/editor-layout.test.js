@@ -109,8 +109,10 @@ test('a raised steps minimum (its button row in a longer language) holds when re
 test('Fit zoom still fits an image when manual pane resizing leaves less than 100 pixels', () => {
   const context = { window: {} };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/canvas.js'), 'utf8'), context);
-  const canvas = { parentElement: { clientWidth: 80, clientHeight: 120 } };
-  context.window.AnnotationCanvas.prototype.applyZoom.call({ image: {}, canvas, zoomMode: 'fit', imgW: 640, imgH: 360, render() {} });
+  const canvas = { parentElement: { clientWidth: 80, clientHeight: 120 }, getContext: () => ({}), addEventListener() {} };
+  const annotationCanvas = new context.window.AnnotationCanvas(canvas);
+  Object.assign(annotationCanvas, { image: {}, imgW: 640, imgH: 360, render() {}, requestRender() {} });
+  annotationCanvas.applyZoom();
   assert.equal(canvas.width, 40);
   assert.ok(canvas.height <= 80);
 });

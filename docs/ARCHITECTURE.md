@@ -111,6 +111,11 @@ guide.json + step.json + settings
                                             index.json, optional .zip
                ──► exporters/docx.js        zip+XML (core/zip.js)
                ──► exporters/pptx.js        zip+XML (core/zip.js)
+               ──► exporters/clipboard.js   Share → Copy to clipboard: inline-
+                                            styled HTML with ≤800 px data: URL
+                                            screenshots, plus plain text; the
+                                            main process swaps in JPEG where
+                                            smaller and writes both formats
 ```
 
 PDF text uses the built-in Helvetica, Times and Courier where they can show

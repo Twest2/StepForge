@@ -251,6 +251,8 @@ was recorded with StepForge.
 - **Export anywhere.** PDF, DOCX, PPTX, Markdown, HTML, an interactive
   checklist page, animated GIF, Confluence, Wiki.js, JSON, or a folder of
   annotated images.
+- **Copy to the clipboard.** Paste a whole guide, screenshots included, into
+  an email, chat message or document.
 - **Share a link.** Publish a guide as an interactive web page on your own
   GitHub Pages site for 1, 7 or 30 days, removed automatically when its time
   is up. [See how it works](#share-a-guide-with-a-web-link).

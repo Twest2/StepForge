@@ -3203,6 +3203,36 @@ class GuideEditor {
     }
   }
 
+  /**
+   * Share → Copy to clipboard: the whole guide with its screenshots, for
+   * mail, chat and documents. The main process checks for private details
+   * first, as publishing does; blurs it adds are in the copy.
+   */
+  async copyToClipboard() {
+    if (!this.guideId || this.copyingToClipboard) return;
+    const guideId = this.guideId;
+    this.copyingToClipboard = true;
+    let toldChecking = false;
+    const stop = api.redact.onProgress((update) => {
+      if (update?.guideId !== guideId || !update.total || toldChecking) return;
+      toldChecking = true;
+      this.onToast(t('Checking screenshots for private details…'));
+    });
+    try {
+      await this.saveAll();
+      const result = await api.guide.copyToClipboard({ guideId });
+      if (result.review?.added && this.guideId === guideId) await this.reload(this.selectedStepId);
+      const found = result.review && (result.review.blurs.length || result.review.text.length);
+      this.onToast(found ? `${t('Guide copied to the clipboard.')} ${privacySummary(result.review)}` : t('Guide copied to the clipboard.'),
+        { ms: found ? 6000 : 2600 });
+    } catch (err) {
+      this.onToast(t('Couldn’t copy the guide: {error}', { error: err.message || err }), { error: true });
+    } finally {
+      stop();
+      this.copyingToClipboard = false;
+    }
+  }
+
   async shareAsFile() {
     const result = await api.archive.export({ guideId: this.guideId });
     if (result && result.ok) this.onToast(t('Shared to {path}', { path: result.path }));
@@ -3633,6 +3663,7 @@ class GuideEditor {
     const commands = [
       { kind: 'cmd', label: t('New guide'), description: t('Create a blank guide'), action: () => this.onBack('new') },
       { kind: 'cmd', label: t('Export'), description: t('Export the current guide'), action: () => this.openExportDialog() },
+      { kind: 'cmd', label: t('Copy to clipboard'), description: t('Copy the guide with its screenshots'), action: () => this.copyToClipboard() },
       { kind: 'cmd', label: t('Optimize guide images'), action: () => this.optimizeImages() },
       { kind: 'cmd', label: t('Settings'), description: t('Open application settings'), action: () => this.openSettings() },
       { kind: 'cmd', label: t('Linked guide'), description: t('Show linked archive details'), action: () => this.openLinkedGuide() },

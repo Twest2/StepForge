@@ -552,6 +552,7 @@ class StepForgeApp {
         onClick: (e) => {
           const rect = e.currentTarget.getBoundingClientRect();
           contextMenu(rect.left, rect.bottom + 4, [
+            { label: t('Copy to clipboard'), action: () => this.editor.copyToClipboard() },
             { label: t('Save as a .sfgz file…'), action: () => this.editor.shareAsFile() },
             { label: t('Publish to the web…'), action: () => this.publishToWeb(guide?.guideId || this.editor.guideId, guide?.title) },
             { label: t('Publish to Confluence…'), badge: 'Beta', action: () => this.publishToConfluence(guide?.guideId || this.editor.guideId, guide?.title) },

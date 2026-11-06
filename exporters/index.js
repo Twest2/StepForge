@@ -10,8 +10,13 @@ const { exportGifGuide } = require('./gif');
 const { exportImageBundle } = require('./image-bundle');
 const { exportDocx } = require('./docx');
 const { exportPptx } = require('./pptx');
+const { exportClipboard } = require('./clipboard');
 
-/** Unified dispatch: format id -> exporter(ast, outDir, templateOptions). */
+/**
+ * Unified dispatch: format id -> exporter(ast, outDir, templateOptions).
+ * 'clipboard' (Share → Copy to clipboard) isn't an Export dialog format: it
+ * returns HTML and text instead of writing files.
+ */
 const EXPORTERS = {
   json: exportJson,
   markdown: exportMarkdown,
@@ -24,6 +29,7 @@ const EXPORTERS = {
   'image-bundle': exportImageBundle,
   docx: exportDocx,
   pptx: exportPptx,
+  clipboard: exportClipboard,
 };
 
 /**

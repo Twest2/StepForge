@@ -36,7 +36,7 @@ function fakeCanvasElement() {
 function loadRenderer() {
   const context = {
     ...rendererI18n(),
-    window: { stepforge: {}, StepForgeDialogs: {} },
+    window: { stepforge: {}, StepForgeDialogs: {}, StepForgeAnnotationProperties: require('../../core/annotation-properties') },
     document: { createElement: () => fakeCanvasElement() },
   };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/canvas.js'), 'utf8'), context);
@@ -83,7 +83,7 @@ test('going back to Select after each use is on by default and the choice is sav
 });
 
 test('by default, drawing one annotation goes back to Select with it selected', () => {
-  for (const tool of ['blur', 'rect', 'oval', 'arrow', 'line', 'text', 'tooltip', 'number', 'highlight', 'magnify', 'cursor']) {
+  for (const tool of ['blur', 'rect', 'oval', 'arrow', 'line', 'text', 'tooltip', 'number', 'highlight', 'magnify', 'cursor', 'spotlight']) {
     const { editor, canvas, changes } = editorWithCanvas({});
     editor.setTool(tool);
     drag(canvas, [100, 100], [300, 250]);

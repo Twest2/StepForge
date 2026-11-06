@@ -85,11 +85,16 @@ guides already in the trash when emptying is turned on get the full time.
 Annotations are stored as normalized JSON, never as an editor-library blob.
 Coordinates are fractions of the image (resolution-independent). Types:
 `rect, oval, line, arrow, text, tooltip, number, blur, highlight, magnify,
-cursor`. The same geometry is rendered by the editor canvas (HTML5 canvas)
-and by the export rasterizer (`core/raster.js`), so what you see is what
+cursor, spotlight`. The same geometry is rendered by the editor canvas (HTML5
+canvas) and by the export rasterizer (`core/raster.js`), so what you see is what
 exports. `style.fill` is a `#RRGGBB` color or `transparent`. The editor's Fill
 picker offers Transparent for rectangles and ovals only. A tooltip with no
-fill is drawn `#1F2937`, so its text stays readable.
+fill is drawn `#1F2937`, so its text stays readable. A spotlight keeps
+`style.shape` (`rect` or `oval`), `style.darkness` (0 to 1, default 0.55) and
+`style.cornerRadius` (pixels on a 1000px-wide image, like `strokeWidth`). All
+spotlights on a step share one overlay, as dark as the darkest of them, with
+every spotlight cut out of it (`spotlightAreas` in
+`core/annotation-properties.js`).
 
 ## Render Pipeline
 

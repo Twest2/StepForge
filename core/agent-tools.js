@@ -123,6 +123,7 @@ function annotationForAgent(ann, shown) {
   }
   if (ann.type === 'text' || ann.type === 'tooltip') out.text = ann.text || '';
   if (ann.type === 'number') out.value = ann.value;
+  if (ann.type === 'spotlight') out.shape = ann.style && ann.style.shape === 'oval' ? 'oval' : 'rect';
   return out;
 }
 
@@ -197,6 +198,8 @@ function annotationFromAgent(item, shown, index) {
   const style = {};
   if (item.color) style.stroke = item.color;
   if (item.type === 'tooltip' && item.tail) style.tail = item.tail;
+  if (item.shape !== undefined && item.shape !== 'rect' && item.shape !== 'oval') throw new AgentError(`${where}: shape must be rect or oval.`);
+  if (item.type === 'spotlight' && item.shape) style.shape = item.shape;
   for (const key of ['x', 'y', 'w', 'h']) box[key] = Math.round(box[key] * 1e6) / 1e6;
   return normalizeAnnotation({
     type: item.type,
@@ -823,7 +826,7 @@ function createAgentTools({ store, agentSettings, onChange = () => {}, onBrandin
     },
     {
       name: 'add_annotations',
-      description: 'Draw annotations on a step\'s screenshot: rect, oval, line, arrow, text, tooltip (a callout box), number (a numbered badge), blur, highlight, magnify, cursor. '
+      description: 'Draw annotations on a step\'s screenshot: rect, oval, line, arrow, text, tooltip (a callout box), number (a numbered badge), blur, highlight, magnify, cursor, spotlight (darkens everything outside it; several spotlights on a step share one overlay). '
         + 'Coordinates are pixels on the screenshot from get_step (see screenshot_size). Annotations are added beside what is there; delete_annotations removes them.',
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
       inputSchema: {
@@ -849,6 +852,7 @@ function createAgentTools({ store, agentSettings, onChange = () => {}, onBrandin
                 value: { type: 'integer', description: 'number: the badge number.' },
                 color: { type: 'string', description: 'Hex color such as "#E5484D" (outline, or the text color for text).' },
                 tail: { type: 'string', enum: ['top', 'bottom', 'left', 'right'], description: 'tooltip: which side points at the target.' },
+                shape: { type: 'string', enum: ['rect', 'oval'], description: 'spotlight: the shape of the bright area (default rect).' },
               },
               required: ['type'],
               additionalProperties: false,

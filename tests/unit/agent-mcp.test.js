@@ -271,12 +271,13 @@ test('agents draw every annotation type in screenshot pixels, added beside what 
       { type: 'tooltip', x: 12, y: 1, width: 8, height: 3, text: 'Click here', tail: 'left' },
       { type: 'number', x: 16, y: 6, width: 3, height: 3, value: 2 },
       { type: 'oval', x: 15, y: -5, width: 100, height: 100 },
+      { type: 'spotlight', x: 2, y: 2, width: 6, height: 4, shape: 'oval' },
     ],
   }));
-  assert.equal(result.annotations_on_step, 6, 'the existing blur stays');
+  assert.equal(result.annotations_on_step, 7, 'the existing blur stays');
   const saved = store.getStep(guide.guideId, first.stepId).annotations;
   assert.equal(saved[0].type, 'blur');
-  const [rect, arrow, tip, badge, oval] = saved.slice(1);
+  const [rect, arrow, tip, badge, oval, spotlight] = saved.slice(1);
   assert.deepEqual([rect.x, rect.y, rect.w, rect.h], [0.5, 0.2, 0.25, 0.4]);
   assert.equal(rect.style.stroke, '#2563EB');
   assert.deepEqual([arrow.x, arrow.y, arrow.w, arrow.h], [0, 0, 0.75, 0.5]);
@@ -285,6 +286,9 @@ test('agents draw every annotation type in screenshot pixels, added beside what 
   assert.equal(badge.value, 2);
   // Partly outside the screenshot: clamped to its edges.
   assert.deepEqual([oval.x, oval.y, oval.w, oval.h], [0.75, 0, 0.25, 1]);
+  // A spotlight gets the given shape and the default darkness.
+  assert.deepEqual([spotlight.type, spotlight.style.shape, spotlight.style.darkness], ['spotlight', 'oval', 0.55]);
+  assert.equal(result.added[5].shape, 'oval');
 
   for (const [annotations, message] of [
     [[{ type: 'star', x: 1, y: 1, width: 2, height: 2 }], /type must be one of/],
@@ -294,6 +298,7 @@ test('agents draw every annotation type in screenshot pixels, added beside what 
     [[{ type: 'number', x: 1, y: 1, width: 5, height: 5 }], /integer value/],
     [[{ type: 'rect', x: 1, y: 1, width: 5, height: 5, color: 'red' }], /color must look like/],
     [[{ type: 'oval', x: 40, y: 1, width: 5, height: 5 }], /outside the screenshot/],
+    [[{ type: 'spotlight', x: 1, y: 1, width: 5, height: 5, shape: 'star' }], /shape must be rect or oval/],
   ]) {
     const bad = await call('add_annotations', { guide_id: guide.guideId, step_id: first.stepId, annotations });
     assert.equal(bad.isError, true);

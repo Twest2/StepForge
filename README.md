@@ -36,7 +36,7 @@
   <a href="docs/GETTING_STARTED.md"><strong>Getting started</strong></a> ·
   <a href="#share-a-guide-with-a-web-link"><strong>Share with a link</strong></a> ·
   <a href="#see-a-real-guide"><strong>See an example</strong></a> ·
-  <a href="https://stepforge.twestbrook.com"><strong>Website</strong></a>
+  <a href="https://stepforge.dev"><strong>Website</strong></a>
 </p>
 
 <p align="center">

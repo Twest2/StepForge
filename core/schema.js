@@ -117,7 +117,6 @@ function createStep(fields = {}) {
       ...(fields.focusedView || {}),
     },
     image: fields.image || null, // { originalPath, workingPath, size:{width,height} }
-    extraImages: fields.extraImages || [], // multi-image steps
     annotations: (fields.annotations || []).map(normalizeAnnotation),
     textBlocks: (fields.textBlocks || []).map((tb) => normalizeTextBlock(tb, takeOrder(tb))),
     codeBlocks: (fields.codeBlocks || []).map((cb) => normalizeCodeBlock(cb, takeOrder(cb))),

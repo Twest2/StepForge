@@ -64,6 +64,7 @@ function createGuide(fields = {}) {
       // Review dates (see core/review.js). reviewAfterDays: null uses the
       // default from Settings, 0 turns reviews off for this guide.
       lastVerified: normalizeDateOnly(fields.metadata?.lastVerified),
+      guideVersion: typeof fields.metadata?.guideVersion === 'string' ? fields.metadata.guideVersion.slice(0, 50) : '',
       softwareVersion: typeof fields.metadata?.softwareVersion === 'string' ? fields.metadata.softwareVersion.slice(0, 200) : '',
       reviewAfterDays: normalizeReviewDays(fields.metadata?.reviewAfterDays),
     },
@@ -121,7 +122,6 @@ function createStep(fields = {}) {
       ...(fields.focusedView || {}),
     },
     image: fields.image || null, // { originalPath, workingPath, size:{width,height} }
-    extraImages: fields.extraImages || [], // multi-image steps
     annotations: (fields.annotations || []).map(normalizeAnnotation),
     textBlocks: (fields.textBlocks || []).map((tb) => normalizeTextBlock(tb, takeOrder(tb))),
     codeBlocks: (fields.codeBlocks || []).map((cb) => normalizeCodeBlock(cb, takeOrder(cb))),

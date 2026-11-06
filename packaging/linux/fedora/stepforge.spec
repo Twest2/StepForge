@@ -42,9 +42,11 @@ Requires:       libXdamage
 Requires:       libXfixes
 Requires:       libXrandr
 Requires:       libxshmfence
-# Same GNOME 50 companion + consented portal pipeline as the Ubuntu package.
-Requires:       gnome-shell >= 50
-Requires:       gnome-shell < 51
+# Same consented portal pipeline as the Ubuntu package, on GNOME 50 (with the
+# bundled Shell extension) or KDE Plasma 6 (KWin script + input devices).
+# GNOME is not pulled onto Plasma systems; only a mismatched GNOME is refused.
+Conflicts:      gnome-shell < 50
+Conflicts:      gnome-shell >= 51
 Requires:       python3
 Requires:       python3-gobject
 Requires:       gdk-pixbuf2
@@ -53,7 +55,8 @@ Requires:       gstreamer1-plugins-base
 Requires:       pipewire-gstreamer
 Requires:       glib2
 Requires:       xdg-desktop-portal
-Requires:       xdg-desktop-portal-gnome
+Requires:       (xdg-desktop-portal-gnome or xdg-desktop-portal-kde)
+Requires:       (spectacle if xdg-desktop-portal-kde)
 Requires:       pipewire
 Requires:       wireplumber
 Recommends:     xinput
@@ -75,6 +78,7 @@ production dependencies; it does not install anything at runtime.
 /usr/share/applications/stepforge.desktop
 /usr/share/mime/packages/stepforge.xml
 /usr/share/gnome-shell/extensions/com.twestbrook.stepforge
+/usr/lib/udev/rules.d/60-stepforge-input.rules
 /usr/share/icons/hicolor/*/apps/stepforge.png
 %license /usr/share/licenses/stepforge/LICENSE
 
@@ -107,6 +111,11 @@ fi
 if command -v update-desktop-database >/dev/null 2>&1; then update-desktop-database -q /usr/share/applications || true; fi
 if command -v update-mime-database >/dev/null 2>&1; then update-mime-database /usr/share/mime || true; fi
 if command -v gtk-update-icon-cache >/dev/null 2>&1; then gtk-update-icon-cache -q /usr/share/icons/hicolor || true; fi
+# Apply the mouse/touchpad access rule to devices already plugged in.
+if command -v udevadm >/dev/null 2>&1; then
+  udevadm control --reload-rules >/dev/null 2>&1 || true
+  udevadm trigger --subsystem-match=input --action=change >/dev/null 2>&1 || true
+fi
 
 %postun
 if [ "$1" = 0 ]; then
@@ -117,6 +126,10 @@ if [ "$1" = 0 ]; then
   if command -v update-desktop-database >/dev/null 2>&1; then update-desktop-database -q /usr/share/applications || true; fi
   if command -v update-mime-database >/dev/null 2>&1; then update-mime-database /usr/share/mime || true; fi
   if command -v gtk-update-icon-cache >/dev/null 2>&1; then gtk-update-icon-cache -q /usr/share/icons/hicolor || true; fi
+  if command -v udevadm >/dev/null 2>&1; then
+    udevadm control --reload-rules >/dev/null 2>&1 || true
+    udevadm trigger --subsystem-match=input --action=change >/dev/null 2>&1 || true
+  fi
 fi
 
 %changelog

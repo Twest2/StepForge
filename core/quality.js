@@ -43,7 +43,7 @@ function qualityFindings(ast, numbers = null) {
   const findings = [];
   const { guide } = ast;
   const guideNames = unresolved([guide.title, guide.descriptionText,
-    guide.metadata?.author, guide.metadata?.coAuthors, guide.metadata?.organization, guide.metadata?.softwareVersion]);
+    guide.metadata?.author, guide.metadata?.coAuthors, guide.metadata?.organization, guide.metadata?.guideVersion, guide.metadata?.softwareVersion]);
   if (guideNames.length) findings.push({ kind: 'placeholder', stepId: null, stepNumber: null, names: guideNames });
 
   for (const step of ast.steps) {

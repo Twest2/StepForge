@@ -287,14 +287,27 @@ class SharedSettings {
     this.cached = null;
   }
 
+  // A computer can have its own default for a shared setting (KDE Plasma's
+  // recording shortcuts). The synced copy always uses the general default,
+  // and each computer reads that as its own, so one computer's default never
+  // becomes another's choice.
+  localDefault(key) {
+    return typeof this.settings.defaultValue === 'function' ? this.settings.defaultValue(SHARED_KEYS[key]) : DEFAULTS[key];
+  }
+
+  sharedValue(key) {
+    const value = this.settings.get(SHARED_KEYS[key]);
+    return same(value, this.localDefault(key)) ? DEFAULTS[key] : value;
+  }
+
   /** The model of what's saved on this computer now. */
   read() {
     const model = emptyModel();
     model.placeholders = cleanPlaceholders(this.settings.getGlobalPlaceholders());
-    model.settings = cleanSettings(Object.fromEntries(Object.entries(SHARED_KEYS).map(([key, keyPath]) => [key, this.settings.get(keyPath)])));
+    model.settings = cleanSettings(Object.fromEntries(Object.keys(SHARED_KEYS).map((key) => [key, this.sharedValue(key)])));
     const times = this.settings.getSharedChangeTimes();
-    for (const [key, keyPath] of Object.entries(SHARED_KEYS)) {
-      if (same(this.settings.get(keyPath), DEFAULTS[key]) && times[`setting:${key}`]) model.settings[key] = DEFAULTS[key];
+    for (const key of Object.keys(SHARED_KEYS)) {
+      if (same(this.sharedValue(key), DEFAULTS[key]) && times[`setting:${key}`]) model.settings[key] = DEFAULTS[key];
     }
     for (const [prefix, values] of [['placeholder', model.placeholders], ['setting', model.settings]]) {
       for (const key of Object.keys(values)) if (times[`${prefix}:${key}`]) model.modifiedAt[`${prefix}:${key}`] = times[`${prefix}:${key}`];
@@ -415,7 +428,8 @@ class SharedSettings {
       changes.push('language');
     }
     for (const key of HOTKEYS) {
-      const shortcut = next.settings[key] ?? DEFAULTS[key];
+      const synced = next.settings[key] ?? DEFAULTS[key];
+      const shortcut = synced === DEFAULTS[key] ? this.localDefault(key) : synced;
       if (this.settings.get(SHARED_KEYS[key]) !== shortcut) {
         this.settings.set(SHARED_KEYS[key], shortcut);
         if (!changes.includes('shortcuts')) changes.push('shortcuts');

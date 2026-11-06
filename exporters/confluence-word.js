@@ -34,12 +34,13 @@ const CALLOUT = {
   error: { fill: 'FFEBE6', border: 'DE350B' },
 };
 
-function runXml(text, { bold, italic, code, link } = {}) {
+function runXml(text, { bold, italic, strike, code, link } = {}) {
   const rpr = [
     link ? '<w:rStyle w:val="Hyperlink"/>' : '',
     code ? '<w:rFonts w:ascii="Courier New" w:hAnsi="Courier New" w:cs="Courier New"/>' : '',
     bold ? '<w:b/>' : '',
     italic ? '<w:i/>' : '',
+    strike ? '<w:strike/>' : '',
   ].join('');
   return String(text).split('\n').map((line, i) => (
     `${i ? '<w:r><w:br/></w:r>' : ''}<w:r>${rpr ? `<w:rPr>${rpr}</w:rPr>` : ''}<w:t xml:space="preserve">${escapeXml(line)}</w:t></w:r>`
@@ -94,7 +95,11 @@ class WordDocument {
   richText(html) {
     const out = [];
     let list = null; // { ordered, id }
+    let rows = []; // consecutive table rows, written as one Word table
+    const endTable = () => { if (rows.length) out.push(this.table(rows)); rows = []; };
     for (const block of htmlToBlocks(html || '')) {
+      if (block.type === 'tr') { list = null; rows.push(block.cells); continue; }
+      endTable();
       const isList = block.type === 'li' || block.type === 'oli';
       const ordered = block.type === 'oli';
       if (!isList) list = null;
@@ -118,6 +123,7 @@ class WordDocument {
         out.push(paragraph(this.runs(block.runs)));
       }
     }
+    endTable();
     return out.join('');
   }
 

@@ -103,6 +103,30 @@ jobs:
       - name: Audit full dependency tree (blocking)
         run: npm audit --package-lock-only --audit-level=high
 
+  ui:
+    name: Real UI workflows (Linux)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install display and document tools
+        run: sudo apt-get update && sudo apt-get install -y xvfb xauth dbus-x11 libnss3 libatk-bridge2.0-0 libgtk-3-0 libasound2t64 poppler-utils
+      - run: npm ci
+      - name: Click through the real app
+        env:
+          # GitHub's Ubuntu runner restricts unprivileged Chromium namespaces.
+          STEPFORGE_ALLOW_NO_SANDBOX: '1'
+        run: bash tests/checks/test_e2e_ui.sh
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: ui-failure-screenshots-and-logs
+          path: .tmp/e2e-artifacts/
+          include-hidden-files: true
+
   ubuntu-package:
     name: Ubuntu test package
     runs-on: ubuntu-24.04
@@ -170,7 +194,7 @@ jobs:
             exit 1
           }
           STEPFORGE_TEST_RPM="${packages[0]}" bash tests/run_test.sh \
-            --skip test_workflow_build_release.sh --skip test_unit_workflows.sh
+            --skip test_workflow_build_release.sh --skip test_unit_workflows.sh --skip test_e2e_ui.sh
       - name: Install and smoke-test the actual RPM
         run: bash tests/integration/linux/fedora-installed.test.sh build/artifacts/x86_64/*.rpm
       - uses: actions/upload-artifact@v4

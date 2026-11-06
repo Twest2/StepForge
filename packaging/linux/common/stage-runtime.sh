@@ -71,6 +71,11 @@ for file in metadata.json extension.js buttons.js; do
   install -m 0644 "$ROOT_DIR/gnome-extension/$EXT_UUID/$file" "$EXT_DIR/$file"
 done
 
+# KDE Plasma reads mouse buttons from the input devices: give the logged-in
+# seat access to mice and touchpads (never keyboards). See the rule's header.
+install -D -m 0644 "$ROOT_DIR/packaging/linux/common/60-stepforge-input.rules" \
+  "$STAGE_ROOT/usr/lib/udev/rules.d/60-stepforge-input.rules"
+
 # --- desktop entry, icons, MIME ---------------------------------------------
 install -m 0644 "$ROOT_DIR/packaging/linux/common/stepforge.desktop" "$STAGE_ROOT/usr/share/applications/stepforge.desktop"
 install -m 0644 "$ROOT_DIR/packaging/linux/common/stepforge-mime.xml" "$STAGE_ROOT/usr/share/mime/packages/stepforge.xml"

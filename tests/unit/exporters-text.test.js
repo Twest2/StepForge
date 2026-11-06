@@ -54,7 +54,7 @@ test('render AST: guide metadata defaults to empty strings and expands placehold
 
   // Fixture guide has no metadata set: all fields default to ''.
   const noMeta = buildRenderAst(store, bare.guideId);
-  const empty = { author: '', coAuthors: '', organization: '', lastVerified: '', softwareVersion: '', reviewAgainOn: '' };
+  const empty = { author: '', coAuthors: '', organization: '', lastVerified: '', softwareVersion: '', guideVersion: '', reviewAgainOn: '' };
   assert.deepEqual(noMeta.guide.metadata, empty);
 
   // Set metadata with placeholders and re-check expansion against guide + global scope.

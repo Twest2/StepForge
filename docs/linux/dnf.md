@@ -1,10 +1,12 @@
 # Install StepForge on Fedora
 
-StepForge provides an RPM package for **Fedora 44 Workstation (GNOME 50) on
+StepForge provides an RPM package for **Fedora 44 Workstation (GNOME 50) and KDE Plasma Desktop (Plasma 6) on
 x86_64**.
 
 The recommended way to install is the StepForge DNF repository, so StepForge
 updates with the rest of your system. On Ubuntu, see the [Ubuntu guide](apt.md).
+
+For KDE recording, see [KDE Plasma setup](kde-plasma.md).
 
 ## Install from the StepForge repository
 

@@ -344,7 +344,7 @@ test('guide metadata: optional fields default to empty strings and round-trip vi
   t.after(() => rmrf(root));
   const store = new GuideStore(root);
   const guide = store.createGuide({ title: 'Metadata test' });
-  const empty = { author: '', coAuthors: '', organization: '', lastVerified: '', softwareVersion: '', reviewAfterDays: null };
+  const empty = { author: '', coAuthors: '', organization: '', lastVerified: '', softwareVersion: '', guideVersion: '', reviewAfterDays: null };
   assert.deepEqual(guide.metadata, empty);
 
   guide.metadata = { author: 'Jane Doe', coAuthors: 'Alex Lee, Sam Patel', organization: 'Acme Corp' };

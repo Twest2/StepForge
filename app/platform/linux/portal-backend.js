@@ -5,9 +5,13 @@ const { spawn } = require('node:child_process');
 const { EventEmitter } = require('node:events');
 
 class PortalBackend extends EventEmitter {
-  constructor({ spawnProcess = spawn } = {}) {
+  // `desktop` picks the helper's click companion: 'gnome' (the Shell
+  // extension) or 'plasma' (KWin script + input devices).
+  constructor({ spawnProcess = spawn, desktop = 'gnome' } = {}) {
     super();
     this.spawnProcess = spawnProcess;
+    this.desktop = desktop;
+    this.label = desktop === 'plasma' ? 'Plasma' : 'GNOME';
     this.pending = new Map();
     this.nextId = 1;
     this.active = false;
@@ -21,7 +25,9 @@ class PortalBackend extends EventEmitter {
       this.startResolve = resolve;
       this.startReject = reject;
       this.startTimer = setTimeout(() => this.fail('Screen sharing timed out. Start recording again.'), 150000);
-      this.child = this.spawnProcess('/usr/bin/python3', ['-u', path.join(__dirname, 'portal_capture.py')], {
+      const args = ['-u', path.join(__dirname, 'portal_capture.py')];
+      if (this.desktop === 'plasma') args.push('--desktop', 'plasma');
+      this.child = this.spawnProcess('/usr/bin/python3', args, {
         stdio: ['pipe', 'pipe', 'pipe'],
       });
       let buffer = '';
@@ -42,7 +48,7 @@ class PortalBackend extends EventEmitter {
       this.child.on('error', (error) => this.fail(error.message));
       this.child.stdin.on('error', (error) => { if (!this.stopping) this.fail(error.message); });
       this.child.on('exit', () => {
-        if (!this.stopping) this.fail(errors.trim() || 'GNOME capture helper exited.');
+        if (!this.stopping) this.fail(errors.trim() || `${this.label} capture helper exited.`);
       });
       this.send({ type: 'start', ...options });
     });
@@ -80,20 +86,20 @@ class PortalBackend extends EventEmitter {
   async arm() {
     if (!this.active) throw new Error('Screen sharing is not ready.');
     await new Promise((resolve, reject) => {
-      const timer = setTimeout(() => { this.armResolve = null; reject(new Error('GNOME extension did not start.')); }, 5000);
+      const timer = setTimeout(() => { this.armResolve = null; reject(new Error(this.desktop === 'plasma' ? 'KWin did not start recording clicks.' : 'GNOME extension did not start.')); }, 5000);
       this.armResolve = () => { clearTimeout(timer); resolve(); };
       this.send({ type: 'arm' });
     });
   }
 
   request(type, args = {}) {
-    if (!this.active || this.stopping) return Promise.reject(new Error('No active GNOME screen stream.'));
+    if (!this.active || this.stopping) return Promise.reject(new Error(`No active ${this.label} screen stream.`));
     if (this.pending.size >= 32) return Promise.reject(new Error('Capture is busy encoding earlier clicks.'));
     const id = this.nextId++;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
-        reject(new Error('GNOME capture request timed out.'));
+        reject(new Error(`${this.label} capture request timed out.`));
         if (this.stopping && !this.pending.size) this.destroy();
       }, type === 'region' ? 125000 : 30000);
       this.pending.set(id, { resolve, reject, timer });
@@ -107,7 +113,7 @@ class PortalBackend extends EventEmitter {
     const msg = await this.request('frame', { point: clickPos, at: clickAt - this.offset, strict, lead: leadMs });
     return { mode: 'fullscreen', png: Buffer.from(msg.png, 'base64'),
       size: { width: msg.width, height: msg.height }, display: msg.display,
-      startedAt: msg.at + this.offset, capturedAt: msg.at + this.offset, source: 'gnome-portal' };
+      startedAt: msg.at + this.offset, capturedAt: msg.at + this.offset, source: `${this.desktop}-portal` };
   }
 
   fail(reason) {
@@ -131,7 +137,7 @@ class PortalBackend extends EventEmitter {
   destroy() {
     for (const request of this.pending.values()) {
       clearTimeout(request.timer);
-      request.reject(new Error('GNOME capture stopped.'));
+      request.reject(new Error(`${this.label} capture stopped.`));
     }
     this.pending.clear();
     if (this.child) {

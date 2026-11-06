@@ -373,6 +373,8 @@ test('ocr crop rectangles clamp to the image bounds', (t) => {
 
   const bottomRight = service.cropRectForPoint(frame, { x: 995, y: 495 });
   assert.deepEqual(bottomRight, { x: 580, y: 280, width: 420, height: 220 });
+  assert.deepEqual(service.cropRectForPoint({ size: frame.size, display: null }, null),
+    { x: 290, y: 140, width: 420, height: 220 }, 'a Spectacle region has no display origin');
 });
 
 test('ocr failures fall back to empty text instead of crashing', async (t) => {

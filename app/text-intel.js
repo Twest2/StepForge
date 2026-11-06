@@ -283,7 +283,7 @@ class TextIntelService {
 
   cropRectForPoint(frame, clickPos, { width = OCR_CROP.width, height = OCR_CROP.height } = {}) {
     if (!frame || !frame.size) return null;
-    const bounds = frame.display.bounds || { x: 0, y: 0, width: frame.size.width, height: frame.size.height };
+    const bounds = frame.display?.bounds || { x: 0, y: 0, width: frame.size.width, height: frame.size.height };
     const scaleX = frame.size.width / bounds.width;
     const scaleY = frame.size.height / bounds.height;
     const point = clickPos || {

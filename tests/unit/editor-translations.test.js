@@ -55,7 +55,7 @@ function mountedEditor(language) {
   return editor;
 }
 
-const TOOLS = ['select', 'rect', 'oval', 'line', 'arrow', 'text', 'tooltip', 'number', 'blur', 'highlight', 'magnify', 'cursor', 'spotlight', 'crop'];
+const TOOLS = ['select', 'rect', 'oval', 'line', 'pen', 'arrow', 'curvedArrow', 'text', 'tooltip', 'number', 'blur', 'highlight', 'magnify', 'cursor', 'spotlight', 'crop'];
 
 test('the annotation toolbar names every tool in the interface language', () => {
   // The tools are icons; each one's name is its tooltip and its name for screen readers.
@@ -66,9 +66,9 @@ test('the annotation toolbar names every tool in the interface language', () => 
   });
   const zh = mountedEditor('zh-CN');
   assert.equal(zh.dom['tool-select'], undefined);
-  assert.deepEqual(names(zh), ['矩形', '椭圆', '直线', '箭头', '文本', '提示框', '编号', '模糊', '高亮', '放大镜', '光标', '聚光灯', '裁剪']);
+  assert.deepEqual(names(zh), ['矩形', '椭圆', '直线', '画笔', '箭头', '曲线箭头', '文本', '提示框', '编号', '模糊', '高亮', '放大镜', '光标', '聚光灯', '裁剪']);
   assert.deepEqual(names(mountedEditor('en')),
-    ['Rectangle', 'Oval', 'Line', 'Arrow', 'Text', 'Tooltip', 'Number', 'Blur', 'Highlight', 'Magnify', 'Cursor', 'Spotlight', 'Crop']);
+    ['Rectangle', 'Oval', 'Line', 'Pen', 'Arrow', 'Curved arrow', 'Text', 'Tooltip', 'Number', 'Blur', 'Highlight', 'Magnify', 'Cursor', 'Spotlight', 'Crop']);
 });
 
 test('the step panel’s checkboxes and description toolbar are translated', () => {

@@ -84,7 +84,9 @@ const ANNOTATION_FIELDS = {
   rect: ['stroke', 'fill', 'strokeWidth'],
   oval: ['stroke', 'fill', 'strokeWidth'],
   line: ['stroke', 'strokeWidth'],
+  pen: ['stroke', 'strokeWidth'],
   arrow: ['stroke', 'strokeWidth'],
+  curvedArrow: ['stroke', 'strokeWidth'],
   text: ['text', 'stroke', 'fontSize'],
   tooltip: ['text', 'fill', 'stroke', 'strokeWidth', 'fontSize', 'textColor', 'tail'],
   number: ['value', 'stroke', 'textColor'],
@@ -108,7 +110,9 @@ const ANNOTATION_TYPE_LABELS = {
   rect: t('Rectangle'),
   oval: t('Oval'),
   line: t('Line'),
+  pen: t('Pen'),
   arrow: t('Arrow'),
+  curvedArrow: t('Curved arrow'),
   text: t('Text'),
   tooltip: t('Tooltip'),
   number: t('Number'),
@@ -127,7 +131,9 @@ const TOOL_ICON_PATHS = {
   rect: '<rect x="3.5" y="5.5" width="17" height="13" rx="1.5"/>',
   oval: '<ellipse cx="12" cy="12" rx="8.5" ry="6"/>',
   line: '<path d="M4.5 19.5 19.5 4.5"/>',
+  pen: '<path d="M15 5l4 4L9 19l-5.5 1.5L5 15z"/><path d="M13 7l4 4"/>',
   arrow: '<path d="M4.5 19.5 19 5M9 5h10v10"/>',
+  curvedArrow: '<path d="M4 20C4 11 9 6 19 6M15 2l4 4-4 4"/>',
   text: '<path d="M5 6V4.5h14V6M12 4.5v15M9 19.5h6"/>',
   tooltip: '<path d="M4 5h16v11H10l-4 3.5V16H4z"/>',
   number: '<circle cx="12" cy="12" r="8.5"/><path d="M10.5 9.5 12 8.5v7"/>',
@@ -635,7 +641,9 @@ class GuideEditor {
       ['rect', t('Rectangle')],
       ['oval', t('Oval')],
       ['line', t('Line')],
+      ['pen', t('Pen')],
       ['arrow', t('Arrow')],
+      ['curvedArrow', t('Curved arrow')],
       ['text', t('Text')],
       ['tooltip', t('Tooltip')],
       ['number', t('Number')],
@@ -1850,8 +1858,10 @@ class GuideEditor {
     }
 
     const style = selected.style || {};
+    // A pen is only a pen: other types have no stroke to turn into one.
     const typeSelect = makeSelect(selected.type, [
-      'rect', 'oval', 'line', 'arrow', 'text', 'tooltip', 'number', 'blur', 'highlight', 'magnify', 'cursor', 'spotlight',
+      'rect', 'oval', 'line', ...(selected.type === 'pen' ? ['pen'] : []), 'arrow', 'curvedArrow',
+      'text', 'tooltip', 'number', 'blur', 'highlight', 'magnify', 'cursor', 'spotlight',
     ].map((type) => ({ value: type, label: ANNOTATION_TYPE_LABELS[type] || type })));
     const valueInput = el('input', { type: 'number', value: Number.isFinite(selected.value) ? selected.value : '', placeholder: t('Value') });
     const strokeWidthInput = el('input', { type: 'number', min: 1, step: 1, value: style.strokeWidth || 3 });
@@ -4178,7 +4188,7 @@ class GuideEditor {
     if (!isEditableTarget(e.target)) {
       // Tool palette hotkeys (Folge-style single keys).
       const TOOL_KEYS = {
-        s: 'select', r: 'rect', o: 'oval', l: 'line', a: 'arrow', t: 'text',
+        s: 'select', r: 'rect', o: 'oval', l: 'line', p: 'pen', a: 'arrow', j: 'curvedArrow', t: 'text',
         g: 'tooltip', n: 'number', b: 'blur', h: 'highlight', m: 'magnify',
         u: 'cursor', k: 'spotlight', c: 'crop',
       };

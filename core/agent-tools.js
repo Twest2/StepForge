@@ -10,6 +10,7 @@ const { renderScreenshotForAi, aiScreenshotSize } = require('./ai-image');
 const { orderedBlocks, blockText } = require('./blocks');
 const { placeholderText } = require('./placeholder-markdown');
 const { ANNOTATION_TYPES, normalizeAnnotation } = require('./schema');
+const shapes = require('./annotation-shapes');
 const { BUILT_IN_NAMES, cleanPlaceholderName, isValidPlaceholderName } = require('./ai-placeholders');
 const { withParent, parentMap, isValidOutline, moveSubtree } = require('./step-outline');
 const { Settings } = require('./settings');
@@ -41,6 +42,7 @@ const MAX_TITLE_CHARS = 300;
 const MAX_DESCRIPTION_CHARS = 20000;
 const MAX_BLOCKS_PER_CALL = 20;
 const MAX_ANNOTATIONS_PER_CALL = 20;
+const MAX_PEN_POINTS = 500;
 const MAX_PLACEHOLDER_VALUE_CHARS = 1000;
 const MAX_IDS_PER_CALL = 50;
 const MAX_SCREENSHOT_BYTES = 50 * 1024 * 1024;
@@ -115,9 +117,16 @@ function numberedSteps(store, guide) {
 function annotationForAgent(ann, shown) {
   const px = (frac, total) => Math.round(frac * total);
   const out = { id: ann.id, type: ann.type };
-  if (ann.type === 'line' || ann.type === 'arrow') {
+  if (ann.type === 'line' || ann.type === 'arrow' || ann.type === 'curvedArrow') {
     out.from = [px(ann.x, shown.width), px(ann.y, shown.height)];
     out.to = [px(ann.x + ann.w, shown.width), px(ann.y + ann.h, shown.height)];
+    if (ann.type === 'curvedArrow') {
+      const mid = shapes.curveMidpoint(ann.x * shown.width, ann.y * shown.height, (ann.x + ann.w) * shown.width, (ann.y + ann.h) * shown.height, ann.bend);
+      out.via = [Math.round(mid.x), Math.round(mid.y)];
+    }
+  } else if (ann.type === 'pen') {
+    out.points = shapes.penPoints(ann.points, ann.x * shown.width, ann.y * shown.height, ann.w * shown.width, ann.h * shown.height)
+      .map(([x, y]) => [Math.round(x), Math.round(y)]);
   } else {
     Object.assign(out, { x: px(ann.x, shown.width), y: px(ann.y, shown.height), width: px(ann.w, shown.width), height: px(ann.h, shown.height) });
   }
@@ -172,14 +181,29 @@ function annotationFromAgent(item, shown, index) {
   const clampX = (v) => Math.min(Math.max(v, 0), shown.width) / shown.width;
   const clampY = (v) => Math.min(Math.max(v, 0), shown.height) / shown.height;
   const box = {};
-  if (item.type === 'line' || item.type === 'arrow') {
-    const ok = (p) => Array.isArray(p) && p.length === 2 && p.every(finite);
+  const extra = {};
+  const ok = (p) => Array.isArray(p) && p.length === 2 && p.every(finite);
+  if (item.type === 'line' || item.type === 'arrow' || item.type === 'curvedArrow') {
     if (!ok(item.from) || !ok(item.to)) throw new AgentError(`${where}: a ${item.type} needs from: [x, y] and to: [x, y].`);
     box.x = clampX(item.from[0]);
     box.y = clampY(item.from[1]);
     box.w = clampX(item.to[0]) - box.x;
     box.h = clampY(item.to[1]) - box.y;
     if (Math.hypot(box.w * shown.width, box.h * shown.height) < 4) throw new AgentError(`${where}: the ${item.type} is too short.`);
+    if (item.type === 'curvedArrow' && item.via !== undefined) {
+      if (!ok(item.via)) throw new AgentError(`${where}: via must be [x, y].`);
+      const [x0, y0] = [box.x * shown.width, box.y * shown.height];
+      extra.bend = shapes.bendThrough(x0, y0, x0 + box.w * shown.width, y0 + box.h * shown.height,
+        clampX(item.via[0]) * shown.width, clampY(item.via[1]) * shown.height);
+    }
+  } else if (item.type === 'pen') {
+    if (!Array.isArray(item.points) || item.points.length < 2 || item.points.length > MAX_PEN_POINTS || !item.points.every(ok)) {
+      throw new AgentError(`${where}: a pen needs points: 2 to ${MAX_PEN_POINTS} [x, y] pairs.`);
+    }
+    const pen = shapes.penFromStroke(item.points.map(([x, y]) => [clampX(x), clampY(y)]));
+    if (Math.hypot(pen.w * shown.width, pen.h * shown.height) < 4) throw new AgentError(`${where}: the pen stroke is too short.`);
+    Object.assign(box, { x: pen.x, y: pen.y, w: pen.w, h: pen.h });
+    extra.points = pen.points;
   } else {
     if (![item.x, item.y, item.width, item.height].every(finite)) {
       throw new AgentError(`${where}: a ${item.type} needs x, y, width and height in pixels.`);
@@ -206,6 +230,7 @@ function annotationFromAgent(item, shown, index) {
     ...box,
     text: typeof item.text === 'string' ? item.text.slice(0, 300) : '',
     ...(item.type === 'number' ? { value: item.value } : {}),
+    ...extra,
     style,
   });
 }
@@ -826,7 +851,7 @@ function createAgentTools({ store, agentSettings, onChange = () => {}, onBrandin
     },
     {
       name: 'add_annotations',
-      description: 'Draw annotations on a step\'s screenshot: rect, oval, line, arrow, text, tooltip (a callout box), number (a numbered badge), blur, highlight, magnify, cursor, spotlight (darkens everything outside it; several spotlights on a step share one overlay). '
+      description: 'Draw annotations on a step\'s screenshot: rect, oval, line, pen (a freehand stroke), arrow, curvedArrow (an arrow bent through a point), text, tooltip (a callout box), number (a numbered badge), blur, highlight, magnify, cursor, spotlight (darkens everything outside it; several spotlights on a step share one overlay). '
         + 'Coordinates are pixels on the screenshot from get_step (see screenshot_size). Annotations are added beside what is there; delete_annotations removes them.',
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
       inputSchema: {
@@ -842,12 +867,18 @@ function createAgentTools({ store, agentSettings, onChange = () => {}, onBrandin
               type: 'object',
               properties: {
                 type: { type: 'string', enum: ANNOTATION_TYPES },
-                x: { type: 'number', description: 'Left edge in pixels (all types except line and arrow).' },
+                x: { type: 'number', description: 'Left edge in pixels (all types except line, arrow, curvedArrow and pen).' },
                 y: { type: 'number', description: 'Top edge in pixels.' },
                 width: { type: 'number' },
                 height: { type: 'number' },
-                from: { type: 'array', items: { type: 'number' }, minItems: 2, maxItems: 2, description: 'line and arrow: start [x, y].' },
-                to: { type: 'array', items: { type: 'number' }, minItems: 2, maxItems: 2, description: 'line and arrow: end [x, y]; an arrow points here.' },
+                from: { type: 'array', items: { type: 'number' }, minItems: 2, maxItems: 2, description: 'line, arrow and curvedArrow: start [x, y].' },
+                to: { type: 'array', items: { type: 'number' }, minItems: 2, maxItems: 2, description: 'line, arrow and curvedArrow: end [x, y]; an arrow points here.' },
+                via: { type: 'array', items: { type: 'number' }, minItems: 2, maxItems: 2, description: 'curvedArrow: [x, y] the curve passes through halfway along. Leave out for a gentle bend.' },
+                points: {
+                  type: 'array', minItems: 2, maxItems: MAX_PEN_POINTS,
+                  items: { type: 'array', items: { type: 'number' }, minItems: 2, maxItems: 2 },
+                  description: 'pen: the stroke as [x, y] points, drawn as a smooth curve through them.',
+                },
                 text: { type: 'string', description: 'text and tooltip.' },
                 value: { type: 'integer', description: 'number: the badge number.' },
                 color: { type: 'string', description: 'Hex color such as "#E5484D" (outline, or the text color for text).' },

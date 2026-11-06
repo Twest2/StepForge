@@ -2091,6 +2091,7 @@ const SHORTCUTS = [
   [t('Canvas tools'), [
     ['S R O L A T', t('Select · Rectangle · Oval · Line · Arrow · Text')],
     ['G N B H M U C', t('Tooltip · Number · Blur · Highlight · Magnify · Cursor · Crop')],
+    ['P J', t('Pen · Curved arrow')],
     ['K', t('Spotlight')],
     ['Ctrl+C', t('Copy selected annotation (in step-select mode, paste it onto many steps)')],
     ['Delete', t('Delete selected annotation')],

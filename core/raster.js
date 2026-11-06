@@ -2,6 +2,7 @@
 
 const text = require('./text-raster');
 const { pixelRect, fillFromSurroundings } = require('./blur-fill');
+const shapes = require('./annotation-shapes');
 const { spotlightAreas } = require('./annotation-properties');
 
 /**
@@ -168,6 +169,57 @@ function drawArrow(img, x0, y0, x1, y1, color, t) {
     [bx - uy * wing, by + ux * wing],
     [bx + uy * wing, by - ux * wing],
   ], color);
+}
+
+/**
+ * Stroke a polyline [[x, y], ...] with round ends and joins. Each pixel is
+ * blended once, so a see-through color doesn't darken where segments meet.
+ */
+function strokePolyline(img, points, color, t) {
+  if (!points.length) return;
+  const half = Math.max(0.5, t / 2);
+  const xs = points.map((p) => p[0]), ys = points.map((p) => p[1]);
+  const minX = Math.max(0, Math.floor(Math.min(...xs) - half - 1));
+  const maxX = Math.min(img.width, Math.ceil(Math.max(...xs) + half + 1));
+  const minY = Math.max(0, Math.floor(Math.min(...ys) - half - 1));
+  const maxY = Math.min(img.height, Math.ceil(Math.max(...ys) + half + 1));
+  const mw = maxX - minX, mh = maxY - minY;
+  if (mw <= 0 || mh <= 0) return;
+  const mask = new Uint8Array(mw * mh);
+  const segments = points.length === 1 ? [[points[0], points[0]]] : points.slice(1).map((p, i) => [points[i], p]);
+  for (const [[x0, y0], [x1, y1]] of segments) {
+    const sx0 = Math.max(minX, Math.floor(Math.min(x0, x1) - half - 1));
+    const sx1 = Math.min(maxX, Math.ceil(Math.max(x0, x1) + half + 1));
+    const sy0 = Math.max(minY, Math.floor(Math.min(y0, y1) - half - 1));
+    const sy1 = Math.min(maxY, Math.ceil(Math.max(y0, y1) + half + 1));
+    const dx = x1 - x0, dy = y1 - y0;
+    const lenSq = dx * dx + dy * dy;
+    for (let yy = sy0; yy < sy1; yy++) {
+      for (let xx = sx0; xx < sx1; xx++) {
+        const m = (yy - minY) * mw + (xx - minX);
+        if (mask[m]) continue;
+        const px = xx + 0.5, py = yy + 0.5;
+        const u = lenSq ? Math.max(0, Math.min(1, ((px - x0) * dx + (py - y0) * dy) / lenSq)) : 0;
+        const ex = x0 + u * dx - px, ey = y0 + u * dy - py;
+        if (ex * ex + ey * ey <= half * half) mask[m] = 1;
+      }
+    }
+  }
+  for (let yy = 0; yy < mh; yy++) {
+    for (let xx = 0; xx < mw; xx++) if (mask[yy * mw + xx]) blendPixel(img, xx + minX, yy + minY, color);
+  }
+}
+
+/** A freehand pen stroke: points are fractions of the box (x, y, w, h in pixels). */
+function drawPen(img, points, x, y, w, h, color, t) {
+  strokePolyline(img, shapes.penPolyline(shapes.penPoints(points, x, y, w, h)), color, t);
+}
+
+/** An arrow bent into a curve (see core/annotation-shapes.js), with the straight arrow's head. */
+function drawCurvedArrow(img, x0, y0, x1, y1, bend, color, t) {
+  const g = shapes.curvedArrowGeometry(x0, y0, x1, y1, bend, t);
+  strokePolyline(img, shapes.shaftPolyline(g.shaft), color, t);
+  fillPolygon(img, g.head, color);
 }
 
 /** Nearest-neighbour scaled copy of a region (used by magnify). */
@@ -370,7 +422,7 @@ function drawImage(dst, src, dx, dy) {
 
 // Spotlights darken the screenshot (with blurs, highlights and magnifiers);
 // shapes, text and badges are drawn over the overlay.
-const DRAW_ORDER = { blur: 0, highlight: 1, magnify: 2, spotlight: 2.5, rect: 3, oval: 3, line: 3, arrow: 3, cursor: 4, number: 5, text: 6, tooltip: 7 };
+const DRAW_ORDER = { blur: 0, highlight: 1, magnify: 2, spotlight: 2.5, rect: 3, oval: 3, line: 3, pen: 3, arrow: 3, curvedArrow: 3, cursor: 4, number: 5, text: 6, tooltip: 7 };
 
 /**
  * Burn annotations into a copy of the base image. Annotation coords are
@@ -414,6 +466,12 @@ function renderAnnotations(baseImg, annotations = []) {
         break;
       case 'arrow':
         drawArrow(img, x, y, x + w, y + h, stroke, t);
+        break;
+      case 'curvedArrow':
+        drawCurvedArrow(img, x, y, x + w, y + h, ann.bend, stroke, t);
+        break;
+      case 'pen':
+        drawPen(img, ann.points, x, y, w, h, stroke, t);
         break;
       case 'blur': {
         const r = pixelRect(img, x, y, w, h);
@@ -483,6 +541,7 @@ function applyFocusedView(img, fv) {
 module.exports = {
   createImage, cloneImage, parseColor, blendPixel,
   fillRect, strokeRect, fillOval, strokeOval, drawLine, drawArrow,
+  strokePolyline, drawPen, drawCurvedArrow,
   fillRoundRect, fillPolygon, magnifyRegion, drawSpotlights,
   measureText, drawText, drawTextCentered, drawCursorIcon,
   crop, resize, drawImage,

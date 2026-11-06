@@ -4,6 +4,7 @@ const { newId, nowIso } = require('./util');
 const { sanitizeHtml } = require('./sanitize');
 const { blockText } = require('./blocks');
 const { normalizeReviewDays, normalizeDateOnly } = require('./review');
+const { bendOf, normalizePenPoints } = require('./annotation-shapes');
 const { SPOTLIGHT_DARKNESS, SPOTLIGHT_CORNER_RADIUS } = require('./annotation-properties');
 
 const SCHEMA_VERSION = 1;
@@ -11,7 +12,7 @@ const SCHEMA_VERSION = 1;
 const STEP_KINDS = ['image', 'empty', 'content'];
 const STEP_STATUSES = ['todo', 'in-progress', 'done'];
 const ANNOTATION_TYPES = [
-  'rect', 'oval', 'line', 'arrow', 'text', 'tooltip', 'number',
+  'rect', 'oval', 'line', 'pen', 'arrow', 'curvedArrow', 'text', 'tooltip', 'number',
   'blur', 'highlight', 'magnify', 'cursor', 'spotlight',
 ];
 const SPOTLIGHT_SHAPES = ['rect', 'oval'];
@@ -155,6 +156,10 @@ function normalizeAnnotation(a) {
   if (ann.type === 'blur' && a.redact && typeof a.redact.kind === 'string' && typeof a.redact.key === 'string') {
     ann.redact = { kind: a.redact.kind.slice(0, 20), key: a.redact.key.slice(0, 80) };
   }
+  // A pen's points are fractions of its box; a curved arrow's bend is relative
+  // to its start-to-end line (core/annotation-shapes.js).
+  if (ann.type === 'pen') ann.points = normalizePenPoints(a.points);
+  if (ann.type === 'curvedArrow') ann.bend = bendOf(a.bend);
   if (ann.type === 'spotlight') {
     const st = ann.style;
     st.shape = SPOTLIGHT_SHAPES.includes(st.shape) ? st.shape : SPOTLIGHT_DEFAULTS.shape;

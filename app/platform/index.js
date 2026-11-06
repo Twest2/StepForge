@@ -14,7 +14,6 @@ const { assertWindowContextProvider } = require('./interfaces');
 
 function detectPlatform(platform = process.platform) {
   if (platform === 'win32') return 'windows';
-  if (platform === 'darwin') return 'darwin';
   if (platform === 'linux') return 'linux';
   return 'unsupported';
 }
@@ -30,14 +29,12 @@ function createWindowContextProvider({ platform = process.platform } = {}) {
     case 'windows':
       provider = require('./windows/window-context').createWindowsWindowContextProvider();
       break;
-    case 'darwin':
-      provider = require('./darwin/window-context').createDarwinWindowContextProvider();
-      break;
     case 'linux':
       provider = require('./linux/window-context').createLinuxWindowContextProvider();
       break;
     default:
-      // Unsupported OS: a null-object provider so callers still work.
+      // Unsupported OS (macOS included): a null-object provider so callers
+      // still work.
       provider = { async collect() { return { appName: '', windowTitle: '' }; } };
   }
   return assertWindowContextProvider(provider);

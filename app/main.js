@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const { pathToFileURL } = require('node:url');
 const {
   app, BrowserWindow, ipcMain, dialog, shell, nativeTheme, globalShortcut,
-  clipboard, nativeImage, safeStorage, screen, powerSaveBlocker, session, desktopCapturer,
+  clipboard, ClipboardItem, nativeImage, safeStorage, screen, powerSaveBlocker, session, desktopCapturer,
 } = require('electron');
 
 const { GuideStore } = require('../core/store');
@@ -44,6 +44,7 @@ const { stepNumberMap } = require('../core/step-outline');
 const { AI_TARGETS } = require('../core/text-intel');
 const { agentChangesSince, agentChangesStamp } = require('../core/agent-changes');
 const { runExport, EXPORTERS, FORMAT_INFO, FORMAT_ORDER } = require('../exporters');
+const { preferSmallerImages } = require('../exporters/clipboard');
 const { runExportInWorker } = require('./export-runner');
 const { exportGuideArchive, importGuideArchive, saveLinkedGuide } = require('../core/archive');
 const {
@@ -89,6 +90,15 @@ app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
 if (process.platform === 'linux') {
   const passwordStore = linuxPasswordStore({ hasSwitch: app.commandLine.hasSwitch('password-store') });
   if (passwordStore) app.commandLine.appendSwitch('password-store', passwordStore);
+}
+
+// On KDE Plasma Wayland, global hotkeys only work through the GlobalShortcuts
+// portal; Plasma asks once which shortcuts StepForge may use. Keep any
+// features the launcher already enabled.
+const plasmaWayland = require('./platform/linux/desktop').waylandCaptureDesktop() === 'plasma';
+if (plasmaWayland) {
+  const features = app.commandLine.getSwitchValue('enable-features');
+  app.commandLine.appendSwitch('enable-features', [features, 'GlobalShortcutsPortal'].filter(Boolean).join(','));
 }
 
 /**
@@ -320,8 +330,10 @@ function createWindow() {
     event.preventDefault();
     handleZoomShortcut(kind);
   });
-  loadMainPage();
-  mainWindow.once('ready-to-show', () => {
+  // On native Plasma Wayland, an unmapped surface may not receive the first
+  // paint that ready-to-show waits for. Map it once its document has loaded.
+  const readyEmitter = plasmaWayland ? mainWindow.webContents : mainWindow;
+  readyEmitter.once(plasmaWayland ? 'did-finish-load' : 'ready-to-show', () => {
     mainWindow.show();
     // Dev-only verification hook: optionally navigate, then write a
     // screenshot locally and exit. Used by the smoke tooling.
@@ -592,6 +604,7 @@ function createWindow() {
       }, 1500);
     }
   });
+  loadMainPage();
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 
@@ -608,7 +621,9 @@ function registerHotkeys() {
     ['CommandOrControl+0', 'fit'],
     ['CommandOrControl+num0', 'fit'],
   ];
-  for (const [accel, kind] of zoomBindings) {
+  // Through Plasma's portal these would become desktop-wide shortcuts that
+  // other apps lose; the window's own key handler already zooms.
+  for (const [accel, kind] of plasmaWayland ? [] : zoomBindings) {
     try {
       if (globalShortcut.register(accel, () => handleZoomShortcut(kind))) {
         // Keep registering the other spellings so keyboards with different
@@ -698,6 +713,16 @@ async function clipboardImage() {
     return nativeImage.createFromBuffer(Buffer.from(await blob.arrayBuffer()));
   }
   return nativeImage.createEmpty();
+}
+
+// A PNG as JPEG for a guide copied to the clipboard, or null when it has
+// transparency, which JPEG can't keep.
+function clipboardJpeg(png) {
+  const image = nativeImage.createFromBuffer(png);
+  if (image.isEmpty()) return null;
+  const bitmap = image.toBitmap();
+  for (let i = 3; i < bitmap.length; i += 4) if (bitmap[i] !== 255) return null;
+  return image.toJPEG(85);
 }
 
 // AI agents write guides and brand profiles from a separate `StepForge --mcp`
@@ -1346,6 +1371,28 @@ function setupIpc() {
   h('redact:hideText', ({ guideId, stepId }) => { redactor.hideText({ guideId, stepId }); reindex(guideId); return redactor.review(guideId); },
     { validate: (a) => c.id(a.guideId) && c.id(a.stepId) });
 
+  // Share → Copy to clipboard: the guide as HTML with its screenshots built
+  // in, for mail, chat and documents, and as plain text.
+  h('guide:copyToClipboard', async ({ guideId }) => {
+    if (!store.guideExists(guideId)) throw new Error(t('Guide not found.'));
+    // Each stage is shown in the Copy to clipboard window (app/renderer/dialogs.js).
+    const progress = (update) => sendToRenderer('clipboard:progress', { guideId, ...update });
+    // Like publishing: nothing leaves unchecked. Blurs it adds are drawn into the copy.
+    progress({ stage: 'check' });
+    const review = await redactor.checkGuide(guideId, {
+      onProgress: ({ done, total }) => progress({ stage: 'check', done, total }),
+    });
+    progress({ stage: 'build' });
+    const result = await runExportInWorker({ dataDir: store.root, guideId, format: 'clipboard', options: {},
+      outDir: path.join(store.tempDir, `clipboard-${guideId}`), globals: settings.getGlobalPlaceholders(),
+      codeStyle: exportCodeStyle(), reviewDays: exportReviewDays(), branding: exportBranding() });
+    progress({ stage: 'copy' });
+    const html = preferSmallerImages(result.html, clipboardJpeg);
+    // One item with both kinds: apps take the HTML, or the text if that's all they read.
+    await clipboard.write([new ClipboardItem({ 'text/html': html, 'text/plain': result.text })]);
+    return { ok: true, imageCount: result.imageCount, bytes: Buffer.byteLength(html), review };
+  }, { validate: (a) => c.id(a.guideId) });
+
   h('github:publish', async ({ guideId, days, format = 'html-rich', options = {}, brandProfileId }) => {
     const guide = store.getGuide(guideId);
     if (!guide) throw new Error(t('Guide not found.'));
@@ -1920,6 +1967,7 @@ function setupIpc() {
     devBuild,
     dataDir: store.root,
     platform: process.platform,
+    captureDesktop: require('./platform/linux/desktop').waylandCaptureDesktop(),
     license: PACKAGE_JSON.license || 'Apache-2.0',
   }));
   // Settings → About "Check for updates". Runs only when the user presses the
@@ -2024,7 +2072,9 @@ if (!gotLock) {
     libraryLocation.scheduleMigration();
     const dataDir = libraryLocation.applyPending();
     store = new GuideStore(dataDir);
-    settings = new Settings(store.settingsDir);
+    settings = new Settings(store.settingsDir, {
+      defaultOverrides: plasmaWayland ? { capture: require('./platform/linux/desktop').PLASMA_HOTKEYS } : {},
+    });
     // Shared lossless codec, also available in export workers and headless MCP.
     imageCodec = createImageCodec();
     setImageCodec(imageCodec);

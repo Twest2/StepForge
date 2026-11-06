@@ -232,3 +232,17 @@ test('old zip snapshots can be compared too', (t) => {
   assert.equal(diff.summary.changed, 1);
   assert.deepEqual(snapshotFile(store, guideId, name, `steps/${s1.stepId}/original.png`), TINY_PNG);
 });
+
+test('a snapshot whose steps still have the old empty extraImages field compares as identical', (t) => {
+  const dir = makeTmpDir('compare-extra-images');
+  t.after(() => rmrf(dir));
+  const store = new GuideStore(dir);
+  const { guideId, s1 } = makeGuide(store);
+  const file = path.join(store.stepDir(guideId, s1.stepId), 'step.json');
+  fs.writeFileSync(file, JSON.stringify({ ...JSON.parse(fs.readFileSync(file, 'utf8')), extraImages: [] }));
+  const name = createSnapshot(store, guideId, { label: 'old' });
+  store.saveStep(guideId, store.getStep(guideId, s1.stepId)); // saved now: no extraImages
+  assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).extraImages, undefined);
+  const diff = compareSnapshot(store, guideId, name);
+  assert.equal(diff.identical, true);
+});

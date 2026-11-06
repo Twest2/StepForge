@@ -738,12 +738,13 @@ body.platform-linux #capture-status button {
   margin: 0 4px;
 }
 /* Icon toolbar: tight spacing so the tools, zoom and undo/redo fit one row at normal widths. */
-.canvas-toolbar { gap: 1px; padding: 8px 10px; }
+.canvas-toolbar { gap: 1px; padding: 8px; }
 .canvas-toolbar .sep { margin: 0 3px; }
-/* Icon tools, undo and redo: 30x32px hit targets with an 18px outline icon. */
+/* Icon tools, undo and redo: 28x32px hit targets with an 18px outline icon,
+   so all of them fit on one row in a 1280px-wide window. */
 .canvas-toolbar button.tool-icon {
   box-sizing: border-box;
-  width: 30px;
+  width: 28px;
   height: 32px;
   padding: 0;
   display: inline-flex;

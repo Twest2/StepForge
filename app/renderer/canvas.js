@@ -9,7 +9,7 @@
  * editor shows what exports produce.
  */
 
-const DRAW_ORDER = { blur: 0, highlight: 1, magnify: 2, rect: 3, oval: 3, line: 3, pen: 3, arrow: 3, curvedArrow: 3, cursor: 4, number: 5, text: 6, tooltip: 7 };
+const DRAW_ORDER = { blur: 0, highlight: 1, magnify: 2, spotlight: 2.5, rect: 3, oval: 3, line: 3, pen: 3, arrow: 3, curvedArrow: 3, cursor: 4, number: 5, text: 6, tooltip: 7 };
 const POINT_TOOLS = new Set(['line', 'arrow', 'curvedArrow']);
 // Drawn strokes are picked by distance to the stroke, not by their box.
 const STROKE_TOOLS = new Set(['curvedArrow', 'pen']);
@@ -33,6 +33,17 @@ class AnnotationCanvas {
     this.drag = null;
     this.cropRect = null;
     this.focusedView = null;
+    // Size on screen in CSS pixels. The canvas's own pixel grid is this times
+    // the display's scale factor, so the screenshot stays sharp on scaled
+    // displays (125%, 150%, 200%…).
+    this.viewW = 1;
+    this.viewH = 1;
+    this.dpr = 1;
+    // Finished blur fills, keyed by everything a fill depends on, so redraws
+    // that don't change a blur reuse it instead of refilling it.
+    this.blurCache = new Map();
+    this.frame = null;
+    this.watchPixelRatio();
 
     canvasEl.addEventListener('pointerdown', (e) => this.onDown(e));
     canvasEl.addEventListener('pointermove', (e) => this.onMove(e));
@@ -46,19 +57,21 @@ class AnnotationCanvas {
     this.imgH = h || 0;
     this.cropRect = null;
     this.sourceCtx = null;
+    this.blurCache.clear();
     if (!image || !this.imgW || !this.imgH) {
-      this.canvas.width = 1;
-      this.canvas.height = 1;
+      this.resize(1, 1);
       this.render();
       return;
     }
-    this.applyZoom();
+    // The editor sets the new step's annotations right after this, so draw
+    // once on the next frame rather than now with the old ones.
+    this.applyZoom({ defer: true });
   }
 
   setAnnotations(annotations) {
     this.annotations = annotations || [];
     if (!this.annotations.some((a) => a.id === this.selectedId)) this.selectedId = null;
-    this.render();
+    this.requestRender();
   }
 
   // The focused view crops and zooms the canvas itself to match what
@@ -66,14 +79,14 @@ class AnnotationCanvas {
   // coordinates; only the on-screen viewport changes.
   setFocusedView(focusedView) {
     this.focusedView = focusedView || null;
-    this.render();
+    this.requestRender();
   }
 
   setTool(tool) {
     this.tool = tool;
     this.cropRect = null;
     if (tool !== 'select') this.select(null);
-    this.render();
+    this.requestRender();
   }
 
   setZoom(mode) {
@@ -81,7 +94,7 @@ class AnnotationCanvas {
     this.applyZoom();
   }
 
-  applyZoom() {
+  applyZoom({ defer = false } = {}) {
     if (!this.image) return;
     const wrap = this.canvas.parentElement;
     if (this.zoomMode === 'fit') {
@@ -89,17 +102,70 @@ class AnnotationCanvas {
       const availH = Math.max(1, wrap.clientHeight - 40);
       this.scale = Math.min(availW / this.imgW, availH / this.imgH, 1);
     } else {
-      this.scale = Number(this.zoomMode) || 1;
+      // The stylesheet caps the canvas at the pane's size (max-width and
+      // max-height: 100%). Apply that cap here, keeping the image's shape,
+      // since the canvas's CSS size is set explicitly below.
+      const style = typeof window !== 'undefined' && typeof window.getComputedStyle === 'function' ? window.getComputedStyle(wrap) : null;
+      const padX = style ? (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0) : 0;
+      const padY = style ? (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0) : 0;
+      this.scale = Math.min(Number(this.zoomMode) || 1,
+        Math.max(1, wrap.clientWidth - padX) / this.imgW,
+        this.cb.constrainHeight === false ? Infinity : Math.max(1, wrap.clientHeight - padY) / this.imgH);
     }
-    this.canvas.width = Math.round(this.imgW * this.scale);
-    this.canvas.height = Math.round(this.imgH * this.scale);
-    this.render();
+    const resized = this.resize(Math.max(1, Math.round(this.imgW * this.scale)), Math.max(1, Math.round(this.imgH * this.scale)));
+    // Resizing clears the canvas. Pane resizes land here after this frame's
+    // scheduled redraw has run, so redraw now or the canvas flashes blank.
+    if (resized && !defer) this.render();
+    else this.requestRender();
+  }
+
+  // Sets the on-screen size in CSS pixels and the pixel grid behind it.
+  // True if anything changed (which clears the canvas).
+  resize(viewW, viewH) {
+    const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
+    const width = Math.max(1, Math.round(viewW * dpr));
+    const height = Math.max(1, Math.round(viewH * dpr));
+    if (viewW === this.viewW && viewH === this.viewH && dpr === this.dpr
+      && this.canvas.width === width && this.canvas.height === height) return false;
+    this.viewW = viewW;
+    this.viewH = viewH;
+    this.dpr = dpr;
+    this.canvas.width = width;
+    this.canvas.height = height;
+    if (this.canvas.style) {
+      this.canvas.style.width = `${viewW}px`;
+      this.canvas.style.height = `${viewH}px`;
+    }
+    return true;
+  }
+
+  // Moving the window to a display with another scale factor changes
+  // devicePixelRatio without resizing anything, so watch for it directly.
+  watchPixelRatio() {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const query = window.matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`);
+    const onChange = () => {
+      this.applyZoom();
+      this.watchPixelRatio();
+    };
+    this.pixelRatioQuery = query;
+    this.pixelRatioChanged = onChange;
+    query.addEventListener('change', onChange, { once: true });
+  }
+
+  destroy() {
+    this.pixelRatioQuery?.removeEventListener('change', this.pixelRatioChanged);
+    if (this.frame !== null && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(this.frame);
+    this.frame = null;
+    this.blurCache.clear();
+    this.image = null;
+    this.sourceCtx = null;
   }
 
   select(id) {
     this.selectedId = id;
     if (this.cb.onSelect) this.cb.onSelect(this.annotations.find((a) => a.id === id) || null);
-    this.render();
+    this.requestRender();
   }
 
   selected() {
@@ -108,7 +174,7 @@ class AnnotationCanvas {
 
   changed() {
     if (this.cb.onChange) this.cb.onChange(this.annotations);
-    this.render();
+    this.requestRender();
   }
 
   // ---- coordinate helpers ----
@@ -138,10 +204,10 @@ class AnnotationCanvas {
   px(ann) {
     const r = this.viewRect();
     return {
-      x: (ann.x - r.x) / r.w * this.canvas.width,
-      y: (ann.y - r.y) / r.h * this.canvas.height,
-      w: ann.w / r.w * this.canvas.width,
-      h: ann.h / r.h * this.canvas.height,
+      x: (ann.x - r.x) / r.w * this.viewW,
+      y: (ann.y - r.y) / r.h * this.viewH,
+      w: ann.w / r.w * this.viewW,
+      h: ann.h / r.h * this.viewH,
     };
   }
 
@@ -162,34 +228,60 @@ class AnnotationCanvas {
     return [...shapes().shaftPolyline({ x0: x, y0: y, cx: g.control.x, cy: g.control.y, x1: x + w, y1: y + h }), ...g.head];
   }
 
-  // Converts a canvas-pixel point to image-pixel coordinates in the
+  // Converts a point in on-screen canvas pixels to image-pixel coordinates in the
   // full (uncropped) source image, for sampling `this.image` directly.
   toImagePx(x, y) {
     const r = this.viewRect();
     return {
-      x: (x / this.canvas.width * r.w + r.x) * this.imgW,
-      y: (y / this.canvas.height * r.h + r.y) * this.imgH,
+      x: (x / this.viewW * r.w + r.x) * this.imgW,
+      y: (y / this.viewH * r.h + r.y) * this.imgH,
     };
   }
 
   toImageLen(len, axis) {
     const r = this.viewRect();
-    return axis === 'y' ? len / this.canvas.height * r.h * this.imgH : len / this.canvas.width * r.w * this.imgW;
+    return axis === 'y' ? len / this.viewH * r.h * this.imgH : len / this.viewW * r.w * this.imgW;
   }
 
   // ---- rendering ----
+  // Redraw on the next frame. Several changes in a row (switching steps,
+  // picking a tool, each pointer move of a drag) then cost one redraw.
+  requestRender() {
+    if (typeof requestAnimationFrame !== 'function') {
+      this.render();
+      return;
+    }
+    if (this.frame !== null) return;
+    this.frame = requestAnimationFrame(() => {
+      this.frame = null;
+      this.render();
+    });
+  }
+
   render() {
+    if (this.frame !== null && typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(this.frame);
+      this.frame = null;
+    }
     const { ctx, canvas } = this;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     if (!this.image) return;
+    // Draw in CSS pixels; the transform maps them onto the finer pixel grid.
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
     const r = this.viewRect();
     ctx.drawImage(this.image,
       r.x * this.imgW, r.y * this.imgH, r.w * this.imgW, r.h * this.imgH,
-      0, 0, canvas.width, canvas.height);
+      0, 0, this.viewW, this.viewH);
 
     const ordered = [...this.annotations].sort((a, b) => (DRAW_ORDER[a.type] ?? 3) - (DRAW_ORDER[b.type] ?? 3));
-    for (const ann of ordered) this.drawAnnotation(ann);
+    this.blurRects = this.annotations.filter((a) => a.type === 'blur').map((a) => this.blurRect(a)).filter(Boolean);
+    const usedBlurs = new Set();
+    for (const ann of ordered) this.drawAnnotation(ann, usedBlurs);
+    // Forget fills for blurs that were moved, resized or deleted.
+    for (const key of this.blurCache.keys()) if (!usedBlurs.has(key)) this.blurCache.delete(key);
 
     const sel = this.selected();
     if (sel) this.drawSelection(sel);
@@ -201,41 +293,87 @@ class AnnotationCanvas {
   // by the view rect so the canvas preview matches that magnification.
   strokePx(ann) {
     const r = this.viewRect();
-    return Math.max(1, ((ann.style && ann.style.strokeWidth) || 3) * this.canvas.width / 1000 / r.w);
+    return Math.max(1, ((ann.style && ann.style.strokeWidth) || 3) * this.viewW / 1000 / r.w);
   }
 
   fontPx(ann) {
     const r = this.viewRect();
-    return Math.max(9, ((ann.style && ann.style.fontSize) || 0.022) * this.canvas.height / r.h);
+    return Math.max(9, ((ann.style && ann.style.fontSize) || 0.022) * this.viewH / r.h);
+  }
+
+  // A blur's rectangle in whole screenshot pixels, or null if it's empty.
+  blurRect(ann) {
+    if (!window.StepForgeBlurFill) return null;
+    return window.StepForgeBlurFill.pixelRect({ width: this.imgW, height: this.imgH },
+      ann.x * this.imgW, ann.y * this.imgH, ann.w * this.imgW, ann.h * this.imgH);
   }
 
   // Fill a blur exactly as exports do (core/blur-fill.js): at the
-  // screenshot's full resolution, from only the pixels around it.
-  drawBlur(ann) {
+  // screenshot's full resolution, from only the pixels around it. Filling
+  // is slow on large screenshots, so each fill is kept until the blur, its
+  // radius, or another blur touching its edges changes.
+  drawBlur(ann, usedBlurs) {
     const fill = window.StepForgeBlurFill;
-    const size = { width: this.imgW, height: this.imgH };
-    const rectOf = (a) => fill.pixelRect(size, a.x * this.imgW, a.y * this.imgH, a.w * this.imgW, a.h * this.imgH);
-    const r = rectOf(ann);
+    const r = this.blurRect(ann);
     if (!r) return;
-    if (!this.sourceCtx) {
-      const src = document.createElement('canvas');
-      src.width = this.imgW; src.height = this.imgH;
-      this.sourceCtx = src.getContext('2d', { willReadFrequently: true });
-      this.sourceCtx.drawImage(this.image, 0, 0, this.imgW, this.imgH);
+    // The fill reads the one-pixel ring around r and never reads pixels
+    // inside any blur, so only blurs that reach that ring can change it.
+    const touching = (this.blurRects || [])
+      .filter((q) => q.x0 <= r.x1 && q.x1 >= r.x0 - 1 && q.y0 <= r.y1 && q.y1 >= r.y0 - 1)
+      .map((q) => `${q.x0},${q.y0},${q.x1},${q.y1}`)
+      .sort();
+    const radius = ann.radius || 8;
+    const key = `${r.x0},${r.y0},${r.x1},${r.y1}|${radius}|${touching.join(';')}`;
+    let off = this.blurCache.get(key);
+    if (!off) {
+      if (!this.sourceCtx) {
+        const src = document.createElement('canvas');
+        src.width = this.imgW; src.height = this.imgH;
+        this.sourceCtx = src.getContext('2d', { willReadFrequently: true });
+        this.sourceCtx.drawImage(this.image, 0, 0, this.imgW, this.imgH);
+      }
+      const ox = Math.max(0, r.x0 - 1), oy = Math.max(0, r.y0 - 1);
+      const pixels = this.sourceCtx.getImageData(ox, oy, Math.min(this.imgW, r.x1 + 1) - ox, Math.min(this.imgH, r.y1 + 1) - oy);
+      const shift = (q) => ({ x0: q.x0 - ox, y0: q.y0 - oy, x1: q.x1 - ox, y1: q.y1 - oy });
+      fill.fillFromSurroundings(pixels, shift(r), { radius, hidden: (this.blurRects || [r]).map(shift) });
+      off = document.createElement('canvas');
+      off.width = r.x1 - r.x0; off.height = r.y1 - r.y0;
+      off.getContext('2d').putImageData(pixels, ox - r.x0, oy - r.y0);
+      this.blurCache.set(key, off);
     }
-    const ox = Math.max(0, r.x0 - 1), oy = Math.max(0, r.y0 - 1);
-    const pixels = this.sourceCtx.getImageData(ox, oy, Math.min(this.imgW, r.x1 + 1) - ox, Math.min(this.imgH, r.y1 + 1) - oy);
-    const shift = (q) => ({ x0: q.x0 - ox, y0: q.y0 - oy, x1: q.x1 - ox, y1: q.y1 - oy });
-    const hidden = this.annotations.filter((a) => a.type === 'blur').map(rectOf).filter(Boolean).map(shift);
-    fill.fillFromSurroundings(pixels, shift(r), { radius: ann.radius || 8, hidden });
-    const off = document.createElement('canvas');
-    off.width = r.x1 - r.x0; off.height = r.y1 - r.y0;
-    off.getContext('2d').putImageData(pixels, ox - r.x0, oy - r.y0);
+    if (usedBlurs) usedBlurs.add(key);
     const d = this.px({ x: r.x0 / this.imgW, y: r.y0 / this.imgH, w: off.width / this.imgW, h: off.height / this.imgH });
     this.ctx.drawImage(off, d.x, d.y, d.w, d.h);
   }
 
-  drawAnnotation(ann) {
+  // All spotlights share one dark overlay with every spotlight cut out of it,
+  // drawn from the same areas as core/raster.js drawSpotlights.
+  drawSpotlights() {
+    const view = this.viewRect();
+    const width = this.viewW || this.canvas.width;
+    const height = this.viewH || this.canvas.height;
+    const ratio = this.dpr || 1;
+    const spots = window.StepForgeAnnotationProperties.spotlightAreas(this.annotations, (a) => this.px(a), width / 1000 / view.w);
+    if (!spots || !(spots.darkness > 0)) return;
+    const layer = this.spotlightLayer || (this.spotlightLayer = document.createElement('canvas'));
+    layer.width = Math.round(width * ratio);
+    layer.height = Math.round(height * ratio);
+    const lctx = layer.getContext('2d');
+    lctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    lctx.fillStyle = `rgba(0, 0, 0, ${Math.min(1, spots.darkness)})`;
+    lctx.fillRect(0, 0, width, height);
+    lctx.globalCompositeOperation = 'destination-out';
+    lctx.fillStyle = '#000';
+    for (const s of spots.areas) {
+      lctx.beginPath();
+      if (s.oval) lctx.ellipse(s.x + s.w / 2, s.y + s.h / 2, s.w / 2, s.h / 2, 0, 0, Math.PI * 2);
+      else lctx.roundRect(s.x, s.y, s.w, s.h, s.radius);
+      lctx.fill();
+    }
+    this.ctx.drawImage(layer, 0, 0, width, height);
+  }
+
+  drawAnnotation(ann, usedBlurs) {
     const { ctx } = this;
     const { x, y, w, h } = this.px(ann);
     const style = ann.style || {};
@@ -299,7 +437,7 @@ class AnnotationCanvas {
         break;
       }
       case 'blur': {
-        try { this.drawBlur(ann); } catch { /* region may be degenerate while dragging */ }
+        try { this.drawBlur(ann, usedBlurs); } catch { /* region may be degenerate while dragging */ }
         // Blurs added by Find private details get a dashed outline here (never
         // in exports), so they're easy to spot and check.
         if (ann.redact) {
@@ -312,6 +450,10 @@ class AnnotationCanvas {
         }
         break;
       }
+      case 'spotlight':
+        // The first spotlight draws the overlay for all of them.
+        if (ann === this.annotations.find((a) => a.type === 'spotlight')) this.drawSpotlights();
+        break;
       case 'highlight':
         ctx.fillStyle = 'rgba(255, 235, 59, 0.41)';
         ctx.fillRect(x, y, w, h);
@@ -442,17 +584,17 @@ class AnnotationCanvas {
   }
 
   drawCropOverlay() {
-    const { ctx, canvas } = this;
+    const { ctx } = this;
     const r = this.cropRect;
     const view = this.viewRect();
-    const x = (Math.min(r.x0, r.x1) - view.x) / view.w * canvas.width;
-    const y = (Math.min(r.y0, r.y1) - view.y) / view.h * canvas.height;
-    const w = Math.abs(r.x1 - r.x0) / view.w * canvas.width;
-    const h = Math.abs(r.y1 - r.y0) / view.h * canvas.height;
+    const x = (Math.min(r.x0, r.x1) - view.x) / view.w * this.viewW;
+    const y = (Math.min(r.y0, r.y1) - view.y) / view.h * this.viewH;
+    const w = Math.abs(r.x1 - r.x0) / view.w * this.viewW;
+    const h = Math.abs(r.y1 - r.y0) / view.h * this.viewH;
     ctx.save();
     ctx.fillStyle = 'rgba(0,0,0,0.5)';
     ctx.beginPath();
-    ctx.rect(0, 0, canvas.width, canvas.height);
+    ctx.rect(0, 0, this.viewW, this.viewH);
     ctx.rect(x, y, w, h);
     ctx.fill('evenodd');
     ctx.strokeStyle = '#fff';
@@ -484,9 +626,11 @@ class AnnotationCanvas {
   handleAt(e) {
     const sel = this.selected();
     if (!sel) return null;
+    // Handles are placed in the canvas's own CSS pixels; scale in case the
+    // page shows it at another size.
     const rect = this.canvas.getBoundingClientRect();
-    const px = e.clientX - rect.left;
-    const py = e.clientY - rect.top;
+    const px = (e.clientX - rect.left) * (this.viewW / (rect.width || this.viewW));
+    const py = (e.clientY - rect.top) * (this.viewH / (rect.height || this.viewH));
     for (const hd of this.handles(sel)) {
       if (Math.abs(px - hd.px) <= HANDLE_SIZE && Math.abs(py - hd.py) <= HANDLE_SIZE) return hd.id;
     }
@@ -543,7 +687,7 @@ class AnnotationCanvas {
     if (d.kind === 'crop') {
       this.cropRect.x1 = pt.x;
       this.cropRect.y1 = pt.y;
-      this.render();
+      this.requestRender();
       return;
     }
     if (d.kind === 'pen') {
@@ -558,7 +702,7 @@ class AnnotationCanvas {
     if (d.kind === 'create') {
       d.ann.w = pt.x - d.start.x;
       d.ann.h = pt.y - d.start.y;
-      this.render();
+      this.requestRender();
       return;
     }
     const sel = this.selected();
@@ -566,10 +710,10 @@ class AnnotationCanvas {
     if (d.kind === 'move') {
       sel.x = d.orig.x + (pt.x - d.start.x);
       sel.y = d.orig.y + (pt.y - d.start.y);
-      this.render();
+      this.requestRender();
     } else if (d.kind === 'resize') {
       this.resizeBy(sel, d, pt);
-      this.render();
+      this.requestRender();
     }
   }
 
@@ -603,7 +747,7 @@ class AnnotationCanvas {
         x: Math.min(r.x0, r.x1), y: Math.min(r.y0, r.y1),
         w: Math.abs(r.x1 - r.x0), h: Math.abs(r.y1 - r.y0),
       };
-      this.render();
+      this.requestRender();
       if (rect.w > 0.02 && rect.h > 0.02) {
         if (this.cb.onCrop) this.cb.onCrop(rect);
         if (this.cb.onToolUsed) this.cb.onToolUsed('crop');
@@ -672,8 +816,8 @@ class AnnotationCanvas {
     const sel = this.selected();
     if (!sel) return false;
     const r = this.viewRect();
-    sel.x += dx / this.canvas.width * r.w;
-    sel.y += dy / this.canvas.height * r.h;
+    sel.x += dx / this.viewW * r.w;
+    sel.y += dy / this.viewH * r.h;
     this.changed();
     return true;
   }

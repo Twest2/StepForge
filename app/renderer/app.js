@@ -240,6 +240,7 @@ class StepForgeApp {
     ]);
     this.state.info = info;
     document.body.classList.toggle('platform-linux', info.platform === 'linux');
+    document.body.classList.toggle('desktop-plasma', info.captureDesktop === 'plasma');
     this.state.settings = settings;
     this.state.library = {
       guides: library.guides || [],
@@ -495,7 +496,7 @@ class StepForgeApp {
 
     // What is currently triggering captures, so the user knows what to do.
     const notStarted = s.paused && !s.count;
-    const trigger = s.gnomeRequired && s.warmingUp ? t('waiting for screen sharing')
+    const trigger = (s.gnomeRequired || s.plasmaRequired) && s.warmingUp ? t('waiting for screen sharing')
       : notStarted ? t('ready')
       : s.paused ? t('paused')
         : s.clickCapture ? t('on click')
@@ -552,6 +553,7 @@ class StepForgeApp {
         onClick: (e) => {
           const rect = e.currentTarget.getBoundingClientRect();
           contextMenu(rect.left, rect.bottom + 4, [
+            { label: t('Copy to clipboard'), action: () => this.editor.copyToClipboard() },
             { label: t('Save as a .sfgz file…'), action: () => this.editor.shareAsFile() },
             { label: t('Publish to the web…'), action: () => this.publishToWeb(guide?.guideId || this.editor.guideId, guide?.title) },
             { label: t('Publish to Confluence…'), badge: 'Beta', action: () => this.publishToConfluence(guide?.guideId || this.editor.guideId, guide?.title) },

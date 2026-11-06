@@ -17,6 +17,8 @@ class GnomeCaptureService extends CaptureService {
     this.backendFactory = options.backendFactory || (() => new PortalBackend());
     this.ensureCompanion = options.ensureCompanion || (() => this.ensureExtension());
     this.captureError = '';
+    // How clicks are timed; the Plasma subclass reads input devices instead.
+    this.armedClickSource = 'gnome-shell-sampled';
   }
 
   state() {
@@ -83,12 +85,12 @@ class GnomeCaptureService extends CaptureService {
       backend.on('failure', (reason) => { if (current()) this.recordingFailed(reason); });
       backend.on('click', (event) => this.onGnomeClick(event));
       const win = this.getWindow();
-      if (win && !win.isDestroyed()) win.minimize();
+      if (win && !win.isDestroyed()) this.hideRecordingWindow(win);
       await delay(Math.max(150, Number(this.settings.get('capture.postHideSettleMs')) || 0));
       if (!current()) return;
       await backend.arm();
       if (!current()) return;
-      this.clickSource = 'gnome-shell-sampled';
+      this.clickSource = this.armedClickSource;
       this.warmingUp = false;
       this.notify('capture:state', this.state());
     };
@@ -102,6 +104,8 @@ class GnomeCaptureService extends CaptureService {
     if (win && !win.isDestroyed()) { win.restore(); win.show(); }
     this.notify('capture:state', this.state());
   }
+
+  hideRecordingWindow(win) { win.minimize(); }
 
   stopClickFrameBackend() {
     if (this.pendingBackend) {
@@ -123,7 +127,7 @@ class GnomeCaptureService extends CaptureService {
     const mode = this.settings.get('capture.mode') || 'fullscreen';
     const clickMeta = {
       // `at` is the Shell's monotonic clock; receivedAt is ours (see settleClickKind).
-      at: event.at, receivedAt: Date.now(), point, button, guideId, timingSource: 'gnome-shell-sampled',
+      at: event.at, receivedAt: Date.now(), point, button, guideId, timingSource: this.armedClickSource,
       windowContext: { appName: event.appName || '', windowTitle: event.windowTitle || '' },
     };
     // A later same-button press inside the debounce window flags it `double`.
@@ -131,10 +135,13 @@ class GnomeCaptureService extends CaptureService {
     // Select immediately, before disk I/O or another click can evict the frame.
     const framePromise = this.frameForClick(point, event.at, mode, event.window)
       .then((frame) => ({ frame }), (error) => ({ error }));
+    const gate = this.clickGate(event);
     this.clickQueue = this.clickQueue.then(async () => {
+      if (gate && !(await gate)) return;
       const { frame, error } = await framePromise;
       if (error) throw error;
-      const result = await this.storeFrameAsStep(guideId, frame.mode, frame, point, clickMeta);
+      const output = this.prepareClickFrame(frame, mode, event.window);
+      const result = await this.storeFrameAsStep(guideId, output.mode, output, point, clickMeta);
       if (result.ok) {
         // Accepted clicks stay with their original guide even across pause,
         // finish, or a new recording. Do not increment a different session.
@@ -152,6 +159,12 @@ class GnomeCaptureService extends CaptureService {
       this.notify('capture:diagnostic', { kind: 'gnome-click-skipped', guideId, reason: error.message });
     });
   }
+
+  // A promise resolving to whether a click may become a step, or null to
+  // store it at once. GNOME's extension already ignores its own panel menu.
+  clickGate() { return null; }
+
+  prepareClickFrame(frame) { return frame; }
 
   cropFrame(frame, rect, mode) {
     const geometry = cropGeometry(frame.display.bounds, rect, frame.size);

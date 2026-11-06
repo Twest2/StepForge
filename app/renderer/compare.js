@@ -214,17 +214,19 @@ async function drawImage(holder, ref, load) {
     if (!url) throw new Error('missing');
     const img = new Image();
     await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = url; });
+    if (!holder.isConnected) return;
     const canvasEl = el('canvas.cmp-canvas', { 'aria-label': t('Screenshot with annotations') });
     holder.replaceChildren(canvasEl);
-    const view = new window.AnnotationCanvas(canvasEl, {});
+    // Compare thumbnails grow vertically with their image; only width is
+    // constrained. AnnotationCanvas itself applies the display pixel ratio.
+    const view = new window.AnnotationCanvas(canvasEl, { constrainHeight: false });
+    holder.cmpCanvas = view;
     const width = img.naturalWidth;
     const height = img.naturalHeight;
-    const dpr = window.devicePixelRatio || 1;
     view.focusedView = ref.focusedView || null;
     view.annotations = ref.annotations || [];
-    view.zoomMode = String(Math.min(1, (Math.max(120, holder.clientWidth) * dpr) / width));
+    view.zoomMode = String(Math.min(1, Math.max(1, holder.clientWidth - 16) / width));
     view.setImage(img, width, height);
-    canvasEl.style.width = `${canvasEl.width / dpr}px`;
   } catch {
     holder.replaceChildren(el('div.cmp-image-empty.muted', {}, t('This screenshot can’t be shown (it is missing or damaged).')));
   }
@@ -508,6 +510,7 @@ function showSnapshotCompare({ label, diff, loadImage, onRestore, storageKey = '
       if (done) return;
       done = true;
       observer.disconnect();
+      for (const holder of list.querySelectorAll('.cmp-image-holder')) holder.cmpCanvas?.destroy();
       document.removeEventListener('keydown', onKey);
       close();
       resolve(restored);

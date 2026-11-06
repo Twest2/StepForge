@@ -5,6 +5,7 @@ const { sanitizeHtml } = require('./sanitize');
 const { blockText } = require('./blocks');
 const { normalizeReviewDays, normalizeDateOnly } = require('./review');
 const { bendOf, normalizePenPoints } = require('./annotation-shapes');
+const { SPOTLIGHT_DARKNESS, SPOTLIGHT_CORNER_RADIUS } = require('./annotation-properties');
 
 const SCHEMA_VERSION = 1;
 
@@ -12,8 +13,12 @@ const STEP_KINDS = ['image', 'empty', 'content'];
 const STEP_STATUSES = ['todo', 'in-progress', 'done'];
 const ANNOTATION_TYPES = [
   'rect', 'oval', 'line', 'pen', 'arrow', 'curvedArrow', 'text', 'tooltip', 'number',
-  'blur', 'highlight', 'magnify', 'cursor',
+  'blur', 'highlight', 'magnify', 'cursor', 'spotlight',
 ];
+const SPOTLIGHT_SHAPES = ['rect', 'oval'];
+// A spotlight darkens everything outside it. darkness: 0..1 of black over the
+// rest of the screenshot; cornerRadius: px on a 1000px-wide image, like strokeWidth.
+const SPOTLIGHT_DEFAULTS = { shape: 'rect', darkness: SPOTLIGHT_DARKNESS, cornerRadius: SPOTLIGHT_CORNER_RADIUS };
 const TEXTBLOCK_LEVELS = ['info', 'warn', 'error', 'success'];
 const TEXTBLOCK_POSITIONS = [
   'before-title', 'after-title', 'before-image', 'after-image',
@@ -60,6 +65,7 @@ function createGuide(fields = {}) {
       // Review dates (see core/review.js). reviewAfterDays: null uses the
       // default from Settings, 0 turns reviews off for this guide.
       lastVerified: normalizeDateOnly(fields.metadata?.lastVerified),
+      guideVersion: typeof fields.metadata?.guideVersion === 'string' ? fields.metadata.guideVersion.slice(0, 50) : '',
       softwareVersion: typeof fields.metadata?.softwareVersion === 'string' ? fields.metadata.softwareVersion.slice(0, 200) : '',
       reviewAfterDays: normalizeReviewDays(fields.metadata?.reviewAfterDays),
     },
@@ -117,7 +123,6 @@ function createStep(fields = {}) {
       ...(fields.focusedView || {}),
     },
     image: fields.image || null, // { originalPath, workingPath, size:{width,height} }
-    extraImages: fields.extraImages || [], // multi-image steps
     annotations: (fields.annotations || []).map(normalizeAnnotation),
     textBlocks: (fields.textBlocks || []).map((tb) => normalizeTextBlock(tb, takeOrder(tb))),
     codeBlocks: (fields.codeBlocks || []).map((cb) => normalizeCodeBlock(cb, takeOrder(cb))),
@@ -155,6 +160,12 @@ function normalizeAnnotation(a) {
   // to its start-to-end line (core/annotation-shapes.js).
   if (ann.type === 'pen') ann.points = normalizePenPoints(a.points);
   if (ann.type === 'curvedArrow') ann.bend = bendOf(a.bend);
+  if (ann.type === 'spotlight') {
+    const st = ann.style;
+    st.shape = SPOTLIGHT_SHAPES.includes(st.shape) ? st.shape : SPOTLIGHT_DEFAULTS.shape;
+    st.darkness = Math.min(1, Math.max(0, num(st.darkness, SPOTLIGHT_DEFAULTS.darkness)));
+    st.cornerRadius = Math.max(0, num(st.cornerRadius, SPOTLIGHT_DEFAULTS.cornerRadius));
+  }
   if (ann.type === 'tooltip') ann.style.tail = a.style && a.style.tail ? a.style.tail : 'bottom';
   return ann;
 }
@@ -262,6 +273,7 @@ module.exports = {
   STEP_KINDS,
   STEP_STATUSES,
   ANNOTATION_TYPES,
+  SPOTLIGHT_DEFAULTS,
   TEXTBLOCK_LEVELS,
   TEXTBLOCK_POSITIONS,
   DEFAULT_ANNOTATION_STYLE,

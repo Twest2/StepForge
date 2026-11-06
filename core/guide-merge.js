@@ -28,7 +28,7 @@ const same = (a, b) => isDeepStrictEqual(a, b);
 const STEP_FILE = /^steps\/([^/]+)\/(.+)$/;
 const IMAGE = /\.(png|jpg|jpeg|gif|webp)$/i;
 // Saved with the screenshot files: changing one without the other breaks the step.
-const MEDIA_FIELDS = ['image', 'extraImages'];
+const MEDIA_FIELDS = ['image'];
 // Bookkeeping that changes on every save; never a conflict.
 const GUIDE_BOOKKEEPING = ['revision', 'updatedAt', 'createdAt', 'stepsOrder'];
 
@@ -133,7 +133,9 @@ function readSide(entries) {
     else {
       const match = STEP_FILE.exec(entry.name);
       if (!match) continue;
-      if (match[2] === 'step.json') step(match[1]).json = parseJson(entry);
+      // Older steps carry an always-empty `extraImages` field that StepForge no
+      // longer saves; drop it so saving such a step never counts as an edit.
+      if (match[2] === 'step.json') step(match[1]).json = withoutKeys(parseJson(entry), ['extraImages']);
       else step(match[1]).files.set(match[2], { sha: entry.sha || sha256(bytesOf(entry)), entry: entry.data == null ? null : entry });
     }
   }

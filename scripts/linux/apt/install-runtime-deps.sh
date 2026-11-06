@@ -14,6 +14,12 @@ fi
 SUDO=""
 if [ "$(id -u)" -ne 0 ]; then SUDO="sudo"; fi
 
+# The desktop's own portal: KDE Plasma (Kubuntu) or GNOME (Ubuntu).
+case "${XDG_CURRENT_DESKTOP:-}" in
+  *KDE*) DESKTOP_PACKAGES=(xdg-desktop-portal-kde kde-spectacle) ;;
+  *) DESKTOP_PACKAGES=(xdg-desktop-portal-gnome gnome-shell) ;;
+esac
+
 PACKAGES=(
   # Chromium/Electron shared libraries
   libnss3 libnspr4 libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2t64 libdrm2
@@ -22,7 +28,7 @@ PACKAGES=(
   # X11 per-click capture (marker-accurate) — X11 sessions only
   xinput x11-utils
   # Wayland screen-share via the XDG portal + PipeWire
-  xdg-desktop-portal xdg-desktop-portal-gnome pipewire gnome-shell
+  xdg-desktop-portal "${DESKTOP_PACKAGES[@]}" pipewire
   python3 python3-gi gir1.2-gstreamer-1.0 gir1.2-gst-plugins-base-1.0
   gir1.2-gdkpixbuf-2.0 gstreamer1.0-pipewire gstreamer1.0-plugins-base libglib2.0-bin
 )

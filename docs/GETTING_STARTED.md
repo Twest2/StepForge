@@ -35,6 +35,10 @@ to title the step, so you'll usually see titles like *Click Releases* or
 > you plan to click on. See [Linux recording](linux/linux_install.md#recording-on-gnome-wayland)
 > for details.
 
+On **KDE Plasma 6 Wayland**, select the monitors to share when prompted and
+use the StepForge tray menu to pause or finish. See [KDE Plasma](linux/kde-plasma.md)
+for mouse access, shortcuts and region selection.
+
 ### Stop recording
 
 **On Windows,** a small floating bar appears when you start recording.
@@ -117,9 +121,13 @@ For each step you can:
 - Start a **New page** at this step in paged formats such as PDF.
 
 **Guide details:** choose **More → Guide information…** to add an author,
-version and a short description. The description appears at the top of
+a guide version (such as `1.1`) and a short description. The description appears at the top of
 exports and accepts Markdown: `**bold**`, `*italic*`, `` `code` ``,
-`[links](https://example.com)`, and lists that start with `-` or `1.`.
+`[links](https://example.com)`, lists that start with `-` or `1.` (indent an
+item by two spaces to nest it), `~~strikethrough~~`, `#` headings (`#` to
+`####`), `>` quotes, `---` dividers, and tables (`| A | B |` with a
+`| --- | --- |` line under the header). Word, PowerPoint and GIF exports show
+the description as plain text.
 
 **Working with many steps at once:** choose **Select**, click one step, then
 **Shift-click** another to select everything in between, including substeps.
@@ -164,6 +172,7 @@ again or press **Esc**.
 | Highlight | `H` | Drawing attention without covering anything |
 | Magnify | `M` | Enlarging small text or icons |
 | Cursor | `U` | Adding a mouse pointer |
+| Spotlight | `K` | Darkening everything except the area that matters |
 | Crop | `C` | Trimming the screenshot |
 
 After each annotation or crop, StepForge puts the tool down again, with the
@@ -286,6 +295,11 @@ and verifies your library before switching to the new location.
 
 ## 6. Share guides and keep backups
 
+- **Share → Copy to clipboard** copies the whole guide, with its annotated
+  screenshots built in, so you can paste it into an email, a Teams or Slack
+  message, a Google Doc, Word or Notion. Screenshots are scaled down to 800
+  pixels wide. StepForge checks them for private details first, as it does
+  before publishing.
 - **Share → Share this guide as a .sfgz file** packages a guide and all of its
   images into one file. Anyone with StepForge can open it with
   **Import → Import a copy of a guide (.sfgz)…**.
@@ -338,7 +352,9 @@ shows the savings first and saves a snapshot before changing anything.
 On Windows, use **Finish** on the floating bar. If you chose the tray icon,
 the red dot may be hidden behind the **^** arrow beside the clock.
 
-**Clicks aren't creating steps on Linux.** Make sure you're on a GNOME Wayland
+**Clicks aren't creating steps on KDE Plasma.** Check [mouse access and setup](linux/kde-plasma.md).
+
+**Clicks aren't creating steps on GNOME.** Make sure you're on a GNOME Wayland
 session, that you logged out and back in after installing StepForge, and that
 you enabled the StepForge extension when prompted. If your desktop can't report
 clicks, **Settings → Capture → When clicks can't be detected** lets you capture

@@ -13,6 +13,7 @@ const { zipSync, unzipSync } = require('../../core/zip');
 const { encodePng } = require('../../core/png');
 const parts = require('../../core/cloud-parts');
 const { makeTmpDir, rmrf, TINY_PNG } = require('./helpers');
+const { PLASMA_HOTKEYS } = require('../../app/platform/linux/desktop');
 
 const SVG = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="20" height="10"><rect width="20" height="10" fill="#123456"/></svg>');
 
@@ -43,9 +44,9 @@ function setup(t) {
       bytes.delete(id);
     },
   };
-  function device(name) {
+  function device(name, settingsOptions) {
     const store = new GuideStore(path.join(root, name));
-    const settings = new Settings(store.settingsDir);
+    const settings = new Settings(store.settingsDir, settingsOptions);
     const branding = new BrandingStore(store.settingsDir);
     const changes = [];
     const d = { store, settings, branding, changes, ready: true };
@@ -543,4 +544,37 @@ test('malformed shortcut values are refused before applying synced settings', (t
     assert.throws(() => shared.apply(entries), /damaged/);
     assert.equal(a.settings.get('capture.hotkeyCapture'), DEFAULT_SETTINGS.capture.hotkeyCapture);
   }
+});
+
+test('KDE Plasma\'s own recording shortcuts stay on that computer; chosen shortcuts and resets still sync', async (t) => {
+  const { device } = setup(t);
+  const plasma = device('plasma', { defaultOverrides: { capture: PLASMA_HOTKEYS } });
+  const windows = device('windows');
+  plasma.settings.set('language', 'fr'); // something to sync, so a settings file is published
+  await synced(plasma.sync);
+  await synced(windows.sync);
+  assert.equal(windows.settings.get('language'), 'fr');
+  // Untouched defaults on each side: Plasma's never reach Windows, and Windows' never reach Plasma.
+  assert.equal(windows.settings.get('capture.hotkeyCapture'), 'CommandOrControl+Shift+1');
+  assert.equal(windows.settings.get('capture.hotkeyPauseResume'), 'CommandOrControl+Shift+2');
+  await synced(plasma.sync);
+  assert.equal(plasma.settings.get('capture.hotkeyCapture'), 'CommandOrControl+Alt+C');
+  assert.equal(plasma.settings.get('capture.hotkeyPauseResume'), 'CommandOrControl+Alt+P');
+
+  // A shortcut someone picks follows them to the other computer.
+  windows.settings.set('capture.hotkeyCapture', 'CommandOrControl+Alt+K');
+  await synced(windows.sync);
+  await synced(plasma.sync);
+  assert.equal(plasma.settings.get('capture.hotkeyCapture'), 'CommandOrControl+Alt+K');
+
+  // Going back to the default means each computer's own default.
+  windows.settings.set('capture.hotkeyCapture', 'CommandOrControl+Shift+1');
+  await synced(windows.sync);
+  await synced(plasma.sync);
+  assert.equal(plasma.settings.get('capture.hotkeyCapture'), 'CommandOrControl+Alt+C');
+  plasma.settings.set('capture.hotkeyPauseResume', 'CommandOrControl+Alt+J');
+  await synced(plasma.sync);
+  await synced(windows.sync);
+  assert.equal(windows.settings.get('capture.hotkeyPauseResume'), 'CommandOrControl+Alt+J');
+  assert.equal(windows.settings.get('capture.hotkeyCapture'), 'CommandOrControl+Shift+1');
 });

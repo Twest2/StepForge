@@ -9,10 +9,29 @@ const { decodeEntities } = require('../core/util');
 
 function htmlToMarkdown(html) {
   if (!html) return '';
-  let out = String(html);
+  return decodeEntities(tidy(convert(String(html)))).trim();
+}
+
+const tidy = (md) => md.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n');
+
+// Innermost first, so nested quotes and lists keep their structure.
+const INNER_QUOTE = /<blockquote>((?:(?!<\/?blockquote>)[\s\S])*?)<\/blockquote>/i;
+const INNER_LIST = /<(ul|ol)>((?:(?!<\/?(?:ul|ol)>)[\s\S])*?)<\/\1>/i;
+
+/** Markdown with entities still encoded (see stripTags). */
+function convert(html) {
+  let out = html;
 
   // tables first (their inner tags would otherwise be consumed)
   out = out.replace(/<table>([\s\S]*?)<\/table>/gi, (m, body) => tableToMd(body));
+
+  // A quote's contents are converted on their own, then every line gets "> ".
+  while (INNER_QUOTE.test(out)) {
+    out = out.replace(INNER_QUOTE, (m, q) => {
+      const inner = tidy(convert(q)).trim();
+      return `\n${inner.split('\n').map((line) => (line ? `> ${line}` : '>')).join('\n')}\n`;
+    });
+  }
 
   out = out
     .replace(/<pre>\s*<code[^>]*>([\s\S]*?)<\/code>\s*<\/pre>/gi, '\n```\n$1\n```\n')
@@ -21,7 +40,6 @@ function htmlToMarkdown(html) {
     .replace(/<h2>([\s\S]*?)<\/h2>/gi, '\n## $1\n')
     .replace(/<h3>([\s\S]*?)<\/h3>/gi, '\n### $1\n')
     .replace(/<h4>([\s\S]*?)<\/h4>/gi, '\n#### $1\n')
-    .replace(/<blockquote>([\s\S]*?)<\/blockquote>/gi, (m, q) => `\n> ${stripTags(q).trim().replace(/\n/g, '\n> ')}\n`)
     .replace(/<(b|strong)>([\s\S]*?)<\/\1>/gi, '**$2**')
     .replace(/<(i|em)>([\s\S]*?)<\/\1>/gi, '*$2*')
     .replace(/<u>([\s\S]*?)<\/u>/gi, '$1')
@@ -34,8 +52,9 @@ function htmlToMarkdown(html) {
     .replace(/<a[^>]*>([\s\S]*?)<\/a>/gi, '$1');
 
   // lists
-  out = out.replace(/<ol>([\s\S]*?)<\/ol>/gi, (m, body) => listToMd(body, true));
-  out = out.replace(/<ul>([\s\S]*?)<\/ul>/gi, (m, body) => listToMd(body, false));
+  while (INNER_LIST.test(out)) {
+    out = out.replace(INNER_LIST, (m, tag, body) => listToMd(body, tag.toLowerCase() === 'ol'));
+  }
 
   out = out
     .replace(/<br\s*\/?>/gi, '\n')
@@ -46,7 +65,7 @@ function htmlToMarkdown(html) {
     .replace(/<\/div>/gi, '\n')
     .replace(/<[^>]+>/g, '');
 
-  return decodeEntities(out).replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+  return out;
 }
 
 function listToMd(body, ordered) {
@@ -54,8 +73,10 @@ function listToMd(body, ordered) {
   const items = [];
   for (const m of body.matchAll(/<li>([\s\S]*?)<\/li>/gi)) {
     i += 1;
-    const text = stripTags(m[1]).trim();
-    items.push(ordered ? `${i}. ${text}` : `- ${text}`);
+    const marker = ordered ? `${i}. ` : '- ';
+    // A nested list is already Markdown text here; indent it under its item.
+    const lines = stripTags(m[1].replace(/<br\s*\/?>/gi, '\n')).trim().split('\n').filter((line) => line.trim());
+    items.push(`${marker}${(lines.shift() || '').trim()}`, ...lines.map((line) => `${' '.repeat(marker.length)}${line}`));
   }
   return `\n${items.join('\n')}\n`;
 }
@@ -65,7 +86,7 @@ function tableToMd(body) {
   for (const rowM of body.matchAll(/<tr>([\s\S]*?)<\/tr>/gi)) {
     const cells = [];
     for (const cellM of rowM[1].matchAll(/<(td|th)[^>]*>([\s\S]*?)<\/\1>/gi)) {
-      cells.push(stripTags(cellM[2]).trim().replace(/\|/g, '\\|'));
+      cells.push(convert(cellM[2]).trim().replace(/\s*\n\s*/g, ' ').replace(/\|/g, '\\|'));
     }
     rows.push(cells);
   }

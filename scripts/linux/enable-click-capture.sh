@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
-# OPTIONAL: enable per-click capture on Wayland (or X11 without xinput) using a
-# LEAST-PRIVILEGE udev rule instead of the broad `input` group.
+# Enable per-click capture on KDE Plasma (or other Wayland desktops, or X11
+# without xinput) from a SOURCE CHECKOUT, using a LEAST-PRIVILEGE udev rule
+# instead of the broad `input` group. The .deb and .rpm install this rule
+# themselves.
 #
 # Security tradeoff (read before running):
-#   * This grants your ACTIVE local session read access to MOUSE devices only.
+#   * This grants your ACTIVE local session access to MICE and TOUCHPADS only.
 #   * It deliberately EXCLUDES keyboards — StepForge never needs keystrokes.
 #   * Access is session-scoped (systemd `uaccess` ACL), not a permanent group.
-#   * It is NOT required: the safe default is a global hotkey or interval
-#     capture. Only enable this if you want a screenshot on every click.
+#   * GNOME does not need it (it uses the StepForge Shell extension). Elsewhere
+#     the fallback is a global hotkey or interval capture.
 #
 # Compare to `sudo usermod -aG input "$USER"`, which grants access to ALL input
 # devices (including keyboards) for your user on every session — a much larger
@@ -23,7 +25,7 @@ if [ ! -f "$RULE_SRC" ]; then
 fi
 
 echo "This installs a least-privilege udev rule granting your session read"
-echo "access to MOUSE devices only (never keyboards):"
+echo "access to mice and touchpads only (never keyboards):"
 echo
 sed 's/^/    /' "$RULE_SRC"
 echo
@@ -37,7 +39,10 @@ esac
 SUDO=""
 if [ "$(id -u)" -ne 0 ]; then SUDO="sudo"; fi
 
-$SUDO install -m 0644 "$RULE_SRC" "$RULE_DEST"
+# The packaged rule only applies where KWin is installed; running this script
+# is an explicit opt-in on any desktop, so install it without that condition.
+sed 's/, TEST=="\/usr\/bin\/kwin_wayland"//' "$RULE_SRC" | $SUDO tee "$RULE_DEST" >/dev/null
+$SUDO chmod 0644 "$RULE_DEST"
 $SUDO udevadm control --reload-rules
 $SUDO udevadm trigger --subsystem-match=input --action=change || true
 

@@ -85,7 +85,7 @@ guides already in the trash when emptying is turned on get the full time.
 Annotations are stored as normalized JSON, never as an editor-library blob.
 Coordinates are fractions of the image (resolution-independent). Types:
 `rect, oval, line, pen, arrow, curvedArrow, text, tooltip, number, blur,
-highlight, magnify, cursor`. A `pen` stroke keeps `points` as fractions of its
+highlight, magnify, cursor, spotlight`. A `pen` stroke keeps `points` as fractions of its
 own box; the editor thins them as you draw, and the stroke is drawn as a
 smooth curve through their midpoints. A `curvedArrow` runs from (x, y) to
 (x + w, y + h) like an arrow, with `bend` placing its curve's control point
@@ -94,7 +94,12 @@ relative to that line, so moving or resizing either keeps its shape
 canvas (HTML5 canvas) and by the export rasterizer (`core/raster.js`), so what you see is what
 exports. `style.fill` is a `#RRGGBB` color or `transparent`. The editor's Fill
 picker offers Transparent for rectangles and ovals only. A tooltip with no
-fill is drawn `#1F2937`, so its text stays readable.
+fill is drawn `#1F2937`, so its text stays readable. A spotlight keeps
+`style.shape` (`rect` or `oval`), `style.darkness` (0 to 1, default 0.55) and
+`style.cornerRadius` (pixels on a 1000px-wide image, like `strokeWidth`). All
+spotlights on a step share one overlay, as dark as the darkest of them, with
+every spotlight cut out of it (`spotlightAreas` in
+`core/annotation-properties.js`).
 
 ## Render Pipeline
 
@@ -116,6 +121,11 @@ guide.json + step.json + settings
                                             index.json, optional .zip
                ──► exporters/docx.js        zip+XML (core/zip.js)
                ──► exporters/pptx.js        zip+XML (core/zip.js)
+               ──► exporters/clipboard.js   Share → Copy to clipboard: inline-
+                                            styled HTML with ≤800 px data: URL
+                                            screenshots, plus plain text; the
+                                            main process swaps in JPEG where
+                                            smaller and writes both formats
 ```
 
 PDF text uses the built-in Helvetica, Times and Courier where they can show
@@ -497,6 +507,9 @@ error of 1.5/255. Unsupported bit depths and multi-frame inputs remain PNG.
 
 Manual optimization first estimates without writes. Its token binds image
 bytes, guide/step revisions and codec options; apply rejects stale estimates.
+Both passes read, hash and encode screenshots several at a time
+(`defaultConcurrency()`: half the hardware threads, at most 8 and one per GB of
+memory) and tally the results in step order.
 A snapshot precedes content-addressed image writes, and step revisions are
 checked before retiring old files. PNG-only guides remain supported. Cloud sync
 transfers stored bytes unchanged. Long Windows preview paths use content-typed

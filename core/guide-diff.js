@@ -281,16 +281,17 @@ const POSITION_LABELS = {
 const BLOCK_LABELS = { text: 'Text block', code: 'Code block', table: 'Table' };
 
 /** What a screenshot looks like to a reader: the file, its annotations and focused view. */
-function imageRef(step, image, fileSha) {
-  const rel = image && (image.workingPath || image.path || image.originalPath);
+function imageRef(step, fileSha) {
+  const image = step.image;
+  const rel = image && (image.workingPath || image.originalPath);
   if (!rel) return null;
   const file = `steps/${step.stepId}/${rel}`;
   return {
     file,
     sha: fileSha(file),
     size: image.size || null,
-    annotations: image === step.image ? step.annotations || [] : image.annotations || [],
-    focusedView: image === step.image && step.focusedView?.enabled ? step.focusedView : null,
+    annotations: step.annotations || [],
+    focusedView: step.focusedView?.enabled ? step.focusedView : null,
   };
 }
 
@@ -365,7 +366,7 @@ const linkLabels = (links) => (links || []).map((link) => link.label || 'Link');
 
 /** The differences between two copies of one step (either may be null). */
 function stepChanges(before, after, beforeSha, afterSha) {
-  const blank = { stepId: (before || after).stepId, title: '', descriptionHtml: '', annotations: [], extraImages: [] };
+  const blank = { stepId: (before || after).stepId, title: '', descriptionHtml: '', annotations: [] };
   const a = before || blank;
   const b = after || blank;
   const both = before && after;
@@ -377,17 +378,13 @@ function stepChanges(before, after, beforeSha, afterSha) {
     both ? fieldChange('Skipped', yesNo(a.skipped), yesNo(b.skipped)) : null,
     both ? fieldChange('Starts a new page', yesNo(a.forceNewPage), yesNo(b.forceNewPage)) : null,
     both ? fieldChange('Links', linkLabels(a.links).join(', ') || 'None', linkLabels(b.links).join(', ') || 'None') : null,
-    imageChange('Screenshot', imageRef(a, a.image, beforeSha), imageRef(b, b.image, afterSha)),
+    imageChange('Screenshot', imageRef(a, beforeSha), imageRef(b, afterSha)),
+    ...blockChanges(a, b),
   ];
-  const extras = Math.max((a.extraImages || []).length, (b.extraImages || []).length);
-  for (let i = 0; i < extras; i++) {
-    changes.push(imageChange(`Image ${i + 2}`, imageRef(a, a.extraImages?.[i], beforeSha), imageRef(b, b.extraImages?.[i], afterSha)));
-  }
-  changes.push(...blockChanges(a, b));
   return changes.filter(Boolean);
 }
 
-const METADATA_LABELS = { author: 'Author', coAuthors: 'Co-authors', organization: 'Organization' };
+const METADATA_LABELS = { author: 'Author', coAuthors: 'Co-authors', organization: 'Organization', guideVersion: 'Guide version' };
 const FLAG_LABELS = {
   focusedViewDefault: 'Focused view for new steps',
   hideSkippedStepsInExports: 'Hide skipped steps in exports',

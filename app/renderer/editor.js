@@ -135,7 +135,7 @@ const TOOL_ICON_PATHS = {
   highlight: '<path d="M14.5 4.5l5 5L11 18l-5-5zM4 20h7"/>',
   magnify: '<circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5"/>',
   cursor: '<path d="M6 4v12l3.2-2.8 2.2 5 2-.9-2.2-4.9h4.6z"/><path d="M17.5 3.5l1 1.5M20.5 8h1.5M3 3l1.5 1.5"/>',
-  spotlight: '<rect x="3" y="4" width="18" height="16" rx="1.5"/><circle cx="12" cy="12" r="4"/><path d="M3 9l5-5M16 20l5-5"/>',
+  spotlight: '<path d="M3.5 9.5 8.5 4.5l4.5 4.5-5 5z"/><path d="M15.5 11.5l3.5 2.5M12 15.5l2 3.5M16.5 7.5l4 .5"/><path d="M6.5 12.5 5 20M3 20h5"/>',
   crop: '<path d="M6 3v13h13M3 6h13v15"/>',
   undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
   redo: '<path d="M15 14l5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/>',

@@ -54,10 +54,11 @@ function fakeCanvasElement(log) {
 
 // Loads the real canvas.js with a counting blur fill and, optionally, a
 // display scale factor and a frame queue standing in for requestAnimationFrame.
-function loadCanvas({ dpr = 1, frames = null } = {}) {
+function loadCanvas({ dpr = 1, frames = null, callbacks = {}, matchMedia } = {}) {
   const log = { fills: 0, put: [], transforms: [], renders: 0 };
   const window = {
     devicePixelRatio: dpr,
+    matchMedia,
     StepForgeBlurFill: {
       pixelRect: blurFill.pixelRect,
       fillFromSurroundings: (...args) => { log.fills++; return blurFill.fillFromSurroundings(...args); },
@@ -73,7 +74,7 @@ function loadCanvas({ dpr = 1, frames = null } = {}) {
     context.cancelAnimationFrame = (id) => { frames[id - 1] = null; };
   }
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/canvas.js'), 'utf8'), context);
-  const canvas = new window.AnnotationCanvas(fakeCanvasElement(log), {});
+  const canvas = new window.AnnotationCanvas(fakeCanvasElement(log), callbacks);
   const render = canvas.render.bind(canvas);
   canvas.render = () => { log.renders++; render(); };
   return { canvas, log };
@@ -121,6 +122,35 @@ test('zoom levels larger than the pane shrink to fit it and keep the image shape
   assert.equal(canvas.canvas.style.height, '165px');
   assert.equal(canvas.canvas.width, 440);
   assert.equal(canvas.canvas.height, 330);
+});
+
+test('comparison thumbnails use their available width and intrinsic height at HiDPI', () => {
+  const { canvas } = loadCanvas({ dpr: 2, callbacks: { constrainHeight: false } });
+  canvas.canvas.parentElement = { clientWidth: 200, clientHeight: 140 };
+  canvas.zoomMode = '0.5';
+  canvas.setImage({}, 400, 800);
+  assert.equal(canvas.canvas.style.width, '200px');
+  assert.equal(canvas.canvas.style.height, '400px');
+  assert.equal(canvas.canvas.width, 400);
+  assert.equal(canvas.canvas.height, 800);
+});
+
+test('disposing a canvas releases its display listener, cached images and queued render', () => {
+  const listeners = new Set();
+  const frames = [];
+  const query = {
+    addEventListener: (_event, fn) => listeners.add(fn),
+    removeEventListener: (_event, fn) => listeners.delete(fn),
+  };
+  const { canvas } = loadCanvas({ frames, matchMedia: () => query });
+  canvas.setImage({}, IMG_W, IMG_H);
+  canvas.blurCache.set('cached', {});
+  assert.equal(listeners.size, 1);
+  canvas.destroy();
+  assert.equal(listeners.size, 0);
+  assert.equal(canvas.blurCache.size, 0);
+  assert.equal(canvas.image, null);
+  assert.equal(frames.filter(Boolean).length, 0);
 });
 
 test('blur fills are kept between redraws and match a fresh fill', () => {

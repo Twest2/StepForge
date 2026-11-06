@@ -106,7 +106,7 @@ class AnnotationCanvas {
       const padY = style ? (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0) : 0;
       this.scale = Math.min(Number(this.zoomMode) || 1,
         Math.max(1, wrap.clientWidth - padX) / this.imgW,
-        Math.max(1, wrap.clientHeight - padY) / this.imgH);
+        this.cb.constrainHeight === false ? Infinity : Math.max(1, wrap.clientHeight - padY) / this.imgH);
     }
     const resized = this.resize(Math.max(1, Math.round(this.imgW * this.scale)), Math.max(1, Math.round(this.imgH * this.scale)));
     // Resizing clears the canvas. Pane resizes land here after this frame's
@@ -140,10 +140,22 @@ class AnnotationCanvas {
   watchPixelRatio() {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
     const query = window.matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`);
-    query.addEventListener('change', () => {
+    const onChange = () => {
       this.applyZoom();
       this.watchPixelRatio();
-    }, { once: true });
+    };
+    this.pixelRatioQuery = query;
+    this.pixelRatioChanged = onChange;
+    query.addEventListener('change', onChange, { once: true });
+  }
+
+  destroy() {
+    this.pixelRatioQuery?.removeEventListener('change', this.pixelRatioChanged);
+    if (this.frame !== null && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(this.frame);
+    this.frame = null;
+    this.blurCache.clear();
+    this.image = null;
+    this.sourceCtx = null;
   }
 
   select(id) {

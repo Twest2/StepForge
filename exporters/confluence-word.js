@@ -108,11 +108,14 @@ class WordDocument {
         continue;
       }
       if (isList) {
-        if (!list || list.ordered !== ordered || (ordered && block.n === 1 && block.indent <= 1)) {
+        if (!list || list.ordered !== ordered || (ordered && block.n === 1 && block.indent <= 1 && !block.cont)) {
           list = { ordered, id: this.newList(ordered) };
         }
         const lvl = Math.min(2, Math.max(0, block.indent - 1));
-        out.push(paragraph(this.runs(block.runs), `<w:pStyle w:val="ListParagraph"/><w:numPr><w:ilvl w:val="${lvl}"/><w:numId w:val="${list.id}"/></w:numPr>`));
+        // A line after a break in the item continues it: same indent, no new number.
+        out.push(block.cont
+          ? paragraph(this.runs(block.runs), `<w:pStyle w:val="ListParagraph"/><w:ind w:left="${720 * (lvl + 1)}"/>`)
+          : paragraph(this.runs(block.runs), `<w:pStyle w:val="ListParagraph"/><w:numPr><w:ilvl w:val="${lvl}"/><w:numId w:val="${list.id}"/></w:numPr>`));
         continue;
       }
       if (/^h[1-4]$/.test(block.type)) {

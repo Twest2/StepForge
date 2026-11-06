@@ -14,7 +14,10 @@ const { decodeEntities } = require('./util');
  *   n:      list item number, only for 'oli'
  *   cells:  for 'tr', each cell's text; its runs show the cells joined by
  *           " | " (header cells bold), for renderers without tables
+ *   cellRuns: for 'tr', each cell's own runs (bold, code, links…)
  *   header: for 'tr', true for a row of <th> cells
+ *   cont:   true for the text after a line break inside a list item or
+ *           quote: it continues that item (no new bullet or number)
  */
 
 const TAG_RE = /<\s*(\/?)\s*([a-zA-Z][a-zA-Z0-9]*)((?:"[^"]*"|'[^']*'|[^>"'])*)>/g;
@@ -90,7 +93,7 @@ function htmlToBlocks(html) {
         break;
       case 'tr':
         if (closing) flushBlock();
-        else startBlock('tr', { cells: [], header: false });
+        else startBlock('tr', { cells: [], cellRuns: [], header: false });
         break;
       case 'td':
       case 'th':
@@ -99,6 +102,7 @@ function htmlToBlocks(html) {
           if (cellStart === null) break;
           styleStack.pop();
           current.cells.push(current.runs.slice(cellStart).map((r) => r.text).join('').trim());
+          current.cellRuns.push(current.runs.slice(cellStart));
           cellStart = null;
         } else {
           if (current.cells.length) current.runs.push({ text: ' | ' });
@@ -109,7 +113,11 @@ function htmlToBlocks(html) {
         break;
       case 'br':
         if (current && current.type === 'tr') pushText(' ');
-        else flushBlock();
+        else if (current && ['li', 'oli', 'blockquote'].includes(current.type)) {
+          // The next line belongs to the same list item or quote.
+          const { type, indent, n } = current;
+          startBlock(type, { indent, ...(n ? { n } : {}), cont: true });
+        } else flushBlock();
         break;
       case 'hr':
         flushBlock();

@@ -14,7 +14,9 @@ const { withBrand, brandRaster, fitSize, fontKind, textOn, hexToRgb } = require(
 
 const LIST_INDENT = 14;
 const QUOTE_INDENT = 10;
-const HEADING_BUMP = { h1: 2.5, h2: 2, h3: 1.5, h4: 1 };
+// Description headings as a multiple of the text size around them, so each
+// level is clearly its own size (10.5pt body: 16.8, 14.2, 12.4, 11.6pt).
+const HEADING_SCALE = { h1: 1.6, h2: 1.35, h3: 1.18, h4: 1.1 };
 
 // Callout styling per text-block level, matching the colors used in the
 // HTML/editor UI so a "Tip" looks distinct from a "Warning" at a glance.
@@ -143,12 +145,27 @@ function strikeWords(pdf, line, x, yTop, size, color) {
  * Lay out description HTML into render-ready items, preserving bold,
  * italic, links, lists, blockquotes and headings.
  * Returns { items, height }; items: { kind: 'hr', width } | { kind: 'text',
- * lines, size, lineHeight, indent, prefix, muted }.
+ * lines, size, lineHeight, indent, prefix, muted, space } | a table from
+ * layoutTable().
  */
 function layoutDescription(pdf, html, maxWidth, baseSize, fonts = FONT_FAMILIES.sans) {
   const items = [];
   let height = 0;
+  let table = null; // consecutive table rows, laid out together
+  const endTable = () => {
+    if (!table) return;
+    const item = layoutTable(pdf, table.rows, table.indent, maxWidth, baseSize, fonts);
+    items.push(item);
+    height += item.height + 6;
+    table = null;
+  };
   for (const block of htmlToBlocks(html || '')) {
+    if (block.type === 'tr') {
+      if (!table) table = { rows: [], indent: (block.indent || 0) * LIST_INDENT };
+      table.rows.push(block);
+      continue;
+    }
+    endTable();
     if (block.type === 'hr') {
       items.push({ kind: 'hr', width: maxWidth });
       height += 12;
@@ -159,14 +176,18 @@ function layoutDescription(pdf, html, maxWidth, baseSize, fonts = FONT_FAMILIES.
     let indent = (block.indent || 0) * LIST_INDENT;
     let prefix = null;
     let muted = false;
-    if (HEADING_BUMP[block.type]) {
-      size = baseSize + HEADING_BUMP[block.type];
+    let space = 0;
+    if (HEADING_SCALE[block.type]) {
+      size = Math.round(baseSize * HEADING_SCALE[block.type] * 10) / 10;
       runs = runs.map((r) => ({ ...r, bold: true }));
+      // A heading starts a section: a little room above it, unless it's first.
+      if (items.length) space = Math.round(size * 0.45);
     } else if (block.type === 'li') {
-      prefix = '•';
+      // A continuation line sits under the item's text, without a bullet.
+      prefix = block.cont ? null : '•';
       indent += LIST_INDENT;
     } else if (block.type === 'oli') {
-      prefix = `${block.n}.`;
+      prefix = block.cont ? null : `${block.n}.`;
       indent += LIST_INDENT;
     } else if (block.type === 'blockquote') {
       indent += QUOTE_INDENT;
@@ -174,10 +195,52 @@ function layoutDescription(pdf, html, maxWidth, baseSize, fonts = FONT_FAMILIES.
     }
     const lines = wrapRuns(pdf, runs, size, maxWidth - indent, fonts);
     const lineHeight = size * 1.35;
-    items.push({ kind: 'text', lines, size, lineHeight, indent, prefix, muted });
-    height += lines.length * lineHeight + 4;
+    items.push({ kind: 'text', lines, size, lineHeight, indent, prefix, muted, space });
+    height += space + lines.length * lineHeight + 4;
   }
+  endTable();
   return { items, height };
+}
+
+const TABLE_PAD = 4;
+
+/**
+ * A description table as rows of wrapped cells: equal columns across the
+ * width, header cells bold. Returns { kind: 'table', rows, colW, size,
+ * lineHeight, indent, height }; each row is { cells: [lines], header, height }.
+ */
+function layoutTable(pdf, blocks, indent, maxWidth, baseSize, fonts) {
+  const size = Math.max(8, baseSize - 1);
+  const lineHeight = size * 1.3;
+  const cols = Math.max(1, ...blocks.map((block) => (block.cellRuns || []).length));
+  const colW = (maxWidth - indent) / cols;
+  let height = 0;
+  const rows = blocks.map((block) => {
+    const cells = Array.from({ length: cols }, (_, c) => {
+      const runs = (block.cellRuns || [])[c] || [];
+      return wrapRuns(pdf, block.header ? runs.map((r) => ({ ...r, bold: true })) : runs, size, colW - TABLE_PAD * 2, fonts);
+    });
+    const rowHeight = Math.max(1, ...cells.map((lines) => lines.length)) * lineHeight + TABLE_PAD * 2;
+    height += rowHeight;
+    return { cells, header: block.header, height: rowHeight };
+  });
+  return { kind: 'table', rows, colW, size, lineHeight, indent, height };
+}
+
+/** One row of a description table with its top-left corner at (x, y). */
+function drawTableRow(pdf, table, row, x, y, { color, linkColor }) {
+  const width = table.colW * row.cells.length;
+  if (row.header) pdf.rect(x, y, width, row.height, { fill: [238, 240, 244] });
+  row.cells.forEach((lines, c) => {
+    const cx = x + c * table.colW;
+    pdf.rect(cx, y, table.colW, row.height, { stroke: [200, 204, 210], lineWidth: 0.6 });
+    let ty = y + TABLE_PAD;
+    for (const line of lines) {
+      pdf.textRun(line.map((word) => ({ text: word.text, font: word.font, color: word.href ? linkColor : color })), cx + TABLE_PAD, ty, table.size);
+      strikeWords(pdf, line, cx + TABLE_PAD, ty, table.size, color);
+      ty += table.lineHeight;
+    }
+  });
 }
 
 /**
@@ -285,6 +348,16 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
         y += 12;
         continue;
       }
+      if (item.kind === 'table') {
+        for (const row of item.rows) {
+          ensure(row.height);
+          drawTableRow(pdf, item, row, M + indentBase + item.indent, y, { color, linkColor });
+          y += row.height;
+        }
+        y += 6;
+        continue;
+      }
+      y += item.space || 0;
       item.lines.forEach((line, idx) => {
         ensure(item.lineHeight);
         const textX = M + indentBase + item.indent;
@@ -599,6 +672,15 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
         by += 12;
         continue;
       }
+      if (item.kind === 'table') {
+        for (const row of item.rows) {
+          drawTableRow(pdf, item, row, M + 10 + item.indent, by, { color: ink, linkColor });
+          by += row.height;
+        }
+        by += 6;
+        continue;
+      }
+      by += item.space || 0;
       item.lines.forEach((line, idx) => {
         const textX = M + 10 + item.indent;
         if (idx === 0 && item.prefix) pdf.text(item.prefix, textX - LIST_INDENT, by, { size: item.size, font: bodyFonts.regular, color: ink });

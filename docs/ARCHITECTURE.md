@@ -84,7 +84,7 @@ guides already in the trash when emptying is turned on get the full time.
 
 Annotations are stored as normalized JSON, never as an editor-library blob.
 Coordinates are fractions of the image (resolution-independent). Types:
-`rect, oval, line, arrow, curvedArrow, pen, text, tooltip, number, blur,
+`rect, oval, line, pen, arrow, curvedArrow, text, tooltip, number, blur,
 highlight, magnify, cursor`. A `pen` stroke keeps `points` as fractions of its
 own box; the editor thins them as you draw, and the stroke is drawn as a
 smooth curve through their midpoints. A `curvedArrow` runs from (x, y) to

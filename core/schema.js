@@ -11,7 +11,7 @@ const SCHEMA_VERSION = 1;
 const STEP_KINDS = ['image', 'empty', 'content'];
 const STEP_STATUSES = ['todo', 'in-progress', 'done'];
 const ANNOTATION_TYPES = [
-  'rect', 'oval', 'line', 'arrow', 'curvedArrow', 'pen', 'text', 'tooltip', 'number',
+  'rect', 'oval', 'line', 'pen', 'arrow', 'curvedArrow', 'text', 'tooltip', 'number',
   'blur', 'highlight', 'magnify', 'cursor',
 ];
 const TEXTBLOCK_LEVELS = ['info', 'warn', 'error', 'success'];

@@ -848,7 +848,7 @@ function createAgentTools({ store, agentSettings, onChange = () => {}, onBrandin
     },
     {
       name: 'add_annotations',
-      description: 'Draw annotations on a step\'s screenshot: rect, oval, line, arrow, curvedArrow (an arrow bent through a point), pen (a freehand stroke), text, tooltip (a callout box), number (a numbered badge), blur, highlight, magnify, cursor. '
+      description: 'Draw annotations on a step\'s screenshot: rect, oval, line, pen (a freehand stroke), arrow, curvedArrow (an arrow bent through a point), text, tooltip (a callout box), number (a numbered badge), blur, highlight, magnify, cursor. '
         + 'Coordinates are pixels on the screenshot from get_step (see screenshot_size). Annotations are added beside what is there; delete_annotations removes them.',
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
       inputSchema: {

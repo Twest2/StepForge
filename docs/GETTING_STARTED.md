@@ -154,9 +154,10 @@ again or press **Esc**.
 | Tool | Key | Good for |
 | --- | --- | --- |
 | Rectangle / Oval | `R` / `O` | Framing a button or area |
-| Line / Arrow | `L` / `A` | Pointing from one thing to another |
-| Curved arrow | `J` | Pointing around something; drag the middle handle to change the bend |
+| Line | `L` | Connecting two things |
 | Pen | `P` | Drawing freehand, such as circling an irregular area |
+| Arrow | `A` | Pointing from one thing to another |
+| Curved arrow | `J` | Pointing around something; drag the middle handle to change the bend |
 | Text / Tooltip | `T` / `G` | Labels and callouts |
 | Number | `N` | Numbered badges that count up automatically |
 | Blur | `B` | Hiding passwords, email addresses, and other private data |

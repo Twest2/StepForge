@@ -9,7 +9,7 @@
  * editor shows what exports produce.
  */
 
-const DRAW_ORDER = { blur: 0, highlight: 1, magnify: 2, rect: 3, oval: 3, line: 3, arrow: 3, curvedArrow: 3, pen: 3, cursor: 4, number: 5, text: 6, tooltip: 7 };
+const DRAW_ORDER = { blur: 0, highlight: 1, magnify: 2, rect: 3, oval: 3, line: 3, pen: 3, arrow: 3, curvedArrow: 3, cursor: 4, number: 5, text: 6, tooltip: 7 };
 const POINT_TOOLS = new Set(['line', 'arrow', 'curvedArrow']);
 // Drawn strokes are picked by distance to the stroke, not by their box.
 const STROKE_TOOLS = new Set(['curvedArrow', 'pen']);

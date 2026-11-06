@@ -91,6 +91,50 @@ test('.sfgz export -> import(copy) round-trips full guide content with new ids',
   assert.equal(parent.annotations[0].type, 'rect');
 });
 
+test('steps saved with the old empty extraImages field load, save and import without it', (t) => {
+  const dir = makeTmpDir('extra-images');
+  t.after(() => rmrf(dir));
+  const store = new GuideStore(path.join(dir, 'data'));
+  const { guide, s1 } = makeGuide(store);
+  // Every step an older StepForge saved carries `extraImages: []`.
+  const stepFile = (st, guideId, stepId) => path.join(st.stepDir(guideId, stepId), 'step.json');
+  const addOldField = () => {
+    for (const stepId of guide.stepsOrder) {
+      const file = stepFile(store, guide.guideId, stepId);
+      fs.writeFileSync(file, JSON.stringify({ ...JSON.parse(fs.readFileSync(file, 'utf8')), extraImages: [] }));
+    }
+  };
+  const onDisk = (st, guideId, stepId) => JSON.parse(fs.readFileSync(stepFile(st, guideId, stepId), 'utf8'));
+  addOldField();
+
+  const loaded = store.getStep(guide.guideId, s1.stepId);
+  assert.equal('extraImages' in loaded, false);
+  assert.equal(loaded.image.originalPath, s1.image.originalPath);
+  store.saveStep(guide.guideId, { ...loaded, title: 'Download the installer' });
+  assert.equal('extraImages' in onDisk(store, guide.guideId, s1.stepId), false);
+  assert.deepEqual(fs.readFileSync(store.stepImagePath(guide.guideId, s1.stepId, 'original')), TINY_PNG);
+
+  // An .sfgz from an older StepForge has the field in every step.json;
+  // importing it drops it and keeps the screenshot.
+  const file = path.join(dir, 'old.sfgz');
+  exportGuideArchive(store, guide.guideId, file);
+  fs.writeFileSync(file, zipSync(unzipSync(fs.readFileSync(file)).map((entry) => (entry.name.endsWith('/step.json')
+    ? { ...entry, data: JSON.stringify({ ...JSON.parse(entry.data), extraImages: [] }) }
+    : entry))));
+  const oldStep = readArchive(file).entries.find((e) => e.name === `steps/${s1.stepId}/step.json`);
+  assert.deepEqual(JSON.parse(oldStep.data).extraImages, []);
+  const store2 = new GuideStore(path.join(dir, 'data2'));
+  const imported = importGuideArchive(store2, file, { mode: 'copy' });
+  const steps = store2.listSteps(imported.guideId);
+  assert.equal(steps.size, 3);
+  for (const stepId of imported.stepsOrder) {
+    assert.equal('extraImages' in onDisk(store2, imported.guideId, stepId), false);
+  }
+  const shot = [...steps.values()].find((st) => st.title === 'Download the installer');
+  assert.deepEqual(fs.readFileSync(store2.stepImagePath(imported.guideId, shot.stepId, 'original')), TINY_PNG);
+  assert.equal(shot.annotations.length, 1);
+});
+
 test('linked import keeps identity; explicit save writes back to the archive', async (t) => {
   const dir = makeTmpDir('linked');
   t.after(() => rmrf(dir));

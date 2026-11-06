@@ -134,3 +134,15 @@ test('a step one side deleted stays deleted when the other side differs from the
   const kept = mergeGuideEntries({ base, sides: [{ entries: deleted, hash: 'a' }, { entries: edited, hash: 'b' }] });
   assert.ok(kept.entries.some((e) => e.name === 'steps/s1/step.json'));
 });
+
+test('dropping the old empty extraImages field is not an edit: a step deleted on one side stays deleted', () => {
+  const guide = (order, updatedAt) => ({ name: 'guide.json', data: JSON.stringify({ guideId: 'g', title: 'G', stepsOrder: order, updatedAt }) });
+  const step = (id, fields = {}) => ({ name: `steps/${id}/step.json`, data: JSON.stringify({ stepId: id, title: id, image: null, revision: 1, ...fields }) });
+  const base = [guide(['s1', 's2'], '2026-01-01T00:00:00Z'), step('s1', { extraImages: [] }), step('s2', { extraImages: [] })];
+  const deleted = [guide(['s2'], '2026-01-02T00:00:00Z'), step('s2', { extraImages: [] })];
+  const resaved = [guide(['s1', 's2'], '2026-01-01T00:00:00Z'), step('s1', { revision: 2 }), step('s2')];
+  const { entries, conflicts } = mergeGuideEntries({ base, sides: [{ entries: deleted, hash: 'a' }, { entries: resaved, hash: 'b' }] });
+  assert.deepEqual(entries.map((e) => e.name), ['manifest.json', 'guide.json', 'steps/s2/step.json']);
+  assert.equal(conflicts, 0);
+  assert.equal('extraImages' in stepOf(entries, 's2'), false);
+});

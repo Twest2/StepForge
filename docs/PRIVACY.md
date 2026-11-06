@@ -47,9 +47,9 @@ characters are never read (on Windows they don't leave the keyboard hook).
 
 ## Finding private details
 
-**Find private details** and the check before publishing read your
-screenshots with the same built-in text recognition StepForge uses for step
-titles. It runs entirely on your computer and sends nothing anywhere. It
+**Find private details** and the check before publishing or copying a guide
+to the clipboard read your screenshots with the same built-in text recognition
+StepForge uses for step titles. It runs entirely on your computer and sends nothing anywhere. It
 doesn't keep the text it reads. For a blur you mark "not private", it keeps
 only a one-way fingerprint (a SHA-256 hash), so it won't be suggested again.
 The words you list under **Settings → Privacy** are stored in StepForge's

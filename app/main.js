@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const { pathToFileURL } = require('node:url');
 const {
   app, BrowserWindow, ipcMain, dialog, shell, nativeTheme, globalShortcut,
-  clipboard, nativeImage, safeStorage, screen, powerSaveBlocker, session, desktopCapturer,
+  clipboard, ClipboardItem, nativeImage, safeStorage, screen, powerSaveBlocker, session, desktopCapturer,
 } = require('electron');
 
 const { GuideStore } = require('../core/store');
@@ -44,6 +44,7 @@ const { stepNumberMap } = require('../core/step-outline');
 const { AI_TARGETS } = require('../core/text-intel');
 const { agentChangesSince, agentChangesStamp } = require('../core/agent-changes');
 const { runExport, EXPORTERS, FORMAT_INFO, FORMAT_ORDER } = require('../exporters');
+const { preferSmallerImages } = require('../exporters/clipboard');
 const { runExportInWorker } = require('./export-runner');
 const { exportGuideArchive, importGuideArchive, saveLinkedGuide } = require('../core/archive');
 const {
@@ -700,6 +701,16 @@ async function clipboardImage() {
   return nativeImage.createEmpty();
 }
 
+// A PNG as JPEG for a guide copied to the clipboard, or null when it has
+// transparency, which JPEG can't keep.
+function clipboardJpeg(png) {
+  const image = nativeImage.createFromBuffer(png);
+  if (image.isEmpty()) return null;
+  const bitmap = image.toBitmap();
+  for (let i = 3; i < bitmap.length; i += 4) if (bitmap[i] !== 255) return null;
+  return image.toJPEG(85);
+}
+
 // AI agents write guides and brand profiles from a separate `StepForge --mcp`
 // process. Poll the small file it updates after each write: reindex each
 // changed guide and tell the window, which reloads the guide if it's open.
@@ -1345,6 +1356,28 @@ function setupIpc() {
     { validate: (a) => c.id(a.guideId) && c.id(a.stepId) && c.string(a.key, 100) });
   h('redact:hideText', ({ guideId, stepId }) => { redactor.hideText({ guideId, stepId }); reindex(guideId); return redactor.review(guideId); },
     { validate: (a) => c.id(a.guideId) && c.id(a.stepId) });
+
+  // Share → Copy to clipboard: the guide as HTML with its screenshots built
+  // in, for mail, chat and documents, and as plain text.
+  h('guide:copyToClipboard', async ({ guideId }) => {
+    if (!store.guideExists(guideId)) throw new Error(t('Guide not found.'));
+    // Each stage is shown in the Copy to clipboard window (app/renderer/dialogs.js).
+    const progress = (update) => sendToRenderer('clipboard:progress', { guideId, ...update });
+    // Like publishing: nothing leaves unchecked. Blurs it adds are drawn into the copy.
+    progress({ stage: 'check' });
+    const review = await redactor.checkGuide(guideId, {
+      onProgress: ({ done, total }) => progress({ stage: 'check', done, total }),
+    });
+    progress({ stage: 'build' });
+    const result = await runExportInWorker({ dataDir: store.root, guideId, format: 'clipboard', options: {},
+      outDir: path.join(store.tempDir, `clipboard-${guideId}`), globals: settings.getGlobalPlaceholders(),
+      codeStyle: exportCodeStyle(), reviewDays: exportReviewDays(), branding: exportBranding() });
+    progress({ stage: 'copy' });
+    const html = preferSmallerImages(result.html, clipboardJpeg);
+    // One item with both kinds: apps take the HTML, or the text if that's all they read.
+    await clipboard.write([new ClipboardItem({ 'text/html': html, 'text/plain': result.text })]);
+    return { ok: true, imageCount: result.imageCount, bytes: Buffer.byteLength(html), review };
+  }, { validate: (a) => c.id(a.guideId) });
 
   h('github:publish', async ({ guideId, days, format = 'html-rich', options = {}, brandProfileId }) => {
     const guide = store.getGuide(guideId);

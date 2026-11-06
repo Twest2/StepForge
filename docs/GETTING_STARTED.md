@@ -287,6 +287,11 @@ and verifies your library before switching to the new location.
 
 ## 6. Share guides and keep backups
 
+- **Share → Copy to clipboard** copies the whole guide, with its annotated
+  screenshots built in, so you can paste it into an email, a Teams or Slack
+  message, a Google Doc, Word or Notion. Screenshots are scaled down to 800
+  pixels wide. StepForge checks them for private details first, as it does
+  before publishing.
 - **Share → Share this guide as a .sfgz file** packages a guide and all of its
   images into one file. Anyone with StepForge can open it with
   **Import → Import a copy of a guide (.sfgz)…**.

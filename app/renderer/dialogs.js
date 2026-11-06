@@ -2165,6 +2165,90 @@ function showRecordingReminder({
   });
 }
 
+const COPY_STAGES = [
+  ['check', t('Check screenshots for private details')],
+  ['build', t('Build the copy with its screenshots')],
+  ['copy', t('Put it on the clipboard')],
+];
+
+/**
+ * Share → Copy to clipboard: a window that shows each stage as it happens,
+ * like publishing to GitHub Pages or Wiki.js, then what was copied.
+ * `run(onProgress)` does the copy and resolves with its result
+ * ({ review }); `onProgress` takes { stage, done, total }. Closing the window
+ * early lets the copy finish and says so with a toast. Resolves with the
+ * result (or null when it failed) once the copy is over.
+ */
+function showCopyToClipboardDialog({ guideTitle, run }) {
+  const fill = el('span.gh-progress-fill', { style: {} });
+  const bar = el('div.gh-progress.indeterminate', { role: 'progressbar', 'aria-label': t('Copying progress'), 'aria-valuemin': '0', 'aria-valuemax': '100' }, fill);
+  const detail = el('span.gh-progress-detail.muted', {}, '');
+  const stages = COPY_STAGES.map(([id, label]) => {
+    const icon = el('span.gh-stage-icon', { 'aria-hidden': 'true' });
+    const note = el('span.gh-stage-note.muted', {}, '');
+    return { id, icon, note, node: el('li.gh-stage', {}, icon, el('span.gh-stage-label', {}, label), note) };
+  });
+  const body = el('div.gh-publish', {}, el('div.gh-publishing', { role: 'status', 'aria-live': 'polite' },
+    el('p', {}, el('strong', {}, t('Copying “{title}”', { title: guideTitle }))),
+    el('ol.gh-stages', {}, ...stages.map((stage) => stage.node)),
+    el('div.gh-upload', {}, bar, detail),
+    el('p.muted', {}, t('You can close this window. StepForge keeps copying and lets you know when it’s done.'))));
+
+  const set = ({ stage, done, total } = {}) => {
+    const at = Math.max(0, COPY_STAGES.findIndex(([id]) => id === stage));
+    stages.forEach((entry, index) => {
+      const state = index < at ? 'done' : index === at ? 'active' : 'upcoming';
+      entry.node.className = `gh-stage ${state}`;
+      entry.icon.replaceChildren(state === 'done' ? '✓' : state === 'active' ? el('span.spinner') : '');
+      entry.note.textContent = '';
+    });
+    if (stage === 'check' && total) {
+      const percent = Math.min(100, Math.floor((done / total) * 100));
+      bar.classList.remove('indeterminate');
+      fill.style.width = `${percent}%`;
+      bar.setAttribute('aria-valuenow', String(percent));
+      stages[0].note.textContent = t('{done} of {total}', { done, total });
+      detail.textContent = t('Checking screenshot {done} of {total}…', { done: Math.min(done + 1, total), total });
+    } else {
+      bar.classList.add('indeterminate');
+      bar.removeAttribute('aria-valuenow');
+      detail.textContent = stage === 'build' ? t('Drawing the annotated screenshots…')
+        : stage === 'copy' ? t('Putting the guide on the clipboard…') : t('Checking screenshots for private details…');
+    }
+  };
+  set({ stage: 'check' });
+
+  let open = true;
+  const closeBtn = el('button', { type: 'button', onClick: () => { open = false; close(); } }, t('Close'));
+  const { close } = openModal({
+    title: t('Copy to clipboard'),
+    body,
+    footer: [closeBtn],
+    onClose: () => { open = false; },
+  });
+
+  return Promise.resolve().then(() => run(set)).then((result) => {
+    const found = result?.review && (result.review.blurs?.length || result.review.text?.length);
+    if (!open) {
+      toast(found ? `${t('Guide copied to the clipboard.')} ${privacySummary(result.review)}` : t('Guide copied to the clipboard.'), { ms: found ? 6000 : 2600 });
+      return result;
+    }
+    body.replaceChildren(el('div.gh-publishing', { role: 'status', 'aria-live': 'polite' },
+      el('p', {}, el('strong', {}, t('Copied “{title}” to the clipboard.', { title: guideTitle }))),
+      el('p', {}, t('Paste it into an email, a chat message or a document.')),
+      el('p.muted', {}, privacySummary(result?.review))));
+    closeBtn.textContent = t('Done');
+    closeBtn.classList.add('primary');
+    closeBtn.focus();
+    return result;
+  }).catch((err) => {
+    const message = t('Couldn’t copy the guide: {error}', { error: err?.message || err });
+    if (!open) toast(message, { error: true });
+    else body.replaceChildren(el('p.gh-note.error', { role: 'alert' }, message));
+    return null;
+  });
+}
+
 window.StepForgeDialogs = {
   snapshotLabel,
   promptText,
@@ -2185,5 +2269,6 @@ window.StepForgeDialogs = {
   showShortcutsDialog,
   showTemplateManager,
   showRecordingReminder,
+  showCopyToClipboardDialog,
 };
 })();

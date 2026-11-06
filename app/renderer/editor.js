@@ -3203,6 +3203,37 @@ class GuideEditor {
     }
   }
 
+  /**
+   * Share → Copy to clipboard: the whole guide with its screenshots, for
+   * mail, chat and documents. The main process checks for private details
+   * first, as publishing does; blurs it adds are in the copy.
+   */
+  async copyToClipboard() {
+    if (!this.guideId || this.copyingToClipboard) return;
+    const guideId = this.guideId;
+    this.copyingToClipboard = true;
+    try {
+      // A window shows each stage (checking, building, copying) and the result.
+      const result = await dialogs.showCopyToClipboardDialog({
+        guideTitle: this.guide?.title || t('This guide'),
+        run: async (onProgress) => {
+          const stop = api.guide.onCopyProgress((update) => { if (update?.guideId === guideId) onProgress(update); });
+          try {
+            await this.saveAll();
+            return await api.guide.copyToClipboard({ guideId });
+          } finally {
+            stop();
+          }
+        },
+      });
+      // Blurs the check added are in the guide now; show them.
+      if (result?.review?.added && this.guideId === guideId) await this.reload(this.selectedStepId);
+    } finally {
+      this.copyingToClipboard = false;
+    }
+  }
+
+
   async shareAsFile() {
     const result = await api.archive.export({ guideId: this.guideId });
     if (result && result.ok) this.onToast(t('Shared to {path}', { path: result.path }));
@@ -3479,7 +3510,18 @@ class GuideEditor {
     this.setSettings(await api.settings.all());
   }
 
+  // Export opens a dialog after loading its formats, templates and settings.
+  // If any of that fails, say why instead of doing nothing.
   async openExportDialog() {
+    try {
+      return await this.showExport();
+    } catch (err) {
+      this.onToast(t('Couldn’t open Export: {error}', { error: err?.message || err }), { error: true, ms: 8000 });
+      return undefined;
+    }
+  }
+
+  async showExport() {
     const formats = (await api.export.formats()).map((format) => (
       typeof format === 'string'
         ? { id: format, label: format.replace(/-/g, ' ') }
@@ -3633,6 +3675,7 @@ class GuideEditor {
     const commands = [
       { kind: 'cmd', label: t('New guide'), description: t('Create a blank guide'), action: () => this.onBack('new') },
       { kind: 'cmd', label: t('Export'), description: t('Export the current guide'), action: () => this.openExportDialog() },
+      { kind: 'cmd', label: t('Copy to clipboard'), description: t('Copy the guide with its screenshots'), action: () => this.copyToClipboard() },
       { kind: 'cmd', label: t('Optimize guide images'), action: () => this.optimizeImages() },
       { kind: 'cmd', label: t('Settings'), description: t('Open application settings'), action: () => this.openSettings() },
       { kind: 'cmd', label: t('Linked guide'), description: t('Show linked archive details'), action: () => this.openLinkedGuide() },

@@ -107,4 +107,37 @@ os.close(writer)
 companion.close()
 if not pump(3, lambda: not plugin_loaded()):
     fail('KWin still has the StepForge script after stop')
-print('kwin-companion: real KWin script, context, click and unload passed')
+# A helper killed before it can clean up (a crash): the next recording
+# unloads its script from KWin and deletes its file.
+import signal  # noqa: E402
+import subprocess  # noqa: E402
+helper_dir = os.path.dirname(kc.__file__)
+child = subprocess.Popen([sys.executable, '-I', '-c', f'''
+import sys, time
+sys.path.insert(0, {helper_dir!r})
+from gi.repository import Gio
+import kwin_companion as kc
+c = kc.KWinCompanion(Gio.bus_get_sync(Gio.BusType.SESSION, None), lambda *a: None, devices=[("/dev/null", "x")])
+c.check()
+print(c.plugin, c.script_file, flush=True)
+time.sleep(120)
+'''], stdout=subprocess.PIPE, text=True)
+stale_plugin, stale_file = child.stdout.readline().split()
+child.send_signal(signal.SIGKILL)
+child.wait()
+if not bus.call_sync(kc.KWIN, kc.SCRIPTING_PATH, kc.SCRIPTING_IFACE, 'isScriptLoaded',
+        GLib.Variant('(s)', [stale_plugin]), None, Gio.DBusCallFlags.NONE, 3000, None).unpack()[0]:
+    fail('the killed helper\'s script should still be loaded before cleanup')
+if not os.path.exists(stale_file):
+    fail('the killed helper\'s script file should still exist before cleanup')
+after = kc.KWinCompanion(bus, lambda *a: None, devices=[(fifo, 'event99')])
+after.check()
+still = bus.call_sync(kc.KWIN, kc.SCRIPTING_PATH, kc.SCRIPTING_IFACE, 'isScriptLoaded',
+    GLib.Variant('(s)', [stale_plugin]), None, Gio.DBusCallFlags.NONE, 3000, None).unpack()[0]
+if still or os.path.exists(stale_file):
+    fail(f'a killed helper\'s script was left behind (loaded={still}, file={os.path.exists(stale_file)})')
+after.close()
+leftovers = [n for n in os.listdir(os.environ['XDG_RUNTIME_DIR']) if n.startswith('stepforge-kwin-')]
+if leftovers:
+    fail(f'script files left after stopping: {leftovers}')
+print('kwin-companion: real KWin script, context, click, unload and crash cleanup passed')

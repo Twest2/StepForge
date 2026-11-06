@@ -7,10 +7,12 @@ install GNOME. Plasma 5 is outside this capture path.
 
 On first recording, Plasma asks which monitors to share and which global
 shortcuts StepForge may use. Share monitors rather than individual windows.
-New Plasma profiles use **Ctrl+Alt+C** to capture and **Ctrl+Alt+P** to pause
-or resume. Saved shortcut choices are preserved. KDE's portal interprets
-shifted digits as punctuation, so these defaults avoid Ctrl+Shift+1/2. Change
-existing choices in **Settings → Capture** if needed.
+On Plasma the default shortcuts are **Ctrl+Alt+C** to capture and
+**Ctrl+Alt+P** to pause or resume, because KDE's portal reads shifted digits as
+punctuation, so Ctrl+Shift+1/2 never fire there. This includes an existing
+install still on the old defaults. Shortcuts you picked yourself are kept, and
+Settings sync keeps each computer's own defaults: Plasma's don't replace
+Ctrl+Shift+1/2 on your other computers, and theirs don't replace Plasma's.
 StepForge uses KWin's window geometry and titles to crop Window captures and
 place click markers. Recording controls are in StepForge's tray menu; Pause
 and Finish there are excluded from the recording. Panel clicks may take up
@@ -21,9 +23,13 @@ normally include Spectacle; install it with `sudo apt install kde-spectacle` or
 `sudo dnf install spectacle` if you removed it.
 
 The package installs a udev rule granting the active local seat access to
-mice and touchpads, excluding keyboard devices. No membership in the broad
-`input` group is needed. If mouse buttons are unreadable after installation,
-reconnect the mouse or log out and back in. To disable this access, mask
+mice and touchpads, excluding keyboard devices. It only takes effect where KDE
+Plasma's compositor (`/usr/bin/kwin_wayland`) is installed, so a GNOME-only
+system gets no extra device access. The access is read and write, as logind
+grants it; StepForge only reads button presses. No membership in the broad
+`input` group is needed. If mouse buttons are unreadable after installation
+(for example, Plasma was installed after StepForge), reconnect the mouse or
+restart the computer. To disable this access, mask
 `/usr/lib/udev/rules.d/60-stepforge-input.rules` with a `/dev/null` symlink
 at `/etc/udev/rules.d/60-stepforge-input.rules` and reload udev rules.
 
@@ -44,6 +50,8 @@ reports the error rather than silently changing to timed capture.
 CI builds and installs both packages in clean containers, checks that GNOME
 was not installed, runs a real headless KWin with a Wayland test window and
 synthetic mouse-device events, and renders the installed Electron app. It
-does not exercise physical input hardware. The optional full-desktop test in
-`tests/integration/linux/kde-desktop` also runs the native portal dialogs,
-recording controls and Spectacle selection in an isolated Plasma desktop.
+does not exercise physical input hardware. CI also runs the full-desktop test
+in `tests/integration/linux/kde-desktop` (the native portal dialogs, a real
+PipeWire screen stream, recording controls and Spectacle selection in an
+isolated Plasma desktop) and checks the input rule against virtual kernel
+devices.

@@ -39,7 +39,10 @@ esac
 SUDO=""
 if [ "$(id -u)" -ne 0 ]; then SUDO="sudo"; fi
 
-$SUDO install -m 0644 "$RULE_SRC" "$RULE_DEST"
+# The packaged rule only applies where KWin is installed; running this script
+# is an explicit opt-in on any desktop, so install it without that condition.
+sed 's/, TEST=="\/usr\/bin\/kwin_wayland"//' "$RULE_SRC" | $SUDO tee "$RULE_DEST" >/dev/null
+$SUDO chmod 0644 "$RULE_DEST"
 $SUDO udevadm control --reload-rules
 $SUDO udevadm trigger --subsystem-match=input --action=change || true
 

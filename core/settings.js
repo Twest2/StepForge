@@ -150,6 +150,11 @@ const SHARED_SETTING_PATHS = Object.freeze({
   hotkeyCapture: 'capture.hotkeyCapture', hotkeyPauseResume: 'capture.hotkeyPauseResume',
 });
 const valueAt = (data, keyPath) => keyPath.split('.').reduce((value, key) => value?.[key], data);
+const setAt = (data, keyPath, value) => {
+  const keys = keyPath.split('.');
+  const parent = keys.slice(0, -1).reduce((obj, key) => obj[key], data);
+  parent[keys[keys.length - 1]] = value;
+};
 const sharedValues = (data) => Object.fromEntries(Object.entries(SHARED_SETTING_PATHS)
   .map(([key, keyPath]) => [key, valueAt(data, keyPath)]));
 
@@ -178,6 +183,15 @@ class Settings {
   load() {
     const stored = readJsonIfExists(this.file, {});
     const data = mergeDeep(deepClone(this.defaults), stored);
+    // Where this computer has its own default for a shared setting (KDE
+    // Plasma's recording shortcuts), the general default saved before means
+    // "default" too: every save writes all values, and Ctrl+Shift+1/2 do not
+    // work through Plasma's shortcut portal.
+    for (const keyPath of Object.values(SHARED_SETTING_PATHS)) {
+      const general = valueAt(DEFAULT_SETTINGS, keyPath);
+      const local = valueAt(this.defaults, keyPath);
+      if (!isDeepStrictEqual(general, local) && isDeepStrictEqual(valueAt(data, keyPath), general)) setAt(data, keyPath, deepClone(local));
+    }
     if (!data.editor || typeof data.editor !== 'object' || Array.isArray(data.editor)) data.editor = deepClone(DEFAULT_SETTINGS.editor);
     // AI may use a server on any computer now; the old on/off switch for that is gone.
     if (data.ai && typeof data.ai === 'object') delete data.ai.allowRemoteHost;
@@ -201,6 +215,11 @@ class Settings {
   save() {
     writeJsonSync(this.file, this.data);
     return this.data;
+  }
+
+  /** This computer's default for a setting (DEFAULT_SETTINGS plus its overrides). */
+  defaultValue(keyPath) {
+    return valueAt(this.defaults, keyPath);
   }
 
   get(keyPath) {

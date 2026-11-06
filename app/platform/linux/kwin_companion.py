@@ -19,6 +19,7 @@ import collections
 import fcntl
 import json
 import os
+import re
 import struct
 import tempfile
 import time
@@ -43,9 +44,11 @@ HELPER_XML = f'''<node><interface name="{HELPER_IFACE}">
 KEEPALIVE_S = 10
 REQUEST_TIMEOUT_MS = 5000
 MAX_REQUESTS = 32
+# Script files written by load_script(): stepforge-kwin-<helper pid>-<random>.js
+STALE_SCRIPT = re.compile(r'stepforge-kwin-(\d+)-[^/]*\.js')
 
 NO_DEVICES = ('StepForge cannot read mouse buttons. Install the StepForge package, '
-              'then unplug and replug the mouse or log out and back in.')
+              'then unplug and replug the mouse or restart the computer.')
 
 # ---- kernel input events ----------------------------------------------------
 EVENT = struct.Struct('llHHi')  # struct input_event: timeval, type, code, value
@@ -248,7 +251,10 @@ class KWinCompanion:
         with open(self.script_source, encoding='utf-8') as handle:
             source = handle.read().replace('@SERVICE@', self.bus.get_unique_name())
         runtime = os.environ.get('XDG_RUNTIME_DIR') or tempfile.gettempdir()
-        fd, self.script_file = tempfile.mkstemp(prefix='stepforge-kwin-', suffix='.js', dir=runtime)
+        self.remove_stale_scripts(runtime)
+        # The file name carries this helper's process id, so a later helper can
+        # tell whose script it is if this one is killed before it can clean up.
+        fd, self.script_file = tempfile.mkstemp(prefix=f'stepforge-kwin-{os.getpid()}-', suffix='.js', dir=runtime)
         with os.fdopen(fd, 'w', encoding='utf-8') as handle:
             handle.write(source)
         script_id = self.kwin_call(SCRIPTING_PATH, SCRIPTING_IFACE, 'loadScript',
@@ -265,6 +271,36 @@ class KWinCompanion:
             raise RuntimeError('KWin did not start the StepForge script. Plasma 6 is required.')
         if self.hello.get('protocol') != PROTOCOL:
             raise RuntimeError('The StepForge KWin script does not match this helper (protocol mismatch).')
+
+    def remove_stale_scripts(self, runtime):
+        """Unload and delete scripts left by helpers that were killed (a crash
+        or SIGKILL skips close()). Such a script has stopped following the
+        pointer, but KWin keeps it loaded until it is unloaded by name."""
+        try:
+            names = os.listdir(runtime)
+        except OSError:
+            return
+        for name in names:
+            match = STALE_SCRIPT.fullmatch(name)
+            if not match or int(match.group(1)) == os.getpid():
+                continue
+            pid = int(match.group(1))
+            try:
+                os.kill(pid, 0)
+                continue  # that recording is still running
+            except ProcessLookupError:
+                pass
+            except PermissionError:
+                continue
+            try:
+                self.kwin_call(SCRIPTING_PATH, SCRIPTING_IFACE, 'unloadScript',
+                               GLib.Variant('(s)', [f'stepforge-capture-{pid}']))
+            except GLib.Error:
+                pass
+            try:
+                os.unlink(os.path.join(runtime, name))
+            except OSError:
+                pass
 
     def kwin_call(self, path, iface, method, args):
         result = self.bus.call_sync(KWIN, path, iface, method, args, None,

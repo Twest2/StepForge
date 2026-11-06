@@ -83,7 +83,7 @@ function detectLinuxCapabilities({
     messages.push('xinput not found: per-click capture with a marker is unavailable on X11 without it.');
   }
   if (plasmaRequired && readableInputDevices === 0) {
-    messages.push('StepForge cannot read mouse buttons. Install the StepForge package, then unplug and replug the mouse or log out and back in.');
+    messages.push('StepForge cannot read mouse buttons. Install the StepForge package, then unplug and replug the mouse or restart the computer.');
   }
   if (clickCapture === 'hotkey-or-interval-only') {
     messages.push('No global click source available. Recording falls back to a hotkey or interval trigger.');

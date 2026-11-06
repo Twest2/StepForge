@@ -1,6 +1,7 @@
 # Full Plasma desktop integration
 
-This opt-in test installs the built Debian package in Ubuntu 26.04 with a full
+The `desktop` job in `.github/workflows/kde-integration.yml` runs this on every
+pull request. It installs the built Debian package in Ubuntu 26.04 with a full
 Plasma desktop. KWin uses a virtual 1280×900 output and Mesa llvmpipe. The test
 uses the real KDE sharing dialog, PipeWire stream, KWin companion, shortcut
 portal, tray and Spectacle selector. CDP supplies trusted mouse input to the app;

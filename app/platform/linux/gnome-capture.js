@@ -85,7 +85,7 @@ class GnomeCaptureService extends CaptureService {
       backend.on('failure', (reason) => { if (current()) this.recordingFailed(reason); });
       backend.on('click', (event) => this.onGnomeClick(event));
       const win = this.getWindow();
-      if (win && !win.isDestroyed()) win.minimize();
+      if (win && !win.isDestroyed()) this.hideRecordingWindow(win);
       await delay(Math.max(150, Number(this.settings.get('capture.postHideSettleMs')) || 0));
       if (!current()) return;
       await backend.arm();
@@ -104,6 +104,8 @@ class GnomeCaptureService extends CaptureService {
     if (win && !win.isDestroyed()) { win.restore(); win.show(); }
     this.notify('capture:state', this.state());
   }
+
+  hideRecordingWindow(win) { win.minimize(); }
 
   stopClickFrameBackend() {
     if (this.pendingBackend) {
@@ -138,7 +140,8 @@ class GnomeCaptureService extends CaptureService {
       if (gate && !(await gate)) return;
       const { frame, error } = await framePromise;
       if (error) throw error;
-      const result = await this.storeFrameAsStep(guideId, frame.mode, frame, point, clickMeta);
+      const output = this.prepareClickFrame(frame, mode, event.window);
+      const result = await this.storeFrameAsStep(guideId, output.mode, output, point, clickMeta);
       if (result.ok) {
         // Accepted clicks stay with their original guide even across pause,
         // finish, or a new recording. Do not increment a different session.
@@ -160,6 +163,8 @@ class GnomeCaptureService extends CaptureService {
   // A promise resolving to whether a click may become a step, or null to
   // store it at once. GNOME's extension already ignores its own panel menu.
   clickGate() { return null; }
+
+  prepareClickFrame(frame) { return frame; }
 
   cropFrame(frame, rect, mode) {
     const geometry = cropGeometry(frame.display.bounds, rect, frame.size);

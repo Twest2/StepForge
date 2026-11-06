@@ -240,6 +240,7 @@ class StepForgeApp {
     ]);
     this.state.info = info;
     document.body.classList.toggle('platform-linux', info.platform === 'linux');
+    document.body.classList.toggle('desktop-plasma', info.captureDesktop === 'plasma');
     this.state.settings = settings;
     this.state.library = {
       guides: library.guides || [],

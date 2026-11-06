@@ -31,4 +31,13 @@ function waylandCaptureDesktop(platform = process.platform, env = process.env) {
   return desktop === 'other' ? null : desktop;
 }
 
-module.exports = { isWaylandSession, detectLinuxDesktop, waylandCaptureDesktop };
+// Shifted digits become punctuation in KDE's shortcut portal (e.g. Shift+2
+// is @ on a US keyboard), so those default triggers do not match key events.
+// Letter keys also keep distinct IDs in Electron's portal backend (function
+// keys generate the same empty ID there). Saved choices win.
+const PLASMA_HOTKEYS = {
+  hotkeyCapture: 'CommandOrControl+Alt+C',
+  hotkeyPauseResume: 'CommandOrControl+Alt+P',
+};
+
+module.exports = { isWaylandSession, detectLinuxDesktop, waylandCaptureDesktop, PLASMA_HOTKEYS };

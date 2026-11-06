@@ -216,6 +216,22 @@ function fixture(settings = {}) {
 
 const click = (fields) => ({ x: 400, y: 300, at: 5000, button: 1, windowPid: 99, hitKind: 'window', hitClass: 'kate', ...fields });
 
+test('Plasma hides the app before arming clicks so portal activation cannot restore it', async () => {
+  const { service } = fixture();
+  let hidden = false;
+  service.getWindow = () => ({ isDestroyed: () => false, hide: () => { hidden = true; } });
+  service.backendFactory().arm = async () => assert.equal(hidden, true);
+  service.armRecording();
+  await service.starting;
+  assert.equal(service.warmingUp, false);
+  assert.equal(hidden, true);
+  let restored = false;
+  service.showWindow = () => { restored = true; };
+  service.finishSession();
+  assert.equal(restored, true, 'Finish restores the window hidden for recording');
+  assert.equal(service.hiddenForSession, false);
+});
+
 test('a Window step on Plasma is the clicked window, cut from the pre-click frame, with its marker', async () => {
   const { service, saved } = fixture({ 'capture.mode': 'window' });
   service.onGnomeClick(click({ window: { x: 200, y: 100, width: 800, height: 600 }, appName: 'Kate', windowTitle: 'notes.txt — Kate' }));
@@ -249,6 +265,15 @@ test('the panel click that opens the tray menu and the one that stops recording 
   await service.clickQueue;
   assert.deepEqual(saved.map((step) => step.annotations.length), [1]);
   assert.equal(saved.length, 1, 'only the workflow click');
+});
+
+test('discarded tray gestures in Window mode do not report a missing-window warning', async () => {
+  const { service, saved, events } = fixture({ 'capture.mode': 'window' });
+  service.onGnomeClick(click({ window: null, hitKind: 'panel', hitClass: 'plasmashell' }));
+  service.noteUiStopGesture();
+  await service.clickQueue;
+  assert.equal(saved.length, 0);
+  assert.equal(events.filter(([, value]) => value?.kind === 'window-not-found').length, 0);
 });
 
 test('a panel click is a step once the user clicks elsewhere or after the hold', async (t) => {

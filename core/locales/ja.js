@@ -1313,6 +1313,7 @@
   'Before recording starts': '録画を開始する前に',
   'Recording tip': '録画のヒント',
   'To stop, use StepForge REC in the GNOME top panel, or restore StepForge from the dock.': '停止するには、GNOME のトップバーにある StepForge REC を使うか、Dock から StepForge を元に戻してください。',
+  "To pause or finish, use the StepForge tray icon beside the clock, or restore StepForge from the taskbar.": "一時停止または終了するには、時計の横にある StepForge のトレイアイコンを使うか、タスクバーから StepForge を復元してください。",
   "Use the floating bar to pause or finish. If you use the tray icon, look for the red dot beside the clock.": "フローティングバーで一時停止・終了できます。通知領域のアイコンを使う場合は、時計の横にある赤い点を探してください。",
   '{count} matches, {selected} selected, {blocked} cannot take this replacement.': { other: '{count} 件一致、{selected} 件選択、{blocked} 件はこの置換を適用できません。' },
   '{count} matches, {selected} selected.': { other: '{count} 件一致、{selected} 件選択。' },

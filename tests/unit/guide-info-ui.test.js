@@ -59,6 +59,17 @@ function ui() {
   return { context, root, visible, all };
 }
 
+test('Plasma recording reminder explains its tray controls and Continue completes the dialog', async () => {
+  const u = ui();
+  u.context.document.body = { classList: { contains: name => ['desktop-plasma', 'platform-linux'].includes(name) } };
+  const done = u.context.window.StepForgeDialogs.showRecordingReminder();
+  assert.match(u.root.textContent, /StepForge tray icon beside the clock/);
+  assert.doesNotMatch(u.root.textContent, /GNOME|floating bar/);
+  await u.all(u.root).find(n => n.tag === 'button' && n.textContent === 'Continue').listeners.click();
+  assert.equal(await done, true);
+  assert.equal(u.root.children.length, 0);
+});
+
 test('offline Guide information hides cloud controls and preserves existing metadata and sharing', async () => {
   const u = ui(); let saved;
   const done = u.context.window.StepForgeDialogs.showGuideInfoDialog({

@@ -7,6 +7,10 @@ install GNOME. Plasma 5 is outside this capture path.
 
 On first recording, Plasma asks which monitors to share and which global
 shortcuts StepForge may use. Share monitors rather than individual windows.
+New Plasma profiles use **Ctrl+Alt+C** to capture and **Ctrl+Alt+P** to pause
+or resume. Saved shortcut choices are preserved. KDE's portal interprets
+shifted digits as punctuation, so these defaults avoid Ctrl+Shift+1/2. Change
+existing choices in **Settings → Capture** if needed.
 StepForge uses KWin's window geometry and titles to crop Window captures and
 place click markers. Recording controls are in StepForge's tray menu; Pause
 and Finish there are excluded from the recording. Panel clicks may take up
@@ -40,4 +44,6 @@ reports the error rather than silently changing to timed capture.
 CI builds and installs both packages in clean containers, checks that GNOME
 was not installed, runs a real headless KWin with a Wayland test window and
 synthetic mouse-device events, and renders the installed Electron app. It
-does not automate the human portal consent dialogs or physical input hardware.
+does not exercise physical input hardware. The optional full-desktop test in
+`tests/integration/linux/kde-desktop` also runs the native portal dialogs,
+recording controls and Spectacle selection in an isolated Plasma desktop.

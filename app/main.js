@@ -329,8 +329,10 @@ function createWindow() {
     event.preventDefault();
     handleZoomShortcut(kind);
   });
-  loadMainPage();
-  mainWindow.once('ready-to-show', () => {
+  // On native Plasma Wayland, an unmapped surface may not receive the first
+  // paint that ready-to-show waits for. Map it once its document has loaded.
+  const readyEmitter = plasmaWayland ? mainWindow.webContents : mainWindow;
+  readyEmitter.once(plasmaWayland ? 'did-finish-load' : 'ready-to-show', () => {
     mainWindow.show();
     // Dev-only verification hook: optionally navigate, then write a
     // screenshot locally and exit. Used by the smoke tooling.
@@ -601,6 +603,7 @@ function createWindow() {
       }, 1500);
     }
   });
+  loadMainPage();
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 
@@ -1931,6 +1934,7 @@ function setupIpc() {
     devBuild,
     dataDir: store.root,
     platform: process.platform,
+    captureDesktop: require('./platform/linux/desktop').waylandCaptureDesktop(),
     license: PACKAGE_JSON.license || 'Apache-2.0',
   }));
   // Settings → About "Check for updates". Runs only when the user presses the
@@ -2035,7 +2039,9 @@ if (!gotLock) {
     libraryLocation.scheduleMigration();
     const dataDir = libraryLocation.applyPending();
     store = new GuideStore(dataDir);
-    settings = new Settings(store.settingsDir);
+    settings = new Settings(store.settingsDir, {
+      defaultOverrides: plasmaWayland ? { capture: require('./platform/linux/desktop').PLASMA_HOTKEYS } : {},
+    });
     // Shared lossless codec, also available in export workers and headless MCP.
     imageCodec = createImageCodec();
     setImageCodec(imageCodec);

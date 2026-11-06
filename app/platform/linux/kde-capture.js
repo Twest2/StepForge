@@ -51,6 +51,13 @@ class KdeCaptureService extends GnomeCaptureService {
     return { ...super.state(), gnomeRequired: false, plasmaRequired: true, clickTiming: 'input-device' };
   }
 
+  // A portal can reactivate its parent after closing on Plasma. Hiding the
+  // window avoids racing that activation with a minimize request.
+  hideRecordingWindow(win) {
+    this.hiddenForSession = true;
+    win.hide();
+  }
+
   clickGate(event) {
     const onPanel = event.hitKind === 'panel' || /plasmashell/i.test(event.hitClass || '');
     if (!onPanel) {
@@ -86,8 +93,13 @@ class KdeCaptureService extends GnomeCaptureService {
 
   // A click on the desktop or a panel has no window to cut out: keep the
   // screen and say so once, like the other desktops.
-  async frameForClick(point, at, mode = 'fullscreen', windowRect = null) {
-    const frame = await super.frameForClick(point, at, 'fullscreen');
+  async frameForClick(point, at) {
+    return super.frameForClick(point, at, 'fullscreen');
+  }
+
+  prepareClickFrame(frame, mode, windowRect) {
+    // Crop only after tray gestures have been filtered. A discarded tray
+    // click must not announce that its panel has no application window.
     return mode === 'window' ? this.windowFrame(frame, windowRect) : frame;
   }
 

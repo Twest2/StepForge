@@ -4,6 +4,7 @@ const { newId, nowIso } = require('./util');
 const { sanitizeHtml } = require('./sanitize');
 const { blockText } = require('./blocks');
 const { normalizeReviewDays, normalizeDateOnly } = require('./review');
+const { SPOTLIGHT_DARKNESS, SPOTLIGHT_CORNER_RADIUS } = require('./annotation-properties');
 
 const SCHEMA_VERSION = 1;
 
@@ -11,8 +12,12 @@ const STEP_KINDS = ['image', 'empty', 'content'];
 const STEP_STATUSES = ['todo', 'in-progress', 'done'];
 const ANNOTATION_TYPES = [
   'rect', 'oval', 'line', 'arrow', 'text', 'tooltip', 'number',
-  'blur', 'highlight', 'magnify', 'cursor',
+  'blur', 'highlight', 'magnify', 'cursor', 'spotlight',
 ];
+const SPOTLIGHT_SHAPES = ['rect', 'oval'];
+// A spotlight darkens everything outside it. darkness: 0..1 of black over the
+// rest of the screenshot; cornerRadius: px on a 1000px-wide image, like strokeWidth.
+const SPOTLIGHT_DEFAULTS = { shape: 'rect', darkness: SPOTLIGHT_DARKNESS, cornerRadius: SPOTLIGHT_CORNER_RADIUS };
 const TEXTBLOCK_LEVELS = ['info', 'warn', 'error', 'success'];
 const TEXTBLOCK_POSITIONS = [
   'before-title', 'after-title', 'before-image', 'after-image',
@@ -150,6 +155,12 @@ function normalizeAnnotation(a) {
   if (ann.type === 'blur' && a.redact && typeof a.redact.kind === 'string' && typeof a.redact.key === 'string') {
     ann.redact = { kind: a.redact.kind.slice(0, 20), key: a.redact.key.slice(0, 80) };
   }
+  if (ann.type === 'spotlight') {
+    const st = ann.style;
+    st.shape = SPOTLIGHT_SHAPES.includes(st.shape) ? st.shape : SPOTLIGHT_DEFAULTS.shape;
+    st.darkness = Math.min(1, Math.max(0, num(st.darkness, SPOTLIGHT_DEFAULTS.darkness)));
+    st.cornerRadius = Math.max(0, num(st.cornerRadius, SPOTLIGHT_DEFAULTS.cornerRadius));
+  }
   if (ann.type === 'tooltip') ann.style.tail = a.style && a.style.tail ? a.style.tail : 'bottom';
   return ann;
 }
@@ -257,6 +268,7 @@ module.exports = {
   STEP_KINDS,
   STEP_STATUSES,
   ANNOTATION_TYPES,
+  SPOTLIGHT_DEFAULTS,
   TEXTBLOCK_LEVELS,
   TEXTBLOCK_POSITIONS,
   DEFAULT_ANNOTATION_STYLE,

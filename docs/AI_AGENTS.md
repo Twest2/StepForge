@@ -72,8 +72,8 @@ An agent can:
 - replace a step's screenshot with a PNG file you point it to, or remove it
 - add guide and global placeholders
 - draw on screenshots (shapes, arrows, text, callouts, numbered badges, blurs,
-  highlights, magnifiers, and cursors), and delete annotations other than
-  blurs
+  highlights, magnifiers, cursors, and spotlights), and delete annotations
+  other than blurs
 - if you allow it, set up your
   [brand profiles](BRANDING.md#let-an-ai-agent-set-up-your-brand)
 

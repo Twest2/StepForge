@@ -92,6 +92,7 @@ const ANNOTATION_FIELDS = {
   highlight: [],
   magnify: ['zoom', 'stroke', 'strokeWidth'],
   cursor: [],
+  spotlight: ['shape', 'darkness', 'cornerRadius'],
 };
 // Types whose fill can be Transparent. A tooltip's text sits on its fill, so it keeps one.
 const CLEARABLE_FILL_TYPES = new Set(['rect', 'oval']);
@@ -115,6 +116,7 @@ const ANNOTATION_TYPE_LABELS = {
   highlight: t('Highlight'),
   magnify: t('Magnify'),
   cursor: t('Cursor'),
+  spotlight: t('Spotlight'),
 };
 
 // Canvas toolbar icons: simple outlines drawn for StepForge (no icon font or
@@ -133,6 +135,7 @@ const TOOL_ICON_PATHS = {
   highlight: '<path d="M14.5 4.5l5 5L11 18l-5-5zM4 20h7"/>',
   magnify: '<circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5"/>',
   cursor: '<path d="M6 4v12l3.2-2.8 2.2 5 2-.9-2.2-4.9h4.6z"/><path d="M17.5 3.5l1 1.5M20.5 8h1.5M3 3l1.5 1.5"/>',
+  spotlight: '<rect x="3" y="4" width="18" height="16" rx="1.5"/><circle cx="12" cy="12" r="4"/><path d="M3 9l5-5M16 20l5-5"/>',
   crop: '<path d="M6 3v13h13M3 6h13v15"/>',
   undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
   redo: '<path d="M15 14l5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/>',
@@ -639,6 +642,7 @@ class GuideEditor {
       ['highlight', t('Highlight')],
       ['magnify', t('Magnify')],
       ['cursor', t('Cursor')],
+      ['spotlight', t('Spotlight')],
       ['crop', t('Crop')],
     ];
 
@@ -1846,13 +1850,20 @@ class GuideEditor {
 
     const style = selected.style || {};
     const typeSelect = makeSelect(selected.type, [
-      'rect', 'oval', 'line', 'arrow', 'text', 'tooltip', 'number', 'blur', 'highlight', 'magnify', 'cursor',
+      'rect', 'oval', 'line', 'arrow', 'text', 'tooltip', 'number', 'blur', 'highlight', 'magnify', 'cursor', 'spotlight',
     ].map((type) => ({ value: type, label: ANNOTATION_TYPE_LABELS[type] || type })));
     const valueInput = el('input', { type: 'number', value: Number.isFinite(selected.value) ? selected.value : '', placeholder: t('Value') });
     const strokeWidthInput = el('input', { type: 'number', min: 1, step: 1, value: style.strokeWidth || 3 });
     const fontSizeInput = el('input', { type: 'number', min: 0.01, max: 100, step: 0.01, value: window.StepForgeAnnotationProperties.percentage(style.fontSize || 0.022), 'aria-label': t('Font size (% of image height)') });
     const zoomInput = el('input', { type: 'number', min: 1, step: 0.1, value: selected.zoom || 2 });
     const radiusInput = el('input', { type: 'number', min: 1, step: 1, value: selected.radius || 8 });
+    const props = window.StepForgeAnnotationProperties;
+    const shapeInput = makeSelect(style.shape === 'oval' ? 'oval' : 'rect', [
+      { value: 'rect', label: t('Rectangle') },
+      { value: 'oval', label: t('Oval') },
+    ]);
+    const darknessInput = el('input', { type: 'number', min: 0, max: 100, step: 5, value: Math.round(props.spotlightDarkness(style) * 100) });
+    const cornerRadiusInput = el('input', { type: 'number', min: 0, step: 1, value: Number.isFinite(style.cornerRadius) ? style.cornerRadius : props.SPOTLIGHT_CORNER_RADIUS });
     const tailInput = makeSelect(style.tail || 'bottom', [
       { value: 'bottom', label: t('Bottom') },
       { value: 'top', label: t('Top') },
@@ -1919,6 +1930,9 @@ class GuideEditor {
     if (fields.has('zoom')) rows.push(labeledRow(t('Zoom'), zoomInput));
     if (fields.has('radius')) rows.push(labeledRow(t('Radius'), radiusInput));
     if (fields.has('tail')) rows.push(labeledRow(t('Tail'), tailInput));
+    if (fields.has('shape')) rows.push(labeledRow(t('Shape'), shapeInput));
+    if (fields.has('darkness')) rows.push(labeledRow(t('Darkness (%)'), darknessInput));
+    if (fields.has('cornerRadius') && style.shape !== 'oval') rows.push(labeledRow(t('Corner radius'), cornerRadiusInput));
     rows.push(
       el('div.muted', {}, t('Copy this style to every other “{type}” annotation:', { type: typeLabel })),
       el('div.row', {},
@@ -1976,6 +1990,37 @@ class GuideEditor {
       const ann = this.canvas.selected();
       if (!ann) return;
       await apply({ radius: Number(radiusInput.value || 8) });
+    });
+    shapeInput.addEventListener('change', () => {
+      const ann = this.canvas.selected();
+      if (!ann) return;
+      this.pushCanvasHistory('annotation-shape');
+      apply({ style: { ...ann.style, shape: shapeInput.value } }, { rerender: true });
+    });
+    // Typing a number is one undo step: the first change after focusing records it.
+    const recordOnFirstInput = (input, label) => {
+      let armed = false;
+      input.addEventListener('focus', () => { armed = true; });
+      return () => {
+        if (armed) this.pushCanvasHistory(label);
+        armed = false;
+      };
+    };
+    const recordDarkness = recordOnFirstInput(darknessInput, 'annotation-darkness');
+    darknessInput.addEventListener('input', () => {
+      const ann = this.canvas.selected();
+      const value = Number(darknessInput.value);
+      if (!ann || darknessInput.value === '' || !Number.isFinite(value)) return;
+      recordDarkness();
+      apply({ style: { ...ann.style, darkness: Math.min(100, Math.max(0, value)) / 100 } });
+    });
+    const recordCornerRadius = recordOnFirstInput(cornerRadiusInput, 'annotation-corner-radius');
+    cornerRadiusInput.addEventListener('input', () => {
+      const ann = this.canvas.selected();
+      const value = Number(cornerRadiusInput.value);
+      if (!ann || cornerRadiusInput.value === '' || !Number.isFinite(value)) return;
+      recordCornerRadius();
+      apply({ style: { ...ann.style, cornerRadius: Math.max(0, value) } });
     });
     tailInput.addEventListener('change', async () => {
       const ann = this.canvas.selected();
@@ -2132,6 +2177,11 @@ class GuideEditor {
         : { fill: '#1f6feb', stroke: '#1f6feb', textColor: '#ffffff' };
       case 'blur': return { fill: 'transparent', stroke: '#9ca3af', strokeWidth: 2 };
       case 'cursor': return { fill: '#ffffff', stroke: '#111827', strokeWidth: 2 };
+      case 'spotlight': return {
+        shape: 'rect',
+        darkness: window.StepForgeAnnotationProperties.SPOTLIGHT_DARKNESS,
+        cornerRadius: window.StepForgeAnnotationProperties.SPOTLIGHT_CORNER_RADIUS,
+      };
       default: return { fill: 'transparent', stroke: brand?.shapes || '#E5484D', strokeWidth: 3, textColor: '#ffffff' };
     }
   }
@@ -4086,7 +4136,7 @@ class GuideEditor {
       const TOOL_KEYS = {
         s: 'select', r: 'rect', o: 'oval', l: 'line', a: 'arrow', t: 'text',
         g: 'tooltip', n: 'number', b: 'blur', h: 'highlight', m: 'magnify',
-        u: 'cursor', c: 'crop',
+        u: 'cursor', k: 'spotlight', c: 'crop',
       };
       if (!e.ctrlKey && !e.metaKey && !e.altKey && TOOL_KEYS[e.key.toLowerCase()]) {
         e.preventDefault();

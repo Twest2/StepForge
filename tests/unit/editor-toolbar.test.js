@@ -125,7 +125,7 @@ function makeEditor(guides) {
   return editor;
 }
 
-const TOOLS = ['select', 'rect', 'oval', 'line', 'arrow', 'text', 'tooltip', 'number', 'blur', 'highlight', 'magnify', 'cursor', 'crop'];
+const TOOLS = ['select', 'rect', 'oval', 'line', 'arrow', 'text', 'tooltip', 'number', 'blur', 'highlight', 'magnify', 'cursor', 'spotlight', 'crop'];
 
 // Checks every tool and zoom button: pressed (class and aria-pressed) exactly when it matches the editor state.
 function assertToolbar(editor, { tool, zoom }) {
@@ -191,7 +191,7 @@ test('every tool button has an icon and a name in its title and aria-label, with
   const names = {
     rect: 'Rectangle', oval: 'Oval', line: 'Line', arrow: 'Arrow', text: 'Text',
     tooltip: 'Tooltip', number: 'Number', blur: 'Blur', highlight: 'Highlight', magnify: 'Magnify',
-    cursor: 'Cursor', crop: 'Crop',
+    cursor: 'Cursor', spotlight: 'Spotlight', crop: 'Crop',
   };
   for (const [tool, name] of Object.entries(names)) {
     const node = editor.dom[`tool-${tool}`];

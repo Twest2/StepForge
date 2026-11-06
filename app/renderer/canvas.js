@@ -9,7 +9,7 @@
  * editor shows what exports produce.
  */
 
-const DRAW_ORDER = { blur: 0, highlight: 1, magnify: 2, rect: 3, oval: 3, line: 3, arrow: 3, cursor: 4, number: 5, text: 6, tooltip: 7 };
+const DRAW_ORDER = { blur: 0, highlight: 1, magnify: 2, spotlight: 2.5, rect: 3, oval: 3, line: 3, arrow: 3, cursor: 4, number: 5, text: 6, tooltip: 7 };
 const POINT_TOOLS = new Set(['line', 'arrow']);
 const HANDLE_SIZE = 8;
 
@@ -214,6 +214,30 @@ class AnnotationCanvas {
     this.ctx.drawImage(off, d.x, d.y, d.w, d.h);
   }
 
+  // All spotlights share one dark overlay with every spotlight cut out of it,
+  // drawn from the same areas as core/raster.js drawSpotlights.
+  drawSpotlights() {
+    const view = this.viewRect();
+    const spots = window.StepForgeAnnotationProperties.spotlightAreas(this.annotations, (a) => this.px(a), this.canvas.width / 1000 / view.w);
+    if (!spots || !(spots.darkness > 0)) return;
+    const { width, height } = this.canvas;
+    const layer = this.spotlightLayer || (this.spotlightLayer = document.createElement('canvas'));
+    layer.width = width;
+    layer.height = height;
+    const lctx = layer.getContext('2d');
+    lctx.fillStyle = `rgba(0, 0, 0, ${Math.min(1, spots.darkness)})`;
+    lctx.fillRect(0, 0, width, height);
+    lctx.globalCompositeOperation = 'destination-out';
+    lctx.fillStyle = '#000';
+    for (const s of spots.areas) {
+      lctx.beginPath();
+      if (s.oval) lctx.ellipse(s.x + s.w / 2, s.y + s.h / 2, s.w / 2, s.h / 2, 0, 0, Math.PI * 2);
+      else lctx.roundRect(s.x, s.y, s.w, s.h, s.radius);
+      lctx.fill();
+    }
+    this.ctx.drawImage(layer, 0, 0);
+  }
+
   drawAnnotation(ann) {
     const { ctx } = this;
     const { x, y, w, h } = this.px(ann);
@@ -266,6 +290,10 @@ class AnnotationCanvas {
         }
         break;
       }
+      case 'spotlight':
+        // The first spotlight draws the overlay for all of them.
+        if (ann === this.annotations.find((a) => a.type === 'spotlight')) this.drawSpotlights();
+        break;
       case 'highlight':
         ctx.fillStyle = 'rgba(255, 235, 59, 0.41)';
         ctx.fillRect(x, y, w, h);

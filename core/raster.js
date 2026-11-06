@@ -2,6 +2,7 @@
 
 const text = require('./text-raster');
 const { pixelRect, fillFromSurroundings } = require('./blur-fill');
+const { spotlightAreas } = require('./annotation-properties');
 
 /**
  * Software rasterizer for annotation rendering in exports. Operates on
@@ -192,6 +193,50 @@ function magnifyRegion(img, x, y, w, h, zoom, borderColor, t) {
   strokeOval(img, x, y, w, h, borderColor, t);
 }
 
+/** Anti-aliased coverage (0..1) of a pixel centre by a rounded rectangle (w, h >= 0). */
+function roundRectCoverage(x, y, w, h, r, px, py) {
+  const hw = w / 2, hh = h / 2;
+  const qx = Math.abs(px - (x + hw)) - (hw - r);
+  const qy = Math.abs(py - (y + hh)) - (hh - r);
+  const dist = Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - r;
+  return Math.max(0, Math.min(1, 0.5 - dist));
+}
+
+/**
+ * Spotlights: one dark overlay over the whole image with every area cut out
+ * of it, so overlapping or separate spotlights all stay bright and the rest is
+ * darkened once. Matches the editor canvas drawing black at `darkness` and
+ * erasing each area (destination-out).
+ */
+function drawSpotlights(img, areas, darkness) {
+  if (!areas.length || !(darkness > 0)) return;
+  const a = Math.min(1, darkness);
+  const d = img.data;
+  for (let yy = 0; yy < img.height; yy++) {
+    const py = yy + 0.5;
+    const row = areas.filter((s) => py >= s.y - 1 && py <= s.y + s.h + 1);
+    for (let xx = 0; xx < img.width; xx++) {
+      const px = xx + 0.5;
+      let keep = 1; // how much of the overlay is left at this pixel
+      for (const s of row) {
+        if (px < s.x - 1 || px > s.x + s.w + 1 || s.w <= 0 || s.h <= 0) continue;
+        const cov = s.oval
+          ? ovalEdgeCoverage(s.x + s.w / 2, s.y + s.h / 2, s.w / 2, s.h / 2, px, py)
+          : roundRectCoverage(s.x, s.y, s.w, s.h, s.radius, px, py);
+        keep *= 1 - cov;
+        if (keep <= 0) break;
+      }
+      if (keep <= 0) continue;
+      const alpha = a * keep;
+      const p = (yy * img.width + xx) * 4;
+      d[p] = Math.round(d[p] * (1 - alpha));
+      d[p + 1] = Math.round(d[p + 1] * (1 - alpha));
+      d[p + 2] = Math.round(d[p + 2] * (1 - alpha));
+      d[p + 3] = Math.max(d[p + 3], Math.round(255 * alpha));
+    }
+  }
+}
+
 // ---- text -----------------------------------------------------------------
 
 function measureText(str, sizePx, opts = {}) {
@@ -323,7 +368,9 @@ function drawImage(dst, src, dx, dy) {
 
 // ---- annotation rendering ---------------------------------------------------
 
-const DRAW_ORDER = { blur: 0, highlight: 1, magnify: 2, rect: 3, oval: 3, line: 3, arrow: 3, cursor: 4, number: 5, text: 6, tooltip: 7 };
+// Spotlights darken the screenshot (with blurs, highlights and magnifiers);
+// shapes, text and badges are drawn over the overlay.
+const DRAW_ORDER = { blur: 0, highlight: 1, magnify: 2, spotlight: 2.5, rect: 3, oval: 3, line: 3, arrow: 3, cursor: 4, number: 5, text: 6, tooltip: 7 };
 
 /**
  * Burn annotations into a copy of the base image. Annotation coords are
@@ -341,6 +388,9 @@ function renderAnnotations(baseImg, annotations = []) {
   // No blur may read pixels under any blur, so overlapping blurs can't leak.
   const hidden = annotations.filter((a) => a.type === 'blur')
     .map((a) => pixelRect(img, px(a.x, W), px(a.y, H), px(a.w, W), px(a.h, H))).filter(Boolean);
+
+  const spotlights = spotlightAreas(annotations, (a) => ({ x: px(a.x, W), y: px(a.y, H), w: px(a.w, W), h: px(a.h, H) }), W / 1000);
+  let spotlightsDrawn = false;
 
   for (const ann of ordered) {
     const x = px(ann.x, W), y = px(ann.y, H), w = px(ann.w, W), h = px(ann.h, H);
@@ -375,6 +425,11 @@ function renderAnnotations(baseImg, annotations = []) {
         break;
       case 'magnify':
         magnifyRegion(img, x, y, w, h, ann.zoom || 2, stroke, t);
+        break;
+      case 'spotlight':
+        // The first spotlight draws the overlay for all of them.
+        if (!spotlightsDrawn) drawSpotlights(img, spotlights.areas, spotlights.darkness);
+        spotlightsDrawn = true;
         break;
       case 'text': {
         drawText(img, x, y, ann.text || '', fontPx(style), stroke[3] > 0 ? stroke : [0, 0, 0, 255], semibold);
@@ -428,7 +483,7 @@ function applyFocusedView(img, fv) {
 module.exports = {
   createImage, cloneImage, parseColor, blendPixel,
   fillRect, strokeRect, fillOval, strokeOval, drawLine, drawArrow,
-  fillRoundRect, fillPolygon, magnifyRegion,
+  fillRoundRect, fillPolygon, magnifyRegion, drawSpotlights,
   measureText, drawText, drawTextCentered, drawCursorIcon,
   crop, resize, drawImage,
   renderAnnotations, applyFocusedView,

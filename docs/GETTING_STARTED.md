@@ -161,6 +161,7 @@ again or press **Esc**.
 | Highlight | `H` | Drawing attention without covering anything |
 | Magnify | `M` | Enlarging small text or icons |
 | Cursor | `U` | Adding a mouse pointer |
+| Spotlight | `K` | Darkening everything except the area that matters |
 | Crop | `C` | Trimming the screenshot |
 
 After each annotation or crop, StepForge puts the tool down again, with the

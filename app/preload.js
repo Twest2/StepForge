@@ -39,6 +39,7 @@ const api = {
     quality: invoke('guide:quality'),
     optimizeImages: invoke('guide:optimizeImages'),
     copyToClipboard: invoke('guide:copyToClipboard'),
+    onCopyProgress: (fn) => { const listener = (e, payload) => fn(payload); ipcRenderer.on('clipboard:progress', listener); return () => ipcRenderer.removeListener('clipboard:progress', listener); },
     descriptionToMarkdown: invoke('guide:descriptionToMarkdown'),
     descriptionFromMarkdown: invoke('guide:descriptionFromMarkdown'),
     // An AI agent changed a guide through `StepForge --mcp`.

@@ -1361,13 +1361,18 @@ function setupIpc() {
   // in, for mail, chat and documents, and as plain text.
   h('guide:copyToClipboard', async ({ guideId }) => {
     if (!store.guideExists(guideId)) throw new Error(t('Guide not found.'));
+    // Each stage is shown in the Copy to clipboard window (app/renderer/dialogs.js).
+    const progress = (update) => sendToRenderer('clipboard:progress', { guideId, ...update });
     // Like publishing: nothing leaves unchecked. Blurs it adds are drawn into the copy.
+    progress({ stage: 'check' });
     const review = await redactor.checkGuide(guideId, {
-      onProgress: (update) => sendToRenderer('redact:progress', { guideId, ...update }),
+      onProgress: ({ done, total }) => progress({ stage: 'check', done, total }),
     });
+    progress({ stage: 'build' });
     const result = await runExportInWorker({ dataDir: store.root, guideId, format: 'clipboard', options: {},
       outDir: path.join(store.tempDir, `clipboard-${guideId}`), globals: settings.getGlobalPlaceholders(),
       codeStyle: exportCodeStyle(), reviewDays: exportReviewDays(), branding: exportBranding() });
+    progress({ stage: 'copy' });
     const html = preferSmallerImages(result.html, clipboardJpeg);
     // One item with both kinds: apps take the HTML, or the text if that's all they read.
     await clipboard.write([new ClipboardItem({ 'text/html': html, 'text/plain': result.text })]);

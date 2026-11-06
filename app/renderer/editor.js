@@ -3212,26 +3212,27 @@ class GuideEditor {
     if (!this.guideId || this.copyingToClipboard) return;
     const guideId = this.guideId;
     this.copyingToClipboard = true;
-    let toldChecking = false;
-    const stop = api.redact.onProgress((update) => {
-      if (update?.guideId !== guideId || !update.total || toldChecking) return;
-      toldChecking = true;
-      this.onToast(t('Checking screenshots for private details…'));
-    });
     try {
-      await this.saveAll();
-      const result = await api.guide.copyToClipboard({ guideId });
-      if (result.review?.added && this.guideId === guideId) await this.reload(this.selectedStepId);
-      const found = result.review && (result.review.blurs.length || result.review.text.length);
-      this.onToast(found ? `${t('Guide copied to the clipboard.')} ${privacySummary(result.review)}` : t('Guide copied to the clipboard.'),
-        { ms: found ? 6000 : 2600 });
-    } catch (err) {
-      this.onToast(t('Couldn’t copy the guide: {error}', { error: err.message || err }), { error: true });
+      // A window shows each stage (checking, building, copying) and the result.
+      const result = await dialogs.showCopyToClipboardDialog({
+        guideTitle: this.guide?.title || t('This guide'),
+        run: async (onProgress) => {
+          const stop = api.guide.onCopyProgress((update) => { if (update?.guideId === guideId) onProgress(update); });
+          try {
+            await this.saveAll();
+            return await api.guide.copyToClipboard({ guideId });
+          } finally {
+            stop();
+          }
+        },
+      });
+      // Blurs the check added are in the guide now; show them.
+      if (result?.review?.added && this.guideId === guideId) await this.reload(this.selectedStepId);
     } finally {
-      stop();
       this.copyingToClipboard = false;
     }
   }
+
 
   async shareAsFile() {
     const result = await api.archive.export({ guideId: this.guideId });
@@ -3509,7 +3510,18 @@ class GuideEditor {
     this.setSettings(await api.settings.all());
   }
 
+  // Export opens a dialog after loading its formats, templates and settings.
+  // If any of that fails, say why instead of doing nothing.
   async openExportDialog() {
+    try {
+      return await this.showExport();
+    } catch (err) {
+      this.onToast(t('Couldn’t open Export: {error}', { error: err?.message || err }), { error: true, ms: 8000 });
+      return undefined;
+    }
+  }
+
+  async showExport() {
     const formats = (await api.export.formats()).map((format) => (
       typeof format === 'string'
         ? { id: format, label: format.replace(/-/g, ' ') }

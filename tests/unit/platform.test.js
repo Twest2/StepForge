@@ -11,7 +11,7 @@ const { detectLinuxCapabilities, detectSessionType } = require('../../app/platfo
 
 test('detectPlatform maps process.platform to an adapter family', () => {
   assert.equal(detectPlatform('win32'), 'windows');
-  assert.equal(detectPlatform('darwin'), 'darwin');
+  assert.equal(detectPlatform('darwin'), 'unsupported');
   assert.equal(detectPlatform('linux'), 'linux');
   assert.equal(detectPlatform('sunos'), 'unsupported');
 });
@@ -25,8 +25,10 @@ test('the factory returns a valid WindowContextProvider for every OS', () => {
 });
 
 test('an unsupported platform provider returns an empty context, never throws', async () => {
-  const provider = createWindowContextProvider({ platform: 'sunos' });
-  assert.deepEqual(await provider.collect(), { appName: '', windowTitle: '' });
+  for (const platform of ['sunos', 'darwin']) {
+    const provider = createWindowContextProvider({ platform });
+    assert.deepEqual(await provider.collect(), { appName: '', windowTitle: '' });
+  }
 });
 
 test('the shared code delegates window context to the injected provider', async () => {

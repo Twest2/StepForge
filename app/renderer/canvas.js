@@ -148,7 +148,10 @@ class AnnotationCanvas {
   // A canvas-pixel point as full-image fractions (the inverse of px).
   fromPx(x, y) {
     const r = this.viewRect();
-    return { x: r.x + x / this.canvas.width * r.w, y: r.y + y / this.canvas.height * r.h };
+    // HiDPI canvases draw in CSS pixels while their backing grid is larger.
+    const width = this.viewW || this.canvas.width;
+    const height = this.viewH || this.canvas.height;
+    return { x: r.x + x / width * r.w, y: r.y + y / height * r.h };
   }
 
   // A pen or curved arrow as a polyline in canvas pixels.

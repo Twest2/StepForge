@@ -195,6 +195,18 @@ function editorWithCanvas() {
 // Arrays made inside the vm context aren't this realm's, so compare plain copies.
 const plain = (v) => JSON.parse(JSON.stringify(v));
 const ev = (x, y) => ({ pointerId: 1, clientX: x, clientY: y });
+
+test('pen coordinates use the CSS viewport on a HiDPI canvas, including focused view', () => {
+  const { canvas } = editorWithCanvas();
+  canvas.viewW = 1000;
+  canvas.viewH = 800;
+  canvas.canvas.width = 2000;
+  canvas.canvas.height = 1600;
+  assert.deepEqual(plain(canvas.fromPx(250, 200)), { x: 0.25, y: 0.25 });
+  canvas.focusedView = { enabled: true, zoom: 2, panX: 0.5, panY: 0.5 };
+  assert.deepEqual(plain(canvas.fromPx(250, 200)), { x: 0.375, y: 0.375 });
+});
+
 function drag(canvas, points) {
   canvas.onDown(ev(...points[0]));
   for (const p of points.slice(1)) canvas.onMove(ev(...p));

@@ -322,4 +322,4 @@ StepForge's own sync instead.
 
 ## Questions
 
-Email `git@twestbrook.com` with any privacy question.
+Email `tyler@stepforge.dev` with any privacy question.

@@ -8,7 +8,7 @@ const { PortalBackend } = require('./portal-backend');
 const { mouseButtonKey } = require('../../../core/text-intel');
 const { cropGeometry } = require('../../coords');
 const run = promisify(execFile);
-const UUID = 'com.twestbrook.stepforge';
+const UUID = 'tyler@stepforge.dev';
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 class GnomeCaptureService extends CaptureService {

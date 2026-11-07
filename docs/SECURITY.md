@@ -2,7 +2,7 @@
 
 ## Reporting a vulnerability
 
-Please email **`git@twestbrook.com`** with a description of the issue and
+Please email **`tyler@stepforge.dev`** with a description of the issue and
 steps to reproduce it. **Don't open a public issue or pull request** for
 security problems, so users aren't exposed before a fix is available.
 

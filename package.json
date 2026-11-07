@@ -4,7 +4,7 @@
   "buildVersion": "0.3.2.1",
   "description": "Local-first desktop tool for capturing, annotating, and exporting step-by-step guides, with an optional user-configured local AI integration.",
   "main": "app/boot.js",
-  "author": "StepForge tyler@twestbrook.com",
+  "author": "StepForge <tyler@stepforge.dev>",
   "license": "Apache-2.0",
   "private": true,
   "engines": {

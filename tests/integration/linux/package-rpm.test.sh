@@ -46,9 +46,9 @@ for needle in \
   '/opt/stepforge/app/platform/linux/kwin_companion.py' \
   '/opt/stepforge/app/platform/linux/kwin/stepforge-capture.js' \
   '/usr/lib/udev/rules.d/60-stepforge-input.rules' \
-  '/usr/share/gnome-shell/extensions/com.twestbrook.stepforge/metadata.json' \
-  '/usr/share/gnome-shell/extensions/com.twestbrook.stepforge/extension.js' \
-  '/usr/share/gnome-shell/extensions/com.twestbrook.stepforge/buttons.js'; do
+  '/usr/share/gnome-shell/extensions/tyler@stepforge.dev/metadata.json' \
+  '/usr/share/gnome-shell/extensions/tyler@stepforge.dev/extension.js' \
+  '/usr/share/gnome-shell/extensions/tyler@stepforge.dev/buttons.js'; do
   grep -qFx "$needle" <<< "$listing" || fail "missing packaged file: $needle"
 done
 grep -q '/usr/share/icons/hicolor/256x256/apps/stepforge.png' <<< "$listing" || fail "missing 256px icon"

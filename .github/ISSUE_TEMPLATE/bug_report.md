@@ -7,7 +7,7 @@ assignees: Twest2
 
 ---
 
-<!-- Security issue? Please email git@twestbrook.com instead of opening a public issue. -->
+<!-- Security issue? Please email tyler@stepforge.dev instead of opening a public issue. -->
 
 ## What happened?
 

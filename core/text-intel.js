@@ -10,6 +10,7 @@ const {
 } = require('./schema');
 const { blockText, orderedBlocks, nextBlockOrder } = require('./blocks');
 const { placeholderPromptLines, substitutePlaceholders } = require('./ai-placeholders');
+const { LANGUAGES } = require('./i18n');
 
 const DEFAULT_CAPTURE_TITLES = {
   fullscreen: 'Screen capture',
@@ -623,6 +624,26 @@ const writesBlocks = (target) => ['blocks', 'step'].includes(target);
 // chatty model cannot bury a step in filler notes.
 const MAX_NEW_AI_BLOCKS = 2;
 
+// AI writes in the interface language (core/i18n.js), named in the system
+// prompt and again in the last rules, where small models heed it most.
+// Without it they mix languages: the prompt is English, and so are the
+// titles StepForge builds at capture time. Unknown codes write English.
+function writingLanguage(code) {
+  return LANGUAGES.find((l) => l.code === code) || LANGUAGES[0];
+}
+
+function writerSystemPrompt(language) {
+  return `You are a technical documentation writer. Write every text value in ${language.english}; keep the JSON keys exactly as the schema names them. Emit only valid JSON matching the schema. Never add commentary or markdown.`;
+}
+
+function writingLanguageRules(language) {
+  const name = language.english;
+  return [
+    `- Write in ${name}. Where the steps, the capture context, a draft or a suggested title use another language, translate them into ${name}.`,
+    '- Do not translate the names of buttons, menus, fields and windows as they appear on screen, or code, commands, file paths, URLs and [[placeholder]] tokens: write them exactly as they are.',
+  ];
+}
+
 function normalizeAiLevel(level) {
   const key = normalizeWhitespace(level).toLowerCase();
   return AI_LEVEL_ALIASES.get(key) || (TEXTBLOCK_LEVELS.includes(key) ? key : 'info');
@@ -831,7 +852,9 @@ function buildAiPrompt({
   captureContext = null,
   screenshotAttached = false,
   placeholders = [],
+  language = 'en',
 } = {}) {
+  const lang = writingLanguage(language);
   const title = writesTitle(target);
   const description = writesDescription(target);
   const blocks = writesBlocks(target);
@@ -917,13 +940,13 @@ function buildAiPrompt({
     (description || blocks) && placeholders.length ? `\n${placeholderPromptLines(placeholders).join('\n')}` : null,
     '',
     'Rules:',
-    title ? '- "title" is this step\'s title, never the guide\'s title. Titles must be short imperative actions: "Click Save", "Select New document", "Open Settings".' : null,
+    title ? `- "title" is this step's title, never the guide's title. Titles must be short imperative actions: "Click Save", "Select New document", "Open Settings"${lang.code === 'en' ? '' : ` (these examples are English; write yours in ${lang.english})`}.` : null,
     title ? '- NEVER output "Screen capture", "Window capture", "Region capture", or "Capture" as a title — always produce something specific.' : null,
     title ? (hasDraftTitle
-      ? '- The user wrote their own title (shown above). Your only job is to polish its grammar and phrasing. Do NOT replace it with something different. Do NOT change what action or subject it describes.'
+      ? `- The user wrote their own title (shown above). Your only job is to polish its grammar and phrasing, and to translate it if it is not in ${lang.english}. Do NOT replace it with something different. Do NOT change what action or subject it describes.`
       : '- No title yet. Use the capture context (OCR text, window, app) to write a specific action title.') : null,
     description ? (hasDraftDesc
-      ? '- The user wrote their own description (shown above). Polish the wording to sound professional but preserve every fact and intent they stated.'
+      ? `- The user wrote their own description (shown above). Polish the wording to sound professional, in ${lang.english}, but preserve every fact and intent they stated.`
       : '- No description yet. Write 1–2 sentences describing exactly what the user does.') : null,
     blocks && existingBlocks.length
       ? '- Rewrite every existing block listed above. Copy its "id" and "kind" so it is updated in place, and keep its meaning.'
@@ -943,10 +966,11 @@ function buildAiPrompt({
       : '- No screenshot is attached. Rely on OCR, the window title, app name, and element info.',
     '- Do NOT generate blocks that describe the technical capture process or mention OCR.',
     '- Do NOT invent details not supported by the capture context.',
+    ...writingLanguageRules(lang),
   ].filter((l) => l !== null).join('\n');
 
   return {
-    systemPrompt: 'You are a technical documentation writer. Emit only valid JSON matching the schema. Never add commentary or markdown.',
+    systemPrompt: writerSystemPrompt(lang),
     prompt,
   };
 }
@@ -960,7 +984,8 @@ const GUIDE_PROMPT_MAX_STEP_CHARS = 240;
  * Prompt for the guide's own title and introduction, written from its steps.
  * `steps` are in guide order: { number, title, descriptionHtml }.
  */
-function buildGuideAiPrompt({ guide = {}, steps = [], placeholders = [] } = {}) {
+function buildGuideAiPrompt({ guide = {}, steps = [], placeholders = [], language = 'en' } = {}) {
+  const lang = writingLanguage(language);
   const clip = (text) => (text.length > GUIDE_PROMPT_MAX_STEP_CHARS
     ? `${text.slice(0, GUIDE_PROMPT_MAX_STEP_CHARS - 1)}…` : text);
   const outline = steps.slice(0, GUIDE_PROMPT_MAX_STEPS).map((step) => {
@@ -983,19 +1008,20 @@ function buildGuideAiPrompt({ guide = {}, steps = [], placeholders = [] } = {}) 
     ...(placeholders.length ? ['', ...placeholderPromptLines(placeholders)] : []),
     '',
     'Rules:',
-    '- The title is short and says what the reader will get done, for example "Submit a lab in Canvas" or "Set up SSH keys on Ubuntu".',
-    '- If the current title already says what the guide does, keep it and only fix its grammar. If it is generic, such as "Untitled guide" or a capture time, replace it.',
+    `- The title is short and says what the reader will get done, for example "Submit a lab in Canvas" or "Set up SSH keys on Ubuntu"${lang.code === 'en' ? '' : ` (these examples are English; write yours in ${lang.english})`}.`,
+    `- If the current title already says what the guide does, keep it and only fix its grammar, translating it if it is not in ${lang.english}. If it is generic, such as "Untitled guide" or a capture time, replace it.`,
     descText
-      ? '- The user wrote their own description (shown above). Polish the wording but keep every fact and intent they stated.'
+      ? `- The user wrote their own description (shown above). Polish the wording, in ${lang.english}, but keep every fact and intent they stated.`
       : '- Write a 1–3 sentence description of what the guide helps the reader do.',
     '- Mention something the reader needs before starting only if a step shows it. Never add generic requirements such as an internet connection or administrator rights.',
     '- Do not list the steps in the description.',
     '- Keep every [[placeholder]] token (such as [[Product]]) exactly as written.',
     '- Do NOT invent details the steps do not support.',
+    ...writingLanguageRules(lang),
   ].join('\n');
 
   return {
-    systemPrompt: 'You are a technical documentation writer. Emit only valid JSON matching the schema. Never add commentary or markdown.',
+    systemPrompt: writerSystemPrompt(lang),
     prompt,
   };
 }

@@ -18,7 +18,7 @@ const {
 } = require('./click-frames');
 const { physicalToDip, physicalRectToDip, displayForDipPoint, cropGeometry } = require('./coords');
 const { WINDOW_BOUNDS_CS, parseWindowBounds, readActiveWindow } = require('./platform/windows/window-bounds');
-const { DEFAULT_CAPTURE_TITLES, mouseButtonKey } = require('../core/text-intel');
+const { defaultCaptureTitle, mouseButtonKey } = require('../core/text-intel');
 
 /** True when two presses (DIP points) are close enough to be one double-click. */
 function withinDoubleClickRadius(a, b) {
@@ -2438,7 +2438,7 @@ ${WINDOW_BOUNDS_CS}
   }
 
   autoTitle(mode) {
-    return DEFAULT_CAPTURE_TITLES[mode] || 'Capture';
+    return defaultCaptureTitle(mode, this.textIntel?.translate);
   }
 
   /** Grab the screen/window image as { image, display } or throw. */

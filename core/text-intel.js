@@ -10,7 +10,12 @@ const {
 } = require('./schema');
 const { blockText, orderedBlocks, nextBlockOrder } = require('./blocks');
 const { placeholderPromptLines, substitutePlaceholders } = require('./ai-placeholders');
-const { LANGUAGES } = require('./i18n');
+const { LANGUAGES, createTranslator } = require('./i18n');
+const LOCALES = require('./locales');
+
+// Capture titles are built with a translator `t` (core/i18n.js) so they read
+// in the interface language. Without one they are English.
+const ENGLISH = createTranslator('en').t;
 
 const DEFAULT_CAPTURE_TITLES = {
   fullscreen: 'Screen capture',
@@ -130,6 +135,45 @@ const SHORTCUT_TITLES = {
   'F12':             'Open developer tools',
 };
 
+// Every capture title StepForge builds, as whole sentences translators can
+// reorder. Verbs are keyed by the English verb the code picks. SHORTCUT_TITLES
+// and DEFAULT_CAPTURE_TITLES are translated too; `npm run translations` reads
+// all three through CAPTURE_TITLE_TEXTS.
+const CAPTURE_TITLE_TEXT = {
+  Click: 'Click {target}',
+  Select: 'Select {target}',
+  'Right-click': 'Right-click {target}',
+  'Middle-click': 'Middle-click {target}',
+  'Double-click': 'Double-click {target}',
+  'Search for': 'Search for {target}',
+  Open: 'Open {target}',
+  Enter: 'Enter {target}',
+  searchTyped: 'Search for "{text}"',
+  searchResult: 'Select a {query} result',
+  closeTab: 'Close "{tab}" tab',
+  closeApp: 'Close {app}',
+  closeWindow: 'Close window',
+  enterPassword: 'Enter password',
+  enterText: 'Enter text',
+  passwordField: 'password field',
+  textField: 'text field',
+  inApp: '{action} in {app}',
+};
+
+const CAPTURE_TITLE_TEXTS = [...new Set([
+  ...Object.values(CAPTURE_TITLE_TEXT),
+  ...Object.values(SHORTCUT_TITLES),
+  ...Object.values(DEFAULT_CAPTURE_TITLES),
+  'Capture',
+])];
+
+/** `texts` in English and in every interface language that translates them. */
+function inEveryLanguage(texts) {
+  return texts.flatMap((text) => [text, ...Object.values(LOCALES)
+    .map((messages) => messages[text])
+    .filter((value) => typeof value === 'string' && value)]);
+}
+
 // Process name → human-readable display name (used to append "in Chrome" etc. to titles).
 const APP_DISPLAY_NAMES = {
   chrome:           'Chrome',
@@ -188,11 +232,11 @@ function cleanAppName(rawName) {
   return APP_DISPLAY_NAMES[key] || sentenceCase(rawName.replace(/\.exe$/i, ''));
 }
 
-function qualifyTitleWithApp(title, appName) {
+function qualifyTitleWithApp(title, appName, t = ENGLISH) {
   const app = cleanAppName(appName);
   if (!app) return title;
   if (new RegExp(`\\b${app.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(title)) return title;
-  return `${title} in ${app}`;
+  return t(CAPTURE_TITLE_TEXT.inApp, { action: title, app });
 }
 
 const ACTION_PREFIXES = [
@@ -446,7 +490,8 @@ function verbForElementRole(role) {
   return null;
 }
 
-function formatCaptureTitle(text, { source = 'ocr', metadata = {}, clickKind = '' } = {}) {
+function formatCaptureTitle(text, { source = 'ocr', metadata = {}, clickKind = '', t = ENGLISH } = {}) {
+  const action = (verb, target) => t(CAPTURE_TITLE_TEXT[verb], { target });
   const clean = displayText(text);
   if (!clean) return '';
 
@@ -457,21 +502,21 @@ function formatCaptureTitle(text, { source = 'ocr', metadata = {}, clickKind = '
   const roleVerb = (source === 'ocr' || source === 'element') ? verbForElementRole(metadata.elementRole) : null;
   if (roleVerb) {
     // "Search for" describes the search, not the mouse button, so it is kept.
-    return `${roleVerb === 'Search for' ? roleVerb : clickVerb(clickKind, roleVerb)} ${sentenceCase(clean)}`;
+    return action(roleVerb === 'Search for' ? roleVerb : clickVerb(clickKind, roleVerb), sentenceCase(clean));
   }
 
   if (source === 'window' || source === 'app') {
-    return `Open ${sentenceCase(clean)}`;
+    return action('Open', sentenceCase(clean));
   }
 
   if (source === 'ocr' || source === 'element') {
-    return isShortUiLabel(clean) ? `${clickVerb(clickKind)} ${sentenceCase(clean)}` : sentenceCase(clean);
+    return isShortUiLabel(clean) ? action(clickVerb(clickKind), sentenceCase(clean)) : sentenceCase(clean);
   }
 
   return sentenceCase(clean);
 }
 
-function pickBestTitleFragment(text, { source = 'window', metadata = {} } = {}) {
+function pickBestTitleFragment(text, { source = 'window', metadata = {}, t = ENGLISH } = {}) {
   const fragments = splitTitleFragments(text).filter((line) => isUsefulTitleCandidate(line, { source }));
   if (!fragments.length) return '';
   let best = '';
@@ -483,7 +528,7 @@ function pickBestTitleFragment(text, { source = 'window', metadata = {} } = {}) 
       bestScore = score;
     }
   }
-  return best ? formatCaptureTitle(best, { source, metadata }) : '';
+  return best ? formatCaptureTitle(best, { source, metadata, t }) : '';
 }
 
 function isPasswordField(metadata = {}) {
@@ -493,18 +538,23 @@ function isPasswordField(metadata = {}) {
       /password|passcode|\bpin\b/i.test(metadata.elementLabel || ''));
 }
 
-function buildCaptureTitle({ mode = 'fullscreen', metadata = {}, ocrText = '', recentTyped = '', recentShortcut = '', clickKind = '' } = {}) {
+/**
+ * The title a new capture gets, from what was clicked or typed. `t` is the
+ * interface translator: the words StepForge adds ("Click", "in {app}") are
+ * translated, and names read from the screen are kept as they are.
+ */
+function buildCaptureTitle({ mode = 'fullscreen', metadata = {}, ocrText = '', recentTyped = '', recentShortcut = '', clickKind = '', t = ENGLISH } = {}) {
   const app = cleanAppName(metadata.appName);
+  const qualify = title => app ? qualifyTitleWithApp(title, metadata.appName, t) : title;
+  const action = (verb, target) => t(CAPTURE_TITLE_TEXT[verb], { target });
 
   // 1. Keyboard shortcut → most reliable signal for "what action did the user take".
   if (recentShortcut && SHORTCUT_TITLES[recentShortcut]) {
-    const base = SHORTCUT_TITLES[recentShortcut];
-    return app ? qualifyTitleWithApp(base, metadata.appName) : base;
+    return qualify(t(SHORTCUT_TITLES[recentShortcut]));
   }
 
   const label = displayText(metadata.elementLabel || '');
   const role = normalizeWhitespace(metadata.elementRole || '').toLowerCase();
-  const qualify = title => app ? qualifyTitleWithApp(title, metadata.appName) : title;
 
   // Name the field, never its existing value. A clicked field can contain text
   // from an earlier action (or credentials); that is not evidence of typing.
@@ -512,12 +562,12 @@ function buildCaptureTitle({ mode = 'fullscreen', metadata = {}, ocrText = '', r
   // rather than entering anything, so it is named for the click instead.
   const clicked = CLICK_VERBS[clickKind];
   if (isPasswordField(metadata)) {
-    return qualify(clicked ? `${clicked} password field` : 'Enter password');
+    return qualify(clicked ? action(clicked, t(CAPTURE_TITLE_TEXT.passwordField)) : t(CAPTURE_TITLE_TEXT.enterPassword));
   }
   const isInput = /^(edit|text field|input|field|combo box|textbox|text box)$/.test(role);
   if (isInput) {
-    if (clicked) return qualify(`${clicked} ${label || 'text field'}`);
-    return qualify(label ? `Enter ${label}` : 'Enter text');
+    if (clicked) return qualify(action(clicked, label || t(CAPTURE_TITLE_TEXT.textField)));
+    return qualify(label ? action('Enter', label) : t(CAPTURE_TITLE_TEXT.enterText));
   }
 
   // Close only the target established by accessible ancestry. A generic Close
@@ -525,24 +575,24 @@ function buildCaptureTitle({ mode = 'fullscreen', metadata = {}, ocrText = '', r
   const isClose = role === 'button' &&
     (/^close(?: tab| window)?$/i.test(label) || metadata.elementAutomationId === 'Close');
   if (isClose && metadata.parentTabTitle) {
-    return qualify(`Close "${displayText(metadata.parentTabTitle)}" tab`);
+    return qualify(t(CAPTURE_TITLE_TEXT.closeTab, { tab: displayText(metadata.parentTabTitle) }));
   }
-  if (isClose && metadata.inTitleBar) return app ? `Close ${app}` : 'Close window';
+  if (isClose && metadata.inTitleBar) return app ? t(CAPTURE_TITLE_TEXT.closeApp, { app }) : t(CAPTURE_TITLE_TEXT.closeWindow);
 
   const typed = normalizeWhitespace(recentTyped || '');
   if (typed && /^(search box|searchbox|search field|search bar|search input)$/.test(role)) {
-    return qualify(`Search for "${typed}"`);
+    return qualify(t(CAPTURE_TITLE_TEXT.searchTyped, { text: typed }));
   }
 
   // Accessible control names describe the actual target, unlike a wide OCR
   // crop that can include neighboring buttons. Preserve names containing pipes.
   if (label && !/^(window|pane|document|group|custom)$/.test(role) && !isPathOrUrlLike(label) &&
       (verbForElementRole(role) || isUsefulTitleCandidate(label, { source: 'element' }))) {
-    return qualify(formatCaptureTitle(label, { source: 'element', metadata, clickKind }));
+    return qualify(formatCaptureTitle(label, { source: 'element', metadata, clickKind, t }));
   }
 
   const ocrPhrase = pickBestOcrPhrase(ocrText);
-  if (ocrPhrase) return qualify(formatCaptureTitle(ocrPhrase, { source: 'ocr', metadata, clickKind }));
+  if (ocrPhrase) return qualify(formatCaptureTitle(ocrPhrase, { source: 'ocr', metadata, clickKind, t }));
 
   // 6. Window title (browser suffix + app name stripped) → page title or search query.
   const strippedWindowTitle = stripBrowserNameSuffix(metadata.windowTitle || '', metadata.appName);
@@ -552,23 +602,33 @@ function buildCaptureTitle({ mode = 'fullscreen', metadata = {}, ocrText = '', r
       // Only claim this step IS the search action when the user was actually typing
       // (recentTyped). Without typing context, the search page title is from the
       // PREVIOUS step — the current step is a click ON the search results page.
-      if (recentTyped) {
-        const base = `Search for ${sentenceCase(searchQuery)}`;
-        return app ? qualifyTitleWithApp(base, metadata.appName) : base;
-      }
+      if (recentTyped) return qualify(action('Search for', sentenceCase(searchQuery)));
       // User is clicking something on the search results page — don't claim they searched.
-      const base = `Select a ${sentenceCase(searchQuery)} result`;
-      return app ? qualifyTitleWithApp(base, metadata.appName) : base;
+      return qualify(t(CAPTURE_TITLE_TEXT.searchResult, { query: sentenceCase(searchQuery) }));
     }
-    const windowPhrase = pickBestTitleFragment(strippedWindowTitle, { source: 'window', metadata });
+    const windowPhrase = pickBestTitleFragment(strippedWindowTitle, { source: 'window', metadata, t });
     if (windowPhrase) return windowPhrase;
   }
 
   // 7. App name alone as last resort.
-  const appPhrase = pickBestTitleFragment(metadata.appName, { source: 'app', metadata });
+  const appPhrase = pickBestTitleFragment(metadata.appName, { source: 'app', metadata, t });
   if (appPhrase) return appPhrase;
 
-  return DEFAULT_CAPTURE_TITLES[mode] || 'Capture';
+  return defaultCaptureTitle(mode, t);
+}
+
+/** The title a capture gets when nothing better is known: "Screen capture". */
+function defaultCaptureTitle(mode, t = ENGLISH) {
+  return t(DEFAULT_CAPTURE_TITLES[mode] || 'Capture');
+}
+
+// Default titles in every interface language, so a step still counts as
+// untitled after the language changes.
+const AUTOMATIC_CAPTURE_TITLES = new Set(inEveryLanguage([...Object.values(DEFAULT_CAPTURE_TITLES), 'Capture']));
+
+/** Whether `title` is a default capture title, in any interface language. */
+function isAutomaticCaptureTitle(title) {
+  return AUTOMATIC_CAPTURE_TITLES.has(title);
 }
 
 function plainTextToHtml(text) {
@@ -803,12 +863,10 @@ function blocksForAi(step = {}) {
   });
 }
 
-const DEFAULT_PLACEHOLDER_TITLES = new Set(
-  Object.values(DEFAULT_CAPTURE_TITLES).concat(['Capture', 'Untitled step']),
-);
+const UNTITLED_STEP = new Set(inEveryLanguage(['Untitled step']));
 
 function isPlaceholderTitle(title) {
-  return !title || DEFAULT_PLACEHOLDER_TITLES.has(title);
+  return !title || isAutomaticCaptureTitle(title) || UNTITLED_STEP.has(title);
 }
 
 function summarizeStepForAi(step = {}) {
@@ -1119,7 +1177,11 @@ module.exports = {
   mouseButtonKey,
   clickKindOf,
   DEFAULT_CAPTURE_TITLES,
+  CAPTURE_TITLE_TEXTS,
   buildCaptureTitle,
+  defaultCaptureTitle,
+  isAutomaticCaptureTitle,
+  inEveryLanguage,
   isPasswordField,
   plainTextToHtml,
   normalizeOllamaHost,

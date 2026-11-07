@@ -164,6 +164,9 @@ Chinese and Japanese. `core/i18n.js` explains how it works. In short:
   category of the language (`one`/`other`, and `few`/`many` for Russian).
 - Product names (StepForge, GitHub, Confluence, Wiki.js, Ollama), key names
   and file extensions stay as they are. Exported guides are English only.
+- Titles StepForge gives new captures ("Click {target}", "{action} in {app}",
+  keyboard shortcut titles) are in `CAPTURE_TITLE_TEXT` and `SHORTCUT_TITLES`
+  in `core/text-intel.js`, and `npm run translations` checks them too.
 
 To add a language, add it to `LANGUAGES` in `core/i18n.js`, add its catalog
 to `core/locales/` and `core/locales/index.js`, and load it with a script tag

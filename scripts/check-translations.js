@@ -62,6 +62,10 @@ function findMessages() {
     // Leave out names and units that read the same in every language (PDF, px).
     if (text && /[A-Za-z]/.test(text) && !EXPORT_NAMES.has(text) && !found.has(text)) found.set(text, { plural: false, where: 'exporters (Export dialog)' });
   }
+  // Titles StepForge gives new captures ("Click {target}", "Undo").
+  for (const text of require('../core/text-intel').CAPTURE_TITLE_TEXTS) {
+    if (!found.has(text)) found.set(text, { plural: false, where: 'core/text-intel.js (capture titles)' });
+  }
   const html = fs.readFileSync(path.join(ROOT, 'app/renderer/index.html'), 'utf8');
   for (const match of html.matchAll(/(title|placeholder|aria-label)="([^"]+)"([^>]*?)data-i18n-(title|placeholder|label)/g)) {
     found.set(match[2], { plural: false, where: 'app/renderer/index.html' });

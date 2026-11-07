@@ -5,8 +5,8 @@ const path = require('node:path');
 const openAI = require('./openai-compatible');
 
 const {
-  DEFAULT_CAPTURE_TITLES,
   buildCaptureTitle,
+  isAutomaticCaptureTitle,
   clickKindOf,
   isPasswordField,
   normalizeOllamaHost,
@@ -31,8 +31,6 @@ const { OcrPool } = require('./ocr-pool');
 
 // Brand CSS requests aren't for a guide; ai:cancel stops them by this id.
 const BRAND_CSS_REQUEST = 'branding-css';
-
-const DEFAULT_TITLE_VALUES = new Set(Object.values(DEFAULT_CAPTURE_TITLES).concat(['Capture']));
 
 const OCR_CROP = {
   width: 420,
@@ -74,10 +72,14 @@ class TextIntelService {
     safeStorage = null,
     // The language StepForge's interface shows (core/i18n.js); AI writes in it.
     getInterfaceLanguage = () => 'en',
+    // The interface translator (core/i18n.js): capture titles are built in
+    // the interface language. Without one they are English.
+    translate = null,
   }) {
     this.store = store;
     this.settings = settings;
     this.getInterfaceLanguage = getInterfaceLanguage;
+    this.translate = translate || undefined;
     this.getWindow = getWindow;
     this.dataDir = dataDir;
     this.aiKeys = new openAI.AiKeyStore(store?.settingsDir || dataDir, safeStorage);
@@ -359,7 +361,7 @@ class TextIntelService {
     const safeOcr = isPassword ? '' : (ocr.text || '');
     const safeTyped = isPassword ? '' : recentTyped;
     const clickKind = clickKindOf(clickMeta);
-    const title = buildCaptureTitle({ mode, metadata, ocrText: safeOcr, recentTyped: safeTyped, recentShortcut, clickKind });
+    const title = buildCaptureTitle({ mode, metadata, ocrText: safeOcr, recentTyped: safeTyped, recentShortcut, clickKind, t: this.translate });
     return {
       title,
       captureMetadata: {
@@ -631,11 +633,12 @@ class TextIntelService {
           ocrText: step.captureMetadata.ocrText,
           recentTyped: step.captureMetadata.recentTyped,
           recentShortcut: step.captureMetadata.recentShortcut,
+          t: this.translate,
         });
         captureContext = {
           ...step.captureMetadata,
           // Don't suggest a generic fallback title — leave it blank so AI generates from context.
-          titleCandidate: DEFAULT_TITLE_VALUES.has(rawCandidate) ? '' : rawCandidate,
+          titleCandidate: isAutomaticCaptureTitle(rawCandidate) ? '' : rawCandidate,
         };
       } else if (step.image) {
         const imagePath = this.store.stepImagePath(guideId, stepId, 'working') || this.store.stepImagePath(guideId, stepId, 'original');
@@ -658,11 +661,12 @@ class TextIntelService {
               mode: step.kind === 'image' ? 'fullscreen' : 'window',
               metadata,
               ocrText: ocr.text,
+              t: this.translate,
             });
             captureContext = {
               ...metadata,
               ocrText: ocr.text,
-              titleCandidate: DEFAULT_TITLE_VALUES.has(rawCandidate2) ? '' : rawCandidate2,
+              titleCandidate: isAutomaticCaptureTitle(rawCandidate2) ? '' : rawCandidate2,
               mode: step.kind === 'image' ? 'fullscreen' : 'content',
             };
           }

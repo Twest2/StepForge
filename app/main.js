@@ -2178,6 +2178,8 @@ if (!gotLock) {
       settings,
       getWindow: () => mainWindow,
       getInterfaceLanguage: uiLanguage,
+      // Capture titles are written in the interface language.
+      translate: t,
       dataDir,
       screenApi: screen,
     });

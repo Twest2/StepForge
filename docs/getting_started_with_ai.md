@@ -67,6 +67,10 @@ Open a guide and choose **AI ▾** in the toolbar, next to **More ▾**:
 
 - **Your writing is kept.** If you already wrote a title or description, AI
   polishes your wording instead of replacing it. It never deletes a block.
+- **It writes in your language.** AI writes in the language set in
+  **Settings → General → Language**, and translates text in another language,
+  such as the titles StepForge gives new captures. Button and menu names as
+  they appear on screen, code, and placeholders aren't translated.
 - **You can undo it.** After AI writes one step, press **Ctrl+Z**. Before it
   writes the whole guide, StepForge saves a snapshot: to undo, open
   **More → Backups & snapshots** and restore the one labeled **before AI**.

@@ -24,13 +24,15 @@
   }
 })(typeof window !== 'undefined' ? window : null, () => {
   // `store` is the Microsoft Store language tag (appxmanifest Resources).
+  // `english` is how AI prompts name the language: AI writes guides in the
+  // interface language (core/text-intel.js).
   const LANGUAGES = [
-    { code: 'en', name: 'English', store: 'en-US' },
-    { code: 'fr', name: 'Français', store: 'fr-FR' },
-    { code: 'es', name: 'Español', store: 'es-ES' },
-    { code: 'ru', name: 'Русский', store: 'ru-RU' },
-    { code: 'zh-CN', name: '简体中文', store: 'zh-CN' },
-    { code: 'ja', name: '日本語', store: 'ja-JP' },
+    { code: 'en', name: 'English', store: 'en-US', english: 'English' },
+    { code: 'fr', name: 'Français', store: 'fr-FR', english: 'French' },
+    { code: 'es', name: 'Español', store: 'es-ES', english: 'Spanish' },
+    { code: 'ru', name: 'Русский', store: 'ru-RU', english: 'Russian' },
+    { code: 'zh-CN', name: '简体中文', store: 'zh-CN', english: 'Simplified Chinese' },
+    { code: 'ja', name: '日本語', store: 'ja-JP', english: 'Japanese' },
   ];
   const CODES = LANGUAGES.map((l) => l.code);
 

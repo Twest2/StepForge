@@ -2177,6 +2177,7 @@ if (!gotLock) {
       store,
       settings,
       getWindow: () => mainWindow,
+      getInterfaceLanguage: uiLanguage,
       dataDir,
       screenApi: screen,
     });

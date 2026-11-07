@@ -72,9 +72,12 @@ class TextIntelService {
     screenApi = null,
     windowContextProvider = null,
     safeStorage = null,
+    // The language StepForge's interface shows (core/i18n.js); AI writes in it.
+    getInterfaceLanguage = () => 'en',
   }) {
     this.store = store;
     this.settings = settings;
+    this.getInterfaceLanguage = getInterfaceLanguage;
     this.getWindow = getWindow;
     this.dataDir = dataDir;
     this.aiKeys = new openAI.AiKeyStore(store?.settingsDir || dataDir, safeStorage);
@@ -674,6 +677,7 @@ class TextIntelService {
         captureContext,
         screenshotAttached,
         placeholders,
+        language: this.getInterfaceLanguage(),
       });
 
       const raw = await this.callOllama({
@@ -744,7 +748,7 @@ class TextIntelService {
         steps.push({ number, title: step.title, descriptionHtml: step.descriptionHtml });
       }
       const placeholders = this.placeholdersFor(guide);
-      const { systemPrompt, prompt } = buildGuideAiPrompt({ guide, steps, placeholders });
+      const { systemPrompt, prompt } = buildGuideAiPrompt({ guide, steps, placeholders, language: this.getInterfaceLanguage() });
       const raw = await this.callOllama({
         provider: ready.provider,
         host: ready.host,

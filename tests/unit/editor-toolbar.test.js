@@ -184,22 +184,23 @@ test('after a guide reload, the toolbar shows the editor state, not the last but
   assertToolbar(editor, { tool: 'select', zoom: 'fit' });
 });
 
-test('every tool button has an icon and a name in its title and aria-label, with no shortcut text', async () => {
+test('every tool button has an icon, its name as aria-label, and its name with its key as the tooltip', async () => {
   const editor = makeEditor(GUIDES);
   await editor.open('g1');
   assert.equal(editor.dom['tool-select'], undefined, 'no Select button: it is what the editor is in when no tool is picked');
-  const names = {
-    rect: 'Rectangle', oval: 'Oval', line: 'Line', pen: 'Pen', arrow: 'Arrow', curvedArrow: 'Curved arrow', text: 'Text',
-    tooltip: 'Tooltip', number: 'Number', blur: 'Blur', highlight: 'Highlight', magnify: 'Magnify',
-    cursor: 'Cursor', spotlight: 'Spotlight', crop: 'Crop',
+  const tools = {
+    rect: ['Rectangle', 'R'], oval: ['Oval', 'O'], line: ['Line', 'L'], pen: ['Pen', 'P'], arrow: ['Arrow', 'A'],
+    curvedArrow: ['Curved arrow', 'J'], text: ['Text', 'T'], tooltip: ['Tooltip', 'G'], number: ['Number', 'N'],
+    blur: ['Blur', 'B'], highlight: ['Highlight', 'H'], magnify: ['Magnify', 'M'], cursor: ['Cursor', 'U'],
+    spotlight: ['Spotlight', 'K'], crop: ['Crop', 'C'],
   };
-  for (const [tool, name] of Object.entries(names)) {
+  for (const [tool, [name, key]] of Object.entries(tools)) {
     const node = editor.dom[`tool-${tool}`];
     assert.ok(node, `${tool} button exists`);
     assert.equal(node.getAttribute('aria-label'), name, `${tool} aria-label`);
-    assert.equal(node.getAttribute('title'), name, `${tool} title`);
+    assert.equal(node.getAttribute('title'), `${name} (${key})`, `${tool} tooltip names its key`);
+    assert.equal(node.getAttribute('aria-keyshortcuts'), key, `${tool} key for screen readers`);
     assert.match(node.innerHTML, /^<svg [^>]*stroke="currentColor"/, `${tool} has an inline svg icon`);
-    assert.doesNotMatch(node.getAttribute('title'), /\(|Ctrl|Shift|Alt|\b[A-Z]\)$/, `${tool} tooltip has no shortcut hint`);
     assert.equal(node.textContent, '', `${tool} shows no text, only the icon`);
   }
   for (const [node, name] of [[editor.dom.undoBtn, 'Undo'], [editor.dom.redoBtn, 'Redo']]) {

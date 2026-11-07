@@ -58,15 +58,18 @@ function mountedEditor(language) {
 const TOOLS = ['select', 'rect', 'oval', 'line', 'pen', 'arrow', 'curvedArrow', 'text', 'tooltip', 'number', 'blur', 'highlight', 'magnify', 'cursor', 'spotlight', 'crop'];
 
 test('the annotation toolbar names every tool in the interface language', () => {
-  // The tools are icons; each one's name is its tooltip and its name for screen readers.
-  const names = (editor) => TOOLS.filter((tool) => tool !== 'select').map((tool) => {
+  // The tools are icons; each one's name is its name for screen readers, and
+  // its tooltip is that name with its key, in the language's own brackets.
+  const KEYS = { rect: 'R', oval: 'O', line: 'L', pen: 'P', arrow: 'A', curvedArrow: 'J', text: 'T', tooltip: 'G',
+    number: 'N', blur: 'B', highlight: 'H', magnify: 'M', cursor: 'U', spotlight: 'K', crop: 'C' };
+  const names = (editor, [open, close] = [' (', ')']) => TOOLS.filter((tool) => tool !== 'select').map((tool) => {
     const { title, 'aria-label': label } = editor.dom[`tool-${tool}`].props;
-    assert.equal(title, label, tool);
-    return title;
+    assert.equal(title, `${label}${open}${KEYS[tool]}${close}`, tool);
+    return label;
   });
   const zh = mountedEditor('zh-CN');
   assert.equal(zh.dom['tool-select'], undefined);
-  assert.deepEqual(names(zh), ['矩形', '椭圆', '直线', '画笔', '箭头', '曲线箭头', '文本', '提示框', '编号', '模糊', '高亮', '放大镜', '光标', '聚光灯', '裁剪']);
+  assert.deepEqual(names(zh, ['（', '）']), ['矩形', '椭圆', '直线', '画笔', '箭头', '曲线箭头', '文本', '提示框', '编号', '模糊', '高亮', '放大镜', '光标', '聚光灯', '裁剪']);
   assert.deepEqual(names(mountedEditor('en')),
     ['Rectangle', 'Oval', 'Line', 'Pen', 'Arrow', 'Curved arrow', 'Text', 'Tooltip', 'Number', 'Blur', 'Highlight', 'Magnify', 'Cursor', 'Spotlight', 'Crop']);
 });

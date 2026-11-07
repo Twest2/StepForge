@@ -69,6 +69,7 @@
   'Save': 'Guardar',
   'Export': 'Exportar',
   'Share this guide as a file or on the web': 'Compartir esta guía como archivo o en la web',
+  '{tool} ({key})': '{tool} ({key})',
   'Copy to clipboard': 'Copiar al portapapeles',
   'Copy the guide with its screenshots': 'Copiar la guía con sus capturas de pantalla',
   'Check screenshots for private details': 'Revisar las capturas en busca de datos privados',

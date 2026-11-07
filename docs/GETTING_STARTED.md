@@ -155,8 +155,8 @@ isn't available while a capture session is running.
 ## 3. Annotate screenshots
 
 Pick a tool from the toolbar above the screenshot and drag on the image.
-Hover over a tool to see its name. With no tool picked, click an annotation
-to move, resize or restyle it. To put a tool down without using it, click it
+Hover over a tool to see its name and its key, such as **Rectangle (R)**.
+With no tool picked, click an annotation to move, resize or restyle it. To put a tool down without using it, click it
 again or press **Esc**.
 
 | Tool | Key | Good for |

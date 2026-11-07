@@ -27,7 +27,9 @@ For Linux, see the [installation options in the README](../README.md#install).
 
 StepForge reads the text around each click (with on-device OCR) and uses it
 to title the step, so you'll usually see titles like *Click Releases* or
-*Select Run anyway* without typing anything.
+*Select Run anyway* without typing anything. Titles are written in the
+language set in **Settings → General → Language**; the names read from the
+screen stay as they appear.
 
 > [!TIP]
 > On first recording under GNOME Wayland you'll be asked to enable the

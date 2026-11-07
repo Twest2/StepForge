@@ -1,7 +1,7 @@
 'use strict';
 
 const { TOKEN_RE } = require('./placeholders');
-const { DEFAULT_CAPTURE_TITLES } = require('./text-intel');
+const { DEFAULT_CAPTURE_TITLES, inEveryLanguage } = require('./text-intel');
 
 /**
  * Guide quality checks, shown before exporting or publishing: placeholders
@@ -11,10 +11,11 @@ const { DEFAULT_CAPTURE_TITLES } = require('./text-intel');
  * placeholder is only flagged if it would still appear as [[Name]].
  */
 
-// Titles StepForge gives a step when it has nothing better.
-const AUTOMATIC_TITLES = new Set([
+// Titles StepForge gives a step when it has nothing better, in every
+// interface language.
+const AUTOMATIC_TITLES = new Set(inEveryLanguage([
   ...Object.values(DEFAULT_CAPTURE_TITLES), 'Capture', 'Untitled step', 'Untitled substep',
-].map((title) => title.toLowerCase()));
+]).map((title) => title.toLowerCase()));
 
 /** Distinct placeholder names still in `texts`, in first-seen order. */
 function unresolved(texts) {

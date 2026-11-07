@@ -69,6 +69,7 @@
   'Save': '保存',
   'Export': 'エクスポート',
   'Share this guide as a file or on the web': 'このガイドをファイルまたは Web で共有',
+  '{tool} ({key})': '{tool}（{key}）',
   'Copy to clipboard': 'クリップボードにコピー',
   'Copy the guide with its screenshots': 'ガイドをスクリーンショットごとコピー',
   'Check screenshots for private details': 'スクリーンショットの個人情報を確認',

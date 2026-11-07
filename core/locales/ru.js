@@ -69,6 +69,7 @@
   'Save': 'Сохранить',
   'Export': 'Экспорт',
   'Share this guide as a file or on the web': 'Поделиться руководством в виде файла или в интернете',
+  '{tool} ({key})': '{tool} ({key})',
   'Copy to clipboard': 'Копировать в буфер обмена',
   'Copy the guide with its screenshots': 'Скопировать руководство со снимками экрана',
   'Check screenshots for private details': 'Проверить снимки экрана на личные данные',

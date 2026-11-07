@@ -126,6 +126,15 @@ const ANNOTATION_TYPE_LABELS = {
 // Canvas toolbar icons: simple outlines drawn for StepForge (no icon font or
 // remote asset). Each uses stroke="currentColor", so it follows the theme and
 // the active state. The tool names are the button's title and aria-label.
+// Single-key shortcuts for the annotation tools (no modifier keys). The
+// toolbar shows each one in its button's tooltip, e.g. "Rectangle (R)".
+const TOOL_KEYS = {
+  s: 'select', r: 'rect', o: 'oval', l: 'line', p: 'pen', a: 'arrow', j: 'curvedArrow', t: 'text',
+  g: 'tooltip', n: 'number', b: 'blur', h: 'highlight', m: 'magnify',
+  u: 'cursor', k: 'spotlight', c: 'crop',
+};
+const TOOL_SHORTCUTS = Object.fromEntries(Object.entries(TOOL_KEYS).map(([key, tool]) => [tool, key.toUpperCase()]));
+
 const TOOL_ICON_PATHS = {
   select: '<path d="M5 3v15l4-3.5 2.5 5.5 2.2-1-2.4-5.3H17z"/>',
   rect: '<rect x="3.5" y="5.5" width="17" height="13" rx="1.5"/>',
@@ -681,7 +690,16 @@ class GuideEditor {
         'aria-label': t('Resize steps pane'), 'aria-controls': 'editor-steps-pane' }),
       this.dom.canvasPane = el('section.pane-canvas', {},
         el('div.canvas-toolbar', {},
-          ...toolButtons.map(([tool, name]) => this.dom[`tool-${tool}`] = el('button.tool.tool-icon', { type: 'button', dataset: { tool }, title: name, 'aria-label': name, innerHTML: toolIconSvg(tool) })),
+          ...toolButtons.map(([tool, name]) => {
+            const key = TOOL_SHORTCUTS[tool];
+            return this.dom[`tool-${tool}`] = el('button.tool.tool-icon', {
+              type: 'button', dataset: { tool },
+              title: key ? t('{tool} ({key})', { tool: name, key }) : name,
+              'aria-label': name,
+              ...(key ? { 'aria-keyshortcuts': key } : {}),
+              innerHTML: toolIconSvg(tool),
+            });
+          }),
           el('span.sep'),
           this.dom.zoomSelect = el('select.zoom-select', { title: t('Zoom'), 'aria-label': t('Zoom') },
             el('option', { value: 'fit' }, t('Fit')),
@@ -4186,12 +4204,7 @@ class GuideEditor {
       return;
     }
     if (!isEditableTarget(e.target)) {
-      // Tool palette hotkeys (Folge-style single keys).
-      const TOOL_KEYS = {
-        s: 'select', r: 'rect', o: 'oval', l: 'line', p: 'pen', a: 'arrow', j: 'curvedArrow', t: 'text',
-        g: 'tooltip', n: 'number', b: 'blur', h: 'highlight', m: 'magnify',
-        u: 'cursor', k: 'spotlight', c: 'crop',
-      };
+      // Tool palette hotkeys (single keys, see TOOL_KEYS).
       if (!e.ctrlKey && !e.metaKey && !e.altKey && TOOL_KEYS[e.key.toLowerCase()]) {
         e.preventDefault();
         this.setTool(TOOL_KEYS[e.key.toLowerCase()]);

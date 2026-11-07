@@ -69,6 +69,7 @@
   'Save': '保存',
   'Export': '导出',
   'Share this guide as a file or on the web': '以文件形式或在网上分享此指南',
+  '{tool} ({key})': '{tool}（{key}）',
   'Copy to clipboard': '复制到剪贴板',
   'Copy the guide with its screenshots': '复制指南及其屏幕截图',
   'Check screenshots for private details': '检查屏幕截图中的隐私信息',

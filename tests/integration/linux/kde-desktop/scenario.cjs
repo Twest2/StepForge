@@ -75,19 +75,32 @@ function passed(name, details = {}) { report.push({ name, ...details }); console
       assert.ok(fs.existsSync(file));
       return decodePng(fs.readFileSync(file));
     };
+    // KDE's own dialogs, found by window title through KWin's window search.
+    // A dialog can appear later than expected on a slow machine, so wait for
+    // it, click, and click again if it is still open.
+    const hasWindow = title => execFileSync('gdbus', ['call', '--session', '--dest', 'org.kde.KWin', '--object-path', '/WindowsRunner',
+      '--method', 'org.kde.krunner1.Match', title], { encoding: 'utf8' }).includes(`'${title}`);
+    const answerDialog = async (title, points) => {
+      await until(() => hasWindow(title), `the "${title}" dialog`, 60000);
+      await sleep(500); // let it finish appearing before clicking
+      for (let attempt = 0; attempt < 4; attempt++) {
+        for (const point of points) await send({action:'click',...point});
+        const end = Date.now() + 4000;
+        while (Date.now() < end) { if (!hasWindow(title)) return; await sleep(200); }
+      }
+      throw new Error(`The "${title}" dialog did not close`);
+    };
     const share = async () => {
       await until(async () => (await status()).includes('waiting for screen sharing'), 'sharing requested');
-      await sleep(700);
-      await send({action:'click',x:460,y:260});
-      await send({action:'click',x:860,y:785});
+      // Pick the monitor, then Share.
+      await answerDialog('Share screen with', [{x:460,y:260}, {x:860,y:785}]);
       await until(async () => (await status()).includes('on click'), 'recording armed');
       await sleep(500);
     };
     const key = code => send({action:'key',code,modifiers:[29,56]});
     const count = (n, label) => until(() => steps().length === n, label);
     // Approve the real KDE shortcut dialog, then use only app/desktop input.
-    await sleep(700);
-    await send({action:'click',x:744,y:686});
+    await answerDialog('Global Shortcuts Requested', [{x:744,y:686}]);
     await click('New Capture');
     await click('Start recording');
     await until(async () => (await text()).includes('StepForge tray icon beside the clock'), 'Plasma recording reminder');

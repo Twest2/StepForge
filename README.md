@@ -315,7 +315,7 @@ each optional feature sends.
 ## Getting help
 
 - **Found a bug or have an idea?** [Open an issue](https://github.com/Twest2/StepForge/issues/new/choose).
-- **Security problem?** Email `git@twestbrook.com` privately rather than
+- **Security problem?** Email `tyler@stepforge.dev` privately rather than
   opening a public issue. See [SECURITY.md](docs/SECURITY.md).
 
 ## Contributing

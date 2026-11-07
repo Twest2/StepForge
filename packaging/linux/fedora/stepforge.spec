@@ -77,7 +77,7 @@ production dependencies; it does not install anything at runtime.
 /usr/bin/stepforge
 /usr/share/applications/stepforge.desktop
 /usr/share/mime/packages/stepforge.xml
-/usr/share/gnome-shell/extensions/com.twestbrook.stepforge
+/usr/share/gnome-shell/extensions/capture@stepforge.dev
 /usr/lib/udev/rules.d/60-stepforge-input.rules
 /usr/share/icons/hicolor/*/apps/stepforge.png
 %license /usr/share/licenses/stepforge/LICENSE

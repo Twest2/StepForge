@@ -23,4 +23,4 @@ on enforcement are final.
 ## Reporting
 
 If you experience or witness unacceptable behavior, email
-`git@twestbrook.com`. Reports are handled confidentially.
+`tyler@stepforge.dev`. Reports are handled confidentially.

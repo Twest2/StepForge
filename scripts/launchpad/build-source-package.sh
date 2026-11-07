@@ -77,7 +77,7 @@ stepforge ($PPA_VERSION) $SERIES; urgency=medium
 
   * Release StepForge $VERSION.
 
- -- StepForge <tyler@twestbrook.com>  $(LC_ALL=C date -R)
+ -- StepForge <tyler@stepforge.dev>  $(LC_ALL=C date -R)
 EOF
 
 # A fresh, reproducible orig tarball is required for each release. Debian

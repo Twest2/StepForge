@@ -264,7 +264,7 @@ PipeWire, and WirePlumber.
 ### Clean up afterwards
 
 ```bash
-gnome-extensions disable capture@stepforge.dev 2>/dev/null || true
+gnome-extensions disable tyler@stepforge.dev 2>/dev/null || true
 sudo apt remove stepforge
 ```
 

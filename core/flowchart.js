@@ -253,54 +253,250 @@
     return [box.cx + dx * t, box.cy + dy * t];
   }
 
-  function edgeLine(edge, boxes, shapes) {
-    const a = boxes.get(edge.from);
-    const b = boxes.get(edge.to);
+  /** An arrow's ends. `twoWay`: there is also an arrow back, so each keeps 7px to its own right. */
+  function edgeLine(edge, boxes, shapes, twoWay = false) {
+    let a = boxes.get(edge.from);
+    let b = boxes.get(edge.to);
     if (!a || !b) return null;
+    const len = Math.hypot(b.cx - a.cx, b.cy - a.cy);
+    if (twoWay && len) {
+      const nx = (-(b.cy - a.cy) / len) * 7;
+      const ny = ((b.cx - a.cx) / len) * 7;
+      a = { ...a, cx: a.cx + nx, cy: a.cy + ny };
+      b = { ...b, cx: b.cx + nx, cy: b.cy + ny };
+    }
     return { start: boundaryPoint(a, shapes.get(edge.from), b.cx, b.cy), end: boundaryPoint(b, shapes.get(edge.to), a.cx, a.cy) };
   }
 
   /**
-   * Lay the nodes out top to bottom: each node one row below the node that
-   * leads to it (breadth-first from the nodes nothing points at), and the
-   * nodes of a row side by side, centered. Returns a new graph.
+   * Lay the chart out top to bottom, the way Mermaid and Graphviz do (a
+   * layered "Sugiyama" layout):
+   *
+   *  1. Loops are set aside, so every arrow points down except the ones that go back.
+   *  2. Each shape sits one row below the lowest shape that leads to it, and a
+   *     shape that only feeds another one (a side input like "Self-service
+   *     portal") sits just above that shape, not up in the first row.
+   *  3. A shape joined by a plain line to just one shape (a note, an audit log)
+   *     sits beside that shape.
+   *  4. The shapes of each row are ordered to keep lines from crossing, with
+   *     room kept for the lines that pass through a row.
+   *  5. Each shape is centered under the shapes that lead to it (and over the
+   *     ones it leads to), without overlapping its neighbors.
+   *
+   * Separate charts sit side by side. Returns a new graph.
    */
   function arrange(raw) {
     const g = normalizeFlowchart(raw) || { nodes: [], edges: [] };
-    const incoming = new Set(g.edges.map((e) => e.to));
-    const rank = new Map();
-    const visit = (startId) => {
-      const queue = [startId];
-      rank.set(startId, rank.get(startId) ?? 0);
-      while (queue.length) {
-        const id = queue.shift();
-        for (const e of g.edges) {
-          if (e.from === id && !rank.has(e.to)) {
-            rank.set(e.to, rank.get(id) + 1);
-            queue.push(e.to);
-          }
+    if (!g.nodes.length) return g;
+    const byId = new Map(g.nodes.map((n) => [n.id, n]));
+    const size = new Map(g.nodes.map((n) => { const b = nodeBox(n); return [n.id, { w: b.w, h: b.h }]; }));
+    const edges = g.edges.filter((e) => e.from !== e.to && byId.has(e.from) && byId.has(e.to));
+    const degree = new Map(g.nodes.map((n) => [n.id, 0]));
+    for (const e of edges) { degree.set(e.from, degree.get(e.from) + 1); degree.set(e.to, degree.get(e.to) + 1); }
+
+    // 3. Side shapes: one plain line (no arrowhead) to a shape that has other connections.
+    const side = new Map();
+    for (const e of edges) {
+      if (!['line', 'dashedLine', 'dotted'].includes(e.style)) continue;
+      for (const [a, b] of [[e.to, e.from], [e.from, e.to]]) {
+        if (degree.get(a) === 1 && degree.get(b) > 1) { side.set(a, b); break; }
+      }
+    }
+    const main = g.nodes.filter((n) => !side.has(n.id));
+    const mainEdges = edges.filter((e) => !side.has(e.from) && !side.has(e.to));
+
+    // Separate charts (connected groups), in the order their first shape was added.
+    const group = new Map(main.map((n) => [n.id, n.id]));
+    const find = (id) => { while (group.get(id) !== id) id = group.get(id); return id; };
+    for (const e of mainEdges) group.set(find(e.from), find(e.to));
+    const groups = new Map();
+    for (const n of main) { const k = find(n.id); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(n.id); }
+
+    let left = 40;
+    for (const ids of groups.values()) {
+      const placed = arrangeGroup(ids, mainEdges.filter((e) => ids.includes(e.from)), side, size);
+      let minX = Infinity; let maxX = -Infinity;
+      for (const [id, p] of placed) {
+        minX = Math.min(minX, p.x);
+        maxX = Math.max(maxX, p.x + size.get(id).w);
+      }
+      for (const [id, p] of placed) {
+        const n = byId.get(id);
+        n.x = Math.round(left + p.x - minX);
+        n.y = Math.round(40 + p.y);
+      }
+      left += maxX - minX + 100;
+    }
+    return g;
+  }
+
+  /** arrange() for one connected chart: Map id → { x, y } (top-left corners). */
+  function arrangeGroup(ids, edges, side, size) {
+    const GAP_X = 50;
+    const GAP_Y = 70;
+    const index = new Map(ids.map((id, i) => [id, i]));
+
+    // 1. Loops: depth-first from the shapes nothing points at; an arrow back
+    //    to a shape still being walked is turned around (for layout only).
+    const out = new Map(ids.map((id) => [id, []]));
+    const into = new Set(edges.map((e) => e.to));
+    for (const e of edges) out.get(e.from).push(e.to);
+    const state = new Map();
+    const dag = [];
+    const walk = (start) => {
+      const stack = [[start, 0]];
+      state.set(start, 1);
+      while (stack.length) {
+        const top = stack[stack.length - 1];
+        const [id, i] = top;
+        const next = out.get(id)[i];
+        if (next === undefined) { state.set(id, 2); stack.pop(); continue; }
+        top[1] += 1;
+        if (state.get(next) === 1) dag.push([next, id]);
+        else {
+          dag.push([id, next]);
+          if (!state.has(next)) { state.set(next, 1); stack.push([next, 0]); }
         }
       }
     };
-    for (const n of g.nodes) if (!incoming.has(n.id) && !rank.has(n.id)) visit(n.id);
-    for (const n of g.nodes) if (!rank.has(n.id)) { rank.set(n.id, 0); visit(n.id); }
-    const rows = [];
-    for (const n of g.nodes) (rows[rank.get(n.id)] ||= []).push(n);
-    const colW = Math.max(...g.nodes.map((n) => nodeBox(n).w), 160) + 60;
-    const widest = Math.max(1, ...rows.filter(Boolean).map((r) => r.length));
-    let y = 40;
-    for (const row of rows.filter(Boolean)) {
-      const offset = ((widest - row.length) * colW) / 2;
-      let rowH = 0;
-      row.forEach((n, i) => {
-        const box = nodeBox(n);
-        n.x = Math.round(40 + offset + i * colW + (colW - 60 - box.w) / 2);
-        n.y = y;
-        rowH = Math.max(rowH, box.h);
-      });
-      y += rowH + 60;
+    for (const id of ids) if (!into.has(id) && !state.has(id)) walk(id);
+    for (const id of ids) if (!state.has(id)) walk(id);
+    const pairs = [...new Map(dag.map(([a, b]) => [`${a}>${b}`, [a, b]])).values()];
+
+    // 2. Rows: below every shape that leads here; then a shape that only
+    //    feeds others moves down to just above the first of them.
+    const parents = new Map(ids.map((id) => [id, []]));
+    const children = new Map(ids.map((id) => [id, []]));
+    for (const [a, b] of pairs) { children.get(a).push(b); parents.get(b).push(a); }
+    const waiting = new Map(ids.map((id) => [id, parents.get(id).length]));
+    const order = ids.filter((id) => !waiting.get(id));
+    for (let i = 0; i < order.length; i += 1) {
+      for (const c of children.get(order[i])) {
+        waiting.set(c, waiting.get(c) - 1);
+        if (!waiting.get(c)) order.push(c);
+      }
     }
-    return g;
+    const rank = new Map(ids.map((id) => [id, 0]));
+    for (const id of order) for (const c of children.get(id)) rank.set(c, Math.max(rank.get(c), rank.get(id) + 1));
+    // Bottom up: a shape with at least as many arrows out as in moves down
+    // to just above its first child (shorter lines, never longer ones).
+    for (const id of [...order].reverse()) {
+      const kids = children.get(id);
+      if (!kids.length || kids.length < parents.get(id).length) continue;
+      rank.set(id, Math.min(...kids.map((c) => rank.get(c))) - 1);
+    }
+    const low = Math.min(...rank.values());
+    for (const id of ids) rank.set(id, rank.get(id) - low);
+
+    // Rows of items; an arrow that skips rows gets a thin stand-in in each
+    // row it passes through, so those rows leave room for it.
+    const rows = [];
+    const item = new Map();
+    const add = (id, r, w, h, dummy) => {
+      const it = { id, r, w, h, dummy, up: [], down: [] };
+      item.set(id, it);
+      (rows[r] ||= []).push(it);
+      return it;
+    };
+    for (const id of ids) add(id, rank.get(id), size.get(id).w, size.get(id).h, false);
+    let dummies = 0;
+    for (const [a, b] of pairs) {
+      let prev = item.get(a);
+      for (let r = prev.r + 1; r < item.get(b).r; r += 1) {
+        const d = add(`~${dummies += 1}`, r, 16, 0, true);
+        prev.down.push(d); d.up.push(prev);
+        prev = d;
+      }
+      const end = item.get(b);
+      prev.down.push(end); end.up.push(prev);
+    }
+    for (let r = 0; r < rows.length; r += 1) rows[r] ||= [];
+
+    // 4. Order each row by the average place of its neighbors, sweeping down
+    //    and up; keep the order with the fewest crossings.
+    const pos = new Map();
+    const number = () => rows.forEach((row) => row.forEach((it, i) => pos.set(it, i)));
+    rows.forEach((row) => row.sort((a, b) => (index.get(a.id) ?? Infinity) - (index.get(b.id) ?? Infinity)));
+    number();
+    const crossings = () => {
+      let count = 0;
+      for (const row of rows) {
+        const links = row.flatMap((it) => it.down.map((d) => [pos.get(it), pos.get(d)]));
+        for (let i = 0; i < links.length; i += 1) {
+          for (let j = i + 1; j < links.length; j += 1) {
+            if ((links[i][0] - links[j][0]) * (links[i][1] - links[j][1]) < 0) count += 1;
+          }
+        }
+      }
+      return count;
+    };
+    let best = rows.map((row) => [...row]);
+    let fewest = crossings();
+    for (let pass = 0; pass < 12 && fewest > 0; pass += 1) {
+      const down = pass % 2 === 0;
+      const range = down ? rows.map((_, r) => r).slice(1) : rows.map((_, r) => r).reverse().slice(1);
+      for (const r of range) {
+        const key = new Map(rows[r].map((it) => {
+          const near = down ? it.up : it.down;
+          return [it, near.length ? near.reduce((sum, n) => sum + pos.get(n), 0) / near.length : pos.get(it)];
+        }));
+        rows[r].sort((a, b) => key.get(a) - key.get(b) || pos.get(a) - pos.get(b));
+        rows[r].forEach((it, i) => pos.set(it, i));
+      }
+      const count = crossings();
+      if (count < fewest) { fewest = count; best = rows.map((row) => [...row]); }
+    }
+    rows.splice(0, rows.length, ...best);
+
+    // 3 (cont.). Side shapes go just right of the shape they belong to.
+    for (const [id, partner] of side) {
+      const owner = item.get(partner);
+      if (!owner) continue;
+      const it = { id, r: owner.r, w: size.get(id).w, h: size.get(id).h, dummy: false, up: [], down: [], sideOf: owner };
+      item.set(id, it);
+      const row = rows[owner.r];
+      let at = row.indexOf(owner) + 1;
+      while (row[at]?.sideOf === owner) at += 1;
+      row.splice(at, 0, it);
+    }
+
+    // 5. Across: centered on the neighbors, then pushed apart just enough.
+    const cx = new Map();
+    for (const row of rows) {
+      let x = 0;
+      for (const it of row) { cx.set(it, x + it.w / 2); x += it.w + GAP_X; }
+    }
+    const sep = (a, b) => a.w / 2 + b.w / 2 + (a.dummy || b.dummy ? 20 : GAP_X);
+    const settle = (row, want) => {
+      const n = row.length;
+      const l = []; const r = [];
+      for (let i = 0; i < n; i += 1) l[i] = i ? Math.max(want[i], l[i - 1] + sep(row[i - 1], row[i])) : want[i];
+      for (let i = n - 1; i >= 0; i -= 1) r[i] = i < n - 1 ? Math.min(want[i], r[i + 1] - sep(row[i], row[i + 1])) : want[i];
+      row.forEach((it, i) => cx.set(it, (l[i] + r[i]) / 2));
+    };
+    const centerOf = (list) => list.reduce((sum, n) => sum + cx.get(n), 0) / list.length;
+    for (let pass = 0; pass < 8; pass += 1) {
+      const down = pass % 2 === 0;
+      const range = down ? rows.map((_, r) => r) : rows.map((_, r) => r).reverse();
+      for (const r of range) {
+        const row = rows[r];
+        settle(row, row.map((it) => {
+          if (it.sideOf) return cx.get(it.sideOf) + it.sideOf.w / 2 + GAP_X + it.w / 2;
+          const near = down ? it.up : it.down;
+          return near.length ? centerOf(near) : cx.get(it);
+        }));
+      }
+    }
+
+    // Down: each row as tall as its tallest shape, shapes centered in it.
+    const placed = new Map();
+    let y = 0;
+    for (const row of rows) {
+      const h = Math.max(0, ...row.filter((it) => !it.dummy).map((it) => it.h));
+      for (const it of row) if (!it.dummy) placed.set(it.id, { x: cx.get(it) - it.w / 2, y: y + (h - it.h) / 2 });
+      y += h + GAP_Y;
+    }
+    return placed;
   }
 
   /** The area the drawing covers: { x, y, w, h }, or null for an empty chart. */
@@ -385,8 +581,9 @@
     const shapes = new Map(graph.nodes.map((n) => [n.id, n.shape]));
     const parts = [];
 
+    const links = new Set(graph.edges.map((e) => `${e.from}>${e.to}`));
     for (const e of graph.edges) {
-      const line = edgeLine(e, boxes, shapes);
+      const line = edgeLine(e, boxes, shapes, links.has(`${e.to}>${e.from}`));
       if (!line) continue;
       const [x1, y1] = line.start.map(f);
       const [x2, y2] = line.end.map(f);

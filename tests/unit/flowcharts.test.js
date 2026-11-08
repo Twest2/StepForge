@@ -61,6 +61,32 @@ test('shapes may sit left of and above 0,0, and the export still frames them all
   assert.ok(vx <= -300 && vy <= -120);
 });
 
+test('arrange: side inputs sit next to what they feed, notes beside their shape, and lines do not cross', () => {
+  const n = (id, shape = 'process') => ({ id, shape, label: id });
+  const g = flow.arrange({
+    nodes: [n('start', 'terminal'), n('ask', 'decision'), n('yes'), n('no'), n('merge'), n('portal', 'cloud'), n('note', 'note'), n('end', 'terminal')],
+    edges: [
+      { id: 'e1', from: 'start', to: 'ask' }, { id: 'e2', from: 'ask', to: 'yes', label: 'Yes' }, { id: 'e3', from: 'ask', to: 'no', label: 'No' },
+      { id: 'e4', from: 'yes', to: 'merge' }, { id: 'e5', from: 'no', to: 'merge' }, { id: 'e6', from: 'merge', to: 'end' },
+      { id: 'e7', from: 'portal', to: 'merge' }, { id: 'e8', from: 'note', to: 'ask', style: 'dashedLine' },
+    ],
+  });
+  const at = new Map(g.nodes.map((node) => [node.id, flow.nodeBox(node)]));
+  // The side input is one row above what it feeds, not up with Start.
+  assert.ok(at.get('portal').cy > at.get('ask').cy && at.get('portal').cy < at.get('merge').cy);
+  // The note is on its shape's row, to its right.
+  assert.equal(Math.round(at.get('note').cy), Math.round(at.get('ask').cy));
+  assert.ok(at.get('note').x > at.get('ask').x + at.get('ask').w);
+  // Yes and No are side by side, in the order they were drawn; the merge is centered under them.
+  assert.equal(Math.round(at.get('yes').cy), Math.round(at.get('no').cy));
+  assert.ok(at.get('yes').cx < at.get('no').cx);
+  // No shapes overlap.
+  const boxes = [...at.values()];
+  for (const a of boxes) for (const b of boxes) {
+    if (a !== b) assert.ok(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y);
+  }
+});
+
 test('arrange puts each node one row below the node that leads to it, without overlaps', () => {
   const g = flow.arrange({
     nodes: [{ id: 'd', shape: 'decision', label: 'Q?' }, { id: 'y', label: 'Yes path' }, { id: 'n', label: 'No path' }],

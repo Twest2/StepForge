@@ -171,9 +171,12 @@ tools:
 - Drag shapes to move them, double-click a shape or arrow to change its text,
   and press **Delete** to remove the selected one. Drag the small square at a
   selected shape's corner to resize it. **Arrange** lays the whole chart out
-  top to bottom. **Ctrl + mouse wheel** zooms in and out (**Ctrl+0** goes back
-  to 100%). Drag empty space (or drag with the middle mouse button) to move
-  around the canvas.
+  top to bottom so lines cross as little as possible: branches sit side by
+  side, a shape that only feeds another sits just above it, and a shape joined
+  by a plain line (a note, an audit log) sits beside its shape. The zoom
+  buttons, or **Ctrl + mouse wheel**, zoom in and out (click the percentage, or
+  press **Ctrl+0**, to go back to 100%). Drag empty space (or drag with the
+  middle mouse button) to move around the canvas, in any direction.
 
 In the details pane you can change a shape's fill, border and text colors (the
 same color menus as annotations), or link it to a step of the guide; the shape

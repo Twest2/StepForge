@@ -1850,4 +1850,5 @@
   "No linked step": "Aucune étape liée",
   "Open linked step": "Ouvrir l’étape liée",
   "A flowchart can contain up to 200 connections.": "Un organigramme peut contenir jusqu’à 200 connexions.",
+  "Editor": "Éditeur",
 });

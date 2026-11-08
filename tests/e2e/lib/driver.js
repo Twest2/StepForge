@@ -240,7 +240,12 @@ class AppPage {
 
   /** Replaces the value of a text field the way a person does: click, select all, type. */
   async setValue(selector, text, { timeout } = {}) {
-    await this.click(selector, { timeout });
+    await poll(async () => {
+      await this.click(selector, { timeout });
+      // A save can rebuild a property field between locating and clicking it.
+      // Never send Ctrl+A/Delete until the intended editor actually has focus.
+      return this.evaluate(`document.activeElement?.matches(${JSON.stringify(selector)})`);
+    }, { timeout, label: `focused field ${selector}` });
     await this.key('a', { ctrl: true });
     await this.key('Delete');
     await this.type(text);

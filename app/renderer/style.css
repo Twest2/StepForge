@@ -802,6 +802,8 @@ body.platform-linux #capture-status button {
 .description-preview table { width: 100%; border-collapse: collapse; }
 .description-preview th, .description-preview td { border: 1px solid var(--border); padding: 5px; }
 .markdown-help { font-size: 12px; }
+.description-preview-toggle[hidden], .markdown-help[hidden] { display: none !important; }
+.description-preview-toggle.active { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
 .canvas-wrap canvas {
   background: #fff;
   border-radius: 12px;

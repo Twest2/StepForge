@@ -5,7 +5,8 @@ const { markdownHtml } = require('./placeholder-markdown');
 /** Stored description HTML as the Markdown a person or agent edits. */
 function descriptionToMarkdown(html) {
   // htmlToMarkdown rewrites step links as export anchors; keep them step links.
-  return htmlToMarkdown(String(html || '')).replace(/\]\(#step-([^)\s]+)\)/g, '](step:$1)').trim();
+  const source = String(html || '').replace(/<a\b([^>]*\bdata-step-id="[^"]*"[^>]*)>[\s\S]*?<\/a>/g, '<a$1>Step</a>');
+  return htmlToMarkdown(source).replace(/\]\(#step-([^)\s]+)\)/g, '](step:$1)').trim();
 }
 
 /**

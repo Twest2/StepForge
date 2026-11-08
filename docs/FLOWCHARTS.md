@@ -49,7 +49,10 @@ Existing agent access controls apply; set_flowchart saves a snapshot first.
 
 ## Markdown and step links
 
-Descriptions offer **Markdown**, **Preview**, and **Rich text**. Markdown
+Descriptions default to **Rich text**. The writing-mode dropdown offers
+**Rich text** and **Markdown**. In Markdown mode, a **Preview** button next to
+the dropdown shows the rendered description, highlights blue, and changes
+to **Editor**; press it again to return to the source. Markdown
 supports CommonMark headings, emphasis (including underscores), nested lists,
 quotes, fenced/indented code, reference links, escapes and autolinks, plus
 tables and strikethrough. Source is saved exactly and reused in Markdown
@@ -61,9 +64,12 @@ Raw HTML is displayed as text. Remote image syntax becomes an explicit link,
 so opening a guide does not silently load third-party images. Use a step
 screenshot for embedded pictures.
 
-**Go to step…** inserts a link at the cursor, with a destination selected by
-number/title. The stored form is `[Go to Step](step:<permanent-id>)`; Preview
-shows the current number. Custom labels work too, such as
+In Rich text, the **Step** button beside **Clear** inserts a link at the
+cursor, with a destination selected by number/title. It immediately shows
+the current number, such as **Step 2**, and retains the destination's permanent
+ID. The Step button is available only in Rich text. Markdown source may also
+contain `[Step](step:<permanent-id>)`; Preview shows the current number.
+Custom labels work too, such as
 `[Try signing in](step:step-eec6232c-51e4-481a-8c81-fe5653f8a0c7)`.
 Click a link in Preview to navigate, or Ctrl/Cmd-click in Rich text.
 

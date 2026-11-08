@@ -1850,4 +1850,5 @@
   "No linked step": "不链接步骤",
   "Open linked step": "打开链接的步骤",
   "A flowchart can contain up to 200 connections.": "流程图最多可包含 200 条连线。",
+  "Editor": "编辑器",
 });

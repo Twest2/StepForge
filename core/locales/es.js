@@ -1850,4 +1850,5 @@
   "No linked step": "Sin paso enlazado",
   "Open linked step": "Abrir el paso enlazado",
   "A flowchart can contain up to 200 connections.": "Un diagrama de flujo puede contener hasta 200 conexiones.",
+  "Editor": "Editor",
 });

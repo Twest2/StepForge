@@ -1850,4 +1850,5 @@
   "No linked step": "Нет связанного шага",
   "Open linked step": "Открыть связанный шаг",
   "A flowchart can contain up to 200 connections.": "Блок-схема может содержать до 200 соединений.",
+  "Editor": "Редактор",
 });

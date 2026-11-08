@@ -1850,4 +1850,5 @@
   "No linked step": "リンク先なし",
   "Open linked step": "リンク先のステップを開く",
   "A flowchart can contain up to 200 connections.": "フローチャートには最大 200 本の接続を含められます。",
+  "Editor": "エディター",
 });

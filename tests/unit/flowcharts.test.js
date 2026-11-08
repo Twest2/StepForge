@@ -115,6 +115,22 @@ test('copying Markdown remaps inline and reference-style step links while leavin
   assert.match(step.descriptionMarkdown, /~~~md\n\[example\]\(step:old\)\n~~~/);
 });
 
+test('Rich text Step links retain permanent IDs and resolve their numbers when converted and reordered', t => {
+  const { descriptionToMarkdown } = require('../../core/description-markdown');
+  const { store, guide, first, target } = setup(t);
+  const html = `<p>Next: <a href="step:${target.stepId}" data-step-id="${target.stepId}">Step 2</a></p>`;
+  assert.equal(descriptionToMarkdown(html), `Next: [Step](step:${target.stepId})`);
+  store.saveStep(guide.guideId, { ...first, descriptionHtml: html });
+  let ast = buildRenderAst(store, guide.guideId);
+  assert.match(ast.steps[0].descriptionHtml, />Step 2<\/a>/);
+  const reordered = store.getGuide(guide.guideId); reordered.stepsOrder.reverse(); store.saveGuide(reordered);
+  ast = buildRenderAst(store, guide.guideId);
+  assert.match(ast.steps[1].descriptionHtml, />Step 1<\/a>/);
+  store.saveStep(guide.guideId, { ...store.getStep(guide.guideId, first.stepId), descriptionMarkdown: descriptionToMarkdown(html) });
+  ast = buildRenderAst(store, guide.guideId);
+  assert.match(ast.steps[1].descriptionHtml, />Step 1<\/a>/);
+});
+
 test('committing a node drag preserves concurrent label edits on another node', () => {
   const vm = require('node:vm');
   const context = { window: { StepForgeFlowchart: flow }, crypto: require('node:crypto') };

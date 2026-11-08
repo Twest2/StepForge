@@ -146,6 +146,7 @@ function buildRenderAst(store, guideId, { globals = {}, now = new Date(), maxSte
     const target = limited.find(s => s.stepId === id);
     if (!target) return `${label} (step unavailable)`;
     if (/^Go to [Ss]tep(?:\s.*)?$/.test(htmlToText(label))) label = `Go to Step ${target.number}`;
+    else if (/data-step-id=/.test(before + after) || /^Step(?:\s+[\d.]+)?$/.test(htmlToText(label))) label = `Step ${target.number}`;
     return `<a${before}href="step:${id}"${after}>${label}</a>`;
   });
   for (const s of limited) {

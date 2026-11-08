@@ -176,7 +176,8 @@ function renderMarkdownGuide(ast, outDir, template = {}, {
         const target = ast.steps.find(s => s.stepId === id);
         if (!target) return definition ? `${definition}#${angle || ''}` : `${label} (step unavailable)`;
         if (definition) return `${definition}#${anchorFor(target)}${angle || ''}`;
-        return `[${/^Go to Step(?:\s.*)?$/.test(label) ? `Go to Step ${target.number}` : label}](#${anchorFor(target)})`;
+        const numbered = /^Go to Step(?:\s.*)?$/.test(label) ? `Go to Step ${target.number}` : /^Step(?:\s+[\d.]+)?$/.test(label) ? `Step ${target.number}` : label;
+        return `[${numbered}](#${anchorFor(target)})`;
       });
       lines.push(source, '');
     } else if (step.descriptionHtml) lines.push(htmlToMarkdown(step.descriptionHtml), '');

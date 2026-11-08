@@ -157,11 +157,17 @@ Object.assign(window.GuideEditor.prototype, {
   },
 
   setupMarkdownDescription() {
-    this.descriptionMode = 'markdown';
-    const mode = this.dom.descriptionMode = el('select', { 'aria-label': t('Description editing mode'), onChange: () => { this.descriptionMode = mode.value; this.syncMarkdownDescription(); } },
-      el('option', { value: 'markdown' }, 'Markdown'), el('option', { value: 'preview' }, t('Preview')), el('option', { value: 'rich' }, t('Rich text')));
-    const picker = el('button', { type: 'button', onClick: () => this.insertStepReference() }, t('Go to step…'));
-    this.dom.richToolbar.before(el('div.row.description-mode', {}, mode, picker));
+    this.descriptionMode = 'rich';
+    this.descriptionPreviewActive = false;
+    const mode = this.dom.descriptionMode = el('select', { 'aria-label': t('Description editing mode'), onChange: () => {
+      this.descriptionMode = mode.value; this.descriptionPreviewActive = false; this.syncMarkdownDescription();
+    } }, el('option', { value: 'rich' }, t('Rich text')), el('option', { value: 'markdown' }, 'Markdown'));
+    const toggle = this.dom.descriptionPreviewToggle = el('button.description-preview-toggle', { type: 'button', hidden: true, 'aria-pressed': 'false', onClick: () => {
+      this.descriptionPreviewActive = !this.descriptionPreviewActive; this.syncMarkdownDescription();
+    } }, t('Preview'));
+    const picker = el('button', { type: 'button', dataset: { action: 'insertStep' }, onMousedown: e => e.preventDefault(), onClick: () => this.insertStepReference() }, t('Step'));
+    this.dom.richToolbar.append(picker);
+    this.dom.richToolbar.before(el('div.row.description-mode', {}, mode, toggle));
     const source = this.dom.descriptionSource = el('textarea.description-source', { rows: 12, spellcheck: true, 'aria-label': t('Description Markdown') });
     const preview = this.dom.descriptionPreview = el('div.rich-editor.description-preview', { hidden: true, tabIndex: 0, 'aria-label': t('Description preview') });
     this.dom.descEditor.after(source, preview);
@@ -181,19 +187,25 @@ Object.assign(window.GuideEditor.prototype, {
       const a = e.target.closest('a[href^="step:"]');
       if (a && (e.ctrlKey || e.metaKey)) { e.preventDefault(); this.selectStep(a.getAttribute('href').slice(5)); }
     });
-    preview.after(el('p.muted.markdown-help', {}, t('CommonMark, tables, strikethrough and step links. Remote images are shown as links; HTML is displayed as text.')));
+    preview.after(this.dom.markdownHelp = el('p.muted.markdown-help', { hidden: true }, t('CommonMark, tables, strikethrough and step links. Remote images are shown as links; HTML is displayed as text.')));
   },
 
   syncMarkdownDescription() {
     if (!this.dom.descriptionSource) return;
-    const step = this.currentStep, mode = this.descriptionMode || 'markdown';
-    this.dom.descriptionSource.hidden = mode !== 'markdown';
-    this.dom.descriptionPreview.hidden = mode !== 'preview';
+    const step = this.currentStep, mode = this.descriptionMode || 'rich';
+    const preview = mode === 'markdown' && this.descriptionPreviewActive;
+    this.dom.descriptionSource.hidden = mode !== 'markdown' || preview;
+    this.dom.descriptionPreview.hidden = !preview;
     this.dom.descEditor.hidden = mode !== 'rich';
     this.dom.richToolbar.hidden = mode !== 'rich';
+    this.dom.descriptionPreviewToggle.hidden = mode !== 'markdown';
+    this.dom.descriptionPreviewToggle.textContent = preview ? t('Editor') : t('Preview');
+    this.dom.descriptionPreviewToggle.classList.toggle('active', Boolean(preview));
+    this.dom.descriptionPreviewToggle.setAttribute('aria-pressed', String(Boolean(preview)));
+    this.dom.markdownHelp.hidden = mode !== 'markdown';
     if (!step) { this.dom.descriptionSource.value = ''; this.dom.descriptionPreview.innerHTML = ''; return; }
     const source = this.dom.descriptionSource;
-    if (document.activeElement !== source) {
+    if (mode === 'markdown' && document.activeElement !== source) {
       if (typeof step.descriptionMarkdown === 'string') source.value = step.descriptionMarkdown;
       else if (this.descriptionLoadedStep !== step.stepId || this.descriptionLoadedHtml !== step.descriptionHtml) {
         this.descriptionLoadedStep = step.stepId; this.descriptionLoadedHtml = step.descriptionHtml;
@@ -206,18 +218,29 @@ Object.assign(window.GuideEditor.prototype, {
       }
     }
     if (typeof step.descriptionMarkdown === 'string') source.readOnly = false;
+    if (mode === 'rich' && document.activeElement !== this.dom.descEditor) {
+      if (this.dom.descEditor.innerHTML !== (step.descriptionHtml || '')) this.dom.descEditor.innerHTML = step.descriptionHtml || '';
+      this.refreshDescriptionStepLinks(this.dom.descEditor);
+    }
     this.dom.descriptionPreview.innerHTML = step.descriptionHtml || '';
+    this.refreshDescriptionStepLinks(this.dom.descriptionPreview);
+  },
+
+  refreshDescriptionStepLinks(editor) {
     const numbers = window.StepForgeOutline.stepNumberMap(this.steps);
-    for (const a of this.dom.descriptionPreview.querySelectorAll('a[href^="step:"]')) {
+    for (const a of editor.querySelectorAll('a[href^="step:"]')) {
       const id = a.getAttribute('href').slice(5), number = numbers.get(id);
       if (!number) { a.textContent += ` (${t('Step unavailable')})`; a.removeAttribute('href'); }
-      else if (/^Go to Step(?:\s.*)?$/.test(a.textContent)) a.textContent = t('Go to Step {number}', { number });
+      else if (a.hasAttribute('data-step-id') || /^Step(?:\s+[\d.]+)?$/.test(a.textContent)) {
+        const label = t('Step {number}', { number }); if (a.textContent !== label) a.textContent = label;
+      } else if (/^Go to Step(?:\s.*)?$/.test(a.textContent)) {
+        const label = t('Go to Step {number}', { number }); if (a.textContent !== label) a.textContent = label;
+      }
     }
   },
 
   insertStepReference() {
-    const step = this.currentStep; if (!step) return;
-    const source = this.dom.descriptionSource, start = source.selectionStart, end = source.selectionEnd;
+    const step = this.currentStep; if (!step || this.descriptionMode !== 'rich') return;
     const selection = window.getSelection();
     const range = selection?.rangeCount && this.dom.descEditor.contains(selection.anchorNode) ? selection.getRangeAt(0).cloneRange() : null;
     const select = el('select', { 'aria-label': t('Go to step') }, ...this.flowchartSteps().filter(s => s.stepId !== step.stepId)
@@ -227,16 +250,15 @@ Object.assign(window.GuideEditor.prototype, {
       el('button.primary', { type: 'button', disabled: !select.options.length, onClick: () => {
         if (this.currentStep !== step || !this.stepMap.has(select.value)) { close(); return; }
         this.pushCanvasHistory('description');
-        if (this.descriptionMode === 'rich') {
-          const link = el('a', { href: `step:${select.value}` }, 'Go to Step');
-          if (range) { range.deleteContents(); range.insertNode(link); } else this.dom.descEditor.append(link);
-          delete step.descriptionMarkdown; step.descriptionHtml = this.dom.descEditor.innerHTML;
-        } else {
-          this.descriptionMode = 'markdown'; this.dom.descriptionMode.value = 'markdown';
-          source.setRangeText(`[Go to Step](step:${select.value})`, start, end, 'end');
-          step.descriptionMarkdown = source.value; step.descriptionHtml = md.render(source.value);
-        }
-        this.pendingSave = true; this.saveStepDebounced(); this.syncMarkdownDescription(); close();
+        const number = this.flowchartSteps().find(s => s.stepId === select.value)?.number;
+        const link = el('a', { href: `step:${select.value}`, dataset: { stepId: select.value } }, t('Step {number}', { number }));
+        close(); this.dom.descEditor.focus();
+        const caret = range || document.createRange();
+        if (!range) { caret.selectNodeContents(this.dom.descEditor); caret.collapse(false); }
+        const selectionNow = window.getSelection(); selectionNow.removeAllRanges(); selectionNow.addRange(caret);
+        document.execCommand('insertHTML', false, link.outerHTML);
+        delete step.descriptionMarkdown; step.descriptionHtml = this.dom.descEditor.innerHTML;
+        this.pendingSave = true; this.saveStepDebounced(); this.syncMarkdownDescription();
       } }, t('Insert'))], initialFocus: select });
   },
 });

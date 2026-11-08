@@ -998,7 +998,7 @@ class GuideEditor {
         active = false;
       }
       btn.classList.toggle('active', active);
-      if (!['createLink', 'removeFormat'].includes(action)) btn.setAttribute('aria-pressed', String(active));
+      if (!['createLink', 'removeFormat', 'insertStep'].includes(action)) btn.setAttribute('aria-pressed', String(active));
     }
   }
 
@@ -1794,6 +1794,7 @@ class GuideEditor {
     }
     if (document.activeElement !== this.dom.titleInput) this.dom.titleInput.value = step.title || '';
     if (document.activeElement !== this.dom.descEditor) this.dom.descEditor.innerHTML = step.descriptionHtml || '';
+    this.refreshDescriptionStepLinks?.(this.dom.descEditor);
     this.dom.statusSelect.value = step.status || 'todo';
     this.dom.hiddenToggle.querySelector('input').checked = Boolean(step.hidden);
     this.dom.skippedToggle.querySelector('input').checked = Boolean(step.skipped);

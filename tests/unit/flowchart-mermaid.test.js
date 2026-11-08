@@ -48,3 +48,18 @@ test('Mermaid it cannot read names the line', () => {
   assert.throws(() => fromMermaid('flowchart TD\n  A --> B\n  A --> \n', null), /Line 3/);
   assert.throws(() => fromMermaid('flowchart TD\n  A[Start] ??? B\n', null), /Line 2/);
 });
+
+test('Mermaid text is cut into colored pieces that join back to the text', () => {
+  const { tokens } = require('../../core/flowchart-mermaid');
+  const text = 'flowchart TD\n  A([Start]) --> B[Open the site] %% note\n  C -->|Yes| D{"Ask?"}\n  n6@{ shape: cloud, label: "Internet" }';
+  const pieces = tokens(text);
+  assert.equal(pieces.map((p) => p.text).join(''), text);
+  const kinds = (kind) => pieces.filter((p) => p.kind === kind).map((p) => p.text);
+  assert.deepEqual(kinds('keyword'), ['flowchart']);
+  assert.deepEqual(kinds('direction'), ['TD']);
+  assert.deepEqual(kinds('arrow'), ['-->', '-->']);
+  assert.deepEqual(kinds('comment'), ['%% note']);
+  assert.deepEqual(kinds('label'), ['|Yes|']);
+  assert.ok(kinds('string').includes('Open the site') && kinds('string').includes('"Internet"') && kinds('string').includes('cloud'));
+  assert.deepEqual(kinds('node'), ['A', 'B', 'C', 'D', 'n6']);
+});

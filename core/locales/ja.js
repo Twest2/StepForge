@@ -1890,4 +1890,5 @@
   "Mermaid flowchart syntax (opens in your browser)": "Mermaid フローチャートの構文（ブラウザーで開きます）",
   "Syntax": "構文",
   "In sync with the chart": "図と同期しています",
+  "Resize Mermaid panel": "Mermaid パネルのサイズを変更",
 });

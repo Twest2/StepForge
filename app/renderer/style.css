@@ -827,20 +827,55 @@ body.platform-linux #capture-status button {
 }
 .flowchart-mermaid-close:hover { background: var(--panel-2); border-color: var(--border); color: var(--text); }
 .flowchart-mermaid-close svg { width: 15px; height: 15px; }
-.flowchart-mermaid-source {
+.flowchart-mermaid-divider {
+  flex: none;
+  width: 7px;
+  margin-right: -4px;
+  z-index: 3;
+  cursor: col-resize;
+  touch-action: none;
+  background: linear-gradient(to right, transparent 2px, var(--border) 2px, var(--border) 3px, transparent 3px);
+}
+.flowchart-mermaid-divider:hover, .flowchart-mermaid-divider.dragging, .flowchart-mermaid-divider:focus-visible {
+  outline: none;
+  background: linear-gradient(to right, transparent 1px, var(--accent) 1px, var(--accent) 4px, transparent 4px);
+}
+.flowchart-mermaid-divider[hidden] { display: none; }
+/* The code box: a colored copy of the text under a see-through text box. */
+.flowchart-mermaid-code {
+  --mermaid-bg: var(--panel-2);
+  --mermaid-fg: var(--text);
+  position: relative;
   flex: 1;
   min-height: 0;
+  background: var(--mermaid-bg);
+}
+.flowchart-mermaid-code:not(.themed) { --mermaid-bg: var(--panel-2); --mermaid-fg: var(--text); }
+.flowchart-mermaid-highlight, .flowchart-mermaid-source {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
   margin: 0;
+  padding: 12px 14px;
   border: 0;
   border-radius: 0;
-  resize: none;
-  padding: 12px 14px;
   font: 12.5px/1.6 ui-monospace, 'Cascadia Code', 'Cascadia Mono', Consolas, 'Liberation Mono', monospace;
+  letter-spacing: 0;
   tab-size: 2;
   white-space: pre;
-  background: var(--panel-2);
-  color: var(--text);
+  overflow-wrap: normal;
 }
+.flowchart-mermaid-highlight { overflow: hidden; pointer-events: none; color: var(--mermaid-fg); background: transparent; }
+.flowchart-mermaid-source {
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  resize: none;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--mermaid-fg);
+}
+.flowchart-mermaid-source::selection { background: color-mix(in srgb, var(--accent) 35%, transparent); color: transparent; }
 .flowchart-mermaid-source:focus { outline: none; box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent); }
 .flowchart-mermaid-status {
   display: flex;

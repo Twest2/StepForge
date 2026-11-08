@@ -189,7 +189,9 @@ back), and **Block** adds it after the step's text.
 **Mermaid** in the toolbar opens the chart as
 [Mermaid](https://mermaid.js.org/syntax/flowchart.html) text beside it. Type or
 paste Mermaid flowchart text and the chart follows; draw on the canvas and the
-text follows. Shapes you already had keep their place, colors and pictures. Switch the
+text follows. Shapes you already had keep their place, colors and pictures. The
+text is colored with your **Code theme** (Settings → Exports), and you can drag
+the line between the canvas and the panel to make the panel wider or narrower. Switch the
 right-hand menu back to **Image** to edit the screenshot. **Ctrl+Z** undoes
 flowchart edits. A flowchart with no shapes is left out of exports.
 

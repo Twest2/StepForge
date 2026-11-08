@@ -258,5 +258,49 @@
     return flow.normalizeFlowchart(result);
   }
 
-  return { toMermaid, fromMermaid, parse };
+  /**
+   * Mermaid text cut into colored pieces for the editor: [{ text, kind }]
+   * with kind one of keyword, direction, node, arrow, shape, string, label,
+   * attr, comment, or null for plain text. Joined, the pieces are the text.
+   */
+  function tokens(text) {
+    const out = [];
+    const push = (piece, kind) => { if (piece) out.push({ text: piece, kind }); };
+    const OPENERS = new Set(['[', '(', '{', '((', '(((', '([', '[(', '[[', '{{', '[/', '[\\', '>']);
+    for (const [index, line] of String(text || '').split('\n').entries()) {
+      if (index) push('\n', null);
+      const comment = line.indexOf('%%');
+      let code = comment >= 0 ? line.slice(0, comment) : line;
+      let header = false;
+      while (code) {
+        let m;
+        if ((m = /^\s+/.exec(code))) push(m[0], null);
+        else if ((m = /^(flowchart|graph|subgraph|end|direction|classDef|class|style|linkStyle|click)\b/.exec(code))) {
+          push(m[0], 'keyword');
+          header = /^(flowchart|graph|direction)$/.test(m[0]);
+        } else if (header && (m = /^(TD|TB|BT|RL|LR)\b/.exec(code))) push(m[0], 'direction');
+        else if ((m = /^"[^"]*"?/.exec(code))) push(m[0], 'string');
+        else if ((m = /^\|[^|]*\|?/.exec(code))) push(m[0], 'label');
+        else if ((m = /^<?(?:-{2,}>|={2,}>|-\.+->|-{3,}|={3,}|-\.+-|~{3,}|--[ox]|\.->|\.-|--|==|-\.)/.exec(code))) push(m[0], 'arrow');
+        else if ((m = /^(shape)(\s*:\s*)([A-Za-z-]+)/.exec(code))) { push(m[1], 'attr'); push(m[2], null); push(m[3], 'string'); }
+        else if ((m = /^(label)(\s*:)/.exec(code))) { push(m[1], 'attr'); push(m[2], null); }
+        else if ((m = /^(\(\(\(|\)\)\)|\(\[|\]\)|\[\(|\)\]|\[\[|\]\]|\{\{|\}\}|\[\/|\/\]|\[\\|\\\]|@\{|[[\](){}>&;,/\\])/.exec(code))) {
+          push(m[0], 'shape');
+          // An opening bracket's unquoted text, up to its closing bracket, is the label.
+          if (OPENERS.has(m[0])) {
+            code = code.slice(m[0].length);
+            const label = /^[^"\])}/\\\n]+/.exec(code);
+            if (label) { push(label[0], 'string'); code = code.slice(label[0].length); }
+            continue;
+          }
+        } else if ((m = /^[A-Za-z0-9_]+(?:-(?![-.>])[A-Za-z0-9_]+)*/.exec(code))) push(m[0], 'node');
+        else m = [code[0]], push(code[0], null);
+        code = code.slice(m[0].length);
+      }
+      if (comment >= 0) push(line.slice(comment), 'comment');
+    }
+    return out;
+  }
+
+  return { toMermaid, fromMermaid, parse, tokens };
 });

@@ -1890,4 +1890,5 @@
   "Mermaid flowchart syntax (opens in your browser)": "Mermaid 流程图语法（在浏览器中打开）",
   "Syntax": "语法",
   "In sync with the chart": "已与图表同步",
+  "Resize Mermaid panel": "调整 Mermaid 面板大小",
 });

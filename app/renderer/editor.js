@@ -167,6 +167,27 @@ const TOOL_ICON_PATHS = {
   redo: '<path d="M15 14l5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/>',
 };
 
+/**
+ * The CSS for each Mermaid token kind (core/flowchart-mermaid.js tokens()) in
+ * a Code theme: each kind takes the first highlight.js class the theme colors.
+ */
+function mermaidTokenStyles(theme) {
+  if (theme.mermaidStyles) return theme.mermaidStyles;
+  const rule = (cls) => [...theme.rules].reverse().find(([selector]) => selector === cls);
+  const KINDS = {
+    keyword: ['keyword'], direction: ['literal', 'number', 'keyword'], node: ['title', 'variable', 'name'],
+    arrow: ['operator', 'symbol', 'literal', 'keyword'], shape: ['punctuation', 'built_in', 'meta', 'type'],
+    string: ['string'], label: ['string', 'attr'], attr: ['attr', 'attribute', 'property'], comment: ['comment'],
+  };
+  theme.mermaidStyles = Object.fromEntries(Object.entries(KINDS).map(([kind, classes]) => {
+    const found = classes.map(rule).find(Boolean);
+    if (!found) return [kind, ''];
+    const [, color, flags = ''] = found;
+    return [kind, `color:${color}${flags.includes('i') ? ';font-style:italic' : ''}${flags.includes('b') ? ';font-weight:600' : ''}`];
+  }));
+  return theme.mermaidStyles;
+}
+
 // A picture icon (the Fill menu's Image… item).
 const IMAGE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 17-5-5-9 8"/></svg>';
 
@@ -376,6 +397,8 @@ class GuideEditor {
   setSettings(settings) {
     const previousWidths = JSON.stringify(this.settings?.editor?.paneWidths);
     this.settings = settings || {};
+    // A new Code theme recolors the Mermaid panel.
+    if (this.mermaidOpen && this.dom?.mermaidCode) this.highlightMermaid();
     if (this.shellMounted && previousWidths !== JSON.stringify(this.settings.editor?.paneWidths)) {
       this.paneWidths = window.StepForgePaneLayout.normalizeWidths(this.settings.editor?.paneWidths);
       this.updatePaneLayout();
@@ -801,6 +824,9 @@ class GuideEditor {
         // The flowchart canvas and, beside it, its Mermaid text (Mermaid button, top right).
         this.dom.flowPane = el('div.flowchart-pane', { hidden: true },
           this.dom.flowSurface = el('div.flowchart-surface', { role: 'group', 'aria-label': t('Flowchart') }),
+          this.dom.mermaidDivider = el('div.flowchart-mermaid-divider', {
+            hidden: true, role: 'separator', tabIndex: 0, 'aria-orientation': 'vertical', 'aria-label': t('Resize Mermaid panel'),
+          }),
           this.dom.mermaidPanel = el('aside.flowchart-mermaid', { hidden: true, 'aria-label': t('Mermaid') },
             el('div.flowchart-mermaid-head', {},
               el('div.flowchart-mermaid-title', {},
@@ -810,7 +836,11 @@ class GuideEditor {
               el('a.flowchart-mermaid-help', { href: 'https://mermaid.js.org/syntax/flowchart.html', title: t('Mermaid flowchart syntax (opens in your browser)') }, t('Syntax')),
               this.dom.mermaidCloseBtn = el('button.flowchart-mermaid-close', { type: 'button', title: t('Close'), 'aria-label': t('Close Mermaid'), innerHTML: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>' }),
             ),
-            this.dom.mermaidSource = el('textarea.flowchart-mermaid-source', { spellcheck: false, wrap: 'off', 'aria-label': t('Flowchart as Mermaid text') }),
+            // The text box sits over its colored copy (the Code theme in Settings → Exports).
+            this.dom.mermaidCode = el('div.flowchart-mermaid-code', {},
+              this.dom.mermaidHighlight = el('pre.flowchart-mermaid-highlight', { 'aria-hidden': 'true' }),
+              this.dom.mermaidSource = el('textarea.flowchart-mermaid-source', { spellcheck: false, wrap: 'off', 'aria-label': t('Flowchart as Mermaid text') }),
+            ),
             this.dom.mermaidStatus = el('div.flowchart-mermaid-status', { role: 'status', 'aria-live': 'polite' }),
           ),
         ),
@@ -1208,10 +1238,13 @@ class GuideEditor {
     this.dom.mermaidCloseBtn.addEventListener('click', () => this.setMermaidOpen(false));
     const applyMermaid = debounce(() => this.applyMermaidText(), 350);
     this.dom.mermaidSource.addEventListener('focus', () => { this.mermaidArmed = false; });
-    this.dom.mermaidSource.addEventListener('input', () => { this.mermaidDirty = true; applyMermaid(); });
+    this.dom.mermaidSource.addEventListener('input', () => { this.mermaidDirty = true; this.highlightMermaid(); applyMermaid(); });
+    this.dom.mermaidSource.addEventListener('scroll', () => this.syncMermaidScroll());
+    this.bindMermaidDivider();
+    // Leaving the box keeps the text as typed (comments, spacing, names);
+    // it is rewritten only when the chart changes on the canvas.
     this.dom.mermaidSource.addEventListener('blur', () => {
       if (this.mermaidDirty) applyMermaid.flush();
-      if (!this.dom.mermaidStatus.classList.contains('error')) this.syncMermaidText({ force: true });
     });
     this.dom.flowArrangeBtn.addEventListener('click', () => this.flowchartEditor()?.arrange());
     this.dom.flowDeleteBtn.addEventListener('click', () => this.flowchartEditor()?.deleteSelected());
@@ -2131,6 +2164,8 @@ class GuideEditor {
   setMermaidOpen(open) {
     this.mermaidOpen = Boolean(open);
     this.dom.mermaidPanel.hidden = !this.mermaidOpen;
+    this.dom.mermaidDivider.hidden = !this.mermaidOpen;
+    this.dom.mermaidPanel.style.width = `${this.settings?.editor?.mermaidWidth || 340}px`;
     this.setPressed(this.dom.mermaidToggle, this.mermaidOpen);
     this.syncMermaidText({ force: true });
     if (this.mermaidOpen) this.dom.mermaidSource.focus();
@@ -2145,7 +2180,83 @@ class GuideEditor {
     const { text, ids } = window.StepForgeFlowchartMermaid.toMermaid(this.currentStep?.flowchart);
     this.mermaidIds = ids;
     this.dom.mermaidSource.value = text;
+    this.highlightMermaid();
     this.showMermaidStatus('');
+  }
+
+  /**
+   * Color the Mermaid text with the Code theme chosen in Settings → Exports
+   * (its background too). Plain keeps the panel's own colors.
+   */
+  highlightMermaid() {
+    const box = this.dom.mermaidCode;
+    if (!box || !window.StepForgeFlowchartMermaid) return;
+    const themes = window.StepForgeCodeThemes?.CODE_THEMES || {};
+    const chosen = this.settings?.exports?.codeTheme || 'atom-one-dark';
+    const theme = chosen === 'plain' ? null : themes[chosen] || themes['atom-one-dark'];
+    box.classList.toggle('themed', Boolean(theme));
+    box.style.setProperty('--mermaid-bg', theme ? theme.background : '');
+    box.style.setProperty('--mermaid-fg', theme ? theme.foreground : '');
+    box.classList.toggle('dark', Boolean(theme?.dark));
+    const style = theme ? mermaidTokenStyles(theme) : {};
+    const html = window.StepForgeFlowchartMermaid.tokens(this.dom.mermaidSource.value).map(({ text, kind }) => {
+      const css = kind && style[kind];
+      return css ? `<span style="${css}">${escapeHtml(text)}</span>` : escapeHtml(text);
+    }).join('');
+    // A final newline keeps the copy as tall as the text box's last line.
+    this.dom.mermaidHighlight.innerHTML = `${html}\n`;
+    this.syncMermaidScroll();
+  }
+
+  syncMermaidScroll() {
+    this.dom.mermaidHighlight.scrollTop = this.dom.mermaidSource.scrollTop;
+    this.dom.mermaidHighlight.scrollLeft = this.dom.mermaidSource.scrollLeft;
+  }
+
+  /** Mermaid panel divider: drag (or arrow keys) to resize; the width is remembered. */
+  bindMermaidDivider() {
+    const divider = this.dom.mermaidDivider;
+    const panel = this.dom.mermaidPanel;
+    const clamp = (width) => {
+      const pane = this.dom.flowPane.clientWidth || 800;
+      return Math.round(Math.max(200, Math.min(pane - 160, width)));
+    };
+    const save = () => {
+      const value = panel.offsetWidth;
+      this.settings ||= {};
+      this.settings.editor ||= {};
+      this.settings.editor.mermaidWidth = value;
+      api.settings.set({ keyPath: 'editor.mermaidWidth', value }).catch(() => {});
+      this.flowEditor?.render();
+    };
+    let drag = null;
+    divider.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      drag = { x: e.clientX, width: panel.offsetWidth };
+      divider.setPointerCapture?.(e.pointerId);
+      divider.classList.add('dragging');
+    });
+    divider.addEventListener('pointermove', (e) => {
+      if (!drag) return;
+      panel.style.width = `${clamp(drag.width + drag.x - e.clientX)}px`;
+    });
+    const end = () => {
+      if (!drag) return;
+      drag = null;
+      divider.classList.remove('dragging');
+      save();
+    };
+    divider.addEventListener('pointerup', end);
+    divider.addEventListener('pointercancel', end);
+    divider.addEventListener('keydown', (e) => {
+      const delta = { ArrowLeft: 20, ArrowRight: -20 }[e.key];
+      if (!delta) return;
+      e.preventDefault();
+      e.stopPropagation();
+      panel.style.width = `${clamp(panel.offsetWidth + delta)}px`;
+      save();
+    });
   }
 
   showMermaidStatus(message, { error = false } = {}) {

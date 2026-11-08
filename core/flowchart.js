@@ -644,16 +644,45 @@
     if (editor) {
       return `<svg ${ns} width="${f(width * zoom)}" height="${f(height * zoom)}" viewBox="${f(viewX)} ${f(viewY)} ${f(width)} ${f(height)}" font-family="${esc(FONT_FAMILY)}">${body}</svg>`;
     }
-    const box = bounds(graph, options) || { x: 0, y: 0, w: 0, h: 0 };
-    const w = Math.max(minWidth, box.w + padding * 2);
-    const h = box.h + padding * 2;
-    const vx = box.x - (w - box.w) / 2;
-    const vy = box.y - padding;
+    const { vx, vy, w, h } = exportView(graph, options, { padding, minWidth });
     // The chart's background color (white unless chosen); none when transparent.
     const background = graph.background || '#ffffff';
     const backdrop = background === 'transparent' ? '' : `<rect x="${f(vx)}" y="${f(vy)}" width="${f(w)}" height="${f(h)}" fill="${background}"/>`;
     return `<svg ${ns} width="${Math.round(w * scale)}" height="${Math.round(h * scale)}" viewBox="${f(vx)} ${f(vy)} ${f(w)} ${f(h)}" font-family="${esc(FONT_FAMILY)}">`
       + `${backdrop}${body}</svg>`;
+  }
+
+  /** The area an export shows (toSvg without `editor`), in chart units. */
+  function exportView(graph, options, { padding = 24, minWidth = 640 } = {}) {
+    const box = bounds(graph, options) || { x: 0, y: 0, w: 0, h: 0 };
+    const w = Math.max(minWidth, box.w + padding * 2);
+    const h = box.h + padding * 2;
+    return { vx: box.x - (w - box.w) / 2, vy: box.y - padding, w, h };
+  }
+
+  /**
+   * The shapes linked to a step ("Links to step"), as areas of the exported
+   * picture: [{ stepId, number, x, y, w, h }], each a fraction (0..1) of its
+   * width or height, so exporters can make them clickable at any size.
+   * Only steps in `steps` count (a hidden step isn't in the export).
+   */
+  function linkAreas(raw, { steps = [], stepLabel, padding = 24, minWidth = 640 } = {}) {
+    const graph = normalizeFlowchart(raw);
+    if (!graph) return [];
+    const options = { steps, stepLabel };
+    const view = exportView(graph, options, { padding, minWidth });
+    const numbers = new Map(steps.map((s) => [s.stepId, s.number]));
+    return graph.nodes.filter((n) => n.stepId && numbers.has(n.stepId)).map((n) => {
+      const b = nodeBox(n, options);
+      return {
+        stepId: n.stepId,
+        number: numbers.get(n.stepId),
+        x: (b.x - view.vx) / view.w,
+        y: (b.y - view.vy) / view.h,
+        w: b.w / view.w,
+        h: b.h / view.h,
+      };
+    });
   }
 
   /** A small outline drawing of a shape, for the shape palette. */
@@ -684,6 +713,6 @@
 
   return {
     SHAPES: SHAPE_IDS, MAX_CHART_IMAGE_CHARS, EDGE_STYLES, PLACEMENTS, GRID, normalizeFlowchart, normalizePlacement, wrapLabel, nodeBox, boundaryPoint,
-    arrange, bounds, toSvg, shapeIcon, defaultColors, hasFlowchart, newId, isDark, edgeColorOn,
+    arrange, bounds, toSvg, shapeIcon, defaultColors, hasFlowchart, newId, isDark, edgeColorOn, linkAreas,
   };
 });

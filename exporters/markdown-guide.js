@@ -56,6 +56,19 @@ function markdownSource(source) {
     .trim();
 }
 
+/**
+ * Under a flowchart picture: its shapes' step links, which a picture can't
+ * hold in Markdown ("Go to: [Step 3](#step-…) · [Step 5](#step-…)").
+ */
+function chartLinkLine(chart, ast) {
+  const seen = new Set();
+  const links = (chart?.links || []).filter((link) => !seen.has(link.stepId) && seen.add(link.stepId)).map((link) => {
+    const target = ast.steps.find((s) => s.stepId === link.stepId);
+    return target ? `[Step ${target.number}: ${target.title || 'Untitled step'}](#step-${target.stepId})` : '';
+  }).filter(Boolean);
+  return links.length ? [`Go to: ${links.join(' · ')}`, ''] : [];
+}
+
 function emitBlock(lines, tb, { alertStyle = 'gfm' } = {}) {
   const body = htmlToMarkdown(tb.descriptionHtml);
   if (alertStyle === 'html') {
@@ -164,6 +177,20 @@ function renderMarkdownGuide(ast, outDir, template = {}, {
     lines.push('');
   }
 
+  // Steps something links to (a description's Step link, a flowchart
+  // shape) always get their heading anchor, which those links point at.
+  const linkTargets = new Set();
+  const collectTargets = (text) => {
+    for (const m of String(text || '').matchAll(/step:([A-Za-z0-9_-]+)/g)) linkTargets.add(m[1]);
+  };
+  collectTargets(ast.guide.descriptionHtml);
+  for (const step of ast.steps) {
+    collectTargets(step.descriptionHtml);
+    collectTargets(step.descriptionMarkdown);
+    for (const block of step.blocks || []) collectTargets(block.descriptionHtml);
+    for (const link of [...(step.image?.links || []), ...(step.flowchartImage?.links || [])]) linkTargets.add(link.stepId);
+  }
+
   for (const step of ast.steps) {
     const heading = step.depth > 0 ? '###' : '##';
     const {
@@ -179,9 +206,9 @@ function renderMarkdownGuide(ast, outDir, template = {}, {
     const emit = (tb) => {
       if (tb.kind !== 'flowchart') { emitBlock(lines, tb, { alertStyle }); return; }
       const chart = images.get(flowchartImageKey(step.stepId));
-      if (chart) lines.push(`![${markdownAlt(flowchartAlt(step))}](${imageUrl(chart.relPath)})`, '');
+      if (chart) lines.push(`![${markdownAlt(flowchartAlt(step))}](${imageUrl(chart.relPath)})`, '', ...chartLinkLine(step.flowchartImage, ast));
     };
-    if (accentBar || withToc) lines.push(`<a id="${anchorFor(step)}"></a>`, '');
+    if (accentBar || withToc || linkTargets.has(step.stepId)) lines.push(`<a id="${anchorFor(step)}"></a>`, '');
     for (const tb of beforeTitle) emit(tb);
     lines.push(`${heading} ${step.number}. ${step.title || 'Untitled step'}`, '');
     if (step.skipped) lines.push('*(skipped)*', '');
@@ -199,6 +226,7 @@ function renderMarkdownGuide(ast, outDir, template = {}, {
       } else {
         lines.push(`![${markdownAlt(step.altText)}](${imageUrl(img.relPath)})`, '');
       }
+      if (step.image?.flowchart) lines.push(...chartLinkLine(step.image, ast));
     }
     for (const tb of afterImage) emit(tb);
 

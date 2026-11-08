@@ -9,6 +9,7 @@ const { makeTmpDir, rmrf } = require('./helpers');
 const { GuideStore } = require('../../core/store');
 const { Settings } = require('../../core/settings');
 const { encodePng } = require('../../core/png');
+const { unzipSync } = require('../../core/zip');
 const { createImage } = require('../../core/raster');
 const flow = require('../../core/flowchart');
 const { parseFlowchart } = require('../../core/ai-flowchart');
@@ -194,6 +195,58 @@ test('a flowchart block goes where it is set, like a text block (after the scree
   const beforeTitle = await orderIn('before-title');
   for (const [, , chartAt, titleAt] of [beforeTitle.html, beforeTitle.md]) assert.ok(chartAt < titleAt);
 });
+
+for (const placement of ['block', 'visual']) {
+  test(`exports: a ${placement} flowchart links its shape to the exported step`, async (t) => {
+    const { dir, store, guide, shot, second } = library(t);
+    const chart = { nodes: [{ id: 'a', shape: 'process', label: 'Sign in', x: 40, y: 40, stepId: second.stepId }], edges: [] };
+    store.saveStep(guide.guideId, { ...store.getStep(guide.guideId, shot.stepId), flowchart: chart, flowchartPlacement: placement });
+    const images = await prepareExportImages(store, guide.guideId);
+    const ast = buildRenderAst(store, guide.guideId, { images });
+    const chartImage = placement === 'block' ? ast.steps[0].flowchartImage : ast.steps[0].image;
+    assert.equal(chartImage.links.length, 1);
+    const [link] = chartImage.links;
+    assert.equal(link.stepId, second.stepId);
+    assert.ok(link.x > 0 && link.x + link.w < 1 && link.y > 0 && link.y + link.h < 1);
+    const out = path.join(dir, 'out');
+    fs.mkdirSync(out);
+    // PDF: a link annotation over the shape, opening at step 2's heading.
+    // No contents links: the annotation must belong to the shape itself.
+    const pdf = fs.readFileSync(runExport('pdf', ast, out, { includeToc: false, includeCover: false }).file, 'latin1');
+    assert.equal((pdf.match(/\/Subtype \/Link/g) || []).length, 1);
+    const destination = /\/Subtype \/Link[^>]*\/Dest \[(\d+) 0 R \/XYZ 0 ([\d.]+) null\]/.exec(pdf);
+    assert.ok(destination, 'the shape has a destination at a heading');
+    const bookmark = /\/Title \(2\. Sign in\)[^>]*\/Dest \[(\d+) 0 R/.exec(pdf);
+    assert.ok(bookmark, 'the target step has a bookmark');
+    assert.equal(destination[1], bookmark[1], 'the shape targets the correct step page');
+    assert.ok(Number(destination[2]) > 0 && Number(destination[2]) <= 842);
+    // HTML: a link laid over the picture.
+    for (const format of ['html-simple', 'html-rich']) {
+      const html = fs.readFileSync(runExport(format, ast, out).file, 'utf8');
+      assert.match(html, /<a class="chart-link" href="#step-2"[^>]*style="left:[\d.]+%;top:[\d.]+%/, format);
+      assert.match(html, /<section[^>]*id="step-2"/, format);
+    }
+    // Markdown and Wiki.js: a Go to line, and the heading anchor it points at.
+    for (const [format, opts] of [['markdown', {}], ['wikijs', { assetFolder: 'g' }]]) {
+      const md = fs.readFileSync(runExport(format, ast, out, opts).file, 'utf8');
+      assert.match(md, /Go to: \[Step 2: Sign in\]\(#step-2\)/, format);
+      assert.match(md, /<a id="step-2"><\/a>/, format);
+    }
+    // Word: the same line, linked to the step's bookmark.
+    const docx = runExport('docx', ast, out).file;
+    const xml = unzipSync(fs.readFileSync(docx)).find((entry) => entry.name === 'word/document.xml').data.toString('utf8');
+    assert.match(xml, /<w:hyperlink w:anchor="toc_2">.*?Step 2: Sign in/);
+    assert.match(xml, /<w:bookmarkStart[^>]*w:name="toc_2"/);
+    // Both Confluence formats use links to their own exported step anchors.
+    const confluence = runExport('confluence', ast, out, { apiFiles: true });
+    const storage = fs.readFileSync(confluence.apiPage, 'utf8');
+    assert.match(storage, /<ac:link ac:anchor="step-2">/);
+    assert.match(storage, /ac:name="anchor"><ac:parameter ac:name="">step-2<\/ac:parameter>/);
+    const confluenceXml = unzipSync(fs.readFileSync(confluence.file)).find((entry) => entry.name === 'word/document.xml').data.toString('utf8');
+    assert.match(confluenceXml, /<w:hyperlink w:anchor="step_2">/);
+    assert.match(confluenceXml, /<w:bookmarkStart[^>]*w:name="step_2"/);
+  });
+}
 
 test('publishing: a step with a screenshot and a flowchart block uploads both, under different names', async (t) => {
   const { dir, store, guide, shot } = library(t);

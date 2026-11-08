@@ -298,6 +298,15 @@ function exportDocx(ast, outDir, template = {}) {
   };
 
   const body = [];
+  // Under a flowchart picture: its shapes' step links (Word can't link parts of a picture).
+  const chartLinkParagraph = (chart) => {
+    const seen = new Set();
+    const links = (chart?.links || []).filter((link) => !seen.has(link.stepId) && seen.add(link.stepId)).map((link) => {
+      const target = ast.steps.find((s) => s.stepId === link.stepId);
+      return target ? `<w:hyperlink w:anchor="${bookmarkName(target)}">${run(`Step ${target.number}: ${target.title || 'Untitled step'}`, { size: 20, color: primary })}</w:hyperlink>` : '';
+    }).filter(Boolean);
+    if (links.length) body.push(p(run('Go to: ', { size: 20, color: ink }) + links.join(run(' · ', { size: 20, color: ink }))));
+  };
   // Cover: banner, logo and title. Centered centers them; Band sets the
   // logo and title on the brand's primary color.
   const cover = brand?.cover || 'standard';
@@ -363,6 +372,7 @@ function exportDocx(ast, outDir, template = {}) {
       // Drawn at 2x: show it at its natural size, never wider than a screenshot.
       const widthTwips = Math.min(tpl.imageWidthTwips, Math.round((chart.width / 2) * 15));
       body.push(p(drawing(relId, chart.width, chart.height, widthTwips, flowchartAlt(step))));
+      chartLinkParagraph(step.flowchartImage);
       stepImageCount += 1;
     };
     for (const tb of beforeTitle) emit(tb);
@@ -385,6 +395,7 @@ function exportDocx(ast, outDir, template = {}) {
       media.push({ name, data: encodePng(img) });
       rels.push(`<Relationship Id="rId${relId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${name}"/>`);
       body.push(p(drawing(relId, img.width, img.height, tpl.imageWidthTwips, step.altText)));
+      if (step.image?.flowchart) chartLinkParagraph(step.image);
       stepImageCount += 1;
     }
 

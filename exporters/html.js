@@ -122,11 +122,28 @@ function codeHtml(block, ast) {
   return `<pre class="code themed${hl.dark ? '' : ' light'}" style="background:${hl.background};color:${hl.foreground}"><code>${lines.join('\n')}</code></pre>`;
 }
 
+/**
+ * A flowchart picture with a link over each shape linked to a step
+ * (positions are fractions of the picture, so they follow its size).
+ */
+function chartLinks(imgHtml, chart, ast) {
+  const links = (chart?.links || []).map((link) => {
+    const target = ast.steps.find((s) => s.stepId === link.stepId);
+    if (!target) return '';
+    const pct = (v) => `${(v * 100).toFixed(3)}%`;
+    const label = escapeHtml(`Go to step ${target.number}: ${target.title || 'Untitled step'}`);
+    return `<a class="chart-link" href="#${anchorFor(target)}" title="${label}" aria-label="${label}" style="left:${pct(link.x)};top:${pct(link.y)};width:${pct(link.w)};height:${pct(link.h)}"></a>`;
+  }).join('');
+  return links ? `<span class="chart-links">${imgHtml}${links}</span>` : imgHtml;
+}
+
 function renderStep(step, ast, images, tpl, { rich = false } = {}) {
   const groups = stepContentGroups(step);
   const chartHtml = () => {
     const chart = images.get(flowchartImageKey(step.stepId));
-    return chart && tpl.includeImages ? `<figure class="shot flowchart"><img alt="${escapeHtml(flowchartAlt(step))}" src="${dataUri(chart)}" width="${chart.width / 2}" height="${chart.height / 2}"></figure>` : '';
+    return chart && tpl.includeImages
+      ? `<figure class="shot flowchart">${chartLinks(`<img alt="${escapeHtml(flowchartAlt(step))}" src="${dataUri(chart)}" width="${chart.width / 2}" height="${chart.height / 2}">`, step.flowchartImage, ast)}</figure>`
+      : '';
   };
   const blocks = (list) => list.map((tb) => (tb.kind === 'flowchart' ? chartHtml() : blockHtml(tb, ast))).join('\n');
   const parts = [];
@@ -136,7 +153,9 @@ function renderStep(step, ast, images, tpl, { rich = false } = {}) {
   parts.push(blocks(groups.beforeImage));
   const img = images.get(step.stepId);
   if (img && tpl.includeImages) {
-    parts.push(`<figure class="shot"><img alt="${escapeHtml(step.altText)}" src="${dataUri(img)}" width="${img.width}" height="${img.height}"${rich ? ' tabindex="0"' : ''}></figure>`);
+    const shot = `<img alt="${escapeHtml(step.altText)}" src="${dataUri(img)}" width="${img.width}" height="${img.height}"${rich ? ' tabindex="0"' : ''}>`;
+    // A flowchart shown as the main visual: its linked shapes jump to their steps.
+    parts.push(`<figure class="shot">${step.image?.flowchart ? chartLinks(shot, step.image, ast) : shot}</figure>`);
   }
   parts.push(blocks(groups.afterImage));
   for (const block of groups.rest) {
@@ -239,6 +258,9 @@ a { color: var(--link); text-underline-offset: 2px; }
 .desc > :first-child { margin-top: 0; }
 .shot { margin: 16px 0 20px; }
 .shot img { display: block; max-width: 100%; height: auto; border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 1px 2px rgba(16,24,40,.06), 0 4px 16px rgba(16,24,40,.06); }
+.chart-links { position: relative; display: inline-block; max-width: 100%; }
+.chart-link { position: absolute; border-radius: 8px; cursor: pointer; }
+.chart-link:hover, .chart-link:focus-visible { outline: 2px solid var(--accent, #2563eb); outline-offset: 2px; background: rgba(var(--accent-rgb, 37, 99, 235), .08); }
 .callout { border-left: 3px solid var(--info); background: var(--info-bg); border-radius: 0 8px 8px 0; padding: 12px 16px; margin: 14px 0; }
 .callout-title { font-weight: 650; color: var(--info); }
 .callout-body > :first-child { margin-top: 4px; } .callout-body > :last-child { margin-bottom: 0; }

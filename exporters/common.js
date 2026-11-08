@@ -79,6 +79,21 @@ function publishedImageName(file, used) {
   return name;
 }
 
+/**
+ * The steps a flowchart's shapes link to, as a line of step links to put
+ * under its picture where a picture can't hold links (Word, Confluence):
+ * '<p>Go to: <a href="step:…">Step 3: Title</a> · …</p>', or '' when none.
+ */
+function chartLinksHtml(chart, ast) {
+  const esc = (v) => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const seen = new Set();
+  const links = (chart?.links || []).filter((link) => !seen.has(link.stepId) && seen.add(link.stepId)).map((link) => {
+    const target = ast.steps.find((s) => s.stepId === link.stepId);
+    return target ? `<a href="step:${esc(target.stepId)}" data-step-id="${esc(target.stepId)}">Step ${esc(target.number)}: ${esc(target.title || 'Untitled step')}</a>` : '';
+  }).filter(Boolean);
+  return links.length ? `<p>Go to: ${links.join(' · ')}</p>` : '';
+}
+
 /** Alt text for a step's flowchart block. */
 function flowchartAlt(step) {
   return step.altText.replace(/^Screenshot/, 'Flowchart');
@@ -168,6 +183,7 @@ module.exports = {
   guideSlug,
   flowchartImageKey,
   flowchartAlt,
+  chartLinksHtml,
   publishedImageName,
   imagesDirName,
   writeStepImages,

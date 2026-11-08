@@ -4,7 +4,7 @@ const { zipSync } = require('../core/zip');
 const { escapeXml } = require('../core/util');
 const { encodePng } = require('../core/png');
 const { htmlToBlocks } = require('../core/htmlblocks');
-const { LEVEL_LABEL, stepContentGroups, codeBlockText, wordCodeRuns, wordCodeShading, flowchartImageKey, flowchartAlt } = require('./common');
+const { LEVEL_LABEL, stepContentGroups, codeBlockText, wordCodeRuns, wordCodeShading, flowchartImageKey, flowchartAlt, chartLinksHtml } = require('./common');
 const { highlightCode } = require('../core/code-highlight');
 const { guideMetaLines } = require('./document-layout');
 const { fitSize } = require('./branding');
@@ -184,7 +184,8 @@ class WordDocument {
       const img = images.get(flowchartImageKey(step.stepId));
       if (!img || !tpl.includeImages) return '';
       const scale = Math.min(0.5, MAX_IMAGE_PX / img.width); // drawn at 2x
-      return this.picture(encodePng(img), img.width * scale, img.height * scale, flowchartAlt(step));
+      return this.picture(encodePng(img), img.width * scale, img.height * scale, flowchartAlt(step))
+        + this.richText(chartLinksHtml(step.flowchartImage, this.ast));
     };
     const blocks = (list) => list.map((tb) => (tb.kind === 'flowchart' ? chart() : this.callout(tb))).join('');
     const bm = this.nextBookmark++;
@@ -200,7 +201,11 @@ class WordDocument {
     parts.push(blocks(g.afterTitle), blocks(g.beforeDescription), this.richText(step.descriptionHtml),
       blocks(g.afterDescription), blocks(g.beforeImage));
     const img = images.get(step.stepId);
-    if (img && tpl.includeImages) parts.push(this.image(img, step.altText));
+    if (img && tpl.includeImages) {
+      parts.push(this.image(img, step.altText));
+      // A flowchart as the main visual: its shapes' step links, under it.
+      if (step.image?.flowchart) parts.push(this.richText(chartLinksHtml(step.image, this.ast)));
+    }
     parts.push(blocks(g.afterImage));
     for (const block of g.rest) {
       if (block.kind === 'text') parts.push(this.callout(block));

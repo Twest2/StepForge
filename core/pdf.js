@@ -445,9 +445,13 @@ class PdfBuilder {
       if (targetIndex == null || !pageIds[targetIndex]) continue;
       const y1 = this.pageHeight - link.yTop - link.h;
       const y2 = this.pageHeight - link.yTop;
+      // A target with a `yTop` opens at that spot of its page (a step's heading), else the whole page.
+      const top = typeof link.target === 'object' && Number.isFinite(link.target.yTop)
+        ? (this.pageHeight - link.target.yTop + 6).toFixed(2) : null;
+      const dest = top ? `/XYZ 0 ${top} null` : '/Fit';
       const annotId = addObj(
         `<< /Type /Annot /Subtype /Link /Rect [${link.x.toFixed(2)} ${y1.toFixed(2)} ${(link.x + link.w).toFixed(2)} ${y2.toFixed(2)}] ` +
-        `/Border [0 0 0] /Dest [${pageIds[targetIndex]} 0 R /Fit] >>`
+        `/Border [0 0 0] /Dest [${pageIds[targetIndex]} 0 R ${dest}] >>`
       );
       if (!pageAnnots.has(link.pageIndex)) pageAnnots.set(link.pageIndex, []);
       pageAnnots.get(link.pageIndex).push(annotId);

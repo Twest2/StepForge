@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { slugify, escapeXml, htmlToText, NAMED_ENTITIES } = require('../core/util');
 const { encodePng } = require('../core/png');
-const { guideSlug, renderAllImages, stepContentGroups, codeBlockText, flowchartImageKey, flowchartAlt } = require('./common');
+const { guideSlug, renderAllImages, stepContentGroups, codeBlockText, flowchartImageKey, flowchartAlt, chartLinksHtml } = require('./common');
 const { anchorFor, guideMetaLines } = require('./document-layout');
 const { buildConfluenceWord } = require('./confluence-word');
 const { scaledPng } = require('./branding');
@@ -148,7 +148,9 @@ function renderStep(step, ast, attachmentNames, tpl) {
   const groups = stepContentGroups(step);
   const chart = () => {
     const name = attachmentNames.get(flowchartImageKey(step.stepId));
-    return name ? `<p><ac:image ac:alt="${escapeXml(flowchartAlt(step))}"><ri:attachment ri:filename="${escapeXml(name)}" /></ac:image></p>` : '';
+    if (!name) return '';
+    const links = chartLinksHtml(step.flowchartImage, ast);
+    return `<p><ac:image ac:alt="${escapeXml(flowchartAlt(step))}"><ri:attachment ri:filename="${escapeXml(name)}" /></ac:image></p>${links ? toStorage(links, ast) : ''}`;
   };
   const panels = (list) => list.map((tb) => (tb.kind === 'flowchart' ? chart() : panel(tb, ast))).filter(Boolean);
   const out = [];
@@ -164,6 +166,9 @@ function renderStep(step, ast, attachmentNames, tpl) {
   if (attachment) {
     const width = Math.max(100, Math.round(Number(tpl.imageWidth) || DEFAULT_TEMPLATE.imageWidth));
     out.push(`<p><ac:image ac:border="true" ac:width="${width}" ac:alt="${escapeXml(step.altText)}"><ri:attachment ri:filename="${escapeXml(attachment)}" /></ac:image></p>`);
+    // A flowchart as the main visual: its shapes' step links, under it.
+    const links = step.image?.flowchart ? chartLinksHtml(step.image, ast) : '';
+    if (links) out.push(toStorage(links, ast));
   }
   out.push(...panels(groups.afterImage));
 

@@ -338,6 +338,10 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
       y += fs_ * leading;
     }
   };
+  // Each step's place in the document, filled in as the step claims its
+  // page: what Contents entries, Step links and flowchart shapes jump to.
+  const tocTargets = new Map(ast.steps.map((step) => [step.stepId, {}])); // stepId -> { pageIndex, yTop }
+
   /** Render laid-out description items, preserving bold/italic/links/lists. */
   const writeDescription = (html, { size: baseSize = 10.5, color = ink, indent: indentBase = 0 } = {}) => {
     const { items } = layoutDescription(pdf, html, usableW - indentBase, baseSize, bodyFonts);
@@ -369,6 +373,21 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
         }));
         pdf.textRun(parts, textX, y, item.size);
         strikeWords(pdf, line, textX, y, item.size, item.muted ? [100, 100, 100] : color);
+        // A Step link (Description → Step) jumps to that step.
+        let wx = textX;
+        let open = null; // { href, x, w, target }: the words of one link on this line
+        const close = () => { if (open) pdf.linkRect(open.x, y, open.w, item.lineHeight, open.target); open = null; };
+        for (const word of line) {
+          const ww = standardTextWidth(word.text, item.size, word.font) ?? pdf.textWidth(word.text, item.size, word.font);
+          const target = word.href && word.href.startsWith('step:') ? tocTargets.get(word.href.slice(5)) : null;
+          if (target && open?.href === word.href) open.w = wx + ww - open.x;
+          else {
+            close();
+            if (target) open = { href: word.href, x: wx, w: ww, target };
+          }
+          wx += ww;
+        }
+        close();
         y += item.lineHeight;
       });
       y += 4;
@@ -556,9 +575,6 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
     y = M;
   }
 
-  // Filled in below as each step claims its page, so the Contents entries
-  // above (already laid out before pagination starts) can link to it.
-  const tocTargets = new Map(); // stepId -> { pageIndex }
 
   if (tpl.includeToc && ast.steps.length > 1) {
     writeLines('Contents', { size: 16, font: headFonts.bold });
@@ -567,8 +583,7 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
     const lineH = tocSize * 1.35;
     for (const step of ast.steps) {
       const indent = 14 * step.depth;
-      const target = {};
-      tocTargets.set(step.stepId, target);
+      const target = tocTargets.get(step.stepId);
       for (const line of pdf.wrapText(`${step.number}.  ${step.title || 'Untitled step'}`, tocSize, usableW - indent, bodyFonts.regular)) {
         ensure(lineH);
         pdf.text(line, M + indent, y, { size: tocSize, font: bodyFonts.regular, color: tpl.accentColor });
@@ -600,7 +615,10 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
     ensure(headHeight);
     pdf.bookmark(`${step.number}. ${step.title || 'Untitled step'}`);
     const tocTarget = tocTargets.get(step.stepId);
-    if (tocTarget) tocTarget.pageIndex = pdf.pages.length - 1;
+    if (tocTarget) {
+      tocTarget.pageIndex = pdf.pages.length - 1;
+      tocTarget.yTop = y;
+    }
     const {
       beforeTitle,
       afterTitle,
@@ -616,6 +634,12 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
       if (!box) return;
       ensure(box.h + 6);
       pdf.image(img, M, y, box.w, box.h);
+      // A flowchart's shapes linked to a step jump to it.
+      const chart = key === step.stepId ? (step.image?.flowchart ? step.image : null) : step.flowchartImage;
+      for (const link of chart?.links || []) {
+        const target = tocTargets.get(link.stepId);
+        if (target) pdf.linkRect(M + link.x * box.w, y + link.y * box.h, link.w * box.w, link.h * box.h, target);
+      }
       y += box.h + 10;
     };
     // Text blocks and the flowchart block, at their positions.

@@ -7,7 +7,7 @@ const { htmlToText, linkifyMarkdownLinks, deepClone } = require('./util');
 const { systemPlaceholders, resolveScopes, expandPlaceholders, expandRichPlaceholders } = require('./placeholders');
 const { decodePng } = require('./png');
 const { sniffImageFormat, readImageSize, flowchartImageKey } = require('./image-format');
-const { hasFlowchart } = require('./flowchart');
+const { hasFlowchart, linkAreas } = require('./flowchart');
 const { renderAnnotations, applyFocusedView } = require('./raster');
 const { orderedBlocks, blockText } = require('./blocks');
 const { DEFAULT_CODE_STYLE } = require('./code-highlight');
@@ -156,6 +156,14 @@ function buildRenderAst(store, guideId, { globals = {}, now = new Date(), maxSte
       }
     }
     steps.push(ast);
+  }
+
+  // A flowchart's shapes linked to a step: where they are in its picture,
+  // so exporters can make them jump to that step.
+  const chartRefs = steps.map((s) => ({ stepId: s.stepId, number: s.number }));
+  for (const s of steps) {
+    const chart = s.image?.flowchart ? s.image : s.flowchartImage;
+    if (chart && s.flowchart) chart.links = linkAreas(s.flowchart, { steps: chartRefs });
   }
 
   // Step links (editor → Description → Step) keep the target's permanent ID

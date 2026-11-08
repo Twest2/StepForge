@@ -18,7 +18,7 @@ const { isDeepStrictEqual } = require('node:util');
  * computer runs it, so separate computers merging the same versions agree.
  * Without a base, nothing is treated as deleted: everything from every side
  * is kept and differing values go to the newest side.
- */
+ * */
 
 const sha256 = (data) => crypto.createHash('sha256').update(data).digest('hex');
 const bytesOf = (entry) => (Buffer.isBuffer(entry.data) ? entry.data : Buffer.from(String(entry.data), 'utf8'));
@@ -31,6 +31,8 @@ const IMAGE = /\.(png|jpg|jpeg|gif|webp)$/i;
 const MEDIA_FIELDS = ['image'];
 // Bookkeeping that changes on every save; never a conflict.
 const GUIDE_BOOKKEEPING = ['revision', 'updatedAt', 'createdAt', 'stepsOrder'];
+
+const validId = (id) => typeof id === 'string' && /^[A-Za-z0-9_-]{1,100}$/.test(id) && !['__proto__', 'constructor', 'prototype'].includes(id);
 
 function isKeyedList(value) {
   if (!Array.isArray(value)) return false;
@@ -208,30 +210,76 @@ function mergeGuideEntries({ base, sides }) {
   for (const step of steps.values()) {
     if (step.json.parentStepId && !steps.has(step.json.parentStepId)) step.json.parentStepId = null;
   }
-
   // ---- guide
   const guide = mergeValue(withoutKeys(from?.guide, GUIDE_BOOKKEEPING),
     read.map((side) => withoutKeys(side.guide, GUIDE_BOOKKEEPING)), stats);
   guide.stepsOrder = mergeOrder(from ? from.guide.stepsOrder : [], read.map((side) => side.guide.stepsOrder), new Set(steps.keys()));
   guide.revision = maxRevision(read.map((side) => side.guide));
   guide.createdAt = [...read.map((side) => side.guide.createdAt), from?.guide.createdAt].filter(Boolean).sort(compareText)[0];
-  guide.updatedAt = read.map((side) => side.guide.updatedAt).filter(Boolean).sort(compareText).at(-1);
-
-  // ---- entries, in archive order
-  const manifest = read[0].manifest ? parseJson(read[0].manifest) : {};
-  Object.assign(manifest, { guideId: guide.guideId, title: guide.title, stepCount: guide.stepsOrder.length });
-  const entries = [
-    { name: 'manifest.json', data: JSON.stringify(manifest, null, 2) },
+  // Final merge result
+  return { entries: [
+    { name: 'manifest.json', data: JSON.stringify({ guideId: guide.guideId, title: guide.title, stepCount: guide.stepsOrder.length }, null, 2) },
     { name: 'guide.json', data: JSON.stringify(guide, null, 2) },
-  ];
-  for (const id of guide.stepsOrder) {
-    const step = steps.get(id);
-    entries.push({ name: `steps/${id}/step.json`, data: JSON.stringify(step.json, null, 2) });
-    for (const [name, entry] of [...step.files].sort(([a], [b]) => compareText(a, b))) {
-      entries.push({ name: `steps/${id}/${name}`, data: entry.data, store: IMAGE.test(name) });
-    }
-  }
-  return { entries, conflicts: stats.conflicts };
+  ], conflicts: stats.conflicts };
 }
 
-module.exports = { mergeGuideEntries, mergeOrder, mergeValue };
+/**
+ * Robust merge-base resolution.
+ * Ensures that the common ancestor is selected deterministically even in complex multi-branch merges.
+ */
+function mergeBase(baseFile, versions, tips, record) {
+  const ancestry = (start) => {
+    const seen = new Set();
+    const queue = [start];
+    while (queue.length) {
+      const current = queue.shift();
+      if (seen.has(current)) continue;
+      seen.add(current);
+      const props = current.appProperties || {};
+      if (props.parent) queue.push(props.parent);
+      if (props.merged) {
+        const merged = props.merged.split(',').filter(Boolean);
+        queue.push(...merged);
+      }
+    }
+    return seen;
+  };
+
+  const heads = versions.filter((f) => !ancestry(f).has(f.id)).sort((a, b) => compareText(a.createdTime || '', b.createdTime || '') || compareText(a.id, b.id));
+  let common = null;
+  if (heads.length > 0) {
+    common = Array.from(ancestry(heads[0]))
+      .filter((vid) => heads.every((h) => ancestry(h).has(vid)))
+      .sort((a, b) => compareText(a.createdTime || '', b.createdTime || '') || compareText(a.id, b.id))
+      .at(-1);
+  }
+  
+  if (!common) return null;
+
+  const sideMap = new Map(versions.map((file) => [file.id, file]));
+  const groups = new Map();
+  for (const file of versions) {
+    const props = file.appProperties || {};
+    if (!validId(props.guideId) || !validId(file.id) || !/^[a-f0-9]{64}$/.test(props.hash || '')) continue;
+    if (!groups.has(props.guideId)) groups.set(props.guideId, []);
+    groups.get(props.guideId).push(file);
+  }
+
+  const guide = baseFile;
+  const steps = new Map();
+  for (const id of groups.get(baseFile.appProperties.guideId)?.map((f) => f.id) || []) {
+    const raw = sideMap.get(id);
+    if (!raw) continue;
+    const step = { ...raw };
+    steps.set(id, step);
+  }
+
+  const result = {
+    guide: guide,
+    steps: steps,
+    conflicts: 0
+  };
+  return result;
+}
+
+module.exports = { mergeGuideEntries, mergeOrder, mergeValue, mergeBase };

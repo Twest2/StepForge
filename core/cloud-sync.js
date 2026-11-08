@@ -379,8 +379,8 @@ class CloudSync {
     const lines = starts.map(ancestry);
     const common = [...lines[0]].filter((vid) => lines.every((line) => line.has(vid))).map((vid) => byId.get(vid))
       .sort((a, b) => compareText(a.createdTime || '', b.createdTime || '') || compareText(a.id, b.id)).at(-1);
-    if (!common) return record ? this.rememberedBase(baseFile, record.hash) : null;
-    return this.rememberedBase(baseFile, common.appProperties.hash) || this.versionEntries(common);
+    if (!common) return record ? { file: baseFile, entries: this.rememberedBase(baseFile, record.hash) } : null;
+    return { file: baseFile, entries: this.rememberedBase(baseFile, common.appProperties.hash) || this.versionEntries(common) };
   }
 
   /** A version's entries for use as a merge base; screenshots may be hashes only. */
@@ -1223,7 +1223,7 @@ class CloudSync {
             downloads.push({ tip, bytes: await this.downloadVersion(tip) });
             check();
           }
-          const base = merging ? await this.mergeBase(this.basePath(id), versions, tips, withLocal ? record : null) : null;
+          const baseResult = merging ? await this.mergeBase(this.basePath(id), versions, tips, withLocal ? record : null) : null;
           check();
           if (!this.canReplace(id) || this.store.guideExists(id) !== exists
               || (exists && this.localSnapshot(id).hash !== local.hash)) { pending = true; continue; }
@@ -1232,9 +1232,13 @@ class CloudSync {
           for (const { tip, bytes } of downloads) this.validateDownload(bytes, id, tip.appProperties.hash);
           let incoming = downloads[0].bytes;
           if (merging) {
+            const { file: baseFile, entries: baseEntries } = baseResult || { file: null, entries: null };
+            if (baseFile && parts.contentHash(baseEntries) !== baseFile.appProperties.hash) {
+              throw new Error('Baseline integrity check failed. The remote base archive does not match the expected hash.');
+            }
             const sides = downloads.map(({ tip, bytes }) => ({ entries: unzipSync(bytes), hash: tip.appProperties.hash }));
             if (withLocal) sides.push({ entries: local.entries, hash: local.hash });
-            const result = mergeGuideEntries({ base, sides });
+            const result = mergeGuideEntries({ base: baseEntries, sides });
             incoming = zipSync(result.entries);
             // Unsynced local edits that lost a conflict stay recoverable under Backups.
             if (withLocal) createSnapshot(this.store, id, { label: 'before-sync-merge' });

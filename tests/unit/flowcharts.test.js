@@ -143,6 +143,26 @@ test('exports: a main-visual flowchart replaces the screenshot; a block flowchar
   const md = fs.readFileSync(runExport('markdown', ast, out).file, 'utf8');
   assert.match(md, /-flowchart\.png\)/);
   for (const format of ['pdf', 'docx', 'json']) assert.ok(fs.statSync(runExport(format, ast, out).file).size > 0, format);
+  // PowerPoint: the block flowchart is on its step's slide.
+  assert.equal(runExport('pptx', ast, out).imageCount, 2);
+});
+
+test('publishing: a step with a screenshot and a flowchart block uploads both, under different names', async (t) => {
+  const { dir, store, guide, shot } = library(t);
+  store.saveStep(guide.guideId, { ...store.getStep(guide.guideId, shot.stepId), flowchart: CHART, flowchartPlacement: 'block' });
+  const images = await prepareExportImages(store, guide.guideId);
+  const ast = buildRenderAst(store, guide.guideId, { images });
+  const wikiOut = path.join(dir, 'wiki');
+  fs.mkdirSync(wikiOut);
+  const wiki = require('../../app/wikijs').pageFromExport(runExport('wikijs', ast, wikiOut, { assetFolder: 'guides/accounts' }).file, 'guides/accounts');
+  assert.deepEqual(wiki.assets.map((a) => a.name).sort(), ['step-001-flowchart.png', 'step-001.png']);
+  assert.match(wiki.content, /\(\/guides\/accounts\/step-001\.png\)[\s\S]*\(\/guides\/accounts\/step-001-flowchart\.png\)/);
+  const confOut = path.join(dir, 'confluence');
+  fs.mkdirSync(confOut);
+  const conf = require('../../app/confluence').pageFromExport(path.dirname(runExport('confluence', ast, confOut, { apiFiles: true }).apiPage));
+  const names = conf.attachments.map((a) => a.name);
+  assert.equal(new Set(names).size, 2);
+  for (const name of names) assert.ok(conf.body.includes(`ri:filename="${name}"`), name);
 });
 
 test('description step links show the target’s number in the export, after steps move', (t) => {

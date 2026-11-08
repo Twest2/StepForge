@@ -5,7 +5,7 @@ const path = require('node:path');
 const { zipSync } = require('../core/zip');
 const { escapeXml } = require('../core/util');
 const { encodePng } = require('../core/png');
-const { guideSlug, renderAllImages, LEVEL_LABEL, stepContentGroups } = require('./common');
+const { guideSlug, renderAllImages, LEVEL_LABEL, stepContentGroups, flowchartImageKey, flowchartAlt } = require('./common');
 const { tocEntries, guideMetaLines, guideSummary } = require('./document-layout');
 const { fitSize, textOn } = require('./branding');
 
@@ -358,21 +358,35 @@ function exportPptx(ast, outDir, template = {}) {
     const rels = [];
     const media = [];
 
+    // The screenshot (or main-visual flowchart) and a flowchart block share
+    // the space left on the slide: side by side when there are both.
+    const pictures = [];
     const img = images.get(step.stepId);
-    if (img) {
-      mediaCounter += 1;
-      const name = `image${mediaCounter}.png`;
-      media.push({ name, data: encodePng(img) });
-      const relId = 2; // rId1 = layout, rId2 = image
-      rels.push({ id: relId, name });
-      // Fit image into the remaining centered region before the trailing blocks.
-      const maxW = SLIDE_W - 1219200;
+    if (img) pictures.push({ img, alt: step.altText });
+    const chart = (step.blocks || []).some((b) => b.kind === 'flowchart') ? images.get(flowchartImageKey(step.stepId)) : null;
+    if (chart) pictures.push({ img: chart, alt: flowchartAlt(step) });
+    if (pictures.length) {
+      const gap = 228600;
+      // Fit into the remaining centered region before the trailing blocks.
+      const maxW = (SLIDE_W - 1219200 - gap * (pictures.length - 1)) / pictures.length;
       const maxH = Math.max(0, SLIDE_H - y - postImageReserve - 100000 - footerReserve);
-      let w = img.width * EMU_PER_PX, h = img.height * EMU_PER_PX;
-      const scale = Math.min(maxW / w, maxH / h, 1);
-      w = Math.round(w * scale); h = Math.round(h * scale);
-      content += picture(relId, Math.round((SLIDE_W - w) / 2), y, w, h, step.altText);
-      y += h + 100000;
+      const sized = pictures.map((p) => {
+        const w = p.img.width * EMU_PER_PX;
+        const h = p.img.height * EMU_PER_PX;
+        const scale = Math.min(maxW / w, maxH / h, 1);
+        return { ...p, w: Math.round(w * scale), h: Math.round(h * scale) };
+      });
+      let x = Math.round((SLIDE_W - sized.reduce((sum, p) => sum + p.w, 0) - gap * (sized.length - 1)) / 2);
+      sized.forEach((p, i) => {
+        mediaCounter += 1;
+        const name = `image${mediaCounter}.png`;
+        media.push({ name, data: encodePng(p.img) });
+        const relId = 2 + i; // rId1 = layout, then the pictures
+        rels.push({ id: relId, name });
+        content += picture(relId, x, y, p.w, p.h, p.alt);
+        x += p.w + gap;
+      });
+      y += Math.max(...sized.map((p) => p.h)) + 100000;
     }
 
     for (const tb of afterImage) {

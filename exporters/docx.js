@@ -396,6 +396,7 @@ function exportDocx(ast, outDir, template = {}) {
           // Drawn at 2x: show it at its natural size, never wider than a screenshot.
           const widthTwips = Math.min(tpl.imageWidthTwips, Math.round((chart.width / 2) * 15));
           body.push(p(drawing(relId, chart.width, chart.height, widthTwips, flowchartAlt(step))));
+          stepImageCount += 1;
         }
       }
     }

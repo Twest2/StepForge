@@ -66,6 +66,19 @@ function renderAllImages(ast) {
   return result;
 }
 
+/**
+ * The name an exported image gets on the site: step-001.png for step 1's
+ * screenshot, step-001-flowchart.png for its flowchart block, and
+ * step-001-2.png should two still clash.
+ */
+function publishedImageName(file, used) {
+  const base = `step-${file.slice(0, 3)}`;
+  let name = file.endsWith('-flowchart.png') ? `${base}-flowchart.png` : `${base}.png`;
+  for (let i = 2; used.has(name); i += 1) name = `${base}-${i}.png`;
+  used.add(name);
+  return name;
+}
+
 /** Alt text for a step's flowchart block. */
 function flowchartAlt(step) {
   return step.altText.replace(/^Screenshot/, 'Flowchart');
@@ -154,6 +167,7 @@ module.exports = {
   guideSlug,
   flowchartImageKey,
   flowchartAlt,
+  publishedImageName,
   imagesDirName,
   writeStepImages,
   renderAllImages,

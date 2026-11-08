@@ -3,7 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { escapeHtml } = require('../core/util');
-const { guideSlug, imagesDirName, writeStepImages, LEVEL_LABEL, stepContentGroups, codeBlockText } = require('./common');
+const { guideSlug, imagesDirName, writeStepImages, LEVEL_LABEL, stepContentGroups, codeBlockText, flowchartImageKey, flowchartAlt } = require('./common');
 const { markdownFenceLanguage } = require('../core/code-highlight');
 const { htmlToMarkdown } = require('./htmlmd');
 const { tocEntries, guideMetaLines, guideSummary } = require('./document-layout');
@@ -169,25 +169,12 @@ function renderMarkdownGuide(ast, outDir, template = {}, {
     if (step.skipped) lines.push('*(skipped)*', '');
     for (const tb of afterTitle) emitBlock(lines, tb, { alertStyle });
     for (const tb of beforeDescription) emitBlock(lines, tb, { alertStyle });
-    if (typeof step.descriptionMarkdown === 'string') {
-      const source = step.descriptionMarkdown.replace(/(`+|~{3,})[\s\S]*?\1|\[([^\]\n]*)\]\(step:([a-zA-Z0-9_-]+)\)|(^ {0,3}\[[^\]\n]+\]:[ \t]*<?)step:([a-zA-Z0-9_-]+)(>?)/gm, (whole, code, label, inlineId, definition, definitionId, angle) => {
-        if (code) return whole;
-        const id = inlineId || definitionId;
-        const target = ast.steps.find(s => s.stepId === id);
-        if (!target) return definition ? `${definition}#${angle || ''}` : `${label} (step unavailable)`;
-        if (definition) return `${definition}#${anchorFor(target)}${angle || ''}`;
-        const numbered = /^Go to Step(?:\s.*)?$/.test(label) ? `Go to Step ${target.number}` : /^Step(?:\s+[\d.]+)?$/.test(label) ? `Step ${target.number}` : label;
-        return `[${numbered}](#${anchorFor(target)})`;
-      });
-      lines.push(source, '');
-    } else if (step.descriptionHtml) lines.push(htmlToMarkdown(step.descriptionHtml), '');
+    if (step.descriptionHtml) lines.push(htmlToMarkdown(step.descriptionHtml), '');
     for (const tb of afterDescription) emitBlock(lines, tb, { alertStyle });
 
     for (const tb of beforeImage) emitBlock(lines, tb, { alertStyle });
     const img = images.get(step.stepId);
-    if (step.flowchart && img) {
-      lines.push('```mermaid', step.flowchart.mermaid, '```', '');
-    } else if (img) {
+    if (img) {
       if (tpl.azureWiki && tpl.imageMaxWidth > 0) {
         lines.push(`![${markdownAlt(step.altText)}](${imageUrl(img.relPath)} =${tpl.imageMaxWidth}x)`, '');
       } else {
@@ -197,7 +184,6 @@ function renderMarkdownGuide(ast, outDir, template = {}, {
     for (const tb of afterImage) emitBlock(lines, tb, { alertStyle });
 
     for (const block of rest) {
-      if (block.kind === 'flowchart') lines.push('```mermaid', block.mermaid, '```', '');
       if (block.kind === 'text') {
         emitBlock(lines, block, { alertStyle });
       } else if (block.kind === 'code') {
@@ -210,6 +196,9 @@ function renderMarkdownGuide(ast, outDir, template = {}, {
         lines.push(`|${' --- |'.repeat(width)}`);
         for (const row of block.rows.slice(1)) lines.push(`| ${pad(row).join(' | ')} |`);
         lines.push('');
+      } else if (block.kind === 'flowchart') {
+        const chart = images.get(flowchartImageKey(step.stepId));
+        if (chart) lines.push(`![${markdownAlt(flowchartAlt(step))}](${imageUrl(chart.relPath)})`, '');
       }
     }
   }

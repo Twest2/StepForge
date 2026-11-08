@@ -119,8 +119,6 @@ class SearchIndex {
     for (const step of steps) {
       const parts = [
         htmlToText(step.descriptionHtml),
-        ...(step.flowchart?.nodes || []).map(n => n.label),
-        ...(step.flowchartBlocks || []).flatMap(b => (b.graph?.nodes || []).map(n => n.label)),
         ...(step.textBlocks || []).map((tb) => `${tb.title} ${htmlToText(tb.descriptionHtml)}`),
         ...(step.codeBlocks || []).map((cb) => blockText(cb)),
         ...(step.annotations || []).map((a) => a.text || ''),

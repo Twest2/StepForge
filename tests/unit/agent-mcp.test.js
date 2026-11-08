@@ -53,10 +53,9 @@ function makeLibrary(t, agents = { enabled: true, screenshots: true }) {
 test('agents get every guide tool except changing or deleting placeholders', (t) => {
   const { tools } = makeLibrary(t);
   assert.deepEqual(tools.map((tool) => tool.name), [
-    'set_flowchart',
     'list_guides', 'get_guide', 'get_step', 'create_guide', 'update_guide', 'delete_guide',
     'create_step', 'update_step', 'move_step', 'delete_step', 'delete_blocks', 'set_screenshot', 'remove_screenshot',
-    'create_placeholder', 'add_annotations', 'delete_annotations',
+    'set_flowchart', 'create_placeholder', 'add_annotations', 'delete_annotations',
     // Behind their own switch (tests/unit/agent-brand-tools.test.js).
     'list_brand_profiles', 'get_brand_profile', 'create_brand_profile', 'update_brand_profile', 'set_brand_file', 'set_active_brand_profile',
   ]);

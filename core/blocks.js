@@ -1,6 +1,6 @@
 'use strict';
 
-const BLOCK_KIND_ORDER = { text: 0, code: 1, table: 2, flowchart: 3 };
+const BLOCK_KIND_ORDER = { text: 0, code: 1, table: 2 };
 
 function blockText(block) {
   if (!block || typeof block !== 'object') return '';
@@ -13,7 +13,6 @@ function blockText(block) {
 
 function orderedBlocks(step) {
   const blocks = [];
-  for (const block of step.flowchartBlocks || []) blocks.push({ kind: 'flowchart', ...block });
   for (const tb of step.textBlocks || []) {
     blocks.push({ kind: 'text', ...tb });
   }

@@ -10,7 +10,6 @@ const { acquireLock, releaseLock } = require('./locks');
 const { contentHash, sha256 } = require('./cloud-parts');
 const { mergeGuideEntries } = require('./guide-merge');
 const { createSnapshot } = require('./snapshots');
-const { remapStepReferences } = require('./step-references');
 
 const ARCHIVE_FORMAT = 'stepforge-guide-archive';
 const APP_VERSION = require('../package.json').version;
@@ -140,7 +139,6 @@ function finalizeImport(store, newGuide, idMap, stepJsons, stepFiles) {
   for (const [stepId, { raw }] of stepJsons) {
     const step = normalizeStep({ ...raw, stepId });
     step.parentStepId = raw.parentStepId ? idMap.get(raw.parentStepId) || null : null;
-    remapStepReferences(step, idMap);
     validateStep(step); // throws before anything is written on a bad step
     normalizedSteps.push([stepId, step]);
   }

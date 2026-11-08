@@ -5,11 +5,10 @@ const path = require('node:path');
 const { zipSync } = require('../core/zip');
 const { escapeXml } = require('../core/util');
 const { encodePng } = require('../core/png');
-const { guideSlug, renderAllImages, LEVEL_LABEL, stepContentGroups, codeBlockText, wordCodeRuns, wordCodeShading } = require('./common');
+const { guideSlug, renderAllImages, LEVEL_LABEL, stepContentGroups, codeBlockText, wordCodeRuns, wordCodeShading, flowchartImageKey, flowchartAlt } = require('./common');
 const { highlightCode } = require('../core/code-highlight');
 const { guideMetaLines, guideSummary, tocEntries } = require('./document-layout');
 const { fitSize, textOn } = require('./branding');
-const { htmlToBlocks } = require('../core/htmlblocks');
 
 /**
  * DOCX exporter: WordprocessingML built directly (no dependency), one
@@ -48,11 +47,9 @@ function p(children, props = '') {
   return `<w:p>${props ? `<w:pPr>${props}</w:pPr>` : ''}${children}</w:p>`;
 }
 
-function run(text, { bold = false, italic = false, strike = false, size = 22, font = '', color = '' } = {}) {
+function run(text, { bold = false, size = 22, font = '', color = '' } = {}) {
   const rpr = [
     bold ? '<w:b/>' : '',
-    italic ? '<w:i/>' : '',
-    strike ? '<w:strike/>' : '',
     `<w:sz w:val="${size}"/>`,
     font ? `<w:rFonts w:ascii="${font}" w:hAnsi="${font}"/>` : '',
     color ? `<w:color w:val="${color}"/>` : '',
@@ -343,33 +340,6 @@ function exportDocx(ast, outDir, template = {}) {
     ));
   };
 
-  const emitRichDescription = html => {
-    const blocks = htmlToBlocks(html);
-    let tableRows = [];
-    const flushTable = () => { if (tableRows.length) { body.push(table(tableRows), p('')); tableRows = []; } };
-    for (const block of blocks) {
-      if (block.type === 'tr') { tableRows.push(block.cells || []); continue; }
-      flushTable();
-      if (block.type === 'hr') { body.push(p('', '<w:pBdr><w:bottom w:val="single" w:sz="4" w:color="DCE0E6"/></w:pBdr>')); continue; }
-      const runs = block.runs.map(r => {
-        const content = run(r.text, { bold: r.bold || /^h[1-6]$/.test(block.type), italic: r.italic, strike: r.strike,
-          size: /^h[1-6]$/.test(block.type) ? 24 : 20, font: r.code || block.type === 'pre' ? 'Courier New' : '', color: ink });
-        if (r.href?.startsWith('step:')) {
-          const target = ast.steps.find(s => s.stepId === r.href.slice(5));
-          if (target) return `<w:hyperlink w:anchor="${bookmarkName(target)}">${content}</w:hyperlink>`;
-        } else if (/^(https?:|mailto:)/i.test(r.href || '')) {
-          const id = ++relCounter;
-          rels.push(`<Relationship Id="rId${id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="${escapeXml(r.href)}" TargetMode="External"/>`);
-          return `<w:hyperlink r:id="rId${id}">${content}</w:hyperlink>`;
-        }
-        return content;
-      }).join('');
-      body.push(p((block.type === 'li' && !block.continuation ? run(block.ordered ? `${block.index || 1}. ` : '• ', { size: 20 }) : '') + runs,
-        block.indent ? `<w:ind w:left="${Math.min(8, block.indent) * 360}"/>` : ''));
-    }
-    flushTable();
-  };
-
   for (const step of ast.steps) {
     const headingLevel = Math.min(3, Math.max(1, step.depth + 1));
     const headSize = headingLevel === 1 ? 30 : headingLevel === 2 ? 26 : 22;
@@ -393,8 +363,7 @@ function exportDocx(ast, outDir, template = {}) {
     ));
     for (const tb of afterTitle) emitTextBlock(tb);
     for (const tb of beforeDescription) emitTextBlock(tb);
-    if (typeof step.descriptionMarkdown === 'string' || /href="step:/.test(step.descriptionHtml || '')) emitRichDescription(step.descriptionHtml);
-    else if (step.descriptionText) body.push(p(run(step.descriptionText, { size: 20, color: ink })));
+    if (step.descriptionText) body.push(p(run(step.descriptionText, { size: 20, color: ink })));
     for (const tb of afterDescription) emitTextBlock(tb);
     for (const tb of beforeImage) emitTextBlock(tb);
 
@@ -411,16 +380,6 @@ function exportDocx(ast, outDir, template = {}) {
     for (const tb of afterImage) emitTextBlock(tb);
 
     for (const block of rest) {
-      if (block.kind === 'flowchart') {
-        const graphImage = images.get(`${step.stepId}:${block.id}`);
-        if (graphImage) {
-          const relId = ++relCounter, name = `image${relCounter}.png`;
-          media.push({ name, data: encodePng(graphImage) });
-          rels.push(`<Relationship Id="rId${relId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${name}"/>`);
-          body.push(p(drawing(relId, graphImage.width, graphImage.height, tpl.imageWidthTwips, 'Flowchart')));
-          stepImageCount++;
-        }
-      }
       if (block.kind === 'text') {
         emitTextBlock(block);
       } else if (block.kind === 'code') {
@@ -430,6 +389,14 @@ function exportDocx(ast, outDir, template = {}) {
           : p(run(codeBlockText(block), { size: 18, font: 'Courier New', color: '1F2937' }), '<w:shd w:val="clear" w:fill="F3F4F6"/>'));
       } else if (block.kind === 'table') {
         if (block.rows && block.rows.length) body.push(table(block.rows), p(''));
+      } else if (block.kind === 'flowchart') {
+        const chart = images.get(flowchartImageKey(step.stepId));
+        if (chart) {
+          const relId = imageRel(`flowchart${relCounter + 1}.png`, encodePng(chart));
+          // Drawn at 2x: show it at its natural size, never wider than a screenshot.
+          const widthTwips = Math.min(tpl.imageWidthTwips, Math.round((chart.width / 2) * 15));
+          body.push(p(drawing(relId, chart.width, chart.height, widthTwips, flowchartAlt(step))));
+        }
       }
     }
   }

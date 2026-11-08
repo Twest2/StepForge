@@ -4,7 +4,7 @@ const { zipSync } = require('../core/zip');
 const { escapeXml } = require('../core/util');
 const { encodePng } = require('../core/png');
 const { htmlToBlocks } = require('../core/htmlblocks');
-const { LEVEL_LABEL, stepContentGroups, codeBlockText, wordCodeRuns, wordCodeShading } = require('./common');
+const { LEVEL_LABEL, stepContentGroups, codeBlockText, wordCodeRuns, wordCodeShading, flowchartImageKey, flowchartAlt } = require('./common');
 const { highlightCode } = require('../core/code-highlight');
 const { guideMetaLines } = require('./document-layout');
 const { fitSize } = require('./branding');
@@ -197,10 +197,6 @@ class WordDocument {
     if (img && tpl.includeImages) parts.push(this.image(img, step.altText));
     parts.push(blocks(g.afterImage));
     for (const block of g.rest) {
-      if (block.kind === 'flowchart') {
-        const graphImage = images.get(`${step.stepId}:${block.id}`);
-        if (graphImage) parts.push(this.image(graphImage, 'Flowchart'));
-      }
       if (block.kind === 'text') parts.push(this.callout(block));
       else if (block.kind === 'code') {
         const hl = highlightCode(codeBlockText(block), block.language, this.ast.codeStyle);
@@ -208,6 +204,13 @@ class WordDocument {
           ? paragraph(wordCodeRuns(hl), `<w:pStyle w:val="Code"/>${wordCodeShading(hl)}`)
           : paragraph(runXml(codeBlockText(block), { code: true }), '<w:pStyle w:val="Code"/>'));
       } else if (block.kind === 'table' && block.rows && block.rows.length) parts.push(this.table(block.rows));
+      else if (block.kind === 'flowchart') {
+        const chart = images.get(flowchartImageKey(step.stepId));
+        if (chart && tpl.includeImages) {
+          const scale = Math.min(0.5, MAX_IMAGE_PX / chart.width); // drawn at 2x
+          parts.push(this.picture(encodePng(chart), chart.width * scale, chart.height * scale, flowchartAlt(step)));
+        }
+      }
     }
     return parts.join('');
   }

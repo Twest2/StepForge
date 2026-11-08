@@ -109,6 +109,9 @@ screenshot.
 For each step you can:
 
 - **Write a description** with bold, italics, lists, quotes, and links.
+  **Step** links to another step: pick it from the list and the description
+  shows "Step 3". The number follows the step when you move it, and exports
+  use the step's number in that export. **Ctrl+click** the link to open the step.
 - **Set a status** of *Todo*, *In progress*, or *Done* to track your review.
 - **Add blocks** for anything that isn't a screenshot:
   - **Text block** as a Note, Tip, Important, or Warning callout
@@ -139,6 +142,34 @@ A normal click toggles a single step.
 of steps, and **Ctrl+Z** brings them back. To delete without being asked,
 turn on **Settings → Editor → Dangerous deletes**. Deleting a guide always
 asks.
+
+### Flowcharts
+
+A step can have a flowchart, for procedures that branch ("Already have an
+account?"). Pick **Flowchart** in the menu at the right end of the canvas
+toolbar (or **+ Flowchart** under Blocks). The toolbar switches to flowchart
+tools:
+
+- **Step box**, **Decision** and **Start or end**: pick one, then click the
+  canvas. Type the text and press **Enter**. Double-click empty space to add a
+  step box.
+- **Connect**: drag from one shape to another to draw an arrow. Arrows out of
+  a decision ask for a label such as *Yes* or *No*.
+- Drag shapes to move them, double-click a shape or arrow to change its text,
+  and press **Delete** to remove the selected one. **Arrange** lays the whole
+  chart out top to bottom.
+
+In the details pane you can change a shape, or link it to a step of the guide;
+the shape then shows "→ Step 3".
+
+The menu beside it says where the flowchart goes in exports: **Instead of
+image** shows it in place of the screenshot (the screenshot is kept, so you can
+switch back), and **As a block** adds it after the step's text. Switch the
+right-hand menu back to **Image** to edit the screenshot. **Ctrl+Z** undoes
+flowchart edits, and **Remove flowchart** deletes it.
+
+With AI turned on, **AI → Create a flowchart** drafts a flowchart of the whole
+guide on the selected step for you to adjust.
 
 ### Replace or retake a screenshot
 

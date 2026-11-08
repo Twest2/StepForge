@@ -1513,12 +1513,12 @@ function setupIpc() {
   }, { validate: (a) => c.id(a.guideId) });
   // Whether to offer AI in Settings → Branding: AI is on and Ollama has the model.
   h('ai:status', () => textIntel.aiStatus());
-  h('ai:flowchart', args => textIntel.generateFlowchart(args), {
-    validate: a => c.id(a.guideId) && c.string(a.request, 2000) && a.request.trim() !== ''
-      && (a.graph == null || security.isPlainArgs(a.graph)),
-  });
   // Settings → Branding → Advanced CSS → Write with AI. Nothing is saved: the
   // editor shows the CSS for the user to add or discard.
+  // AI ▾ → Create a flowchart. Nothing is saved: the editor applies it (undoable).
+  h('ai:flowchart', ({ guideId, request = '' }) => textIntel.generateFlowchart({ guideId, request }), {
+    validate: (a) => c.id(a.guideId) && (a.request === undefined || c.string(a.request, 1000)),
+  });
   h('ai:brandCss', ({ request, css = '', profile = {} }) => textIntel.generateBrandCss({ request, css, profile }), {
     validate: (a) => c.string(a.request, MAX_BRAND_CSS_REQUEST_CHARS) && a.request.trim() !== ''
       && (a.css === undefined || c.string(a.css, MAX_CSS_CHARS))

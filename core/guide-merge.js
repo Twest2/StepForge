@@ -78,15 +78,7 @@ function mergeValue(base, values, stats) {
     const from = base || {};
     const result = {};
     const keys = [...new Set([...Object.keys(from), ...changed.flatMap((value) => Object.keys(value))])];
-    // Markdown and the HTML generated from it describe the same field. Picking
-    // them independently could pair one device's source with another's preview.
-    const pairedDescription = keys.includes('descriptionMarkdown');
-    if (pairedDescription) {
-      const pair = value => value && ({ descriptionHtml: value.descriptionHtml, ...(value.descriptionMarkdown !== undefined ? { descriptionMarkdown: value.descriptionMarkdown } : {}) });
-      Object.assign(result, pickWhole(pair(base), values.map(pair), stats));
-    }
     for (const key of keys) {
-      if (pairedDescription && ['descriptionHtml', 'descriptionMarkdown'].includes(key)) continue;
       const merged = mergeValue(from[key], changed.map((value) => value[key]), stats);
       if (merged !== undefined) result[key] = merged;
     }

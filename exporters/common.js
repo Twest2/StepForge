@@ -4,7 +4,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { slugify, fileNameSlug, escapeXml } = require('../core/util');
 const { encodePng } = require('../core/png');
-const { renderStepImage, renderDiagramImage } = require('../core/renderast');
+const { renderStepImage, renderFlowchartImage } = require('../core/renderast');
+const { flowchartImageKey } = require('../core/image-format');
 const { orderedBlocks, blockText } = require('../core/blocks');
 
 /**
@@ -40,12 +41,15 @@ function writeStepImages(ast, outDir) {
     fs.writeFileSync(path.join(dir, fileName), encodePng(img));
     result.set(step.stepId, { relPath: `${dirName}/${fileName}`, width: img.width, height: img.height });
   }
-  for (const step of ast.steps) for (const block of step.flowchartBlocks || []) {
-    const img = renderDiagramImage(block);
+  n = 0;
+  for (const step of ast.steps) {
+    n += 1;
+    const chart = renderFlowchartImage(step);
+    if (!chart) continue;
     fs.mkdirSync(dir, { recursive: true });
-    const fileName = `flow-${slugify(step.stepId)}-${slugify(block.id)}.png`;
-    fs.writeFileSync(path.join(dir, fileName), encodePng(img));
-    result.set(`${step.stepId}:${block.id}`, { relPath: `${dirName}/${fileName}`, width: img.width, height: img.height });
+    const fileName = `${String(n).padStart(3, '0')}-${slugify(step.title || step.stepId, step.stepId)}-flowchart.png`;
+    fs.writeFileSync(path.join(dir, fileName), encodePng(chart));
+    result.set(flowchartImageKey(step.stepId), { relPath: `${dirName}/${fileName}`, width: chart.width, height: chart.height });
   }
   return result;
 }
@@ -56,9 +60,15 @@ function renderAllImages(ast) {
   for (const step of ast.steps) {
     const img = renderStepImage(step);
     if (img) result.set(step.stepId, img);
-    for (const block of step.flowchartBlocks || []) result.set(`${step.stepId}:${block.id}`, renderDiagramImage(block));
+    const chart = renderFlowchartImage(step);
+    if (chart) result.set(flowchartImageKey(step.stepId), chart);
   }
   return result;
+}
+
+/** Alt text for a step's flowchart block. */
+function flowchartAlt(step) {
+  return step.altText.replace(/^Screenshot/, 'Flowchart');
 }
 
 function stepBlocks(step) {
@@ -142,6 +152,8 @@ const LEVEL_LABEL = { info: 'Note', warn: 'Warning', error: 'Important', success
 
 module.exports = {
   guideSlug,
+  flowchartImageKey,
+  flowchartAlt,
   imagesDirName,
   writeStepImages,
   renderAllImages,
@@ -151,5 +163,4 @@ module.exports = {
   wordCodeRuns,
   wordCodeShading,
   LEVEL_LABEL,
-  renderDiagramImage,
 };

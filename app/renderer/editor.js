@@ -76,7 +76,7 @@ function reconcileOrder(recorded, current, parents, currentParents) {
 
 // Retake screenshot: time to open the menu or dialog the step shows once StepForge is hidden.
 const RETAKE_DELAY_MS = 3000;
-const BLOCK_KIND_ORDER = { text: 0, code: 1, table: 2, flowchart: 3 };
+const BLOCK_KIND_ORDER = { text: 0, code: 1, table: 2 };
 
 // Which style fields are meaningful for each annotation type, so the
 // annotation editor only shows controls that actually affect that type.
@@ -152,9 +152,25 @@ const TOOL_ICON_PATHS = {
   cursor: '<path d="M6 4v12l3.2-2.8 2.2 5 2-.9-2.2-4.9h4.6z"/><path d="M17.5 3.5l1 1.5M20.5 8h1.5M3 3l1.5 1.5"/>',
   spotlight: '<path d="M3.5 9.5 8.5 4.5l4.5 4.5-5 5z"/><path d="M15.5 11.5l3.5 2.5M12 15.5l2 3.5M16.5 7.5l4 .5"/><path d="M6.5 12.5 5 20M3 20h5"/>',
   crop: '<path d="M6 3v13h13M3 6h13v15"/>',
+  'flow-select': '<path d="M5 3v15l4-3.5 2.5 5.5 2.2-1-2.4-5.3H17z"/>',
+  'flow-process': '<rect x="3" y="6.5" width="18" height="11" rx="1.5"/>',
+  'flow-decision': '<path d="M12 3 21 12 12 21 3 12z"/>',
+  'flow-terminal': '<rect x="2.5" y="7" width="19" height="10" rx="5"/>',
+  'flow-connect': '<rect x="2.5" y="3" width="8" height="6" rx="1"/><rect x="13.5" y="15" width="8" height="6" rx="1"/><path d="M6.5 9v9h5"/><path d="m9.5 15.5 2.5 2.5-2.5 2.5"/>',
+  'flow-arrange': '<rect x="9" y="2.5" width="6" height="4.5" rx="1"/><rect x="2.5" y="17" width="6" height="4.5" rx="1"/><rect x="15.5" y="17" width="6" height="4.5" rx="1"/><path d="M12 7v5M5.5 17v-5h13v5"/>',
+  'flow-delete': '<path d="M4 7h16M10 7V4h4v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/>',
   undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
   redo: '<path d="M15 14l5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/>',
 };
+
+// The flowchart tools (app/renderer/flowchart-editor.js), as [tool, label].
+const FLOW_TOOLS = () => [
+  ['select', t('Select')],
+  ['process', t('Step box')],
+  ['decision', t('Decision')],
+  ['terminal', t('Start or end')],
+  ['connect', t('Connect')],
+];
 
 function toolIconSvg(name) {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${TOOL_ICON_PATHS[name]}</svg>`;
@@ -180,7 +196,6 @@ function blockText(block) {
 
 function orderedStepBlocks(step) {
   const blocks = [];
-  for (const block of step.flowchartBlocks || []) blocks.push({ kind: 'flowchart', block });
   for (const tb of step.textBlocks || []) blocks.push({ kind: 'text', block: tb });
   for (const cb of step.codeBlocks || []) blocks.push({ kind: 'code', block: cb });
   for (const tbl of step.tableBlocks || []) blocks.push({ kind: 'table', block: tbl });
@@ -196,7 +211,6 @@ function nextBlockOrder(step) {
 }
 
 function blockLabel(kind) {
-  if (kind === 'flowchart') return t('Flowchart');
   return kind === 'text' ? t('Text block') : kind === 'code' ? t('Code block') : t('Table');
 }
 
@@ -371,7 +385,8 @@ class GuideEditor {
       { label: t('Write the title'), disabled: unavailable(hasStep), action: () => this.writeStepWithAi('title') },
       { label: t('Write the description'), disabled: unavailable(hasStep), action: () => this.writeStepWithAi('description') },
       { label: t('Write the blocks'), disabled: unavailable(hasStep), action: () => this.writeStepWithAi('blocks') },
-      { label: t('Generate flowchart…'), disabled: unavailable(hasStep), action: () => this.generateFlowchartWithAi() },
+      'sep',
+      { label: t('Create a flowchart'), disabled: unavailable(hasStep && this.steps.length > 0), action: () => this.generateFlowchartWithAi() },
     ];
   }
 
@@ -693,6 +708,7 @@ class GuideEditor {
         'aria-label': t('Resize steps pane'), 'aria-controls': 'editor-steps-pane' }),
       this.dom.canvasPane = el('section.pane-canvas', {},
         el('div.canvas-toolbar', {},
+          this.dom.imageTools = el('span.toolbar-group', {},
           ...toolButtons.map(([tool, name]) => {
             const key = TOOL_SHORTCUTS[tool];
             return this.dom[`tool-${tool}`] = el('button.tool.tool-icon', {
@@ -711,14 +727,35 @@ class GuideEditor {
             el('option', { value: '1.5' }, '150%'),
           ),
           el('span.sep'),
+          ),
+          // Shown instead of the image tools while the menu on the right is on Flowchart.
+          this.dom.flowTools = el('span.toolbar-group', { hidden: true },
+            ...FLOW_TOOLS().map(([tool, name]) => (this.dom[`flow-${tool}`] = el('button.tool.tool-icon', {
+              type: 'button', dataset: { flowTool: tool }, title: name, 'aria-label': name, innerHTML: toolIconSvg(`flow-${tool}`),
+            }))),
+            el('span.sep'),
+            this.dom.flowArrangeBtn = el('button.tool.tool-icon', { type: 'button', title: t('Arrange'), 'aria-label': t('Arrange'), innerHTML: toolIconSvg('flow-arrange') }),
+            this.dom.flowDeleteBtn = el('button.tool.tool-icon', { type: 'button', title: t('Delete selected'), 'aria-label': t('Delete selected'), innerHTML: toolIconSvg('flow-delete') }),
+            el('span.sep'),
+          ),
           this.dom.undoBtn = el('button.tool.tool-icon', { type: 'button', title: t('Undo'), 'aria-label': t('Undo'), innerHTML: toolIconSvg('undo') }),
           this.dom.redoBtn = el('button.tool.tool-icon', { type: 'button', title: t('Redo'), 'aria-label': t('Redo'), innerHTML: toolIconSvg('redo') }),
+          el('span.toolbar-spacer'),
+          this.dom.flowPlacementSelect = el('select.flowchart-placement', { hidden: true, title: t('Where the flowchart shows in exports'), 'aria-label': t('Where the flowchart shows in exports') },
+            el('option', { value: 'visual' }, t('Instead of image')),
+            el('option', { value: 'block' }, t('As a block')),
+          ),
+          this.dom.visualSelect = el('select.visual-select', { title: t('Edit the image or the flowchart'), 'aria-label': t('Edit the image or the flowchart') },
+            el('option', { value: 'image' }, t('Image')),
+            el('option', { value: 'flowchart' }, t('Flowchart')),
+          ),
         ),
         this.dom.canvasWrap = el('div.canvas-wrap', {},
           this.dom.canvas = el('canvas', { width: 1, height: 1, tabIndex: -1, role: 'group', 'aria-label': t('Screenshot editor'), 'aria-describedby': 'screenshot-keyboard-help' }, t('Select annotations in the list to edit their properties.')),
           el('span.sr-only', { id: 'screenshot-keyboard-help' }, t('Select an annotation from the list, then focus the screenshot. Use arrow keys to move it and Delete to remove it.')),
           this.dom.canvasEmpty = el('div.canvas-empty', {}, t('Select an image step to edit annotations.')),
         ),
+        this.dom.flowSurface = el('div.flowchart-surface', { hidden: true, role: 'group', 'aria-label': t('Flowchart') }),
       ),
       this.dom.propertiesDivider = el('div.pane-divider', { role: 'separator', tabIndex: 0, 'aria-orientation': 'vertical',
         'aria-label': t('Resize step details pane'), 'aria-controls': 'editor-details-pane' }),
@@ -739,7 +776,7 @@ class GuideEditor {
           ),
           el('div.row', {},
             this.dom.forceNewPageToggle = el('label', {}, el('input', { type: 'checkbox' }), ' ', t('New page')),
-            this.dom.focusedViewToggle = el('label', {}, el('input', { type: 'checkbox' }), ' ', t('Focused')),
+            this.dom.focusedViewToggle = el('label.focused-toggle', {}, el('input', { type: 'checkbox' }), ' ', t('Focused')),
           ),
           // Pan shows as a percentage, 0% at the left and top edges (core/focused-view.js).
           this.dom.focusedControls = el('div.focused-controls.hidden', {},
@@ -768,10 +805,15 @@ class GuideEditor {
             this.toolbarBtn('formatBlock', t('Quote'), 'blockquote'),
             this.toolbarBtn('createLink', t('Link')),
             this.toolbarBtn('removeFormat', t('Clear')),
+            this.toolbarBtn('insertStep', t('Step')),
           ),
           this.dom.descEditor = el('div.rich-editor', { contentEditable: 'true', spellcheck: true, role: 'textbox', 'aria-label': t('Description'), 'aria-multiline': 'true' }),
         ),
-        el('section', {},
+        this.dom.flowSection = el('section', { hidden: true },
+          el('h3', {}, t('Flowchart')),
+          this.dom.flowProps = el('div.flowchart-props'),
+        ),
+        this.dom.annotationsSection = el('section', {},
           el('h3', {}, t('Annotations')),
           this.dom.annotationList = el('div', { className: 'annotation-list' }),
           this.dom.annotationEditor = el('div', { className: 'annotation-editor' }),
@@ -779,10 +821,11 @@ class GuideEditor {
         el('section', {},
           el('h3', {}, t('Blocks')),
           this.dom.blocksList = el('div', { className: 'blocks-list' }),
-          el('div.row', {},
+          el('div.row.block-add-row', {},
             this.dom.addTextBlockBtn = el('button', { type: 'button' }, t('+ Text block')),
             this.dom.addCodeBlockBtn = el('button', { type: 'button' }, t('+ Code')),
             this.dom.addTableBlockBtn = el('button', { type: 'button' }, t('+ Table')),
+            this.dom.addFlowchartBtn = el('button', { type: 'button' }, t('+ Flowchart')),
           ),
         ),
         el('section', {},
@@ -817,7 +860,6 @@ class GuideEditor {
     this.resizeObserver.observe(this.dom.canvasWrap);
 
     this.bindShellEvents();
-    this.setupFlowcharts?.();
     this.setupPaneResizing();
   }
 
@@ -970,13 +1012,14 @@ class GuideEditor {
   }
 
   toolbarBtn(action, label, block = null) {
-    const labels = { bold: t('Bold'), italic: t('Italic'), insertUnorderedList: t('Bulleted list'), insertOrderedList: t('Numbered list'), formatBlock: t('Quote'), createLink: t('Link'), removeFormat: t('Clear') };
+    const labels = { bold: t('Bold'), italic: t('Italic'), insertUnorderedList: t('Bulleted list'), insertOrderedList: t('Numbered list'), formatBlock: t('Quote'), createLink: t('Link'), removeFormat: t('Clear'), insertStep: t('Link to a step') };
     const btn = el('button', {
       type: 'button',
       'aria-label': labels[action] || label,
-      ...(!['createLink', 'removeFormat'].includes(action) ? { 'aria-pressed': 'false' } : {}),
+      ...(!['createLink', 'removeFormat', 'insertStep'].includes(action) ? { 'aria-pressed': 'false' } : {}),
+      ...(action === 'insertStep' ? { title: t('Link to a step. Ctrl+click the link to open that step.') } : {}),
       onClick: () => this.formatDescription(action, block),
-    }, labels[action] || label);
+    }, action === 'insertStep' ? label : labels[action] || label);
     btn.dataset.action = action;
     if (block) btn.dataset.block = block;
     return btn;
@@ -1083,7 +1126,21 @@ class GuideEditor {
     this.dom.addTextBlockBtn.addEventListener('click', () => this.addBlock('text'));
     this.dom.addCodeBlockBtn.addEventListener('click', () => this.addBlock('code'));
     this.dom.addTableBlockBtn.addEventListener('click', () => this.addBlock('table'));
+    this.dom.addFlowchartBtn.addEventListener('click', () => this.addFlowchartBlock());
+    this.dom.visualSelect.addEventListener('change', () => this.setCanvasMode(this.dom.visualSelect.value));
+    this.dom.flowPlacementSelect.addEventListener('change', () => this.setFlowchartPlacement(this.dom.flowPlacementSelect.value));
+    for (const [tool] of FLOW_TOOLS()) {
+      this.dom[`flow-${tool}`].addEventListener('click', () => this.flowchartEditor()?.setTool(tool));
+    }
+    this.dom.flowArrangeBtn.addEventListener('click', () => this.flowchartEditor()?.arrange());
+    this.dom.flowDeleteBtn.addEventListener('click', () => this.flowchartEditor()?.deleteSelected());
 
+    this.dom.descEditor.addEventListener('click', (e) => {
+      const link = e.target.closest?.('a[data-step-id]');
+      if (!link || !(e.ctrlKey || e.metaKey)) return;
+      e.preventDefault();
+      if (this.stepMap.has(link.dataset.stepId)) this.selectStep(link.dataset.stepId);
+    });
     this.dom.descEditor.addEventListener('focus', () => {
       // Make Enter start a new paragraph (<p>) rather than a plain <div>,
       // so line breaks survive sanitization and show up in exports.
@@ -1096,7 +1153,6 @@ class GuideEditor {
     });
     this.dom.descEditor.addEventListener('input', () => {
       if (!this.currentStep) return;
-      delete this.currentStep.descriptionMarkdown;
       this.currentStep.descriptionHtml = this.dom.descEditor.innerHTML;
       this.pendingSave = true;
       this.saveStepDebounced();
@@ -1329,11 +1385,6 @@ class GuideEditor {
         el('button.icon', { type: 'button', title: t('Move block up'), 'aria-label': t('Move block up'), disabled: !canMoveUp, onClick: moveUp, dataset: { blockMove: 'up' } }, '↑'),
         el('button.icon', { type: 'button', title: t('Move block down'), 'aria-label': t('Move block down'), disabled: !canMoveDown, onClick: moveDown, dataset: { blockMove: 'down' } }, '↓'),
         removeBtn(() => {
-          if (kind === 'flowchart') {
-            this.pushCanvasHistory();
-            step.flowchartBlocks = (step.flowchartBlocks || []).filter(b => b !== block);
-            if (this.editingFlowchartBlock === block.id) { this.editingFlowchartBlock = null; this.renderCanvas(); }
-          }
           if (kind === 'text') step.textBlocks = (step.textBlocks || []).filter((b) => b !== block);
           else if (kind === 'code') step.codeBlocks = (step.codeBlocks || []).filter((b) => b !== block);
           else step.tableBlocks = (step.tableBlocks || []).filter((b) => b !== block);
@@ -1361,10 +1412,7 @@ class GuideEditor {
         },
       }, header);
 
-      if (kind === 'flowchart') {
-        const preview = el('div.flowchart-preview', { innerHTML: window.StepForgeFlowchart.toSvg(block.graph, this.flowchartSteps()) });
-        card.append(preview, el('button', { type: 'button', onClick: () => { this.editingFlowchartBlock = block.id; this.renderCanvas(); } }, t('Edit flowchart')));
-      } else if (kind === 'text') {
+      if (kind === 'text') {
         card.dataset.level = block.level || 'info';
         const position = makeSelect(block.position, [
           { value: 'before-title', label: t('Before title') },
@@ -1426,7 +1474,27 @@ class GuideEditor {
       this.dom.blocksList.append(card);
     }
 
-    if (!blocks.length) {
+    // The step's flowchart, when it shows as a block. It always comes last.
+    const chartBlock = step.flowchart && step.flowchartPlacement === 'block';
+    if (chartBlock && window.StepForgeFlowchart) {
+      const preview = el('div.flowchart-preview', {
+        innerHTML: step.flowchart.nodes.length
+          ? window.StepForgeFlowchart.toSvg(step.flowchart, { steps: this.flowchartStepRefs(), stepLabel: (number) => t('Step {number}', { number }) })
+          : '',
+      });
+      this.dom.blocksList.append(el('div.block-card', { dataset: { blockKind: 'flowchart' } },
+        el('div.row', {},
+          el('strong', {}, t('Flowchart')),
+          el('span.spacer'),
+          el('button', { type: 'button', onClick: () => this.setCanvasMode('flowchart') }, t('Edit')),
+          el('button.icon', { type: 'button', title: t('Remove flowchart'), 'aria-label': t('Remove flowchart'), onClick: () => this.removeFlowchart() }, '×'),
+        ),
+        step.flowchart.nodes.length ? preview : el('div.muted', {}, t('Empty flowchart.')),
+      ));
+    }
+    this.dom.addFlowchartBtn.disabled = Boolean(chartBlock);
+
+    if (!blocks.length && !chartBlock) {
       this.dom.blocksList.append(el('div.muted', {}, t('Informational text, code, and table blocks can be reordered with drag handles or arrows.')));
     }
   }
@@ -1780,7 +1848,6 @@ class GuideEditor {
   syncStepFields() {
     const step = this.currentStep;
     const guide = this.guide;
-    this.syncMarkdownDescription?.();
     if (!step) {
       this.dom.titleInput.value = '';
       this.dom.descEditor.innerHTML = '';
@@ -1794,7 +1861,7 @@ class GuideEditor {
     }
     if (document.activeElement !== this.dom.titleInput) this.dom.titleInput.value = step.title || '';
     if (document.activeElement !== this.dom.descEditor) this.dom.descEditor.innerHTML = step.descriptionHtml || '';
-    this.refreshDescriptionStepLinks?.(this.dom.descEditor);
+    this.refreshStepLinks();
     this.dom.statusSelect.value = step.status || 'todo';
     this.dom.hiddenToggle.querySelector('input').checked = Boolean(step.hidden);
     this.dom.skippedToggle.querySelector('input').checked = Boolean(step.skipped);
@@ -1818,7 +1885,11 @@ class GuideEditor {
     if (this.dom.canvas) this.dom.canvas.tabIndex = -1;
     const step = this.currentStep;
     const token = ++this.imageLoadToken;
-    if (this.syncFlowchartCanvas?.()) return;
+    if (this.syncCanvasMode()) {
+      this.syncToolbar();
+      this.renderFlowchart();
+      return;
+    }
     this.canvas.setTool(this.currentTool);
     this.canvas.setZoom(this.currentZoom);
     this.syncToolbar();
@@ -1855,6 +1926,225 @@ class GuideEditor {
       this.showCanvasEmpty();
     };
     img.src = src;
+  }
+
+  // ---- Flowcharts (core/flowchart.js, app/renderer/flowchart-editor.js) ----
+
+  /**
+   * Show the image tools or the flowchart tools, as the toolbar's
+   * Image/Flowchart menu says. A step opens on its flowchart when the
+   * flowchart is its main visual or it has no image. True for flowchart.
+   */
+  syncCanvasMode() {
+    if (!this.dom.visualSelect) return false;
+    const step = this.currentStep;
+    if (step && this.canvasModeStepId !== step.stepId) {
+      this.canvasModeStepId = step.stepId;
+      this.canvasMode = step.flowchart && (step.flowchartPlacement !== 'block' || !step.image) ? 'flowchart' : 'image';
+      this.flowEditor?.select(null);
+    }
+    const flowchart = Boolean(step) && this.canvasMode === 'flowchart';
+    this.dom.visualSelect.value = flowchart ? 'flowchart' : 'image';
+    this.dom.visualSelect.disabled = !step;
+    this.dom.imageTools.hidden = flowchart;
+    this.dom.flowTools.hidden = !flowchart;
+    this.dom.flowPlacementSelect.hidden = !flowchart;
+    this.dom.flowPlacementSelect.value = this.flowchartPlacement(step);
+    this.dom.canvasWrap.hidden = flowchart;
+    this.dom.flowSurface.hidden = !flowchart;
+    this.dom.annotationsSection.hidden = flowchart;
+    this.dom.flowSection.hidden = !flowchart;
+    // Focused view crops the screenshot; it has nothing to do with the flowchart.
+    this.dom.propertiesPane.classList.toggle('flowchart-mode', flowchart);
+    return flowchart;
+  }
+
+  /** Where the step's flowchart goes in exports; a new one replaces the image only on a step without one. */
+  flowchartPlacement(step = this.currentStep) {
+    if (!step) return 'visual';
+    if (step.flowchart) return step.flowchartPlacement === 'block' ? 'block' : 'visual';
+    return step.image ? 'block' : 'visual';
+  }
+
+  setCanvasMode(mode) {
+    this.canvasMode = mode === 'flowchart' ? 'flowchart' : 'image';
+    this.renderCanvas();
+  }
+
+  flowchartEditor() {
+    if (!this.flowEditor && typeof FlowchartEditor === 'function') {
+      this.flowEditor = new FlowchartEditor(this.dom.flowSurface, {
+        getGraph: () => this.currentStep?.flowchart || null,
+        getSteps: () => this.flowchartStepRefs(),
+        stepLabel: (number) => t('Step {number}', { number }),
+        beforeChange: () => this.beginFlowchartChange(),
+        changed: () => this.flowchartChanged(),
+        onSelect: () => this.renderFlowchartProps(),
+        onToolChange: () => this.syncFlowTools(),
+      });
+    }
+    return this.flowEditor || null;
+  }
+
+  flowchartStepRefs() {
+    const numbers = stepNumberMap(this.steps);
+    return this.steps.map((s) => ({ stepId: s.stepId, number: numbers.get(s.stepId), title: s.title || '' }));
+  }
+
+  renderFlowchart() {
+    const editor = this.flowchartEditor();
+    if (!editor) return;
+    editor.reset();
+    this.syncFlowTools();
+    this.renderFlowchartProps();
+  }
+
+  syncFlowTools() {
+    const tool = this.flowEditor?.tool || 'select';
+    for (const [name] of FLOW_TOOLS()) this.setPressed(this.dom[`flow-${name}`], name === tool);
+  }
+
+  /** Before a flowchart edit: an undo snapshot, and the flowchart itself on its first edit. */
+  beginFlowchartChange() {
+    const step = this.currentStep;
+    this.pushCanvasHistory();
+    if (!step.flowchart) {
+      step.flowchartPlacement = this.flowchartPlacement(step);
+      step.flowchart = { nodes: [], edges: [] };
+    }
+    return step.flowchart;
+  }
+
+  flowchartChanged() {
+    this.pendingSave = true;
+    this.saveStepDebounced();
+    this.renderFlowchartProps();
+    if (this.currentStep?.flowchartPlacement === 'block') this.renderBlocksPanel();
+  }
+
+  setFlowchartPlacement(placement) {
+    const step = this.currentStep;
+    if (!step) return;
+    this.pushCanvasHistory();
+    step.flowchartPlacement = placement === 'block' ? 'block' : 'visual';
+    if (!step.flowchart) step.flowchart = { nodes: [], edges: [] };
+    this.pendingSave = true;
+    this.saveStepDebounced();
+    this.renderBlocksPanel();
+  }
+
+  /** Blocks → + Flowchart: the step's flowchart, shown as a block after its text. */
+  addFlowchartBlock() {
+    const step = this.currentStep;
+    if (!step) return;
+    if (!step.flowchart || step.flowchartPlacement !== 'block') this.setFlowchartPlacement('block');
+    this.setCanvasMode('flowchart');
+  }
+
+  removeFlowchart() {
+    const step = this.currentStep;
+    if (!step?.flowchart) return;
+    this.pushCanvasHistory();
+    step.flowchart = null;
+    this.pendingSave = true;
+    this.saveStepDebounced();
+    this.canvasMode = step.image ? 'image' : 'flowchart';
+    this.renderCanvas();
+    this.renderBlocksPanel();
+    this.onToast(`${t('Flowchart removed.')} ${t('Press Ctrl+Z to undo.')}`);
+  }
+
+  /** The details pane while the flowchart is shown: the selected shape or arrow. */
+  renderFlowchartProps() {
+    const box = this.dom.flowProps;
+    clearNode(box);
+    const step = this.currentStep;
+    const editor = this.flowEditor;
+    if (!step || !editor) return;
+    const graph = step.flowchart || { nodes: [], edges: [] };
+    const sel = editor.selected;
+    const item = sel && (sel.kind === 'node' ? graph.nodes : graph.edges).find((i) => i.id === sel.id);
+    const edit = (apply) => {
+      editor.cb.beforeChange();
+      const live = sel && (sel.kind === 'node' ? step.flowchart.nodes : step.flowchart.edges).find((i) => i.id === sel.id);
+      if (live) apply(live);
+      this.pendingSave = true;
+      this.saveStepDebounced();
+      editor.render();
+      if (step.flowchartPlacement === 'block') this.renderBlocksPanel();
+    };
+    if (item) {
+      const label = el('input', { type: 'text', value: item.label || '', maxLength: sel.kind === 'node' ? 300 : 80 });
+      let armed = false;
+      label.addEventListener('focus', () => { armed = false; });
+      label.addEventListener('input', () => {
+        // One undo step per focus, not per key.
+        if (!armed) { this.pushCanvasHistory(); armed = true; }
+        const live = (sel.kind === 'node' ? step.flowchart.nodes : step.flowchart.edges).find((i) => i.id === sel.id);
+        if (live) live.label = label.value;
+        this.pendingSave = true;
+        this.saveStepDebounced();
+        editor.render();
+      });
+      box.append(labeledRow(sel.kind === 'node' ? t('Text') : t('Arrow label'), label));
+      if (sel.kind === 'node') {
+        const shape = makeSelect(item.shape, FLOW_TOOLS().filter(([tool]) => ['process', 'decision', 'terminal'].includes(tool))
+          .map(([value, name]) => ({ value, label: name })));
+        shape.addEventListener('change', () => edit((n) => { n.shape = shape.value; }));
+        box.append(labeledRow(t('Shape'), shape));
+        const refs = this.flowchartStepRefs();
+        const target = makeSelect(item.stepId || '', [{ value: '', label: t('None') },
+          ...refs.map((r) => ({ value: r.stepId, label: `${r.number}. ${r.title || t('Untitled step')}`.slice(0, 80) }))]);
+        target.addEventListener('change', () => edit((n) => { n.stepId = target.value || null; }));
+        box.append(labeledRow(t('Links to step'), target));
+        if (item.stepId && this.stepMap.has(item.stepId)) {
+          box.append(el('button', { type: 'button', onClick: () => this.selectStep(item.stepId) }, t('Go to step')));
+        }
+      }
+      box.append(el('button.danger', { type: 'button', onClick: () => editor.deleteSelected() }, sel.kind === 'node' ? t('Delete shape') : t('Delete arrow')));
+    } else {
+      box.append(el('p.muted', {}, t('Pick a shape in the toolbar and click the canvas. Use Connect to draw arrows between shapes. Double-click a shape or arrow to change its text.')));
+    }
+    if (step.flowchart) {
+      box.append(el('button', { type: 'button', onClick: () => this.removeFlowchart() }, t('Remove flowchart')));
+    }
+  }
+
+  /** AI ▾ → Create a flowchart: a flowchart of the whole guide, put on this step. */
+  async generateFlowchartWithAi() {
+    const step = this.currentStep;
+    if (!step || this.aiRun) return;
+    if (!this.isAiEnabled()) {
+      this.onToast(t('Turn on AI in Settings first.'), { error: true });
+      return;
+    }
+    if (step.flowchart?.nodes?.length && !(await confirmDialog(t('Replace this step’s flowchart with a new one from AI?')))) return;
+    if (this.pendingSave) await this.flushStep();
+    const run = { cancelled: false, progress: '' };
+    this.aiRun = run;
+    this.emitMeta();
+    try {
+      const result = await api.ai.flowchart({ guideId: this.guideId });
+      if (run.cancelled) return;
+      if (!result || !result.ok) {
+        this.onToast(result?.reason || t('AI could not create a flowchart.'), { error: true });
+        return;
+      }
+      if (this.currentStep !== step) return;
+      this.pushCanvasHistory();
+      step.flowchartPlacement = this.flowchartPlacement(step);
+      step.flowchart = result.flowchart;
+      await this.flushStep();
+      this.canvasMode = 'flowchart';
+      this.renderCanvas();
+      this.renderBlocksPanel();
+      this.onToast(`${t('AI created a flowchart.')} ${t('Press Ctrl+Z to undo.')}`);
+    } catch (err) {
+      if (!run.cancelled) this.onToast(err.message || t('AI could not create a flowchart.'), { error: true });
+    } finally {
+      if (this.aiRun === run) this.aiRun = null;
+      this.emitMeta();
+    }
   }
 
   renderAnnotationPanel() {
@@ -2281,19 +2571,12 @@ class GuideEditor {
 
   setZoom(mode) {
     this.currentZoom = mode;
-    this.canvas.allowOverflow = mode !== 'fit';
-    this.dom?.canvasWrap?.classList?.toggle('zoomed-image', mode !== 'fit');
     this.canvas.setZoom(mode);
     this.canvas.applyZoom();
     this.syncToolbar();
   }
 
   applyZoomShortcut(kind) {
-    if (this.flowchartIsActive?.()) {
-      if (kind === 'fit') this.flowEditor.fit();
-      else this.flowEditor.setZoom(this.flowEditor.zoom * (kind === 'in' ? 1.2 : 1 / 1.2));
-      return true;
-    }
     if (kind === 'in') {
       this.setZoom(Math.min(3, (Number(this.currentZoom) || 1) + 0.25));
       return true;
@@ -2656,7 +2939,6 @@ class GuideEditor {
       textBlocks: existing.textBlocks,
       codeBlocks: existing.codeBlocks,
       tableBlocks: existing.tableBlocks,
-      flowchartBlocks: existing.flowchartBlocks,
     };
     for (const key of Object.keys(existing)) {
       if (!(key in saved)) delete existing[key];
@@ -2892,7 +3174,6 @@ class GuideEditor {
     // discard them by re-fetching a stale on-disk copy.
     if (this.pendingSave) await this.flushStep();
     this.selectedStepId = stepId;
-    this.editingFlowchartBlock = null;
     this.selectedAnnotationId = null;
     this.canvas.select(null);
     this.syncStepFields();
@@ -2910,9 +3191,7 @@ class GuideEditor {
     if (!draft) return;
     const step = await api.step.add({
       guideId,
-      fields: { kind: 'empty', title: draft.title || t('Untitled step'), status: 'todo',
-        mainVisual: draft.mainVisual || 'image',
-        ...(draft.mainVisual === 'flowchart' ? { mainVisual: 'flowchart', flowchart: { nodes: [], edges: [] } } : {}) },
+      fields: { kind: 'empty', title: draft.title || t('Untitled step'), status: 'todo' },
       ...(draft.image ? { imageBase64: draft.image.imageBase64, size: draft.image.size } : {}),
     });
     if (this.guideId === guideId) await this.reload(step.stepId);
@@ -4170,11 +4449,13 @@ class GuideEditor {
       case 'removeFormat':
         document.execCommand('removeFormat');
         break;
+      case 'insertStep':
+        this.openStepLinkMenu();
+        return;
       default:
         break;
     }
     if (this.currentStep) {
-      delete this.currentStep.descriptionMarkdown;
       this.currentStep.descriptionHtml = editor.innerHTML;
       this.pendingSave = true;
       this.saveStepDebounced();
@@ -4182,15 +4463,78 @@ class GuideEditor {
     this.updateToolbarState();
   }
 
-  onDocumentKeyDown(e) {
-    if (this.flowchartIsActive?.() && !isEditableTarget(e.target) && !modalIsOpen()) {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
-        e.preventDefault(); if (e.shiftKey) this.redo(); else this.undo(); return;
-      }
-      // The graph owns movement/deletion and connection shortcuts, not the
-      // screenshot canvas hiding behind it. Page navigation and save remain.
-      if (!e.ctrlKey && !e.metaKey && !e.altKey && (e.key.length === 1 || e.key.startsWith('Arrow') || ['Delete', 'Backspace', 'Enter', ' '].includes(e.key))) return;
+  /**
+   * Description → Step: pick a step and insert a link to it, shown as
+   * "Step 3". The link keeps the step's permanent ID (href="step:<id>"), so
+   * the number follows the step when steps move; exports renumber it too.
+   */
+  openStepLinkMenu() {
+    const editor = this.dom.descEditor;
+    const trigger = this.dom.richToolbar.querySelector('[data-action="insertStep"]');
+    // The caret as a text offset: an autosave may re-render the description
+    // while the menu is open, which would strand a saved Range.
+    const selection = window.getSelection();
+    let caret = null;
+    if (selection.rangeCount && editor.contains(selection.anchorNode)) {
+      const before = document.createRange();
+      before.selectNodeContents(editor);
+      before.setEnd(selection.getRangeAt(0).endContainer, selection.getRangeAt(0).endOffset);
+      caret = before.toString().length;
     }
+    const numbers = stepNumberMap(this.steps);
+    const items = this.steps
+      .filter((s) => s.stepId !== this.currentStep?.stepId)
+      .map((s) => ({
+        label: `${numbers.get(s.stepId)}. ${s.title || t('Untitled step')}`.slice(0, 90),
+        action: () => this.insertStepLink(s.stepId, numbers.get(s.stepId), caret),
+      }));
+    if (!items.length) {
+      this.onToast(t('Add another step first.'));
+      return;
+    }
+    const rect = trigger.getBoundingClientRect();
+    contextMenu(rect.left, rect.bottom + 4, items, { trigger });
+  }
+
+  insertStepLink(stepId, number, caret) {
+    const editor = this.dom.descEditor;
+    if (!this.currentStep) return;
+    editor.focus();
+    // Put the caret back at its text offset (or at the end).
+    const range = document.createRange();
+    range.selectNodeContents(editor);
+    range.collapse(false);
+    if (caret != null) {
+      const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+      let left = caret;
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        if (left <= node.length) { range.setStart(node, left); range.collapse(true); break; }
+        left -= node.length;
+      }
+    }
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    const label = escapeHtml(t('Step {number}', { number }));
+    document.execCommand('insertHTML', false, `<a href="step:${stepId}" data-step-id="${stepId}">${label}</a>&nbsp;`);
+    this.currentStep.descriptionHtml = editor.innerHTML;
+    this.pendingSave = true;
+    this.saveStepDebounced();
+  }
+
+  /** Show each description step link with its target's current number. */
+  refreshStepLinks() {
+    const numbers = stepNumberMap(this.steps);
+    for (const link of this.dom.descEditor.querySelectorAll?.('a[data-step-id]') || []) {
+      const number = numbers.get(link.dataset.stepId);
+      const text = number ? link.textContent.replace(/\d+(?:\.\d+)*(?!.*\d)/, number) : link.textContent;
+      if (text !== link.textContent) link.textContent = text;
+      link.classList.toggle('missing-step', !number);
+      link.title = number ? t('Ctrl+click to open this step.') : t('This step was deleted.');
+    }
+  }
+
+  onDocumentKeyDown(e) {
     if (e.target?.closest?.('.ctx-menu')) return;
     if (!e.ctrlKey && !e.metaKey && !e.altKey && (e.target?.closest?.('.step-control') || e.target?.closest?.('.annotation-select'))) return;
     if (!this.active || !this.guide) return;
@@ -4219,6 +4563,16 @@ class GuideEditor {
       e.preventDefault();
       this.saveAll();
       return;
+    }
+    // While the flowchart is shown, plain keys are the flowchart's (and the
+    // image tools' letter shortcuts are off).
+    if (this.canvasMode === 'flowchart' && this.currentStep && !isEditableTarget(e.target) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      const onChart = document.activeElement === this.dom.flowSurface;
+      if (onChart && this.flowEditor?.handleKey(e)) {
+        e.preventDefault();
+        return;
+      }
+      if (TOOL_KEYS[e.key.toLowerCase()]) return;
     }
     if (e.key === 'Escape' && !isEditableTarget(e.target)) {
       // Escape deselects, or puts down a drawing tool; Delete is the destructive key.

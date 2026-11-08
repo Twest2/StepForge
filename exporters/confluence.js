@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { slugify, escapeXml, htmlToText, NAMED_ENTITIES } = require('../core/util');
 const { encodePng } = require('../core/png');
-const { guideSlug, renderAllImages, stepContentGroups, codeBlockText } = require('./common');
+const { guideSlug, renderAllImages, stepContentGroups, codeBlockText, flowchartImageKey, flowchartAlt } = require('./common');
 const { anchorFor, guideMetaLines } = require('./document-layout');
 const { buildConfluenceWord } = require('./confluence-word');
 const { scaledPng } = require('./branding');
@@ -164,10 +164,6 @@ function renderStep(step, ast, attachmentNames, tpl) {
   out.push(...panels(groups.afterImage));
 
   for (const block of groups.rest) {
-    if (block.kind === 'flowchart') {
-      const attachment = attachmentNames.get(`${step.stepId}:${block.id}`);
-      if (attachment) out.push(`<p><ac:image ac:alt="Flowchart"><ri:attachment ri:filename="${escapeXml(attachment)}" /></ac:image></p>`);
-    }
     if (block.kind === 'text') {
       out.push(panel(block, ast));
     } else if (block.kind === 'code') {
@@ -176,6 +172,9 @@ function renderStep(step, ast, attachmentNames, tpl) {
       out.push(macro('code', params, `<ac:plain-text-body>${cdata(codeBlockText(block))}</ac:plain-text-body>`));
     } else if (block.kind === 'table' && block.rows && block.rows.length) {
       out.push(table(block.rows));
+    } else if (block.kind === 'flowchart') {
+      const chart = attachmentNames.get(flowchartImageKey(step.stepId));
+      if (chart) out.push(`<p><ac:image ac:alt="${escapeXml(flowchartAlt(step))}"><ri:attachment ri:filename="${escapeXml(chart)}" /></ac:image></p>`);
     }
   }
   return out.join('\n');
@@ -306,6 +305,15 @@ function writeApiFiles(ast, dir, images, tpl) {
     fs.mkdirSync(attachmentDir, { recursive: true });
     fs.writeFileSync(path.join(attachmentDir, fileName), encodePng(img));
     attachmentNames.set(step.stepId, fileName);
+  }
+  for (const step of ast.steps) {
+    const chart = images.get(flowchartImageKey(step.stepId));
+    if (!chart) continue;
+    n += 1;
+    const fileName = `${String(n).padStart(3, '0')}-${slugify(step.title || step.stepId, step.stepId)}-flowchart.png`;
+    fs.mkdirSync(attachmentDir, { recursive: true });
+    fs.writeFileSync(path.join(attachmentDir, fileName), encodePng(chart));
+    attachmentNames.set(flowchartImageKey(step.stepId), fileName);
   }
 
   // The brand's banner and logo, attached like the screenshots.

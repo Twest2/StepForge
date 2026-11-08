@@ -78,7 +78,7 @@ test('the step panel’s checkboxes and description toolbar are translated', () 
   const ja = mountedEditor('ja');
   assert.deepEqual([ja.dom.hiddenToggle, ja.dom.skippedToggle, ja.dom.forceNewPageToggle, ja.dom.focusedViewToggle].map((n) => n.text.trim()),
     ['非表示', 'スキップ', '改ページ', 'フォーカス表示']);
-  assert.deepEqual(ja.dom.richToolbar.children.map((n) => n.text), ['太字', '斜体', '箇条書き', '番号付きリスト', '引用', 'リンク', 'クリア']);
+  assert.deepEqual(ja.dom.richToolbar.children.map((n) => n.text), ['太字', '斜体', '箇条書き', '番号付きリスト', '引用', 'リンク', 'クリア', 'ステップ']);
 });
 
 test('deleting a step asks in the interface language, with the step’s name', async () => {

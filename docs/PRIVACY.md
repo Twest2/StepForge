@@ -102,11 +102,6 @@ AI descriptions are **off by default**. When you enable them
 - Screenshots can be left out entirely by turning off **Settings → AI → Let
   the model see screenshots**.
 - Every request has a timeout and is cancelled when you close the guide.
-- Flowchart generation sends your request, the current graph, and step IDs,
-  titles and descriptions to the same configured server, without screenshots.
-  Diagrams render locally without a network service.
-- Markdown description images are explicit links: opening a guide does not
-  load images from third-party servers. Raw HTML is displayed as text.
 
 ## Optional AI agents
 

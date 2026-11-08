@@ -74,26 +74,6 @@ Internal working storage is **folder-based**; sharing/backups use a
   `annotations[]` (normalized scene graph, coordinates in 0..1 fractions of
   the image), textBlocks[], codeBlocks[], tableBlocks[], links[].
 
-Optional flowchart fields are `mainVisual` (`image | flowchart | none`),
-`flowchart`, and `flowchartBlocks[]`. A version-1 graph holds nodes
-`{id,type,label,stepId,x,y}` with optional width/height and style
-`{fill,stroke,textColor,strokeWidth,fontSize}`. Edges hold `{id,from,to,label}`
-with optional kind (`arrow | line | double`), routing (`orthogonal | straight`),
-dashed and color fields. `core/flowchart-shapes.js` shares shape outlines,
-dimensions and attachment geometry with SVG/raster exporters. Blocks hold
-`{id,order,title,graph}`. `core/flowchart.js` shares normalization, layout,
-SVG and Mermaid serialization with the sandboxed editor. Workers prepare
-PNGs with Sharp; the Render AST resolves references against export numbering.
-Copy/import remaps step references. Inactive screenshots and diagrams persist.
-
-Markdown descriptions additionally store `descriptionMarkdown` alongside
-sanitized generated `descriptionHtml`. Locally bundled markdown-it provides
-CommonMark, tables and strikethrough. HTML is disabled; image syntax emits
-explicit links. Editing rich text or accepting an AI HTML rewrite clears stale
-source. Merges treat source and HTML as one value. These are additive fields
-in step schema version 1; each graph has its own version. See
-[Flowcharts and Markdown descriptions](FLOWCHARTS.md).
-
 All writes are **atomic** (write to `*.tmp`, fsync, rename). Deleting a guide
 moves it to `library/trash/<guideId>-<ms>` first. The main process deletes
 trashed guides older than `library.trashDays` (default 30, 0 = never), counting

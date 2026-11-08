@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { PdfBuilder, FONT_FAMILIES, breakChunks, isWide } = require('../core/pdf');
 const { FallbackFonts, systemFontCandidates } = require('../core/pdf-fonts');
-const { guideSlug, renderAllImages, LEVEL_LABEL, stepContentGroups, codeBlockText } = require('./common');
+const { guideSlug, renderAllImages, LEVEL_LABEL, stepContentGroups, codeBlockText, flowchartImageKey } = require('./common');
 const { htmlToText } = require('../core/util');
 const { htmlToBlocks } = require('../core/htmlblocks');
 const { standardTextWidth } = require('../core/pdf-metrics');
@@ -320,15 +320,6 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
   const usableW = size.width - 2 * M;
   const usableH = size.height - 2 * M;
   const images = tpl.includeImages ? renderAllImages(ast) : new Map();
-  const tocTargets = new Map(ast.steps.map(s => [s.stepId, {}]));
-  const linkWords = (line, x, yTop, size) => {
-    for (const word of line) {
-      const width = pdf.textWidth(word.text, size, word.font);
-      const target = word.href?.startsWith('step:') ? tocTargets.get(word.href.slice(5)) : null;
-      if (target) pdf.linkRect(x, yTop, width, size * 1.35, target);
-      x += width;
-    }
-  };
 
   let y = M;
   // Never start a page break when already at the top of a page — an item
@@ -377,7 +368,6 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
           color: word.href ? linkColor : (item.muted ? [100, 100, 100] : color),
         }));
         pdf.textRun(parts, textX, y, item.size);
-        linkWords(line, textX, y, item.size);
         strikeWords(pdf, line, textX, y, item.size, item.muted ? [100, 100, 100] : color);
         y += item.lineHeight;
       });
@@ -394,14 +384,23 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
   };
 
   /** Height an image will occupy on the page, including its trailing gap. */
-  const measureImage = (stepId) => {
-    const img = images.get(stepId);
-    if (!img) return 0;
-    const maxH = usableH * tpl.imageMaxHeightRatio;
-    let h = (img.height / img.width) * usableW;
-    if (h > maxH) h = maxH;
-    return h + 10;
+  const measureImage = (key) => {
+    const box = imageBox(images.get(key), key);
+    return box ? box.h + 10 : 0;
   };
+
+  /**
+   * The size an image is drawn at: page width, capped by the height ratio.
+   * A flowchart block (drawn at 2x) is never shown larger than its own size.
+   */
+  function imageBox(img, key) {
+    if (!img) return null;
+    const maxH = usableH * tpl.imageMaxHeightRatio;
+    let w = String(key).startsWith('flowchart:') ? Math.min(usableW, img.width * 0.375) : usableW;
+    let h = (img.height / img.width) * w;
+    if (h > maxH) { h = maxH; w = (img.width / img.height) * h; }
+    return { w, h };
+  }
 
   const codeChars = Math.floor((usableW - 2 * CODE_PAD_X) / pdf.textWidth('M', CODE_SIZE, 'F3'));
   const codeLayouts = new Map();
@@ -477,10 +476,10 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
 
     let restHeight = 0;
     for (const block of rest) {
-      if (block.kind === 'flowchart') restHeight += measureImage(`${step.stepId}:${block.id}`);
       if (block.kind === 'text') restHeight += measureBlock(block);
       else if (block.kind === 'code') restHeight += measureCode(block);
       else if (block.kind === 'table') restHeight += measureTable(block);
+      else if (block.kind === 'flowchart') restHeight += measureImage(flowchartImageKey(step.stepId));
     }
 
     return { head, total: head + restHeight + 10 };
@@ -560,6 +559,7 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
 
   // Filled in below as each step claims its page, so the Contents entries
   // above (already laid out before pagination starts) can link to it.
+  const tocTargets = new Map(); // stepId -> { pageIndex }
 
   if (tpl.includeToc && ast.steps.length > 1) {
     writeLines('Contents', { size: 16, font: headFonts.bold });
@@ -568,7 +568,8 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
     const lineH = tocSize * 1.35;
     for (const step of ast.steps) {
       const indent = 14 * step.depth;
-      const target = tocTargets.get(step.stepId);
+      const target = {};
+      tocTargets.set(step.stepId, target);
       for (const line of pdf.wrapText(`${step.number}.  ${step.title || 'Untitled step'}`, tocSize, usableW - indent, bodyFonts.regular)) {
         ensure(lineH);
         pdf.text(line, M + indent, y, { size: tocSize, font: bodyFonts.regular, color: tpl.accentColor });
@@ -622,27 +623,18 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
     for (const tb of afterDescription) emitBlock(tb);
     for (const tb of beforeImage) emitBlock(tb);
 
-    const img = images.get(step.stepId);
-    if (img) {
-      const maxH = usableH * tpl.imageMaxHeightRatio;
-      let w = usableW;
-      let h = (img.height / img.width) * w;
-      if (h > maxH) { h = maxH; w = (img.width / img.height) * h; }
-      ensure(h + 6);
-      pdf.image(img, M, y, w, h);
-      y += h + 10;
-    }
+    const drawImage = (key) => {
+      const img = images.get(key);
+      const box = imageBox(img, key);
+      if (!box) return;
+      ensure(box.h + 6);
+      pdf.image(img, M, y, box.w, box.h);
+      y += box.h + 10;
+    };
+    drawImage(step.stepId);
     for (const tb of afterImage) emitBlock(tb);
 
     for (const block of rest) {
-      if (block.kind === 'flowchart') {
-        const graphImage = images.get(`${step.stepId}:${block.id}`);
-        if (graphImage) {
-          const scale = Math.min(usableW / graphImage.width, usableH * tpl.imageMaxHeightRatio / graphImage.height);
-          const w = graphImage.width * scale, h = graphImage.height * scale;
-          ensure(h + 6); pdf.image(graphImage, M, y, w, h); y += h + 10;
-        }
-      }
       if (block.kind === 'text') {
         emitBlock(block);
       } else if (block.kind === 'code') {
@@ -664,6 +656,8 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
           y += rowH;
         }
         y += 8;
+      } else if (block.kind === 'flowchart') {
+        drawImage(flowchartImageKey(step.stepId));
       }
     }
 
@@ -707,7 +701,6 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
           color: word.href ? linkColor : (item.muted ? [100, 100, 100] : ink),
         }));
         pdf.textRun(parts, textX, by, item.size);
-        linkWords(line, textX, by, item.size);
         strikeWords(pdf, line, textX, by, item.size, item.muted ? [100, 100, 100] : ink);
         by += item.lineHeight;
       });

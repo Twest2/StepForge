@@ -5,7 +5,7 @@ const path = require('node:path');
 const { escapeHtml } = require('../core/util');
 const { highlightCode } = require('../core/code-highlight');
 const { encodePng } = require('../core/png');
-const { guideSlug, renderAllImages, LEVEL_LABEL, stepContentGroups, codeBlockText } = require('./common');
+const { guideSlug, renderAllImages, LEVEL_LABEL, stepContentGroups, codeBlockText, flowchartImageKey, flowchartAlt } = require('./common');
 const { anchorFor, tocEntries, guideMetaLines } = require('./document-layout');
 const { withBrand, imageDataUri, cssFontStack, textOn } = require('./branding');
 
@@ -131,17 +131,18 @@ function renderStep(step, ast, images, tpl, { rich = false } = {}) {
   parts.push(blocks(groups.afterDescription));
   parts.push(blocks(groups.beforeImage));
   const img = images.get(step.stepId);
-  if (step.flowchart && tpl.includeImages) {
-    parts.push(`<figure class="flowchart">${step.flowchart.svg}</figure>`);
-  } else if (img && tpl.includeImages) {
+  if (img && tpl.includeImages) {
     parts.push(`<figure class="shot"><img alt="${escapeHtml(step.altText)}" src="${dataUri(img)}" width="${img.width}" height="${img.height}"${rich ? ' tabindex="0"' : ''}></figure>`);
   }
   parts.push(blocks(groups.afterImage));
   for (const block of groups.rest) {
-    if (block.kind === 'flowchart') parts.push(`<figure class="flowchart">${block.svg}</figure>`);
     if (block.kind === 'text') parts.push(blockHtml(block, ast));
     else if (block.kind === 'code') parts.push(codeHtml(block, ast));
     else if (block.kind === 'table' && block.rows && block.rows.length) parts.push(tableHtml(block.rows));
+    else if (block.kind === 'flowchart') {
+      const chart = images.get(flowchartImageKey(step.stepId));
+      if (chart && tpl.includeImages) parts.push(`<figure class="shot flowchart"><img alt="${escapeHtml(flowchartAlt(step))}" src="${dataUri(chart)}" width="${chart.width / 2}" height="${chart.height / 2}"></figure>`);
+    }
   }
 
   const toggle = rich
@@ -182,7 +183,6 @@ function footer(ast) {
 }
 
 const BASE_CSS = `
-.flowchart { margin: 16px 0; overflow: auto; } .flowchart svg { max-width: 100%; height: auto; }
 :root {
   color-scheme: light dark;
   --bg: #ffffff;

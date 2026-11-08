@@ -163,6 +163,8 @@ const TOOL_ICON_PATHS = {
   'flow-shapes': '<rect x="3" y="3" width="7.5" height="7.5" rx="1"/><circle cx="17.25" cy="6.75" r="3.75"/><path d="M6.75 13.5 10.5 21H3z"/><path d="M17.25 13.5 21 17.25 17.25 21 13.5 17.25z"/>',
   'flow-arrange': '<rect x="9" y="2.5" width="6" height="4.5" rx="1"/><rect x="2.5" y="17" width="6" height="4.5" rx="1"/><rect x="15.5" y="17" width="6" height="4.5" rx="1"/><path d="M12 7v5M5.5 17v-5h13v5"/>',
   'flow-delete': '<path d="M4 7h16M10 7V4h4v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/>',
+  'zoom-in': '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m20 20-4.9-4.9M10.5 7.5v6M7.5 10.5h6"/>',
+  'zoom-out': '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m20 20-4.9-4.9M7.5 10.5h6"/>',
   undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
   redo: '<path d="M15 14l5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/>',
 };
@@ -801,6 +803,11 @@ class GuideEditor {
             this.dom.flowArrangeBtn = el('button.tool.tool-icon', { type: 'button', title: t('Arrange'), 'aria-label': t('Arrange'), innerHTML: toolIconSvg('flow-arrange') }),
             this.dom.flowDeleteBtn = el('button.tool.tool-icon', { type: 'button', title: t('Delete selected'), 'aria-label': t('Delete selected'), innerHTML: toolIconSvg('flow-delete') }),
             el('span.sep'),
+            // Zoom buttons too: not everyone knows Ctrl + mouse wheel.
+            this.dom.flowZoomOutBtn = el('button.tool.tool-icon', { type: 'button', title: t('Zoom out (Ctrl + mouse wheel)'), 'aria-label': t('Zoom out'), innerHTML: toolIconSvg('zoom-out') }),
+            this.dom.flowZoomResetBtn = el('button.tool.flowchart-zoom-level', { type: 'button', title: t('Reset zoom to 100%'), 'aria-label': t('Reset zoom to 100%') }, '100%'),
+            this.dom.flowZoomInBtn = el('button.tool.tool-icon', { type: 'button', title: t('Zoom in (Ctrl + mouse wheel)'), 'aria-label': t('Zoom in'), innerHTML: toolIconSvg('zoom-in') }),
+            el('span.sep'),
             this.dom.mermaidToggle = el('button.tool.tool-text', { type: 'button', 'aria-pressed': 'false', title: t('Write or paste the flowchart as Mermaid text') }, t('Mermaid')),
             el('span.sep'),
           ),
@@ -1247,6 +1254,9 @@ class GuideEditor {
       if (this.mermaidDirty) applyMermaid.flush();
     });
     this.dom.flowArrangeBtn.addEventListener('click', () => this.flowchartEditor()?.arrange());
+    this.dom.flowZoomOutBtn.addEventListener('click', () => this.applyZoomShortcut('out'));
+    this.dom.flowZoomInBtn.addEventListener('click', () => this.applyZoomShortcut('in'));
+    this.dom.flowZoomResetBtn.addEventListener('click', () => this.applyZoomShortcut('fit'));
     this.dom.flowDeleteBtn.addEventListener('click', () => this.flowchartEditor()?.deleteSelected());
 
     // While editing, a click on a link puts the caret in it; Ctrl+click opens
@@ -2140,6 +2150,7 @@ class GuideEditor {
         changed: () => this.flowchartChanged(),
         onSelect: () => this.renderFlowchartProps(),
         onToolChange: () => this.syncFlowTools(),
+        onZoom: (zoom) => { this.dom.flowZoomResetBtn.textContent = `${Math.round(zoom * 100)}%`; },
       });
     }
     return this.flowEditor || null;

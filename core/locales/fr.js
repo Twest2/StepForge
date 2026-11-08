@@ -1890,4 +1890,9 @@
   "Mermaid flowchart syntax (opens in your browser)": "Syntaxe des organigrammes Mermaid (s’ouvre dans le navigateur)",
   "Syntax": "Syntaxe",
   "Resize Mermaid panel": "Redimensionner le panneau Mermaid",
+  "Zoom in": "Zoom avant",
+  "Zoom out": "Zoom arrière",
+  "Zoom in (Ctrl + mouse wheel)": "Zoom avant (Ctrl + molette)",
+  "Zoom out (Ctrl + mouse wheel)": "Zoom arrière (Ctrl + molette)",
+  "Reset zoom to 100%": "Rétablir le zoom à 100 %",
 });

@@ -1890,4 +1890,9 @@
   "Mermaid flowchart syntax (opens in your browser)": "Синтаксис блок-схем Mermaid (откроется в браузере)",
   "Syntax": "Синтаксис",
   "Resize Mermaid panel": "Изменить размер панели Mermaid",
+  "Zoom in": "Увеличить",
+  "Zoom out": "Уменьшить",
+  "Zoom in (Ctrl + mouse wheel)": "Увеличить (Ctrl + колесо мыши)",
+  "Zoom out (Ctrl + mouse wheel)": "Уменьшить (Ctrl + колесо мыши)",
+  "Reset zoom to 100%": "Сбросить масштаб до 100%",
 });

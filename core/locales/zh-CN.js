@@ -1890,4 +1890,9 @@
   "Mermaid flowchart syntax (opens in your browser)": "Mermaid 流程图语法（在浏览器中打开）",
   "Syntax": "语法",
   "Resize Mermaid panel": "调整 Mermaid 面板大小",
+  "Zoom in": "放大",
+  "Zoom out": "缩小",
+  "Zoom in (Ctrl + mouse wheel)": "放大（Ctrl + 鼠标滚轮）",
+  "Zoom out (Ctrl + mouse wheel)": "缩小（Ctrl + 鼠标滚轮）",
+  "Reset zoom to 100%": "将缩放重置为 100%",
 });

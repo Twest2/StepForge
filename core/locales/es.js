@@ -1890,4 +1890,9 @@
   "Mermaid flowchart syntax (opens in your browser)": "Sintaxis de diagramas de flujo Mermaid (se abre en el navegador)",
   "Syntax": "Sintaxis",
   "Resize Mermaid panel": "Cambiar el tamaño del panel Mermaid",
+  "Zoom in": "Acercar",
+  "Zoom out": "Alejar",
+  "Zoom in (Ctrl + mouse wheel)": "Acercar (Ctrl + rueda del ratón)",
+  "Zoom out (Ctrl + mouse wheel)": "Alejar (Ctrl + rueda del ratón)",
+  "Reset zoom to 100%": "Restablecer el zoom al 100 %",
 });

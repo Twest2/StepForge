@@ -841,7 +841,7 @@ class GuideEditor {
               this.dom.mermaidHighlight = el('pre.flowchart-mermaid-highlight', { 'aria-hidden': 'true' }),
               this.dom.mermaidSource = el('textarea.flowchart-mermaid-source', { spellcheck: false, wrap: 'off', 'aria-label': t('Flowchart as Mermaid text') }),
             ),
-            this.dom.mermaidStatus = el('div.flowchart-mermaid-status', { role: 'status', 'aria-live': 'polite' }),
+            this.dom.mermaidStatus = el('div.flowchart-mermaid-status', { role: 'status', 'aria-live': 'polite', hidden: true }),
           ),
         ),
       ),
@@ -2260,7 +2260,9 @@ class GuideEditor {
   }
 
   showMermaidStatus(message, { error = false } = {}) {
-    this.dom.mermaidStatus.replaceChildren(el('span.flowchart-mermaid-dot'), message || t('In sync with the chart'));
+    // Only problems are shown; a working chart needs no status line.
+    this.dom.mermaidStatus.hidden = !message;
+    this.dom.mermaidStatus.replaceChildren(...(message ? [el('span.flowchart-mermaid-dot'), message] : []));
     this.dom.mermaidStatus.classList.toggle('error', error);
   }
 
@@ -2369,6 +2371,7 @@ class GuideEditor {
       this.pendingSave = true;
       this.saveStepDebounced();
       editor.render();
+      this.syncMermaidText();
       if (step.flowchartPlacement === 'block') this.renderBlocksPanel();
       if (props) this.renderFlowchartProps();
     };

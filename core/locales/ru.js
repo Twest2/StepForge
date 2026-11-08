@@ -1889,6 +1889,5 @@
   "Flowchart as text": "Блок-схема текстом",
   "Mermaid flowchart syntax (opens in your browser)": "Синтаксис блок-схем Mermaid (откроется в браузере)",
   "Syntax": "Синтаксис",
-  "In sync with the chart": "Совпадает со схемой",
   "Resize Mermaid panel": "Изменить размер панели Mermaid",
 });

@@ -886,6 +886,7 @@ body.platform-linux #capture-status button {
   color: var(--muted);
   border-top: 1px solid var(--border);
 }
+.flowchart-mermaid-status[hidden] { display: none; }
 .flowchart-mermaid-dot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: #22a06b; }
 .flowchart-mermaid-status.error { color: var(--danger, #c0392b); }
 .flowchart-mermaid-status.error .flowchart-mermaid-dot { background: var(--danger, #c0392b); }

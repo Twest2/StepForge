@@ -1889,6 +1889,5 @@
   "Flowchart as text": "Organigramme en texte",
   "Mermaid flowchart syntax (opens in your browser)": "Syntaxe des organigrammes Mermaid (s’ouvre dans le navigateur)",
   "Syntax": "Syntaxe",
-  "In sync with the chart": "Synchronisé avec le schéma",
   "Resize Mermaid panel": "Redimensionner le panneau Mermaid",
 });

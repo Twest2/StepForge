@@ -1889,6 +1889,5 @@
   "Flowchart as text": "Diagrama de flujo como texto",
   "Mermaid flowchart syntax (opens in your browser)": "Sintaxis de diagramas de flujo Mermaid (se abre en el navegador)",
   "Syntax": "Sintaxis",
-  "In sync with the chart": "Sincronizado con el diagrama",
   "Resize Mermaid panel": "Cambiar el tamaño del panel Mermaid",
 });

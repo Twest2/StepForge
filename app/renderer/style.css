@@ -797,7 +797,17 @@ body.platform-linux #capture-status button {
   background-attachment: local;
   user-select: none;
 }
-.flowchart-surface[hidden], .canvas-wrap[hidden], .pane-props section[hidden] { display: none; }
+.flowchart-surface[hidden], .canvas-wrap[hidden], .pane-props section[hidden], .flowchart-pane[hidden], .flowchart-mermaid[hidden], .flowchart-mermaid-open[hidden] { display: none; }
+/* Canvas | Mermaid text, split by a vertical line. */
+.flowchart-pane { flex: 1; min-height: 0; display: flex; position: relative; }
+.flowchart-pane .flowchart-surface { flex: 1; min-width: 0; }
+.flowchart-mermaid { width: clamp(220px, 38%, 380px); display: flex; flex-direction: column; border-left: 1px solid var(--border); background: var(--panel-solid); }
+.flowchart-mermaid-head { display: flex; align-items: center; justify-content: space-between; padding: 6px 8px 6px 12px; border-bottom: 1px solid var(--border); }
+.flowchart-mermaid-source { flex: 1; min-height: 0; margin: 0; border: 0; border-radius: 0; resize: none; padding: 10px 12px; font: 13px/1.5 ui-monospace, 'Cascadia Mono', Consolas, monospace; background: transparent; color: var(--text); }
+.flowchart-mermaid-source:focus { outline: none; box-shadow: inset 0 0 0 2px var(--accent); }
+.flowchart-mermaid-status { padding: 6px 12px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--border); }
+.flowchart-mermaid-status.error { color: var(--danger, #c0392b); }
+.flowchart-mermaid-open { position: absolute; top: 10px; right: 14px; z-index: 2; height: 28px; padding: 0 10px; font-size: 12px; box-shadow: var(--shadow); }
 .flowchart-surface:focus-visible { box-shadow: inset 0 0 0 2px var(--accent); }
 .flowchart-layer { position: absolute; left: 0; top: 0; }
 .flowchart-layer svg { display: block; }

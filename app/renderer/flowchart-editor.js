@@ -81,8 +81,10 @@
       return color || undefined;
     }
 
-    setTool(tool) {
+    /** Pick a tool; Connect takes the style of the arrows it draws (core/flowchart.js EDGE_STYLES). */
+    setTool(tool, { edgeStyle = 'arrow' } = {}) {
       this.tool = tool;
+      this.edgeStyle = tool === 'connect' ? edgeStyle : 'arrow';
       this.pendingFrom = null;
       this.drag = null;
       this.host.dataset.tool = tool;
@@ -173,7 +175,7 @@
         return;
       }
       const graph = this.cb.beforeChange();
-      const edge = { id: flow.newId('edge'), from, to, label: '' };
+      const edge = { id: flow.newId('edge'), from, to, label: '', ...(this.edgeStyle && this.edgeStyle !== 'arrow' ? { style: this.edgeStyle } : {}) };
       graph.edges.push(edge);
       this.cb.changed();
       this.setTool('select');

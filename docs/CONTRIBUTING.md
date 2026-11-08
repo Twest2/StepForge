@@ -121,6 +121,10 @@ Run the whole suite before opening or updating a pull request:
 bash tests/run_test.sh
 ```
 
+Targeted guides: [cloud sync stress and recovery](CLOUD_SYNC_TESTING.md),
+[Render AST profiling](RENDER_PERFORMANCE.md), and
+[Linux portal troubleshooting](LINUX_PORTAL_TROUBLESHOOTING.md).
+
 The runner executes every `tests/checks/test_*.sh`, which in turn run the
 `node --test` suites in `tests/unit/`. To add tests, put workflow suites in
 `tests/unit/` and any new shell check in `tests/checks/`; the runner picks

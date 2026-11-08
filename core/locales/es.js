@@ -1795,4 +1795,13 @@
   'Screen capture': 'Captura de pantalla',
   'Window capture': 'Captura de ventana',
   'Region capture': 'Captura de región',
+  "Screen sharing was cancelled. Start recording again and select the monitors to share.": "Se canceló la pantalla compartida. Inicia la grabación de nuevo y selecciona los monitores que quieres compartir.",
+  "Screen sharing timed out. Check for a hidden sharing dialog, then try recording again. If it continues, check xdg-desktop-portal and your desktop portal backend.": "Se agotó el tiempo para compartir la pantalla. Busca un diálogo de compartir oculto e intenta grabar de nuevo. Si continúa, comprueba xdg-desktop-portal y el servicio de portal de tu escritorio.",
+  "The screen-sharing portal is unavailable. Install or enable xdg-desktop-portal and the {desktop} portal backend, then log out and back in.": "El portal para compartir pantalla no está disponible. Instala o activa xdg-desktop-portal y el servicio de portal de {desktop}; después, cierra la sesión y vuelve a entrar.",
+  "The screen stream stopped. Check PipeWire, WirePlumber and your desktop portal backend, then start recording again.": "La transmisión de pantalla se detuvo. Comprueba PipeWire, WirePlumber y el servicio de portal de tu escritorio e inicia la grabación de nuevo.",
+  "Screen sharing ended. Start recording again and share every monitor you want to record.": "La pantalla compartida terminó. Inicia la grabación de nuevo y comparte todos los monitores que quieras grabar.",
+  "The capture helper could not run. Check that Python 3, PyGObject, GStreamer and the PipeWire plugin are installed. See docs/LINUX_PORTAL_TROUBLESHOOTING.md.": "No se pudo ejecutar el asistente de captura. Comprueba que Python 3, PyGObject, GStreamer y el complemento de PipeWire estén instalados. Consulta docs/LINUX_PORTAL_TROUBLESHOOTING.md.",
+  "The screen-sharing portal failed.": "El portal para compartir pantalla falló.",
+  "Try recording again. If it continues, see docs/LINUX_PORTAL_TROUBLESHOOTING.md for portal service checks.": "Intenta grabar de nuevo. Si continúa, consulta docs/LINUX_PORTAL_TROUBLESHOOTING.md para comprobar los servicios del portal.",
+  "Local capture diagnostics: {file}": "Diagnóstico local de captura: {file}",
 });

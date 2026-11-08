@@ -1795,4 +1795,13 @@
   'Screen capture': 'Capture d’écran',
   'Window capture': 'Capture de fenêtre',
   'Region capture': 'Capture de zone',
+  "Screen sharing was cancelled. Start recording again and select the monitors to share.": "Le partage d’écran a été annulé. Relancez l’enregistrement et sélectionnez les écrans à partager.",
+  "Screen sharing timed out. Check for a hidden sharing dialog, then try recording again. If it continues, check xdg-desktop-portal and your desktop portal backend.": "Le partage d’écran a expiré. Vérifiez si une boîte de dialogue de partage est masquée, puis réessayez. Si le problème persiste, vérifiez xdg-desktop-portal et le moteur de portail de votre bureau.",
+  "The screen-sharing portal is unavailable. Install or enable xdg-desktop-portal and the {desktop} portal backend, then log out and back in.": "Le portail de partage d’écran est indisponible. Installez ou activez xdg-desktop-portal et le moteur de portail {desktop}, puis déconnectez-vous et reconnectez-vous.",
+  "The screen stream stopped. Check PipeWire, WirePlumber and your desktop portal backend, then start recording again.": "Le flux vidéo s’est arrêté. Vérifiez PipeWire, WirePlumber et le moteur de portail de votre bureau, puis relancez l’enregistrement.",
+  "Screen sharing ended. Start recording again and share every monitor you want to record.": "Le partage d’écran est terminé. Relancez l’enregistrement et partagez tous les écrans à enregistrer.",
+  "The capture helper could not run. Check that Python 3, PyGObject, GStreamer and the PipeWire plugin are installed. See docs/LINUX_PORTAL_TROUBLESHOOTING.md.": "L’assistant de capture n’a pas pu démarrer. Vérifiez que Python 3, PyGObject, GStreamer et le module PipeWire sont installés. Consultez docs/LINUX_PORTAL_TROUBLESHOOTING.md.",
+  "The screen-sharing portal failed.": "Le portail de partage d’écran a échoué.",
+  "Try recording again. If it continues, see docs/LINUX_PORTAL_TROUBLESHOOTING.md for portal service checks.": "Réessayez d’enregistrer. Si le problème persiste, consultez docs/LINUX_PORTAL_TROUBLESHOOTING.md pour vérifier les services du portail.",
+  "Local capture diagnostics: {file}": "Diagnostics locaux de capture : {file}",
 });

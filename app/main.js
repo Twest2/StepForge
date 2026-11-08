@@ -35,12 +35,9 @@ const { TemplateManager, FORMATS, FORMAT_LABELS } = require('../core/templates')
 const { BrandingStore, brandTemplateDefaults, checkFileSize, cssFromFile, MAX_CSS_CHARS } = require('../core/branding');
 const { MAX_REQUEST_CHARS: MAX_BRAND_CSS_REQUEST_CHARS } = require('../core/ai-brand-css');
 const { buildSampleAst } = require('../core/branding-sample');
-const { buildRenderAst } = require('../core/renderast');
-const { setImageCodec, rasterToPng, sniffImageFormat, readImageSize, optimizeScreenshot, prepareExportImages, imagePreviewUrl } = require('../core/image-format');
+const { setImageCodec, rasterToPng, sniffImageFormat, readImageSize, optimizeScreenshot, imagePreviewUrl } = require('../core/image-format');
 const { optimizeGuideImages } = require('../core/image-optimize');
 const { createImageCodec } = require('../core/image-codec');
-const { qualityFindings } = require('../core/quality');
-const { stepNumberMap } = require('../core/step-outline');
 const { AI_TARGETS } = require('../core/text-intel');
 const { agentChangesSince, agentChangesStamp } = require('../core/agent-changes');
 const { runExport, EXPORTERS, FORMAT_INFO, FORMAT_ORDER } = require('../exporters');
@@ -928,9 +925,9 @@ function setupIpc() {
     steps: orderedSteps(guideId),
   }), { validate: (a) => c.id(a.guideId) });
   // What to fix before exporting or publishing (core/quality.js).
-  h('guide:quality', ({ guideId }) => qualityFindings(buildRenderAst(store, guideId, {
+  h('guide:quality', ({ guideId }) => runExportInWorker({ dataDir: store.root, guideId, task: 'quality',
     globals: settings.getGlobalPlaceholders(), reviewDays: exportReviewDays(),
-  }), stepNumberMap(orderedSteps(guideId))), { validate: (a) => c.id(a.guideId) });
+  }), { validate: (a) => c.id(a.guideId) });
   // An AI agent may have moved the guide to the Trash meanwhile; a late save
   // from the editor must not recreate it, which would also block its restore.
   h('guide:save', ({ guide, baseGuide }) => {
@@ -1326,11 +1323,11 @@ function setupIpc() {
   h('wikijs:signInAgain', ({ code }) => wikijs.signInAgain({ code }), { validate: validWikiCodeArgs });
   h('wikijs:cancel', () => { wikijs.cancel(); return { ok: true }; });
   h('wikijs:disconnect', () => wikijs.disconnect());
-  h('wikijs:defaults', ({ guideId }) => {
+  h('wikijs:defaults', async ({ guideId }) => {
     if (!store.guideExists(guideId)) throw new Error(t('Guide not found.'));
     // The title as exported, with placeholders filled in, names the page.
-    const { guide } = buildRenderAst(store, guideId, { globals: settings.getGlobalPlaceholders() });
-    return wikijs.defaultsFor(guideId, guide.title);
+    const title = await runExportInWorker({ dataDir: store.root, guideId, task: 'title', globals: settings.getGlobalPlaceholders() });
+    return wikijs.defaultsFor(guideId, title);
   }, { validate: (a) => c.id(a.guideId) });
   h('wikijs:publish', async ({ guideId, path: pagePath, title, locale = 'en', replace = false }) => {
     if (!store.guideExists(guideId)) throw new Error(t('Guide not found.'));
@@ -1829,14 +1826,12 @@ function setupIpc() {
   h('export:preview', async ({ guideId, format, options, brandProfileId }) => {
     const previewDir = path.join(store.tempDir, `preview-${guideId}-${format}`);
     fs.rmSync(previewDir, { recursive: true, force: true });
-    const ast = buildRenderAst(store, guideId, {
+    const result = await runExportInWorker({ dataDir: store.root, guideId, format, outDir: previewDir, options: options || {},
       globals: settings.getGlobalPlaceholders(),
       maxSteps: settings.get('exports.previewStepCount') || 3,
       codeStyle: exportCodeStyle(), reviewDays: exportReviewDays(),
       branding: exportBranding(brandProfileId),
-      images: await prepareExportImages(store, guideId, { codec: imageCodec, maxSteps: settings.get('exports.previewStepCount') || 3 }),
     });
-    const result = runExport(format, ast, previewDir, options || {});
     // Folder-style exports (image bundle, Confluence) preview as their folder.
     const target = result.previewFile || result.file;
     producedFiles.add(target);
@@ -2259,6 +2254,7 @@ if (!gotLock) {
     capture = new CaptureService({
       store,
       settings,
+      translate: t,
       getWindow: () => mainWindow,
       notify: captureNotify,
       textIntel,

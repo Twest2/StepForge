@@ -37,7 +37,8 @@ function runSpectacle(file) {
 class KdeCaptureService extends GnomeCaptureService {
   constructor(options) {
     super({
-      backendFactory: () => new PortalBackend({ desktop: 'plasma' }),
+      backendFactory: () => new PortalBackend({ desktop: 'plasma',
+        diagnosticDir: options.store?.root ? path.join(options.store.root, 'logs') : null, translate: options.translate }),
       // The helper checks KWin and the input devices before the portal asks.
       ensureCompanion: async () => {},
       ...options,

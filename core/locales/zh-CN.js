@@ -1795,4 +1795,13 @@
   'Screen capture': '屏幕截图',
   'Window capture': '窗口截图',
   'Region capture': '区域截图',
+  "Screen sharing was cancelled. Start recording again and select the monitors to share.": "屏幕共享已取消。请重新开始录制，并选择要共享的显示器。",
+  "Screen sharing timed out. Check for a hidden sharing dialog, then try recording again. If it continues, check xdg-desktop-portal and your desktop portal backend.": "屏幕共享超时。请检查是否有隐藏的共享对话框，然后重试录制。如果问题仍然存在，请检查 xdg-desktop-portal 和桌面门户后端。",
+  "The screen-sharing portal is unavailable. Install or enable xdg-desktop-portal and the {desktop} portal backend, then log out and back in.": "屏幕共享门户不可用。请安装或启用 xdg-desktop-portal 和 {desktop} 门户后端，然后注销并重新登录。",
+  "The screen stream stopped. Check PipeWire, WirePlumber and your desktop portal backend, then start recording again.": "屏幕视频流已停止。请检查 PipeWire、WirePlumber 和桌面门户后端，然后重新开始录制。",
+  "Screen sharing ended. Start recording again and share every monitor you want to record.": "屏幕共享已结束。请重新开始录制，并共享所有需要录制的显示器。",
+  "The capture helper could not run. Check that Python 3, PyGObject, GStreamer and the PipeWire plugin are installed. See docs/LINUX_PORTAL_TROUBLESHOOTING.md.": "无法运行截屏辅助程序。请检查是否已安装 Python 3、PyGObject、GStreamer 和 PipeWire 插件。请参阅 docs/LINUX_PORTAL_TROUBLESHOOTING.md。",
+  "The screen-sharing portal failed.": "屏幕共享门户发生错误。",
+  "Try recording again. If it continues, see docs/LINUX_PORTAL_TROUBLESHOOTING.md for portal service checks.": "请重试录制。如果问题仍然存在，请参阅 docs/LINUX_PORTAL_TROUBLESHOOTING.md 检查门户服务。",
+  "Local capture diagnostics: {file}": "本地截屏诊断：{file}",
 });

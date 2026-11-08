@@ -9,7 +9,7 @@ const { zipSync, unzipSync } = require('./zip');
 const { atomicWriteFileSync, writeJsonSync, readJsonIfExists } = require('./util');
 const { TransferMeter } = require('./transfer-meter');
 const { mergeGuideEntries } = require('./guide-merge');
-const { createSnapshot } = require('./snapshots');
+const { createSnapshot, createSnapshotFromEntries } = require('./snapshots');
 const { mergeSharedSettings, UNZIP_LIMITS: SHARED_LIMITS } = require('./shared-settings');
 const parts = require('./cloud-parts');
 
@@ -44,6 +44,11 @@ function mergedProperty(ids) {
     value = next;
   }
   return value;
+}
+
+function remainingMerges(record, absorbed) {
+  const named = new Set(absorbed.split(','));
+  return (record?.merged || []).filter(id => validId(id) && id !== record.head && !named.has(id));
 }
 
 function mergeMessage(label, merged, conflicts) {
@@ -347,20 +352,21 @@ class CloudSync {
         return entry.name.endsWith('.json') ? { name: entry.name, data: data.toString('base64') } : { name: entry.name, sha: parts.sha256(data) };
       });
       fs.mkdirSync(path.dirname(file), { recursive: true });
-      writeJsonSync(file, { hash: parts.contentHash(entries), entries: list });
+      writeJsonSync(file, { hash: parts.contentHash(entries), entries: list, checksum: digest(JSON.stringify(list)) });
     } catch { /* only a cache */ }
   }
 
   /** The remembered base entries, if they are the content with this hash. */
   rememberedBase(file, hash) {
     const saved = readJsonIfExists(file, null);
-    if (!hash || saved?.hash !== hash || !Array.isArray(saved.entries)) return null;
+    if (!hash || saved?.hash !== hash || !Array.isArray(saved.entries)
+        || saved.checksum !== digest(JSON.stringify(saved.entries))) return null;
     return saved.entries.map((entry) => ({ name: entry.name, sha: entry.sha, data: entry.data === undefined ? null : Buffer.from(entry.data, 'base64') }));
   }
 
   /**
    * Base entries for merging `tips` (and the local copy, when `record` is
-   * given): the newest version every side descends from. Without one, the
+   * given): a nearest version every side descends from. Without one, the
    * base remembered in `baseFile`, or null to merge without a base.
    */
   async mergeBase(baseFile, versions, tips, record) {
@@ -377,30 +383,27 @@ class CloudSync {
     };
     const starts = [...tips.map((tip) => tip.id), ...(record ? [record.head] : [])];
     const lines = starts.map(ancestry);
-    const common = [...lines[0]].filter((vid) => lines.every((line) => line.has(vid))).map((vid) => byId.get(vid))
+    const commonIds = new Set([...(lines[0] || [])].filter((vid) => lines.every((line) => line.has(vid))));
+    // A descendant is a better base regardless of clock skew. Only use time
+    // and id to break ties between incomparable common ancestors.
+    const older = new Set();
+    for (const id of commonIds) for (const ancestor of ancestry(id)) {
+      if (ancestor !== id && commonIds.has(ancestor)) older.add(ancestor);
+    }
+    const common = [...commonIds].filter((id) => !older.has(id)).map((vid) => byId.get(vid))
       .sort((a, b) => compareText(a.createdTime || '', b.createdTime || '') || compareText(a.id, b.id)).at(-1);
+    if (commonIds.size && !common) throw new Error('Cloud version history contains a cycle. Local guides are unchanged.');
     if (!common) return record ? this.rememberedBase(baseFile, record.hash) : null;
     return this.rememberedBase(baseFile, common.appProperties.hash) || this.versionEntries(common);
   }
 
-  /** A version's entries for use as a merge base; screenshots may be hashes only. */
+  /** Read and verify a cloud version before using it as a merge base. */
   async versionEntries(file) {
-    if (!parts.isPartsSnapshot(file)) {
-      const entries = unzipSync(await this.downloadArchive(file));
-      return parts.contentHash(entries) === file.appProperties.hash ? entries : null;
-    }
-    const manifest = await this.manifestFor(file);
-    const entries = [];
-    for (const entry of manifest.entries) {
-      let data = entry.data;
-      if (!data && entry.name.endsWith('.json')) {
-        // A step too big to sit inside the manifest.
-        const part = (await this.partIndex()).get(entry.sha) || (await this.partIndex(true)).get(entry.sha);
-        if (!part) return null;
-        data = await this.drive.download(part.id);
-        if (parts.sha256(data) !== entry.sha) throw new Error(`A ${this.label} file failed its integrity check. Local guides are unchanged.`);
-      }
-      entries.push({ name: entry.name, sha: entry.sha, data });
+    // Validate the advertised hash for full archives and parts snapshots alike.
+    // Returning null on corruption would silently change deletion semantics.
+    const entries = unzipSync(await this.downloadVersion(file));
+    if (parts.contentHash(entries) !== file.appProperties.hash) {
+      throw new Error('Cloud merge base failed its integrity check. Local guides are unchanged.');
     }
     return entries;
   }
@@ -523,8 +526,9 @@ class CloudSync {
     if (!this.drive.status().connected) throw new Error(`Sign in to ${this.label} first.`);
     const [files, markers, partFiles, quota] = await Promise.all([this.drive.listVersions(), this.drive.listDeletions(), this.drive.listParts(),
       this.drive.quota ? this.drive.quota().catch(() => null) : null]);
-    const recoveryIds = new Set([...this.deletionStates(markers).values()]
-      .filter((file) => file.appProperties?.state === 'deleted').map((file) => file.appProperties.recoveryId));
+    const deletedIds = new Set([...this.deletionStates(markers).values()]
+      .filter((file) => file.appProperties?.state === 'deleted').map((file) => file.appProperties.guideId));
+    const recoveryIds = new Set(files.filter((file) => deletedIds.has(file.appProperties?.guideId)).map((file) => file.id));
     return { ...storageSummary(files, recoveryIds, { partFiles, refs: await this.partRefs(files) }), quota };
   }
 
@@ -845,8 +849,7 @@ class CloudSync {
     if (!marker || marker.appProperties.state !== 'deleted') throw new Error('No deleted-guide recovery snapshot is available.');
     const purged = await this.drive.upload({ data: Buffer.from('{}'), name: `Deleted ${marker.appProperties.title || 'guide'}`,
       properties: { stepforge: 'deletion-v1', guideId: id, state: 'purged', title: marker.appProperties.title || '', deletedAt: marker.appProperties.deletedAt || new Date().toISOString() } });
-    const recoveryId = marker.appProperties.recoveryId;
-    if (recoveryId) await this.drive.deleteFile(recoveryId);
+    await Promise.all(files.filter((file) => file.appProperties?.guideId === id).map((file) => this.drive.deleteFile(file.id)));
     await Promise.all(deletionFiles.filter((file) => file.appProperties?.guideId === id && file.id !== purged.id).map((file) => this.drive.deleteFile(file.id)));
     delete this.state.records[id];
     if (this.stateFile) this.saveState();
@@ -1056,10 +1059,12 @@ class CloudSync {
     const file = await this.uploadArchive({ data: zipSync(entries), name: 'StepForge settings',
       properties: { stepforge: 'settings-v1', hash, ...(baseline?.head ? { parent: baseline.head } : {}), ...(absorbed ? { merged: absorbed } : {}) } });
     check();
-    this.state.settings = { head: file.id, heads: [...heads.filter((head) => head.id !== baseline?.head).map((head) => head.id), file.id], hash, syncedAt: Date.now() };
+    const remaining = remainingMerges(baseline, absorbed);
+    this.state.settings = { head: file.id, heads: [...heads.filter((head) => head.id !== baseline?.head).map((head) => head.id), file.id], hash, syncedAt: Date.now(),
+      ...(remaining.length ? { merged: remaining } : {}) };
     this.saveState();
     this.rememberBase(this.sharedBasePath(), entries);
-    return { pending: this.shared.snapshot().hash !== hash };
+    return { pending: remaining.length > 0 || this.shared.snapshot().hash !== hash };
   }
 
   sync() {
@@ -1116,11 +1121,13 @@ class CloudSync {
     // Deletions are explicit Drive records, never inferred from a missing
     // directory. This makes an offline device converge without allowing an
     // old local copy to recreate the guide.
+    let deletionPending = false;
     for (const [id, marker] of deletions) {
       if (!['deleted', 'purged'].includes(marker.appProperties?.state)) continue;
       // Restored from Trash during this sync: recorded as restored on the next.
       if (this.pending.restores[id]) continue;
       if (this.store.guideExists(id)) {
+        if (!this.canReplace(id)) { deletionPending = true; continue; }
         this.store.deleteGuide(id);
         this.onDelete(id);
       }
@@ -1142,7 +1149,10 @@ class CloudSync {
       const marker = await this.drive.upload({ data: Buffer.from('{}'), name: `Deleted ${pendingDelete.title}`,
         properties: { stepforge: 'deletion-v1', guideId: id, state: 'deleted', title: pendingDelete.title, deletedAt: pendingDelete.deletedAt, recoveryId: recovery.id } });
       check();
-      await Promise.all(files.filter((file) => file.appProperties?.guideId === id && file.id !== recovery.id).map((file) => this.drive.deleteFile(file.id)));
+      // A device may have edited while this deletion was queued offline. Keep
+      // its versions in history rather than deleting the only cloud copy.
+      await Promise.all(files.filter((file) => file.appProperties?.guideId === id && file.id !== recovery.id
+        && file.appProperties.hash === pendingDelete.hash).map((file) => this.drive.deleteFile(file.id)));
       await Promise.all(deletionFiles.filter((file) => file.appProperties?.guideId === id && file.id !== marker.id).map((file) => this.drive.deleteFile(file.id)));
       // The deleted guide's parts are now unused.
       this.partCleanupNeeded = true;
@@ -1155,8 +1165,9 @@ class CloudSync {
     for (const [id, marker] of deletions) {
       if (['deleted', 'purged'].includes(marker.appProperties?.state)) groups.delete(id);
     }
-    for (const guide of this.store.listGuides()) if (!groups.has(guide.guideId)) groups.set(guide.guideId, []);
-    let pending = false;
+    for (const guide of this.store.listGuides()) if (!groups.has(guide.guideId)
+      && !['deleted', 'purged'].includes(deletions.get(guide.guideId)?.appProperties?.state)) groups.set(guide.guideId, []);
+    let pending = deletionPending;
     let merged = 0;
     let mergeConflicts = 0;
     const errors = [];
@@ -1223,7 +1234,8 @@ class CloudSync {
             downloads.push({ tip, bytes: await this.downloadVersion(tip) });
             check();
           }
-          const base = merging ? await this.mergeBase(this.basePath(id), versions, tips, withLocal ? record : null) : null;
+          const base = merging && !(withLocal && !record)
+            ? await this.mergeBase(this.basePath(id), versions, tips, withLocal ? record : null) : null;
           check();
           if (!this.canReplace(id) || this.store.guideExists(id) !== exists
               || (exists && this.localSnapshot(id).hash !== local.hash)) { pending = true; continue; }
@@ -1231,6 +1243,7 @@ class CloudSync {
           // before merging or touching the real guide.
           for (const { tip, bytes } of downloads) this.validateDownload(bytes, id, tip.appProperties.hash);
           let incoming = downloads[0].bytes;
+          let conflicted = false;
           if (merging) {
             const sides = downloads.map(({ tip, bytes }) => ({ entries: unzipSync(bytes), hash: tip.appProperties.hash }));
             if (withLocal) sides.push({ entries: local.entries, hash: local.hash });
@@ -1240,8 +1253,12 @@ class CloudSync {
             if (withLocal) createSnapshot(this.store, id, { label: 'before-sync-merge' });
             merged += 1;
             mergeConflicts += result.conflicts;
+            conflicted = result.conflicts > 0;
           }
           if (!local || local.hash !== parts.contentHash(unzipSync(incoming))) this.install(incoming, id, id);
+          if (conflicted) for (const { tip, bytes } of downloads) {
+            createSnapshotFromEntries(this.store, id, unzipSync(bytes), `cloud-conflict-${tip.id}`);
+          }
           const alreadyMarkedShared = this.store.getGuide(id).cloud?.wasShared === true;
           if (!alreadyMarkedShared) this.markWasShared(id);
           local = this.localSnapshot(id);
@@ -1282,11 +1299,15 @@ class CloudSync {
             properties: { stepforge: 'guide-v1', guideId: id, hash: local.hash, ...(baseline?.head ? { parent: baseline.head } : {}),
               ...(absorbed ? { merged: absorbed } : {}) } });
           check();
-          this.state.records[id] = { head: file.id, heads: [...heads.filter((h) => h.id !== baseline?.head).map((h) => h.id), file.id], hash: local.hash, syncedAt: Date.now() };
+          // Provider metadata may fit only some branch IDs. Persist the rest
+          // so another poll closes them even if every other device is offline.
+          const remaining = remainingMerges(baseline, absorbed);
+          this.state.records[id] = { head: file.id, heads: [...heads.filter((h) => h.id !== baseline?.head).map((h) => h.id), file.id], hash: local.hash, syncedAt: Date.now(),
+            ...(remaining.length ? { merged: remaining } : {}) };
           this.saveState();
           this.rememberBase(this.basePath(id), uploaded);
           // If edits happened during upload, this baseline describes only uploaded bytes.
-          if (this.store.guideExists(id) && this.localSnapshot(id).hash !== local.hash) pending = true;
+          if (remaining.length || (this.store.guideExists(id) && this.localSnapshot(id).hash !== local.hash)) pending = true;
         }
       } catch (err) {
         check();

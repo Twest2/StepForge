@@ -350,6 +350,10 @@ shows the savings first and saves a snapshot before changing anything.
 
 ## Troubleshooting
 
+**Screen sharing fails on Linux.** Follow the
+[portal troubleshooting guide](LINUX_PORTAL_TROUBLESHOOTING.md) for service
+checks, recovery steps and the location of the local diagnostic log.
+
 **I can't find how to stop recording.** See [Stop recording](#stop-recording).
 On Windows, use **Finish** on the floating bar. If you chose the tray icon,
 the red dot may be hidden behind the **^** arrow beside the clock.

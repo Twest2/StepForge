@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const { GuideStore } = require('../../core/store');
-const { CloudSync } = require('../../core/cloud-sync');
+const { CloudSync, headsOf } = require('../../core/cloud-sync');
 const { Settings, DEFAULT_SETTINGS } = require('../../core/settings');
 const { BrandingStore } = require('../../core/branding');
 const { SharedSettings, mergeSharedSettings, toEntries, fromEntries } = require('../../core/shared-settings');
@@ -17,7 +17,7 @@ const { PLASMA_HOTKEYS } = require('../../app/platform/linux/desktop');
 
 const SVG = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="20" height="10"><rect width="20" height="10" fill="#123456"/></svg>');
 
-function setup(t) {
+function setup(t, { idLength = 0 } = {}) {
   const root = makeTmpDir('shared-settings');
   t.after(() => rmrf(root));
   const files = [];
@@ -33,7 +33,7 @@ function setup(t) {
     async listParts() { return files.filter((file) => file.appProperties?.stepforge === 'part-v1'); },
     async listSettings() { return files.filter((file) => file.appProperties?.stepforge === 'settings-v1'); },
     async upload({ data, name, properties }) {
-      const file = { id: `file-${++nextFileId}`, name, appProperties: properties, size: String(data.length),
+      const file = { id: `file-${++nextFileId}`.padEnd(idLength, '_'), name, appProperties: properties, size: String(data.length),
         createdTime: new Date(Date.UTC(2026, 0, 1) + nextFileId * 1000).toISOString() };
       files.push(file); bytes.set(file.id, data); return file;
     },
@@ -67,6 +67,22 @@ function changedLongAgo(d) {
   for (const file of [d.settings.file, d.settings.globalPlaceholdersFile]) if (fs.existsSync(file)) fs.utimesSync(file, old, old);
   d.settings.setSharedChangeTimes(Object.fromEntries(Object.keys(d.settings.getSharedChangeTimes()).map((key) => [key, old.toISOString()])));
 }
+
+test('one online device finishes merging settings branches across multiple metadata-limited uploads', async t => {
+  const { device, drive, files } = setup(t, { idLength: 44 });
+  const writers = ['a', 'b', 'c', 'd'].map(name => device(name));
+  writers[0].settings.setGlobalPlaceholders({ Company: 'Example' });
+  for (const { sync } of writers) await synced(sync);
+  const stale = [...settingsFiles(files)], list = drive.listSettings;
+  for (const [index, d] of writers.entries()) d.settings.setGlobalPlaceholders({ Company: 'Example', [`Device${index}`]: String(index) });
+  drive.listSettings = async () => [...stale];
+  try { await Promise.all(writers.map(({ sync }) => synced(sync))); } finally { drive.listSettings = list; }
+  assert.equal(headsOf(settingsFiles(files)).length, 4);
+  const reader = device('only-online');
+  for (let poll = 0; poll < 4; poll++) await synced(reader.sync);
+  assert.equal(headsOf(settingsFiles(files)).length, 1);
+  assert.deepEqual(reader.settings.getGlobalPlaceholders(), { Company: 'Example', Device0: '0', Device1: '1', Device2: '2', Device3: '3' });
+});
 
 test('global placeholders, brand profiles with their files, the active profile and language reach another computer', async (t) => {
   const { device, files } = setup(t);

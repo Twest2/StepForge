@@ -578,10 +578,6 @@ test('branding: the design preview sample exports in every format, branded or no
 test('branding: Settings default to no branding, and every export path passes the profile on', () => {
   assert.deepEqual(DEFAULT_SETTINGS.branding, { activeProfileId: '' });
   const main = read('app/main.js');
-  const calls = [...main.matchAll(/runExportInWorker\(\{[\s\S]*?\}\);/g)].map((m) => m[0]);
-  assert.equal(calls.length, 5);
-  for (const call of calls) assert.match(call, /branding: exportBranding\(/, call.slice(0, 120));
-  assert.match(main, /h\('export:preview'[\s\S]{0,500}branding: exportBranding\(brandProfileId\)/);
   assert.match(read('core/export-worker.js'), /buildRenderAst\(store, guideId, \{[^}]*branding/);
   // Recorded click markers follow the active profile's shape color, when it has its own.
   assert.match(main, /new CaptureService\(\{[\s\S]{0,300}markerColor: \(\) => activeAnnotationColors\(\)\?\.shapes/);

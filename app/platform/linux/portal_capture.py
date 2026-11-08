@@ -34,6 +34,18 @@ EXT_IFACE = 'org.stepforge.Capture1'
 LOCK = threading.Lock()
 
 
+class PortalError(RuntimeError):
+    def __init__(self, code, stage, message):
+        super().__init__(message)
+        self.code = code
+        self.stage = stage
+
+
+def error_event(error):
+    return {'type': 'error', 'reason': str(error),
+            'code': getattr(error, 'code', None), 'stage': getattr(error, 'stage', None)}
+
+
 class GnomeCompanion:
     """The StepForge GNOME Shell extension, over its D-Bus object."""
     label = 'GNOME'
@@ -106,6 +118,7 @@ class Capture:
         self.loop = GLib.MainLoop()
         self.session = None
         self.request_path = None
+        self.request_loop = None
         self.streams = []
         self.fds = []
         self.closed = False
@@ -129,7 +142,15 @@ class Capture:
         path = ROOT + '/request/' + sender + '/' + token
         self.request_path = path
         loop = GLib.MainLoop()
+        self.request_loop = loop
         response = []
+        timer = None
+
+        def expired():
+            nonlocal timer
+            timer = None
+            loop.quit()
+            return GLib.SOURCE_REMOVE
 
         def received(_bus, _sender, _path, _iface, _signal, params):
             response.extend(params.unpack())
@@ -137,19 +158,42 @@ class Capture:
 
         sub = self.bus.signal_subscribe(PORTAL, 'org.freedesktop.portal.Request',
             'Response', path, None, Gio.DBusSignalFlags.NONE, received)
-        timer = GLib.timeout_add_seconds(120, lambda: (loop.quit(), GLib.SOURCE_REMOVE)[1])
+        timer = GLib.timeout_add_seconds(120, expired)
         try:
-            self.bus.call_sync(PORTAL, ROOT, SCREENCAST, method,
-                GLib.Variant(signature, args), None, Gio.DBusCallFlags.NONE, 5000, None)
-            if not response:
+            try:
+                reply = self.bus.call_sync(PORTAL, ROOT, SCREENCAST, method,
+                    GLib.Variant(signature, args), None, Gio.DBusCallFlags.NONE, 5000, None)
+            except GLib.Error as error:
+                raise PortalError('unavailable', method, str(error)) from error
+            returned_path = reply.unpack()[0]
+            if returned_path != path:
+                self.bus.signal_unsubscribe(sub)
+                self.request_path = returned_path
+                sub = self.bus.signal_subscribe(PORTAL, 'org.freedesktop.portal.Request',
+                    'Response', returned_path, None, Gio.DBusSignalFlags.NONE, received)
+            if not response and not self.closed:
                 loop.run()
-            if not response or response[0] != 0:
-                raise RuntimeError('Screen sharing cancelled or timed out. Start recording and share your monitors.')
+            if self.closed:
+                raise PortalError('session-closed', method, 'Screen sharing ended.')
+            if not response:
+                raise PortalError('timeout', method, 'The screen-sharing portal did not respond.')
+            if response[0] == 1:
+                raise PortalError('cancelled', method, 'Screen sharing was cancelled.')
+            if response[0] != 0:
+                raise PortalError('portal-failed', method, 'The screen-sharing portal failed to complete ' + method + '.')
             return response[1]
         finally:
-            GLib.source_remove(timer)
+            if timer is not None:
+                GLib.source_remove(timer)
+            if not response and self.request_path:
+                try:
+                    self.bus.call_sync(PORTAL, self.request_path, 'org.freedesktop.portal.Request',
+                        'Close', None, None, Gio.DBusCallFlags.NONE, 2000, None)
+                except GLib.Error:
+                    pass
             self.bus.signal_unsubscribe(sub)
             self.request_path = None
+            self.request_loop = None
 
     def start(self, options):
         self.companion.check()
@@ -159,7 +203,7 @@ class Capture:
         self.session = result['session_handle']
         self.subscriptions.append(self.bus.signal_subscribe(PORTAL,
             'org.freedesktop.portal.Session', 'Closed', self.session, None,
-            Gio.DBusSignalFlags.NONE, lambda *_: self.fail('Screen sharing ended.')))
+            Gio.DBusSignalFlags.NONE, lambda *_: self.fail(PortalError('session-closed', 'Start', 'Screen sharing ended.'))))
         self.request('SelectSources', '(oa{sv})', [self.session, {
             'types': GLib.Variant('u', 1), 'multiple': GLib.Variant('b', True),
             'cursor_mode': GLib.Variant('u', 2 if options.get('includeCursor', True) else 1)}])
@@ -176,9 +220,12 @@ class Capture:
             w, h = props['size']
             if w <= 0 or h <= 0:
                 raise RuntimeError('The shared monitor has invalid geometry.')
-            reply, fd_list = self.bus.call_with_unix_fd_list_sync(PORTAL, ROOT, SCREENCAST,
-                'OpenPipeWireRemote', GLib.Variant('(oa{sv})', [self.session, {}]),
-                GLib.VariantType.new('(h)'), Gio.DBusCallFlags.NONE, 5000, None, None)
+            try:
+                reply, fd_list = self.bus.call_with_unix_fd_list_sync(PORTAL, ROOT, SCREENCAST,
+                    'OpenPipeWireRemote', GLib.Variant('(oa{sv})', [self.session, {}]),
+                    GLib.VariantType.new('(h)'), Gio.DBusCallFlags.NONE, 5000, None, None)
+            except GLib.Error as error:
+                raise PortalError('stream-failed', 'OpenPipeWireRemote', str(error)) from error
             fd = fd_list.get(reply.unpack()[0])
             self.fds.append(fd)
             pipeline = Gst.parse_launch(
@@ -326,18 +373,20 @@ class Capture:
             if value.get('id') is not None:
                 emit({'type': value['type'], 'id': value['id'], 'error': str(error)})
             else:
-                self.fail(str(error))
+                self.fail(error)
         return GLib.SOURCE_REMOVE
 
     def fail(self, reason):
         if not self.closed:
-            emit({'type': 'error', 'reason': reason})
+            emit(error_event(reason))
             self.close()
 
     def close(self):
         if self.closed:
             return
         self.closed = True
+        if self.request_loop:
+            self.request_loop.quit()
         if self.armed:
             try:
                 self.companion.disarm()
@@ -382,7 +431,7 @@ if __name__ == '__main__':
         threading.Thread(target=capture.read_commands, daemon=True).start()
         capture.loop.run()
     except Exception as error:
-        emit({'type': 'error', 'reason': str(error)})
+        emit(error_event(error))
         sys.exit(1)
     finally:
         if capture:

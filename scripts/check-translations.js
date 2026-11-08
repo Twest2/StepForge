@@ -18,7 +18,7 @@ const { LANGUAGES } = require('../core/i18n');
 const LOCALES = require('../core/locales');
 
 const ROOT = path.resolve(__dirname, '..');
-const SOURCES = ['app/main.js', ...fs.readdirSync(path.join(ROOT, 'app/renderer'))
+const SOURCES = ['app/main.js', 'app/platform/linux/portal-errors.js', 'app/platform/linux/portal-backend.js', ...fs.readdirSync(path.join(ROOT, 'app/renderer'))
   .filter((name) => name.endsWith('.js')).map((name) => `app/renderer/${name}`)];
 
 const LITERAL = String.raw`'((?:[^'\\\n]|\\.)*)'`;

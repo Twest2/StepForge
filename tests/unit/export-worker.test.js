@@ -9,6 +9,9 @@ const { runExportInWorker } = require('../../app/export-runner');
 const { buildRenderAst } = require('../../core/renderast');
 const { runExport } = require('../../exporters');
 const { buildFixtureGuide } = require('./fixture-guide');
+const { qualityFindings } = require('../../core/quality');
+const { stepNumberMap } = require('../../core/step-outline');
+const { normalizeProfile } = require('../../core/branding');
 const { makeTmpDir, rmrf } = require('./helpers');
 
 test('export helper process produces the same result as an in-process export', async (t) => {
@@ -70,4 +73,40 @@ test('export helper process rejects on an unknown guide id', async (t) => {
       globals: {},
     }),
   );
+});
+
+test('background quality checks and title expansion match the synchronous AST', async (t) => {
+  const root = makeTmpDir('renderworker'); t.after(() => rmrf(root));
+  const { store, guide } = buildFixtureGuide(path.join(root, 'data'));
+  const globals = { Author: 'Morgan' }, reviewDays = 90;
+  const ast = buildRenderAst(store, guide.guideId, { globals, reviewDays });
+  const steps = store.listSteps(guide.guideId);
+  const expected = qualityFindings(ast, stepNumberMap(store.getGuide(guide.guideId).stepsOrder.map(id => steps.get(id))));
+  const args = { dataDir: store.root, guideId: guide.guideId, globals, reviewDays };
+  assert.deepEqual(await runExportInWorker({ ...args, task: 'quality' }), expected);
+  assert.equal(await runExportInWorker({ ...args, task: 'title' }), ast.guide.title);
+});
+
+test('background previews preserve step limits and full-guide placeholder counts', async (t) => {
+  const root = makeTmpDir('previewworker'); t.after(() => rmrf(root));
+  const { store, guide } = buildFixtureGuide(path.join(root, 'data'));
+  const expected = runExport('json', buildRenderAst(store, guide.guideId, { maxSteps: 2 }), path.join(root, 'expected'));
+  const result = await runExportInWorker({ dataDir: store.root, guideId: guide.guideId,
+    format: 'json', maxSteps: 2, outDir: path.join(root, 'actual') });
+  const actualJson = JSON.parse(fs.readFileSync(result.file));
+  const expectedJson = JSON.parse(fs.readFileSync(expected.file));
+  delete actualJson.generatedAt; delete expectedJson.generatedAt;
+  assert.deepEqual(actualJson, expectedJson);
+  assert.equal(actualJson.steps.length, 2);
+});
+
+test('background HTML previews apply the chosen brand with expanded header text', async t => {
+  const root = makeTmpDir('previewbrand'); t.after(() => rmrf(root));
+  const { store, guide } = buildFixtureGuide(path.join(root, 'data'));
+  const branding = { profile: normalizeProfile({ name: 'Preview brand', header: { text: 'Company [[Product]]' }, colors: { primary: '#123456' } }) };
+  const result = await runExportInWorker({ dataDir: store.root, guideId: guide.guideId,
+    format: 'html-simple', maxSteps: 2, branding, outDir: path.join(root, 'out') });
+  const html = fs.readFileSync(result.file, 'utf8');
+  assert.match(html, /Company AcmeSync/);
+  assert.match(html, /#123456/i);
 });

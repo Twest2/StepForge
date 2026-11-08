@@ -164,6 +164,9 @@ const TOOL_ICON_PATHS = {
   redo: '<path d="M15 14l5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/>',
 };
 
+// A picture icon (the Fill menu's Image… item).
+const IMAGE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 17-5-5-9 8"/></svg>';
+
 // The flowchart tools (app/renderer/flowchart-editor.js), as [tool, label].
 const FLOW_TOOLS = () => [
   ['select', t('Select')],
@@ -173,17 +176,18 @@ const FLOW_TOOLS = () => [
   ['connect', t('Connect')],
 ];
 
-// Every flowchart shape (core/flowchart.js), as [shape, name], in palette order.
-const FLOW_SHAPES = () => [
-  ['process', t('Step box')], ['rectangle', t('Rectangle')], ['square', t('Square')], ['text', t('Text')],
-  ['terminal', t('Start or end')], ['ellipse', t('Ellipse')], ['circle', t('Circle')], ['decision', t('Decision')],
-  ['parallelogram', t('Parallelogram')], ['hexagon', t('Hexagon')], ['triangle', t('Triangle')], ['cylinder', t('Cylinder')],
-  ['cloud', t('Cloud')], ['document', t('Document')], ['internalStorage', t('Internal storage')], ['cube', t('Cube')],
-  ['step', t('Chevron')], ['trapezoid', t('Trapezoid')], ['tape', t('Tape')], ['note', t('Note')],
-  ['card', t('Card')], ['callout', t('Callout')], ['actor', t('Person')], ['dataStorage', t('Data storage')],
-  ['delay', t('Delay')], ['display', t('Display')], ['subprocess', t('Subprocess')], ['container', t('Container')],
-  ['blockArrow', t('Block arrow')], ['doubleArrow', t('Double block arrow')],
+// Every flowchart shape (core/flowchart.js) in groups, as [group name, [[shape, name], …]].
+const FLOW_SHAPE_GROUPS = () => [
+  [t('Basic'), [['process', t('Step box')], ['rectangle', t('Rectangle')], ['square', t('Square')], ['text', t('Text')],
+    ['ellipse', t('Ellipse')], ['circle', t('Circle')], ['triangle', t('Triangle')], ['hexagon', t('Hexagon')]]],
+  [t('Flowchart'), [['terminal', t('Start or end')], ['decision', t('Decision')], ['parallelogram', t('Parallelogram')],
+    ['document', t('Document')], ['subprocess', t('Subprocess')], ['delay', t('Delay')], ['display', t('Display')],
+    ['dataStorage', t('Data storage')], ['internalStorage', t('Internal storage')], ['cylinder', t('Cylinder')],
+    ['trapezoid', t('Trapezoid')], ['step', t('Chevron')], ['tape', t('Tape')], ['card', t('Card')]]],
+  [t('More'), [['note', t('Note')], ['callout', t('Callout')], ['cloud', t('Cloud')], ['cube', t('Cube')], ['actor', t('Person')],
+    ['container', t('Container')], ['blockArrow', t('Block arrow')], ['doubleArrow', t('Double block arrow')]]],
 ];
+const FLOW_SHAPES = () => FLOW_SHAPE_GROUPS().flatMap(([, shapes]) => shapes);
 
 function toolIconSvg(name) {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${TOOL_ICON_PATHS[name]}</svg>`;
@@ -812,7 +816,14 @@ class GuideEditor {
           ),
         ),
         el('section', {},
-          el('h3', {}, t('Description')),
+          el('div.description-head', {},
+            el('h3', {}, t('Description')),
+            this.dom.descModeSelect = el('select.description-mode', { title: t('Description format'), 'aria-label': t('Description format') },
+              el('option', { value: 'rich' }, t('Rich text')),
+              el('option', { value: 'markdown' }, t('Markdown')),
+            ),
+            this.dom.descPreviewBtn = el('button.description-preview-toggle', { type: 'button', hidden: true, 'aria-pressed': 'false' }, t('Preview')),
+          ),
           this.dom.richToolbar = el('div.rich-toolbar', {},
             this.toolbarBtn('bold', t('Bold')),
             this.toolbarBtn('italic', t('Italic')),
@@ -824,6 +835,12 @@ class GuideEditor {
             this.toolbarBtn('insertStep', t('Step')),
           ),
           this.dom.descEditor = el('div.rich-editor', { contentEditable: 'true', spellcheck: true, role: 'textbox', 'aria-label': t('Description'), 'aria-multiline': 'true' }),
+          // Description → Markdown: the source, and its preview.
+          this.dom.descSource = el('textarea.description-source', {
+            hidden: true, spellcheck: true, rows: 8, 'aria-label': t('Description (Markdown)'),
+            placeholder: t('Markdown: **bold**, *italic*, # headings, - lists, | tables |, `code`, [links](https://example.com) and HTML.'),
+          }),
+          this.dom.descPreview = el('div.rich-editor.description-preview', { hidden: true, 'aria-label': t('Description preview') }),
         ),
         this.dom.flowSection = el('section', { hidden: true },
           el('h3', {}, t('Flowchart')),
@@ -1177,6 +1194,28 @@ class GuideEditor {
       this.updateToolbarState();
     });
     this.dom.descEditor.addEventListener('keyup', () => this.updateToolbarState());
+    this.dom.descModeSelect.addEventListener('change', () => this.setDescriptionMode(this.dom.descModeSelect.value));
+    this.dom.descPreviewBtn.addEventListener('click', () => {
+      this.descPreviewing = !this.descPreviewing;
+      this.syncDescriptionMode();
+      this.refreshStepLinks();
+    });
+    this.dom.descSource.addEventListener('focus', () => { if (this.currentStep) this.pushCanvasHistory('description'); });
+    this.dom.descSource.addEventListener('input', () => {
+      const step = this.currentStep;
+      if (!step) return;
+      step.descriptionMarkdown = this.dom.descSource.value;
+      step.descriptionHtml = this.markdownToHtml(step.descriptionMarkdown);
+      this.pendingSave = true;
+      this.saveStepDebounced();
+      this.emitMeta();
+    });
+    this.dom.descPreview.addEventListener('click', (e) => {
+      const link = e.target.closest?.('a');
+      if (!link) return;
+      e.preventDefault();
+      if (link.dataset.stepId && this.stepMap.has(link.dataset.stepId)) this.selectStep(link.dataset.stepId);
+    });
     this.dom.descEditor.addEventListener('mouseup', () => this.updateToolbarState());
     document.addEventListener('selectionchange', () => {
       if (document.activeElement === this.dom.descEditor) this.updateToolbarState();
@@ -1868,6 +1907,7 @@ class GuideEditor {
     if (!step) {
       this.dom.titleInput.value = '';
       this.dom.descEditor.innerHTML = '';
+      this.syncDescriptionMode();
       this.dom.statusSelect.value = 'todo';
       this.dom.hiddenToggle.querySelector('input').checked = false;
       this.dom.skippedToggle.querySelector('input').checked = false;
@@ -1878,6 +1918,7 @@ class GuideEditor {
     }
     if (document.activeElement !== this.dom.titleInput) this.dom.titleInput.value = step.title || '';
     if (document.activeElement !== this.dom.descEditor) this.dom.descEditor.innerHTML = step.descriptionHtml || '';
+    this.syncDescriptionMode();
     this.refreshStepLinks();
     this.dom.statusSelect.value = step.status || 'todo';
     this.dom.hiddenToggle.querySelector('input').checked = Boolean(step.hidden);
@@ -2131,7 +2172,8 @@ class GuideEditor {
       return;
     }
 
-    const shape = makeSelect(item.shape, FLOW_SHAPES().map(([value, name]) => ({ value, label: name })));
+    const shape = el('select', {}, FLOW_SHAPE_GROUPS().map(([group, shapes]) => el('optgroup', { label: group },
+      shapes.map(([value, name]) => el('option', { value, selected: value === item.shape }, name)))));
     shape.addEventListener('change', () => edit((n) => { n.shape = shape.value; }));
     box.append(labeledRow(t('Shape'), shape));
 
@@ -2145,17 +2187,20 @@ class GuideEditor {
       // Fill and border may be transparent (the picker offers that for a 'fill').
       const pickerField = field === 'textColor' ? 'textColor' : 'fill';
       const proxy = { id: `flow-${field}-${item.id}`, type: 'rect', style: { [pickerField]: value } };
+      // Fill also offers Image…; picking a color takes the picture out.
+      const fill = field === 'fill';
       box.append(labeledRow(name, this.colorPicker(proxy, (picked, { record = true } = {}) => {
         if (record) this.pushCanvasHistory();
         const target = live();
-        if (target) target[field] = picked;
-        save();
-      }, { field: pickerField, label: name })));
+        if (target) {
+          target[field] = picked;
+          if (fill && target.image && record) delete target.image;
+        }
+        save({ props: fill && record && Boolean(item.image) });
+      }, { field: pickerField, label: name, ...(fill ? { onImage: () => this.chooseFlowchartImage(sel.id), image: Boolean(item.image) } : {}) })));
     }
 
-    // A picture inside the shape, clipped to it and never stretched.
-    const imageRow = el('div.row.flowchart-image-row', {},
-      el('button', { type: 'button', onClick: () => this.chooseFlowchartImage(sel.id) }, item.image ? t('Change image…') : t('Choose image…')));
+    // A picture inside the shape (Fill → Image…), clipped to it and never stretched.
     if (item.image) {
       const fit = makeSelect(item.image.fit || 'contain', [
         { value: 'contain', label: t('Fit inside') },
@@ -2163,9 +2208,9 @@ class GuideEditor {
       ]);
       fit.setAttribute('aria-label', t('Image fit'));
       fit.addEventListener('change', () => edit((n) => { if (n.image) n.image.fit = fit.value; }));
-      imageRow.append(fit, el('button', { type: 'button', onClick: () => edit((n) => { delete n.image; }, { props: true }) }, t('Remove image')));
+      box.append(labeledRow(t('Image'), el('div.row.flowchart-image-row', {}, fit,
+        el('button', { type: 'button', onClick: () => edit((n) => { delete n.image; }, { props: true }) }, t('Remove image')))));
     }
-    box.append(labeledRow(t('Image'), imageRow));
 
     const refs = this.flowchartStepRefs();
     const target = makeSelect(item.stepId || '', [{ value: '', label: t('None') },
@@ -2227,11 +2272,13 @@ class GuideEditor {
     const trigger = this.dom.flowShapesBtn;
     if (this.shapePalette) { this.closeShapePalette(); return; }
     const palette = el('div.flowchart-palette', { role: 'menu', 'aria-label': t('More shapes') },
-      ...FLOW_SHAPES().map(([shape, name]) => el('button.flowchart-palette-item', {
-        type: 'button', role: 'menuitem', title: name, 'aria-label': name,
-        innerHTML: window.StepForgeFlowchart.shapeIcon(shape),
-        onClick: () => { this.closeShapePalette(); this.flowchartEditor()?.setTool(shape); },
-      })));
+      ...FLOW_SHAPE_GROUPS().map(([group, shapes]) => el('div.flowchart-palette-group', { role: 'group', 'aria-label': group },
+        el('div.flowchart-palette-label', {}, group),
+        el('div.flowchart-palette-grid', {}, shapes.map(([shape, name]) => el('button.flowchart-palette-item', {
+          type: 'button', role: 'menuitem', title: name, 'aria-label': name,
+          innerHTML: window.StepForgeFlowchart.shapeIcon(shape),
+          onClick: () => { this.closeShapePalette(); this.flowchartEditor()?.setTool(shape); },
+        }))))));
     const rect = trigger.getBoundingClientRect();
     Object.assign(palette.style, { left: `${Math.max(6, rect.left)}px`, top: `${rect.bottom + 4}px` });
     document.body.append(palette);
@@ -2530,7 +2577,11 @@ class GuideEditor {
     });
   }
 
-  colorPicker(ann, onPick, { field = 'fill', label = t('Fill') } = {}) {
+  /**
+   * …and, for a flowchart shape's fill, `onImage` adds Image… to the menu
+   * (`image` is true while the shape shows a picture).
+   */
+  colorPicker(ann, onPick, { field = 'fill', label = t('Fill'), onImage = null, image = false } = {}) {
     const allowTransparent = field === 'fill' && CLEARABLE_FILL_TYPES.has(ann.type);
     const isNone = (fill) => !fill || fill === 'transparent';
     // A tooltip without a fill is drawn #1F2937 and text without a color white (canvas.js, core/raster.js).
@@ -2541,6 +2592,11 @@ class GuideEditor {
 
     const swatch = el('button.fill-swatch', { type: 'button', 'aria-haspopup': 'menu', 'aria-expanded': 'false' });
     const showCurrent = () => {
+      if (image) {
+        swatch.replaceChildren(el('span.fill-chip.image', { innerHTML: IMAGE_ICON }), el('span.fill-name', {}, t('Image')));
+        swatch.setAttribute('aria-label', `${label}: ${t('Image')}`);
+        return;
+      }
       swatch.replaceChildren(chip(current), el('span.fill-name', {}, name(current)));
       swatch.setAttribute('aria-label', `${label}: ${name(current)}`);
     };
@@ -2605,6 +2661,12 @@ class GuideEditor {
           custom.click();
         },
       }, t('Custom color…')));
+      if (onImage) {
+        popover.append(el('button.fill-item', {
+          type: 'button', role: 'menuitem', tabIndex: -1,
+          onClick: () => { close({ focus: true }); onImage(); },
+        }, el('span.fill-chip.image', { innerHTML: IMAGE_ICON }), image ? t('Change image…') : t('Image…')));
+      }
       popover.hidden = false;
       swatch.setAttribute('aria-expanded', 'true');
       document.addEventListener('pointerdown', onOutside, true);
@@ -4672,13 +4734,74 @@ class GuideEditor {
   /** Show each description step link with its target's current number. */
   refreshStepLinks() {
     const numbers = stepNumberMap(this.steps);
-    for (const link of this.dom.descEditor.querySelectorAll?.('a[data-step-id]') || []) {
+    const links = [this.dom.descEditor, this.dom.descPreview].flatMap((box) => [...(box?.querySelectorAll?.('a[data-step-id]') || [])]);
+    for (const link of links) {
       const number = numbers.get(link.dataset.stepId);
       const text = number ? link.textContent.replace(/\d+(?:\.\d+)*(?!.*\d)/, number) : link.textContent;
       if (text !== link.textContent) link.textContent = text;
       link.classList.toggle('missing-step', !number);
       link.title = number ? t('Ctrl+click to open this step.') : t('This step was deleted.');
     }
+  }
+
+  // ---- Description format: Rich text or Markdown ----
+
+  /** 'markdown' for a description written in Markdown (it keeps its source), else 'rich'. */
+  descriptionMode(step = this.currentStep) {
+    return typeof step?.descriptionMarkdown === 'string' ? 'markdown' : 'rich';
+  }
+
+  /** Markdown as the sanitized HTML that is stored and exported. */
+  markdownToHtml(source) {
+    const markdown = window.StepForgeMarkdown;
+    const sanitize = window.StepForgeSanitize;
+    return markdown && sanitize ? sanitize.sanitizeHtml(markdown.render(source)) : '';
+  }
+
+  /** Show the rich-text editor, or the Markdown source (or its preview). */
+  syncDescriptionMode() {
+    if (!this.dom.descModeSelect) return;
+    const step = this.currentStep;
+    const markdown = this.descriptionMode(step) === 'markdown';
+    const previewing = markdown && Boolean(this.descPreviewing);
+    this.dom.descModeSelect.value = markdown ? 'markdown' : 'rich';
+    this.dom.descModeSelect.disabled = !step;
+    this.dom.richToolbar.hidden = markdown;
+    this.dom.descEditor.hidden = markdown;
+    this.dom.descSource.hidden = !markdown || previewing;
+    this.dom.descPreview.hidden = !previewing;
+    this.dom.descPreviewBtn.hidden = !markdown;
+    this.dom.descPreviewBtn.classList.toggle('active', previewing);
+    this.dom.descPreviewBtn.setAttribute('aria-pressed', String(previewing));
+    if (markdown && document.activeElement !== this.dom.descSource) this.dom.descSource.value = step.descriptionMarkdown;
+    if (previewing) this.dom.descPreview.innerHTML = step.descriptionHtml || '';
+  }
+
+  /**
+   * Description → Rich text / Markdown. Switching keeps the content: rich text
+   * becomes its Markdown, and Markdown is already shown as rich text.
+   */
+  async setDescriptionMode(mode) {
+    const step = this.currentStep;
+    if (!step || mode === this.descriptionMode(step)) return;
+    this.pushCanvasHistory('description');
+    if (mode === 'markdown') {
+      try {
+        step.descriptionMarkdown = await api.step.descriptionToMarkdown({ html: step.descriptionHtml || '' });
+      } catch (err) {
+        this.onToast(err.message, { error: true });
+        this.syncDescriptionMode();
+        return;
+      }
+    } else {
+      delete step.descriptionMarkdown;
+      this.dom.descEditor.innerHTML = step.descriptionHtml || '';
+    }
+    this.descPreviewing = false;
+    this.pendingSave = true;
+    this.saveStepDebounced();
+    this.syncDescriptionMode();
+    this.refreshStepLinks();
   }
 
   onDocumentKeyDown(e) {

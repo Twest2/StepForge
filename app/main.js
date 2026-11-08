@@ -939,6 +939,8 @@ function setupIpc() {
   // Guide information edits the description as Markdown (core/description-markdown.js).
   h('guide:descriptionToMarkdown', ({ html }) => descriptionToMarkdown(html),
     { validate: (a) => c.string(a.html, 2 * 1024 * 1024) });
+  // Description → Rich text / Markdown: the rich-text description as Markdown to edit.
+  h('step:descriptionToMarkdown', ({ html }) => descriptionToMarkdown(html), { validate: (a) => c.string(a.html, 2 * 1024 * 1024) });
   h('guide:descriptionFromMarkdown', ({ markdown }) => descriptionFromMarkdown(markdown),
     { validate: (a) => c.string(a.markdown, 2 * 1024 * 1024) });
   // A new screenshot in the form the store keeps: WebP when the setting asks

@@ -109,7 +109,14 @@ screenshot.
 For each step you can:
 
 - **Write a description** with bold, italics, lists, quotes, and links.
-  **Step** links to another step: pick it from the list and the description
+  The menu beside **Description** switches between **Rich text** and
+  **Markdown**, and you can switch back and forth: rich text becomes its
+  Markdown, and Markdown shows as rich text. Markdown supports headings, lists,
+  tables, task lists (`- [x]`), code, quotes, links, strikethrough and HTML
+  such as `<kbd>`, `<details>` and `<mark>` (scripts, styles and pictures are
+  left out: an image becomes a link to it). **Preview** (blue while on) shows
+  how it looks. Markdown exports keep your Markdown as written.
+  In rich text, **Step** links to another step: pick it from the list and the description
   shows "Step 3". The number follows the step when you move it, and exports
   use the step's number in that export. **Ctrl+click** the link to open the step.
 - **Set a status** of *Todo*, *In progress*, or *Done* to track your review.
@@ -160,11 +167,12 @@ tools:
   and press **Delete** to remove the selected one. Drag the small square at a
   selected shape's corner to resize it. **Arrange** lays the whole chart out
   top to bottom. **Ctrl + mouse wheel** zooms in and out (**Ctrl+0** goes back
-  to 100%).
+  to 100%). Drag empty space (or drag with the middle mouse button) to move
+  around the canvas.
 
 In the details pane you can change a shape's fill, border and text colors (the
 same color menus as annotations), or link it to a step of the guide; the shape
-then shows "→ Step 3". **Choose image…** puts a picture inside the shape:
+then shows "→ Step 3". **Fill → Image…** puts a picture inside the shape:
 **Fit inside** shows the whole picture, **Fill shape** fills the shape and
 crops the edges. Pictures are never stretched. For a selected arrow you can
 pick its style: arrow, double arrow, line, dashed or dotted.

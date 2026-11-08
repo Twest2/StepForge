@@ -1870,4 +1870,13 @@
   "Image fit": "Размещение изображения",
   "Could not choose an image.": "Не удалось выбрать изображение.",
   "Choose an image for the shape": "Выберите изображение для фигуры",
+  "Basic": "Основные",
+  "More": "Ещё",
+  "Description format": "Формат описания",
+  "Rich text": "Форматированный текст",
+  "Markdown": "Markdown",
+  "Description (Markdown)": "Описание (Markdown)",
+  "Markdown: **bold**, *italic*, # headings, - lists, | tables |, `code`, [links](https://example.com) and HTML.": "Markdown: **жирный**, *курсив*, # заголовки, - списки, | таблицы |, `код`, [ссылки](https://example.com) и HTML.",
+  "Description preview": "Предпросмотр описания",
+  "Image…": "Изображение…",
 });

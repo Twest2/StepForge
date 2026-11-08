@@ -4,6 +4,23 @@ const { newId, nowIso } = require('./util');
 const { sanitizeHtml } = require('./sanitize');
 const { blockText } = require('./blocks');
 const { normalizeFlowchart, normalizePlacement } = require('./flowchart');
+const markdownDescription = require('./markdown-description');
+
+/**
+ * A step's description: sanitized HTML (what every export uses) and, for a
+ * description written in Markdown, its source. The source only counts while
+ * it still produces that HTML. When something else rewrote the HTML (AI, an
+ * agent, Find and replace, the private-detail check), the source is rebuilt
+ * from the HTML, so the HTML always wins.
+ */
+function descriptionFields(fields) {
+  const descriptionHtml = sanitizeHtml(fields.descriptionHtml || '');
+  if (typeof fields.descriptionMarkdown !== 'string') return { descriptionHtml };
+  const source = fields.descriptionMarkdown.slice(0, 200000);
+  if (sanitizeHtml(markdownDescription.render(source)) === descriptionHtml) return { descriptionHtml, descriptionMarkdown: source };
+  const { descriptionToMarkdown } = require('./description-markdown');
+  return { descriptionHtml, descriptionMarkdown: descriptionToMarkdown(descriptionHtml) };
+}
 const { normalizeReviewDays, normalizeDateOnly } = require('./review');
 const { bendOf, normalizePenPoints } = require('./annotation-shapes');
 const { SPOTLIGHT_DARKNESS, SPOTLIGHT_CORNER_RADIUS } = require('./annotation-properties');
@@ -112,7 +129,7 @@ function createStep(fields = {}) {
     kind: STEP_KINDS.includes(fields.kind) ? fields.kind : 'image',
     status: STEP_STATUSES.includes(fields.status) ? fields.status : 'todo',
     title: fields.title || '',
-    descriptionHtml: sanitizeHtml(fields.descriptionHtml || ''),
+    ...descriptionFields(fields),
     hidden: Boolean(fields.hidden),
     skipped: Boolean(fields.skipped),
     forceNewPage: Boolean(fields.forceNewPage),

@@ -44,6 +44,18 @@ function quoteBody(text) {
   return text ? text.replace(/\n/g, '\n> ') : '';
 }
 
+/**
+ * A description written in Markdown, as written: step links point at the
+ * step's heading, and active HTML (scripts, styles, frames) is left out.
+ */
+function markdownSource(source) {
+  return source
+    .replace(/<(script|style|iframe|object|embed|template)\b[\s\S]*?<\/\1\s*>/gi, '')
+    .replace(/<(script|style|iframe|object|embed|template)\b[^>]*>/gi, '')
+    .replace(/\]\(step:([A-Za-z0-9_-]+)\)/g, '](#step-$1)')
+    .trim();
+}
+
 function emitBlock(lines, tb, { alertStyle = 'gfm' } = {}) {
   const body = htmlToMarkdown(tb.descriptionHtml);
   if (alertStyle === 'html') {
@@ -169,7 +181,8 @@ function renderMarkdownGuide(ast, outDir, template = {}, {
     if (step.skipped) lines.push('*(skipped)*', '');
     for (const tb of afterTitle) emitBlock(lines, tb, { alertStyle });
     for (const tb of beforeDescription) emitBlock(lines, tb, { alertStyle });
-    if (step.descriptionHtml) lines.push(htmlToMarkdown(step.descriptionHtml), '');
+    if (step.descriptionMarkdown) lines.push(markdownSource(step.descriptionMarkdown), '');
+    else if (step.descriptionHtml) lines.push(htmlToMarkdown(step.descriptionHtml), '');
     for (const tb of afterDescription) emitBlock(lines, tb, { alertStyle });
 
     for (const tb of beforeImage) emitBlock(lines, tb, { alertStyle });

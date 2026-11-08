@@ -40,7 +40,7 @@
       host.addEventListener('pointerdown', (e) => this.onPointerDown(e));
       host.addEventListener('pointermove', (e) => this.onPointerMove(e));
       host.addEventListener('pointerup', (e) => this.onPointerUp(e));
-      host.addEventListener('pointercancel', () => { this.drag = null; this.render(); });
+      host.addEventListener('pointercancel', () => { this.drag = null; host.classList.remove('panning'); this.render(); });
       host.addEventListener('dblclick', (e) => this.onDoubleClick(e));
       // Ctrl + mouse wheel zooms around the pointer.
       host.addEventListener('wheel', (e) => {
@@ -141,6 +141,9 @@
         }
       }
       this.layer.innerHTML = svg;
+      // Room to drag the view past the chart (and to drag shapes into).
+      this.layer.style.width = `${width * this.zoom + this.host.clientWidth * 0.6}px`;
+      this.layer.style.height = `${height * this.zoom + this.host.clientHeight * 0.6}px`;
       this.hint.hidden = g.nodes.length > 0;
       this.hint.textContent = t('Pick a shape in the toolbar, then click here to place it.');
     }
@@ -180,6 +183,12 @@
     }
 
     onPointerDown(e) {
+      // Middle button drags the view anywhere.
+      if (e.button === 1) {
+        e.preventDefault();
+        this.startPan(e);
+        return;
+      }
       if (e.button !== 0 || e.target.closest('.flowchart-label-editor')) return;
       this.closeLabelEditor(true);
       this.host.focus({ preventScroll: true });
@@ -204,7 +213,9 @@
         return;
       }
       if (!hit) {
+        // Dragging empty space moves around the canvas.
         this.select(null);
+        this.startPan(e);
         return;
       }
       const resizing = e.target.closest?.('[data-resize]') && this.selected?.kind === 'node';
@@ -223,9 +234,20 @@
       }
     }
 
+    startPan(e) {
+      this.drag = { type: 'pan', x: e.clientX, y: e.clientY, left: this.host.scrollLeft, top: this.host.scrollTop };
+      this.host.classList.add('panning');
+      this.host.setPointerCapture?.(e.pointerId);
+    }
+
     onPointerMove(e) {
       const drag = this.drag;
       if (!drag) return;
+      if (drag.type === 'pan') {
+        this.host.scrollLeft = drag.left - (e.clientX - drag.x);
+        this.host.scrollTop = drag.top - (e.clientY - drag.y);
+        return;
+      }
       const p = this.point(e);
       if (drag.type === 'connect') {
         drag.to = p;
@@ -262,6 +284,10 @@
       const drag = this.drag;
       this.drag = null;
       if (!drag) return;
+      if (drag.type === 'pan') {
+        this.host.classList.remove('panning');
+        return;
+      }
       if (drag.type === 'move' || drag.type === 'resize') {
         if (drag.moved) this.cb.changed();
         return;

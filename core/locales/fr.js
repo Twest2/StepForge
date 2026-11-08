@@ -1870,4 +1870,13 @@
   "Image fit": "Ajustement de l’image",
   "Could not choose an image.": "Impossible de choisir une image.",
   "Choose an image for the shape": "Choisir une image pour la forme",
+  "Basic": "Base",
+  "More": "Plus",
+  "Description format": "Format de la description",
+  "Rich text": "Texte enrichi",
+  "Markdown": "Markdown",
+  "Description (Markdown)": "Description (Markdown)",
+  "Markdown: **bold**, *italic*, # headings, - lists, | tables |, `code`, [links](https://example.com) and HTML.": "Markdown : **gras**, *italique*, # titres, - listes, | tableaux |, `code`, [liens](https://example.com) et HTML.",
+  "Description preview": "Aperçu de la description",
+  "Image…": "Image…",
 });

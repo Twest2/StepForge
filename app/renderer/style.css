@@ -801,6 +801,8 @@ body.platform-linux #capture-status button {
 .flowchart-surface:focus-visible { box-shadow: inset 0 0 0 2px var(--accent); }
 .flowchart-layer { position: absolute; left: 0; top: 0; }
 .flowchart-layer svg { display: block; }
+.flowchart-surface[data-tool="select"], .flowchart-surface:not([data-tool]) { cursor: grab; }
+.flowchart-surface.panning, .flowchart-surface.panning * { cursor: grabbing !important; }
 .flowchart-surface [data-node-id] { cursor: move; }
 .flowchart-surface [data-edge-id] { cursor: pointer; }
 .flowchart-surface[data-tool="process"], .flowchart-surface[data-tool="decision"], .flowchart-surface[data-tool="terminal"],
@@ -835,20 +837,38 @@ body.platform-linux #capture-status button {
 .pane-props.flowchart-mode .focused-toggle { display: none; }
 .block-add-row { flex-wrap: wrap; }
 .flowchart-props { display: grid; gap: 8px; }
+/* Description: heading, then the Rich text / Markdown menu and Preview. */
+.description-head { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.description-head h3 { margin: 0; margin-right: auto; }
+.description-head select { width: auto; height: 30px; padding: 0 6px; font-size: 13px; }
+.description-head button[hidden], .description-source[hidden], .description-preview[hidden], .rich-toolbar[hidden], .rich-editor[hidden] { display: none; }
+.description-preview-toggle { height: 30px; }
+.description-preview-toggle.active { background: var(--accent); border-color: var(--accent); color: var(--accent-fg, #fff); }
+.description-source { width: 100%; box-sizing: border-box; min-height: 160px; resize: vertical; font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-size: 13px; line-height: 1.5; }
+.description-preview { overflow-wrap: anywhere; }
+.description-preview table { border-collapse: collapse; }
+.description-preview th, .description-preview td { border: 1px solid var(--border); padding: 4px 8px; }
+.description-preview pre { white-space: pre-wrap; }
 .flowchart-image-row { flex-wrap: wrap; gap: 6px; }
 .flowchart-palette {
   position: fixed;
   z-index: 1000;
   display: grid;
-  grid-template-columns: repeat(5, 44px);
-  gap: 4px;
+  gap: 6px;
   padding: 8px;
+  max-height: calc(100vh - 140px);
+  overflow-y: auto;
   background: var(--panel-solid);
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: 10px;
   box-shadow: var(--shadow);
 }
+.flowchart-palette-group + .flowchart-palette-group { border-top: 1px solid var(--border); padding-top: 6px; }
+.flowchart-palette-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 2px 4px; }
+.flowchart-palette-grid { display: grid; grid-template-columns: repeat(5, 44px); gap: 4px; }
+.fill-chip.image { display: inline-grid; place-items: center; background: none; border: 0; }
+.fill-chip.image svg { width: 16px; height: 16px; }
 .flowchart-palette-item {
   width: 44px;
   height: 36px;

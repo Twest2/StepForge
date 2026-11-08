@@ -101,6 +101,8 @@ function buildRenderAst(store, guideId, { globals = {}, now = new Date(), maxSte
       altText: screenshotAltText(number, title),
       descriptionHtml: sanitizeHtml(expandDesc(step.descriptionHtml)),
       descriptionText: htmlToText(expandDesc(step.descriptionHtml)),
+      // The Markdown source, for a description written in Markdown (Markdown exports use it as is).
+      ...(typeof step.descriptionMarkdown === 'string' ? { descriptionMarkdown: expand(step.descriptionMarkdown) } : {}),
       focusedView: step.focusedView,
       annotations: (step.annotations || []).map((a) => ({ ...a, text: expand(a.text || '') })),
       textBlocks: (step.textBlocks || []).map((tb) => ({
@@ -170,6 +172,10 @@ function buildRenderAst(store, guideId, { globals = {}, now = new Date(), maxSte
   };
   for (const ast of steps) {
     renumberText(ast);
+    if (ast.descriptionMarkdown) {
+      ast.descriptionMarkdown = ast.descriptionMarkdown.replace(/\[([^\]\n]*)\]\(step:([A-Za-z0-9_-]+)\)/g,
+        (whole, label, id) => (numberOf.has(id) ? `[${label.replace(/\d+(?:\.\d+)*(?!.*\d)/, numberOf.get(id))}](step:${id})` : whole));
+    }
     ast.textBlocks.forEach(renumberText);
     ast.blocks.forEach((block) => { if (block.kind === 'text') renumberText(block); });
   }

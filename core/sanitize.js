@@ -8,11 +8,14 @@
  * contain. No scripts, no event handlers, no styles, no embedded resources.
  */
 
+(function (root) {
 const ALLOWED_TAGS = new Set([
   'p', 'br', 'hr', 'b', 'strong', 'i', 'em', 'u', 's', 'sub', 'sup',
   'ul', 'ol', 'li', 'a', 'code', 'pre', 'blockquote',
-  'h1', 'h2', 'h3', 'h4',
+  'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
   'table', 'thead', 'tbody', 'tr', 'th', 'td', 'span', 'div',
+  // Also reachable from Markdown descriptions' inline HTML.
+  'del', 'ins', 'mark', 'kbd', 'dl', 'dt', 'dd', 'details', 'summary',
 ]);
 
 const VOID_TAGS = new Set(['br', 'hr']);
@@ -68,4 +71,8 @@ function sanitizeHtml(html) {
   );
 }
 
-module.exports = { sanitizeHtml, ALLOWED_TAGS };
+const api = { sanitizeHtml, ALLOWED_TAGS };
+// Node, and the renderer as a plain script (Markdown description preview).
+if (typeof module === 'object' && module.exports) module.exports = api;
+else root.StepForgeSanitize = api;
+})(typeof window === 'object' ? window : globalThis);

@@ -59,6 +59,7 @@ const api = {
     importImage: invoke('step:importImage'),
     pickImage: invoke('step:pickImage'),
     chooseImage: invoke('step:chooseImage'),
+    descriptionToMarkdown: invoke('step:descriptionToMarkdown'),
     retake: invoke('step:retake'),
     setImages: invoke('step:setImages'),
   },

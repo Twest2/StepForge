@@ -1870,4 +1870,13 @@
   "Image fit": "图片适应方式",
   "Could not choose an image.": "无法选择图片。",
   "Choose an image for the shape": "为形状选择图片",
+  "Basic": "基本",
+  "More": "更多",
+  "Description format": "描述格式",
+  "Rich text": "富文本",
+  "Markdown": "Markdown",
+  "Description (Markdown)": "描述（Markdown）",
+  "Markdown: **bold**, *italic*, # headings, - lists, | tables |, `code`, [links](https://example.com) and HTML.": "Markdown：**粗体**、*斜体*、# 标题、- 列表、| 表格 |、`代码`、[链接](https://example.com) 和 HTML。",
+  "Description preview": "描述预览",
+  "Image…": "图片…",
 });

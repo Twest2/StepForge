@@ -73,6 +73,8 @@ const DEFAULT_SETTINGS = {
   editor: {
     recentColors: [],
     paneWidths: { steps: 320, properties: 330 },
+    // Flowchart → Mermaid panel width, dragged by its divider.
+    mermaidWidth: 340,
     focusedViewDefaultForNewSteps: true,
     // After drawing one annotation (or cropping), switch back to the Select
     // tool. Off keeps the drawing tool picked until another is chosen.
@@ -197,6 +199,8 @@ class Settings {
     if (data.ai && typeof data.ai === 'object') delete data.ai.allowRemoteHost;
     data.editor.recentColors = colors(data.editor.recentColors);
     data.editor.paneWidths = normalizeWidths(data.editor.paneWidths);
+    const mermaidWidth = Number(data.editor.mermaidWidth);
+    data.editor.mermaidWidth = Number.isFinite(mermaidWidth) ? Math.round(Math.min(1600, Math.max(200, mermaidWidth))) : 340;
     if (!data.capture || typeof data.capture !== 'object' || Array.isArray(data.capture)) data.capture = deepClone(DEFAULT_SETTINGS.capture);
     // 'region' (and anything else unknown) was offered once but always
     // recorded the full screen; say so in the file too.

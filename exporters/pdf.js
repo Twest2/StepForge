@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { PdfBuilder, FONT_FAMILIES, breakChunks, isWide } = require('../core/pdf');
 const { FallbackFonts, systemFontCandidates } = require('../core/pdf-fonts');
-const { guideSlug, renderAllImages, LEVEL_LABEL, stepContentGroups, codeBlockText } = require('./common');
+const { guideSlug, renderAllImages, LEVEL_LABEL, stepContentGroups, codeBlockText, flowchartImageKey } = require('./common');
 const { htmlToText } = require('../core/util');
 const { htmlToBlocks } = require('../core/htmlblocks');
 const { standardTextWidth } = require('../core/pdf-metrics');
@@ -338,6 +338,10 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
       y += fs_ * leading;
     }
   };
+  // Each step's place in the document, filled in as the step claims its
+  // page: what Contents entries, Step links and flowchart shapes jump to.
+  const tocTargets = new Map(ast.steps.map((step) => [step.stepId, {}])); // stepId -> { pageIndex, yTop }
+
   /** Render laid-out description items, preserving bold/italic/links/lists. */
   const writeDescription = (html, { size: baseSize = 10.5, color = ink, indent: indentBase = 0 } = {}) => {
     const { items } = layoutDescription(pdf, html, usableW - indentBase, baseSize, bodyFonts);
@@ -369,6 +373,21 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
         }));
         pdf.textRun(parts, textX, y, item.size);
         strikeWords(pdf, line, textX, y, item.size, item.muted ? [100, 100, 100] : color);
+        // A Step link (Description → Step) jumps to that step.
+        let wx = textX;
+        let open = null; // { href, x, w, target }: the words of one link on this line
+        const close = () => { if (open) pdf.linkRect(open.x, y, open.w, item.lineHeight, open.target); open = null; };
+        for (const word of line) {
+          const ww = standardTextWidth(word.text, item.size, word.font) ?? pdf.textWidth(word.text, item.size, word.font);
+          const target = word.href && word.href.startsWith('step:') ? tocTargets.get(word.href.slice(5)) : null;
+          if (target && open?.href === word.href) open.w = wx + ww - open.x;
+          else {
+            close();
+            if (target) open = { href: word.href, x: wx, w: ww, target };
+          }
+          wx += ww;
+        }
+        close();
         y += item.lineHeight;
       });
       y += 4;
@@ -384,14 +403,23 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
   };
 
   /** Height an image will occupy on the page, including its trailing gap. */
-  const measureImage = (stepId) => {
-    const img = images.get(stepId);
-    if (!img) return 0;
-    const maxH = usableH * tpl.imageMaxHeightRatio;
-    let h = (img.height / img.width) * usableW;
-    if (h > maxH) h = maxH;
-    return h + 10;
+  const measureImage = (key) => {
+    const box = imageBox(images.get(key), key);
+    return box ? box.h + 10 : 0;
   };
+
+  /**
+   * The size an image is drawn at: page width, capped by the height ratio.
+   * A flowchart block (drawn at 2x) is never shown larger than its own size.
+   */
+  function imageBox(img, key) {
+    if (!img) return null;
+    const maxH = usableH * tpl.imageMaxHeightRatio;
+    let w = String(key).startsWith('flowchart:') ? Math.min(usableW, img.width * 0.375) : usableW;
+    let h = (img.height / img.width) * w;
+    if (h > maxH) { h = maxH; w = (img.width / img.height) * h; }
+    return { w, h };
+  }
 
   const codeChars = Math.floor((usableW - 2 * CODE_PAD_X) / pdf.textWidth('M', CODE_SIZE, 'F3'));
   const codeLayouts = new Map();
@@ -460,7 +488,7 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
       rest,
     } = stepContentGroups(step);
     for (const tb of [...beforeTitle, ...afterTitle, ...beforeDescription, ...afterDescription, ...beforeImage, ...afterImage]) {
-      head += measureBlock(tb);
+      head += tb.kind === 'flowchart' ? measureImage(flowchartImageKey(step.stepId)) : measureBlock(tb);
     }
     if (step.descriptionHtml) head += layoutDescription(pdf, step.descriptionHtml, usableW, 10.5, bodyFonts).height;
     head += measureImage(step.stepId);
@@ -547,9 +575,6 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
     y = M;
   }
 
-  // Filled in below as each step claims its page, so the Contents entries
-  // above (already laid out before pagination starts) can link to it.
-  const tocTargets = new Map(); // stepId -> { pageIndex }
 
   if (tpl.includeToc && ast.steps.length > 1) {
     writeLines('Contents', { size: 16, font: headFonts.bold });
@@ -558,8 +583,7 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
     const lineH = tocSize * 1.35;
     for (const step of ast.steps) {
       const indent = 14 * step.depth;
-      const target = {};
-      tocTargets.set(step.stepId, target);
+      const target = tocTargets.get(step.stepId);
       for (const line of pdf.wrapText(`${step.number}.  ${step.title || 'Untitled step'}`, tocSize, usableW - indent, bodyFonts.regular)) {
         ensure(lineH);
         pdf.text(line, M + indent, y, { size: tocSize, font: bodyFonts.regular, color: tpl.accentColor });
@@ -591,7 +615,10 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
     ensure(headHeight);
     pdf.bookmark(`${step.number}. ${step.title || 'Untitled step'}`);
     const tocTarget = tocTargets.get(step.stepId);
-    if (tocTarget) tocTarget.pageIndex = pdf.pages.length - 1;
+    if (tocTarget) {
+      tocTarget.pageIndex = pdf.pages.length - 1;
+      tocTarget.yTop = y;
+    }
     const {
       beforeTitle,
       afterTitle,
@@ -601,29 +628,35 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
       afterImage,
       rest,
     } = stepContentGroups(step);
-    for (const tb of beforeTitle) emitBlock(tb);
+    const drawImage = (key) => {
+      const img = images.get(key);
+      const box = imageBox(img, key);
+      if (!box) return;
+      ensure(box.h + 6);
+      pdf.image(img, M, y, box.w, box.h);
+      // A flowchart's shapes linked to a step jump to it.
+      const chart = key === step.stepId ? (step.image?.flowchart ? step.image : null) : step.flowchartImage;
+      for (const link of chart?.links || []) {
+        const target = tocTargets.get(link.stepId);
+        if (target) pdf.linkRect(M + link.x * box.w, y + link.y * box.h, link.w * box.w, link.h * box.h, target);
+      }
+      y += box.h + 10;
+    };
+    // Text blocks and the flowchart block, at their positions.
+    const emit = (tb) => (tb.kind === 'flowchart' ? drawImage(flowchartImageKey(step.stepId)) : emitBlock(tb));
+    for (const tb of beforeTitle) emit(tb);
     const headSize = step.depth > 0 ? 12 : 14;
     writeLines(`${step.number}. ${step.title || 'Untitled step'}${step.skipped ? '  (skipped)' : ''}`, { size: headSize, font: headFonts.bold });
     pdf.rect(M, y, usableW, 0.8, { fill: [225, 228, 232] });
     y += 8;
 
-    for (const tb of afterTitle) emitBlock(tb);
-    for (const tb of beforeDescription) emitBlock(tb);
+    for (const tb of afterTitle) emit(tb);
+    for (const tb of beforeDescription) emit(tb);
     if (step.descriptionHtml) writeDescription(step.descriptionHtml);
-    for (const tb of afterDescription) emitBlock(tb);
-    for (const tb of beforeImage) emitBlock(tb);
-
-    const img = images.get(step.stepId);
-    if (img) {
-      const maxH = usableH * tpl.imageMaxHeightRatio;
-      let w = usableW;
-      let h = (img.height / img.width) * w;
-      if (h > maxH) { h = maxH; w = (img.width / img.height) * h; }
-      ensure(h + 6);
-      pdf.image(img, M, y, w, h);
-      y += h + 10;
-    }
-    for (const tb of afterImage) emitBlock(tb);
+    for (const tb of afterDescription) emit(tb);
+    for (const tb of beforeImage) emit(tb);
+    drawImage(step.stepId);
+    for (const tb of afterImage) emit(tb);
 
     for (const block of rest) {
       if (block.kind === 'text') {

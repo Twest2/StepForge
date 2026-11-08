@@ -3,6 +3,29 @@
 const { newId, nowIso } = require('./util');
 const { sanitizeHtml } = require('./sanitize');
 const { blockText } = require('./blocks');
+const { normalizeFlowchart, normalizePlacement } = require('./flowchart');
+const markdownDescription = require('./markdown-description');
+
+/**
+ * A step's description: sanitized HTML (what every export uses) and, for a
+ * description written in Markdown, its source plus a fingerprint of the HTML
+ * it produced. The source only counts while the HTML is still that HTML (or
+ * the source still renders to it). When something else rewrote the HTML (AI,
+ * an agent, Find and replace, the private-detail check), the source is
+ * rebuilt from the HTML, so the HTML always wins. The fingerprint keeps a
+ * source when a newer Markdown renderer would draw it slightly differently.
+ */
+const htmlFingerprint = (html) => require('node:crypto').createHash('sha256').update(html).digest('hex').slice(0, 16);
+function descriptionFields(fields) {
+  const descriptionHtml = sanitizeHtml(fields.descriptionHtml || '');
+  if (typeof fields.descriptionMarkdown !== 'string') return { descriptionHtml };
+  const fingerprint = htmlFingerprint(descriptionHtml);
+  let source = fields.descriptionMarkdown.slice(0, 200000);
+  if (fields.descriptionMarkdownFor !== fingerprint && sanitizeHtml(markdownDescription.render(source)) !== descriptionHtml) {
+    source = require('./description-markdown').descriptionToMarkdown(descriptionHtml);
+  }
+  return { descriptionHtml, descriptionMarkdown: source, descriptionMarkdownFor: fingerprint };
+}
 const { normalizeReviewDays, normalizeDateOnly } = require('./review');
 const { bendOf, normalizePenPoints } = require('./annotation-shapes');
 const { SPOTLIGHT_DARKNESS, SPOTLIGHT_CORNER_RADIUS } = require('./annotation-properties');
@@ -111,7 +134,7 @@ function createStep(fields = {}) {
     kind: STEP_KINDS.includes(fields.kind) ? fields.kind : 'image',
     status: STEP_STATUSES.includes(fields.status) ? fields.status : 'todo',
     title: fields.title || '',
-    descriptionHtml: sanitizeHtml(fields.descriptionHtml || ''),
+    ...descriptionFields(fields),
     hidden: Boolean(fields.hidden),
     skipped: Boolean(fields.skipped),
     forceNewPage: Boolean(fields.forceNewPage),
@@ -127,6 +150,11 @@ function createStep(fields = {}) {
     textBlocks: (fields.textBlocks || []).map((tb) => normalizeTextBlock(tb, takeOrder(tb))),
     codeBlocks: (fields.codeBlocks || []).map((cb) => normalizeCodeBlock(cb, takeOrder(cb))),
     tableBlocks: (fields.tableBlocks || []).map((tb) => normalizeTableBlock(tb, takeOrder(tb))),
+    // An optional flowchart (core/flowchart.js) and where exports put it.
+    flowchart: normalizeFlowchart(fields.flowchart),
+    flowchartPlacement: normalizePlacement(fields.flowchartPlacement),
+    // As a block: where it goes, like a text block's position (after the screenshot by default).
+    flowchartPosition: TEXTBLOCK_POSITIONS.includes(fields.flowchartPosition) ? fields.flowchartPosition : 'after-image',
     links: fields.links || [], // { id, label, targetStepId }
     // Private-detail check: when it last ran, and what the user said isn't private.
     redaction: normalizeRedaction(fields.redaction),

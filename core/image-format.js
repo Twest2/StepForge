@@ -5,6 +5,10 @@ const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { decodePng } = require('./png');
 const { createImageCodec } = require('./image-codec');
+const flowchart = require('./flowchart');
+
+/** The prepareExportImages key for a step's flowchart PNG. */
+const flowchartImageKey = (stepId) => `flowchart:${stepId}`;
 
 /**
  * Screenshot storage formats. New captures are stored as WebP when the codec
@@ -136,19 +140,29 @@ async function encodeWebpVerified(png, codec, webpQuality, lossless = true) {
 }
 
 /**
- * Export-time pixels for every step screenshot the store keeps as WebP:
- * Map of absolute file path -> PNG bytes, for the render AST to read.
+ * Export-time pixels for every step screenshot the store keeps as WebP, and
+ * every step's flowchart: Map of absolute file path (or flowchartImageKey) ->
+ * PNG bytes, for the render AST to read.
  */
 async function prepareExportImages(store, guideId, { codec = activeCodec, maxSteps = 0 } = {}) {
   const images = new Map();
   const guide = store.getGuide(guideId);
   const steps = store.listSteps(guideId);
   let visible = 0;
+  const included = guide.stepsOrder.map((id) => steps.get(id))
+    .filter((step) => step && !step.hidden && !(step.skipped && guide.flags?.hideSkippedStepsInExports));
+  const numbers = require('./step-outline').stepNumberMap(included);
+  const stepRefs = included.map((step) => ({ stepId: step.stepId, number: numbers.get(step.stepId) }));
   for (const stepId of guide.stepsOrder) {
     const step = steps.get(stepId);
     if (!step) continue;
     if (step.hidden || (step.skipped && guide.flags?.hideSkippedStepsInExports)) continue;
     if (maxSteps > 0 && ++visible > maxSteps) break;
+    if (flowchart.hasFlowchart(step)) {
+      // The flowchart's SVG, drawn by the same codec (Sharp reads SVG input).
+      if (!codec) throw new Error(`StepForge can't draw the flowchart in ${stepId}.`);
+      images.set(flowchartImageKey(stepId), await codec.decodeToPng(Buffer.from(flowchart.toSvg(step.flowchart, { steps: stepRefs }))));
+    }
     if (!step.image) continue;
     const absPath = path.join(store.stepDir(guideId, stepId), step.image.workingPath);
     if (images.has(absPath)) continue;
@@ -169,5 +183,5 @@ async function prepareExportImages(store, guideId, { codec = activeCodec, maxSte
 module.exports = {
   DEFAULT_WEBP_QUALITY, MIN_WEBP_QUALITY, MAX_WEBP_QUALITY,
   setImageCodec, getImageCodec, sniffImageFormat, readImageSize, storedExtension,
-  clampWebpQuality, rasterToPng, optimizeScreenshot, encodeWebpVerified, prepareExportImages, hasPartialAlpha, imagePreviewUrl,
+  clampWebpQuality, rasterToPng, optimizeScreenshot, encodeWebpVerified, prepareExportImages, flowchartImageKey, hasPartialAlpha, imagePreviewUrl,
 };

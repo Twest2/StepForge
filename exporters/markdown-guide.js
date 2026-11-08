@@ -3,7 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { escapeHtml } = require('../core/util');
-const { guideSlug, imagesDirName, writeStepImages, LEVEL_LABEL, stepContentGroups, codeBlockText } = require('./common');
+const { guideSlug, imagesDirName, writeStepImages, LEVEL_LABEL, stepContentGroups, codeBlockText, flowchartImageKey, flowchartAlt } = require('./common');
 const { markdownFenceLanguage } = require('../core/code-highlight');
 const { htmlToMarkdown } = require('./htmlmd');
 const { tocEntries, guideMetaLines, guideSummary } = require('./document-layout');
@@ -42,6 +42,31 @@ function anchorFor(step) {
 
 function quoteBody(text) {
   return text ? text.replace(/\n/g, '\n> ') : '';
+}
+
+/**
+ * A description written in Markdown, as written: step links point at the
+ * step's heading, and active HTML (scripts, styles, frames) is left out.
+ */
+function markdownSource(source) {
+  return source
+    .replace(/<(script|style|iframe|object|embed|template)\b[\s\S]*?<\/\1\s*>/gi, '')
+    .replace(/<(script|style|iframe|object|embed|template)\b[^>]*>/gi, '')
+    .replace(/\]\(step:([A-Za-z0-9_-]+)\)/g, '](#step-$1)')
+    .trim();
+}
+
+/**
+ * Under a flowchart picture: its shapes' step links, which a picture can't
+ * hold in Markdown ("Go to: [Step 3](#step-…) · [Step 5](#step-…)").
+ */
+function chartLinkLine(chart, ast) {
+  const seen = new Set();
+  const links = (chart?.links || []).filter((link) => !seen.has(link.stepId) && seen.add(link.stepId)).map((link) => {
+    const target = ast.steps.find((s) => s.stepId === link.stepId);
+    return target ? `[Step ${target.number}: ${target.title || 'Untitled step'}](#step-${target.stepId})` : '';
+  }).filter(Boolean);
+  return links.length ? [`Go to: ${links.join(' · ')}`, ''] : [];
 }
 
 function emitBlock(lines, tb, { alertStyle = 'gfm' } = {}) {
@@ -152,6 +177,20 @@ function renderMarkdownGuide(ast, outDir, template = {}, {
     lines.push('');
   }
 
+  // Steps something links to (a description's Step link, a flowchart
+  // shape) always get their heading anchor, which those links point at.
+  const linkTargets = new Set();
+  const collectTargets = (text) => {
+    for (const m of String(text || '').matchAll(/step:([A-Za-z0-9_-]+)/g)) linkTargets.add(m[1]);
+  };
+  collectTargets(ast.guide.descriptionHtml);
+  for (const step of ast.steps) {
+    collectTargets(step.descriptionHtml);
+    collectTargets(step.descriptionMarkdown);
+    for (const block of step.blocks || []) collectTargets(block.descriptionHtml);
+    for (const link of [...(step.image?.links || []), ...(step.flowchartImage?.links || [])]) linkTargets.add(link.stepId);
+  }
+
   for (const step of ast.steps) {
     const heading = step.depth > 0 ? '###' : '##';
     const {
@@ -163,16 +202,23 @@ function renderMarkdownGuide(ast, outDir, template = {}, {
       afterImage,
       rest,
     } = stepContentGroups(step);
-    if (accentBar || withToc) lines.push(`<a id="${anchorFor(step)}"></a>`, '');
-    for (const tb of beforeTitle) emitBlock(lines, tb, { alertStyle });
+    // Text blocks and the flowchart block, at their positions.
+    const emit = (tb) => {
+      if (tb.kind !== 'flowchart') { emitBlock(lines, tb, { alertStyle }); return; }
+      const chart = images.get(flowchartImageKey(step.stepId));
+      if (chart) lines.push(`![${markdownAlt(flowchartAlt(step))}](${imageUrl(chart.relPath)})`, '', ...chartLinkLine(step.flowchartImage, ast));
+    };
+    if (accentBar || withToc || linkTargets.has(step.stepId)) lines.push(`<a id="${anchorFor(step)}"></a>`, '');
+    for (const tb of beforeTitle) emit(tb);
     lines.push(`${heading} ${step.number}. ${step.title || 'Untitled step'}`, '');
     if (step.skipped) lines.push('*(skipped)*', '');
-    for (const tb of afterTitle) emitBlock(lines, tb, { alertStyle });
-    for (const tb of beforeDescription) emitBlock(lines, tb, { alertStyle });
-    if (step.descriptionHtml) lines.push(htmlToMarkdown(step.descriptionHtml), '');
-    for (const tb of afterDescription) emitBlock(lines, tb, { alertStyle });
+    for (const tb of afterTitle) emit(tb);
+    for (const tb of beforeDescription) emit(tb);
+    if (step.descriptionMarkdown) lines.push(markdownSource(step.descriptionMarkdown), '');
+    else if (step.descriptionHtml) lines.push(htmlToMarkdown(step.descriptionHtml), '');
+    for (const tb of afterDescription) emit(tb);
 
-    for (const tb of beforeImage) emitBlock(lines, tb, { alertStyle });
+    for (const tb of beforeImage) emit(tb);
     const img = images.get(step.stepId);
     if (img) {
       if (tpl.azureWiki && tpl.imageMaxWidth > 0) {
@@ -180,8 +226,9 @@ function renderMarkdownGuide(ast, outDir, template = {}, {
       } else {
         lines.push(`![${markdownAlt(step.altText)}](${imageUrl(img.relPath)})`, '');
       }
+      if (step.image?.flowchart) lines.push(...chartLinkLine(step.image, ast));
     }
-    for (const tb of afterImage) emitBlock(lines, tb, { alertStyle });
+    for (const tb of afterImage) emit(tb);
 
     for (const block of rest) {
       if (block.kind === 'text') {

@@ -12,6 +12,7 @@ const { GuideStore } = require('../core/store');
 const { libraryLocationFor } = require('./data-dir');
 const { Settings } = require('../core/settings');
 const { saveGuideFromEditor, saveStepFromEditor } = require('../core/editor-save');
+const flowchartModel = require('../core/flowchart');
 const { descriptionToMarkdown, descriptionFromMarkdown } = require('../core/description-markdown');
 const { GoogleDrive } = require('./google-drive');
 const { OneDrive } = require('./onedrive');
@@ -828,6 +829,7 @@ function setupIpc() {
   });
 
   const IMAGE_BUDGET = 256 * 1024 * 1024; // channels that carry base64 PNGs
+  const STEP_BUDGET = 2 * (flowchartModel.MAX_CHART_IMAGE_CHARS + 2 * 1024 * 1024); // step:save
   const h = (channel, fn, opts = {}) => {
     const { maxChars = 2 * 1024 * 1024, validate = null } = opts;
     ipcMain.handle(channel, async (event, args = {}) => {
@@ -939,6 +941,8 @@ function setupIpc() {
   // Guide information edits the description as Markdown (core/description-markdown.js).
   h('guide:descriptionToMarkdown', ({ html }) => descriptionToMarkdown(html),
     { validate: (a) => c.string(a.html, 2 * 1024 * 1024) });
+  // Description → Rich text / Markdown: the rich-text description as Markdown to edit.
+  h('step:descriptionToMarkdown', ({ html }) => descriptionToMarkdown(html), { validate: (a) => c.string(a.html, 2 * 1024 * 1024) });
   h('guide:descriptionFromMarkdown', ({ markdown }) => descriptionFromMarkdown(markdown),
     { validate: (a) => c.string(a.markdown, 2 * 1024 * 1024) });
   // A new screenshot in the form the store keeps: WebP when the setting asks
@@ -976,7 +980,11 @@ function setupIpc() {
     const saved = saveStepFromEditor(store, guideId, step, baseStep);
     reindex(guideId);
     return saved;
-  }, { validate: (a) => c.id(a.guideId) && security.isPlainArgs(a.step) && a.step && c.id(a.step.stepId)
+  }, {
+    // The step and the version it was edited from; each may carry a
+    // flowchart's pictures (core/flowchart.js caps them at 12 MB a chart).
+    maxChars: STEP_BUDGET,
+    validate: (a) => c.id(a.guideId) && security.isPlainArgs(a.step) && a.step && c.id(a.step.stepId)
     && (a.baseStep == null || (security.isPlainArgs(a.baseStep) && a.baseStep.stepId === a.step.stepId)) });
   h('step:delete', ({ guideId, stepId }) => {
     store.deleteStep(guideId, stepId);
@@ -1047,9 +1055,9 @@ function setupIpc() {
     return { ok: true, step };
   }, { validate: (a) => c.id(a.guideId) && c.optionalNumber(a.position, 0, 100000) });
   // Pick a draft with the import decoder; no step or library file is created.
-  h('step:pickImage', async () => {
+  h('step:pickImage', async ({ purpose } = {}) => {
     const res = await dialog.showOpenDialog(mainWindow, {
-      title: t('Choose an image for the new step'),
+      title: purpose === 'shape' ? t('Choose an image for the shape') : t('Choose an image for the new step'),
       filters: [{ name: t('Images'), extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'] }],
       properties: ['openFile'],
     });
@@ -1515,6 +1523,10 @@ function setupIpc() {
   h('ai:status', () => textIntel.aiStatus());
   // Settings → Branding → Advanced CSS → Write with AI. Nothing is saved: the
   // editor shows the CSS for the user to add or discard.
+  // AI ▾ → Create a flowchart. Nothing is saved: the editor applies it (undoable).
+  h('ai:flowchart', ({ guideId, request = '' }) => textIntel.generateFlowchart({ guideId, request }), {
+    validate: (a) => c.id(a.guideId) && (a.request === undefined || c.string(a.request, 1000)),
+  });
   h('ai:brandCss', ({ request, css = '', profile = {} }) => textIntel.generateBrandCss({ request, css, profile }), {
     validate: (a) => c.string(a.request, MAX_BRAND_CSS_REQUEST_CHARS) && a.request.trim() !== ''
       && (a.css === undefined || c.string(a.css, MAX_CSS_CHARS))

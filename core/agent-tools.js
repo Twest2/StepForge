@@ -6,6 +6,7 @@ const { htmlToMarkdown } = require('../exporters/htmlmd');
 const { markdownHtml } = require('./placeholder-markdown');
 const { descriptionToMarkdown } = require('./description-markdown');
 const { sanitizeHtml } = require('./sanitize');
+const flowchartModel = require('./flowchart');
 const { renderScreenshotForAi, aiScreenshotSize } = require('./ai-image');
 const { orderedBlocks, blockText } = require('./blocks');
 const { placeholderText } = require('./placeholder-markdown');
@@ -59,6 +60,7 @@ const INSTRUCTIONS = [
   'Placeholders: get_guide lists them. In descriptions and blocks, write [[Name]] where a placeholder\'s value would appear; keep titles in plain words. Create a placeholder only for a specific value that repeats, such as a product name, version, URL or course code.',
   'Annotations use pixel coordinates on the screenshot get_step returns. A red circle there is usually the person\'s click marker; don\'t duplicate it.',
   'Keep every [[placeholder]] token exactly as written. Polish text the person wrote rather than replacing its meaning.',
+  'A step can have one flowchart (set_flowchart): boxes (process), questions (decision) and Start/End (terminal), joined by arrows. It either replaces the screenshot or shows as a block after the step\'s text. Link a node to a guide step with its step_id.',
   ...BRAND_INSTRUCTIONS,
 ].join('\n');
 
@@ -146,6 +148,7 @@ function stepForAgent(step, number) {
     description: descriptionMarkdown(step.descriptionHtml),
     blocks: orderedBlocks(step).map(blockForAgent),
     has_screenshot: Boolean(step.image),
+    ...(step.flowchart ? { flowchart: step.flowchart, flowchart_placement: step.flowchartPlacement || 'visual' } : {}),
     ...(shown ? {
       screenshot_size: shown,
       annotations: (step.annotations || []).map((ann) => annotationForAgent(ann, shown)),
@@ -799,6 +802,82 @@ function createAgentTools({ store, agentSettings, onChange = () => {}, onBrandin
           (current, revision) => store.saveStep(guideId, current, { expectedRevision: revision }),
         );
         for (const file of new Set([originalPath, workingPath])) fs.rmSync(path.join(store.stepDir(guideId, stepId), file), { force: true });
+        onChange(guideId);
+        return { content: [text(stepForAgent(saved, numberOf(guide, stepId))), text(note)] };
+      },
+    },
+    {
+      name: 'set_flowchart',
+      description: 'Create, replace or remove a step\'s flowchart. Nodes are laid out automatically, top to bottom. placement "visual" shows the flowchart instead of the screenshot (which is kept); "block" shows it after the step\'s text. Pass nodes: [] to remove the flowchart. StepForge snapshots the guide first.',
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          guide_id: { type: 'string' },
+          step_id: { type: 'string' },
+          placement: { type: 'string', enum: flowchartModel.PLACEMENTS },
+          nodes: {
+            type: 'array',
+            maxItems: 200,
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string', description: 'Your id for the node, used by edges.' },
+                shape: { type: 'string', enum: flowchartModel.SHAPES },
+                label: { type: 'string', maxLength: 300 },
+                step_id: { type: 'string', description: 'Optional: the guide step this node stands for.' },
+              },
+              required: ['id', 'label'],
+              additionalProperties: false,
+            },
+          },
+          edges: {
+            type: 'array',
+            maxItems: 400,
+            items: {
+              type: 'object',
+              properties: { from: { type: 'string' }, to: { type: 'string' }, label: { type: 'string', maxLength: 80 } },
+              required: ['from', 'to'],
+              additionalProperties: false,
+            },
+          },
+        },
+        required: ['guide_id', 'step_id', 'nodes'],
+        additionalProperties: false,
+      },
+      handler({ guide_id: guideId, step_id: stepId, placement, nodes = [], edges = [] } = {}) {
+        requireEnabled();
+        const guide = loadGuide(guideId);
+        loadStep(guide, stepId);
+        if (!Array.isArray(nodes) || !Array.isArray(edges)) throw new AgentError('nodes and edges must be arrays.');
+        if (placement !== undefined && !flowchartModel.PLACEMENTS.includes(placement)) throw new AgentError('placement must be "visual" or "block".');
+        const known = new Set(guide.stepsOrder || []);
+        const ids = new Set();
+        for (const n of nodes) {
+          if (!n || typeof n.id !== 'string' || !/^[A-Za-z0-9_-]{1,100}$/.test(n.id) || ids.has(n.id)) throw new AgentError('Each node needs a unique id of letters, digits, - or _.');
+          ids.add(n.id);
+          if (n.step_id !== undefined && !known.has(n.step_id)) throw new AgentError(`Guide "${guideId}" has no step "${n.step_id}".`);
+        }
+        for (const e of edges) {
+          if (!e || !ids.has(e.from) || !ids.has(e.to)) throw new AgentError('Each edge must join two node ids from nodes.');
+        }
+        const graph = nodes.length
+          ? flowchartModel.arrange({
+            nodes: nodes.map((n) => ({ id: n.id, shape: n.shape, label: n.label, stepId: n.step_id || null })),
+            edges,
+          })
+          : null;
+        const note = snapshotBefore(guideId, `${graph ? 'sets' : 'removes'} the flowchart of step ${numberOf(guide, stepId)}`);
+        const saved = saveWithRetry(
+          () => store.getStep(guideId, stepId),
+          (current) => ({
+            ...current,
+            // A background color chosen in the editor stays.
+            flowchart: graph && current.flowchart?.background ? { ...graph, background: current.flowchart.background } : graph,
+            flowchartPlacement: placement || (current.flowchart ? current.flowchartPlacement : (current.image ? 'block' : 'visual')),
+          }),
+          (current, revision) => store.saveStep(guideId, current, { expectedRevision: revision }),
+        );
         onChange(guideId);
         return { content: [text(stepForAgent(saved, numberOf(guide, stepId))), text(note)] };
       },

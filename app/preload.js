@@ -59,6 +59,7 @@ const api = {
     importImage: invoke('step:importImage'),
     pickImage: invoke('step:pickImage'),
     chooseImage: invoke('step:chooseImage'),
+    descriptionToMarkdown: invoke('step:descriptionToMarkdown'),
     retake: invoke('step:retake'),
     setImages: invoke('step:setImages'),
   },
@@ -175,6 +176,7 @@ const api = {
     cancel: invoke('ai:cancel'),
     status: invoke('ai:status'),
     brandCss: invoke('ai:brandCss'),
+    flowchart: invoke('ai:flowchart'),
   },
   agents: {
     setup: invoke('agents:setup'),

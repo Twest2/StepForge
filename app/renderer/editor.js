@@ -152,9 +152,84 @@ const TOOL_ICON_PATHS = {
   cursor: '<path d="M6 4v12l3.2-2.8 2.2 5 2-.9-2.2-4.9h4.6z"/><path d="M17.5 3.5l1 1.5M20.5 8h1.5M3 3l1.5 1.5"/>',
   spotlight: '<path d="M3.5 9.5 8.5 4.5l4.5 4.5-5 5z"/><path d="M15.5 11.5l3.5 2.5M12 15.5l2 3.5M16.5 7.5l4 .5"/><path d="M6.5 12.5 5 20M3 20h5"/>',
   crop: '<path d="M6 3v13h13M3 6h13v15"/>',
+  'flow-process': '<rect x="3" y="6.5" width="18" height="11" rx="1.5"/>',
+  'flow-decision': '<path d="M12 3 21 12 12 21 3 12z"/>',
+  'flow-terminal': '<rect x="2.5" y="7" width="19" height="10" rx="5"/>',
+  'flow-ellipse': '<ellipse cx="12" cy="12" rx="9.5" ry="6.5"/>',
+  'flow-document': '<path d="M3.5 5h17v12c-3-2-5.5 2-8.5 1s-5.5-2-8.5 0z"/>',
+  'flow-cylinder': '<ellipse cx="12" cy="6" rx="7.5" ry="2.5"/><path d="M4.5 6v12c0 1.4 3.4 2.5 7.5 2.5s7.5-1.1 7.5-2.5V6"/>',
+  'flow-connect': '<rect x="2.5" y="3" width="8" height="6" rx="1"/><rect x="13.5" y="15" width="8" height="6" rx="1"/><path d="M6.5 9v9h5"/><path d="m9.5 15.5 2.5 2.5-2.5 2.5"/>',
+  'flow-shapes': '<rect x="3" y="3" width="7.5" height="7.5" rx="1"/><circle cx="17.25" cy="6.75" r="3.75"/><path d="M6.75 13.5 10.5 21H3z"/><path d="M17.25 13.5 21 17.25 17.25 21 13.5 17.25z"/>',
+  'flow-arrange': '<rect x="9" y="2.5" width="6" height="4.5" rx="1"/><rect x="2.5" y="17" width="6" height="4.5" rx="1"/><rect x="15.5" y="17" width="6" height="4.5" rx="1"/><path d="M12 7v5M5.5 17v-5h13v5"/>',
+  'flow-delete': '<path d="M4 7h16M10 7V4h4v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/>',
+  'zoom-in': '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m20 20-4.9-4.9M10.5 7.5v6M7.5 10.5h6"/>',
+  'zoom-out': '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m20 20-4.9-4.9M7.5 10.5h6"/>',
   undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
   redo: '<path d="M15 14l5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/>',
 };
+
+/**
+ * The CSS for each Mermaid token kind (core/flowchart-mermaid.js tokens()) in
+ * a Code theme: each kind takes the first highlight.js class the theme colors.
+ */
+function mermaidTokenStyles(theme) {
+  if (theme.mermaidStyles) return theme.mermaidStyles;
+  const rule = (cls) => [...theme.rules].reverse().find(([selector]) => selector === cls);
+  const KINDS = {
+    keyword: ['keyword'], direction: ['literal', 'number', 'keyword'], node: ['title', 'variable', 'name'],
+    arrow: ['operator', 'symbol', 'literal', 'keyword'], shape: ['punctuation', 'built_in', 'meta', 'type'],
+    string: ['string'], label: ['string', 'attr'], attr: ['attr', 'attribute', 'property'], comment: ['comment'],
+  };
+  theme.mermaidStyles = Object.fromEntries(Object.entries(KINDS).map(([kind, classes]) => {
+    const found = classes.map(rule).find(Boolean);
+    if (!found) return [kind, ''];
+    const [, color, flags = ''] = found;
+    return [kind, `color:${color}${flags.includes('i') ? ';font-style:italic' : ''}${flags.includes('b') ? ';font-weight:600' : ''}`];
+  }));
+  return theme.mermaidStyles;
+}
+
+// A picture icon (the Fill menu's Image… item).
+const IMAGE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 17-5-5-9 8"/></svg>';
+
+// The flowchart tools (app/renderer/flowchart-editor.js), as [tool, label].
+const FLOW_TOOLS = () => [
+  ['process', t('Step box')],
+  ['decision', t('Decision')],
+  ['terminal', t('Start or end')],
+  ['ellipse', t('Ellipse')],
+  ['document', t('Document')],
+  ['cylinder', t('Cylinder')],
+  ['connect', t('Connect')],
+];
+
+// More shapes → Lines and arrows: Connect draws arrows of this style.
+const FLOW_EDGE_STYLES = () => [
+  ['arrow', t('Arrow')], ['double', t('Double arrow')], ['line', t('Line')],
+  ['dashed', t('Dashed arrow')], ['dashedLine', t('Dashed line')], ['dotted', t('Dotted line')],
+];
+
+/** A palette icon for an arrow style. */
+function edgeStyleIcon(style) {
+  const dash = style === 'dashed' || style === 'dashedLine' ? ' stroke-dasharray="4 3"' : style === 'dotted' ? ' stroke-dasharray="0.5 3.5"' : '';
+  const head = (x, y, a) => `<path d="M${x} ${y} l${(-7 * Math.cos(a - 0.45)).toFixed(1)} ${(-7 * Math.sin(a - 0.45)).toFixed(1)} M${x} ${y} l${(-7 * Math.cos(a + 0.45)).toFixed(1)} ${(-7 * Math.sin(a + 0.45)).toFixed(1)}"/>`;
+  const angle = Math.atan2(-18, 28);
+  const heads = (['arrow', 'double', 'dashed'].includes(style) ? head(34, 6, angle) : '') + (style === 'double' ? head(6, 24, angle + Math.PI) : '');
+  return `<svg viewBox="0 0 40 30" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M6 24 34 6"${dash}/>${heads}</svg>`;
+}
+
+// Every flowchart shape (core/flowchart.js) in groups, as [group name, [[shape, name], …]].
+const FLOW_SHAPE_GROUPS = () => [
+  [t('Basic'), [['process', t('Step box')], ['rectangle', t('Rectangle')], ['square', t('Square')], ['text', t('Text')],
+    ['ellipse', t('Ellipse')], ['circle', t('Circle')], ['triangle', t('Triangle')], ['hexagon', t('Hexagon')]]],
+  [t('Flowchart'), [['terminal', t('Start or end')], ['decision', t('Decision')], ['parallelogram', t('Parallelogram')],
+    ['document', t('Document')], ['subprocess', t('Subprocess')], ['delay', t('Delay')], ['display', t('Display')],
+    ['dataStorage', t('Data storage')], ['internalStorage', t('Internal storage')], ['cylinder', t('Cylinder')],
+    ['trapezoid', t('Trapezoid')], ['step', t('Chevron')], ['tape', t('Tape')], ['card', t('Card')]]],
+  [t('More'), [['note', t('Note')], ['callout', t('Callout')], ['cloud', t('Cloud')], ['cube', t('Cube')], ['actor', t('Person')],
+    ['container', t('Container')], ['blockArrow', t('Block arrow')], ['doubleArrow', t('Double block arrow')]]],
+];
+const FLOW_SHAPES = () => FLOW_SHAPE_GROUPS().flatMap(([, shapes]) => shapes);
 
 function toolIconSvg(name) {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${TOOL_ICON_PATHS[name]}</svg>`;
@@ -322,6 +397,8 @@ class GuideEditor {
   setSettings(settings) {
     const previousWidths = JSON.stringify(this.settings?.editor?.paneWidths);
     this.settings = settings || {};
+    // A new Code theme recolors the Mermaid panel.
+    if (this.mermaidOpen && this.dom?.mermaidCode) this.highlightMermaid();
     if (this.shellMounted && previousWidths !== JSON.stringify(this.settings.editor?.paneWidths)) {
       this.paneWidths = window.StepForgePaneLayout.normalizeWidths(this.settings.editor?.paneWidths);
       this.updatePaneLayout();
@@ -369,6 +446,8 @@ class GuideEditor {
       { label: t('Write the title'), disabled: unavailable(hasStep), action: () => this.writeStepWithAi('title') },
       { label: t('Write the description'), disabled: unavailable(hasStep), action: () => this.writeStepWithAi('description') },
       { label: t('Write the blocks'), disabled: unavailable(hasStep), action: () => this.writeStepWithAi('blocks') },
+      'sep',
+      { label: t('Create a flowchart'), disabled: unavailable(hasStep && this.steps.length > 0), action: () => this.generateFlowchartWithAi() },
     ];
   }
 
@@ -690,6 +769,7 @@ class GuideEditor {
         'aria-label': t('Resize steps pane'), 'aria-controls': 'editor-steps-pane' }),
       this.dom.canvasPane = el('section.pane-canvas', {},
         el('div.canvas-toolbar', {},
+          this.dom.imageTools = el('span.toolbar-group', {},
           ...toolButtons.map(([tool, name]) => {
             const key = TOOL_SHORTCUTS[tool];
             return this.dom[`tool-${tool}`] = el('button.tool.tool-icon', {
@@ -708,13 +788,66 @@ class GuideEditor {
             el('option', { value: '1.5' }, '150%'),
           ),
           el('span.sep'),
+          ),
+          // Shown instead of the image tools while the menu on the right is on Flowchart.
+          this.dom.flowTools = el('span.toolbar-group', { hidden: true },
+            ...FLOW_TOOLS().map(([tool, name]) => (this.dom[`flow-${tool}`] = el('button.tool.tool-icon', {
+              type: 'button', dataset: { flowTool: tool }, title: name, 'aria-label': name, innerHTML: toolIconSvg(`flow-${tool}`),
+            }))),
+            this.dom.flowShapesBtn = el('button.tool.tool-icon', {
+              type: 'button', title: t('More shapes'), 'aria-label': t('More shapes'), 'aria-haspopup': 'menu', 'aria-expanded': 'false', innerHTML: toolIconSvg('flow-shapes'),
+            }),
+            el('span.sep'),
+            this.dom.flowArrangeBtn = el('button.tool.tool-icon', { type: 'button', title: t('Arrange'), 'aria-label': t('Arrange'), innerHTML: toolIconSvg('flow-arrange') }),
+            this.dom.flowDeleteBtn = el('button.tool.tool-icon', { type: 'button', title: t('Delete selected'), 'aria-label': t('Delete selected'), innerHTML: toolIconSvg('flow-delete') }),
+            el('span.sep'),
+            // Zoom buttons too: not everyone knows Ctrl + mouse wheel.
+            this.dom.flowZoomOutBtn = el('button.tool.tool-icon', { type: 'button', title: t('Zoom out (Ctrl + mouse wheel)'), 'aria-label': t('Zoom out'), innerHTML: toolIconSvg('zoom-out') }),
+            this.dom.flowZoomResetBtn = el('button.tool.flowchart-zoom-level', { type: 'button', title: t('Reset zoom to 100%'), 'aria-label': t('Reset zoom to 100%') }, '100%'),
+            this.dom.flowZoomInBtn = el('button.tool.tool-icon', { type: 'button', title: t('Zoom in (Ctrl + mouse wheel)'), 'aria-label': t('Zoom in'), innerHTML: toolIconSvg('zoom-in') }),
+            el('span.sep'),
+            this.dom.mermaidToggle = el('button.tool.tool-text', { type: 'button', 'aria-pressed': 'false', title: t('Write or paste the flowchart as Mermaid text') }, t('Mermaid')),
+            el('span.sep'),
+          ),
           this.dom.undoBtn = el('button.tool.tool-icon', { type: 'button', title: t('Undo'), 'aria-label': t('Undo'), innerHTML: toolIconSvg('undo') }),
           this.dom.redoBtn = el('button.tool.tool-icon', { type: 'button', title: t('Redo'), 'aria-label': t('Redo'), innerHTML: toolIconSvg('redo') }),
+          el('span.toolbar-spacer'),
+          this.dom.flowPlacementSelect = el('select.flowchart-placement', { hidden: true, title: t('Where the flowchart shows in exports'), 'aria-label': t('Where the flowchart shows in exports') },
+            el('option', { value: 'visual' }, t('Main visual')),
+            el('option', { value: 'block' }, t('Block')),
+          ),
+          this.dom.visualSelect = el('select.visual-select', { title: t('Edit the image or the flowchart'), 'aria-label': t('Edit the image or the flowchart') },
+            el('option', { value: 'image' }, t('Image')),
+            el('option', { value: 'flowchart' }, t('Flowchart')),
+          ),
         ),
         this.dom.canvasWrap = el('div.canvas-wrap', {},
           this.dom.canvas = el('canvas', { width: 1, height: 1, tabIndex: -1, role: 'group', 'aria-label': t('Screenshot editor'), 'aria-describedby': 'screenshot-keyboard-help' }, t('Select annotations in the list to edit their properties.')),
           el('span.sr-only', { id: 'screenshot-keyboard-help' }, t('Select an annotation from the list, then focus the screenshot. Use arrow keys to move it and Delete to remove it.')),
           this.dom.canvasEmpty = el('div.canvas-empty', {}, t('Select an image step to edit annotations.')),
+        ),
+        // The flowchart canvas and, beside it, its Mermaid text (Mermaid button, top right).
+        this.dom.flowPane = el('div.flowchart-pane', { hidden: true },
+          this.dom.flowSurface = el('div.flowchart-surface', { role: 'group', 'aria-label': t('Flowchart') }),
+          this.dom.mermaidDivider = el('div.flowchart-mermaid-divider', {
+            hidden: true, role: 'separator', tabIndex: 0, 'aria-orientation': 'vertical', 'aria-label': t('Resize Mermaid panel'),
+          }),
+          this.dom.mermaidPanel = el('aside.flowchart-mermaid', { hidden: true, 'aria-label': t('Mermaid') },
+            el('div.flowchart-mermaid-head', {},
+              el('div.flowchart-mermaid-title', {},
+                el('strong', {}, t('Mermaid')),
+                el('span', {}, t('Flowchart as text')),
+              ),
+              el('a.flowchart-mermaid-help', { href: 'https://mermaid.js.org/syntax/flowchart.html', title: t('Mermaid flowchart syntax (opens in your browser)') }, t('Syntax')),
+              this.dom.mermaidCloseBtn = el('button.flowchart-mermaid-close', { type: 'button', title: t('Close'), 'aria-label': t('Close Mermaid'), innerHTML: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>' }),
+            ),
+            // The text box sits over its colored copy (the Code theme in Settings → Exports).
+            this.dom.mermaidCode = el('div.flowchart-mermaid-code', {},
+              this.dom.mermaidHighlight = el('pre.flowchart-mermaid-highlight', { 'aria-hidden': 'true' }),
+              this.dom.mermaidSource = el('textarea.flowchart-mermaid-source', { spellcheck: false, wrap: 'off', 'aria-label': t('Flowchart as Mermaid text') }),
+            ),
+            this.dom.mermaidStatus = el('div.flowchart-mermaid-status', { role: 'status', 'aria-live': 'polite', hidden: true }),
+          ),
         ),
       ),
       this.dom.propertiesDivider = el('div.pane-divider', { role: 'separator', tabIndex: 0, 'aria-orientation': 'vertical',
@@ -736,7 +869,7 @@ class GuideEditor {
           ),
           el('div.row', {},
             this.dom.forceNewPageToggle = el('label', {}, el('input', { type: 'checkbox' }), ' ', t('New page')),
-            this.dom.focusedViewToggle = el('label', {}, el('input', { type: 'checkbox' }), ' ', t('Focused')),
+            this.dom.focusedViewToggle = el('label.focused-toggle', {}, el('input', { type: 'checkbox' }), ' ', t('Focused')),
           ),
           // Pan shows as a percentage, 0% at the left and top edges (core/focused-view.js).
           this.dom.focusedControls = el('div.focused-controls.hidden', {},
@@ -756,7 +889,14 @@ class GuideEditor {
           ),
         ),
         el('section', {},
-          el('h3', {}, t('Description')),
+          el('div.description-head', {},
+            el('h3', {}, t('Description')),
+            this.dom.descModeSelect = el('select.description-mode', { title: t('Description format'), 'aria-label': t('Description format') },
+              el('option', { value: 'rich' }, t('Rich text')),
+              el('option', { value: 'markdown' }, t('Markdown')),
+            ),
+            this.dom.descPreviewBtn = el('button.description-preview-toggle', { type: 'button', hidden: true, 'aria-pressed': 'false' }, t('Preview')),
+          ),
           this.dom.richToolbar = el('div.rich-toolbar', {},
             this.toolbarBtn('bold', t('Bold')),
             this.toolbarBtn('italic', t('Italic')),
@@ -765,10 +905,21 @@ class GuideEditor {
             this.toolbarBtn('formatBlock', t('Quote'), 'blockquote'),
             this.toolbarBtn('createLink', t('Link')),
             this.toolbarBtn('removeFormat', t('Clear')),
+            this.toolbarBtn('insertStep', t('Step')),
           ),
           this.dom.descEditor = el('div.rich-editor', { contentEditable: 'true', spellcheck: true, role: 'textbox', 'aria-label': t('Description'), 'aria-multiline': 'true' }),
+          // Description → Markdown: the source, and its preview.
+          this.dom.descSource = el('textarea.description-source', {
+            hidden: true, spellcheck: true, rows: 8, 'aria-label': t('Description (Markdown)'),
+            placeholder: t('Markdown: **bold**, *italic*, # headings, - lists, | tables |, `code`, [links](https://example.com) and HTML.'),
+          }),
+          this.dom.descPreview = el('div.rich-editor.description-preview', { hidden: true, 'aria-label': t('Description preview') }),
         ),
-        el('section', {},
+        this.dom.flowSection = el('section', { hidden: true },
+          el('h3', {}, t('Flowchart')),
+          this.dom.flowProps = el('div.flowchart-props'),
+        ),
+        this.dom.annotationsSection = el('section', {},
           el('h3', {}, t('Annotations')),
           this.dom.annotationList = el('div', { className: 'annotation-list' }),
           this.dom.annotationEditor = el('div', { className: 'annotation-editor' }),
@@ -776,10 +927,11 @@ class GuideEditor {
         el('section', {},
           el('h3', {}, t('Blocks')),
           this.dom.blocksList = el('div', { className: 'blocks-list' }),
-          el('div.row', {},
+          el('div.row.block-add-row', {},
             this.dom.addTextBlockBtn = el('button', { type: 'button' }, t('+ Text block')),
             this.dom.addCodeBlockBtn = el('button', { type: 'button' }, t('+ Code')),
             this.dom.addTableBlockBtn = el('button', { type: 'button' }, t('+ Table')),
+            this.dom.addFlowchartBtn = el('button', { type: 'button' }, t('+ Flowchart')),
           ),
         ),
         el('section', {},
@@ -966,13 +1118,14 @@ class GuideEditor {
   }
 
   toolbarBtn(action, label, block = null) {
-    const labels = { bold: t('Bold'), italic: t('Italic'), insertUnorderedList: t('Bulleted list'), insertOrderedList: t('Numbered list'), formatBlock: t('Quote'), createLink: t('Link'), removeFormat: t('Clear') };
+    const labels = { bold: t('Bold'), italic: t('Italic'), insertUnorderedList: t('Bulleted list'), insertOrderedList: t('Numbered list'), formatBlock: t('Quote'), createLink: t('Link'), removeFormat: t('Clear'), insertStep: t('Link to a step') };
     const btn = el('button', {
       type: 'button',
       'aria-label': labels[action] || label,
-      ...(!['createLink', 'removeFormat'].includes(action) ? { 'aria-pressed': 'false' } : {}),
+      ...(!['createLink', 'removeFormat', 'insertStep'].includes(action) ? { 'aria-pressed': 'false' } : {}),
+      ...(action === 'insertStep' ? { title: t('Link to a step. Ctrl+click the link to open that step.') } : {}),
       onClick: () => this.formatDescription(action, block),
-    }, labels[action] || label);
+    }, action === 'insertStep' ? label : labels[action] || label);
     btn.dataset.action = action;
     if (block) btn.dataset.block = block;
     return btn;
@@ -994,7 +1147,7 @@ class GuideEditor {
         active = false;
       }
       btn.classList.toggle('active', active);
-      if (!['createLink', 'removeFormat'].includes(action)) btn.setAttribute('aria-pressed', String(active));
+      if (!['createLink', 'removeFormat', 'insertStep'].includes(action)) btn.setAttribute('aria-pressed', String(active));
     }
   }
 
@@ -1079,7 +1232,50 @@ class GuideEditor {
     this.dom.addTextBlockBtn.addEventListener('click', () => this.addBlock('text'));
     this.dom.addCodeBlockBtn.addEventListener('click', () => this.addBlock('code'));
     this.dom.addTableBlockBtn.addEventListener('click', () => this.addBlock('table'));
+    this.dom.addFlowchartBtn.addEventListener('click', () => this.addFlowchartBlock());
+    this.dom.visualSelect.addEventListener('change', () => this.setCanvasMode(this.dom.visualSelect.value));
+    this.dom.flowPlacementSelect.addEventListener('change', () => this.setFlowchartPlacement(this.dom.flowPlacementSelect.value));
+    for (const [tool] of FLOW_TOOLS()) {
+      // No Select button: every tool goes back to selecting after one use (or Esc,
+      // or a second click on the tool).
+      this.dom[`flow-${tool}`].addEventListener('click', () => {
+        const editor = this.flowchartEditor();
+        editor?.setTool(editor.tool === tool ? 'select' : tool);
+      });
+    }
+    this.dom.flowShapesBtn.addEventListener('click', () => this.openShapePalette());
+    this.dom.mermaidToggle.addEventListener('click', () => this.setMermaidOpen(!this.mermaidOpen));
+    this.dom.mermaidCloseBtn.addEventListener('click', () => this.setMermaidOpen(false));
+    const applyMermaid = debounce(() => this.applyMermaidText(), 350);
+    this.dom.mermaidSource.addEventListener('focus', () => { this.mermaidArmed = false; });
+    this.dom.mermaidSource.addEventListener('input', () => { this.mermaidDirty = true; this.highlightMermaid(); applyMermaid(); });
+    this.dom.mermaidSource.addEventListener('scroll', () => this.syncMermaidScroll());
+    this.bindMermaidDivider();
+    // Leaving the box keeps the text as typed (comments, spacing, names);
+    // it is rewritten only when the chart changes on the canvas.
+    this.dom.mermaidSource.addEventListener('blur', () => {
+      if (this.mermaidDirty) applyMermaid.flush();
+    });
+    this.dom.flowArrangeBtn.addEventListener('click', () => this.flowchartEditor()?.arrange());
+    this.dom.flowZoomOutBtn.addEventListener('click', () => this.applyZoomShortcut('out'));
+    this.dom.flowZoomInBtn.addEventListener('click', () => this.applyZoomShortcut('in'));
+    this.dom.flowZoomResetBtn.addEventListener('click', () => this.applyZoomShortcut('fit'));
+    this.dom.flowDeleteBtn.addEventListener('click', () => this.flowchartEditor()?.deleteSelected());
 
+    // While editing, a click on a link puts the caret in it; Ctrl+click opens
+    // it (a step, or a web or mail address in the browser).
+    this.dom.descEditor.addEventListener('click', (e) => {
+      const link = e.target.closest?.('a');
+      if (!link) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (!(e.ctrlKey || e.metaKey)) return;
+      if (link.dataset.stepId) {
+        if (this.stepMap.has(link.dataset.stepId)) this.selectStep(link.dataset.stepId);
+      } else if (/^(https?|mailto):/i.test(link.getAttribute('href') || '')) {
+        api.shell.openExternal({ url: link.getAttribute('href') });
+      }
+    });
     this.dom.descEditor.addEventListener('focus', () => {
       // Make Enter start a new paragraph (<p>) rather than a plain <div>,
       // so line breaks survive sanitization and show up in exports.
@@ -1088,18 +1284,52 @@ class GuideEditor {
       this.updateToolbarState();
     });
     this.dom.descEditor.addEventListener('blur', () => {
+      this.linkifyAndSave({ caret: false });
       for (const btn of this.dom.richToolbar.children) btn.classList.remove('active');
     });
     this.dom.descEditor.addEventListener('input', () => {
       if (!this.currentStep) return;
+      if (this.linkifyDescription()) this.refreshStepLinks();
       this.currentStep.descriptionHtml = this.dom.descEditor.innerHTML;
       this.pendingSave = true;
       this.saveStepDebounced();
       this.emitMeta();
       this.updateToolbarState();
     });
-    this.dom.descEditor.addEventListener('keyup', () => this.updateToolbarState());
-    this.dom.descEditor.addEventListener('mouseup', () => this.updateToolbarState());
+    this.dom.descEditor.addEventListener('keyup', (e) => {
+      // Moving the caret out of a typed [text](address) makes it a link.
+      if (e.key.startsWith('Arrow') || e.key === 'Home' || e.key === 'End') this.linkifyAndSave();
+      this.updateToolbarState();
+    });
+    this.dom.descModeSelect.addEventListener('change', () => this.setDescriptionMode(this.dom.descModeSelect.value));
+    this.dom.descPreviewBtn.addEventListener('click', () => {
+      // The preview opens at the size the Markdown box has (and the other way round).
+      const from = this.descPreviewing ? this.dom.descPreview : this.dom.descSource;
+      const to = this.descPreviewing ? this.dom.descSource : this.dom.descPreview;
+      if (from.offsetHeight) to.style.height = `${from.offsetHeight}px`;
+      this.descPreviewing = !this.descPreviewing;
+      this.syncDescriptionMode();
+      this.refreshStepLinks();
+    });
+    this.dom.descSource.addEventListener('focus', () => { if (this.currentStep) this.pushCanvasHistory('description'); });
+    this.dom.descSource.addEventListener('input', () => {
+      const step = this.currentStep;
+      if (!step) return;
+      step.descriptionMarkdown = this.dom.descSource.value;
+      step.descriptionHtml = this.markdownToHtml(step.descriptionMarkdown);
+      this.pendingSave = true;
+      this.saveStepDebounced();
+      this.emitMeta();
+    });
+    // Preview links work: a step link opens the step; web and mail links open
+    // in the browser (app.js's document click handler).
+    this.dom.descPreview.addEventListener('click', (e) => {
+      const link = e.target.closest?.('a[data-step-id]');
+      if (!link) return;
+      e.preventDefault();
+      if (this.stepMap.has(link.dataset.stepId)) this.selectStep(link.dataset.stepId);
+    });
+    this.dom.descEditor.addEventListener('mouseup', () => { this.linkifyAndSave(); this.updateToolbarState(); });
     document.addEventListener('selectionchange', () => {
       if (document.activeElement === this.dom.descEditor) this.updateToolbarState();
     });
@@ -1413,7 +1643,43 @@ class GuideEditor {
       this.dom.blocksList.append(card);
     }
 
-    if (!blocks.length) {
+    // The step's flowchart, when it shows as a block, with a position like a text block's.
+    const chartBlock = step.flowchart && step.flowchartPlacement === 'block';
+    if (chartBlock && window.StepForgeFlowchart) {
+      const position = makeSelect(step.flowchartPosition || 'after-image', [
+        { value: 'before-title', label: t('Before title') },
+        { value: 'after-title', label: t('After title') },
+        { value: 'before-image', label: t('Before image') },
+        { value: 'after-image', label: t('After image') },
+        { value: 'before-description', label: t('Before description') },
+        { value: 'after-description', label: t('After description') },
+      ]);
+      position.setAttribute('aria-label', t('Block position'));
+      position.addEventListener('change', () => {
+        this.pushCanvasHistory();
+        step.flowchartPosition = position.value;
+        this.pendingSave = true;
+        this.saveStepDebounced();
+      });
+      const preview = el('div.flowchart-preview', {
+        innerHTML: step.flowchart.nodes.length
+          ? window.StepForgeFlowchart.toSvg(step.flowchart, { steps: this.flowchartStepRefs(), stepLabel: (number) => t('Step {number}', { number }) })
+          : '',
+      });
+      this.dom.blocksList.append(el('div.block-card', { dataset: { blockKind: 'flowchart' } },
+        el('div.row', {},
+          el('strong', {}, t('Flowchart')),
+          el('span.spacer'),
+          el('button', { type: 'button', onClick: () => this.setCanvasMode('flowchart') }, t('Edit')),
+          el('button.icon', { type: 'button', title: t('Remove flowchart'), 'aria-label': t('Remove flowchart'), onClick: () => this.removeFlowchart() }, '×'),
+        ),
+        position,
+        step.flowchart.nodes.length ? preview : el('div.muted', {}, t('Empty flowchart.')),
+      ));
+    }
+    this.dom.addFlowchartBtn.disabled = Boolean(chartBlock);
+
+    if (!blocks.length && !chartBlock) {
       this.dom.blocksList.append(el('div.muted', {}, t('Informational text, code, and table blocks can be reordered with drag handles or arrows.')));
     }
   }
@@ -1770,6 +2036,7 @@ class GuideEditor {
     if (!step) {
       this.dom.titleInput.value = '';
       this.dom.descEditor.innerHTML = '';
+      this.syncDescriptionMode();
       this.dom.statusSelect.value = 'todo';
       this.dom.hiddenToggle.querySelector('input').checked = false;
       this.dom.skippedToggle.querySelector('input').checked = false;
@@ -1780,6 +2047,8 @@ class GuideEditor {
     }
     if (document.activeElement !== this.dom.titleInput) this.dom.titleInput.value = step.title || '';
     if (document.activeElement !== this.dom.descEditor) this.dom.descEditor.innerHTML = step.descriptionHtml || '';
+    this.syncDescriptionMode();
+    this.refreshStepLinks();
     this.dom.statusSelect.value = step.status || 'todo';
     this.dom.hiddenToggle.querySelector('input').checked = Boolean(step.hidden);
     this.dom.skippedToggle.querySelector('input').checked = Boolean(step.skipped);
@@ -1803,6 +2072,12 @@ class GuideEditor {
     if (this.dom.canvas) this.dom.canvas.tabIndex = -1;
     const step = this.currentStep;
     const token = ++this.imageLoadToken;
+    if (this.syncCanvasMode()) {
+      this.syncToolbar();
+      this.renderFlowchart();
+      return;
+    }
+    this.flowHomeKey = null;
     this.canvas.setTool(this.currentTool);
     this.canvas.setZoom(this.currentZoom);
     this.syncToolbar();
@@ -1839,6 +2114,529 @@ class GuideEditor {
       this.showCanvasEmpty();
     };
     img.src = src;
+  }
+
+  // ---- Flowcharts (core/flowchart.js, app/renderer/flowchart-editor.js) ----
+
+  /**
+   * Show the image tools or the flowchart tools, as the toolbar's
+   * Image/Flowchart menu says. A step opens on its flowchart when the
+   * flowchart is its main visual or it has no image. True for flowchart.
+   */
+  syncCanvasMode() {
+    if (!this.dom.visualSelect) return false;
+    const step = this.currentStep;
+    if (step && this.canvasModeStepId !== step.stepId) {
+      this.canvasModeStepId = step.stepId;
+      const chart = window.StepForgeFlowchart?.hasFlowchart(step);
+      this.canvasMode = chart && (step.flowchartPlacement !== 'block' || !step.image) ? 'flowchart' : 'image';
+      this.flowEditor?.select(null);
+    }
+    const flowchart = Boolean(step) && this.canvasMode === 'flowchart';
+    this.dom.visualSelect.value = flowchart ? 'flowchart' : 'image';
+    this.dom.visualSelect.disabled = !step;
+    this.dom.imageTools.hidden = flowchart;
+    this.dom.flowTools.hidden = !flowchart;
+    this.dom.flowPlacementSelect.hidden = !flowchart;
+    this.dom.flowPlacementSelect.value = this.flowchartPlacement(step);
+    this.dom.canvasWrap.hidden = flowchart;
+    this.dom.flowPane.hidden = !flowchart;
+    this.dom.annotationsSection.hidden = flowchart;
+    this.dom.flowSection.hidden = !flowchart;
+    // Focused view crops the screenshot; it has nothing to do with the flowchart.
+    this.dom.propertiesPane.classList.toggle('flowchart-mode', flowchart);
+    return flowchart;
+  }
+
+  /** Where the step's flowchart goes in exports; a new one replaces the image only on a step without one. */
+  flowchartPlacement(step = this.currentStep) {
+    if (!step) return 'visual';
+    if (step.flowchart) return step.flowchartPlacement === 'block' ? 'block' : 'visual';
+    return step.image ? 'block' : 'visual';
+  }
+
+  setCanvasMode(mode) {
+    this.canvasMode = mode === 'flowchart' ? 'flowchart' : 'image';
+    this.renderCanvas();
+  }
+
+  flowchartEditor() {
+    if (!this.flowEditor && typeof FlowchartEditor === 'function') {
+      this.flowEditor = new FlowchartEditor(this.dom.flowSurface, {
+        getGraph: () => this.currentStep?.flowchart || null,
+        getSteps: () => this.flowchartStepRefs(),
+        stepLabel: (number) => t('Step {number}', { number }),
+        beforeChange: () => this.beginFlowchartChange(),
+        changed: () => this.flowchartChanged(),
+        onSelect: () => this.renderFlowchartProps(),
+        onToolChange: () => this.syncFlowTools(),
+        onZoom: (zoom) => { this.dom.flowZoomResetBtn.textContent = `${Math.round(zoom * 100)}%`; },
+      });
+    }
+    return this.flowEditor || null;
+  }
+
+  flowchartStepRefs() {
+    const numbers = stepNumberMap(this.steps);
+    return this.steps.map((s) => ({ stepId: s.stepId, number: numbers.get(s.stepId), title: s.title || '' }));
+  }
+
+  renderFlowchart() {
+    const editor = this.flowchartEditor();
+    if (!editor) return;
+    editor.reset();
+    // A step just opened (or the flowchart just shown): start at the chart's top-left.
+    const key = this.currentStep?.stepId || '';
+    if (this.flowHomeKey !== key) {
+      this.flowHomeKey = key;
+      editor.home();
+    }
+    this.syncFlowTools();
+    this.renderFlowchartProps();
+    this.syncMermaidText();
+  }
+
+  // ---- Flowchart ↔ Mermaid text (core/flowchart-mermaid.js) ----
+
+  setMermaidOpen(open) {
+    this.mermaidOpen = Boolean(open);
+    this.dom.mermaidPanel.hidden = !this.mermaidOpen;
+    this.dom.mermaidDivider.hidden = !this.mermaidOpen;
+    this.dom.mermaidPanel.style.width = `${this.settings?.editor?.mermaidWidth || 340}px`;
+    this.setPressed(this.dom.mermaidToggle, this.mermaidOpen);
+    this.syncMermaidText({ force: true });
+    if (this.mermaidOpen) this.dom.mermaidSource.focus();
+    else this.dom.mermaidToggle.focus();
+    this.flowEditor?.render();
+  }
+
+  /** Show the chart as Mermaid, unless the author is typing in it. */
+  syncMermaidText({ force = false } = {}) {
+    if (!this.mermaidOpen || !window.StepForgeFlowchartMermaid) return;
+    if (!force && document.activeElement === this.dom.mermaidSource) return;
+    const { text, ids } = window.StepForgeFlowchartMermaid.toMermaid(this.currentStep?.flowchart);
+    this.mermaidIds = ids;
+    this.dom.mermaidSource.value = text;
+    this.highlightMermaid();
+    this.showMermaidStatus('');
+  }
+
+  /**
+   * Color the Mermaid text with the Code theme chosen in Settings → Exports
+   * (its background too). Plain keeps the panel's own colors.
+   */
+  highlightMermaid() {
+    const box = this.dom.mermaidCode;
+    if (!box || !window.StepForgeFlowchartMermaid) return;
+    const themes = window.StepForgeCodeThemes?.CODE_THEMES || {};
+    const chosen = this.settings?.exports?.codeTheme || 'atom-one-dark';
+    const theme = chosen === 'plain' ? null : themes[chosen] || themes['atom-one-dark'];
+    box.classList.toggle('themed', Boolean(theme));
+    box.style.setProperty('--mermaid-bg', theme ? theme.background : '');
+    box.style.setProperty('--mermaid-fg', theme ? theme.foreground : '');
+    box.classList.toggle('dark', Boolean(theme?.dark));
+    const style = theme ? mermaidTokenStyles(theme) : {};
+    const html = window.StepForgeFlowchartMermaid.tokens(this.dom.mermaidSource.value).map(({ text, kind }) => {
+      const css = kind && style[kind];
+      return css ? `<span style="${css}">${escapeHtml(text)}</span>` : escapeHtml(text);
+    }).join('');
+    // A final newline keeps the copy as tall as the text box's last line.
+    this.dom.mermaidHighlight.innerHTML = `${html}\n`;
+    this.syncMermaidScroll();
+  }
+
+  syncMermaidScroll() {
+    this.dom.mermaidHighlight.scrollTop = this.dom.mermaidSource.scrollTop;
+    this.dom.mermaidHighlight.scrollLeft = this.dom.mermaidSource.scrollLeft;
+  }
+
+  /** Mermaid panel divider: drag (or arrow keys) to resize; the width is remembered. */
+  bindMermaidDivider() {
+    const divider = this.dom.mermaidDivider;
+    const panel = this.dom.mermaidPanel;
+    const clamp = (width) => {
+      const pane = this.dom.flowPane.clientWidth || 800;
+      return Math.round(Math.max(200, Math.min(pane - 160, width)));
+    };
+    const save = () => {
+      const value = panel.offsetWidth;
+      this.settings ||= {};
+      this.settings.editor ||= {};
+      this.settings.editor.mermaidWidth = value;
+      api.settings.set({ keyPath: 'editor.mermaidWidth', value }).catch(() => {});
+      this.flowEditor?.render();
+    };
+    let drag = null;
+    divider.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      drag = { x: e.clientX, width: panel.offsetWidth };
+      divider.setPointerCapture?.(e.pointerId);
+      divider.classList.add('dragging');
+    });
+    divider.addEventListener('pointermove', (e) => {
+      if (!drag) return;
+      panel.style.width = `${clamp(drag.width + drag.x - e.clientX)}px`;
+    });
+    const end = () => {
+      if (!drag) return;
+      drag = null;
+      divider.classList.remove('dragging');
+      save();
+    };
+    divider.addEventListener('pointerup', end);
+    divider.addEventListener('pointercancel', end);
+    divider.addEventListener('keydown', (e) => {
+      const delta = { ArrowLeft: 20, ArrowRight: -20 }[e.key];
+      if (!delta) return;
+      e.preventDefault();
+      e.stopPropagation();
+      panel.style.width = `${clamp(panel.offsetWidth + delta)}px`;
+      save();
+    });
+  }
+
+  showMermaidStatus(message, { error = false } = {}) {
+    // Only problems are shown; a working chart needs no status line.
+    this.dom.mermaidStatus.hidden = !message;
+    this.dom.mermaidStatus.replaceChildren(...(message ? [el('span.flowchart-mermaid-dot'), message] : []));
+    this.dom.mermaidStatus.classList.toggle('error', error);
+  }
+
+  /** Mermaid text typed: redraw the chart from it (one undo step per visit to the box). */
+  applyMermaidText() {
+    const step = this.currentStep;
+    if (!step || !this.mermaidDirty) return;
+    this.mermaidDirty = false;
+    let graph;
+    try {
+      graph = window.StepForgeFlowchartMermaid.fromMermaid(this.dom.mermaidSource.value, step.flowchart, this.mermaidIds);
+    } catch (err) {
+      this.showMermaidStatus(err.line ? t('Line {line}: StepForge can’t read this line yet.', { line: err.line }) : err.message, { error: true });
+      return;
+    }
+    if (!this.mermaidArmed) {
+      this.pushCanvasHistory();
+      this.mermaidArmed = true;
+    }
+    if (!step.flowchart) step.flowchartPlacement = this.flowchartPlacement(step);
+    step.flowchart = graph;
+    // The names typed stay with the nodes they now stand for (fromMermaid keeps their order).
+    const names = [...window.StepForgeFlowchartMermaid.parse(this.dom.mermaidSource.value).nodes.keys()];
+    this.mermaidIds = new Map(names.map((name, i) => [name, graph.nodes[i]?.id]));
+    this.showMermaidStatus('');
+    this.pendingSave = true;
+    this.saveStepDebounced();
+    this.flowEditor?.reset();
+    this.renderFlowchartProps();
+    if (step.flowchartPlacement === 'block') this.renderBlocksPanel();
+  }
+
+  syncFlowTools() {
+    const tool = this.flowEditor?.tool || 'select';
+    for (const [name] of FLOW_TOOLS()) this.setPressed(this.dom[`flow-${name}`], name === tool);
+    this.setPressed(this.dom.flowShapesBtn, tool !== 'select' && !FLOW_TOOLS().some(([name]) => name === tool));
+  }
+
+  /** Before a flowchart edit: an undo snapshot, and the flowchart itself on its first edit. */
+  beginFlowchartChange() {
+    const step = this.currentStep;
+    this.pushCanvasHistory();
+    if (!step.flowchart) {
+      step.flowchartPlacement = this.flowchartPlacement(step);
+      step.flowchart = { nodes: [], edges: [] };
+    }
+    return step.flowchart;
+  }
+
+  flowchartChanged() {
+    this.pendingSave = true;
+    this.saveStepDebounced();
+    this.renderFlowchartProps();
+    this.syncMermaidText();
+    if (this.currentStep?.flowchartPlacement === 'block') this.renderBlocksPanel();
+  }
+
+  setFlowchartPlacement(placement) {
+    const step = this.currentStep;
+    if (!step) return;
+    this.pushCanvasHistory();
+    step.flowchartPlacement = placement === 'block' ? 'block' : 'visual';
+    if (!step.flowchart) step.flowchart = { nodes: [], edges: [] };
+    this.pendingSave = true;
+    this.saveStepDebounced();
+    this.renderBlocksPanel();
+  }
+
+  /** Blocks → + Flowchart: the step's flowchart, shown as a block after its text. */
+  addFlowchartBlock() {
+    const step = this.currentStep;
+    if (!step) return;
+    if (!step.flowchart || step.flowchartPlacement !== 'block') this.setFlowchartPlacement('block');
+    this.setCanvasMode('flowchart');
+  }
+
+  removeFlowchart() {
+    const step = this.currentStep;
+    if (!step?.flowchart) return;
+    this.pushCanvasHistory();
+    step.flowchart = null;
+    this.pendingSave = true;
+    this.saveStepDebounced();
+    this.canvasMode = step.image ? 'image' : 'flowchart';
+    this.renderCanvas();
+    this.renderBlocksPanel();
+    this.onToast(`${t('Flowchart removed.')} ${t('Press Ctrl+Z to undo.')}`);
+  }
+
+  /** The details pane while the flowchart is shown: the selected shape or arrow. */
+  renderFlowchartProps() {
+    const box = this.dom.flowProps;
+    clearNode(box);
+    const step = this.currentStep;
+    const editor = this.flowEditor;
+    if (!step || !editor) return;
+    const graph = step.flowchart || { nodes: [], edges: [] };
+    const sel = editor.selected;
+    const item = sel && (sel.kind === 'node' ? graph.nodes : graph.edges).find((i) => i.id === sel.id);
+    if (!item) {
+      box.append(el('p.muted', {}, t('Pick a shape in the toolbar and click the canvas. Use Connect to draw arrows between shapes. Double-click a shape or arrow to change its text.')));
+      // The whole chart's background: white unless chosen, or transparent.
+      const proxy = { id: `flow-bg-${step.stepId}`, type: 'rect', style: { fill: graph.background || '#ffffff' } };
+      box.append(labeledRow(t('Background'), this.colorPicker(proxy, (picked, { record = true } = {}) => {
+        if (record) this.pushCanvasHistory();
+        if (!step.flowchart) {
+          step.flowchartPlacement = this.flowchartPlacement(step);
+          step.flowchart = { nodes: [], edges: [] };
+        }
+        if (picked === '#ffffff') delete step.flowchart.background;
+        else step.flowchart.background = picked;
+        this.pendingSave = true;
+        this.saveStepDebounced();
+        editor.render();
+        if (step.flowchartPlacement === 'block') this.renderBlocksPanel();
+      }, { field: 'fill', label: t('Background') })));
+      return;
+    }
+    const live = () => (sel.kind === 'node' ? step.flowchart?.nodes : step.flowchart?.edges)?.find((i) => i.id === sel.id);
+    const save = ({ props = false } = {}) => {
+      this.pendingSave = true;
+      this.saveStepDebounced();
+      editor.render();
+      this.syncMermaidText();
+      if (step.flowchartPlacement === 'block') this.renderBlocksPanel();
+      if (props) this.renderFlowchartProps();
+    };
+    const edit = (apply, options) => {
+      editor.cb.beforeChange();
+      const target = live();
+      if (target) apply(target);
+      save(options);
+    };
+
+    const label = el('input', { type: 'text', value: item.label || '', maxLength: sel.kind === 'node' ? 300 : 80 });
+    let armed = false;
+    label.addEventListener('focus', () => { armed = false; });
+    label.addEventListener('input', () => {
+      // One undo step per focus, not per key.
+      if (!armed) { this.pushCanvasHistory(); armed = true; }
+      const target = live();
+      if (target) target.label = label.value;
+      save();
+    });
+    box.append(labeledRow(sel.kind === 'node' ? t('Text') : t('Arrow label'), label));
+
+    if (sel.kind === 'edge') {
+      const style = makeSelect(item.style || 'arrow', [
+        { value: 'arrow', label: t('Arrow') },
+        { value: 'double', label: t('Double arrow') },
+        { value: 'line', label: t('Line') },
+        { value: 'dashed', label: t('Dashed arrow') },
+        { value: 'dashedLine', label: t('Dashed line') },
+        { value: 'dotted', label: t('Dotted line') },
+      ]);
+      style.addEventListener('change', () => edit((e) => {
+        if (style.value === 'arrow') delete e.style;
+        else e.style = style.value;
+      }));
+      box.append(labeledRow(t('Style'), style));
+      return;
+    }
+
+    const shape = el('select', {}, FLOW_SHAPE_GROUPS().map(([group, shapes]) => el('optgroup', { label: group },
+      shapes.map(([value, name]) => el('option', { value, selected: value === item.shape }, name)))));
+    shape.addEventListener('change', () => edit((n) => { n.shape = shape.value; }));
+    box.append(labeledRow(t('Shape'), shape));
+
+    // The same color menus as annotations. Each picker reads `style[field]` of the object it is given.
+    const colors = [
+      ['fill', t('Fill'), item.fill || window.StepForgeFlowchart.defaultColors(item.shape).fill],
+      ['stroke', t('Border'), item.stroke || window.StepForgeFlowchart.defaultColors(item.shape).stroke],
+      ['textColor', t('Text color'), item.textColor || '#111827'],
+    ];
+    for (const [field, name, value] of colors) {
+      // Fill and border may be transparent (the picker offers that for a 'fill').
+      const pickerField = field === 'textColor' ? 'textColor' : 'fill';
+      const proxy = { id: `flow-${field}-${item.id}`, type: 'rect', style: { [pickerField]: value } };
+      // Fill also offers Image…; picking a color takes the picture out.
+      const fill = field === 'fill';
+      box.append(labeledRow(name, this.colorPicker(proxy, (picked, { record = true } = {}) => {
+        if (record) this.pushCanvasHistory();
+        const target = live();
+        if (target) {
+          target[field] = picked;
+          if (fill && target.image && record) delete target.image;
+        }
+        save({ props: fill && record && Boolean(item.image) });
+      }, { field: pickerField, label: name, ...(fill ? { onImage: () => this.chooseFlowchartImage(sel.id), image: Boolean(item.image) } : {}) })));
+    }
+
+    // A picture inside the shape (Fill → Image…), clipped to it and never stretched.
+    if (item.image) {
+      const fit = makeSelect(item.image.fit || 'contain', [
+        { value: 'contain', label: t('Fit inside') },
+        { value: 'cover', label: t('Fill shape') },
+      ]);
+      fit.setAttribute('aria-label', t('Image fit'));
+      fit.addEventListener('change', () => edit((n) => { if (n.image) n.image.fit = fit.value; }));
+      box.append(labeledRow(t('Image'), el('div.row.flowchart-image-row', {}, fit,
+        el('button', { type: 'button', onClick: () => edit((n) => { delete n.image; }, { props: true }) }, t('Remove image')))));
+    }
+
+    const refs = this.flowchartStepRefs();
+    const target = makeSelect(item.stepId || '', [{ value: '', label: t('None') },
+      ...refs.map((r) => ({ value: r.stepId, label: `${r.number}. ${r.title || t('Untitled step')}`.slice(0, 80) }))]);
+    target.addEventListener('change', () => edit((n) => { n.stepId = target.value || null; }, { props: true }));
+    box.append(labeledRow(t('Links to step'), target));
+    if (item.stepId && this.stepMap.has(item.stepId)) {
+      box.append(el('button', { type: 'button', onClick: () => this.selectStep(item.stepId) }, t('Go to step')));
+    }
+  }
+
+  /**
+   * Shape → Image → Choose image…: an image file, scaled down to at most
+   * 800px and stored in the flowchart as a data URL.
+   */
+  async chooseFlowchartImage(nodeId) {
+    let picked;
+    try {
+      picked = await api.step.pickImage({ purpose: 'shape' });
+    } catch (err) {
+      this.onToast(err.message || t('Could not choose an image.'), { error: true });
+      return;
+    }
+    if (!picked) return;
+    const img = new Image();
+    img.src = `data:image/png;base64,${picked.imageBase64}`;
+    try { await img.decode(); } catch { this.onToast(t('Could not choose an image.'), { error: true }); return; }
+    const scale = Math.min(1, 800 / Math.max(img.naturalWidth, img.naturalHeight));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+    let src = canvas.toDataURL('image/png');
+    if (src.length > 1500000) {
+      // A photo: JPEG on white is far smaller.
+      const flat = document.createElement('canvas');
+      flat.width = canvas.width;
+      flat.height = canvas.height;
+      const ctx = flat.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, flat.width, flat.height);
+      ctx.drawImage(canvas, 0, 0);
+      src = flat.toDataURL('image/jpeg', 0.88);
+    }
+    const step = this.currentStep;
+    if (!step?.flowchart?.nodes.some((n) => n.id === nodeId)) return;
+    // The chart's pictures are saved with the step: keep them within its limit.
+    const others = step.flowchart.nodes.reduce((sum, n) => sum + (n.id !== nodeId && n.image ? n.image.src.length : 0), 0);
+    if (others + src.length > window.StepForgeFlowchart.MAX_CHART_IMAGE_CHARS) {
+      this.onToast(t('This flowchart has as many pictures as it can hold. Remove one, or use smaller pictures.'), { error: true });
+      return;
+    }
+    this.flowEditor.cb.beforeChange();
+    const node = step.flowchart.nodes.find((n) => n.id === nodeId);
+    node.image = { src, fit: node.image?.fit || 'contain' };
+    this.pendingSave = true;
+    this.saveStepDebounced();
+    this.flowEditor.render();
+    this.renderFlowchartProps();
+    if (step.flowchartPlacement === 'block') this.renderBlocksPanel();
+  }
+
+  /** Toolbar → More shapes: every shape, and every arrow style, as a grid of icons. */
+  openShapePalette() {
+    const trigger = this.dom.flowShapesBtn;
+    if (this.shapePalette) { this.closeShapePalette(); return; }
+    const palette = el('div.flowchart-palette', { role: 'menu', 'aria-label': t('More shapes') },
+      ...FLOW_SHAPE_GROUPS().map(([group, shapes]) => el('div.flowchart-palette-group', { role: 'group', 'aria-label': group },
+        el('div.flowchart-palette-label', {}, group),
+        el('div.flowchart-palette-grid', {}, shapes.map(([shape, name]) => el('button.flowchart-palette-item', {
+          type: 'button', role: 'menuitem', title: name, 'aria-label': name,
+          innerHTML: window.StepForgeFlowchart.shapeIcon(shape),
+          onClick: () => { this.closeShapePalette(); this.flowchartEditor()?.setTool(shape); },
+        }))))),
+      el('div.flowchart-palette-group', { role: 'group', 'aria-label': t('Lines and arrows') },
+        el('div.flowchart-palette-label', {}, t('Lines and arrows')),
+        el('div.flowchart-palette-grid', {}, FLOW_EDGE_STYLES().map(([style, name]) => el('button.flowchart-palette-item', {
+          type: 'button', role: 'menuitem', title: name, 'aria-label': name, innerHTML: edgeStyleIcon(style),
+          onClick: () => { this.closeShapePalette(); this.flowchartEditor()?.setTool('connect', { edgeStyle: style }); },
+        })))));
+    const rect = trigger.getBoundingClientRect();
+    Object.assign(palette.style, { left: `${Math.max(6, rect.left)}px`, top: `${rect.bottom + 4}px` });
+    document.body.append(palette);
+    const outside = (e) => { if (!palette.contains(e.target) && !trigger.contains(e.target)) this.closeShapePalette(); };
+    const keys = (e) => { if (e.key === 'Escape') { e.stopPropagation(); this.closeShapePalette(); trigger.focus(); } };
+    document.addEventListener('pointerdown', outside, true);
+    palette.addEventListener('keydown', keys);
+    this.shapePalette = { palette, outside };
+    trigger.setAttribute('aria-expanded', 'true');
+    palette.querySelector('button')?.focus();
+  }
+
+  closeShapePalette() {
+    if (!this.shapePalette) return;
+    document.removeEventListener('pointerdown', this.shapePalette.outside, true);
+    this.shapePalette.palette.remove();
+    this.shapePalette = null;
+    this.dom.flowShapesBtn.setAttribute('aria-expanded', 'false');
+  }
+
+  /** AI ▾ → Create a flowchart: a flowchart of the whole guide, put on this step. */
+  async generateFlowchartWithAi() {
+    const step = this.currentStep;
+    if (!step || this.aiRun) return;
+    if (!this.isAiEnabled()) {
+      this.onToast(t('Turn on AI in Settings first.'), { error: true });
+      return;
+    }
+    if (step.flowchart?.nodes?.length && !(await confirmDialog(t('Replace this step’s flowchart with a new one from AI?')))) return;
+    if (this.pendingSave) await this.flushStep();
+    const run = { cancelled: false, progress: '' };
+    this.aiRun = run;
+    this.emitMeta();
+    try {
+      const result = await api.ai.flowchart({ guideId: this.guideId });
+      if (run.cancelled) return;
+      if (!result || !result.ok) {
+        this.onToast(result?.reason || t('AI could not create a flowchart.'), { error: true });
+        return;
+      }
+      if (this.currentStep !== step) return;
+      this.pushCanvasHistory();
+      step.flowchartPlacement = this.flowchartPlacement(step);
+      step.flowchart = result.flowchart;
+      await this.flushStep();
+      this.canvasMode = 'flowchart';
+      this.renderCanvas();
+      this.renderBlocksPanel();
+      this.onToast(`${t('AI created a flowchart.')} ${t('Press Ctrl+Z to undo.')}`);
+    } catch (err) {
+      if (!run.cancelled) this.onToast(err.message || t('AI could not create a flowchart.'), { error: true });
+    } finally {
+      if (this.aiRun === run) this.aiRun = null;
+      this.emitMeta();
+    }
   }
 
   renderAnnotationPanel() {
@@ -2082,7 +2880,11 @@ class GuideEditor {
     });
   }
 
-  colorPicker(ann, onPick, { field = 'fill', label = t('Fill') } = {}) {
+  /**
+   * …and, for a flowchart shape's fill, `onImage` adds Image… to the menu
+   * (`image` is true while the shape shows a picture).
+   */
+  colorPicker(ann, onPick, { field = 'fill', label = t('Fill'), onImage = null, image = false } = {}) {
     const allowTransparent = field === 'fill' && CLEARABLE_FILL_TYPES.has(ann.type);
     const isNone = (fill) => !fill || fill === 'transparent';
     // A tooltip without a fill is drawn #1F2937 and text without a color white (canvas.js, core/raster.js).
@@ -2093,6 +2895,11 @@ class GuideEditor {
 
     const swatch = el('button.fill-swatch', { type: 'button', 'aria-haspopup': 'menu', 'aria-expanded': 'false' });
     const showCurrent = () => {
+      if (image) {
+        swatch.replaceChildren(el('span.fill-chip.image', { innerHTML: IMAGE_ICON }), el('span.fill-name', {}, t('Image')));
+        swatch.setAttribute('aria-label', `${label}: ${t('Image')}`);
+        return;
+      }
       swatch.replaceChildren(chip(current), el('span.fill-name', {}, name(current)));
       swatch.setAttribute('aria-label', `${label}: ${name(current)}`);
     };
@@ -2157,6 +2964,12 @@ class GuideEditor {
           custom.click();
         },
       }, t('Custom color…')));
+      if (onImage) {
+        popover.append(el('button.fill-item', {
+          type: 'button', role: 'menuitem', tabIndex: -1,
+          onClick: () => { close({ focus: true }); onImage(); },
+        }, el('span.fill-chip.image', { innerHTML: IMAGE_ICON }), image ? t('Change image…') : t('Image…')));
+      }
       popover.hidden = false;
       swatch.setAttribute('aria-expanded', 'true');
       document.addEventListener('pointerdown', onOutside, true);
@@ -2271,6 +3084,11 @@ class GuideEditor {
   }
 
   applyZoomShortcut(kind) {
+    if (this.canvasMode === 'flowchart' && this.flowEditor && this.currentStep) {
+      const zoom = this.flowEditor.zoom;
+      this.flowEditor.setZoom(kind === 'in' ? zoom * 1.25 : kind === 'out' ? zoom / 1.25 : 1);
+      return true;
+    }
     if (kind === 'in') {
       this.setZoom(Math.min(3, (Number(this.currentZoom) || 1) + 0.25));
       return true;
@@ -4138,11 +4956,25 @@ class GuideEditor {
         const selectedText = window.getSelection().toString();
         const text = selectedText || t('Text');
         document.execCommand('insertText', false, `[${text}](Link)`);
+        // Select "Link" so the address can be typed over it; the link turns
+        // into a real one when the caret leaves it (linkifyDescription).
+        const sel = window.getSelection();
+        const node = sel.focusNode;
+        if (node && node.nodeType === Node.TEXT_NODE && sel.focusOffset >= 5) {
+          const range = document.createRange();
+          range.setStart(node, sel.focusOffset - 5);
+          range.setEnd(node, sel.focusOffset - 1);
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
         break;
       }
       case 'removeFormat':
         document.execCommand('removeFormat');
         break;
+      case 'insertStep':
+        this.openStepLinkMenu();
+        return;
       default:
         break;
     }
@@ -4152,6 +4984,208 @@ class GuideEditor {
       this.saveStepDebounced();
     }
     this.updateToolbarState();
+  }
+
+  /**
+   * Description → Step: pick a step and insert a link to it, shown as
+   * "Step 3". The link keeps the step's permanent ID (href="step:<id>"), so
+   * the number follows the step when steps move; exports renumber it too.
+   */
+  openStepLinkMenu() {
+    const editor = this.dom.descEditor;
+    const trigger = this.dom.richToolbar.querySelector('[data-action="insertStep"]');
+    // The caret as a text offset: an autosave may re-render the description
+    // while the menu is open, which would strand a saved Range.
+    const selection = window.getSelection();
+    let caret = null;
+    if (selection.rangeCount && editor.contains(selection.anchorNode)) {
+      const before = document.createRange();
+      before.selectNodeContents(editor);
+      before.setEnd(selection.getRangeAt(0).endContainer, selection.getRangeAt(0).endOffset);
+      caret = before.toString().length;
+    }
+    const numbers = stepNumberMap(this.steps);
+    const items = this.steps
+      .filter((s) => s.stepId !== this.currentStep?.stepId)
+      .map((s) => ({
+        label: `${numbers.get(s.stepId)}. ${s.title || t('Untitled step')}`.slice(0, 90),
+        action: () => this.insertStepLink(s.stepId, numbers.get(s.stepId), caret),
+      }));
+    if (!items.length) {
+      this.onToast(t('Add another step first.'));
+      return;
+    }
+    const rect = trigger.getBoundingClientRect();
+    contextMenu(rect.left, rect.bottom + 4, items, { trigger });
+  }
+
+  insertStepLink(stepId, number, caret) {
+    const editor = this.dom.descEditor;
+    if (!this.currentStep) return;
+    editor.focus();
+    // Put the caret back at its text offset (or at the end).
+    const range = document.createRange();
+    range.selectNodeContents(editor);
+    range.collapse(false);
+    if (caret != null) {
+      const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+      let left = caret;
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        if (left <= node.length) { range.setStart(node, left); range.collapse(true); break; }
+        left -= node.length;
+      }
+    }
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    const label = escapeHtml(t('Step {number}', { number }));
+    document.execCommand('insertHTML', false, `<a href="step:${stepId}" data-step-id="${stepId}">${label}</a>&nbsp;`);
+    this.currentStep.descriptionHtml = editor.innerHTML;
+    this.pendingSave = true;
+    this.saveStepDebounced();
+  }
+
+  /** Show each description step link with its target's current number. */
+  refreshStepLinks() {
+    const numbers = stepNumberMap(this.steps);
+    const links = [this.dom.descEditor, this.dom.descPreview].flatMap((box) => [...(box?.querySelectorAll?.('a[data-step-id]') || [])]);
+    for (const link of links) {
+      const number = numbers.get(link.dataset.stepId);
+      const text = number ? link.textContent.replace(/\d+(?:\.\d+)*(?!.*\d)/, number) : link.textContent;
+      if (text !== link.textContent) link.textContent = text;
+      link.classList.toggle('missing-step', !number);
+      link.title = number ? t('Ctrl+click to open this step.') : t('This step was deleted.');
+    }
+    for (const link of this.dom.descEditor.querySelectorAll?.('a[href]:not([data-step-id])') || []) {
+      link.title = t('Ctrl+click to open this link.');
+    }
+  }
+
+  /**
+   * Rich text: turn typed [text](address) and bare web or mail addresses
+   * (https:// optional) into real links, except the one the caret is still in. A bare address becomes a
+   * link once a space follows it. `caret: false` converts everything (the
+   * editor lost focus).
+   * True when something changed.
+   */
+  linkifyDescription({ caret = true } = {}) {
+    const markdown = window.StepForgeMarkdown;
+    if (!markdown) return false;
+    const editor = this.dom.descEditor;
+    const sel = window.getSelection();
+    const caretNode = caret && sel.rangeCount && sel.isCollapsed ? sel.focusNode : null;
+    const caretOffset = caretNode ? sel.focusOffset : -1;
+    const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+    const nodes = [];
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (!node.parentElement?.closest('a, code, pre')) nodes.push(node);
+    }
+    for (const node of nodes) {
+      const text = node.data;
+      // [text](address) first, then bare addresses outside those.
+      const candidates = [];
+      for (const m of text.matchAll(/\[([^\]\n]+)\]\(([^\s)]+)\)/g)) {
+        const href = /^(https?:|mailto:)/i.test(m[2]) ? m[2] : markdown.withScheme(m[2]);
+        if (/^(https?:|mailto:)/i.test(href)) candidates.push({ start: m.index, end: m.index + m[0].length, url: href, text: m[1], bare: false });
+      }
+      for (const m of markdown.findLinks(text)) {
+        if (!candidates.some((c) => m.start < c.end && m.end > c.start)) candidates.push({ ...m, bare: true });
+      }
+      candidates.sort((a, b) => a.start - b.start);
+      for (const c of candidates) {
+        if (node === caretNode && !c.bare && caretOffset > c.start && caretOffset < c.end) continue;
+        if (c.bare) {
+          // A bare address is done once a space follows (after any closing
+          // punctuation), or at the end of the text once the caret has left.
+          const tail = /^[.,;:!?)\]'"]*(\s|$)/.exec(text.slice(c.end));
+          if (!tail || (tail[1] === '' && node === caretNode) || (node === caretNode && caretOffset >= c.start && caretOffset <= c.end)) continue;
+        }
+        const after = node.splitText(c.end);
+        const linkText = node.splitText(c.start);
+        const link = document.createElement('a');
+        link.href = c.url;
+        link.textContent = c.text;
+        linkText.replaceWith(link);
+        if (node === caretNode && caretOffset >= c.end) {
+          const range = document.createRange();
+          range.setStart(after, caretOffset - c.end);
+          range.collapse(true);
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
+        // The text after the new link may hold another one.
+        this.linkifyDescription({ caret });
+        return true;
+      }
+    }
+    return false;
+  }
+
+  linkifyAndSave(options) {
+    if (!this.currentStep || this.descriptionMode() !== 'rich' || !this.linkifyDescription(options)) return;
+    this.currentStep.descriptionHtml = this.dom.descEditor.innerHTML;
+    this.pendingSave = true;
+    this.saveStepDebounced();
+  }
+
+  // ---- Description format: Rich text or Markdown ----
+
+  /** 'markdown' for a description written in Markdown (it keeps its source), else 'rich'. */
+  descriptionMode(step = this.currentStep) {
+    return typeof step?.descriptionMarkdown === 'string' ? 'markdown' : 'rich';
+  }
+
+  /** Markdown as the sanitized HTML that is stored and exported. */
+  markdownToHtml(source) {
+    const markdown = window.StepForgeMarkdown;
+    const sanitize = window.StepForgeSanitize;
+    return markdown && sanitize ? sanitize.sanitizeHtml(markdown.render(source)) : '';
+  }
+
+  /** Show the rich-text editor, or the Markdown source (or its preview). */
+  syncDescriptionMode() {
+    if (!this.dom.descModeSelect) return;
+    const step = this.currentStep;
+    const markdown = this.descriptionMode(step) === 'markdown';
+    const previewing = markdown && Boolean(this.descPreviewing);
+    this.dom.descModeSelect.value = markdown ? 'markdown' : 'rich';
+    this.dom.descModeSelect.disabled = !step;
+    this.dom.richToolbar.hidden = markdown;
+    this.dom.descEditor.hidden = markdown;
+    this.dom.descSource.hidden = !markdown || previewing;
+    this.dom.descPreview.hidden = !previewing;
+    this.dom.descPreviewBtn.hidden = !markdown;
+    this.dom.descPreviewBtn.classList.toggle('active', previewing);
+    this.dom.descPreviewBtn.setAttribute('aria-pressed', String(previewing));
+    if (markdown && document.activeElement !== this.dom.descSource) this.dom.descSource.value = step.descriptionMarkdown;
+    if (previewing) this.dom.descPreview.innerHTML = step.descriptionHtml || '';
+  }
+
+  /**
+   * Description → Rich text / Markdown. Switching keeps the content: rich text
+   * becomes its Markdown, and Markdown is already shown as rich text.
+   */
+  async setDescriptionMode(mode) {
+    const step = this.currentStep;
+    if (!step || mode === this.descriptionMode(step)) return;
+    this.pushCanvasHistory('description');
+    if (mode === 'markdown') {
+      try {
+        step.descriptionMarkdown = await api.step.descriptionToMarkdown({ html: step.descriptionHtml || '' });
+      } catch (err) {
+        this.onToast(err.message, { error: true });
+        this.syncDescriptionMode();
+        return;
+      }
+    } else {
+      delete step.descriptionMarkdown;
+      this.dom.descEditor.innerHTML = step.descriptionHtml || '';
+    }
+    this.descPreviewing = false;
+    this.pendingSave = true;
+    this.saveStepDebounced();
+    this.syncDescriptionMode();
+    this.refreshStepLinks();
   }
 
   onDocumentKeyDown(e) {
@@ -4183,6 +5217,16 @@ class GuideEditor {
       e.preventDefault();
       this.saveAll();
       return;
+    }
+    // While the flowchart is shown, plain keys are the flowchart's (and the
+    // image tools' letter shortcuts are off).
+    if (this.canvasMode === 'flowchart' && this.currentStep && !isEditableTarget(e.target) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      const onChart = document.activeElement === this.dom.flowSurface;
+      if (onChart && this.flowEditor?.handleKey(e)) {
+        e.preventDefault();
+        return;
+      }
+      if (TOOL_KEYS[e.key.toLowerCase()]) return;
     }
     if (e.key === 'Escape' && !isEditableTarget(e.target)) {
       // Escape deselects, or puts down a drawing tool; Delete is the destructive key.

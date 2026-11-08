@@ -1,0 +1,337 @@
+'use strict';
+
+const fs = require('node:fs');
+const path = require('node:path');
+const test = require('node:test');
+const assert = require('node:assert/strict');
+
+const { makeTmpDir, rmrf } = require('./helpers');
+const { GuideStore } = require('../../core/store');
+const { Settings } = require('../../core/settings');
+const { encodePng } = require('../../core/png');
+const { unzipSync } = require('../../core/zip');
+const { createImage } = require('../../core/raster');
+const flow = require('../../core/flowchart');
+const { parseFlowchart } = require('../../core/ai-flowchart');
+const { prepareExportImages, flowchartImageKey } = require('../../core/image-format');
+const { buildRenderAst } = require('../../core/renderast');
+const { runExport } = require('../../exporters');
+const { createAgentTools } = require('../../core/agent-tools');
+
+const CHART = {
+  nodes: [
+    { id: 'a', shape: 'terminal', label: 'Start', x: 40, y: 40 },
+    { id: 'b', shape: 'decision', label: 'Have an account?', x: 40, y: 140 },
+    { id: 'c', shape: 'process', label: 'Sign in', x: 40, y: 300 },
+  ],
+  edges: [{ id: 'e1', from: 'a', to: 'b' }, { id: 'e2', from: 'b', to: 'c', label: 'Yes' }],
+};
+
+function library(t) {
+  // shot: a step with a screenshot; second: a text-only step.
+  const dir = makeTmpDir('flowcharts');
+  t.after(() => rmrf(dir));
+  const store = new GuideStore(dir);
+  const guide = store.createGuide({ title: 'Accounts' });
+  const shot = store.addStep(guide.guideId, { title: 'Open the site' }, encodePng(createImage(40, 20, [200, 200, 200, 255])), { width: 40, height: 20 });
+  const second = store.addStep(guide.guideId, { title: 'Sign in' });
+  return { dir, store, guide, shot, second };
+}
+
+test('a stored flowchart is cleaned: bad shapes, duplicate ids and dangling arrows are fixed or dropped', () => {
+  const g = flow.normalizeFlowchart({
+    nodes: [{ id: 'a', shape: 'star', label: 'One' }, { id: 'a', label: 'Two' }, { id: 'c', label: 'x'.repeat(500), stepId: '../bad' }],
+    edges: [{ from: 'a', to: 'c' }, { from: 'a', to: 'missing' }, { from: 'c', to: 'c' }],
+  });
+  assert.equal(g.nodes.length, 3);
+  assert.equal(g.nodes[0].shape, 'process');
+  assert.notEqual(g.nodes[1].id, 'a');
+  assert.equal(g.nodes[2].label.length, 300);
+  assert.equal(g.nodes[2].stepId, null);
+  assert.equal(g.edges.length, 1);
+  assert.equal(flow.normalizeFlowchart(null), null);
+});
+
+test('shapes may sit left of and above 0,0, and the export still frames them all', () => {
+  const graph = flow.normalizeFlowchart({
+    nodes: [{ id: 'a', shape: 'process', label: 'Left', x: -300, y: -120 }, { id: 'b', shape: 'process', label: 'Right', x: 100, y: 100 }],
+    edges: [{ id: 'e', from: 'a', to: 'b' }],
+  });
+  assert.deepEqual(graph.nodes.map((n) => [n.x, n.y]), [[-300, -120], [100, 100]]);
+  const [vx, vy] = /viewBox="(-?[\d.]+) (-?[\d.]+)/.exec(flow.toSvg(graph, {})).slice(1).map(Number);
+  assert.ok(vx <= -300 && vy <= -120);
+});
+
+test('chart background: white by default, any color (with light lines on dark), or transparent', () => {
+  assert.match(flow.toSvg(CHART), /<rect [^>]*fill="#ffffff"\/>/);
+  const dark = flow.toSvg({ ...CHART, background: '#111827' });
+  assert.match(dark, /<rect [^>]*fill="#111827"\/>/);
+  assert.match(dark, /stroke="#cbd5e1"/);
+  const clear = flow.toSvg({ ...CHART, background: 'transparent' });
+  assert.doesNotMatch(clear, /<rect [^>]*fill="#ffffff"\/><g>/);
+  assert.equal(flow.normalizeFlowchart({ ...CHART, background: 'url(evil)' }).background, undefined);
+  assert.equal(flow.arrange({ ...CHART, background: '#123456' }).background, '#123456');
+});
+
+test('a chart keeps pictures up to its limit, and its saved size and pictures reach the export', () => {
+  const pic = (n) => `data:image/png;base64,${'A'.repeat(n)}`;
+  const big = 2.5 * 1024 * 1024;
+  const g = flow.normalizeFlowchart({ nodes: ['a', 'b', 'c', 'd', 'e'].map((id, i) => ({ id, label: id, x: i * 200, y: 0, image: { src: pic(big) } })), edges: [] });
+  // 12 MB a chart: four 2.5 MB pictures stay, the fifth is dropped.
+  assert.deepEqual(g.nodes.map((n) => Boolean(n.image)), [true, true, true, true, false]);
+  const resized = flow.toSvg({ nodes: [{ id: 'a', shape: 'process', label: 'Wide', x: 0, y: 0, w: 400, h: 200 }], edges: [] }, { scale: 1, minWidth: 0 });
+  assert.match(resized, /width="448"/);
+});
+
+test('arrange: side inputs sit next to what they feed, notes beside their shape, and lines do not cross', () => {
+  const n = (id, shape = 'process') => ({ id, shape, label: id });
+  const g = flow.arrange({
+    nodes: [n('start', 'terminal'), n('ask', 'decision'), n('yes'), n('no'), n('merge'), n('portal', 'cloud'), n('note', 'note'), n('end', 'terminal')],
+    edges: [
+      { id: 'e1', from: 'start', to: 'ask' }, { id: 'e2', from: 'ask', to: 'yes', label: 'Yes' }, { id: 'e3', from: 'ask', to: 'no', label: 'No' },
+      { id: 'e4', from: 'yes', to: 'merge' }, { id: 'e5', from: 'no', to: 'merge' }, { id: 'e6', from: 'merge', to: 'end' },
+      { id: 'e7', from: 'portal', to: 'merge' }, { id: 'e8', from: 'note', to: 'ask', style: 'dashedLine' },
+    ],
+  });
+  const at = new Map(g.nodes.map((node) => [node.id, flow.nodeBox(node)]));
+  // The side input is one row above what it feeds, not up with Start.
+  assert.ok(at.get('portal').cy > at.get('ask').cy && at.get('portal').cy < at.get('merge').cy);
+  // The note is on its shape's row, to its right.
+  assert.equal(Math.round(at.get('note').cy), Math.round(at.get('ask').cy));
+  assert.ok(at.get('note').x > at.get('ask').x + at.get('ask').w);
+  // Yes and No are side by side, in the order they were drawn; the merge is centered under them.
+  assert.equal(Math.round(at.get('yes').cy), Math.round(at.get('no').cy));
+  assert.ok(at.get('yes').cx < at.get('no').cx);
+  // No shapes overlap.
+  const boxes = [...at.values()];
+  for (const a of boxes) for (const b of boxes) {
+    if (a !== b) assert.ok(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y);
+  }
+});
+
+test('arrange puts each node one row below the node that leads to it, without overlaps', () => {
+  const g = flow.arrange({
+    nodes: [{ id: 'd', shape: 'decision', label: 'Q?' }, { id: 'y', label: 'Yes path' }, { id: 'n', label: 'No path' }],
+    edges: [{ from: 'd', to: 'y' }, { from: 'd', to: 'n' }],
+  });
+  const [d, y, n] = g.nodes;
+  assert.ok(y.y > d.y && n.y === y.y);
+  assert.ok(Math.abs(y.x - n.x) >= flow.nodeBox(y).w);
+});
+
+test('the SVG escapes labels and shows a linked node’s current step number', () => {
+  const svg = flow.toSvg({ nodes: [{ id: 'a', label: '<script>&', stepId: 's2' }], edges: [] }, { steps: [{ stepId: 's2', number: '4' }] });
+  assert.match(svg, /&lt;script&gt;&amp;/);
+  assert.doesNotMatch(svg, /<script/);
+  assert.match(svg, /→ Step 4/);
+});
+
+test('AI output becomes a laid-out flowchart; unknown step ids are dropped and "type" is read as the shape', () => {
+  const g = parseFlowchart({ nodes: [{ id: 'n1', type: 'decision', label: 'Q', stepId: 'nope' }, { id: 'n2', label: 'Do it', stepId: 's1' }], edges: [{ from: 'n1', to: 'n2', label: 'Yes' }] }, [{ stepId: 's1' }]);
+  assert.equal(g.nodes[0].shape, 'decision');
+  assert.equal(g.nodes[0].stepId, null);
+  assert.equal(g.nodes[1].stepId, 's1');
+  assert.throws(() => parseFlowchart({ nodes: [] }, []), /did not return a flowchart/);
+});
+
+test('steps save their flowchart and where it goes', (t) => {
+  const { store, guide, second } = library(t);
+  store.saveStep(guide.guideId, { ...store.getStep(guide.guideId, second.stepId), flowchart: CHART, flowchartPlacement: 'block' });
+  const saved = store.getStep(guide.guideId, second.stepId);
+  assert.deepEqual(saved.flowchart.nodes.map((n) => n.id), ['a', 'b', 'c']);
+  assert.equal(saved.flowchartPlacement, 'block');
+});
+
+test('exports: a main-visual flowchart replaces the screenshot; a block flowchart follows the step text', async (t) => {
+  const { dir, store, guide, shot, second } = library(t);
+  store.saveStep(guide.guideId, { ...store.getStep(guide.guideId, shot.stepId), flowchart: CHART, flowchartPlacement: 'visual' });
+  store.saveStep(guide.guideId, { ...store.getStep(guide.guideId, second.stepId), flowchart: CHART, flowchartPlacement: 'block' });
+  const images = await prepareExportImages(store, guide.guideId);
+  assert.ok(images.get(flowchartImageKey(shot.stepId)).length > 1000);
+  const ast = buildRenderAst(store, guide.guideId, { images });
+  const [first, next] = ast.steps;
+  assert.equal(first.image.flowchart, true);
+  assert.deepEqual(first.annotations, []);
+  assert.match(first.altText, /^Flowchart for step 1/);
+  assert.equal(next.image, null);
+  assert.equal(next.blocks.at(-1).kind, 'flowchart');
+  assert.ok(next.flowchartImage.png);
+
+  const out = path.join(dir, 'out');
+  fs.mkdirSync(out);
+  const html = fs.readFileSync(runExport('html-simple', ast, out).file, 'utf8');
+  assert.equal((html.match(/data:image\/png;base64/g) || []).length, 2);
+  assert.match(html, /alt="Flowchart for step 2/);
+  const md = fs.readFileSync(runExport('markdown', ast, out).file, 'utf8');
+  assert.match(md, /-flowchart\.png\)/);
+  for (const format of ['pdf', 'docx', 'json']) assert.ok(fs.statSync(runExport(format, ast, out).file).size > 0, format);
+  // PowerPoint: the block flowchart is on its step's slide.
+  assert.equal(runExport('pptx', ast, out).imageCount, 2);
+});
+
+test('a flowchart block goes where it is set, like a text block (after the screenshot by default)', async (t) => {
+  const { dir, store, guide, shot } = library(t);
+  const base = { ...store.getStep(guide.guideId, shot.stepId), flowchart: CHART, flowchartPlacement: 'block', descriptionHtml: '<p>Describe it.</p>' };
+  const out = path.join(dir, 'out');
+  fs.mkdirSync(out);
+  const orderIn = async (position) => {
+    store.saveStep(guide.guideId, { ...store.getStep(guide.guideId, shot.stepId), ...base, ...(position ? { flowchartPosition: position } : {}) });
+    const images = await prepareExportImages(store, guide.guideId);
+    const ast = buildRenderAst(store, guide.guideId, { images });
+    const html = fs.readFileSync(runExport('html-simple', ast, out).file, 'utf8');
+    const md = fs.readFileSync(runExport('markdown', ast, out).file, 'utf8');
+    assert.ok(runExport('pdf', ast, out).file);
+    const at = (text, needle) => text.indexOf(needle);
+    return {
+      html: [at(html, 'alt="Screenshot'), at(html, 'Describe it.'), at(html, 'alt="Flowchart'), at(html, '<h2>Open the site')],
+      md: [at(md, '![Screenshot'), at(md, 'Describe it.'), at(md, '![Flowchart'), at(md, '## 1. Open the site')],
+    };
+  };
+  const after = await orderIn(null);
+  assert.equal(store.getStep(guide.guideId, shot.stepId).flowchartPosition, 'after-image');
+  for (const [shotAt, , chartAt] of [after.html, after.md]) assert.ok(chartAt > shotAt);
+  const beforeDescription = await orderIn('before-description');
+  for (const [shotAt, descAt, chartAt] of [beforeDescription.html, beforeDescription.md]) assert.ok(chartAt < descAt && chartAt < shotAt);
+  const beforeTitle = await orderIn('before-title');
+  for (const [, , chartAt, titleAt] of [beforeTitle.html, beforeTitle.md]) assert.ok(chartAt < titleAt);
+});
+
+for (const placement of ['block', 'visual']) {
+  test(`exports: a ${placement} flowchart links its shape to the exported step`, async (t) => {
+    const { dir, store, guide, shot, second } = library(t);
+    const chart = { nodes: [{ id: 'a', shape: 'process', label: 'Sign in', x: 40, y: 40, stepId: second.stepId }], edges: [] };
+    store.saveStep(guide.guideId, { ...store.getStep(guide.guideId, shot.stepId), flowchart: chart, flowchartPlacement: placement });
+    const images = await prepareExportImages(store, guide.guideId);
+    const ast = buildRenderAst(store, guide.guideId, { images });
+    const chartImage = placement === 'block' ? ast.steps[0].flowchartImage : ast.steps[0].image;
+    assert.equal(chartImage.links.length, 1);
+    const [link] = chartImage.links;
+    assert.equal(link.stepId, second.stepId);
+    assert.ok(link.x > 0 && link.x + link.w < 1 && link.y > 0 && link.y + link.h < 1);
+    const out = path.join(dir, 'out');
+    fs.mkdirSync(out);
+    // PDF: a link annotation over the shape, opening at step 2's heading.
+    // No contents links: the annotation must belong to the shape itself.
+    const pdf = fs.readFileSync(runExport('pdf', ast, out, { includeToc: false, includeCover: false }).file, 'latin1');
+    assert.equal((pdf.match(/\/Subtype \/Link/g) || []).length, 1);
+    const destination = /\/Subtype \/Link[^>]*\/Dest \[(\d+) 0 R \/XYZ 0 ([\d.]+) null\]/.exec(pdf);
+    assert.ok(destination, 'the shape has a destination at a heading');
+    const bookmark = /\/Title \(2\. Sign in\)[^>]*\/Dest \[(\d+) 0 R/.exec(pdf);
+    assert.ok(bookmark, 'the target step has a bookmark');
+    assert.equal(destination[1], bookmark[1], 'the shape targets the correct step page');
+    assert.ok(Number(destination[2]) > 0 && Number(destination[2]) <= 842);
+    // HTML: a link laid over the picture.
+    for (const format of ['html-simple', 'html-rich']) {
+      const html = fs.readFileSync(runExport(format, ast, out).file, 'utf8');
+      assert.match(html, /<a class="chart-link" href="#step-2"[^>]*style="left:[\d.]+%;top:[\d.]+%/, format);
+      assert.match(html, /<section[^>]*id="step-2"/, format);
+    }
+    // Markdown and Wiki.js: a Go to line, and the heading anchor it points at.
+    for (const [format, opts] of [['markdown', {}], ['wikijs', { assetFolder: 'g' }]]) {
+      const md = fs.readFileSync(runExport(format, ast, out, opts).file, 'utf8');
+      assert.match(md, /Go to: \[Step 2: Sign in\]\(#step-2\)/, format);
+      assert.match(md, /<a id="step-2"><\/a>/, format);
+    }
+    // Word: the same line, linked to the step's bookmark.
+    const docx = runExport('docx', ast, out).file;
+    const xml = unzipSync(fs.readFileSync(docx)).find((entry) => entry.name === 'word/document.xml').data.toString('utf8');
+    assert.match(xml, /<w:hyperlink w:anchor="toc_2">.*?Step 2: Sign in/);
+    assert.match(xml, /<w:bookmarkStart[^>]*w:name="toc_2"/);
+    // Both Confluence formats use links to their own exported step anchors.
+    const confluence = runExport('confluence', ast, out, { apiFiles: true });
+    const storage = fs.readFileSync(confluence.apiPage, 'utf8');
+    assert.match(storage, /<ac:link ac:anchor="step-2">/);
+    assert.match(storage, /ac:name="anchor"><ac:parameter ac:name="">step-2<\/ac:parameter>/);
+    const confluenceXml = unzipSync(fs.readFileSync(confluence.file)).find((entry) => entry.name === 'word/document.xml').data.toString('utf8');
+    assert.match(confluenceXml, /<w:hyperlink w:anchor="step_2">/);
+    assert.match(confluenceXml, /<w:bookmarkStart[^>]*w:name="step_2"/);
+  });
+}
+
+test('publishing: a step with a screenshot and a flowchart block uploads both, under different names', async (t) => {
+  const { dir, store, guide, shot } = library(t);
+  store.saveStep(guide.guideId, { ...store.getStep(guide.guideId, shot.stepId), flowchart: CHART, flowchartPlacement: 'block' });
+  const images = await prepareExportImages(store, guide.guideId);
+  const ast = buildRenderAst(store, guide.guideId, { images });
+  const wikiOut = path.join(dir, 'wiki');
+  fs.mkdirSync(wikiOut);
+  const wiki = require('../../app/wikijs').pageFromExport(runExport('wikijs', ast, wikiOut, { assetFolder: 'guides/accounts' }).file, 'guides/accounts');
+  assert.deepEqual(wiki.assets.map((a) => a.name).sort(), ['step-001-flowchart.png', 'step-001.png']);
+  assert.match(wiki.content, /\(\/guides\/accounts\/step-001\.png\)[\s\S]*\(\/guides\/accounts\/step-001-flowchart\.png\)/);
+  const confOut = path.join(dir, 'confluence');
+  fs.mkdirSync(confOut);
+  const conf = require('../../app/confluence').pageFromExport(path.dirname(runExport('confluence', ast, confOut, { apiFiles: true }).apiPage));
+  const names = conf.attachments.map((a) => a.name);
+  assert.equal(new Set(names).size, 2);
+  for (const name of names) assert.ok(conf.body.includes(`ri:filename="${name}"`), name);
+});
+
+test('description step links show the target’s number in the export, after steps move', (t) => {
+  const { store, guide, shot, second } = library(t);
+  store.saveStep(guide.guideId, {
+    ...store.getStep(guide.guideId, shot.stepId),
+    descriptionHtml: `<p>Then see <a href="step:${second.stepId}" data-step-id="${second.stepId}">Step 2</a>.</p>`,
+  });
+  const g = store.getGuide(guide.guideId);
+  store.saveGuide({ ...g, stepsOrder: [second.stepId, shot.stepId] });
+  const ast = buildRenderAst(store, guide.guideId);
+  const linking = ast.steps.find((s) => s.stepId === shot.stepId);
+  assert.match(linking.descriptionHtml, />Step 1<\/a>/);
+  assert.match(linking.descriptionText, /Step 1/);
+});
+
+test('MCP set_flowchart lays out, saves and removes a step’s flowchart', async (t) => {
+  const { store, guide, shot, second } = library(t);
+  new Settings(store.settingsDir).set('ai.agents', { enabled: true, screenshots: true });
+  const tools = createAgentTools({ store, agentSettings: () => new Settings(store.settingsDir).get('ai.agents') });
+  const call = (args) => tools.find((tool) => tool.name === 'set_flowchart').handler(args);
+  await call({
+    guide_id: guide.guideId, step_id: shot.stepId,
+    nodes: [{ id: 's', shape: 'terminal', label: 'Start' }, { id: 'x', label: 'Sign in', step_id: second.stepId }],
+    edges: [{ from: 's', to: 'x' }],
+  });
+  const saved = store.getStep(guide.guideId, shot.stepId);
+  assert.equal(saved.flowchart.nodes[1].stepId, second.stepId);
+  assert.ok(saved.flowchart.nodes[1].y > saved.flowchart.nodes[0].y);
+  assert.equal(saved.flowchartPlacement, 'block', 'a step with a screenshot keeps it by default');
+  assert.ok(saved.image, 'the screenshot is kept');
+  const bad = await call({ guide_id: guide.guideId, step_id: shot.stepId, nodes: [{ id: 's', label: 'A' }], edges: [{ from: 's', to: 'zz' }] });
+  assert.equal(bad.isError, true);
+  assert.match(bad.content[0].text, /edge/);
+  await call({ guide_id: guide.guideId, step_id: shot.stepId, nodes: [] });
+  assert.equal(store.getStep(guide.guideId, shot.stepId).flowchart, null);
+});
+
+test('shapes keep their colors, size and picture; unsafe values are dropped', () => {
+  const png = 'data:image/png;base64,iVBORw0KGgo=';
+  const g = flow.normalizeFlowchart({
+    nodes: [
+      { id: 'a', shape: 'cylinder', label: 'DB', w: 150, h: 90, fill: '#112233', stroke: 'transparent', textColor: '#ffffff', image: { src: png, fit: 'cover' } },
+      { id: 'b', shape: 'cloud', fill: 'red', image: { src: 'https://example.com/x.png' } },
+      { id: 'c', image: { src: 'data:image/svg+xml;base64,PHN2Zz4=' } },
+    ],
+    edges: [{ from: 'a', to: 'b', style: 'dashed' }, { from: 'b', to: 'c', style: 'zigzag' }],
+  });
+  assert.deepEqual(g.nodes[0], { id: 'a', shape: 'cylinder', label: 'DB', x: 40, y: 40, stepId: null, w: 150, h: 90, fill: '#112233', stroke: 'transparent', textColor: '#ffffff', image: { src: png, fit: 'cover' } });
+  assert.equal(g.nodes[1].fill, undefined);
+  assert.equal(g.nodes[1].image, undefined, 'only embedded PNG, JPEG or GIF pictures');
+  assert.equal(g.nodes[2].image, undefined, 'no SVG pictures');
+  assert.equal(g.edges[0].style, 'dashed');
+  assert.equal(g.edges[1].style, undefined);
+
+  const svg = flow.toSvg(g);
+  assert.match(svg, /preserveAspectRatio="xMidYMid slice" clip-path="url\(#fc-clip-a\)"/, 'a picture fills its shape without stretching');
+  assert.match(svg, /fill="#112233"/);
+  assert.match(svg, /stroke-dasharray="8 5"/);
+});
+
+test('every shape draws, has a palette icon, and grows to fit its text', () => {
+  for (const shape of flow.SHAPES) {
+    const short = flow.nodeBox({ shape, label: 'Hi', x: 0, y: 0 });
+    const long = flow.nodeBox({ shape, label: 'A much longer label that needs several lines to fit inside this shape', x: 0, y: 0 });
+    assert.ok(long.h >= short.h, shape);
+    assert.ok(long.textArea.h >= long.textH, shape);
+    assert.match(flow.shapeIcon(shape), /<path d="M/, shape);
+    assert.doesNotMatch(flow.toSvg({ nodes: [{ id: 'n', shape, label: 'x' }], edges: [] }), /NaN|undefined/, shape);
+  }
+});

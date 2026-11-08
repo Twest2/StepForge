@@ -25,7 +25,8 @@ const { rasterToPng } = require('../core/image-format');
 const { usablePlaceholders, substitutePlaceholders } = require('../core/ai-placeholders');
 const { buildOrganizePrompt, planOrganize } = require('../core/ai-organize');
 const { buildBrandCssPrompt, normalizeBrandCss } = require('../core/ai-brand-css');
-const { parentMap } = require('../core/step-outline');
+const { buildFlowchartPrompt, parseFlowchart } = require('../core/ai-flowchart');
+const { parentMap, stepNumberMap } = require('../core/step-outline');
 const { systemPlaceholders } = require('../core/placeholders');
 const { OcrPool } = require('./ocr-pool');
 
@@ -875,6 +876,24 @@ class TextIntelService {
       return { ok: true, css: normalizeBrandCss(parseAiJson(raw)) };
     } catch (err) {
       return { ok: false, reason: err && err.message ? err.message : 'AI couldn’t write the CSS.' };
+    }
+  }
+
+  /** AI ▾ → Create a flowchart: a flowchart of the guide's steps (not saved). */
+  async generateFlowchart({ guideId, request = '' }) {
+    try {
+      const ready = this.readyAiConfig();
+      if (!ready.ok) return ready;
+      const guide = this.store.getGuide(guideId);
+      const map = this.store.listSteps(guideId);
+      const included = guide.stepsOrder.map((id) => map.get(id)).filter((s) => s && !s.hidden);
+      const numbers = stepNumberMap(included);
+      const steps = included.map((s) => ({ ...s, number: numbers.get(s.stepId) }));
+      const { systemPrompt, prompt } = buildFlowchartPrompt({ steps, request });
+      const raw = await this.callOllama({ provider: ready.provider, host: ready.host, model: ready.model, prompt, systemPrompt, guideId });
+      return { ok: true, flowchart: parseFlowchart(parseAiJson(raw), steps) };
+    } catch (err) {
+      return { ok: false, reason: err && err.message ? err.message : 'AI couldn’t create a flowchart.' };
     }
   }
 

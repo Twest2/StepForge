@@ -20,7 +20,7 @@ function editorContext({ api = {}, dialogs = {} } = {}) {
   return { editor };
 }
 
-const WRITE_ACTIONS = ['Write the whole guide', 'Write the whole step', 'Write the title', 'Write the description', 'Write the blocks'];
+const WRITE_ACTIONS = ['Write the whole guide', 'Write the whole step', 'Write the title', 'Write the description', 'Write the blocks', 'Create a flowchart'];
 const actionItems = (items) => items.filter((item) => item !== 'sep' && WRITE_ACTIONS.includes(item.label));
 
 test('the AI menu lists every writing action, usable only while AI is on', () => {
@@ -35,7 +35,7 @@ test('the AI menu lists every writing action, usable only while AI is on', () =>
   // Whole guide and whole step come first, then a divider, then single fields.
   editor.setSettings({ ai: { enabled: true } });
   assert.deepEqual([...editor.aiMenuItems().map((item) => (item === 'sep' ? 'sep' : item.label))],
-    [...WRITE_ACTIONS.slice(0, 2), 'sep', ...WRITE_ACTIONS.slice(2)]);
+    [...WRITE_ACTIONS.slice(0, 2), 'sep', ...WRITE_ACTIONS.slice(2, 5), 'sep', WRITE_ACTIONS[5]]);
 });
 
 test('step actions are unavailable without a selected step; a running write offers Stop instead', () => {

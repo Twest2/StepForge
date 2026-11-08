@@ -11,6 +11,7 @@
  * space meaning "inside", as in the CSS it came from ("title.class_",
  * "meta string"). flags: i = italic, n = not italic, b = bold, r = not bold.
  */
+(function (root) {
 const CODE_THEMES = {
   'atom-one-dark': {
     label: 'Atom One Dark',
@@ -432,4 +433,8 @@ const BRACKET_COLORS = {
   light: ['#0431fa', '#319331', '#7b3814'],
 };
 
-module.exports = { CODE_THEMES, BRACKET_COLORS };
+const api = { CODE_THEMES, BRACKET_COLORS };
+// Node (exports), and the renderer as a plain script (the Mermaid panel's colors).
+if (typeof module === 'object' && module.exports) module.exports = api;
+else root.StepForgeCodeThemes = api;
+})(typeof window === 'object' ? window : globalThis);

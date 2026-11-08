@@ -70,6 +70,8 @@ An agent can:
 - rewrite the guide's and each step's title, description, and blocks (notes,
   warnings, tips, and code)
 - replace a step's screenshot with a PNG file you point it to, or remove it
+- create, replace, or remove a step's flowchart, shown instead of the screenshot
+  or as a block
 - add guide and global placeholders
 - draw on screenshots (shapes, straight and curved arrows, freehand strokes,
   text, callouts, numbered badges, blurs, highlights, magnifiers, cursors, and
@@ -91,7 +93,7 @@ everything above.
 ## Undoing what an agent did
 
 Before an agent deletes, moves, or adds a step, replaces or removes a
-screenshot, or deletes blocks or annotations, StepForge saves a snapshot of the
+screenshot, sets a flowchart, or deletes blocks or annotations, StepForge saves a snapshot of the
 guide. Each one is named for what the agent was about to do, such as "before
 agent deletes step 3".
 

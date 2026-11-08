@@ -6,7 +6,8 @@ const { sanitizeHtml } = require('./sanitize');
 const { htmlToText, linkifyMarkdownLinks, deepClone } = require('./util');
 const { systemPlaceholders, resolveScopes, expandPlaceholders, expandRichPlaceholders } = require('./placeholders');
 const { decodePng } = require('./png');
-const { sniffImageFormat } = require('./image-format');
+const { sniffImageFormat, readImageSize, flowchartImageKey } = require('./image-format');
+const { hasFlowchart, linkAreas } = require('./flowchart');
 const { renderAnnotations, applyFocusedView } = require('./raster');
 const { orderedBlocks, blockText } = require('./blocks');
 const { DEFAULT_CODE_STYLE } = require('./code-highlight');
@@ -100,6 +101,8 @@ function buildRenderAst(store, guideId, { globals = {}, now = new Date(), maxSte
       altText: screenshotAltText(number, title),
       descriptionHtml: sanitizeHtml(expandDesc(step.descriptionHtml)),
       descriptionText: htmlToText(expandDesc(step.descriptionHtml)),
+      // The Markdown source, for a description written in Markdown (Markdown exports use it as is).
+      ...(typeof step.descriptionMarkdown === 'string' ? { descriptionMarkdown: expand(step.descriptionMarkdown) } : {}),
       focusedView: step.focusedView,
       annotations: (step.annotations || []).map((a) => ({ ...a, text: expand(a.text || '') })),
       textBlocks: (step.textBlocks || []).map((tb) => ({
@@ -124,6 +127,8 @@ function buildRenderAst(store, guideId, { globals = {}, now = new Date(), maxSte
         return { ...block };
       }),
       links: step.links || [],
+      flowchart: hasFlowchart(step) ? step.flowchart : null,
+      flowchartPlacement: step.flowchartPlacement || 'visual',
       image: null,
     };
     if (step.image) {
@@ -133,7 +138,55 @@ function buildRenderAst(store, guideId, { globals = {}, now = new Date(), maxSte
         if (images && images.has(absPath)) ast.image.png = images.get(absPath);
       }
     }
+    // A flowchart (drawn by prepareExportImages) either replaces the
+    // screenshot or is a block at the position chosen for it (after the
+    // screenshot unless moved), like a text block.
+    const chartPng = hasFlowchart(step) && images ? images.get(flowchartImageKey(step.stepId)) : null;
+    if (chartPng) {
+      const { width, height } = readImageSize(chartPng);
+      const chart = { png: chartPng, width, height, flowchart: true };
+      if (step.flowchartPlacement === 'block') {
+        ast.flowchartImage = chart;
+        ast.blocks.push({ kind: 'flowchart', id: 'flowchart', position: step.flowchartPosition || 'after-image', order: Number.MAX_SAFE_INTEGER });
+      } else {
+        ast.image = chart;
+        ast.annotations = [];
+        ast.focusedView = { enabled: false };
+        ast.altText = flowchartAltText(number, title);
+      }
+    }
     steps.push(ast);
+  }
+
+  // A flowchart's shapes linked to a step: where they are in its picture,
+  // so exporters can make them jump to that step.
+  const chartRefs = steps.map((s) => ({ stepId: s.stepId, number: s.number }));
+  for (const s of steps) {
+    const chart = s.image?.flowchart ? s.image : s.flowchartImage;
+    if (chart && s.flowchart) chart.links = linkAreas(s.flowchart, { steps: chartRefs });
+  }
+
+  // Step links (editor → Description → Step) keep the target's permanent ID
+  // and show its number; put in the number the target has in this export.
+  const renumber = (html) => String(html || '').replace(
+    /(<a\b[^>]*\bdata-step-id="([A-Za-z0-9_-]+)"[^>]*>)([^<]*)(<\/a>)/g,
+    (whole, open, id, label, close) => (numberOf.has(id)
+      ? `${open}${label.replace(/\d+(?:\.\d+)*(?!.*\d)/, numberOf.get(id))}${close}`
+      : whole),
+  );
+  const renumberText = (item) => {
+    if (!item.descriptionHtml || !item.descriptionHtml.includes('data-step-id')) return;
+    item.descriptionHtml = renumber(item.descriptionHtml);
+    item.descriptionText = htmlToText(item.descriptionHtml);
+  };
+  for (const ast of steps) {
+    renumberText(ast);
+    if (ast.descriptionMarkdown) {
+      ast.descriptionMarkdown = ast.descriptionMarkdown.replace(/\[([^\]\n]*)\]\(step:([A-Za-z0-9_-]+)\)/g,
+        (whole, label, id) => (numberOf.has(id) ? `[${label.replace(/\d+(?:\.\d+)*(?!.*\d)/, numberOf.get(id))}](step:${id})` : whole));
+    }
+    ast.textBlocks.forEach(renumberText);
+    ast.blocks.forEach((block) => { if (block.kind === 'text') renumberText(block); });
   }
 
   const limited = maxSteps > 0 ? steps.slice(0, maxSteps) : steps;
@@ -181,6 +234,15 @@ function buildRenderAst(store, guideId, { globals = {}, now = new Date(), maxSte
  * Decode a step's working image and burn in annotations + focused view.
  * Returns an RGBA raster image, or null for steps without images.
  */
+function flowchartAltText(number, title) {
+  return screenshotAltText(number, title).replace(/^Screenshot/, 'Flowchart');
+}
+
+/** A step's flowchart block as an RGBA raster image, or null when it has none. */
+function renderFlowchartImage(astStep) {
+  return astStep.flowchartImage ? decodePng(astStep.flowchartImage.png) : null;
+}
+
 function renderStepImage(astStep) {
   if (!astStep.image) return null;
   const bytes = astStep.image.png || fs.readFileSync(astStep.image.absPath);
@@ -192,4 +254,4 @@ function renderStepImage(astStep) {
   return applyFocusedView(annotated, astStep.focusedView);
 }
 
-module.exports = { buildRenderAst, renderStepImage, screenshotAltText };
+module.exports = { buildRenderAst, renderStepImage, renderFlowchartImage, screenshotAltText, flowchartAltText };

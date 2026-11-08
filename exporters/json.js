@@ -61,6 +61,7 @@ function exportJson(ast, outDir, template = {}) {
             : { ...block }
       )),
       links: step.links,
+      ...(step.flowchart ? { flowchart: step.flowchart, flowchartPlacement: step.flowchartPlacement, ...(step.flowchartPlacement === 'block' ? { flowchartPosition: step.blocks.find((b) => b.kind === 'flowchart')?.position || 'after-image' } : {}) } : {}),
     })),
   };
 

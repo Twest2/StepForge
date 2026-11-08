@@ -108,7 +108,21 @@ screenshot.
 
 For each step you can:
 
-- **Write a description** with bold, italics, lists, quotes, and links.
+- **Write a description** with bold, italics, lists, quotes, and links. Type
+  `[text](example.com)`, or a web address such as `example.com` followed by a
+  space, and it turns into a blue link (`https://` is optional) (the **Link** button starts one for you). **Ctrl+click** a link to
+  open it; in the Markdown preview a click opens it. Drag the corner of the box
+  to make it taller.
+  The menu beside **Description** switches between **Rich text** and
+  **Markdown**, and you can switch back and forth: rich text becomes its
+  Markdown, and Markdown shows as rich text. Markdown supports headings, lists,
+  tables, task lists (`- [x]`), code, quotes, links, strikethrough and HTML
+  such as `<kbd>`, `<details>` and `<mark>` (scripts, styles and pictures are
+  left out: an image becomes a link to it). **Preview** (blue while on) shows
+  how it looks. Markdown exports keep your Markdown as written.
+  In rich text, **Step** links to another step: pick it from the list and the description
+  shows "Step 3". The number follows the step when you move it, and exports
+  use the step's number in that export. **Ctrl+click** the link to open the step.
 - **Set a status** of *Todo*, *In progress*, or *Done* to track your review.
 - **Add blocks** for anything that isn't a screenshot:
   - **Text block** as a Note, Tip, Important, or Warning callout
@@ -139,6 +153,60 @@ A normal click toggles a single step.
 of steps, and **Ctrl+Z** brings them back. To delete without being asked,
 turn on **Settings → Editor → Dangerous deletes**. Deleting a guide always
 asks.
+
+### Flowcharts
+
+A step can have a flowchart, for procedures that branch ("Already have an
+account?"). Pick **Flowchart** in the menu at the right end of the canvas
+toolbar (or **+ Flowchart** under Blocks). The toolbar switches to flowchart
+tools:
+
+- **Step box**, **Decision** and **Start or end**: pick one, then click the
+  canvas. Type the text and press **Enter**. Double-click empty space to add a
+  step box. Ellipse, Document and Cylinder are on the toolbar too, and **More
+  shapes** has all 30 shapes (from circles to clouds, a person and block
+  arrows) plus every line and arrow style.
+- **Connect**: drag from one shape to another to draw an arrow. Arrows out of
+  a decision ask for a label such as *Yes* or *No*.
+- Drag shapes to move them, double-click a shape or arrow to change its text,
+  and press **Delete** to remove the selected one. Drag the small square at a
+  selected shape's corner to resize it. **Arrange** lays the whole chart out
+  top to bottom so lines cross as little as possible: branches sit side by
+  side, a shape that only feeds another sits just above it, and a shape joined
+  by a plain line (a note, an audit log) sits beside its shape. The zoom
+  buttons, or **Ctrl + mouse wheel**, zoom in and out (click the percentage, or
+  press **Ctrl+0**, to go back to 100%). Drag empty space (or drag with the
+  middle mouse button) to move around the canvas, in any direction.
+
+In the details pane you can change a shape's fill, border and text colors (the
+same color menus as annotations), or link it to a step of the guide; the shape
+then shows "→ Step 3". **Fill → Image…** puts a picture inside the shape:
+**Fit inside** shows the whole picture, **Fill shape** fills the shape and
+crops the edges. Pictures are never stretched. For a selected arrow you can
+pick its style: arrow, double arrow, line, dashed or dotted.
+
+With no shape selected, the details pane shows the chart's **Background**: white
+unless you pick a color, or **Transparent** so the chart sits on the page of
+your document. On a dark background, arrows and plain text turn light.
+
+The menu beside it says where the flowchart goes in exports: **Main visual**
+shows it in place of the screenshot (the screenshot is kept, so you can switch
+back), and **Block** adds it as a block. As a block it appears in the step's
+**Blocks** list, where you can choose where it goes, just like a text block:
+before or after the title, the description or the screenshot (after the
+screenshot unless you move it). In PowerPoint it sits beside the screenshot.
+
+**Mermaid** in the toolbar opens the chart as
+[Mermaid](https://mermaid.js.org/syntax/flowchart.html) text beside it. Type or
+paste Mermaid flowchart text and the chart follows; draw on the canvas and the
+text follows. Shapes you already had keep their place, colors and pictures. The
+text is colored with your **Code theme** (Settings → Exports), and you can drag
+the line between the canvas and the panel to make the panel wider or narrower. Switch the
+right-hand menu back to **Image** to edit the screenshot. **Ctrl+Z** undoes
+flowchart edits. A flowchart with no shapes is left out of exports.
+
+With AI turned on, **AI → Create a flowchart** drafts a flowchart of the whole
+guide on the selected step for you to adjust.
 
 ### Replace or retake a screenshot
 

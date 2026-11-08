@@ -55,14 +55,14 @@ test('agents get every guide tool except changing or deleting placeholders', (t)
   assert.deepEqual(tools.map((tool) => tool.name), [
     'list_guides', 'get_guide', 'get_step', 'create_guide', 'update_guide', 'delete_guide',
     'create_step', 'update_step', 'move_step', 'delete_step', 'delete_blocks', 'set_screenshot', 'remove_screenshot',
-    'create_placeholder', 'add_annotations', 'delete_annotations',
+    'set_flowchart', 'create_placeholder', 'add_annotations', 'delete_annotations',
     // Behind their own switch (tests/unit/agent-brand-tools.test.js).
     'list_brand_profiles', 'get_brand_profile', 'create_brand_profile', 'update_brand_profile', 'set_brand_file', 'set_active_brand_profile',
   ]);
   for (const tool of tools) {
     assert.equal(tool.inputSchema.type, 'object');
     assert.ok(!/placeholder/.test(tool.name) || tool.name === 'create_placeholder');
-    assert.equal(tool.annotations.destructiveHint === true, /^(delete|remove|set_screenshot)/.test(tool.name), tool.name);
+    assert.equal(tool.annotations.destructiveHint === true, /^(delete|remove|set_screenshot|set_flowchart)/.test(tool.name), tool.name);
   }
   assert.match(INSTRUCTIONS, /snapshots existing guides before deletions, create_step, move_step and screenshot changes/);
   assert.match(INSTRUCTIONS, /cannot change or delete placeholders/);

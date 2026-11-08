@@ -4,7 +4,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { slugify, fileNameSlug, escapeXml } = require('../core/util');
 const { encodePng } = require('../core/png');
-const { renderStepImage } = require('../core/renderast');
+const { renderStepImage, renderFlowchartImage } = require('../core/renderast');
+const { flowchartImageKey } = require('../core/image-format');
 const { orderedBlocks, blockText } = require('../core/blocks');
 
 /**
@@ -40,6 +41,16 @@ function writeStepImages(ast, outDir) {
     fs.writeFileSync(path.join(dir, fileName), encodePng(img));
     result.set(step.stepId, { relPath: `${dirName}/${fileName}`, width: img.width, height: img.height });
   }
+  n = 0;
+  for (const step of ast.steps) {
+    n += 1;
+    const chart = renderFlowchartImage(step);
+    if (!chart) continue;
+    fs.mkdirSync(dir, { recursive: true });
+    const fileName = `${String(n).padStart(3, '0')}-${slugify(step.title || step.stepId, step.stepId)}-flowchart.png`;
+    fs.writeFileSync(path.join(dir, fileName), encodePng(chart));
+    result.set(flowchartImageKey(step.stepId), { relPath: `${dirName}/${fileName}`, width: chart.width, height: chart.height });
+  }
   return result;
 }
 
@@ -49,8 +60,43 @@ function renderAllImages(ast) {
   for (const step of ast.steps) {
     const img = renderStepImage(step);
     if (img) result.set(step.stepId, img);
+    const chart = renderFlowchartImage(step);
+    if (chart) result.set(flowchartImageKey(step.stepId), chart);
   }
   return result;
+}
+
+/**
+ * The name an exported image gets on the site: step-001.png for step 1's
+ * screenshot, step-001-flowchart.png for its flowchart block, and
+ * step-001-2.png should two still clash.
+ */
+function publishedImageName(file, used) {
+  const base = `step-${file.slice(0, 3)}`;
+  let name = file.endsWith('-flowchart.png') ? `${base}-flowchart.png` : `${base}.png`;
+  for (let i = 2; used.has(name); i += 1) name = `${base}-${i}.png`;
+  used.add(name);
+  return name;
+}
+
+/**
+ * The steps a flowchart's shapes link to, as a line of step links to put
+ * under its picture where a picture can't hold links (Word, Confluence):
+ * '<p>Go to: <a href="step:…">Step 3: Title</a> · …</p>', or '' when none.
+ */
+function chartLinksHtml(chart, ast) {
+  const esc = (v) => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const seen = new Set();
+  const links = (chart?.links || []).filter((link) => !seen.has(link.stepId) && seen.add(link.stepId)).map((link) => {
+    const target = ast.steps.find((s) => s.stepId === link.stepId);
+    return target ? `<a href="step:${esc(target.stepId)}" data-step-id="${esc(target.stepId)}">Step ${esc(target.number)}: ${esc(target.title || 'Untitled step')}</a>` : '';
+  }).filter(Boolean);
+  return links.length ? `<p>Go to: ${links.join(' · ')}</p>` : '';
+}
+
+/** Alt text for a step's flowchart block. */
+function flowchartAlt(step) {
+  return step.altText.replace(/^Screenshot/, 'Flowchart');
 }
 
 function stepBlocks(step) {
@@ -59,8 +105,9 @@ function stepBlocks(step) {
 
 /**
  * Split a step's blocks into the layout buckets exporters use around the
- * step title, description, and image. Text blocks keep their block-list
- * ordering inside each bucket; code/table blocks stay in `rest`.
+ * step title, description, and image. Text blocks and a flowchart block go
+ * by their position, keeping their block-list ordering inside each bucket;
+ * code/table blocks stay in `rest`.
  */
 function stepContentGroups(step) {
   const all = stepBlocks(step);
@@ -75,7 +122,7 @@ function stepContentGroups(step) {
   };
 
   for (const block of all) {
-    if (block.kind !== 'text') {
+    if (block.kind !== 'text' && block.kind !== 'flowchart') {
       groups.rest.push(block);
       continue;
     }
@@ -134,6 +181,10 @@ const LEVEL_LABEL = { info: 'Note', warn: 'Warning', error: 'Important', success
 
 module.exports = {
   guideSlug,
+  flowchartImageKey,
+  flowchartAlt,
+  chartLinksHtml,
+  publishedImageName,
   imagesDirName,
   writeStepImages,
   renderAllImages,

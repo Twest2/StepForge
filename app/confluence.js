@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { atomicWriteFileSync, writeJsonSync, readJsonIfExists, escapeXml } = require('../core/util');
 const { normalizeServer } = require('./webdav');
+const { publishedImageName } = require('../exporters/common');
 
 /*
  * Publishing guides as Confluence pages, on Confluence Cloud or a Confluence
@@ -70,8 +71,9 @@ function pageFromExport(apiDir) {
   let body = request.body.storage.value;
   const attachmentDir = path.join(apiDir, 'attachments');
   const files = fs.existsSync(attachmentDir) ? fs.readdirSync(attachmentDir).sort() : [];
+  const used = new Set();
   const attachments = files.filter((file) => /^\d{3}-.*\.png$/.test(file)).map((file) => {
-    const name = `step-${file.slice(0, 3)}.png`;
+    const name = publishedImageName(file, used);
     body = body.split(`ri:filename="${escapeXml(file)}"`).join(`ri:filename="${name}"`);
     return { name, data: fs.readFileSync(path.join(attachmentDir, file)) };
   });

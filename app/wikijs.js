@@ -6,6 +6,7 @@ const path = require('node:path');
 const { atomicWriteFileSync, writeJsonSync, readJsonIfExists, slugify } = require('../core/util');
 const { normalizeServer } = require('./webdav');
 const { check: c, isPlainArgs } = require('./security');
+const { publishedImageName } = require('../exporters/common');
 
 /*
  * Publishing guides as Wiki.js 2 pages, through the wiki's GraphQL API.
@@ -125,11 +126,12 @@ function pageFromExport(file, assetFolder) {
   const outDir = path.dirname(file);
   const folder = `/${String(assetFolder).replace(/^\/+|\/+$/g, '')}`;
   const assets = [];
+  const used = new Set();
   for (const dir of fs.readdirSync(outDir).filter((name) => name.startsWith('steps-')).sort()) {
     const full = path.join(outDir, dir);
     if (!fs.statSync(full).isDirectory()) continue;
     for (const image of fs.readdirSync(full).filter((name) => /^\d{3}-.*\.png$/.test(name)).sort()) {
-      const name = `step-${image.slice(0, 3)}.png`;
+      const name = publishedImageName(image, used);
       content = content.split(`(${folder}/${image})`).join(`(${folder}/${name})`);
       assets.push({ name, data: fs.readFileSync(path.join(full, image)) });
     }

@@ -20,7 +20,7 @@
   const SHAPE_TOOLS = flow.SHAPES;
   const MIN_ZOOM = 0.25;
   const MAX_ZOOM = 3;
-  const snap = (v) => Math.max(0, Math.round(v / flow.GRID) * flow.GRID);
+  const snap = (v) => Math.round(v / flow.GRID) * flow.GRID;
 
   class FlowchartEditor {
     constructor(host, cb) {
@@ -31,6 +31,8 @@
       this.drag = null;
       this.pendingFrom = null;
       this.zoom = 1;
+      // The chart point at the layer's top-left corner (render() keeps room on every side).
+      this.origin = null;
       this.layer = document.createElement('div');
       this.layer.className = 'flowchart-layer';
       this.hint = document.createElement('div');
@@ -59,8 +61,8 @@
       this.closeLabelEditor(true);
       this.zoom = next;
       this.render();
-      this.host.scrollLeft = chart.x * next - (at.x - hostRect.left);
-      this.host.scrollTop = chart.y * next - (at.y - hostRect.top);
+      this.host.scrollLeft = (chart.x - this.origin.x) * next - (at.x - hostRect.left);
+      this.host.scrollTop = (chart.y - this.origin.y) * next - (at.y - hostRect.top);
       this.cb.onZoom?.(next);
     }
 
@@ -112,7 +114,8 @@
     /** Pointer position in chart coordinates. */
     point(e) {
       const rect = this.layer.getBoundingClientRect();
-      return { x: (e.clientX - rect.left) / this.zoom, y: (e.clientY - rect.top) / this.zoom };
+      const o = this.origin || { x: 0, y: 0 };
+      return { x: (e.clientX - rect.left) / this.zoom + o.x, y: (e.clientY - rect.top) / this.zoom + o.y };
     }
 
     hitAt(target) {
@@ -127,12 +130,19 @@
       const g = this.graph();
       const options = this.renderOptions();
       const b = flow.bounds(g, options);
-      // Just past the last shape; it grows as shapes move out. The dotted surface fills the rest.
-      const width = b ? b.x + b.w + 40 : 0;
-      const height = b ? b.y + b.h + 40 : 0;
-      this.host.style.setProperty('--flow-grid', `${flow.GRID * this.zoom}px`);
+      // Room to move the view (and drag shapes) past the chart on every side:
+      // 60% of the visible area beyond the shapes, left and up as well as right and down.
+      const z = this.zoom;
+      const roomX = (this.host.clientWidth * 0.6) / z;
+      const roomY = (this.host.clientHeight * 0.6) / z;
+      const origin = { x: Math.min(0, b ? b.x : 0) - roomX, y: Math.min(0, b ? b.y : 0) - roomY };
+      const right = (b ? b.x + b.w + 40 : 0) + roomX;
+      const bottom = (b ? b.y + b.h + 40 : 0) + roomY;
+      const width = right - origin.x;
+      const height = bottom - origin.y;
+      this.host.style.setProperty('--flow-grid', `${flow.GRID * z}px`);
       let svg = flow.toSvg(g, {
-        ...options, editor: true, width, height, zoom: this.zoom, idPrefix: 'ed-', edgeColor: this.edgeColor(),
+        ...options, editor: true, width, height, viewX: origin.x, viewY: origin.y, zoom: z, idPrefix: 'ed-', edgeColor: this.edgeColor(),
         selectedId: this.selected?.id || null, pendingFromId: this.pendingFrom,
       });
       if (this.drag?.type === 'connect' && this.drag.moved) {
@@ -143,11 +153,26 @@
         }
       }
       this.layer.innerHTML = svg;
-      // Room to drag the view past the chart (and to drag shapes into).
-      this.layer.style.width = `${width * this.zoom + this.host.clientWidth * 0.6}px`;
-      this.layer.style.height = `${height * this.zoom + this.host.clientHeight * 0.6}px`;
+      this.layer.style.width = `${width * z}px`;
+      this.layer.style.height = `${height * z}px`;
+      // When the room on the left or top grows or shrinks, scroll by as much so nothing on screen jumps.
+      const before = this.origin;
+      this.origin = origin;
+      if (before) {
+        this.host.scrollLeft += (before.x - origin.x) * z;
+        this.host.scrollTop += (before.y - origin.y) * z;
+      }
       this.hint.hidden = g.nodes.length > 0;
       this.hint.textContent = t('Pick a shape in the toolbar, then click here to place it.');
+    }
+
+    /** Scroll so the chart's top-left corner is at the top-left of the view (a step just opened). */
+    home() {
+      this.render();
+      const b = flow.bounds(this.graph(), this.renderOptions());
+      const z = this.zoom;
+      this.host.scrollLeft = (Math.min(0, b ? b.x - 20 : 0) - this.origin.x) * z;
+      this.host.scrollTop = (Math.min(0, b ? b.y - 20 : 0) - this.origin.y) * z;
     }
 
     /** Add a shape centered on p; its text box opens at once (or on pointerup, when `fromPointer`). */
@@ -333,8 +358,8 @@
         this.cb.beforeChange();
         const n = this.node(this.selected.id);
         if (n) {
-          n.x = Math.max(0, n.x + step[0] * flow.GRID);
-          n.y = Math.max(0, n.y + step[1] * flow.GRID);
+          n.x = n.x + step[0] * flow.GRID;
+          n.y = n.y + step[1] * flow.GRID;
         }
         this.cb.changed();
         this.render();
@@ -394,7 +419,8 @@
       input.maxLength = target.kind === 'node' ? 300 : 80;
       input.setAttribute('aria-label', target.kind === 'node' ? t('Shape text') : t('Arrow label'));
       const z = this.zoom;
-      Object.assign(input.style, { left: `${box.x * z}px`, top: `${box.y * z}px`, width: `${box.w * z}px`, fontSize: `${14 * z}px` });
+      const o = this.origin || { x: 0, y: 0 };
+      Object.assign(input.style, { left: `${(box.x - o.x) * z}px`, top: `${(box.y - o.y) * z}px`, width: `${box.w * z}px`, fontSize: `${14 * z}px` });
       input.addEventListener('keydown', (e) => {
         e.stopPropagation();
         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); this.closeLabelEditor(true); this.host.focus({ preventScroll: true }); }

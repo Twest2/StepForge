@@ -147,7 +147,8 @@
 
   const idOk = (v) => typeof v === 'string' && /^[A-Za-z0-9_-]{1,100}$/.test(v);
   const clean = (v, max) => String(v ?? '').replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g, ' ').slice(0, max);
-  const num = (v, fallback) => (Number.isFinite(v) ? Math.max(0, Math.min(MAX_COORD, Math.round(v))) : fallback);
+  // Shapes may sit left of or above 0,0: the editor scrolls both ways and exports crop to the shapes.
+  const num = (v, fallback) => (Number.isFinite(v) ? Math.max(-MAX_COORD, Math.min(MAX_COORD, Math.round(v))) : fallback);
   const size = (v) => (Number.isFinite(v) ? Math.max(20, Math.min(2000, Math.round(v))) : undefined);
   const color = (v) => (typeof v === 'string' && (/^#[0-9a-fA-F]{6}$/.test(v) || v === 'transparent') ? v : undefined);
   const esc = (v) => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -376,7 +377,7 @@
    */
   function toSvg(raw, {
     steps = [], stepLabel, editor = false, selectedId = null, pendingFromId = null, edgeColor = COLORS.edge,
-    width = 0, height = 0, zoom = 1, padding = 24, minWidth = 640, scale = 2, idPrefix = 'fc-',
+    width = 0, height = 0, viewX = 0, viewY = 0, zoom = 1, padding = 24, minWidth = 640, scale = 2, idPrefix = 'fc-',
   } = {}) {
     const graph = normalizeFlowchart(raw) || { nodes: [], edges: [] };
     const options = { steps, stepLabel };
@@ -418,7 +419,7 @@
     const body = parts.join('');
     const ns = 'xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"';
     if (editor) {
-      return `<svg ${ns} width="${f(width * zoom)}" height="${f(height * zoom)}" viewBox="0 0 ${width} ${height}" font-family="${esc(FONT_FAMILY)}">${body}</svg>`;
+      return `<svg ${ns} width="${f(width * zoom)}" height="${f(height * zoom)}" viewBox="${f(viewX)} ${f(viewY)} ${f(width)} ${f(height)}" font-family="${esc(FONT_FAMILY)}">${body}</svg>`;
     }
     const box = bounds(graph, options) || { x: 0, y: 0, w: 0, h: 0 };
     const w = Math.max(minWidth, box.w + padding * 2);

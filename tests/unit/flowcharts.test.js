@@ -51,6 +51,16 @@ test('a stored flowchart is cleaned: bad shapes, duplicate ids and dangling arro
   assert.equal(flow.normalizeFlowchart(null), null);
 });
 
+test('shapes may sit left of and above 0,0, and the export still frames them all', () => {
+  const graph = flow.normalizeFlowchart({
+    nodes: [{ id: 'a', shape: 'process', label: 'Left', x: -300, y: -120 }, { id: 'b', shape: 'process', label: 'Right', x: 100, y: 100 }],
+    edges: [{ id: 'e', from: 'a', to: 'b' }],
+  });
+  assert.deepEqual(graph.nodes.map((n) => [n.x, n.y]), [[-300, -120], [100, 100]]);
+  const [vx, vy] = /viewBox="(-?[\d.]+) (-?[\d.]+)/.exec(flow.toSvg(graph, {})).slice(1).map(Number);
+  assert.ok(vx <= -300 && vy <= -120);
+});
+
 test('arrange puts each node one row below the node that leads to it, without overlaps', () => {
   const g = flow.arrange({
     nodes: [{ id: 'd', shape: 'decision', label: 'Q?' }, { id: 'y', label: 'Yes path' }, { id: 'n', label: 'No path' }],

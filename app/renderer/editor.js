@@ -2061,6 +2061,7 @@ class GuideEditor {
       this.renderFlowchart();
       return;
     }
+    this.flowHomeKey = null;
     this.canvas.setTool(this.currentTool);
     this.canvas.setZoom(this.currentZoom);
     this.syncToolbar();
@@ -2168,6 +2169,12 @@ class GuideEditor {
     const editor = this.flowchartEditor();
     if (!editor) return;
     editor.reset();
+    // A step just opened (or the flowchart just shown): start at the chart's top-left.
+    const key = this.currentStep?.stepId || '';
+    if (this.flowHomeKey !== key) {
+      this.flowHomeKey = key;
+      editor.home();
+    }
     this.syncFlowTools();
     this.renderFlowchartProps();
     this.syncMermaidText();

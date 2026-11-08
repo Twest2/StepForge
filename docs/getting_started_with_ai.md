@@ -99,8 +99,8 @@ the model writes the CSS for you to review. See
 
 ## Use your own AI server
 
-**Flowcharts.** Choose **AI → Generate flowchart…** or **Generate with AI…**
-in the diagram toolbar. Your configured provider drafts a diagram from step
+**Flowcharts.** Choose **AI → Generate flowchart…** in the guide toolbar.
+Your configured provider drafts a diagram from step
 titles, descriptions and your prompt. Review it before applying; screenshots
 are not sent for this action. See [Flowcharts](FLOWCHARTS.md).
 

@@ -76,7 +76,11 @@ Internal working storage is **folder-based**; sharing/backups use a
 
 Optional flowchart fields are `mainVisual` (`image | flowchart | none`),
 `flowchart`, and `flowchartBlocks[]`. A version-1 graph holds nodes
-`{id,type,label,stepId,x,y}` and edges `{id,from,to,label}`. Blocks hold
+`{id,type,label,stepId,x,y}` with optional width/height and style
+`{fill,stroke,textColor,strokeWidth,fontSize}`. Edges hold `{id,from,to,label}`
+with optional kind (`arrow | line | double`), routing (`orthogonal | straight`),
+dashed and color fields. `core/flowchart-shapes.js` shares shape outlines,
+dimensions and attachment geometry with SVG/raster exporters. Blocks hold
 `{id,order,title,graph}`. `core/flowchart.js` shares normalization, layout,
 SVG and Mermaid serialization with the sandboxed editor. Workers prepare
 PNGs with Sharp; the Render AST resolves references against export numbering.

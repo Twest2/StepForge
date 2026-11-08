@@ -6,7 +6,7 @@ const { htmlToMarkdown } = require('../exporters/htmlmd');
 const { markdownHtml } = require('./placeholder-markdown');
 const { descriptionToMarkdown } = require('./description-markdown');
 const { sanitizeHtml } = require('./sanitize');
-const { validateGraph, toMermaid } = require('./flowchart');
+const { validateGraph, toMermaid, TYPES: FLOWCHART_SHAPES } = require('./flowchart');
 const { renderScreenshotForAi, aiScreenshotSize } = require('./ai-image');
 const { orderedBlocks, blockText } = require('./blocks');
 const { placeholderText } = require('./placeholder-markdown');
@@ -350,11 +350,17 @@ function createAgentTools({ store, agentSettings, onChange = () => {}, onBrandin
           graph: { type: 'object', additionalProperties: false, properties: {
             version: { type: 'integer', enum: [1] },
             nodes: { type: 'array', maxItems: 100, items: { type: 'object', properties: {
-              id: { type: 'string' }, type: { type: 'string', enum: ['step', 'decision', 'start', 'end'] }, label: { type: 'string', maxLength: 300 },
+              id: { type: 'string' }, type: { type: 'string', enum: FLOWCHART_SHAPES }, label: { type: 'string', maxLength: 300 },
               stepId: { type: ['string', 'null'] }, x: { type: 'number' }, y: { type: 'number' },
+              width: { type: 'number', minimum: 60, maximum: 600 }, height: { type: 'number', minimum: 40, maximum: 400 },
+              style: { type: 'object', additionalProperties: false, properties: {
+                fill: { type: 'string' }, stroke: { type: 'string' }, textColor: { type: 'string' },
+                strokeWidth: { type: 'number', minimum: .5, maximum: 6 }, fontSize: { type: 'number', minimum: 10, maximum: 32 },
+              } },
             }, required: ['id', 'label'], additionalProperties: false } },
             edges: { type: 'array', maxItems: 200, items: { type: 'object', properties: {
               id: { type: 'string' }, from: { type: 'string' }, to: { type: 'string' }, label: { type: 'string', maxLength: 80 },
+              kind: { type: 'string', enum: ['arrow', 'line', 'double'] }, routing: { type: 'string', enum: ['orthogonal', 'straight'] }, dashed: { type: 'boolean' }, color: { type: 'string' },
             }, required: ['from', 'to'], additionalProperties: false } },
           }, required: ['nodes', 'edges'] },
         }, required: ['guide_id', 'step_id', 'placement', 'graph'],

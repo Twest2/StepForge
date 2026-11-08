@@ -2281,12 +2281,19 @@ class GuideEditor {
 
   setZoom(mode) {
     this.currentZoom = mode;
+    this.canvas.allowOverflow = mode !== 'fit';
+    this.dom?.canvasWrap?.classList?.toggle('zoomed-image', mode !== 'fit');
     this.canvas.setZoom(mode);
     this.canvas.applyZoom();
     this.syncToolbar();
   }
 
   applyZoomShortcut(kind) {
+    if (this.flowchartIsActive?.()) {
+      if (kind === 'fit') this.flowEditor.fit();
+      else this.flowEditor.setZoom(this.flowEditor.zoom * (kind === 'in' ? 1.2 : 1 / 1.2));
+      return true;
+    }
     if (kind === 'in') {
       this.setZoom(Math.min(3, (Number(this.currentZoom) || 1) + 0.25));
       return true;

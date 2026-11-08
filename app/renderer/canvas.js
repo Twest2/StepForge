@@ -97,6 +97,8 @@ class AnnotationCanvas {
   applyZoom({ defer = false } = {}) {
     if (!this.image) return;
     const wrap = this.canvas.parentElement;
+    this.canvas.style.maxWidth = this.allowOverflow ? 'none' : '';
+    this.canvas.style.maxHeight = this.allowOverflow ? 'none' : '';
     if (this.zoomMode === 'fit') {
       const availW = Math.max(1, wrap.clientWidth - 40);
       const availH = Math.max(1, wrap.clientHeight - 40);
@@ -108,7 +110,7 @@ class AnnotationCanvas {
       const style = typeof window !== 'undefined' && typeof window.getComputedStyle === 'function' ? window.getComputedStyle(wrap) : null;
       const padX = style ? (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0) : 0;
       const padY = style ? (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0) : 0;
-      this.scale = Math.min(Number(this.zoomMode) || 1,
+      this.scale = this.allowOverflow ? Number(this.zoomMode) || 1 : Math.min(Number(this.zoomMode) || 1,
         Math.max(1, wrap.clientWidth - padX) / this.imgW,
         this.cb.constrainHeight === false ? Infinity : Math.max(1, wrap.clientHeight - padY) / this.imgH);
     }

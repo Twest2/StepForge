@@ -723,11 +723,10 @@ body.platform-linux #capture-status button {
 .status-done { background: #22a06b; }
 
 .canvas-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-  padding: 10px 12px;
+  display: grid;
+  grid-template-rows: 36px 36px;
+  gap: 0;
+  padding: 4px 8px;
   border-bottom: 1px solid var(--border);
   background: color-mix(in srgb, var(--panel-solid) 70%, transparent);
 }
@@ -737,8 +736,10 @@ body.platform-linux #capture-status button {
   background: var(--border);
   margin: 0 4px;
 }
-/* Icon toolbar: tight spacing so the tools, zoom and undo/redo fit one row at normal widths. */
-.canvas-toolbar { gap: 1px; padding: 8px; }
+/* Tools occupy the first row; zoom and visual controls stay on the second. */
+.canvas-tool-row { overflow-x: auto; overflow-y: hidden; min-width: 0; }
+.canvas-controls-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; min-width: 0; border-top: 1px solid var(--border); }
+.canvas-controls-left { min-width: 0; overflow-x: auto; overflow-y: hidden; }
 .canvas-toolbar .sep { margin: 0 3px; }
 /* Icon tools, undo and redo: 28x32px hit targets with an 18px outline icon,
    so all of them fit on one row in a 1280px-wide window. */
@@ -761,10 +762,13 @@ body.platform-linux #capture-status button {
   font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
-/* The toolbar wraps at narrow widths; past a few rows it scrolls rather than squeezing the canvas. */
-.canvas-toolbar { max-height: min(220px, 35vh); min-width: 0; overflow: auto; flex-shrink: 0; }
+/* Exactly two rows; crowded tools scroll horizontally without moving the picker. */
+.canvas-toolbar { min-width: 0; flex-shrink: 0; }
 .canvas-wrap {
-  background-image: radial-gradient(circle, color-mix(in srgb, var(--muted) 40%, transparent) 1px, transparent 1px);
+  --canvas-grid-bg: #f1f1f1;
+  --canvas-grid-dot: #999999;
+  background-color: var(--canvas-grid-bg);
+  background-image: radial-gradient(circle, var(--canvas-grid-dot) .8px, transparent .8px);
   background-size: 20px 20px;
   flex: 1;
   min-height: 0;
@@ -776,23 +780,36 @@ body.platform-linux #capture-status button {
 }
 
 /* Editor-only visual controls. Exported diagrams contain no grid or toolbar. */
-.image-tools, .flowchart-toolbar { display: flex; gap: 3px; align-items: center; flex-wrap: wrap; }
-.image-tools[hidden], .flowchart-toolbar[hidden], .flowchart-surface[hidden], .flowchart-properties[hidden], .description-source[hidden], .description-preview[hidden], .rich-toolbar[hidden] { display: none !important; }
-.main-visual-picker { margin-left: auto; display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
-.main-visual-select { max-width: 130px; }
-.flowchart-toolbar { flex: 1; min-width: 0; }
-.flowchart-placement-picker { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.image-tools, .flowchart-toolbar, .image-controls, .flowchart-controls { display: flex; gap: 3px; align-items: center; flex-wrap: nowrap; width: max-content; min-height: 34px; }
+.canvas-toolbar button, .canvas-toolbar select, .canvas-toolbar .sep { flex: none; }
+.image-tools[hidden], .image-controls[hidden], .flowchart-controls[hidden], .flowchart-toolbar[hidden], .flowchart-surface[hidden], .flowchart-properties[hidden], .description-source[hidden], .description-preview[hidden], .rich-toolbar[hidden] { display: none !important; }
+.main-visual-picker { position: relative; width: 116px; }
+.main-visual-picker::after { content: ''; position: absolute; right: 10px; top: 12px; width: 6px; height: 6px; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted); transform: rotate(45deg); pointer-events: none; }
+.main-visual-select { width: 100%; height: 32px; padding: 0 20px; appearance: none; text-align: center; text-align-last: center; font-size: 13px; border-radius: 8px; }
+.flowchart-placement-select { max-width: 160px; height: 32px; padding: 0 5px; text-align: center; text-align-last: center; font-size: 12px; }
+.flowchart-zoom { width: 44px; text-align: center; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.flowchart-palette { position: fixed; inset: auto; margin: 0; width: 200px; padding: 10px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; background: var(--panel-solid); color: var(--text); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); }
+.flowchart-palette:not(:popover-open) { display: none; }
+.canvas-toolbar .flowchart-palette .tool-icon { width: 40px; height: 36px; }
 .pane-props section[hidden] { display: none !important; }
-.flowchart-properties { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; padding: 10px; border-bottom: 1px solid var(--border); background: var(--panel-solid); }
-.flowchart-properties label { display: grid; gap: 4px; min-width: 0; flex: 1; }
-.flowchart-properties input, .flowchart-properties select { width: 100%; min-width: 100px; }
-.canvas-wrap.editing-flowchart { display: block; padding: 0; }
-.flowchart-surface { min-width: 100%; min-height: 100%; touch-action: none; }
+.flowchart-properties { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; align-items: end; }
+.flowchart-properties label { display: grid; gap: 4px; min-width: 0; font-size: 12px; color: var(--muted); }
+.flowchart-properties label:first-child, .flowchart-properties > .muted { grid-column: 1 / -1; }
+.flowchart-properties input, .flowchart-properties select { width: 100%; min-width: 0; }
+.flowchart-properties input[type=color] { height: 32px; padding: 3px; }
+.flowchart-properties .tool-icon { padding: 4px; width: 32px; height: 32px; }
+.flowchart-properties .tool-icon svg { width: 18px; height: 18px; }
+.canvas-wrap.editing-flowchart { display: block; padding: 0; background-image: none; }
+.canvas-wrap.zoomed-image { place-items: start; }
+.flowchart-surface { min-width: 100%; min-height: 100%; touch-action: none; background-color: var(--canvas-grid-bg); }
 .flowchart-surface svg { display: block; max-width: none; }
 .canvas-wrap canvas[hidden] { display: none !important; }
 .flowchart-hidden { display: none !important; }
 .flowchart-surface [data-node-id] { cursor: grab; }
 .flowchart-surface [data-edge-id] { cursor: pointer; }
+.flowchart-surface.drawing-shape, .flowchart-surface.drawing-shape [data-node-id], .flowchart-surface.connecting [data-node-id] { cursor: crosshair; }
+.flowchart-surface [data-resize=nw], .flowchart-surface [data-resize=se] { cursor: nwse-resize; }
+.flowchart-surface [data-resize=ne], .flowchart-surface [data-resize=sw] { cursor: nesw-resize; }
 .flowchart-surface [data-node-id]:focus-visible { outline: 3px solid var(--accent); }
 .flowchart-preview svg, .flowchart-ai-preview svg { width: 100%; height: auto; display: block; }
 .flowchart-ai-preview { max-height: 60vh; overflow: auto; }
@@ -804,6 +821,7 @@ body.platform-linux #capture-status button {
 .markdown-help { font-size: 12px; }
 .description-preview-toggle[hidden], .markdown-help[hidden] { display: none !important; }
 .description-preview-toggle.active { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+@media (prefers-color-scheme: dark) { .canvas-wrap { --canvas-grid-bg: #181818; --canvas-grid-dot: #414141; } }
 .canvas-wrap canvas {
   background: #fff;
   border-radius: 12px;

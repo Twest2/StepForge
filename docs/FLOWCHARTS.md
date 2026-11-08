@@ -2,30 +2,43 @@
 
 ## Choose a placement
 
-Select a step. At the right of the canvas toolbar, **Main visual** offers
+Select a step. The centered visual dropdown at the right of the toolbar's second row offers
 **Image**, **Flowchart**, and **None**. Flowchart replaces the screenshot
 tools with diagram tools. The screenshot and annotations stay saved;
 choosing Image brings them back. You can also select Flowchart when adding
 a step. Titles, descriptions and blocks work with either visual.
 
 For a diagram alongside a screenshot, choose **+ Flowchart** in Blocks.
-**Edit flowchart** opens that block in the large canvas; **Done** returns
-to the main visual. The diagram toolbar's **Flowchart placement** selector
-moves the diagram between **Main visual** and **Content block**. If another
+**Edit flowchart** opens that block in the large canvas; the **Done** checkmark returns
+to the main visual. The second-row placement selector
+moves the diagram between **Replace image** and **Content block**. If another
 main diagram exists, it is preserved in the old block rather than overwritten.
 The dotted background and toolbars appear only in the app, never in exports.
 
 ## Edit a diagram
 
-- **Add node**, **Decision**, **Start**, and **End** add shapes.
+- The icon toolbar offers common shapes, plus **More shapes** for the full
+  palette: rectangles, rounded rectangles, ovals, diamonds, parallelograms,
+  hexagons, triangles, cylinders, documents, notes, clouds, text and start/end
+  shapes. Tooltips and accessible names identify each icon.
+- Choose a shape, then click or drag on the canvas to place it. Drag a selected
+  shape's corner handles to resize it. Completed actions return to Select.
 - Select a node to edit its label, shape, or **Go to step** destination.
 - Drag nodes to move them. Keyboard users can Tab to a node, press Enter to
   select it, use arrows to move it, and Delete to remove it. Shift+Arrow
   moves farther.
 - **Connect**, then select two nodes. Select a connection to edit its branch
   label or delete it. Connections may loop back.
-- **Arrange** lays out the graph. **Undo** and **Redo** include graph and
-  placement changes. **Mermaid source** shows generated source to copy.
+- The inspector offers fill/stroke/text colors, line width and font size.
+  Connections support arrows, plain lines, double arrows, straight/orthogonal
+  routing, dashed/solid strokes and colors.
+- **Arrange** lays out the graph. **Duplicate**, **Undo**, and **Redo** are
+  icon controls. **Mermaid source** shows generated source to copy.
+- Hold **Ctrl** and use the mouse wheel to zoom either editor. Flowchart zoom
+  scales both the diagram and its neutral gray dot grid around the pointer;
+  photo-editor dots stay at a fixed size. Zoom in/out and Fit also have icons.
+- Tools stay on the first row, controls and the visual dropdown on the second.
+  Crowded rows scroll horizontally rather than wrapping to a third row.
 
 Graphs support up to 100 nodes and 200 connections. Graph JSON is the
 editable source; Mermaid is generated from it. Arbitrary Mermaid source
@@ -33,8 +46,8 @@ import/editing is not supported. No Mermaid server or network renderer is used.
 
 ## Generate with AI
 
-Configure AI in Settings. Choose **Generate with AI…** in the diagram toolbar
-or **AI → Generate flowchart…**. Describe the diagram or change, review its
+Configure AI in Settings. Choose **AI → Generate flowchart…**. AI generation
+is in the guide's AI menu, separate from the drawing tools. Describe the diagram or change, review its
 branches, then choose **Apply**. Cancel preserves the existing diagram. A
 draft cannot overwrite a diagram changed while AI was writing.
 
@@ -43,7 +56,8 @@ step IDs, titles, descriptions, your request and the current graph, without
 screenshots. Step references are validated before preview. A recording captures
 one path, so review any suggested alternatives.
 
-MCP agents can call `set_flowchart` with `placement: "main"` or `"block"`.
+MCP agents can call `set_flowchart` with `placement: "main"` or `"block"`,
+using the same shapes, dimensions, colors, text styling and connector options.
 `get_step` includes diagrams and `delete_blocks` can remove diagram blocks.
 Existing agent access controls apply; set_flowchart saves a snapshot first.
 

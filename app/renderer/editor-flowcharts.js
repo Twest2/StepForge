@@ -7,9 +7,16 @@ const uid = () => `flow-${crypto.randomUUID()}`;
 Object.assign(window.GuideEditor.prototype, {
   setupFlowcharts() {
     const bar = this.dom.canvasPane.querySelector('.canvas-toolbar');
-    this.dom.imageTools = el('div.image-tools', {}, ...Array.from(bar.children));
+    const existing = Array.from(bar.children);
+    this.dom.imageTools = el('div.image-tools', {}, ...existing.filter(n => n.dataset.tool));
+    const button = window.FlowchartEditor.toolButton;
+    this.dom.imageControls = el('div.image-controls', {},
+      button(t('Zoom out'), 'zoomOut', () => this.setZoom(Math.max(.1, (this.canvas.scale || 1) / 1.2))), this.dom.zoomSelect,
+      button(t('Zoom in'), 'zoomIn', () => this.setZoom(Math.min(3, (this.canvas.scale || 1) * 1.2))),
+      button(t('Fit'), 'fit', () => this.setZoom('fit')), el('span.sep'), this.dom.undoBtn, this.dom.redoBtn);
     this.dom.flowTools = el('div.flowchart-toolbar', { hidden: true });
-    this.dom.visualSelect = el('select.main-visual-select', { 'aria-label': t('Main visual') },
+    this.dom.flowControls = el('div.flowchart-controls', { hidden: true });
+    this.dom.visualSelect = el('select.main-visual-select', { 'aria-label': t('Main visual'), title: t('Main visual') },
       el('option', { value: 'image' }, t('Image')), el('option', { value: 'flowchart' }, t('Flowchart')), el('option', { value: 'none' }, t('None')));
     this.dom.visualSelect.addEventListener('change', () => {
       const step = this.currentStep;
@@ -19,20 +26,28 @@ Object.assign(window.GuideEditor.prototype, {
       if (step.mainVisual === 'flowchart') step.flowchart ||= flow.normalizeGraph();
       this.markFlowchartChanged(); this.renderCanvas();
     });
-    bar.append(this.dom.imageTools, this.dom.flowTools, el('label.main-visual-picker', {}, t('Main visual'), this.dom.visualSelect));
+    bar.replaceChildren(el('div.canvas-tool-row', {}, this.dom.imageTools, this.dom.flowTools),
+      el('div.canvas-controls-row', {}, el('div.canvas-controls-left', {}, this.dom.imageControls, this.dom.flowControls), el('div.main-visual-picker', {}, this.dom.visualSelect)));
     this.dom.flowProperties = el('div.flowchart-properties', { hidden: true });
+    this.dom.flowSection = el('section.flowchart-inspector', { hidden: true }, el('h3', {}, t('Flowchart')), this.dom.flowProperties);
+    this.dom.propertiesPane.children[1].before(this.dom.flowSection);
     this.dom.flowSurface = el('div.flowchart-surface', { hidden: true, tabIndex: 0, role: 'group', 'aria-label': t('Flowchart editor') });
-    bar.after(this.dom.flowProperties);
     this.dom.canvasWrap.append(this.dom.flowSurface);
     this.flowEditor = new window.FlowchartEditor({
-      toolbar: this.dom.flowTools, surface: this.dom.flowSurface, properties: this.dom.flowProperties,
+      toolbar: this.dom.flowTools, controls: this.dom.flowControls, surface: this.dom.flowSurface, properties: this.dom.flowProperties,
       getGraph: () => this.activeFlowchart(), getSteps: () => this.flowchartSteps(),
       onChange: graph => { this.pushCanvasHistory(); this.setActiveFlowchart(graph); this.markFlowchartChanged(); this.renderBlocksPanel(); },
       onPlacement: placement => this.moveFlowchart(placement), onDone: () => { this.editingFlowchartBlock = null; this.renderCanvas(); },
-      onAi: () => this.generateFlowchartWithAi(), onGoToStep: id => this.selectStep(id), onToast: (...args) => this.onToast(...args),
+      onUndo: () => this.undo(), onRedo: () => this.redo(), onGoToStep: id => this.selectStep(id), onToast: (...args) => this.onToast(...args),
     });
-    this.dom.flowTools.prepend(el('button.tool', { type: 'button', onClick: () => this.undo() }, t('Undo')),
-      el('button.tool', { type: 'button', onClick: () => this.redo() }, t('Redo')));
+    this.dom.canvasWrap.addEventListener('wheel', e => {
+      if (!e.ctrlKey || this.flowchartIsActive() || !this.currentStep?.image || this.currentStep.mainVisual === 'none') return;
+      e.preventDefault();
+      const wrap = this.dom.canvasWrap, r = wrap.getBoundingClientRect(), image = this.dom.canvas.getBoundingClientRect();
+      const x = Math.max(0, Math.min(1, (e.clientX - image.left) / image.width)), y = Math.max(0, Math.min(1, (e.clientY - image.top) / image.height));
+      this.setZoom(Math.max(.1, Math.min(3, (this.canvas.scale || 1) * Math.exp(-e.deltaY * .002))));
+      wrap.scrollLeft = x * this.canvas.viewW - (e.clientX - r.left); wrap.scrollTop = y * this.canvas.viewH - (e.clientY - r.top);
+    }, { passive: false });
     const add = el('button', { type: 'button', onClick: () => this.addFlowchartBlock() }, t('+ Flowchart'));
     this.dom.addTableBlockBtn.after(add);
     this.setupMarkdownDescription();
@@ -72,17 +87,21 @@ Object.assign(window.GuideEditor.prototype, {
     this.dom.visualSelect.disabled = !step || Boolean(this.editingFlowchartBlock);
     this.dom.visualSelect.value = this.editingFlowchartBlock ? 'flowchart' : step?.mainVisual || 'image';
     this.dom.imageTools.hidden = active;
+    this.dom.imageControls.hidden = active;
     this.dom.flowTools.hidden = !active;
+    this.dom.flowControls.hidden = !active;
     this.dom.flowProperties.hidden = !active;
+    this.dom.flowSection.hidden = !active;
     this.dom.flowSurface.hidden = !active;
     this.dom.canvas.hidden = active || step?.mainVisual === 'none';
     this.dom.canvasWrap.classList.toggle('editing-flowchart', active);
+    this.dom.canvasWrap.classList.toggle('zoomed-image', !active && Boolean(this.canvas.allowOverflow));
     this.dom.annotationList.closest('section').hidden = active;
     this.dom.focusedViewToggle.classList.toggle('hidden', active);
     this.dom.focusedControls.classList.toggle('flowchart-hidden', active);
     if (active) {
       this.dom.canvasEmpty.classList.add('hidden');
-      this.flowEditor.render({ block: Boolean(this.editingFlowchartBlock), aiReady: this.isAiEnabled() });
+      this.flowEditor.render({ block: Boolean(this.editingFlowchartBlock) });
       return true;
     }
     if (step?.mainVisual === 'none') {

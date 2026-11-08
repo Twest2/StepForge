@@ -190,6 +190,11 @@ test('MCP agents create both placements with snapshots and cannot write dangling
   }
   const saved = store.getStep(guide.guideId, first.stepId);
   assert.deepEqual(saved.flowchart, graph); assert.equal(saved.flowchartBlocks.length, 1); assert.ok(saved.image);
+  const styled = flow.normalizeGraph({ nodes: [{ id: 'db', type: 'cylinder', label: 'Database', width: 300, height: 160, style: { fill: '#eeeeee', stroke: '#444444' } }], edges: [] });
+  assert.ok(set.inputSchema.properties.graph.properties.nodes.items.properties.type.enum.includes('cylinder'));
+  const updated = await set.handler({ guide_id: guide.guideId, step_id: first.stepId, placement: 'main', graph: styled });
+  assert.equal(updated.isError, undefined);
+  assert.deepEqual(store.getStep(guide.guideId, first.stepId).flowchart, styled);
   const error = await set.handler({ guide_id: guide.guideId, step_id: first.stepId, placement: 'main', graph: { nodes: [{ id: 'a', stepId: 'missing' }], edges: [] } });
   assert.equal(error.isError, true);
 });

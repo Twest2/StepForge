@@ -1885,6 +1885,9 @@
   "Close Mermaid": "关闭 Mermaid",
   "Flowchart as Mermaid text": "流程图的 Mermaid 文本",
   "Write or paste the flowchart as Mermaid text": "以 Mermaid 文本编写或粘贴流程图",
-  "Type Mermaid flowchart text; the chart follows.": "输入 Mermaid 流程图文本，图表会随之更新。",
   "Line {line}: StepForge can’t read this line yet.": "第 {line} 行：StepForge 暂时无法读取此行。",
+  "Flowchart as text": "以文本表示的流程图",
+  "Mermaid flowchart syntax (opens in your browser)": "Mermaid 流程图语法（在浏览器中打开）",
+  "Syntax": "语法",
+  "In sync with the chart": "已与图表同步",
 });

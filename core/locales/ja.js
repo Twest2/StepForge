@@ -1885,6 +1885,9 @@
   "Close Mermaid": "Mermaid を閉じる",
   "Flowchart as Mermaid text": "フローチャートの Mermaid テキスト",
   "Write or paste the flowchart as Mermaid text": "フローチャートを Mermaid テキストで書くか貼り付けます",
-  "Type Mermaid flowchart text; the chart follows.": "Mermaid のフローチャートを入力すると図が更新されます。",
   "Line {line}: StepForge can’t read this line yet.": "{line} 行目：StepForge はこの行をまだ読み取れません。",
+  "Flowchart as text": "テキストのフローチャート",
+  "Mermaid flowchart syntax (opens in your browser)": "Mermaid フローチャートの構文（ブラウザーで開きます）",
+  "Syntax": "構文",
+  "In sync with the chart": "図と同期しています",
 });

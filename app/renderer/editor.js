@@ -778,6 +778,8 @@ class GuideEditor {
             this.dom.flowArrangeBtn = el('button.tool.tool-icon', { type: 'button', title: t('Arrange'), 'aria-label': t('Arrange'), innerHTML: toolIconSvg('flow-arrange') }),
             this.dom.flowDeleteBtn = el('button.tool.tool-icon', { type: 'button', title: t('Delete selected'), 'aria-label': t('Delete selected'), innerHTML: toolIconSvg('flow-delete') }),
             el('span.sep'),
+            this.dom.mermaidToggle = el('button.tool.tool-text', { type: 'button', 'aria-pressed': 'false', title: t('Write or paste the flowchart as Mermaid text') }, t('Mermaid')),
+            el('span.sep'),
           ),
           this.dom.undoBtn = el('button.tool.tool-icon', { type: 'button', title: t('Undo'), 'aria-label': t('Undo'), innerHTML: toolIconSvg('undo') }),
           this.dom.redoBtn = el('button.tool.tool-icon', { type: 'button', title: t('Redo'), 'aria-label': t('Redo'), innerHTML: toolIconSvg('redo') }),
@@ -799,11 +801,14 @@ class GuideEditor {
         // The flowchart canvas and, beside it, its Mermaid text (Mermaid button, top right).
         this.dom.flowPane = el('div.flowchart-pane', { hidden: true },
           this.dom.flowSurface = el('div.flowchart-surface', { role: 'group', 'aria-label': t('Flowchart') }),
-          this.dom.mermaidOpenBtn = el('button.flowchart-mermaid-open', { type: 'button', title: t('Write or paste the flowchart as Mermaid text') }, t('Mermaid')),
-          this.dom.mermaidPanel = el('div.flowchart-mermaid', { hidden: true },
+          this.dom.mermaidPanel = el('aside.flowchart-mermaid', { hidden: true, 'aria-label': t('Mermaid') },
             el('div.flowchart-mermaid-head', {},
-              el('strong', {}, t('Mermaid')),
-              this.dom.mermaidCloseBtn = el('button.icon', { type: 'button', title: t('Close'), 'aria-label': t('Close Mermaid') }, '×'),
+              el('div.flowchart-mermaid-title', {},
+                el('strong', {}, t('Mermaid')),
+                el('span', {}, t('Flowchart as text')),
+              ),
+              el('a.flowchart-mermaid-help', { href: 'https://mermaid.js.org/syntax/flowchart.html', title: t('Mermaid flowchart syntax (opens in your browser)') }, t('Syntax')),
+              this.dom.mermaidCloseBtn = el('button.flowchart-mermaid-close', { type: 'button', title: t('Close'), 'aria-label': t('Close Mermaid'), innerHTML: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>' }),
             ),
             this.dom.mermaidSource = el('textarea.flowchart-mermaid-source', { spellcheck: false, wrap: 'off', 'aria-label': t('Flowchart as Mermaid text') }),
             this.dom.mermaidStatus = el('div.flowchart-mermaid-status', { role: 'status', 'aria-live': 'polite' }),
@@ -1199,7 +1204,7 @@ class GuideEditor {
       this.dom[`flow-${tool}`].addEventListener('click', () => this.flowchartEditor()?.setTool(tool));
     }
     this.dom.flowShapesBtn.addEventListener('click', () => this.openShapePalette());
-    this.dom.mermaidOpenBtn.addEventListener('click', () => this.setMermaidOpen(true));
+    this.dom.mermaidToggle.addEventListener('click', () => this.setMermaidOpen(!this.mermaidOpen));
     this.dom.mermaidCloseBtn.addEventListener('click', () => this.setMermaidOpen(false));
     const applyMermaid = debounce(() => this.applyMermaidText(), 350);
     this.dom.mermaidSource.addEventListener('focus', () => { this.mermaidArmed = false; });
@@ -2126,10 +2131,10 @@ class GuideEditor {
   setMermaidOpen(open) {
     this.mermaidOpen = Boolean(open);
     this.dom.mermaidPanel.hidden = !this.mermaidOpen;
-    this.dom.mermaidOpenBtn.hidden = this.mermaidOpen;
+    this.setPressed(this.dom.mermaidToggle, this.mermaidOpen);
     this.syncMermaidText({ force: true });
     if (this.mermaidOpen) this.dom.mermaidSource.focus();
-    else this.dom.mermaidOpenBtn.focus();
+    else this.dom.mermaidToggle.focus();
     this.flowEditor?.render();
   }
 
@@ -2144,7 +2149,7 @@ class GuideEditor {
   }
 
   showMermaidStatus(message, { error = false } = {}) {
-    this.dom.mermaidStatus.textContent = message || t('Type Mermaid flowchart text; the chart follows.');
+    this.dom.mermaidStatus.replaceChildren(el('span.flowchart-mermaid-dot'), message || t('In sync with the chart'));
     this.dom.mermaidStatus.classList.toggle('error', error);
   }
 

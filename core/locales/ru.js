@@ -1885,6 +1885,9 @@
   "Close Mermaid": "Закрыть Mermaid",
   "Flowchart as Mermaid text": "Блок-схема в виде текста Mermaid",
   "Write or paste the flowchart as Mermaid text": "Напишите или вставьте блок-схему текстом Mermaid",
-  "Type Mermaid flowchart text; the chart follows.": "Введите блок-схему Mermaid — схема обновится.",
   "Line {line}: StepForge can’t read this line yet.": "Строка {line}: StepForge пока не может прочитать эту строку.",
+  "Flowchart as text": "Блок-схема текстом",
+  "Mermaid flowchart syntax (opens in your browser)": "Синтаксис блок-схем Mermaid (откроется в браузере)",
+  "Syntax": "Синтаксис",
+  "In sync with the chart": "Совпадает со схемой",
 });

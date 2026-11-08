@@ -186,7 +186,7 @@ The menu beside it says where the flowchart goes in exports: **Main visual**
 shows it in place of the screenshot (the screenshot is kept, so you can switch
 back), and **Block** adds it after the step's text.
 
-**Mermaid** (top right of the canvas) opens the chart as
+**Mermaid** in the toolbar opens the chart as
 [Mermaid](https://mermaid.js.org/syntax/flowchart.html) text beside it. Type or
 paste Mermaid flowchart text and the chart follows; draw on the canvas and the
 text follows. Shapes you already had keep their place, colors and pictures. Switch the

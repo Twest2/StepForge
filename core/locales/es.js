@@ -1885,6 +1885,9 @@
   "Close Mermaid": "Cerrar Mermaid",
   "Flowchart as Mermaid text": "Diagrama de flujo como texto Mermaid",
   "Write or paste the flowchart as Mermaid text": "Escribir o pegar el diagrama de flujo como texto Mermaid",
-  "Type Mermaid flowchart text; the chart follows.": "Escriba un diagrama de flujo Mermaid; el diagrama lo sigue.",
   "Line {line}: StepForge can’t read this line yet.": "Línea {line}: StepForge aún no puede leer esta línea.",
+  "Flowchart as text": "Diagrama de flujo como texto",
+  "Mermaid flowchart syntax (opens in your browser)": "Sintaxis de diagramas de flujo Mermaid (se abre en el navegador)",
+  "Syntax": "Sintaxis",
+  "In sync with the chart": "Sincronizado con el diagrama",
 });

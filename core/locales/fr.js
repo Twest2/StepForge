@@ -1885,6 +1885,9 @@
   "Close Mermaid": "Fermer Mermaid",
   "Flowchart as Mermaid text": "Organigramme en texte Mermaid",
   "Write or paste the flowchart as Mermaid text": "Écrire ou coller l’organigramme en texte Mermaid",
-  "Type Mermaid flowchart text; the chart follows.": "Tapez un organigramme Mermaid ; le schéma suit.",
   "Line {line}: StepForge can’t read this line yet.": "Ligne {line} : StepForge ne sait pas encore lire cette ligne.",
+  "Flowchart as text": "Organigramme en texte",
+  "Mermaid flowchart syntax (opens in your browser)": "Syntaxe des organigrammes Mermaid (s’ouvre dans le navigateur)",
+  "Syntax": "Syntaxe",
+  "In sync with the chart": "Synchronisé avec le schéma",
 });

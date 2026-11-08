@@ -1795,4 +1795,13 @@
   'Screen capture': 'Снимок экрана',
   'Window capture': 'Снимок окна',
   'Region capture': 'Снимок области',
+  "Screen sharing was cancelled. Start recording again and select the monitors to share.": "Демонстрация экрана отменена. Снова начните запись и выберите мониторы для демонстрации.",
+  "Screen sharing timed out. Check for a hidden sharing dialog, then try recording again. If it continues, check xdg-desktop-portal and your desktop portal backend.": "Время ожидания демонстрации экрана истекло. Проверьте, не скрыто ли окно выбора экрана, и повторите запись. Если проблема остаётся, проверьте xdg-desktop-portal и сервер портала рабочего стола.",
+  "The screen-sharing portal is unavailable. Install or enable xdg-desktop-portal and the {desktop} portal backend, then log out and back in.": "Портал демонстрации экрана недоступен. Установите или включите xdg-desktop-portal и сервер портала {desktop}, затем выйдите из системы и войдите снова.",
+  "The screen stream stopped. Check PipeWire, WirePlumber and your desktop portal backend, then start recording again.": "Поток экрана остановлен. Проверьте PipeWire, WirePlumber и сервер портала рабочего стола, затем снова начните запись.",
+  "Screen sharing ended. Start recording again and share every monitor you want to record.": "Демонстрация экрана завершена. Снова начните запись и предоставьте доступ ко всем нужным мониторам.",
+  "The capture helper could not run. Check that Python 3, PyGObject, GStreamer and the PipeWire plugin are installed. See docs/LINUX_PORTAL_TROUBLESHOOTING.md.": "Не удалось запустить помощник захвата. Проверьте установку Python 3, PyGObject, GStreamer и модуля PipeWire. См. docs/LINUX_PORTAL_TROUBLESHOOTING.md.",
+  "The screen-sharing portal failed.": "Ошибка портала демонстрации экрана.",
+  "Try recording again. If it continues, see docs/LINUX_PORTAL_TROUBLESHOOTING.md for portal service checks.": "Повторите запись. Если проблема остаётся, проверьте службы портала по инструкции docs/LINUX_PORTAL_TROUBLESHOOTING.md.",
+  "Local capture diagnostics: {file}": "Локальная диагностика захвата: {file}",
 });

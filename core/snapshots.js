@@ -81,6 +81,13 @@ function createSnapshot(store, guideId, { label = '', keepLast = 0, background =
   return take();
 }
 
+/** Keep a validated incoming cloud version recoverable before pruning it. */
+function createSnapshotFromEntries(store, guideId, entries, label) {
+  const name = snapshotName(label);
+  writeSnapshot(store, guideId, name, entries);
+  return name;
+}
+
 /**
  * Snapshot a guide before an AI agent changes it in a way the user may want
  * to undo, labeled with what the agent is about to do ("deletes step 3").
@@ -342,6 +349,6 @@ async function autoSnapshotIfDue(store, guideId, settings) {
 }
 
 module.exports = {
-  createSnapshot, createAgentSnapshot, listSnapshots, pruneSnapshots, restoreSnapshot, snapshotsDir,
+  createSnapshot, createSnapshotFromEntries, createAgentSnapshot, listSnapshots, pruneSnapshots, restoreSnapshot, snapshotsDir,
   autoSnapshotIfDue, convertZipSnapshots, removeUnusedFiles, compareSnapshot, snapshotFile,
 };

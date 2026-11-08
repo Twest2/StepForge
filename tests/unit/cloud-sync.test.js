@@ -8,9 +8,10 @@ const { CloudSync, snapshot, headsOf } = require('../../core/cloud-sync');
 const { createSnapshot, listSnapshots, restoreSnapshot } = require('../../core/snapshots');
 const { Settings } = require('../../core/settings');
 const { writeJsonSync } = require('../../core/util');
+const parts = require('../../core/cloud-parts');
 const { makeTmpDir, rmrf, TINY_PNG } = require('./helpers');
 
-function setup(t) {
+function setup(t, { idLength = 0 } = {}) {
   const root = makeTmpDir('cloud-sync');
   t.after(() => rmrf(root));
   const files = [];
@@ -27,7 +28,7 @@ function setup(t) {
     async listParts() { return files.filter((file) => file.appProperties?.stepforge === 'part-v1'); },
     async upload({ data, name, properties }) {
       // Like Drive: ordered creation times, and the size shows up in listings.
-      const file = { id: `file-${++nextFileId}`, name, appProperties: properties, size: String(data.length),
+      const file = { id: `file-${++nextFileId}`.padEnd(idLength, '_'), name, appProperties: properties, size: String(data.length),
         createdTime: new Date(Date.UTC(2026, 0, 1) + nextFileId * 1000).toISOString() };
       files.push(file); bytes.set(file.id, data); return file;
     },
@@ -59,6 +60,185 @@ const versionFiles = (files) => files.filter((file) => file.appProperties?.stepf
 // tests date a guide's last save explicitly.
 function savedAt(store, id, iso) { writeJsonSync(path.join(store.guideDir(id), 'guide.json'), { ...store.getGuide(id), updatedAt: iso }); }
 async function synced(sync) { const status = await sync.sync(); assert.notEqual(status.phase, 'error', status.message); return status; }
+
+test('merge base follows ancestry despite clock skew and breaks criss-cross ties deterministically', async (t) => {
+  const { device } = setup(t); const { store, sync } = device('a');
+  const id = addGuide(store);
+  const entries = snapshot(store, id).entries;
+  const version = (id, parent, merged = '', createdTime = '2026-01-01') => ({ id, createdTime,
+    appProperties: { hash: parts.contentHash(entries), parent, merged } });
+  const old = version('old', null, '', '2099-01-01');
+  const base = version('base', 'old');
+  const left = version('left', 'base'); const right = version('right', 'base');
+  const fetched = [];
+  sync.versionEntries = async file => { fetched.push(file.id); return entries; };
+  assert.deepEqual(await sync.mergeBase(sync.basePath(id), [old, base, left, right], [left, right]), entries);
+  assert.deepEqual(fetched, ['base']);
+  const x = version('x', 'old'), y = version('y', 'old');
+  const a = version('a', 'x', 'y'), b = version('b', 'y', 'x');
+  for (const versions of [[old, x, y, a, b], [b, a, y, x, old]]) {
+    await sync.mergeBase(sync.basePath(id), versions, [a, b]);
+    assert.equal(fetched.at(-1), 'y');
+  }
+  assert.equal(await sync.mergeBase(sync.basePath(id), [], []), null);
+  assert.equal(await sync.mergeBase(sync.basePath(id), [left, right], [left, right]), null);
+  const cycleA = version('cycleA', 'cycleB'), cycleB = version('cycleB', 'cycleA');
+  await assert.rejects(sync.mergeBase(sync.basePath(id), [cycleA, cycleB], [cycleA, cycleB]), /cycle/);
+});
+
+test('a corrupt remembered base is discarded and a verified cloud base preserves deletions', async (t) => {
+  const { device } = setup(t); const a = device('a'), b = device('b');
+  const id = addGuide(a.store, 3); await synced(a.sync); await synced(b.sync);
+  const [first, , third] = a.store.getGuide(id).stepsOrder;
+  const cacheFile = b.sync.basePath(id);
+  const cache = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
+  const entry = cache.entries.find(entry => entry.name === `steps/${third}/step.json`);
+  entry.data = Buffer.from('{"title":"corrupted"}').toString('base64');
+  writeJsonSync(cacheFile, cache);
+  a.store.deleteStep(id, third); editStep(b.store, id, first, { title: 'Offline edit' });
+  await synced(a.sync); await synced(b.sync); await synced(a.sync);
+  assert.ok(!b.store.listSteps(id).has(third));
+  assert.equal(a.store.getStep(id, first).title, 'Offline edit');
+  assert.equal(snapshot(a.store, id).hash, snapshot(b.store, id).hash);
+});
+
+test('damaged full and parts merge bases stop sync before installing or pruning anything', async (t) => {
+  for (const format of ['full', 'parts']) {
+    const { device, files, bytes } = setup(t); const a = device('a'), b = device('b');
+    const id = addGuide(a.store); await synced(a.sync); await synced(b.sync);
+    const base = versionFiles(files)[0];
+    const changed = snapshot(a.store, id).entries.map(entry => entry.name === 'guide.json'
+      ? { ...entry, data: JSON.stringify({ ...JSON.parse(entry.data), title: 'Damaged baseline' }) } : entry);
+    if (format === 'full') { delete base.appProperties.format; bytes.set(base.id, zipSync(changed)); }
+    else bytes.set(base.id, parts.encodeSnapshot(changed).manifest);
+    fs.rmSync(b.sync.basePath(id));
+    fs.rmSync(b.sync.manifestPath(base.id), { force: true });
+    edit(a.store, id, 'Remote edit'); await synced(a.sync);
+    edit(b.store, id, 'Offline edit');
+    const before = snapshot(b.store, id).hash, ids = files.map(file => file.id);
+    const status = await b.sync.sync();
+    assert.equal(status.phase, 'error', status.message);
+    assert.match(status.message, /merge base.*integrity/i);
+    assert.equal(snapshot(b.store, id).hash, before);
+    assert.deepEqual(files.map(file => file.id), ids);
+  }
+});
+
+test('four devices converge after simultaneous offline edits, step deletion and failed uploads', async (t) => {
+  const { device, drive, files } = setup(t);
+  const devices = ['a', 'b', 'c', 'd'].map(name => device(name));
+  const id = addGuide(devices[0].store, 8);
+  for (const { sync } of devices) await synced(sync);
+  const order = devices[0].store.getGuide(id).stepsOrder;
+  for (let round = 0; round < 5; round++) {
+    for (const [index, { store }] of devices.entries()) {
+      editStep(store, id, order[index], { title: `Device ${index}, round ${round}` });
+      edit(store, id, `Conflict ${index}, round ${round}`);
+      savedAt(store, id, `2030-01-0${round + 1}T12:00:0${index}Z`);
+    }
+    if (!round) devices[0].store.deleteStep(id, order[7]);
+    const list = drive.listVersions, upload = drive.upload;
+    const stale = [...versionFiles(files)];
+    drive.listVersions = async () => [...stale];
+    drive.upload = async () => { throw new Error('Offline'); };
+    const before = snapshot(devices[3].store, id).hash;
+    assert.equal((await devices[3].sync.sync()).phase, 'error');
+    assert.equal(snapshot(devices[3].store, id).hash, before);
+    drive.upload = upload;
+    try { await Promise.all(devices.map(({ sync }) => synced(sync))); }
+    finally { drive.listVersions = list; }
+    for (let poll = 0; poll < 3; poll++) for (const { sync } of [...devices].reverse()) await synced(sync);
+    for (const { store } of devices) {
+      for (let index = 0; index < 4; index++) assert.equal(store.getStep(id, order[index]).title, `Device ${index}, round ${round}`);
+      assert.ok(!store.listSteps(id).has(order[7]));
+      assert.equal(snapshot(store, id).hash, snapshot(devices[0].store, id).hash);
+    }
+    assert.equal(headsOf(versionFiles(files)).length, 1);
+  }
+});
+
+test('an offline deletion keeps concurrent remote edits in history and offline local edits in Trash', async (t) => {
+  const { device, files } = setup(t); const a = device('a'), b = device('b'), c = device('c');
+  const id = addGuide(a.store); for (const { sync } of [a, b, c]) await synced(sync);
+  a.sync.stageDeletion(id); a.store.deleteGuide(id);
+  edit(b.store, id, 'Remote work while A was offline'); await synced(b.sync);
+  const remote = versionFiles(files).find(file => file.appProperties.hash === snapshot(b.store, id).hash);
+  edit(c.store, id, 'Unsynced work on C');
+  await synced(a.sync); await synced(c.sync);
+  assert.ok(files.some(file => file.id === remote.id), 'the remote edit has a retained cloud version');
+  const [trash] = c.store.listTrash(); c.store.restoreFromTrash(trash);
+  assert.equal(c.store.getGuide(id).title, 'Unsynced work on C');
+  await a.sync.permanentlyDeleteRecovery(id);
+  assert.equal(versionFiles(files).filter(file => file.appProperties.guideId === id).length, 0);
+});
+
+test('remote deletion waits for an open editor and then preserves its saved work in Trash', async (t) => {
+  const { device, files } = setup(t); let open = false;
+  const a = device('a'), b = device('b', { canReplace: () => !open });
+  const id = addGuide(a.store); await synced(a.sync); await synced(b.sync);
+  a.sync.stageDeletion(id); a.store.deleteGuide(id); await synced(a.sync);
+  open = true;
+  const count = files.length;
+  assert.equal((await b.sync.sync()).phase, 'pending');
+  assert.ok(b.store.guideExists(id));
+  assert.equal(files.length, count, 'the deleted guide is not re-uploaded');
+  edit(b.store, id, 'Saved before closing the editor'); open = false;
+  await synced(b.sync);
+  assert.ok(!b.store.guideExists(id));
+  b.store.restoreFromTrash(b.store.listTrash()[0]);
+  assert.equal(b.store.getGuide(id).title, 'Saved before closing the editor');
+});
+
+test('a never-synced local copy is merged conservatively without inferring step deletions', async t => {
+  const { device } = setup(t); const a = device('a'), b = device('b');
+  const id = addGuide(a.store, 3); await synced(a.sync);
+  b.sync.install(zipSync(snapshot(a.store, id).entries), id, id);
+  const [first, , third] = a.store.getGuide(id).stepsOrder;
+  a.store.deleteStep(id, third); await synced(a.sync);
+  editStep(b.store, id, first, { title: 'Local work before first sync' });
+  savedAt(b.store, id, '2030-01-01T12:00:00Z');
+  await synced(b.sync); await synced(a.sync);
+  assert.ok(b.store.listSteps(id).has(third));
+  assert.equal(a.store.getStep(id, first).title, 'Local work before first sync');
+  assert.equal(snapshot(a.store, id).hash, snapshot(b.store, id).hash);
+});
+
+test('a fresh device merging remote conflicts can restore every losing version after cloud pruning', async (t) => {
+  const { device, drive, files } = setup(t); const a = device('a'), b = device('b'), fresh = device('fresh');
+  const id = addGuide(a.store); await synced(a.sync); await synced(b.sync);
+  const stale = [...versionFiles(files)], list = drive.listVersions;
+  edit(a.store, id, 'Conflict from A'); savedAt(a.store, id, '2030-01-01T10:00:00Z');
+  edit(b.store, id, 'Conflict from B'); savedAt(b.store, id, '2030-01-01T11:00:00Z');
+  drive.listVersions = async () => [...stale];
+  try { await Promise.all([synced(a.sync), synced(b.sync)]); } finally { drive.listVersions = list; }
+  await synced(fresh.sync); await fresh.sync.prune();
+  const backups = listSnapshots(fresh.store, id).filter(name => name.includes('cloud-conflict-'));
+  assert.equal(backups.length, 2);
+  const titles = new Set();
+  for (const backup of backups) { restoreSnapshot(fresh.store, id, backup); titles.add(fresh.store.getGuide(id).title); }
+  assert.deepEqual([...titles].sort(), ['Conflict from A', 'Conflict from B']);
+});
+
+test('one online device closes all concurrent branches when provider IDs exceed one merged property', async t => {
+  const { device, drive, files } = setup(t, { idLength: 44 });
+  const writers = ['a', 'b', 'c', 'd'].map(name => device(name));
+  const id = addGuide(writers[0].store);
+  for (const { sync } of writers) await synced(sync);
+  const stale = [...versionFiles(files)], list = drive.listVersions;
+  for (const [index, { store }] of writers.entries()) {
+    edit(store, id, `Concurrent branch ${index}`);
+    savedAt(store, id, `2030-01-01T12:00:0${index}Z`);
+  }
+  drive.listVersions = async () => [...stale];
+  try { await Promise.all(writers.map(({ sync }) => synced(sync))); } finally { drive.listVersions = list; }
+  assert.equal(headsOf(versionFiles(files)).length, 4);
+  const reader = device('only-online');
+  for (let poll = 0; poll < 4; poll++) await synced(reader.sync);
+  assert.equal(headsOf(versionFiles(files)).length, 1);
+  assert.equal(reader.store.getGuide(id).title, 'Concurrent branch 3');
+  assert.equal(listSnapshots(reader.store, id).filter(name => name.includes('cloud-conflict-')).length, 4);
+  for (const file of versionFiles(files)) assert.ok((file.appProperties.merged || '').length <= 110);
+});
 
 test('cloud sharing is off by default and makes no network requests while disabled', async (t) => {
   const { device, drive } = setup(t);

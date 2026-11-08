@@ -3,15 +3,17 @@
 const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { EventEmitter } = require('node:events');
+const { failureCode, failureMessage, logFailure, plainText } = require('./portal-errors');
 
 class PortalBackend extends EventEmitter {
   // `desktop` picks the helper's click companion: 'gnome' (the Shell
   // extension) or 'plasma' (KWin script + input devices).
-  constructor({ spawnProcess = spawn, desktop = 'gnome' } = {}) {
+  constructor({ spawnProcess = spawn, desktop = 'gnome', diagnosticDir = null, translate = plainText, startTimeoutMs = 150000 } = {}) {
     super();
     this.spawnProcess = spawnProcess;
     this.desktop = desktop;
     this.label = desktop === 'plasma' ? 'Plasma' : 'GNOME';
+    Object.assign(this, { diagnosticDir, translate, startTimeoutMs });
     this.pending = new Map();
     this.nextId = 1;
     this.active = false;
@@ -21,19 +23,24 @@ class PortalBackend extends EventEmitter {
   }
 
   start(options = {}) {
+    if (this.child) return Promise.reject(new Error('Screen sharing is already starting or active.'));
+    this.stopping = false;
+    this.failureReason = null;
     return new Promise((resolve, reject) => {
       this.startResolve = resolve;
       this.startReject = reject;
-      this.startTimer = setTimeout(() => this.fail('Screen sharing timed out. Start recording again.'), 150000);
+      this.startTimer = setTimeout(() => this.fail('Screen sharing timed out.', 'timeout'), this.startTimeoutMs);
       const args = ['-u', path.join(__dirname, 'portal_capture.py')];
       if (this.desktop === 'plasma') args.push('--desktop', 'plasma');
-      this.child = this.spawnProcess('/usr/bin/python3', args, {
-        stdio: ['pipe', 'pipe', 'pipe'],
-      });
+      try {
+        this.child = this.spawnProcess('/usr/bin/python3', args, { stdio: ['pipe', 'pipe', 'pipe'] });
+      } catch (error) { this.fail(error.message, 'helper-failed'); return; }
+      const child = this.child;
       let buffer = '';
       let errors = '';
       this.child.stdout.setEncoding('utf8');
       this.child.stdout.on('data', (chunk) => {
+        if (this.child !== child) return;
         buffer += chunk;
         if (buffer.length > 64 * 1024 * 1024) return this.fail('Screen frame exceeded the capture memory limit.');
         let newline;
@@ -45,10 +52,10 @@ class PortalBackend extends EventEmitter {
         }
       });
       this.child.stderr.on('data', (chunk) => { errors = (errors + chunk).slice(-3000); });
-      this.child.on('error', (error) => this.fail(error.message));
-      this.child.stdin.on('error', (error) => { if (!this.stopping) this.fail(error.message); });
+      this.child.on('error', (error) => { if (this.child === child) this.fail(error.message, 'helper-failed'); });
+      this.child.stdin.on('error', (error) => { if (this.child === child && !this.stopping) this.fail(error.message, 'helper-failed'); });
       this.child.on('exit', () => {
-        if (!this.stopping) this.fail(errors.trim() || `${this.label} capture helper exited.`);
+        if (this.child === child && !this.stopping) this.fail(errors.trim() || `${this.label} capture helper exited.`);
       });
       this.send({ type: 'start', ...options });
     });
@@ -59,7 +66,8 @@ class PortalBackend extends EventEmitter {
   }
 
   receive(msg) {
-    if (msg.type === 'error') return this.fail(msg.reason);
+    if (this.stopping && ['ready', 'armed', 'error'].includes(msg.type)) return;
+    if (msg.type === 'error') return this.fail(msg.reason, msg.code, msg.stage);
     if (msg.type === 'ready') {
       clearTimeout(this.startTimer);
       this.displays = msg.displays;
@@ -69,7 +77,7 @@ class PortalBackend extends EventEmitter {
       this.startResolve = this.startReject = null;
     } else if (msg.type === 'armed') {
       this.armResolve?.();
-      this.armResolve = null;
+      this.armResolve = this.armReject = null;
     } else if (msg.type === 'click' && !this.stopping) {
       this.emit('click', { ...msg, at: msg.at + this.offset });
     } else if (msg.id != null) {
@@ -86,8 +94,9 @@ class PortalBackend extends EventEmitter {
   async arm() {
     if (!this.active) throw new Error('Screen sharing is not ready.');
     await new Promise((resolve, reject) => {
-      const timer = setTimeout(() => { this.armResolve = null; reject(new Error(this.desktop === 'plasma' ? 'KWin did not start recording clicks.' : 'GNOME extension did not start.')); }, 5000);
-      this.armResolve = () => { clearTimeout(timer); resolve(); };
+      this.armTimer = setTimeout(() => { this.armResolve = this.armReject = null; reject(new Error(this.desktop === 'plasma' ? 'KWin did not start recording clicks.' : 'GNOME extension did not start.')); }, 5000);
+      this.armResolve = () => { clearTimeout(this.armTimer); resolve(); };
+      this.armReject = reject;
       this.send({ type: 'arm' });
     });
   }
@@ -116,8 +125,14 @@ class PortalBackend extends EventEmitter {
       startedAt: msg.at + this.offset, capturedAt: msg.at + this.offset, source: `${this.desktop}-portal` };
   }
 
-  fail(reason) {
+  fail(reason, code, stage) {
     if (this.stopping) return;
+    code = failureCode(reason, code);
+    reason = failureMessage(reason, code, this.label, this.translate);
+    const file = logFailure(this.diagnosticDir, { desktop: this.desktop, code, stage });
+    const t = this.translate;
+    if (file) reason += ' ' + t('Local capture diagnostics: {file}', { file });
+    this.failureReason = reason;
     this.startReject?.(new Error(reason));
     this.startReject = this.startResolve = null;
     this.emit('failure', reason);
@@ -128,6 +143,9 @@ class PortalBackend extends EventEmitter {
     this.stopping = true;
     this.active = false;
     clearTimeout(this.startTimer);
+    clearTimeout(this.armTimer);
+    this.armReject?.(new Error(this.failureReason || 'Recording cancelled.'));
+    this.armResolve = this.armReject = null;
     this.startReject?.(new Error('Recording cancelled.'));
     this.startReject = this.startResolve = null;
     this.send({ type: 'disarm' });
@@ -137,7 +155,7 @@ class PortalBackend extends EventEmitter {
   destroy() {
     for (const request of this.pending.values()) {
       clearTimeout(request.timer);
-      request.reject(new Error(`${this.label} capture stopped.`));
+      request.reject(new Error(this.failureReason || `${this.label} capture stopped.`));
     }
     this.pending.clear();
     if (this.child) {

@@ -1,6 +1,7 @@
 'use strict';
 
 const { execFile } = require('node:child_process');
+const path = require('node:path');
 const { promisify } = require('node:util');
 const { dialog, nativeImage } = require('electron');
 const CaptureService = require('../../capture');
@@ -14,7 +15,9 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 class GnomeCaptureService extends CaptureService {
   constructor(options) {
     super(options);
-    this.backendFactory = options.backendFactory || (() => new PortalBackend());
+    this.backendFactory = options.backendFactory || (() => new PortalBackend({
+      diagnosticDir: options.store?.root ? path.join(options.store.root, 'logs') : null, translate: options.translate,
+    }));
     this.ensureCompanion = options.ensureCompanion || (() => this.ensureExtension());
     this.captureError = '';
     // How clicks are timed; the Plasma subclass reads input devices instead.

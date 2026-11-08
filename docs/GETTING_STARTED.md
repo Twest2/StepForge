@@ -109,8 +109,8 @@ screenshot.
 For each step you can:
 
 - **Write a description** with bold, italics, lists, quotes, and links. Type
-  `[text](https://…)`, or a web address followed by a space, and it turns into
-  a blue link (the **Link** button starts one for you). **Ctrl+click** a link to
+  `[text](example.com)`, or a web address such as `example.com` followed by a
+  space, and it turns into a blue link (`https://` is optional) (the **Link** button starts one for you). **Ctrl+click** a link to
   open it; in the Markdown preview a click opens it. Drag the corner of the box
   to make it taller.
   The menu beside **Description** switches between **Rich text** and

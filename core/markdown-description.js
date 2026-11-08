@@ -22,6 +22,22 @@
   const validate = md.validateLink.bind(md);
   md.validateLink = (url) => /^step:[A-Za-z0-9_-]+$/.test(url) || validate(url);
 
+  // No https:// needed: "example.com", "www.example.com" and
+  // [text](example.com) all link to https://example.com.
+  const DOMAIN = /^(?:www\.)?[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}(?=[/?#:]|$)/;
+  const withScheme = (url) => (DOMAIN.test(url) ? `https://${url}` : url);
+  const normalizeLink = md.normalizeLink.bind(md);
+  md.normalizeLink = (url) => normalizeLink(withScheme(url));
+  // Besides the classic endings (.com, .org, …) and every country code.
+  md.linkify.tlds(['dev', 'app', 'info', 'biz', 'tech', 'cloud', 'site', 'online', 'xyz', 'page', 'blog', 'shop',
+    'store', 'live', 'pro', 'wiki', 'news', 'email', 'design', 'tools', 'software', 'systems', 'solutions', 'support',
+    'help', 'docs', 'zone', 'network', 'company', 'services', 'digital', 'tv', 'today', 'world', 'website'], true);
+  const linkifyNormalize = md.linkify.normalize.bind(md.linkify);
+  md.linkify.normalize = (match) => {
+    linkifyNormalize(match);
+    if (!match.schema) match.url = match.url.replace(/^http:\/\//, 'https://');
+  };
+
   md.renderer.rules.image = (tokens, i) => {
     const token = tokens[i];
     const src = token.attrGet('src') || '';
@@ -45,5 +61,13 @@
       .replace(/<li>(<p>)?\[[xX]\] /g, '<li>$1☑ ');
   }
 
-  return { render };
+  /**
+   * Web and mail addresses in plain text (with or without https://), as
+   * [{ start, end, url, text }]: the rich-text editor links them as typed.
+   */
+  function findLinks(text) {
+    return (md.linkify.match(String(text || '')) || []).map((m) => ({ start: m.index, end: m.lastIndex, url: m.url, text: m.text }));
+  }
+
+  return { render, findLinks, withScheme };
 });

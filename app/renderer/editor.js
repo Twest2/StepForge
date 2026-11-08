@@ -4779,60 +4779,63 @@ class GuideEditor {
   }
 
   /**
-   * Rich text: turn typed [text](https://…) and bare web addresses into real
-   * links, except the one the caret is still in. A bare address becomes a
+   * Rich text: turn typed [text](address) and bare web or mail addresses
+   * (https:// optional) into real links, except the one the caret is still in. A bare address becomes a
    * link once a space follows it. `caret: false` converts everything (the
    * editor lost focus).
    * True when something changed.
    */
   linkifyDescription({ caret = true } = {}) {
+    const markdown = window.StepForgeMarkdown;
+    if (!markdown) return false;
     const editor = this.dom.descEditor;
     const sel = window.getSelection();
     const caretNode = caret && sel.rangeCount && sel.isCollapsed ? sel.focusNode : null;
     const caretOffset = caretNode ? sel.focusOffset : -1;
-    const pattern = /\[([^\]\n]+)\]\(((?:https?:\/\/|mailto:)[^\s)]+)\)|((?:https?:\/\/|www\.)[^\s<]*[^\s<.,;:!?)\]'"])/g;
     const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
     const nodes = [];
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
       if (!node.parentElement?.closest('a, code, pre')) nodes.push(node);
     }
-    let changed = false;
     for (const node of nodes) {
       const text = node.data;
-      let match;
-      pattern.lastIndex = 0;
-      while ((match = pattern.exec(text))) {
-        const start = match.index;
-        const end = start + match[0].length;
-        const bare = Boolean(match[3]);
-        if (node === caretNode && !bare && caretOffset > start && caretOffset < end) continue;
-        if (bare) {
+      // [text](address) first, then bare addresses outside those.
+      const candidates = [];
+      for (const m of text.matchAll(/\[([^\]\n]+)\]\(([^\s)]+)\)/g)) {
+        const href = /^(https?:|mailto:)/i.test(m[2]) ? m[2] : markdown.withScheme(m[2]);
+        if (/^(https?:|mailto:)/i.test(href)) candidates.push({ start: m.index, end: m.index + m[0].length, url: href, text: m[1], bare: false });
+      }
+      for (const m of markdown.findLinks(text)) {
+        if (!candidates.some((c) => m.start < c.end && m.end > c.start)) candidates.push({ ...m, bare: true });
+      }
+      candidates.sort((a, b) => a.start - b.start);
+      for (const c of candidates) {
+        if (node === caretNode && !c.bare && caretOffset > c.start && caretOffset < c.end) continue;
+        if (c.bare) {
           // A bare address is done once a space follows (after any closing
           // punctuation), or at the end of the text once the caret has left.
-          const tail = /^[.,;:!?)\]'"]*(\s|$)/.exec(text.slice(end));
-          if (!tail || (tail[1] === '' && node === caretNode) || (node === caretNode && caretOffset >= start && caretOffset <= end)) continue;
+          const tail = /^[.,;:!?)\]'"]*(\s|$)/.exec(text.slice(c.end));
+          if (!tail || (tail[1] === '' && node === caretNode) || (node === caretNode && caretOffset >= c.start && caretOffset <= c.end)) continue;
         }
-        const href = bare ? (match[3].startsWith('www.') ? `https://${match[3]}` : match[3]) : match[2];
-        const after = node.splitText(end);
-        const linkText = node.splitText(start);
+        const after = node.splitText(c.end);
+        const linkText = node.splitText(c.start);
         const link = document.createElement('a');
-        link.href = href;
-        link.textContent = bare ? match[3] : match[1];
+        link.href = c.url;
+        link.textContent = c.text;
         linkText.replaceWith(link);
-        if (node === caretNode && caretOffset >= end) {
+        if (node === caretNode && caretOffset >= c.end) {
           const range = document.createRange();
-          range.setStart(after, caretOffset - end);
+          range.setStart(after, caretOffset - c.end);
           range.collapse(true);
           sel.removeAllRanges();
           sel.addRange(range);
         }
-        changed = true;
-        break; // `node` now ends before the link; the rest is in `after`.
+        // The text after the new link may hold another one.
+        this.linkifyDescription({ caret });
+        return true;
       }
     }
-    // Text after a new link may hold another one.
-    if (changed) this.linkifyDescription({ caret });
-    return changed;
+    return false;
   }
 
   linkifyAndSave(options) {

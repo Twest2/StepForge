@@ -59,3 +59,26 @@ test('Markdown exports use the source as written, with step links renumbered and
   assert.match(md, /\[Step 1\]\(#step-1\)/);
   assert.doesNotMatch(md, /script/);
 });
+
+test('links need no https://: bare domains, www. and [text](domain) link to https', () => {
+  const out = html('See example.com, www.stepforge.dev and [docs](docs.github.com/en). Not file.txt or v1.2.');
+  assert.match(out, /<a href="https:\/\/example.com">example.com<\/a>/);
+  assert.match(out, /<a href="https:\/\/www.stepforge.dev">/);
+  assert.match(out, /<a href="https:\/\/docs.github.com\/en">docs<\/a>/);
+  assert.doesNotMatch(out, /file\.txt<\/a>|v1\.2<\/a>/);
+  const { findLinks } = require('../../core/markdown-description');
+  assert.deepEqual(findLinks('go to google.com now').map((l) => l.url), ['https://google.com']);
+});
+
+test('a saved Markdown source survives a renderer that would draw it differently', () => {
+  const source = '**Kept** as written';
+  // HTML an older renderer made: not what a fresh render gives today.
+  const older = '<p><b>Kept</b> as written</p>';
+  assert.notEqual(html(source), older);
+  const { descriptionMarkdownFor } = createStep({ descriptionMarkdown: '', descriptionHtml: older });
+  const kept = createStep({ descriptionMarkdown: source, descriptionHtml: older, descriptionMarkdownFor });
+  assert.equal(kept.descriptionMarkdown, source);
+  assert.equal(kept.descriptionHtml, older);
+  const changedRender = createStep({ descriptionMarkdown: source, descriptionHtml: '<p><strong>Kept</strong> as written!</p>', descriptionMarkdownFor: 'stale' });
+  assert.equal(changedRender.descriptionMarkdown, '**Kept** as written!', 'a real rewrite still rebuilds the source');
+});

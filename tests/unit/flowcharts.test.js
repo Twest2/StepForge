@@ -72,6 +72,16 @@ test('chart background: white by default, any color (with light lines on dark), 
   assert.equal(flow.arrange({ ...CHART, background: '#123456' }).background, '#123456');
 });
 
+test('a chart keeps pictures up to its limit, and its saved size and pictures reach the export', () => {
+  const pic = (n) => `data:image/png;base64,${'A'.repeat(n)}`;
+  const big = 2.5 * 1024 * 1024;
+  const g = flow.normalizeFlowchart({ nodes: ['a', 'b', 'c', 'd', 'e'].map((id, i) => ({ id, label: id, x: i * 200, y: 0, image: { src: pic(big) } })), edges: [] });
+  // 12 MB a chart: four 2.5 MB pictures stay, the fifth is dropped.
+  assert.deepEqual(g.nodes.map((n) => Boolean(n.image)), [true, true, true, true, false]);
+  const resized = flow.toSvg({ nodes: [{ id: 'a', shape: 'process', label: 'Wide', x: 0, y: 0, w: 400, h: 200 }], edges: [] }, { scale: 1, minWidth: 0 });
+  assert.match(resized, /width="448"/);
+});
+
 test('arrange: side inputs sit next to what they feed, notes beside their shape, and lines do not cross', () => {
   const n = (id, shape = 'process') => ({ id, shape, label: id });
   const g = flow.arrange({

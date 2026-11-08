@@ -32,6 +32,8 @@
   const MAX_EDGES = 400;
   const MAX_COORD = 20000;
   const MAX_IMAGE_CHARS = 3 * 1024 * 1024;
+  // All of a chart's pictures together (they're saved inside the step).
+  const MAX_CHART_IMAGE_CHARS = 12 * 1024 * 1024;
   const GRID = 20;
   const FONT_SIZE = 14;
   const LINE_HEIGHT = 18;
@@ -167,6 +169,7 @@
     if (!raw || typeof raw !== 'object' || !Array.isArray(raw.nodes)) return null;
     const ids = new Set();
     const nodes = [];
+    let imageChars = 0;
     for (const [i, n] of raw.nodes.slice(0, MAX_NODES).entries()) {
       if (!n || typeof n !== 'object') continue;
       const id = idOk(n.id) && !ids.has(n.id) ? n.id : newId('node');
@@ -182,6 +185,10 @@
       for (const [key, value] of [['w', size(n.w)], ['h', size(n.h)], ['fill', color(n.fill)], ['stroke', color(n.stroke)],
         ['textColor', color(n.textColor)], ['image', cleanImage(n.image)]]) {
         if (value !== undefined) node[key] = value;
+      }
+      if (node.image) {
+        imageChars += node.image.src.length;
+        if (imageChars > MAX_CHART_IMAGE_CHARS) delete node.image;
       }
       nodes.push(node);
     }
@@ -676,7 +683,7 @@
   }
 
   return {
-    SHAPES: SHAPE_IDS, EDGE_STYLES, PLACEMENTS, GRID, normalizeFlowchart, normalizePlacement, wrapLabel, nodeBox, boundaryPoint,
+    SHAPES: SHAPE_IDS, MAX_CHART_IMAGE_CHARS, EDGE_STYLES, PLACEMENTS, GRID, normalizeFlowchart, normalizePlacement, wrapLabel, nodeBox, boundaryPoint,
     arrange, bounds, toSvg, shapeIcon, defaultColors, hasFlowchart, newId, isDark, edgeColorOn,
   };
 });

@@ -12,6 +12,7 @@ const { GuideStore } = require('../core/store');
 const { libraryLocationFor } = require('./data-dir');
 const { Settings } = require('../core/settings');
 const { saveGuideFromEditor, saveStepFromEditor } = require('../core/editor-save');
+const flowchartModel = require('../core/flowchart');
 const { descriptionToMarkdown, descriptionFromMarkdown } = require('../core/description-markdown');
 const { GoogleDrive } = require('./google-drive');
 const { OneDrive } = require('./onedrive');
@@ -828,6 +829,7 @@ function setupIpc() {
   });
 
   const IMAGE_BUDGET = 256 * 1024 * 1024; // channels that carry base64 PNGs
+  const STEP_BUDGET = 2 * (flowchartModel.MAX_CHART_IMAGE_CHARS + 2 * 1024 * 1024); // step:save
   const h = (channel, fn, opts = {}) => {
     const { maxChars = 2 * 1024 * 1024, validate = null } = opts;
     ipcMain.handle(channel, async (event, args = {}) => {
@@ -978,7 +980,11 @@ function setupIpc() {
     const saved = saveStepFromEditor(store, guideId, step, baseStep);
     reindex(guideId);
     return saved;
-  }, { validate: (a) => c.id(a.guideId) && security.isPlainArgs(a.step) && a.step && c.id(a.step.stepId)
+  }, {
+    // The step and the version it was edited from; each may carry a
+    // flowchart's pictures (core/flowchart.js caps them at 12 MB a chart).
+    maxChars: STEP_BUDGET,
+    validate: (a) => c.id(a.guideId) && security.isPlainArgs(a.step) && a.step && c.id(a.step.stepId)
     && (a.baseStep == null || (security.isPlainArgs(a.baseStep) && a.baseStep.stepId === a.step.stepId)) });
   h('step:delete', ({ guideId, stepId }) => {
     store.deleteStep(guideId, stepId);

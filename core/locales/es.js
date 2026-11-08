@@ -1896,4 +1896,5 @@
   "Zoom out (Ctrl + mouse wheel)": "Alejar (Ctrl + rueda del ratón)",
   "Reset zoom to 100%": "Restablecer el zoom al 100 %",
   "Background": "Fondo",
+  "This flowchart has as many pictures as it can hold. Remove one, or use smaller pictures.": "Este diagrama de flujo ya tiene todas las imágenes que admite. Quita una o usa imágenes más pequeñas.",
 });

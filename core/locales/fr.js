@@ -1896,4 +1896,5 @@
   "Zoom out (Ctrl + mouse wheel)": "Zoom arrière (Ctrl + molette)",
   "Reset zoom to 100%": "Rétablir le zoom à 100 %",
   "Background": "Arrière-plan",
+  "This flowchart has as many pictures as it can hold. Remove one, or use smaller pictures.": "Cet organigramme contient déjà autant d’images que possible. Retirez-en une ou utilisez des images plus petites.",
 });

@@ -1896,4 +1896,5 @@
   "Zoom out (Ctrl + mouse wheel)": "Уменьшить (Ctrl + колесо мыши)",
   "Reset zoom to 100%": "Сбросить масштаб до 100%",
   "Background": "Фон",
+  "This flowchart has as many pictures as it can hold. Remove one, or use smaller pictures.": "В этой схеме уже максимум изображений. Удалите одно или используйте изображения меньшего размера.",
 });

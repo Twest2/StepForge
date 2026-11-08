@@ -2532,6 +2532,12 @@ class GuideEditor {
     }
     const step = this.currentStep;
     if (!step?.flowchart?.nodes.some((n) => n.id === nodeId)) return;
+    // The chart's pictures are saved with the step: keep them within its limit.
+    const others = step.flowchart.nodes.reduce((sum, n) => sum + (n.id !== nodeId && n.image ? n.image.src.length : 0), 0);
+    if (others + src.length > window.StepForgeFlowchart.MAX_CHART_IMAGE_CHARS) {
+      this.onToast(t('This flowchart has as many pictures as it can hold. Remove one, or use smaller pictures.'), { error: true });
+      return;
+    }
     this.flowEditor.cb.beforeChange();
     const node = step.flowchart.nodes.find((n) => n.id === nodeId);
     node.image = { src, fit: node.image?.fit || 'contain' };

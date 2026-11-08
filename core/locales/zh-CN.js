@@ -1896,4 +1896,5 @@
   "Zoom out (Ctrl + mouse wheel)": "缩小（Ctrl + 鼠标滚轮）",
   "Reset zoom to 100%": "将缩放重置为 100%",
   "Background": "背景",
+  "This flowchart has as many pictures as it can hold. Remove one, or use smaller pictures.": "此流程图中的图片已达上限。请删除一张，或使用更小的图片。",
 });

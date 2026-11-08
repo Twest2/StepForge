@@ -1896,4 +1896,5 @@
   "Zoom out (Ctrl + mouse wheel)": "縮小（Ctrl + マウスホイール）",
   "Reset zoom to 100%": "ズームを 100% に戻す",
   "Background": "背景",
+  "This flowchart has as many pictures as it can hold. Remove one, or use smaller pictures.": "このフローチャートに入れられる画像は上限に達しています。1 枚削除するか、小さい画像を使ってください。",
 });

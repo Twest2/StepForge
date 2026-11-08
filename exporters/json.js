@@ -40,12 +40,15 @@ function exportJson(ast, outDir, template = {}) {
     },
     toc: tocEntries(ast).map(({ number, title, depth, anchor }) => ({ number, title, depth, anchor })),
     steps: ast.steps.map((step) => ({
+      stepId: step.stepId,
       number: step.number,
       kind: step.kind,
       status: step.status,
       title: step.title,
       descriptionHtml: step.descriptionHtml,
       descriptionText: step.descriptionText,
+      ...(typeof step.descriptionMarkdown === 'string' ? { descriptionMarkdown: step.descriptionMarkdown } : {}),
+      ...(step.flowchart ? { flowchart: { graph: step.flowchart.graph, mermaid: step.flowchart.mermaid } } : {}),
       image: images.has(step.stepId) ? images.get(step.stepId) : null,
       annotations: tpl.includeAnnotations ? step.annotations : undefined,
       textBlocks: step.textBlocks.map((tb) => ({
@@ -54,7 +57,9 @@ function exportJson(ast, outDir, template = {}) {
       codeBlocks: step.codeBlocks.map((cb) => ({ ...cb, code: codeBlockText(cb) })),
       tableBlocks: step.tableBlocks,
       blocks: stepBlocks(step).map((block) => (
-        block.kind === 'text'
+        block.kind === 'flowchart'
+          ? { kind: 'flowchart', id: block.id, order: block.order, title: block.title, graph: block.graph, mermaid: block.mermaid, image: images.get(`${step.stepId}:${block.id}`) || null }
+          : block.kind === 'text'
           ? { ...block }
           : block.kind === 'code'
             ? { ...block, code: codeBlockText(block) }

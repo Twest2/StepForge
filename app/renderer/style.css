@@ -764,6 +764,8 @@ body.platform-linux #capture-status button {
 /* The toolbar wraps at narrow widths; past a few rows it scrolls rather than squeezing the canvas. */
 .canvas-toolbar { max-height: min(220px, 35vh); min-width: 0; overflow: auto; flex-shrink: 0; }
 .canvas-wrap {
+  background-image: radial-gradient(circle, color-mix(in srgb, var(--muted) 40%, transparent) 1px, transparent 1px);
+  background-size: 20px 20px;
   flex: 1;
   min-height: 0;
   display: grid;
@@ -772,6 +774,34 @@ body.platform-linux #capture-status button {
   overflow: auto;
   position: relative;
 }
+
+/* Editor-only visual controls. Exported diagrams contain no grid or toolbar. */
+.image-tools, .flowchart-toolbar { display: flex; gap: 3px; align-items: center; flex-wrap: wrap; }
+.image-tools[hidden], .flowchart-toolbar[hidden], .flowchart-surface[hidden], .flowchart-properties[hidden], .description-source[hidden], .description-preview[hidden], .rich-toolbar[hidden] { display: none !important; }
+.main-visual-picker { margin-left: auto; display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.main-visual-select { max-width: 130px; }
+.flowchart-toolbar { flex: 1; min-width: 0; }
+.flowchart-placement-picker { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.pane-props section[hidden] { display: none !important; }
+.flowchart-properties { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; padding: 10px; border-bottom: 1px solid var(--border); background: var(--panel-solid); }
+.flowchart-properties label { display: grid; gap: 4px; min-width: 0; flex: 1; }
+.flowchart-properties input, .flowchart-properties select { width: 100%; min-width: 100px; }
+.canvas-wrap.editing-flowchart { display: block; padding: 0; }
+.flowchart-surface { min-width: 100%; min-height: 100%; touch-action: none; }
+.flowchart-surface svg { display: block; max-width: none; }
+.canvas-wrap canvas[hidden] { display: none !important; }
+.flowchart-hidden { display: none !important; }
+.flowchart-surface [data-node-id] { cursor: grab; }
+.flowchart-surface [data-edge-id] { cursor: pointer; }
+.flowchart-surface [data-node-id]:focus-visible { outline: 3px solid var(--accent); }
+.flowchart-preview svg, .flowchart-ai-preview svg { width: 100%; height: auto; display: block; }
+.flowchart-ai-preview { max-height: 60vh; overflow: auto; }
+.description-source { width: 100%; min-height: 220px; resize: vertical; font-family: var(--font-mono, monospace); line-height: 1.5; }
+.description-preview { overflow-wrap: anywhere; }
+.description-preview pre { white-space: pre-wrap; }
+.description-preview table { width: 100%; border-collapse: collapse; }
+.description-preview th, .description-preview td { border: 1px solid var(--border); padding: 5px; }
+.markdown-help { font-size: 12px; }
 .canvas-wrap canvas {
   background: #fff;
   border-radius: 12px;

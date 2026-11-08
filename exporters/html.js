@@ -131,11 +131,14 @@ function renderStep(step, ast, images, tpl, { rich = false } = {}) {
   parts.push(blocks(groups.afterDescription));
   parts.push(blocks(groups.beforeImage));
   const img = images.get(step.stepId);
-  if (img && tpl.includeImages) {
+  if (step.flowchart && tpl.includeImages) {
+    parts.push(`<figure class="flowchart">${step.flowchart.svg}</figure>`);
+  } else if (img && tpl.includeImages) {
     parts.push(`<figure class="shot"><img alt="${escapeHtml(step.altText)}" src="${dataUri(img)}" width="${img.width}" height="${img.height}"${rich ? ' tabindex="0"' : ''}></figure>`);
   }
   parts.push(blocks(groups.afterImage));
   for (const block of groups.rest) {
+    if (block.kind === 'flowchart') parts.push(`<figure class="flowchart">${block.svg}</figure>`);
     if (block.kind === 'text') parts.push(blockHtml(block, ast));
     else if (block.kind === 'code') parts.push(codeHtml(block, ast));
     else if (block.kind === 'table' && block.rows && block.rows.length) parts.push(tableHtml(block.rows));
@@ -179,6 +182,7 @@ function footer(ast) {
 }
 
 const BASE_CSS = `
+.flowchart { margin: 16px 0; overflow: auto; } .flowchart svg { max-width: 100%; height: auto; }
 :root {
   color-scheme: light dark;
   --bg: #ffffff;

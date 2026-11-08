@@ -67,6 +67,8 @@ function htmlToBlocks(html) {
       case 'h2':
       case 'h3':
       case 'h4':
+      case 'h5':
+      case 'h6':
         if (closing) flushBlock();
         else startBlock(tag);
         break;

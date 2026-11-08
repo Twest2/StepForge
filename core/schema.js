@@ -2,6 +2,8 @@
 
 const { newId, nowIso } = require('./util');
 const { sanitizeHtml } = require('./sanitize');
+const { normalizeGraph } = require('./flowchart');
+const markdown = require('./markdown-description');
 const { blockText } = require('./blocks');
 const { normalizeReviewDays, normalizeDateOnly } = require('./review');
 const { bendOf, normalizePenPoints } = require('./annotation-shapes');
@@ -111,7 +113,8 @@ function createStep(fields = {}) {
     kind: STEP_KINDS.includes(fields.kind) ? fields.kind : 'image',
     status: STEP_STATUSES.includes(fields.status) ? fields.status : 'todo',
     title: fields.title || '',
-    descriptionHtml: sanitizeHtml(fields.descriptionHtml || ''),
+    descriptionHtml: sanitizeHtml(typeof fields.descriptionMarkdown === 'string' ? markdown.render(fields.descriptionMarkdown) : fields.descriptionHtml || ''),
+    ...(typeof fields.descriptionMarkdown === 'string' ? { descriptionMarkdown: fields.descriptionMarkdown.slice(0, 2000000) } : {}),
     hidden: Boolean(fields.hidden),
     skipped: Boolean(fields.skipped),
     forceNewPage: Boolean(fields.forceNewPage),
@@ -123,10 +126,15 @@ function createStep(fields = {}) {
       ...(fields.focusedView || {}),
     },
     image: fields.image || null, // { originalPath, workingPath, size:{width,height} }
+    mainVisual: ['image', 'flowchart', 'none'].includes(fields.mainVisual) ? fields.mainVisual : 'image',
+    flowchart: fields.flowchart ? normalizeGraph(fields.flowchart) : null,
     annotations: (fields.annotations || []).map(normalizeAnnotation),
     textBlocks: (fields.textBlocks || []).map((tb) => normalizeTextBlock(tb, takeOrder(tb))),
     codeBlocks: (fields.codeBlocks || []).map((cb) => normalizeCodeBlock(cb, takeOrder(cb))),
     tableBlocks: (fields.tableBlocks || []).map((tb) => normalizeTableBlock(tb, takeOrder(tb))),
+    flowchartBlocks: (Array.isArray(fields.flowchartBlocks) ? fields.flowchartBlocks : []).map((b) => ({
+      id: b.id || newId('flow'), order: takeOrder(b), title: String(b.title || '').slice(0, 300), graph: normalizeGraph(b.graph),
+    })),
     links: fields.links || [], // { id, label, targetStepId }
     // Private-detail check: when it last ran, and what the user said isn't private.
     redaction: normalizeRedaction(fields.redaction),

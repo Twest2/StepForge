@@ -20,7 +20,7 @@ function editorContext({ api = {}, dialogs = {} } = {}) {
   return { editor };
 }
 
-const WRITE_ACTIONS = ['Write the whole guide', 'Write the whole step', 'Write the title', 'Write the description', 'Write the blocks'];
+const WRITE_ACTIONS = ['Write the whole guide', 'Write the whole step', 'Write the title', 'Write the description', 'Write the blocks', 'Generate flowchart…'];
 const actionItems = (items) => items.filter((item) => item !== 'sep' && WRITE_ACTIONS.includes(item.label));
 
 test('the AI menu lists every writing action, usable only while AI is on', () => {

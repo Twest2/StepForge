@@ -241,6 +241,9 @@ was recorded with StepForge.
   data.
 - **Notes, tips, warnings, code blocks and tables** in any step. Code blocks
   are syntax-highlighted on export, in Atom One Dark or seven other themes.
+- **Flowcharts and Markdown descriptions.** Build branching diagrams as a
+  main visual or content block, optionally draft them with AI, and insert
+  permanent step links. [How it works](docs/FLOWCHARTS.md).
 - **Reusable content.** Placeholders (`[[Product]]`) and export templates keep
   a whole set of guides consistent.
 - **Your branding.** Brand profiles put your logo, colors, fonts, cover style,

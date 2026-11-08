@@ -1142,6 +1142,7 @@ function applyAiPatchToStep(step, patch, { target = 'all', guideTitle = '', plac
     next.title = displayText(patch.title);
   }
   if (writesDescription(target) && patch.descriptionHtml) {
+    delete next.descriptionMarkdown;
     next.descriptionHtml = sanitizeHtml(withPinnedParagraphs(step.descriptionHtml,
       substitutePlaceholders(patch.descriptionHtml, placeholders)));
   }

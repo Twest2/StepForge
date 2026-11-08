@@ -144,12 +144,25 @@ async function prepareExportImages(store, guideId, { codec = activeCodec, maxSte
   const guide = store.getGuide(guideId);
   const steps = store.listSteps(guideId);
   let visible = 0;
+  const { stepNumberMap } = require('./step-outline');
+  const { toSvg } = require('./flowchart');
+  const included = guide.stepsOrder.map(id => steps.get(id)).filter(s => s && !s.hidden && !(s.skipped && guide.flags?.hideSkippedStepsInExports));
+  const numbers = stepNumberMap(included);
+  const refs = (maxSteps > 0 ? included.slice(0, maxSteps) : included).map(s => ({ stepId: s.stepId, number: numbers.get(s.stepId), title: s.title }));
   for (const stepId of guide.stepsOrder) {
     const step = steps.get(stepId);
     if (!step) continue;
     if (step.hidden || (step.skipped && guide.flags?.hideSkippedStepsInExports)) continue;
     if (maxSteps > 0 && ++visible > maxSteps) break;
-    if (!step.image) continue;
+    const diagrams = [...(step.flowchartBlocks || []).map(b => [b.id, b.graph])];
+    if (step.mainVisual === 'flowchart' && step.flowchart) diagrams.push(['main', step.flowchart]);
+    for (const [id, graph] of diagrams) {
+      // Sharp is already bundled for screenshot codecs. SVG contains only our
+      // own escaped geometry/text, never model-supplied markup or resources.
+      const sharp = require('sharp');
+      images.set(`flow:${stepId}:${id}`, await sharp(Buffer.from(toSvg(graph, refs))).png().toBuffer());
+    }
+    if (!step.image || step.mainVisual === 'flowchart' || step.mainVisual === 'none') continue;
     const absPath = path.join(store.stepDir(guideId, stepId), step.image.workingPath);
     if (images.has(absPath)) continue;
     let handle;

@@ -197,6 +197,10 @@ class WordDocument {
     if (img && tpl.includeImages) parts.push(this.image(img, step.altText));
     parts.push(blocks(g.afterImage));
     for (const block of g.rest) {
+      if (block.kind === 'flowchart') {
+        const graphImage = images.get(`${step.stepId}:${block.id}`);
+        if (graphImage) parts.push(this.image(graphImage, 'Flowchart'));
+      }
       if (block.kind === 'text') parts.push(this.callout(block));
       else if (block.kind === 'code') {
         const hl = highlightCode(codeBlockText(block), block.language, this.ast.codeStyle);

@@ -99,6 +99,11 @@ the model writes the CSS for you to review. See
 
 ## Use your own AI server
 
+**Flowcharts.** Choose **AI → Generate flowchart…** or **Generate with AI…**
+in the diagram toolbar. Your configured provider drafts a diagram from step
+titles, descriptions and your prompt. Review it before applying; screenshots
+are not sent for this action. See [Flowcharts](FLOWCHARTS.md).
+
 If your organization runs an OpenAI-compatible server, such as vLLM, LM Studio,
 LocalAI or LiteLLM Proxy, use it instead of Ollama in
 **Settings → AI → AI connection**:

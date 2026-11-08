@@ -105,7 +105,7 @@ function exportGifGuide(ast, outDir, template = {}) {
   const ink = brand ? [...hexToRgb(brand.colors.text), 255] : INK;
   const mark = brand?.watermark.enabled ? brandRaster(brand.logo) : null;
   const images = renderAllImages(ast);
-  const stepsWithImages = ast.steps.filter((s) => images.has(s.stepId));
+  const stepsWithImages = ast.steps.flatMap(s => [s, ...(s.flowchartBlocks || []).map(b => ({ ...s, stepId: `${s.stepId}:${b.id}`, title: b.title || s.title }))]).filter(s => images.has(s.stepId));
   if (!stepsWithImages.length) throw new Error('This guide has no screenshots to put in a GIF.');
 
   // Frame height derives from the median aspect ratio so most shots fit.

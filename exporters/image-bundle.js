@@ -92,6 +92,13 @@ function exportImageBundle(ast, outDir, template = {}) {
   }
 
   const meta = {
+    flowcharts: ast.steps.flatMap(step => (step.flowchartBlocks || []).map(block => {
+      const img = rendered.get(`${step.stepId}:${block.id}`);
+      const fileName = `step-${fileNumber(step.number)}-flow-${fileNameSlug(block.id)}.png`;
+      fs.writeFileSync(path.join(folder, fileName), encodePng(img));
+      files.set(`${step.stepId}:${block.id}`, { fileName, width: img.width, height: img.height });
+      return { stepId: step.stepId, blockId: block.id, image: fileName };
+    })),
     format: 'stepforge-image-bundle',
     version: 2,
     guide: {

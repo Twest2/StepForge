@@ -381,6 +381,17 @@ function exportPptx(ast, outDir, template = {}) {
       y += block.height + CALL_OUT_GAP;
     }
     slides.push({ xml: slideXml(content), rels, media });
+    // Give each diagram block a full slide so it stays legible instead of
+    // squeezing it into the remaining screenshot space.
+    for (const block of step.flowchartBlocks || []) {
+      const img = images.get(`${step.stepId}:${block.id}`);
+      if (!img) continue;
+      const name = `image${++mediaCounter}.png`;
+      const scale = Math.min((SLIDE_W - 1219200) / img.width, (SLIDE_H - CONTENT_Y - footerReserve - 180000) / img.height);
+      const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
+      slides.push({ xml: slideXml(textBox(457200, TITLE_Y, titleWidth, TITLE_H, para(`${step.number}. ${block.title || step.title || 'Flowchart'}`, { size: 2600, bold: true }))
+        + picture(2, Math.round((SLIDE_W - w) / 2), CONTENT_Y, w, h, 'Flowchart')), rels: [{ id: 2, name }], media: [{ name, data: encodePng(img) }] });
+    }
   }
 
   const entries = [];

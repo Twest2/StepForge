@@ -25,6 +25,7 @@ const { rasterToPng } = require('../core/image-format');
 const { usablePlaceholders, substitutePlaceholders } = require('../core/ai-placeholders');
 const { buildOrganizePrompt, planOrganize } = require('../core/ai-organize');
 const { buildBrandCssPrompt, normalizeBrandCss } = require('../core/ai-brand-css');
+const { buildFlowchartPrompt, parseFlowchart } = require('../core/ai-flowchart');
 const { parentMap } = require('../core/step-outline');
 const { systemPlaceholders } = require('../core/placeholders');
 const { OcrPool } = require('./ocr-pool');
@@ -875,6 +876,20 @@ class TextIntelService {
       return { ok: true, css: normalizeBrandCss(parseAiJson(raw)) };
     } catch (err) {
       return { ok: false, reason: err && err.message ? err.message : 'AI couldn’t write the CSS.' };
+    }
+  }
+
+  async generateFlowchart({ guideId, request, graph = null }) {
+    try {
+      const ready = this.readyAiConfig();
+      if (!ready.ok) return ready;
+      const guide = this.store.getGuide(guideId), map = this.store.listSteps(guideId);
+      const steps = guide.stepsOrder.map(id => map.get(id)).filter(s => s && !s.hidden && !(s.skipped && guide.flags?.hideSkippedStepsInExports));
+      const prompts = buildFlowchartPrompt({ request, steps, graph });
+      const raw = await this.callOllama({ ...ready, ...prompts, guideId });
+      return { ok: true, graph: parseFlowchart(parseAiJson(raw), steps) };
+    } catch (err) {
+      return { ok: false, reason: err.message || 'AI could not create a flowchart.' };
     }
   }
 

@@ -134,7 +134,26 @@ class AppPage {
 
   /** Real mouse click at the centre of the first visible match. */
   async click(selector, { timeout, button = 'left', clickCount = 1 } = {}) {
-    const point = await this.waitForVisible(selector, { timeout, label: `clickable ${selector}` });
+    let point = await this.waitForVisible(selector, { timeout, label: `clickable ${selector}` });
+    // A taller Markdown editor can put annotation fields below the fold.
+    // Scroll with real wheel input before clicking; an offscreen click could
+    // leave the canvas focused and send a field's Delete key to an annotation.
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const scroll = await this.evaluate(`(() => {
+        const target = [...document.querySelectorAll(${JSON.stringify(selector)})].find(n => n.getBoundingClientRect().width > 0);
+        const r = target.getBoundingClientRect();
+        if (r.top >= 0 && r.bottom <= innerHeight) return null;
+        let parent = target.parentElement;
+        while (parent && !(/auto|scroll/.test(getComputedStyle(parent).overflowY) && parent.scrollHeight > parent.clientHeight)) parent = parent.parentElement;
+        const box = (parent || document.documentElement).getBoundingClientRect();
+        return { x: Math.max(1, Math.min(innerWidth - 2, box.left + box.width / 2)),
+          y: Math.max(1, Math.min(innerHeight - 2, box.top + box.height / 2)), delta: r.top < 0 ? r.top - 60 : r.bottom - innerHeight + 80 };
+      })()`);
+      if (!scroll) break;
+      await this.cdp.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: scroll.x, y: scroll.y, deltaX: 0, deltaY: scroll.delta });
+      await new Promise(resolve => setTimeout(resolve, 80));
+      point = await this.waitForVisible(selector, { timeout });
+    }
     await this.clickAt(point.x, point.y, { button, clickCount });
     return point;
   }
@@ -174,6 +193,9 @@ class AppPage {
     for (const ch of text) {
       if (ch === '\n') {
         await this.key('Enter');
+        // rawKeyDown alone does not insert a newline into a textarea on
+        // Windows. A real Enter also sends its character event.
+        await this.cdp.send('Input.dispatchKeyEvent', { type: 'char', key: 'Enter', text: '\r', unmodifiedText: '\r' });
         continue;
       }
       await this.cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', text: ch, key: ch, unmodifiedText: ch });

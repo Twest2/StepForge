@@ -1334,6 +1334,8 @@ function showAddStepDialog({ onChooseImage } = {}) {
     let image = null;
     let closed = false;
     let choosing = false;
+    const mainVisual = makeSelect('image', [{ value: 'image', label: t('Image') }, { value: 'flowchart', label: t('Flowchart') }, { value: 'none', label: t('None') }]);
+    mainVisual.setAttribute('aria-label', t('Main visual'));
     const title = makeInput('', 'text', { placeholder: t('Untitled step'), maxLength: 1000 });
     const imageStatus = el('p.muted', { role: 'status', 'aria-live': 'polite' }, t('No image selected. The step can be added without one.'));
     const error = el('p', { role: 'alert', hidden: true });
@@ -1356,12 +1358,13 @@ function showAddStepDialog({ onChooseImage } = {}) {
     } }, t('Choose image…'));
     const accept = () => {
       if (closed || choosing) return;
-      const draft = { title: title.value.trim(), image };
+      const draft = { title: title.value.trim(), image, mainVisual: mainVisual.value };
       closed = true; close(); resolve(draft);
     };
     const add = el('button.primary', { type: 'button', onClick: accept }, t('Add'));
     const form = el('form.add-step-form', { onSubmit: event => { event.preventDefault(); accept(); } },
       el('label', {}, t('Step title'), title),
+      el('label', {}, t('Main visual'), mainVisual),
       el('div.add-step-image', {}, el('div', {}, t('Image (optional)')), imageStatus, el('div.row', {}, choose, remove)), error);
     const { close, requestDismiss, node } = openModal({
       title: t('Add Step'), body: form, initialFocus: title,

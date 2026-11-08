@@ -15,6 +15,7 @@ const {
 const { sanitizeHtml } = require('./sanitize');
 const { isValidOutline } = require('./step-outline');
 const { toDateOnly } = require('./review');
+const { remapStepReferences } = require('./step-references');
 const { storedExtension } = require('./image-format');
 
 // A step's screenshot is original.webp (or original.png, for PNG screenshots
@@ -304,6 +305,7 @@ class GuideStore {
       const newStep = deepClone(oldStep);
       newStep.stepId = idMap.get(oldId);
       newStep.parentStepId = oldStep.parentStepId ? idMap.get(oldStep.parentStepId) || null : null;
+        remapStepReferences(newStep, idMap);
       writeJsonSync(path.join(this.stepDir(copy.guideId, newStep.stepId), 'step.json'), newStep);
       const oldDir = this.stepDir(guideId, oldId);
       for (const file of fs.readdirSync(oldDir)) {

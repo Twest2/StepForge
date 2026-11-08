@@ -164,6 +164,10 @@ function renderStep(step, ast, attachmentNames, tpl) {
   out.push(...panels(groups.afterImage));
 
   for (const block of groups.rest) {
+    if (block.kind === 'flowchart') {
+      const attachment = attachmentNames.get(`${step.stepId}:${block.id}`);
+      if (attachment) out.push(`<p><ac:image ac:alt="Flowchart"><ri:attachment ri:filename="${escapeXml(attachment)}" /></ac:image></p>`);
+    }
     if (block.kind === 'text') {
       out.push(panel(block, ast));
     } else if (block.kind === 'code') {

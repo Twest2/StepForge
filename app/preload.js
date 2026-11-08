@@ -175,6 +175,7 @@ const api = {
     cancel: invoke('ai:cancel'),
     status: invoke('ai:status'),
     brandCss: invoke('ai:brandCss'),
+    flowchart: invoke('ai:flowchart'),
   },
   agents: {
     setup: invoke('agents:setup'),

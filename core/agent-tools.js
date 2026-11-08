@@ -6,6 +6,7 @@ const { htmlToMarkdown } = require('../exporters/htmlmd');
 const { markdownHtml } = require('./placeholder-markdown');
 const { descriptionToMarkdown } = require('./description-markdown');
 const { sanitizeHtml } = require('./sanitize');
+const { validateGraph, toMermaid } = require('./flowchart');
 const { renderScreenshotForAi, aiScreenshotSize } = require('./ai-image');
 const { orderedBlocks, blockText } = require('./blocks');
 const { placeholderText } = require('./placeholder-markdown');
@@ -59,6 +60,7 @@ const INSTRUCTIONS = [
   'Placeholders: get_guide lists them. In descriptions and blocks, write [[Name]] where a placeholder\'s value would appear; keep titles in plain words. Create a placeholder only for a specific value that repeats, such as a product name, version, URL or course code.',
   'Annotations use pixel coordinates on the screenshot get_step returns. A red circle there is usually the person\'s click marker; don\'t duplicate it.',
   'Keep every [[placeholder]] token exactly as written. Polish text the person wrote rather than replacing its meaning.',
+  'Use set_flowchart to create or replace an editable diagram as a main visual or content block. Use permanent step IDs from get_guide for node destinations. It saves a snapshot and preserves screenshots.',
   ...BRAND_INSTRUCTIONS,
 ].join('\n');
 
@@ -67,6 +69,7 @@ class AgentError extends Error {}
 const descriptionMarkdown = (html) => descriptionToMarkdown(splitPinnedParagraphs(html).body);
 
 function blockForAgent(block) {
+  if (block.kind === 'flowchart') return { id: block.id, kind: 'flowchart', title: block.title, graph: block.graph };
   if (block.kind === 'text') {
     return {
       id: block.id, kind: 'text', level: block.level || 'info', title: block.title || '',
@@ -146,6 +149,8 @@ function stepForAgent(step, number) {
     description: descriptionMarkdown(step.descriptionHtml),
     blocks: orderedBlocks(step).map(blockForAgent),
     has_screenshot: Boolean(step.image),
+    main_visual: step.mainVisual || 'image',
+    flowchart: step.flowchart || null,
     ...(shown ? {
       screenshot_size: shown,
       annotations: (step.annotations || []).map((ann) => annotationForAgent(ann, shown)),
@@ -333,6 +338,50 @@ function createAgentTools({ store, agentSettings, onChange = () => {}, onBrandin
   };
 
   const tools = [
+    {
+      name: 'set_flowchart',
+      description: 'Create or replace an editable flowchart as a step main visual or a content block. Nodes can reference permanent step IDs. The screenshot and its annotations are preserved. Call get_guide for valid step IDs. A snapshot is saved before changes.',
+      annotations: { readOnlyHint: false, destructiveHint: true },
+      inputSchema: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          guide_id: { type: 'string' }, step_id: { type: 'string' },
+          placement: { type: 'string', enum: ['main', 'block'] }, block_id: { type: 'string' }, title: { type: 'string', maxLength: 300 },
+          graph: { type: 'object', additionalProperties: false, properties: {
+            version: { type: 'integer', enum: [1] },
+            nodes: { type: 'array', maxItems: 100, items: { type: 'object', properties: {
+              id: { type: 'string' }, type: { type: 'string', enum: ['step', 'decision', 'start', 'end'] }, label: { type: 'string', maxLength: 300 },
+              stepId: { type: ['string', 'null'] }, x: { type: 'number' }, y: { type: 'number' },
+            }, required: ['id', 'label'], additionalProperties: false } },
+            edges: { type: 'array', maxItems: 200, items: { type: 'object', properties: {
+              id: { type: 'string' }, from: { type: 'string' }, to: { type: 'string' }, label: { type: 'string', maxLength: 80 },
+            }, required: ['from', 'to'], additionalProperties: false } },
+          }, required: ['nodes', 'edges'] },
+        }, required: ['guide_id', 'step_id', 'placement', 'graph'],
+      },
+      handler({ guide_id: guideId, step_id: stepId, placement, block_id: blockId, title = '', graph: raw } = {}) {
+        requireEnabled();
+        const guide = loadGuide(guideId);
+        loadStep(guide, stepId);
+        if (!['main', 'block'].includes(placement)) throw new AgentError('placement must be main or block.');
+        let graph;
+        try { graph = validateGraph(raw, new Set(guide.stepsOrder)); } catch (err) { throw new AgentError(err.message); }
+        checkLength(title, 300, 'title');
+        const note = snapshotBefore(guideId, 'edits a flowchart');
+        const id = blockId || `flow-${require('node:crypto').randomUUID()}`;
+        const saved = saveWithRetry(() => store.getStep(guideId, stepId), current => {
+          if (placement === 'main') return { ...current, mainVisual: 'flowchart', flowchart: graph };
+          const list = [...(current.flowchartBlocks || [])];
+          const index = list.findIndex(b => b.id === id);
+          if (blockId && index < 0) throw new AgentError('Unknown flowchart block ID.');
+          const block = { id, title, graph, order: index >= 0 ? list[index].order : Math.max(0, ...orderedBlocks(current).map(b => b.order || 0)) + 1 };
+          if (index < 0) list.push(block); else list[index] = block;
+          return { ...current, flowchartBlocks: list };
+        }, (current, revision) => store.saveStep(guideId, current, { expectedRevision: revision }));
+        onChange(guideId);
+        return { content: [text({ step_id: saved.stepId, placement, block_id: placement === 'block' ? id : null, mermaid: toMermaid(graph, numberedSteps(store, guide).map(({ step, number }) => ({ ...step, number }))) }), text(note)] };
+      },
+    },
     {
       name: 'list_guides',
       description: 'List the guides in the StepForge library, newest first. Optionally filter by text in the title or description.',
@@ -625,6 +674,7 @@ function createAgentTools({ store, agentSettings, onChange = () => {}, onBrandin
             if (title !== undefined && normalizeWhitespace(title)) next.title = normalizeWhitespace(title);
             if (parentStepId !== undefined) next.parentStepId = parentStepId || null;
             if (description !== undefined) {
+              delete next.descriptionMarkdown;
               next.descriptionHtml = sanitizeHtml(withPinnedParagraphs(step.descriptionHtml, markdownHtml(description)));
             }
             if (normalized.length) {
@@ -735,6 +785,7 @@ function createAgentTools({ store, agentSettings, onChange = () => {}, onBrandin
             textBlocks: (current.textBlocks || []).filter((b) => !doomed.has(b.id)),
             codeBlocks: (current.codeBlocks || []).filter((b) => !doomed.has(b.id)),
             tableBlocks: (current.tableBlocks || []).filter((b) => !doomed.has(b.id)),
+            flowchartBlocks: (current.flowchartBlocks || []).filter((b) => !doomed.has(b.id)),
           }),
           (current, revision) => store.saveStep(guideId, current, { expectedRevision: revision }),
         );

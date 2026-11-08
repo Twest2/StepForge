@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { slugify, fileNameSlug, escapeXml } = require('../core/util');
 const { encodePng } = require('../core/png');
-const { renderStepImage } = require('../core/renderast');
+const { renderStepImage, renderDiagramImage } = require('../core/renderast');
 const { orderedBlocks, blockText } = require('../core/blocks');
 
 /**
@@ -40,6 +40,13 @@ function writeStepImages(ast, outDir) {
     fs.writeFileSync(path.join(dir, fileName), encodePng(img));
     result.set(step.stepId, { relPath: `${dirName}/${fileName}`, width: img.width, height: img.height });
   }
+  for (const step of ast.steps) for (const block of step.flowchartBlocks || []) {
+    const img = renderDiagramImage(block);
+    fs.mkdirSync(dir, { recursive: true });
+    const fileName = `flow-${slugify(step.stepId)}-${slugify(block.id)}.png`;
+    fs.writeFileSync(path.join(dir, fileName), encodePng(img));
+    result.set(`${step.stepId}:${block.id}`, { relPath: `${dirName}/${fileName}`, width: img.width, height: img.height });
+  }
   return result;
 }
 
@@ -49,6 +56,7 @@ function renderAllImages(ast) {
   for (const step of ast.steps) {
     const img = renderStepImage(step);
     if (img) result.set(step.stepId, img);
+    for (const block of step.flowchartBlocks || []) result.set(`${step.stepId}:${block.id}`, renderDiagramImage(block));
   }
   return result;
 }
@@ -143,4 +151,5 @@ module.exports = {
   wordCodeRuns,
   wordCodeShading,
   LEVEL_LABEL,
+  renderDiagramImage,
 };

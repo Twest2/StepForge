@@ -61,6 +61,12 @@ Read what the agent wrote before you share the guide.
 
 ## What an agent can and can't do
 
+Agents can create editable diagrams with `set_flowchart`, either as the main
+visual or a content block. Nodes may link to permanent IDs from `get_guide`.
+The tool validates references, preserves screenshots and saves a snapshot.
+`get_step` includes diagrams; `delete_blocks` accepts flowchart block IDs.
+See [Flowcharts](FLOWCHARTS.md).
+
 An agent can:
 
 - list and read your guides, and see each step's screenshot with your blurs

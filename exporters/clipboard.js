@@ -114,6 +114,10 @@ function renderStep(step, ast, images, tpl) {
   if (img) out.push(`<p${style('margin:12px 0')}>${imageTag(pngImage(img, tpl.maxImageWidth), step.altText, `;border:1px solid ${BORDER}`)}</p>`);
   out.push(...callouts(groups.afterImage));
   for (const block of groups.rest) {
+    if (block.kind === 'flowchart') {
+      const img = images.get(`${step.stepId}:${block.id}`);
+      if (img) out.push(`<p><img alt="Flowchart" src="data:image/png;base64,${encodePng(img).toString('base64')}" width="${Math.min(img.width, 800)}"></p>`);
+    }
     if (block.kind === 'text') out.push(callout(block));
     else if (block.kind === 'code') out.push(codeHtml(block, ast));
     else if (block.kind === 'table' && block.rows && block.rows.length) out.push(tableHtml(block.rows));
@@ -178,6 +182,7 @@ function clipboardText(ast) {
     if (desc) parts.push(desc);
     parts.push(...texts(groups.afterDescription), ...texts(groups.beforeImage), ...texts(groups.afterImage));
     for (const block of groups.rest) {
+      if (block.kind === 'flowchart') parts.push(block.mermaid);
       if (block.kind === 'text') parts.push(textBlock(block));
       else if (block.kind === 'code') parts.push(indent(codeBlockText(block), '    '));
       else if (block.kind === 'table' && block.rows && block.rows.length) parts.push(block.rows.map((row) => row.join(' | ')).join('\n'));

@@ -76,7 +76,7 @@ function reconcileOrder(recorded, current, parents, currentParents) {
 
 // Retake screenshot: time to open the menu or dialog the step shows once StepForge is hidden.
 const RETAKE_DELAY_MS = 3000;
-const BLOCK_KIND_ORDER = { text: 0, code: 1, table: 2 };
+const BLOCK_KIND_ORDER = { text: 0, code: 1, table: 2, flowchart: 3 };
 
 // Which style fields are meaningful for each annotation type, so the
 // annotation editor only shows controls that actually affect that type.
@@ -180,6 +180,7 @@ function blockText(block) {
 
 function orderedStepBlocks(step) {
   const blocks = [];
+  for (const block of step.flowchartBlocks || []) blocks.push({ kind: 'flowchart', block });
   for (const tb of step.textBlocks || []) blocks.push({ kind: 'text', block: tb });
   for (const cb of step.codeBlocks || []) blocks.push({ kind: 'code', block: cb });
   for (const tbl of step.tableBlocks || []) blocks.push({ kind: 'table', block: tbl });
@@ -195,6 +196,7 @@ function nextBlockOrder(step) {
 }
 
 function blockLabel(kind) {
+  if (kind === 'flowchart') return t('Flowchart');
   return kind === 'text' ? t('Text block') : kind === 'code' ? t('Code block') : t('Table');
 }
 
@@ -369,6 +371,7 @@ class GuideEditor {
       { label: t('Write the title'), disabled: unavailable(hasStep), action: () => this.writeStepWithAi('title') },
       { label: t('Write the description'), disabled: unavailable(hasStep), action: () => this.writeStepWithAi('description') },
       { label: t('Write the blocks'), disabled: unavailable(hasStep), action: () => this.writeStepWithAi('blocks') },
+      { label: t('Generate flowchart…'), disabled: unavailable(hasStep), action: () => this.generateFlowchartWithAi() },
     ];
   }
 
@@ -814,6 +817,7 @@ class GuideEditor {
     this.resizeObserver.observe(this.dom.canvasWrap);
 
     this.bindShellEvents();
+    this.setupFlowcharts?.();
     this.setupPaneResizing();
   }
 
@@ -1092,6 +1096,7 @@ class GuideEditor {
     });
     this.dom.descEditor.addEventListener('input', () => {
       if (!this.currentStep) return;
+      delete this.currentStep.descriptionMarkdown;
       this.currentStep.descriptionHtml = this.dom.descEditor.innerHTML;
       this.pendingSave = true;
       this.saveStepDebounced();
@@ -1324,6 +1329,11 @@ class GuideEditor {
         el('button.icon', { type: 'button', title: t('Move block up'), 'aria-label': t('Move block up'), disabled: !canMoveUp, onClick: moveUp, dataset: { blockMove: 'up' } }, '↑'),
         el('button.icon', { type: 'button', title: t('Move block down'), 'aria-label': t('Move block down'), disabled: !canMoveDown, onClick: moveDown, dataset: { blockMove: 'down' } }, '↓'),
         removeBtn(() => {
+          if (kind === 'flowchart') {
+            this.pushCanvasHistory();
+            step.flowchartBlocks = (step.flowchartBlocks || []).filter(b => b !== block);
+            if (this.editingFlowchartBlock === block.id) { this.editingFlowchartBlock = null; this.renderCanvas(); }
+          }
           if (kind === 'text') step.textBlocks = (step.textBlocks || []).filter((b) => b !== block);
           else if (kind === 'code') step.codeBlocks = (step.codeBlocks || []).filter((b) => b !== block);
           else step.tableBlocks = (step.tableBlocks || []).filter((b) => b !== block);
@@ -1351,7 +1361,10 @@ class GuideEditor {
         },
       }, header);
 
-      if (kind === 'text') {
+      if (kind === 'flowchart') {
+        const preview = el('div.flowchart-preview', { innerHTML: window.StepForgeFlowchart.toSvg(block.graph, this.flowchartSteps()) });
+        card.append(preview, el('button', { type: 'button', onClick: () => { this.editingFlowchartBlock = block.id; this.renderCanvas(); } }, t('Edit flowchart')));
+      } else if (kind === 'text') {
         card.dataset.level = block.level || 'info';
         const position = makeSelect(block.position, [
           { value: 'before-title', label: t('Before title') },
@@ -1767,6 +1780,7 @@ class GuideEditor {
   syncStepFields() {
     const step = this.currentStep;
     const guide = this.guide;
+    this.syncMarkdownDescription?.();
     if (!step) {
       this.dom.titleInput.value = '';
       this.dom.descEditor.innerHTML = '';
@@ -1803,6 +1817,7 @@ class GuideEditor {
     if (this.dom.canvas) this.dom.canvas.tabIndex = -1;
     const step = this.currentStep;
     const token = ++this.imageLoadToken;
+    if (this.syncFlowchartCanvas?.()) return;
     this.canvas.setTool(this.currentTool);
     this.canvas.setZoom(this.currentZoom);
     this.syncToolbar();
@@ -2633,6 +2648,7 @@ class GuideEditor {
       textBlocks: existing.textBlocks,
       codeBlocks: existing.codeBlocks,
       tableBlocks: existing.tableBlocks,
+      flowchartBlocks: existing.flowchartBlocks,
     };
     for (const key of Object.keys(existing)) {
       if (!(key in saved)) delete existing[key];
@@ -2868,6 +2884,7 @@ class GuideEditor {
     // discard them by re-fetching a stale on-disk copy.
     if (this.pendingSave) await this.flushStep();
     this.selectedStepId = stepId;
+    this.editingFlowchartBlock = null;
     this.selectedAnnotationId = null;
     this.canvas.select(null);
     this.syncStepFields();
@@ -2885,7 +2902,9 @@ class GuideEditor {
     if (!draft) return;
     const step = await api.step.add({
       guideId,
-      fields: { kind: 'empty', title: draft.title || t('Untitled step'), status: 'todo' },
+      fields: { kind: 'empty', title: draft.title || t('Untitled step'), status: 'todo',
+        mainVisual: draft.mainVisual || 'image',
+        ...(draft.mainVisual === 'flowchart' ? { mainVisual: 'flowchart', flowchart: { nodes: [], edges: [] } } : {}) },
       ...(draft.image ? { imageBase64: draft.image.imageBase64, size: draft.image.size } : {}),
     });
     if (this.guideId === guideId) await this.reload(step.stepId);
@@ -4147,6 +4166,7 @@ class GuideEditor {
         break;
     }
     if (this.currentStep) {
+      delete this.currentStep.descriptionMarkdown;
       this.currentStep.descriptionHtml = editor.innerHTML;
       this.pendingSave = true;
       this.saveStepDebounced();
@@ -4155,6 +4175,14 @@ class GuideEditor {
   }
 
   onDocumentKeyDown(e) {
+    if (this.flowchartIsActive?.() && !isEditableTarget(e.target) && !modalIsOpen()) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault(); if (e.shiftKey) this.redo(); else this.undo(); return;
+      }
+      // The graph owns movement/deletion and connection shortcuts, not the
+      // screenshot canvas hiding behind it. Page navigation and save remain.
+      if (!e.ctrlKey && !e.metaKey && !e.altKey && (e.key.length === 1 || e.key.startsWith('Arrow') || ['Delete', 'Backspace', 'Enter', ' '].includes(e.key))) return;
+    }
     if (e.target?.closest?.('.ctx-menu')) return;
     if (!e.ctrlKey && !e.metaKey && !e.altKey && (e.target?.closest?.('.step-control') || e.target?.closest?.('.annotation-select'))) return;
     if (!this.active || !this.guide) return;

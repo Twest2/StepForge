@@ -144,3 +144,37 @@ test('MCP set_flowchart lays out, saves and removes a step’s flowchart', async
   await call({ guide_id: guide.guideId, step_id: shot.stepId, nodes: [] });
   assert.equal(store.getStep(guide.guideId, shot.stepId).flowchart, null);
 });
+
+test('shapes keep their colors, size and picture; unsafe values are dropped', () => {
+  const png = 'data:image/png;base64,iVBORw0KGgo=';
+  const g = flow.normalizeFlowchart({
+    nodes: [
+      { id: 'a', shape: 'cylinder', label: 'DB', w: 150, h: 90, fill: '#112233', stroke: 'transparent', textColor: '#ffffff', image: { src: png, fit: 'cover' } },
+      { id: 'b', shape: 'cloud', fill: 'red', image: { src: 'https://example.com/x.png' } },
+      { id: 'c', image: { src: 'data:image/svg+xml;base64,PHN2Zz4=' } },
+    ],
+    edges: [{ from: 'a', to: 'b', style: 'dashed' }, { from: 'b', to: 'c', style: 'zigzag' }],
+  });
+  assert.deepEqual(g.nodes[0], { id: 'a', shape: 'cylinder', label: 'DB', x: 40, y: 40, stepId: null, w: 150, h: 90, fill: '#112233', stroke: 'transparent', textColor: '#ffffff', image: { src: png, fit: 'cover' } });
+  assert.equal(g.nodes[1].fill, undefined);
+  assert.equal(g.nodes[1].image, undefined, 'only embedded PNG, JPEG or GIF pictures');
+  assert.equal(g.nodes[2].image, undefined, 'no SVG pictures');
+  assert.equal(g.edges[0].style, 'dashed');
+  assert.equal(g.edges[1].style, undefined);
+
+  const svg = flow.toSvg(g);
+  assert.match(svg, /preserveAspectRatio="xMidYMid slice" clip-path="url\(#fc-clip-a\)"/, 'a picture fills its shape without stretching');
+  assert.match(svg, /fill="#112233"/);
+  assert.match(svg, /stroke-dasharray="8 5"/);
+});
+
+test('every shape draws, has a palette icon, and grows to fit its text', () => {
+  for (const shape of flow.SHAPES) {
+    const short = flow.nodeBox({ shape, label: 'Hi', x: 0, y: 0 });
+    const long = flow.nodeBox({ shape, label: 'A much longer label that needs several lines to fit inside this shape', x: 0, y: 0 });
+    assert.ok(long.h >= short.h, shape);
+    assert.ok(long.textArea.h >= long.textH, shape);
+    assert.match(flow.shapeIcon(shape), /<path d="M/, shape);
+    assert.doesNotMatch(flow.toSvg({ nodes: [{ id: 'n', shape, label: 'x' }], edges: [] }), /NaN|undefined/, shape);
+  }
+});

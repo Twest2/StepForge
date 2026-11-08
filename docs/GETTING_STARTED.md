@@ -152,21 +152,28 @@ tools:
 
 - **Step box**, **Decision** and **Start or end**: pick one, then click the
   canvas. Type the text and press **Enter**. Double-click empty space to add a
-  step box.
+  step box. **More shapes** has 30 shapes, from circles and cylinders to clouds,
+  documents, a person and block arrows.
 - **Connect**: drag from one shape to another to draw an arrow. Arrows out of
   a decision ask for a label such as *Yes* or *No*.
 - Drag shapes to move them, double-click a shape or arrow to change its text,
-  and press **Delete** to remove the selected one. **Arrange** lays the whole
-  chart out top to bottom.
+  and press **Delete** to remove the selected one. Drag the small square at a
+  selected shape's corner to resize it. **Arrange** lays the whole chart out
+  top to bottom. **Ctrl + mouse wheel** zooms in and out (**Ctrl+0** goes back
+  to 100%).
 
-In the details pane you can change a shape, or link it to a step of the guide;
-the shape then shows "→ Step 3".
+In the details pane you can change a shape's fill, border and text colors (the
+same color menus as annotations), or link it to a step of the guide; the shape
+then shows "→ Step 3". **Choose image…** puts a picture inside the shape:
+**Fit inside** shows the whole picture, **Fill shape** fills the shape and
+crops the edges. Pictures are never stretched. For a selected arrow you can
+pick its style: arrow, double arrow, line, dashed or dotted.
 
 The menu beside it says where the flowchart goes in exports: **Instead of
 image** shows it in place of the screenshot (the screenshot is kept, so you can
 switch back), and **As a block** adds it after the step's text. Switch the
 right-hand menu back to **Image** to edit the screenshot. **Ctrl+Z** undoes
-flowchart edits, and **Remove flowchart** deletes it.
+flowchart edits. A flowchart with no shapes is left out of exports.
 
 With AI turned on, **AI → Create a flowchart** drafts a flowchart of the whole
 guide on the selected step for you to adjust.

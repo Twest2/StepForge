@@ -157,6 +157,7 @@ const TOOL_ICON_PATHS = {
   'flow-decision': '<path d="M12 3 21 12 12 21 3 12z"/>',
   'flow-terminal': '<rect x="2.5" y="7" width="19" height="10" rx="5"/>',
   'flow-connect': '<rect x="2.5" y="3" width="8" height="6" rx="1"/><rect x="13.5" y="15" width="8" height="6" rx="1"/><path d="M6.5 9v9h5"/><path d="m9.5 15.5 2.5 2.5-2.5 2.5"/>',
+  'flow-shapes': '<rect x="3" y="3" width="7.5" height="7.5" rx="1"/><circle cx="17.25" cy="6.75" r="3.75"/><path d="M6.75 13.5 10.5 21H3z"/><path d="M17.25 13.5 21 17.25 17.25 21 13.5 17.25z"/>',
   'flow-arrange': '<rect x="9" y="2.5" width="6" height="4.5" rx="1"/><rect x="2.5" y="17" width="6" height="4.5" rx="1"/><rect x="15.5" y="17" width="6" height="4.5" rx="1"/><path d="M12 7v5M5.5 17v-5h13v5"/>',
   'flow-delete': '<path d="M4 7h16M10 7V4h4v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/>',
   undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
@@ -170,6 +171,18 @@ const FLOW_TOOLS = () => [
   ['decision', t('Decision')],
   ['terminal', t('Start or end')],
   ['connect', t('Connect')],
+];
+
+// Every flowchart shape (core/flowchart.js), as [shape, name], in palette order.
+const FLOW_SHAPES = () => [
+  ['process', t('Step box')], ['rectangle', t('Rectangle')], ['square', t('Square')], ['text', t('Text')],
+  ['terminal', t('Start or end')], ['ellipse', t('Ellipse')], ['circle', t('Circle')], ['decision', t('Decision')],
+  ['parallelogram', t('Parallelogram')], ['hexagon', t('Hexagon')], ['triangle', t('Triangle')], ['cylinder', t('Cylinder')],
+  ['cloud', t('Cloud')], ['document', t('Document')], ['internalStorage', t('Internal storage')], ['cube', t('Cube')],
+  ['step', t('Chevron')], ['trapezoid', t('Trapezoid')], ['tape', t('Tape')], ['note', t('Note')],
+  ['card', t('Card')], ['callout', t('Callout')], ['actor', t('Person')], ['dataStorage', t('Data storage')],
+  ['delay', t('Delay')], ['display', t('Display')], ['subprocess', t('Subprocess')], ['container', t('Container')],
+  ['blockArrow', t('Block arrow')], ['doubleArrow', t('Double block arrow')],
 ];
 
 function toolIconSvg(name) {
@@ -733,6 +746,9 @@ class GuideEditor {
             ...FLOW_TOOLS().map(([tool, name]) => (this.dom[`flow-${tool}`] = el('button.tool.tool-icon', {
               type: 'button', dataset: { flowTool: tool }, title: name, 'aria-label': name, innerHTML: toolIconSvg(`flow-${tool}`),
             }))),
+            this.dom.flowShapesBtn = el('button.tool.tool-icon', {
+              type: 'button', title: t('More shapes'), 'aria-label': t('More shapes'), 'aria-haspopup': 'menu', 'aria-expanded': 'false', innerHTML: toolIconSvg('flow-shapes'),
+            }),
             el('span.sep'),
             this.dom.flowArrangeBtn = el('button.tool.tool-icon', { type: 'button', title: t('Arrange'), 'aria-label': t('Arrange'), innerHTML: toolIconSvg('flow-arrange') }),
             this.dom.flowDeleteBtn = el('button.tool.tool-icon', { type: 'button', title: t('Delete selected'), 'aria-label': t('Delete selected'), innerHTML: toolIconSvg('flow-delete') }),
@@ -1132,6 +1148,7 @@ class GuideEditor {
     for (const [tool] of FLOW_TOOLS()) {
       this.dom[`flow-${tool}`].addEventListener('click', () => this.flowchartEditor()?.setTool(tool));
     }
+    this.dom.flowShapesBtn.addEventListener('click', () => this.openShapePalette());
     this.dom.flowArrangeBtn.addEventListener('click', () => this.flowchartEditor()?.arrange());
     this.dom.flowDeleteBtn.addEventListener('click', () => this.flowchartEditor()?.deleteSelected());
 
@@ -1940,7 +1957,8 @@ class GuideEditor {
     const step = this.currentStep;
     if (step && this.canvasModeStepId !== step.stepId) {
       this.canvasModeStepId = step.stepId;
-      this.canvasMode = step.flowchart && (step.flowchartPlacement !== 'block' || !step.image) ? 'flowchart' : 'image';
+      const chart = window.StepForgeFlowchart?.hasFlowchart(step);
+      this.canvasMode = chart && (step.flowchartPlacement !== 'block' || !step.image) ? 'flowchart' : 'image';
       this.flowEditor?.select(null);
     }
     const flowchart = Boolean(step) && this.canvasMode === 'flowchart';
@@ -2002,6 +2020,7 @@ class GuideEditor {
   syncFlowTools() {
     const tool = this.flowEditor?.tool || 'select';
     for (const [name] of FLOW_TOOLS()) this.setPressed(this.dom[`flow-${name}`], name === tool);
+    this.setPressed(this.dom.flowShapesBtn, !FLOW_TOOLS().some(([name]) => name === tool));
   }
 
   /** Before a flowchart edit: an undo snapshot, and the flowchart itself on its first edit. */
@@ -2064,50 +2083,173 @@ class GuideEditor {
     const graph = step.flowchart || { nodes: [], edges: [] };
     const sel = editor.selected;
     const item = sel && (sel.kind === 'node' ? graph.nodes : graph.edges).find((i) => i.id === sel.id);
-    const edit = (apply) => {
-      editor.cb.beforeChange();
-      const live = sel && (sel.kind === 'node' ? step.flowchart.nodes : step.flowchart.edges).find((i) => i.id === sel.id);
-      if (live) apply(live);
+    if (!item) {
+      box.append(el('p.muted', {}, t('Pick a shape in the toolbar and click the canvas. Use Connect to draw arrows between shapes. Double-click a shape or arrow to change its text.')));
+      return;
+    }
+    const live = () => (sel.kind === 'node' ? step.flowchart?.nodes : step.flowchart?.edges)?.find((i) => i.id === sel.id);
+    const save = ({ props = false } = {}) => {
       this.pendingSave = true;
       this.saveStepDebounced();
       editor.render();
       if (step.flowchartPlacement === 'block') this.renderBlocksPanel();
+      if (props) this.renderFlowchartProps();
     };
-    if (item) {
-      const label = el('input', { type: 'text', value: item.label || '', maxLength: sel.kind === 'node' ? 300 : 80 });
-      let armed = false;
-      label.addEventListener('focus', () => { armed = false; });
-      label.addEventListener('input', () => {
-        // One undo step per focus, not per key.
-        if (!armed) { this.pushCanvasHistory(); armed = true; }
-        const live = (sel.kind === 'node' ? step.flowchart.nodes : step.flowchart.edges).find((i) => i.id === sel.id);
-        if (live) live.label = label.value;
-        this.pendingSave = true;
-        this.saveStepDebounced();
-        editor.render();
-      });
-      box.append(labeledRow(sel.kind === 'node' ? t('Text') : t('Arrow label'), label));
-      if (sel.kind === 'node') {
-        const shape = makeSelect(item.shape, FLOW_TOOLS().filter(([tool]) => ['process', 'decision', 'terminal'].includes(tool))
-          .map(([value, name]) => ({ value, label: name })));
-        shape.addEventListener('change', () => edit((n) => { n.shape = shape.value; }));
-        box.append(labeledRow(t('Shape'), shape));
-        const refs = this.flowchartStepRefs();
-        const target = makeSelect(item.stepId || '', [{ value: '', label: t('None') },
-          ...refs.map((r) => ({ value: r.stepId, label: `${r.number}. ${r.title || t('Untitled step')}`.slice(0, 80) }))]);
-        target.addEventListener('change', () => edit((n) => { n.stepId = target.value || null; }));
-        box.append(labeledRow(t('Links to step'), target));
-        if (item.stepId && this.stepMap.has(item.stepId)) {
-          box.append(el('button', { type: 'button', onClick: () => this.selectStep(item.stepId) }, t('Go to step')));
-        }
-      }
-      box.append(el('button.danger', { type: 'button', onClick: () => editor.deleteSelected() }, sel.kind === 'node' ? t('Delete shape') : t('Delete arrow')));
-    } else {
-      box.append(el('p.muted', {}, t('Pick a shape in the toolbar and click the canvas. Use Connect to draw arrows between shapes. Double-click a shape or arrow to change its text.')));
+    const edit = (apply, options) => {
+      editor.cb.beforeChange();
+      const target = live();
+      if (target) apply(target);
+      save(options);
+    };
+
+    const label = el('input', { type: 'text', value: item.label || '', maxLength: sel.kind === 'node' ? 300 : 80 });
+    let armed = false;
+    label.addEventListener('focus', () => { armed = false; });
+    label.addEventListener('input', () => {
+      // One undo step per focus, not per key.
+      if (!armed) { this.pushCanvasHistory(); armed = true; }
+      const target = live();
+      if (target) target.label = label.value;
+      save();
+    });
+    box.append(labeledRow(sel.kind === 'node' ? t('Text') : t('Arrow label'), label));
+
+    if (sel.kind === 'edge') {
+      const style = makeSelect(item.style || 'arrow', [
+        { value: 'arrow', label: t('Arrow') },
+        { value: 'double', label: t('Double arrow') },
+        { value: 'line', label: t('Line') },
+        { value: 'dashed', label: t('Dashed arrow') },
+        { value: 'dashedLine', label: t('Dashed line') },
+        { value: 'dotted', label: t('Dotted line') },
+      ]);
+      style.addEventListener('change', () => edit((e) => {
+        if (style.value === 'arrow') delete e.style;
+        else e.style = style.value;
+      }));
+      box.append(labeledRow(t('Style'), style));
+      return;
     }
-    if (step.flowchart) {
-      box.append(el('button', { type: 'button', onClick: () => this.removeFlowchart() }, t('Remove flowchart')));
+
+    const shape = makeSelect(item.shape, FLOW_SHAPES().map(([value, name]) => ({ value, label: name })));
+    shape.addEventListener('change', () => edit((n) => { n.shape = shape.value; }));
+    box.append(labeledRow(t('Shape'), shape));
+
+    // The same color menus as annotations. Each picker reads `style[field]` of the object it is given.
+    const colors = [
+      ['fill', t('Fill'), item.fill || window.StepForgeFlowchart.defaultColors(item.shape).fill],
+      ['stroke', t('Border'), item.stroke || window.StepForgeFlowchart.defaultColors(item.shape).stroke],
+      ['textColor', t('Text color'), item.textColor || '#111827'],
+    ];
+    for (const [field, name, value] of colors) {
+      // Fill and border may be transparent (the picker offers that for a 'fill').
+      const pickerField = field === 'textColor' ? 'textColor' : 'fill';
+      const proxy = { id: `flow-${field}-${item.id}`, type: 'rect', style: { [pickerField]: value } };
+      box.append(labeledRow(name, this.colorPicker(proxy, (picked, { record = true } = {}) => {
+        if (record) this.pushCanvasHistory();
+        const target = live();
+        if (target) target[field] = picked;
+        save();
+      }, { field: pickerField, label: name })));
     }
+
+    // A picture inside the shape, clipped to it and never stretched.
+    const imageRow = el('div.row.flowchart-image-row', {},
+      el('button', { type: 'button', onClick: () => this.chooseFlowchartImage(sel.id) }, item.image ? t('Change image…') : t('Choose image…')));
+    if (item.image) {
+      const fit = makeSelect(item.image.fit || 'contain', [
+        { value: 'contain', label: t('Fit inside') },
+        { value: 'cover', label: t('Fill shape') },
+      ]);
+      fit.setAttribute('aria-label', t('Image fit'));
+      fit.addEventListener('change', () => edit((n) => { if (n.image) n.image.fit = fit.value; }));
+      imageRow.append(fit, el('button', { type: 'button', onClick: () => edit((n) => { delete n.image; }, { props: true }) }, t('Remove image')));
+    }
+    box.append(labeledRow(t('Image'), imageRow));
+
+    const refs = this.flowchartStepRefs();
+    const target = makeSelect(item.stepId || '', [{ value: '', label: t('None') },
+      ...refs.map((r) => ({ value: r.stepId, label: `${r.number}. ${r.title || t('Untitled step')}`.slice(0, 80) }))]);
+    target.addEventListener('change', () => edit((n) => { n.stepId = target.value || null; }, { props: true }));
+    box.append(labeledRow(t('Links to step'), target));
+    if (item.stepId && this.stepMap.has(item.stepId)) {
+      box.append(el('button', { type: 'button', onClick: () => this.selectStep(item.stepId) }, t('Go to step')));
+    }
+  }
+
+  /**
+   * Shape → Image → Choose image…: an image file, scaled down to at most
+   * 800px and stored in the flowchart as a data URL.
+   */
+  async chooseFlowchartImage(nodeId) {
+    let picked;
+    try {
+      picked = await api.step.pickImage({ purpose: 'shape' });
+    } catch (err) {
+      this.onToast(err.message || t('Could not choose an image.'), { error: true });
+      return;
+    }
+    if (!picked) return;
+    const img = new Image();
+    img.src = `data:image/png;base64,${picked.imageBase64}`;
+    try { await img.decode(); } catch { this.onToast(t('Could not choose an image.'), { error: true }); return; }
+    const scale = Math.min(1, 800 / Math.max(img.naturalWidth, img.naturalHeight));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+    let src = canvas.toDataURL('image/png');
+    if (src.length > 1500000) {
+      // A photo: JPEG on white is far smaller.
+      const flat = document.createElement('canvas');
+      flat.width = canvas.width;
+      flat.height = canvas.height;
+      const ctx = flat.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, flat.width, flat.height);
+      ctx.drawImage(canvas, 0, 0);
+      src = flat.toDataURL('image/jpeg', 0.88);
+    }
+    const step = this.currentStep;
+    if (!step?.flowchart?.nodes.some((n) => n.id === nodeId)) return;
+    this.flowEditor.cb.beforeChange();
+    const node = step.flowchart.nodes.find((n) => n.id === nodeId);
+    node.image = { src, fit: node.image?.fit || 'contain' };
+    this.pendingSave = true;
+    this.saveStepDebounced();
+    this.flowEditor.render();
+    this.renderFlowchartProps();
+    if (step.flowchartPlacement === 'block') this.renderBlocksPanel();
+  }
+
+  /** Toolbar → More shapes: every shape as a grid of icons. */
+  openShapePalette() {
+    const trigger = this.dom.flowShapesBtn;
+    if (this.shapePalette) { this.closeShapePalette(); return; }
+    const palette = el('div.flowchart-palette', { role: 'menu', 'aria-label': t('More shapes') },
+      ...FLOW_SHAPES().map(([shape, name]) => el('button.flowchart-palette-item', {
+        type: 'button', role: 'menuitem', title: name, 'aria-label': name,
+        innerHTML: window.StepForgeFlowchart.shapeIcon(shape),
+        onClick: () => { this.closeShapePalette(); this.flowchartEditor()?.setTool(shape); },
+      })));
+    const rect = trigger.getBoundingClientRect();
+    Object.assign(palette.style, { left: `${Math.max(6, rect.left)}px`, top: `${rect.bottom + 4}px` });
+    document.body.append(palette);
+    const outside = (e) => { if (!palette.contains(e.target) && !trigger.contains(e.target)) this.closeShapePalette(); };
+    const keys = (e) => { if (e.key === 'Escape') { e.stopPropagation(); this.closeShapePalette(); trigger.focus(); } };
+    document.addEventListener('pointerdown', outside, true);
+    palette.addEventListener('keydown', keys);
+    this.shapePalette = { palette, outside };
+    trigger.setAttribute('aria-expanded', 'true');
+    palette.querySelector('button')?.focus();
+  }
+
+  closeShapePalette() {
+    if (!this.shapePalette) return;
+    document.removeEventListener('pointerdown', this.shapePalette.outside, true);
+    this.shapePalette.palette.remove();
+    this.shapePalette = null;
+    this.dom.flowShapesBtn.setAttribute('aria-expanded', 'false');
   }
 
   /** AI ▾ → Create a flowchart: a flowchart of the whole guide, put on this step. */
@@ -2577,6 +2719,11 @@ class GuideEditor {
   }
 
   applyZoomShortcut(kind) {
+    if (this.canvasMode === 'flowchart' && this.flowEditor && this.currentStep) {
+      const zoom = this.flowEditor.zoom;
+      this.flowEditor.setZoom(kind === 'in' ? zoom * 1.25 : kind === 'out' ? zoom / 1.25 : 1);
+      return true;
+    }
     if (kind === 'in') {
       this.setZoom(Math.min(3, (Number(this.currentZoom) || 1) + 0.25));
       return true;

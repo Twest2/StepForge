@@ -17,7 +17,9 @@
  */
 (() => {
   const flow = window.StepForgeFlowchart;
-  const SHAPE_TOOLS = ['process', 'decision', 'terminal'];
+  const SHAPE_TOOLS = flow.SHAPES;
+  const MIN_ZOOM = 0.25;
+  const MAX_ZOOM = 3;
   const snap = (v) => Math.max(0, Math.round(v / flow.GRID) * flow.GRID);
 
   class FlowchartEditor {
@@ -28,6 +30,7 @@
       this.selected = null;
       this.drag = null;
       this.pendingFrom = null;
+      this.zoom = 1;
       this.layer = document.createElement('div');
       this.layer.className = 'flowchart-layer';
       this.hint = document.createElement('div');
@@ -39,6 +42,26 @@
       host.addEventListener('pointerup', (e) => this.onPointerUp(e));
       host.addEventListener('pointercancel', () => { this.drag = null; this.render(); });
       host.addEventListener('dblclick', (e) => this.onDoubleClick(e));
+      // Ctrl + mouse wheel zooms around the pointer.
+      host.addEventListener('wheel', (e) => {
+        if (!e.ctrlKey && !e.metaKey) return;
+        e.preventDefault();
+        this.setZoom(this.zoom * Math.exp(-e.deltaY * 0.0015), { x: e.clientX, y: e.clientY });
+      }, { passive: false });
+    }
+
+    /** Zoom to `zoom`, keeping the chart point under `anchor` (client coordinates) in place. */
+    setZoom(zoom, anchor = null) {
+      const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Number(zoom) || 1));
+      const hostRect = this.host.getBoundingClientRect();
+      const at = anchor || { x: hostRect.left + this.host.clientWidth / 2, y: hostRect.top + this.host.clientHeight / 2 };
+      const chart = this.point({ clientX: at.x, clientY: at.y });
+      this.closeLabelEditor(true);
+      this.zoom = next;
+      this.render();
+      this.host.scrollLeft = chart.x * next - (at.x - hostRect.left);
+      this.host.scrollTop = chart.y * next - (at.y - hostRect.top);
+      this.cb.onZoom?.(next);
     }
 
     graph() {
@@ -87,7 +110,7 @@
     /** Pointer position in chart coordinates. */
     point(e) {
       const rect = this.layer.getBoundingClientRect();
-      return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+      return { x: (e.clientX - rect.left) / this.zoom, y: (e.clientY - rect.top) / this.zoom };
     }
 
     hitAt(target) {
@@ -105,8 +128,9 @@
       // Just past the last shape; it grows as shapes move out. The dotted surface fills the rest.
       const width = b ? b.x + b.w + 40 : 0;
       const height = b ? b.y + b.h + 40 : 0;
+      this.host.style.setProperty('--flow-grid', `${flow.GRID * this.zoom}px`);
       let svg = flow.toSvg(g, {
-        ...options, editor: true, width, height, edgeColor: this.edgeColor(),
+        ...options, editor: true, width, height, zoom: this.zoom, idPrefix: 'ed-', edgeColor: this.edgeColor(),
         selectedId: this.selected?.id || null, pendingFromId: this.pendingFrom,
       });
       if (this.drag?.type === 'connect' && this.drag.moved) {
@@ -183,6 +207,14 @@
         this.select(null);
         return;
       }
+      const resizing = e.target.closest?.('[data-resize]') && this.selected?.kind === 'node';
+      if (resizing) {
+        const n = this.node(this.selected.id);
+        const box = flow.nodeBox(n, this.renderOptions());
+        this.drag = { type: 'resize', id: n.id, start: p, origin: { w: box.w, h: box.h }, moved: false };
+        this.host.setPointerCapture?.(e.pointerId);
+        return;
+      }
       this.select(hit);
       if (hit.kind === 'node') {
         const n = this.node(hit.id);
@@ -210,8 +242,13 @@
       }
       const n = this.node(drag.id);
       if (!n) return;
-      n.x = snap(drag.origin.x + dx);
-      n.y = snap(drag.origin.y + dy);
+      if (drag.type === 'resize') {
+        n.w = Math.max(40, Math.round((drag.origin.w + dx) / 10) * 10);
+        n.h = Math.max(30, Math.round((drag.origin.h + dy) / 10) * 10);
+      } else {
+        n.x = snap(drag.origin.x + dx);
+        n.y = snap(drag.origin.y + dy);
+      }
       this.render();
     }
 
@@ -225,7 +262,7 @@
       const drag = this.drag;
       this.drag = null;
       if (!drag) return;
-      if (drag.type === 'move') {
+      if (drag.type === 'move' || drag.type === 'resize') {
         if (drag.moved) this.cb.changed();
         return;
       }
@@ -328,7 +365,8 @@
       input.rows = target.kind === 'node' ? 2 : 1;
       input.maxLength = target.kind === 'node' ? 300 : 80;
       input.setAttribute('aria-label', target.kind === 'node' ? t('Shape text') : t('Arrow label'));
-      Object.assign(input.style, { left: `${box.x}px`, top: `${box.y}px`, width: `${box.w}px` });
+      const z = this.zoom;
+      Object.assign(input.style, { left: `${box.x * z}px`, top: `${box.y * z}px`, width: `${box.w * z}px`, fontSize: `${14 * z}px` });
       input.addEventListener('keydown', (e) => {
         e.stopPropagation();
         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); this.closeLabelEditor(true); this.host.focus({ preventScroll: true }); }

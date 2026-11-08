@@ -1047,9 +1047,9 @@ function setupIpc() {
     return { ok: true, step };
   }, { validate: (a) => c.id(a.guideId) && c.optionalNumber(a.position, 0, 100000) });
   // Pick a draft with the import decoder; no step or library file is created.
-  h('step:pickImage', async () => {
+  h('step:pickImage', async ({ purpose } = {}) => {
     const res = await dialog.showOpenDialog(mainWindow, {
-      title: t('Choose an image for the new step'),
+      title: purpose === 'shape' ? t('Choose an image for the shape') : t('Choose an image for the new step'),
       filters: [{ name: t('Images'), extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'] }],
       properties: ['openFile'],
     });

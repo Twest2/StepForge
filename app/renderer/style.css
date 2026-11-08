@@ -792,8 +792,8 @@ body.platform-linux #capture-status button {
   outline: none;
   background-color: var(--flow-bg);
   background-image: radial-gradient(circle, var(--flow-dot) 1.2px, transparent 1.5px);
-  background-size: 20px 20px;
-  background-position: -10px -10px;
+  background-size: var(--flow-grid, 20px) var(--flow-grid, 20px);
+  background-position: calc(var(--flow-grid, 20px) / -2) calc(var(--flow-grid, 20px) / -2);
   background-attachment: local;
   user-select: none;
 }
@@ -835,6 +835,33 @@ body.platform-linux #capture-status button {
 .pane-props.flowchart-mode .focused-toggle { display: none; }
 .block-add-row { flex-wrap: wrap; }
 .flowchart-props { display: grid; gap: 8px; }
+.flowchart-image-row { flex-wrap: wrap; gap: 6px; }
+.flowchart-palette {
+  position: fixed;
+  z-index: 1000;
+  display: grid;
+  grid-template-columns: repeat(5, 44px);
+  gap: 4px;
+  padding: 8px;
+  background: var(--panel-solid);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+}
+.flowchart-palette-item {
+  width: 44px;
+  height: 36px;
+  padding: 2px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--text);
+}
+.flowchart-palette-item:hover, .flowchart-palette-item:focus-visible { background: var(--panel-2); border-color: var(--border); }
+.flowchart-palette-item svg { width: 38px; height: 28px; pointer-events: none; }
 .flowchart-props > button { justify-self: start; }
 .flowchart-preview { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: #fff; }
 .flowchart-preview svg { display: block; width: 100%; height: auto; max-height: 260px; }

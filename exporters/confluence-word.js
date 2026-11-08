@@ -180,7 +180,13 @@ class WordDocument {
 
   step(step, images, tpl) {
     const g = stepContentGroups(step);
-    const blocks = (list) => list.map((tb) => this.callout(tb)).join('');
+    const chart = () => {
+      const img = images.get(flowchartImageKey(step.stepId));
+      if (!img || !tpl.includeImages) return '';
+      const scale = Math.min(0.5, MAX_IMAGE_PX / img.width); // drawn at 2x
+      return this.picture(encodePng(img), img.width * scale, img.height * scale, flowchartAlt(step));
+    };
+    const blocks = (list) => list.map((tb) => (tb.kind === 'flowchart' ? chart() : this.callout(tb))).join('');
     const bm = this.nextBookmark++;
     const style = step.depth > 0 ? 'Heading3' : 'Heading2';
     const heading = paragraph(
@@ -204,13 +210,6 @@ class WordDocument {
           ? paragraph(wordCodeRuns(hl), `<w:pStyle w:val="Code"/>${wordCodeShading(hl)}`)
           : paragraph(runXml(codeBlockText(block), { code: true }), '<w:pStyle w:val="Code"/>'));
       } else if (block.kind === 'table' && block.rows && block.rows.length) parts.push(this.table(block.rows));
-      else if (block.kind === 'flowchart') {
-        const chart = images.get(flowchartImageKey(step.stepId));
-        if (chart && tpl.includeImages) {
-          const scale = Math.min(0.5, MAX_IMAGE_PX / chart.width); // drawn at 2x
-          parts.push(this.picture(encodePng(chart), chart.width * scale, chart.height * scale, flowchartAlt(step)));
-        }
-      }
     }
     return parts.join('');
   }

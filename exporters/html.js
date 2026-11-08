@@ -124,7 +124,11 @@ function codeHtml(block, ast) {
 
 function renderStep(step, ast, images, tpl, { rich = false } = {}) {
   const groups = stepContentGroups(step);
-  const blocks = (list) => list.map((tb) => blockHtml(tb, ast)).join('\n');
+  const chartHtml = () => {
+    const chart = images.get(flowchartImageKey(step.stepId));
+    return chart && tpl.includeImages ? `<figure class="shot flowchart"><img alt="${escapeHtml(flowchartAlt(step))}" src="${dataUri(chart)}" width="${chart.width / 2}" height="${chart.height / 2}"></figure>` : '';
+  };
+  const blocks = (list) => list.map((tb) => (tb.kind === 'flowchart' ? chartHtml() : blockHtml(tb, ast))).join('\n');
   const parts = [];
   parts.push(blocks(groups.beforeDescription));
   if (step.descriptionHtml) parts.push(`<div class="desc">${stepLinkRewrite(step.descriptionHtml, ast)}</div>`);
@@ -139,10 +143,6 @@ function renderStep(step, ast, images, tpl, { rich = false } = {}) {
     if (block.kind === 'text') parts.push(blockHtml(block, ast));
     else if (block.kind === 'code') parts.push(codeHtml(block, ast));
     else if (block.kind === 'table' && block.rows && block.rows.length) parts.push(tableHtml(block.rows));
-    else if (block.kind === 'flowchart') {
-      const chart = images.get(flowchartImageKey(step.stepId));
-      if (chart && tpl.includeImages) parts.push(`<figure class="shot flowchart"><img alt="${escapeHtml(flowchartAlt(step))}" src="${dataUri(chart)}" width="${chart.width / 2}" height="${chart.height / 2}"></figure>`);
-    }
   }
 
   const toggle = rich

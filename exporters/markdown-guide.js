@@ -175,17 +175,23 @@ function renderMarkdownGuide(ast, outDir, template = {}, {
       afterImage,
       rest,
     } = stepContentGroups(step);
+    // Text blocks and the flowchart block, at their positions.
+    const emit = (tb) => {
+      if (tb.kind !== 'flowchart') { emitBlock(lines, tb, { alertStyle }); return; }
+      const chart = images.get(flowchartImageKey(step.stepId));
+      if (chart) lines.push(`![${markdownAlt(flowchartAlt(step))}](${imageUrl(chart.relPath)})`, '');
+    };
     if (accentBar || withToc) lines.push(`<a id="${anchorFor(step)}"></a>`, '');
-    for (const tb of beforeTitle) emitBlock(lines, tb, { alertStyle });
+    for (const tb of beforeTitle) emit(tb);
     lines.push(`${heading} ${step.number}. ${step.title || 'Untitled step'}`, '');
     if (step.skipped) lines.push('*(skipped)*', '');
-    for (const tb of afterTitle) emitBlock(lines, tb, { alertStyle });
-    for (const tb of beforeDescription) emitBlock(lines, tb, { alertStyle });
+    for (const tb of afterTitle) emit(tb);
+    for (const tb of beforeDescription) emit(tb);
     if (step.descriptionMarkdown) lines.push(markdownSource(step.descriptionMarkdown), '');
     else if (step.descriptionHtml) lines.push(htmlToMarkdown(step.descriptionHtml), '');
-    for (const tb of afterDescription) emitBlock(lines, tb, { alertStyle });
+    for (const tb of afterDescription) emit(tb);
 
-    for (const tb of beforeImage) emitBlock(lines, tb, { alertStyle });
+    for (const tb of beforeImage) emit(tb);
     const img = images.get(step.stepId);
     if (img) {
       if (tpl.azureWiki && tpl.imageMaxWidth > 0) {
@@ -194,7 +200,7 @@ function renderMarkdownGuide(ast, outDir, template = {}, {
         lines.push(`![${markdownAlt(step.altText)}](${imageUrl(img.relPath)})`, '');
       }
     }
-    for (const tb of afterImage) emitBlock(lines, tb, { alertStyle });
+    for (const tb of afterImage) emit(tb);
 
     for (const block of rest) {
       if (block.kind === 'text') {
@@ -209,9 +215,6 @@ function renderMarkdownGuide(ast, outDir, template = {}, {
         lines.push(`|${' --- |'.repeat(width)}`);
         for (const row of block.rows.slice(1)) lines.push(`| ${pad(row).join(' | ')} |`);
         lines.push('');
-      } else if (block.kind === 'flowchart') {
-        const chart = images.get(flowchartImageKey(step.stepId));
-        if (chart) lines.push(`![${markdownAlt(flowchartAlt(step))}](${imageUrl(chart.relPath)})`, '');
       }
     }
   }

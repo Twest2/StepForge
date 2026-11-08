@@ -168,6 +168,33 @@ test('exports: a main-visual flowchart replaces the screenshot; a block flowchar
   assert.equal(runExport('pptx', ast, out).imageCount, 2);
 });
 
+test('a flowchart block goes where it is set, like a text block (after the screenshot by default)', async (t) => {
+  const { dir, store, guide, shot } = library(t);
+  const base = { ...store.getStep(guide.guideId, shot.stepId), flowchart: CHART, flowchartPlacement: 'block', descriptionHtml: '<p>Describe it.</p>' };
+  const out = path.join(dir, 'out');
+  fs.mkdirSync(out);
+  const orderIn = async (position) => {
+    store.saveStep(guide.guideId, { ...store.getStep(guide.guideId, shot.stepId), ...base, ...(position ? { flowchartPosition: position } : {}) });
+    const images = await prepareExportImages(store, guide.guideId);
+    const ast = buildRenderAst(store, guide.guideId, { images });
+    const html = fs.readFileSync(runExport('html-simple', ast, out).file, 'utf8');
+    const md = fs.readFileSync(runExport('markdown', ast, out).file, 'utf8');
+    assert.ok(runExport('pdf', ast, out).file);
+    const at = (text, needle) => text.indexOf(needle);
+    return {
+      html: [at(html, 'alt="Screenshot'), at(html, 'Describe it.'), at(html, 'alt="Flowchart'), at(html, '<h2>Open the site')],
+      md: [at(md, '![Screenshot'), at(md, 'Describe it.'), at(md, '![Flowchart'), at(md, '## 1. Open the site')],
+    };
+  };
+  const after = await orderIn(null);
+  assert.equal(store.getStep(guide.guideId, shot.stepId).flowchartPosition, 'after-image');
+  for (const [shotAt, , chartAt] of [after.html, after.md]) assert.ok(chartAt > shotAt);
+  const beforeDescription = await orderIn('before-description');
+  for (const [shotAt, descAt, chartAt] of [beforeDescription.html, beforeDescription.md]) assert.ok(chartAt < descAt && chartAt < shotAt);
+  const beforeTitle = await orderIn('before-title');
+  for (const [, , chartAt, titleAt] of [beforeTitle.html, beforeTitle.md]) assert.ok(chartAt < titleAt);
+});
+
 test('publishing: a step with a screenshot and a flowchart block uploads both, under different names', async (t) => {
   const { dir, store, guide, shot } = library(t);
   store.saveStep(guide.guideId, { ...store.getStep(guide.guideId, shot.stepId), flowchart: CHART, flowchartPlacement: 'block' });

@@ -90,8 +90,9 @@ function stepBlocks(step) {
 
 /**
  * Split a step's blocks into the layout buckets exporters use around the
- * step title, description, and image. Text blocks keep their block-list
- * ordering inside each bucket; code/table blocks stay in `rest`.
+ * step title, description, and image. Text blocks and a flowchart block go
+ * by their position, keeping their block-list ordering inside each bucket;
+ * code/table blocks stay in `rest`.
  */
 function stepContentGroups(step) {
   const all = stepBlocks(step);
@@ -106,7 +107,7 @@ function stepContentGroups(step) {
   };
 
   for (const block of all) {
-    if (block.kind !== 'text') {
+    if (block.kind !== 'text' && block.kind !== 'flowchart') {
       groups.rest.push(block);
       continue;
     }

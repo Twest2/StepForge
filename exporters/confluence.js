@@ -146,7 +146,11 @@ function table(rows) {
 
 function renderStep(step, ast, attachmentNames, tpl) {
   const groups = stepContentGroups(step);
-  const panels = (list) => list.map((tb) => panel(tb, ast));
+  const chart = () => {
+    const name = attachmentNames.get(flowchartImageKey(step.stepId));
+    return name ? `<p><ac:image ac:alt="${escapeXml(flowchartAlt(step))}"><ri:attachment ri:filename="${escapeXml(name)}" /></ac:image></p>` : '';
+  };
+  const panels = (list) => list.map((tb) => (tb.kind === 'flowchart' ? chart() : panel(tb, ast))).filter(Boolean);
   const out = [];
   out.push(...panels(groups.beforeTitle));
   const tag = step.depth > 0 ? 'h3' : 'h2';
@@ -172,9 +176,6 @@ function renderStep(step, ast, attachmentNames, tpl) {
       out.push(macro('code', params, `<ac:plain-text-body>${cdata(codeBlockText(block))}</ac:plain-text-body>`));
     } else if (block.kind === 'table' && block.rows && block.rows.length) {
       out.push(table(block.rows));
-    } else if (block.kind === 'flowchart') {
-      const chart = attachmentNames.get(flowchartImageKey(step.stepId));
-      if (chart) out.push(`<p><ac:image ac:alt="${escapeXml(flowchartAlt(step))}"><ri:attachment ri:filename="${escapeXml(chart)}" /></ac:image></p>`);
     }
   }
   return out.join('\n');

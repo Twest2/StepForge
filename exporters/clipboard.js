@@ -100,7 +100,12 @@ function imageTag({ src, width, height }, alt, extra = '') {
 
 function renderStep(step, ast, images, tpl) {
   const groups = stepContentGroups(step);
-  const callouts = (list) => list.map(callout);
+  const chart = () => {
+    const img = images.get(flowchartImageKey(step.stepId));
+    return img ? `<p${style('margin:12px 0')}>${imageTag(pngImage(img, tpl.maxImageWidth), flowchartAlt(step), '')}</p>` : '';
+  };
+  // Text blocks and the flowchart block, at their positions.
+  const callouts = (list) => list.map((tb) => (tb.kind === 'flowchart' ? chart() : callout(tb))).filter(Boolean);
   const out = [...callouts(groups.beforeTitle)];
   const tag = step.depth > 0 ? 'h3' : 'h2';
   const size = step.depth > 0 ? 16 : 18;
@@ -117,10 +122,6 @@ function renderStep(step, ast, images, tpl) {
     if (block.kind === 'text') out.push(callout(block));
     else if (block.kind === 'code') out.push(codeHtml(block, ast));
     else if (block.kind === 'table' && block.rows && block.rows.length) out.push(tableHtml(block.rows));
-    else if (block.kind === 'flowchart') {
-      const chart = images.get(flowchartImageKey(step.stepId));
-      if (chart) out.push(`<p${style('margin:12px 0')}>${imageTag(pngImage(chart, tpl.maxImageWidth), flowchartAlt(step), '')}</p>`);
-    }
   }
   return out.join('\n');
 }
@@ -174,7 +175,8 @@ function clipboardText(ast) {
   for (const step of ast.steps) {
     const groups = stepContentGroups(step);
     const parts = [];
-    const texts = (list) => list.map(textBlock);
+    // Plain text has no pictures: a flowchart block is left out.
+    const texts = (list) => list.filter((tb) => tb.kind !== 'flowchart').map(textBlock);
     parts.push(...texts(groups.beforeTitle));
     parts.push(`${step.number}. ${step.title || 'Untitled step'}${step.skipped ? ' (Skipped)' : ''}`);
     parts.push(...texts(groups.afterTitle), ...texts(groups.beforeDescription));

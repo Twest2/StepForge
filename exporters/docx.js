@@ -354,18 +354,29 @@ function exportDocx(ast, outDir, template = {}) {
       afterImage,
       rest,
     } = stepContentGroups(step);
-    for (const tb of beforeTitle) emitTextBlock(tb);
+    // Text blocks and the flowchart block, at their positions.
+    const emit = (tb) => {
+      if (tb.kind !== 'flowchart') { emitTextBlock(tb); return; }
+      const chart = images.get(flowchartImageKey(step.stepId));
+      if (!chart) return;
+      const relId = imageRel(`flowchart${relCounter + 1}.png`, encodePng(chart));
+      // Drawn at 2x: show it at its natural size, never wider than a screenshot.
+      const widthTwips = Math.min(tpl.imageWidthTwips, Math.round((chart.width / 2) * 15));
+      body.push(p(drawing(relId, chart.width, chart.height, widthTwips, flowchartAlt(step))));
+      stepImageCount += 1;
+    };
+    for (const tb of beforeTitle) emit(tb);
     body.push(p(
       `<w:bookmarkStart w:id="${bookmarkId}" w:name="${anchor}"/>` +
       run(`${step.number}. ${step.title || 'Untitled step'}`, { bold: true, size: headSize }) +
       `<w:bookmarkEnd w:id="${bookmarkId}"/>`,
       headingParagraphProps(step.depth, step.forceNewPage)
     ));
-    for (const tb of afterTitle) emitTextBlock(tb);
-    for (const tb of beforeDescription) emitTextBlock(tb);
+    for (const tb of afterTitle) emit(tb);
+    for (const tb of beforeDescription) emit(tb);
     if (step.descriptionText) body.push(p(run(step.descriptionText, { size: 20, color: ink })));
-    for (const tb of afterDescription) emitTextBlock(tb);
-    for (const tb of beforeImage) emitTextBlock(tb);
+    for (const tb of afterDescription) emit(tb);
+    for (const tb of beforeImage) emit(tb);
 
     const img = images.get(step.stepId);
     if (img) {
@@ -377,7 +388,7 @@ function exportDocx(ast, outDir, template = {}) {
       stepImageCount += 1;
     }
 
-    for (const tb of afterImage) emitTextBlock(tb);
+    for (const tb of afterImage) emit(tb);
 
     for (const block of rest) {
       if (block.kind === 'text') {
@@ -389,15 +400,6 @@ function exportDocx(ast, outDir, template = {}) {
           : p(run(codeBlockText(block), { size: 18, font: 'Courier New', color: '1F2937' }), '<w:shd w:val="clear" w:fill="F3F4F6"/>'));
       } else if (block.kind === 'table') {
         if (block.rows && block.rows.length) body.push(table(block.rows), p(''));
-      } else if (block.kind === 'flowchart') {
-        const chart = images.get(flowchartImageKey(step.stepId));
-        if (chart) {
-          const relId = imageRel(`flowchart${relCounter + 1}.png`, encodePng(chart));
-          // Drawn at 2x: show it at its natural size, never wider than a screenshot.
-          const widthTwips = Math.min(tpl.imageWidthTwips, Math.round((chart.width / 2) * 15));
-          body.push(p(drawing(relId, chart.width, chart.height, widthTwips, flowchartAlt(step))));
-          stepImageCount += 1;
-        }
       }
     }
   }

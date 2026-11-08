@@ -305,7 +305,9 @@ function exportPptx(ast, outDir, template = {}) {
       afterDescription,
       beforeImage,
       afterImage,
-    } = stepContentGroups(step);
+    } = Object.fromEntries(Object.entries(stepContentGroups(step))
+      // A flowchart block sits beside the screenshot on its slide, wherever it goes elsewhere.
+      .map(([group, list]) => [group, list.filter((block) => block.kind !== 'flowchart')]));
     let content = rectShape(0, 0, SLIDE_W, 18000, 'scheme:accent1');
     const beforeTitleReserve = beforeTitle.reduce((sum, tb) => sum + calloutHeight(tb) + CALL_OUT_GAP, 0);
     const titleY = beforeTitle.length ? 220000 + beforeTitleReserve + 120000 : TITLE_Y;

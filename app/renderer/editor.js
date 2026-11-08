@@ -1643,9 +1643,24 @@ class GuideEditor {
       this.dom.blocksList.append(card);
     }
 
-    // The step's flowchart, when it shows as a block. It always comes last.
+    // The step's flowchart, when it shows as a block, with a position like a text block's.
     const chartBlock = step.flowchart && step.flowchartPlacement === 'block';
     if (chartBlock && window.StepForgeFlowchart) {
+      const position = makeSelect(step.flowchartPosition || 'after-image', [
+        { value: 'before-title', label: t('Before title') },
+        { value: 'after-title', label: t('After title') },
+        { value: 'before-image', label: t('Before image') },
+        { value: 'after-image', label: t('After image') },
+        { value: 'before-description', label: t('Before description') },
+        { value: 'after-description', label: t('After description') },
+      ]);
+      position.setAttribute('aria-label', t('Block position'));
+      position.addEventListener('change', () => {
+        this.pushCanvasHistory();
+        step.flowchartPosition = position.value;
+        this.pendingSave = true;
+        this.saveStepDebounced();
+      });
       const preview = el('div.flowchart-preview', {
         innerHTML: step.flowchart.nodes.length
           ? window.StepForgeFlowchart.toSvg(step.flowchart, { steps: this.flowchartStepRefs(), stepLabel: (number) => t('Step {number}', { number }) })
@@ -1658,6 +1673,7 @@ class GuideEditor {
           el('button', { type: 'button', onClick: () => this.setCanvasMode('flowchart') }, t('Edit')),
           el('button.icon', { type: 'button', title: t('Remove flowchart'), 'aria-label': t('Remove flowchart'), onClick: () => this.removeFlowchart() }, '×'),
         ),
+        position,
         step.flowchart.nodes.length ? preview : el('div.muted', {}, t('Empty flowchart.')),
       ));
     }

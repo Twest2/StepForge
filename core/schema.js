@@ -153,6 +153,8 @@ function createStep(fields = {}) {
     // An optional flowchart (core/flowchart.js) and where exports put it.
     flowchart: normalizeFlowchart(fields.flowchart),
     flowchartPlacement: normalizePlacement(fields.flowchartPlacement),
+    // As a block: where it goes, like a text block's position (after the screenshot by default).
+    flowchartPosition: TEXTBLOCK_POSITIONS.includes(fields.flowchartPosition) ? fields.flowchartPosition : 'after-image',
     links: fields.links || [], // { id, label, targetStepId }
     // Private-detail check: when it last ran, and what the user said isn't private.
     redaction: normalizeRedaction(fields.redaction),

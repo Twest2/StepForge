@@ -469,7 +469,7 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
       rest,
     } = stepContentGroups(step);
     for (const tb of [...beforeTitle, ...afterTitle, ...beforeDescription, ...afterDescription, ...beforeImage, ...afterImage]) {
-      head += measureBlock(tb);
+      head += tb.kind === 'flowchart' ? measureImage(flowchartImageKey(step.stepId)) : measureBlock(tb);
     }
     if (step.descriptionHtml) head += layoutDescription(pdf, step.descriptionHtml, usableW, 10.5, bodyFonts).height;
     head += measureImage(step.stepId);
@@ -479,7 +479,6 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
       if (block.kind === 'text') restHeight += measureBlock(block);
       else if (block.kind === 'code') restHeight += measureCode(block);
       else if (block.kind === 'table') restHeight += measureTable(block);
-      else if (block.kind === 'flowchart') restHeight += measureImage(flowchartImageKey(step.stepId));
     }
 
     return { head, total: head + restHeight + 10 };
@@ -611,18 +610,6 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
       afterImage,
       rest,
     } = stepContentGroups(step);
-    for (const tb of beforeTitle) emitBlock(tb);
-    const headSize = step.depth > 0 ? 12 : 14;
-    writeLines(`${step.number}. ${step.title || 'Untitled step'}${step.skipped ? '  (skipped)' : ''}`, { size: headSize, font: headFonts.bold });
-    pdf.rect(M, y, usableW, 0.8, { fill: [225, 228, 232] });
-    y += 8;
-
-    for (const tb of afterTitle) emitBlock(tb);
-    for (const tb of beforeDescription) emitBlock(tb);
-    if (step.descriptionHtml) writeDescription(step.descriptionHtml);
-    for (const tb of afterDescription) emitBlock(tb);
-    for (const tb of beforeImage) emitBlock(tb);
-
     const drawImage = (key) => {
       const img = images.get(key);
       const box = imageBox(img, key);
@@ -631,8 +618,21 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
       pdf.image(img, M, y, box.w, box.h);
       y += box.h + 10;
     };
+    // Text blocks and the flowchart block, at their positions.
+    const emit = (tb) => (tb.kind === 'flowchart' ? drawImage(flowchartImageKey(step.stepId)) : emitBlock(tb));
+    for (const tb of beforeTitle) emit(tb);
+    const headSize = step.depth > 0 ? 12 : 14;
+    writeLines(`${step.number}. ${step.title || 'Untitled step'}${step.skipped ? '  (skipped)' : ''}`, { size: headSize, font: headFonts.bold });
+    pdf.rect(M, y, usableW, 0.8, { fill: [225, 228, 232] });
+    y += 8;
+
+    for (const tb of afterTitle) emit(tb);
+    for (const tb of beforeDescription) emit(tb);
+    if (step.descriptionHtml) writeDescription(step.descriptionHtml);
+    for (const tb of afterDescription) emit(tb);
+    for (const tb of beforeImage) emit(tb);
     drawImage(step.stepId);
-    for (const tb of afterImage) emitBlock(tb);
+    for (const tb of afterImage) emit(tb);
 
     for (const block of rest) {
       if (block.kind === 'text') {
@@ -656,8 +656,6 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
           y += rowH;
         }
         y += 8;
-      } else if (block.kind === 'flowchart') {
-        drawImage(flowchartImageKey(step.stepId));
       }
     }
 

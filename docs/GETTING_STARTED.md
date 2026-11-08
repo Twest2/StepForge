@@ -191,7 +191,10 @@ your document. On a dark background, arrows and plain text turn light.
 
 The menu beside it says where the flowchart goes in exports: **Main visual**
 shows it in place of the screenshot (the screenshot is kept, so you can switch
-back), and **Block** adds it after the step's text.
+back), and **Block** adds it as a block. As a block it appears in the step's
+**Blocks** list, where you can choose where it goes, just like a text block:
+before or after the title, the description or the screenshot (after the
+screenshot unless you move it). In PowerPoint it sits beside the screenshot.
 
 **Mermaid** in the toolbar opens the chart as
 [Mermaid](https://mermaid.js.org/syntax/flowchart.html) text beside it. Type or

@@ -139,14 +139,15 @@ function buildRenderAst(store, guideId, { globals = {}, now = new Date(), maxSte
       }
     }
     // A flowchart (drawn by prepareExportImages) either replaces the
-    // screenshot or follows the step's other blocks.
+    // screenshot or is a block at the position chosen for it (after the
+    // screenshot unless moved), like a text block.
     const chartPng = hasFlowchart(step) && images ? images.get(flowchartImageKey(step.stepId)) : null;
     if (chartPng) {
       const { width, height } = readImageSize(chartPng);
       const chart = { png: chartPng, width, height, flowchart: true };
       if (step.flowchartPlacement === 'block') {
         ast.flowchartImage = chart;
-        ast.blocks.push({ kind: 'flowchart', id: 'flowchart', order: Number.MAX_SAFE_INTEGER });
+        ast.blocks.push({ kind: 'flowchart', id: 'flowchart', position: step.flowchartPosition || 'after-image', order: Number.MAX_SAFE_INTEGER });
       } else {
         ast.image = chart;
         ast.annotations = [];

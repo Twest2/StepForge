@@ -2385,6 +2385,21 @@ class GuideEditor {
     const item = sel && (sel.kind === 'node' ? graph.nodes : graph.edges).find((i) => i.id === sel.id);
     if (!item) {
       box.append(el('p.muted', {}, t('Pick a shape in the toolbar and click the canvas. Use Connect to draw arrows between shapes. Double-click a shape or arrow to change its text.')));
+      // The whole chart's background: white unless chosen, or transparent.
+      const proxy = { id: `flow-bg-${step.stepId}`, type: 'rect', style: { fill: graph.background || '#ffffff' } };
+      box.append(labeledRow(t('Background'), this.colorPicker(proxy, (picked, { record = true } = {}) => {
+        if (record) this.pushCanvasHistory();
+        if (!step.flowchart) {
+          step.flowchartPlacement = this.flowchartPlacement(step);
+          step.flowchart = { nodes: [], edges: [] };
+        }
+        if (picked === '#ffffff') delete step.flowchart.background;
+        else step.flowchart.background = picked;
+        this.pendingSave = true;
+        this.saveStepDebounced();
+        editor.render();
+        if (step.flowchartPlacement === 'block') this.renderBlocksPanel();
+      }, { field: 'fill', label: t('Background') })));
       return;
     }
     const live = () => (sel.kind === 'node' ? step.flowchart?.nodes : step.flowchart?.edges)?.find((i) => i.id === sel.id);

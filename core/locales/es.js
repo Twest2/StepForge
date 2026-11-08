@@ -1895,4 +1895,5 @@
   "Zoom in (Ctrl + mouse wheel)": "Acercar (Ctrl + rueda del ratón)",
   "Zoom out (Ctrl + mouse wheel)": "Alejar (Ctrl + rueda del ratón)",
   "Reset zoom to 100%": "Restablecer el zoom al 100 %",
+  "Background": "Fondo",
 });

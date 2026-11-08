@@ -83,6 +83,22 @@
       return color || undefined;
     }
 
+    /** The chart's background color on the canvas (the dots stay); the theme's canvas when unset or transparent. */
+    applyBackground(background) {
+      const custom = /^#[0-9a-f]{6}$/i.test(background || '');
+      const style = this.host.style;
+      if (custom) {
+        const dark = flow.isDark(background);
+        style.setProperty('--flow-bg', background);
+        style.setProperty('--flow-dot', dark ? 'rgba(255, 255, 255, 0.22)' : 'rgba(15, 23, 42, 0.2)');
+        style.setProperty('--flow-edge', flow.edgeColorOn(background));
+      } else {
+        for (const name of ['--flow-bg', '--flow-dot', '--flow-edge']) style.removeProperty(name);
+      }
+      const canvas = window.getComputedStyle?.(this.host).getPropertyValue('--flow-bg').trim();
+      return flow.isDark(canvas);
+    }
+
     /** Pick a tool; Connect takes the style of the arrows it draws (core/flowchart.js EDGE_STYLES). */
     setTool(tool, { edgeStyle = 'arrow' } = {}) {
       this.tool = tool;
@@ -141,8 +157,9 @@
       const width = right - origin.x;
       const height = bottom - origin.y;
       this.host.style.setProperty('--flow-grid', `${flow.GRID * z}px`);
+      const dark = this.applyBackground(g.background);
       let svg = flow.toSvg(g, {
-        ...options, editor: true, width, height, viewX: origin.x, viewY: origin.y, zoom: z, idPrefix: 'ed-', edgeColor: this.edgeColor(),
+        ...options, editor: true, dark, width, height, viewX: origin.x, viewY: origin.y, zoom: z, idPrefix: 'ed-', edgeColor: this.edgeColor(),
         selectedId: this.selected?.id || null, pendingFromId: this.pendingFrom,
       });
       if (this.drag?.type === 'connect' && this.drag.moved) {

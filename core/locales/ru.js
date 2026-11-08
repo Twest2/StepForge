@@ -1895,4 +1895,5 @@
   "Zoom in (Ctrl + mouse wheel)": "Увеличить (Ctrl + колесо мыши)",
   "Zoom out (Ctrl + mouse wheel)": "Уменьшить (Ctrl + колесо мыши)",
   "Reset zoom to 100%": "Сбросить масштаб до 100%",
+  "Background": "Фон",
 });

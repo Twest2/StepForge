@@ -872,7 +872,8 @@ function createAgentTools({ store, agentSettings, onChange = () => {}, onBrandin
           () => store.getStep(guideId, stepId),
           (current) => ({
             ...current,
-            flowchart: graph,
+            // A background color chosen in the editor stays.
+            flowchart: graph && current.flowchart?.background ? { ...graph, background: current.flowchart.background } : graph,
             flowchartPlacement: placement || (current.flowchart ? current.flowchartPlacement : (current.image ? 'block' : 'visual')),
           }),
           (current, revision) => store.saveStep(guideId, current, { expectedRevision: revision }),

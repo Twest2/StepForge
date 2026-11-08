@@ -5,6 +5,7 @@
  * (`step.flowchart`). The editor and every exporter draw it through toSvg(),
  * so what the author sees is what the export shows.
  *
+ *   background?: '#rrggbb' or 'transparent' (exports; white when unset)
  *   nodes: [{ id, shape, label, x, y, w?, h?, stepId?, fill?, stroke?, textColor?, image? }]
  *   edges: [{ id, from, to, label, style? }]
  *
@@ -192,7 +193,21 @@
       edgeIds.add(id);
       edges.push({ id, from: e.from, to: e.to, label: clean(e.label, 80), ...(EDGE_STYLES.includes(e.style) && e.style !== 'arrow' ? { style: e.style } : {}) });
     }
-    return { nodes, edges };
+    const background = color(raw.background);
+    return { ...(background ? { background } : {}), nodes, edges };
+  }
+
+  /** True for a dark '#rrggbb' (lines and plain text on it are drawn light). */
+  function isDark(hex) {
+    const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || '');
+    if (!m) return false;
+    const [r, g, b] = m.slice(1).map((v) => parseInt(v, 16) / 255);
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b < 0.5;
+  }
+
+  /** Arrow color for a chart background. */
+  function edgeColorOn(background) {
+    return isDark(background) ? '#cbd5e1' : COLORS.edge;
   }
 
   function normalizePlacement(value) {
@@ -520,7 +535,7 @@
   }
 
   /** The SVG of one node: shape, picture, detail lines, border, text. */
-  function nodeSvg(n, b, { editor, selected, idPrefix }) {
+  function nodeSvg(n, b, { editor, selected, idPrefix, dark = false }) {
     const def = SHAPES[n.shape] || SHAPES.process;
     const base = COLORS[n.shape] || BLUE;
     const fill = n.fill || base.fill;
@@ -548,7 +563,8 @@
     const lines = b.lines.length ? b.lines : [];
     const total = lines.length * LINE_HEIGHT + (b.caption ? 16 : 0);
     let ty = t.y + (t.h - total) / 2 + LINE_HEIGHT - 4;
-    const textColor = n.textColor || COLORS.label;
+    // Text drawn straight on a dark background (no fill behind it) is light.
+    const textColor = n.textColor || (dark && fill === 'transparent' && !n.image ? '#f8fafc' : COLORS.label);
     for (const text of lines) {
       parts.push(`<text x="${f(t.x + t.w / 2)}" y="${f(ty)}" text-anchor="middle" font-size="${FONT_SIZE}" fill="${textColor}">${esc(text)}</text>`);
       ty += LINE_HEIGHT;
@@ -566,16 +582,19 @@
    *
    * Export (default): cropped to the drawing plus a margin, at least
    * `minWidth` wide so a small chart isn't blown up to page width, on a white
-   * background, drawn at `scale` pixels per unit.
+   * background (the chart's `background`, or none when that's
+   * 'transparent'), drawn at `scale` pixels per unit.
    *
    * Editor (`editor: true`): chart coordinates at `zoom`, no background (the
    * editor shows its dotted grid), hit targets and the selection outline.
    */
   function toSvg(raw, {
-    steps = [], stepLabel, editor = false, selectedId = null, pendingFromId = null, edgeColor = COLORS.edge,
+    steps = [], stepLabel, editor = false, selectedId = null, pendingFromId = null, edgeColor, dark: darkCanvas,
     width = 0, height = 0, viewX = 0, viewY = 0, zoom = 1, padding = 24, minWidth = 640, scale = 2, idPrefix = 'fc-',
   } = {}) {
     const graph = normalizeFlowchart(raw) || { nodes: [], edges: [] };
+    const dark = darkCanvas ?? isDark(graph.background);
+    edgeColor ||= edgeColorOn(graph.background);
     const options = { steps, stepLabel };
     const boxes = new Map(graph.nodes.map((n) => [n.id, nodeBox(n, options)]));
     const shapes = new Map(graph.nodes.map((n) => [n.id, n.shape]));
@@ -609,7 +628,7 @@
     for (const n of graph.nodes) {
       const selected = editor && (n.id === selectedId || n.id === pendingFromId);
       parts.push(editor ? `<g data-node-id="${esc(n.id)}">` : '<g>');
-      parts.push(nodeSvg(n, boxes.get(n.id), { editor, selected, idPrefix }));
+      parts.push(nodeSvg(n, boxes.get(n.id), { editor, selected, idPrefix, dark }));
       parts.push('</g>');
     }
 
@@ -623,8 +642,11 @@
     const h = box.h + padding * 2;
     const vx = box.x - (w - box.w) / 2;
     const vy = box.y - padding;
+    // The chart's background color (white unless chosen); none when transparent.
+    const background = graph.background || '#ffffff';
+    const backdrop = background === 'transparent' ? '' : `<rect x="${f(vx)}" y="${f(vy)}" width="${f(w)}" height="${f(h)}" fill="${background}"/>`;
     return `<svg ${ns} width="${Math.round(w * scale)}" height="${Math.round(h * scale)}" viewBox="${f(vx)} ${f(vy)} ${f(w)} ${f(h)}" font-family="${esc(FONT_FAMILY)}">`
-      + `<rect x="${f(vx)}" y="${f(vy)}" width="${f(w)}" height="${f(h)}" fill="#ffffff"/>${body}</svg>`;
+      + `${backdrop}${body}</svg>`;
   }
 
   /** A small outline drawing of a shape, for the shape palette. */
@@ -655,6 +677,6 @@
 
   return {
     SHAPES: SHAPE_IDS, EDGE_STYLES, PLACEMENTS, GRID, normalizeFlowchart, normalizePlacement, wrapLabel, nodeBox, boundaryPoint,
-    arrange, bounds, toSvg, shapeIcon, defaultColors, hasFlowchart, newId,
+    arrange, bounds, toSvg, shapeIcon, defaultColors, hasFlowchart, newId, isDark, edgeColorOn,
   };
 });

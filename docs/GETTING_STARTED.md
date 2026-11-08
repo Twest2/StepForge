@@ -185,6 +185,10 @@ then shows "→ Step 3". **Fill → Image…** puts a picture inside the shape:
 crops the edges. Pictures are never stretched. For a selected arrow you can
 pick its style: arrow, double arrow, line, dashed or dotted.
 
+With no shape selected, the details pane shows the chart's **Background**: white
+unless you pick a color, or **Transparent** so the chart sits on the page of
+your document. On a dark background, arrows and plain text turn light.
+
 The menu beside it says where the flowchart goes in exports: **Main visual**
 shows it in place of the screenshot (the screenshot is kept, so you can switch
 back), and **Block** adds it after the step's text.

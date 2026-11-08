@@ -1895,4 +1895,5 @@
   "Zoom in (Ctrl + mouse wheel)": "放大（Ctrl + 鼠标滚轮）",
   "Zoom out (Ctrl + mouse wheel)": "缩小（Ctrl + 鼠标滚轮）",
   "Reset zoom to 100%": "将缩放重置为 100%",
+  "Background": "背景",
 });

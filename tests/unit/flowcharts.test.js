@@ -61,6 +61,17 @@ test('shapes may sit left of and above 0,0, and the export still frames them all
   assert.ok(vx <= -300 && vy <= -120);
 });
 
+test('chart background: white by default, any color (with light lines on dark), or transparent', () => {
+  assert.match(flow.toSvg(CHART), /<rect [^>]*fill="#ffffff"\/>/);
+  const dark = flow.toSvg({ ...CHART, background: '#111827' });
+  assert.match(dark, /<rect [^>]*fill="#111827"\/>/);
+  assert.match(dark, /stroke="#cbd5e1"/);
+  const clear = flow.toSvg({ ...CHART, background: 'transparent' });
+  assert.doesNotMatch(clear, /<rect [^>]*fill="#ffffff"\/><g>/);
+  assert.equal(flow.normalizeFlowchart({ ...CHART, background: 'url(evil)' }).background, undefined);
+  assert.equal(flow.arrange({ ...CHART, background: '#123456' }).background, '#123456');
+});
+
 test('arrange: side inputs sit next to what they feed, notes beside their shape, and lines do not cross', () => {
   const n = (id, shape = 'process') => ({ id, shape, label: id });
   const g = flow.arrange({

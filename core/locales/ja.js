@@ -1895,4 +1895,5 @@
   "Zoom in (Ctrl + mouse wheel)": "拡大（Ctrl + マウスホイール）",
   "Zoom out (Ctrl + mouse wheel)": "縮小（Ctrl + マウスホイール）",
   "Reset zoom to 100%": "ズームを 100% に戻す",
+  "Background": "背景",
 });

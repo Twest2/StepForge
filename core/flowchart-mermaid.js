@@ -232,7 +232,7 @@
       const old = oldEdges.get(`${from}>${to}`);
       return { id: old ? old.id : flow.newId('edge'), from, to, label: e.label, ...(e.style !== 'arrow' ? { style: e.style } : {}) };
     });
-    const result = { nodes, edges };
+    const result = { ...(current.background ? { background: current.background } : {}), nodes, edges };
     if (!fresh.length) return flow.normalizeFlowchart(result);
     if (fresh.length === nodes.length) return flow.arrange(result);
     // New nodes go under the node that leads to them (else under the chart),

@@ -1895,4 +1895,5 @@
   "Zoom in (Ctrl + mouse wheel)": "Zoom avant (Ctrl + molette)",
   "Zoom out (Ctrl + mouse wheel)": "Zoom arrière (Ctrl + molette)",
   "Reset zoom to 100%": "Rétablir le zoom à 100 %",
+  "Background": "Arrière-plan",
 });

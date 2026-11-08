@@ -152,7 +152,6 @@ const TOOL_ICON_PATHS = {
   cursor: '<path d="M6 4v12l3.2-2.8 2.2 5 2-.9-2.2-4.9h4.6z"/><path d="M17.5 3.5l1 1.5M20.5 8h1.5M3 3l1.5 1.5"/>',
   spotlight: '<path d="M3.5 9.5 8.5 4.5l4.5 4.5-5 5z"/><path d="M15.5 11.5l3.5 2.5M12 15.5l2 3.5M16.5 7.5l4 .5"/><path d="M6.5 12.5 5 20M3 20h5"/>',
   crop: '<path d="M6 3v13h13M3 6h13v15"/>',
-  'flow-select': '<path d="M5 3v15l4-3.5 2.5 5.5 2.2-1-2.4-5.3H17z"/>',
   'flow-process': '<rect x="3" y="6.5" width="18" height="11" rx="1.5"/>',
   'flow-decision': '<path d="M12 3 21 12 12 21 3 12z"/>',
   'flow-terminal': '<rect x="2.5" y="7" width="19" height="10" rx="5"/>',
@@ -195,7 +194,6 @@ const IMAGE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" s
 
 // The flowchart tools (app/renderer/flowchart-editor.js), as [tool, label].
 const FLOW_TOOLS = () => [
-  ['select', t('Select')],
   ['process', t('Step box')],
   ['decision', t('Decision')],
   ['terminal', t('Start or end')],
@@ -1238,7 +1236,12 @@ class GuideEditor {
     this.dom.visualSelect.addEventListener('change', () => this.setCanvasMode(this.dom.visualSelect.value));
     this.dom.flowPlacementSelect.addEventListener('change', () => this.setFlowchartPlacement(this.dom.flowPlacementSelect.value));
     for (const [tool] of FLOW_TOOLS()) {
-      this.dom[`flow-${tool}`].addEventListener('click', () => this.flowchartEditor()?.setTool(tool));
+      // No Select button: every tool goes back to selecting after one use (or Esc,
+      // or a second click on the tool).
+      this.dom[`flow-${tool}`].addEventListener('click', () => {
+        const editor = this.flowchartEditor();
+        editor?.setTool(editor.tool === tool ? 'select' : tool);
+      });
     }
     this.dom.flowShapesBtn.addEventListener('click', () => this.openShapePalette());
     this.dom.mermaidToggle.addEventListener('click', () => this.setMermaidOpen(!this.mermaidOpen));
@@ -2309,7 +2312,7 @@ class GuideEditor {
   syncFlowTools() {
     const tool = this.flowEditor?.tool || 'select';
     for (const [name] of FLOW_TOOLS()) this.setPressed(this.dom[`flow-${name}`], name === tool);
-    this.setPressed(this.dom.flowShapesBtn, !FLOW_TOOLS().some(([name]) => name === tool));
+    this.setPressed(this.dom.flowShapesBtn, tool !== 'select' && !FLOW_TOOLS().some(([name]) => name === tool));
   }
 
   /** Before a flowchart edit: an undo snapshot, and the flowchart itself on its first edit. */

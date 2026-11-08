@@ -844,8 +844,11 @@ body.platform-linux #capture-status button {
 .description-head button[hidden], .description-source[hidden], .description-preview[hidden], .rich-toolbar[hidden], .rich-editor[hidden] { display: none; }
 .description-preview-toggle { height: 30px; }
 .description-preview-toggle.active { background: var(--accent); border-color: var(--accent); color: var(--accent-fg, #fff); }
-.description-source { width: 100%; box-sizing: border-box; min-height: 160px; resize: vertical; font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-size: 13px; line-height: 1.5; }
-.description-preview { overflow-wrap: anywhere; }
+.description-source { width: 100%; box-sizing: border-box; height: 180px; min-height: 60px; resize: vertical; font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-size: 13px; line-height: 1.5; }
+/* Description boxes can be dragged taller (or shorter) from the corner. */
+.pane-props .rich-editor { resize: vertical; max-height: none; height: 140px; min-height: 60px; }
+.description-preview { overflow-wrap: anywhere; height: 180px; }
+.rich-editor a { color: var(--accent); text-decoration: underline; }
 .description-preview table { border-collapse: collapse; }
 .description-preview th, .description-preview td { border: 1px solid var(--border); padding: 4px 8px; }
 .description-preview pre { white-space: pre-wrap; }

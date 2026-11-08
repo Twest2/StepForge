@@ -1879,4 +1879,5 @@
   "Markdown: **bold**, *italic*, # headings, - lists, | tables |, `code`, [links](https://example.com) and HTML.": "Markdown : **gras**, *italique*, # titres, - listes, | tableaux |, `code`, [liens](https://example.com) et HTML.",
   "Description preview": "Aperçu de la description",
   "Image…": "Image…",
+  "Ctrl+click to open this link.": "Ctrl+clic pour ouvrir ce lien.",
 });

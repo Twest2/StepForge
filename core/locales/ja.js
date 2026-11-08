@@ -1879,4 +1879,5 @@
   "Markdown: **bold**, *italic*, # headings, - lists, | tables |, `code`, [links](https://example.com) and HTML.": "Markdown：**太字**、*斜体*、# 見出し、- リスト、| 表 |、`コード`、[リンク](https://example.com)、HTML。",
   "Description preview": "説明のプレビュー",
   "Image…": "画像…",
+  "Ctrl+click to open this link.": "Ctrl キーを押しながらクリックするとこのリンクを開きます。",
 });

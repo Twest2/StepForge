@@ -1879,4 +1879,5 @@
   "Markdown: **bold**, *italic*, # headings, - lists, | tables |, `code`, [links](https://example.com) and HTML.": "Markdown: **negrita**, *cursiva*, # títulos, - listas, | tablas |, `código`, [vínculos](https://example.com) y HTML.",
   "Description preview": "Vista previa de la descripción",
   "Image…": "Imagen…",
+  "Ctrl+click to open this link.": "Ctrl+clic para abrir este vínculo.",
 });

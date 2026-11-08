@@ -1169,11 +1169,19 @@ class GuideEditor {
     this.dom.flowArrangeBtn.addEventListener('click', () => this.flowchartEditor()?.arrange());
     this.dom.flowDeleteBtn.addEventListener('click', () => this.flowchartEditor()?.deleteSelected());
 
+    // While editing, a click on a link puts the caret in it; Ctrl+click opens
+    // it (a step, or a web or mail address in the browser).
     this.dom.descEditor.addEventListener('click', (e) => {
-      const link = e.target.closest?.('a[data-step-id]');
-      if (!link || !(e.ctrlKey || e.metaKey)) return;
+      const link = e.target.closest?.('a');
+      if (!link) return;
       e.preventDefault();
-      if (this.stepMap.has(link.dataset.stepId)) this.selectStep(link.dataset.stepId);
+      e.stopPropagation();
+      if (!(e.ctrlKey || e.metaKey)) return;
+      if (link.dataset.stepId) {
+        if (this.stepMap.has(link.dataset.stepId)) this.selectStep(link.dataset.stepId);
+      } else if (/^(https?|mailto):/i.test(link.getAttribute('href') || '')) {
+        api.shell.openExternal({ url: link.getAttribute('href') });
+      }
     });
     this.dom.descEditor.addEventListener('focus', () => {
       // Make Enter start a new paragraph (<p>) rather than a plain <div>,
@@ -1183,19 +1191,29 @@ class GuideEditor {
       this.updateToolbarState();
     });
     this.dom.descEditor.addEventListener('blur', () => {
+      this.linkifyAndSave({ caret: false });
       for (const btn of this.dom.richToolbar.children) btn.classList.remove('active');
     });
     this.dom.descEditor.addEventListener('input', () => {
       if (!this.currentStep) return;
+      if (this.linkifyDescription()) this.refreshStepLinks();
       this.currentStep.descriptionHtml = this.dom.descEditor.innerHTML;
       this.pendingSave = true;
       this.saveStepDebounced();
       this.emitMeta();
       this.updateToolbarState();
     });
-    this.dom.descEditor.addEventListener('keyup', () => this.updateToolbarState());
+    this.dom.descEditor.addEventListener('keyup', (e) => {
+      // Moving the caret out of a typed [text](address) makes it a link.
+      if (e.key.startsWith('Arrow') || e.key === 'Home' || e.key === 'End') this.linkifyAndSave();
+      this.updateToolbarState();
+    });
     this.dom.descModeSelect.addEventListener('change', () => this.setDescriptionMode(this.dom.descModeSelect.value));
     this.dom.descPreviewBtn.addEventListener('click', () => {
+      // The preview opens at the size the Markdown box has (and the other way round).
+      const from = this.descPreviewing ? this.dom.descPreview : this.dom.descSource;
+      const to = this.descPreviewing ? this.dom.descSource : this.dom.descPreview;
+      if (from.offsetHeight) to.style.height = `${from.offsetHeight}px`;
       this.descPreviewing = !this.descPreviewing;
       this.syncDescriptionMode();
       this.refreshStepLinks();
@@ -1210,13 +1228,15 @@ class GuideEditor {
       this.saveStepDebounced();
       this.emitMeta();
     });
+    // Preview links work: a step link opens the step; web and mail links open
+    // in the browser (app.js's document click handler).
     this.dom.descPreview.addEventListener('click', (e) => {
-      const link = e.target.closest?.('a');
+      const link = e.target.closest?.('a[data-step-id]');
       if (!link) return;
       e.preventDefault();
-      if (link.dataset.stepId && this.stepMap.has(link.dataset.stepId)) this.selectStep(link.dataset.stepId);
+      if (this.stepMap.has(link.dataset.stepId)) this.selectStep(link.dataset.stepId);
     });
-    this.dom.descEditor.addEventListener('mouseup', () => this.updateToolbarState());
+    this.dom.descEditor.addEventListener('mouseup', () => { this.linkifyAndSave(); this.updateToolbarState(); });
     document.addEventListener('selectionchange', () => {
       if (document.activeElement === this.dom.descEditor) this.updateToolbarState();
     });
@@ -4653,6 +4673,17 @@ class GuideEditor {
         const selectedText = window.getSelection().toString();
         const text = selectedText || t('Text');
         document.execCommand('insertText', false, `[${text}](Link)`);
+        // Select "Link" so the address can be typed over it; the link turns
+        // into a real one when the caret leaves it (linkifyDescription).
+        const sel = window.getSelection();
+        const node = sel.focusNode;
+        if (node && node.nodeType === Node.TEXT_NODE && sel.focusOffset >= 5) {
+          const range = document.createRange();
+          range.setStart(node, sel.focusOffset - 5);
+          range.setEnd(node, sel.focusOffset - 1);
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
         break;
       }
       case 'removeFormat':
@@ -4742,6 +4773,73 @@ class GuideEditor {
       link.classList.toggle('missing-step', !number);
       link.title = number ? t('Ctrl+click to open this step.') : t('This step was deleted.');
     }
+    for (const link of this.dom.descEditor.querySelectorAll?.('a[href]:not([data-step-id])') || []) {
+      link.title = t('Ctrl+click to open this link.');
+    }
+  }
+
+  /**
+   * Rich text: turn typed [text](https://…) and bare web addresses into real
+   * links, except the one the caret is still in. A bare address becomes a
+   * link once a space follows it. `caret: false` converts everything (the
+   * editor lost focus).
+   * True when something changed.
+   */
+  linkifyDescription({ caret = true } = {}) {
+    const editor = this.dom.descEditor;
+    const sel = window.getSelection();
+    const caretNode = caret && sel.rangeCount && sel.isCollapsed ? sel.focusNode : null;
+    const caretOffset = caretNode ? sel.focusOffset : -1;
+    const pattern = /\[([^\]\n]+)\]\(((?:https?:\/\/|mailto:)[^\s)]+)\)|((?:https?:\/\/|www\.)[^\s<]*[^\s<.,;:!?)\]'"])/g;
+    const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+    const nodes = [];
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (!node.parentElement?.closest('a, code, pre')) nodes.push(node);
+    }
+    let changed = false;
+    for (const node of nodes) {
+      const text = node.data;
+      let match;
+      pattern.lastIndex = 0;
+      while ((match = pattern.exec(text))) {
+        const start = match.index;
+        const end = start + match[0].length;
+        const bare = Boolean(match[3]);
+        if (node === caretNode && !bare && caretOffset > start && caretOffset < end) continue;
+        if (bare) {
+          // A bare address is done once a space follows (after any closing
+          // punctuation), or at the end of the text once the caret has left.
+          const tail = /^[.,;:!?)\]'"]*(\s|$)/.exec(text.slice(end));
+          if (!tail || (tail[1] === '' && node === caretNode) || (node === caretNode && caretOffset >= start && caretOffset <= end)) continue;
+        }
+        const href = bare ? (match[3].startsWith('www.') ? `https://${match[3]}` : match[3]) : match[2];
+        const after = node.splitText(end);
+        const linkText = node.splitText(start);
+        const link = document.createElement('a');
+        link.href = href;
+        link.textContent = bare ? match[3] : match[1];
+        linkText.replaceWith(link);
+        if (node === caretNode && caretOffset >= end) {
+          const range = document.createRange();
+          range.setStart(after, caretOffset - end);
+          range.collapse(true);
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
+        changed = true;
+        break; // `node` now ends before the link; the rest is in `after`.
+      }
+    }
+    // Text after a new link may hold another one.
+    if (changed) this.linkifyDescription({ caret });
+    return changed;
+  }
+
+  linkifyAndSave(options) {
+    if (!this.currentStep || this.descriptionMode() !== 'rich' || !this.linkifyDescription(options)) return;
+    this.currentStep.descriptionHtml = this.dom.descEditor.innerHTML;
+    this.pendingSave = true;
+    this.saveStepDebounced();
   }
 
   // ---- Description format: Rich text or Markdown ----

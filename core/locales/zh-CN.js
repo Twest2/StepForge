@@ -1879,4 +1879,5 @@
   "Markdown: **bold**, *italic*, # headings, - lists, | tables |, `code`, [links](https://example.com) and HTML.": "Markdown：**粗体**、*斜体*、# 标题、- 列表、| 表格 |、`代码`、[链接](https://example.com) 和 HTML。",
   "Description preview": "描述预览",
   "Image…": "图片…",
+  "Ctrl+click to open this link.": "按住 Ctrl 单击可打开此链接。",
 });

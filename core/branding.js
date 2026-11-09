@@ -69,20 +69,20 @@ const FONT_SUGGESTIONS = [
 // CSS is limited by characters; a UTF-8 file under 4 bytes a character can't fit.
 const MAX_FILE_BYTES = { image: MAX_IMAGE_BYTES, font: MAX_FONT_BYTES, css: MAX_CSS_CHARS * 4 };
 const TOO_LARGE = {
-  image: t('This image is larger than 10 MB. Choose a smaller one.'),
-  font: t('This font file is larger than 10 MB. Choose a smaller one, such as its WOFF2 version.'),
-  css: t('This CSS file is longer than 200,000 characters, the most a profile can hold. Shorten it and load it again.'),
+  image: () => t('This image is larger than 10 MB. Choose a smaller one.'),
+  font: () => t('This font file is larger than 10 MB. Choose a smaller one, such as its WOFF2 version.'),
+  css: () => t('This CSS file is longer than 200,000 characters, the most a profile can hold. Shorten it and load it again.'),
 };
 
 /** Refuse a file that's too large for its kind (image, font or css) before it's read. */
 function checkFileSize(kind, bytes) {
-  if (bytes > MAX_FILE_BYTES[kind]) throw new Error(TOO_LARGE[kind]);
+  if (bytes > MAX_FILE_BYTES[kind]) throw new Error(TOO_LARGE[kind]());
 }
 
 /** The text of a loaded .css file; one over the limit is refused, never cut short. */
 function cssFromFile(data) {
   const css = data.toString('utf8').replace(/^\uFEFF/, '');
-  if (css.length > MAX_CSS_CHARS) throw new Error(TOO_LARGE.css);
+  if (css.length > MAX_CSS_CHARS) throw new Error(TOO_LARGE.css());
   return css;
 }
 

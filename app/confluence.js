@@ -6,6 +6,7 @@ const path = require('node:path');
 const { atomicWriteFileSync, writeJsonSync, readJsonIfExists, escapeXml } = require('../core/util');
 const { normalizeServer } = require('./webdav');
 const { publishedImageName } = require('../exporters/common');
+const { t } = require('../core/ui-text');
 
 /*
  * Publishing guides as Confluence pages, on Confluence Cloud or a Confluence
@@ -37,15 +38,15 @@ const MAX_ATTACHMENT_BYTES = 100 * 1024 * 1024;
 function friendlyNetworkError(err, host) {
   const message = String(err?.message || err);
   if (/CLIENT_AUTH_CERT_NEEDED|BAD_SSL_CLIENT_AUTH_CERT|CLIENT_AUTH_CERT_TYPE_UNSUPPORTED/.test(message)) {
-    return `${host} asked for your smart card (CAC) certificate, but none was accepted. Insert your card, check that your computer’s smart card software is working (your browser can open the site), and try again.`;
+    return t('{host} asked for your smart card (CAC) certificate, but none was accepted. Insert your card, check that your computer’s smart card software is working (your browser can open the site), and try again.', { host });
   }
   if (/CLIENT_AUTH_SIGNATURE_FAILED|CLIENT_AUTH_PRIVATE_KEY_ACCESS_DENIED|CLIENT_AUTH_NO_COMMON_ALGORITHMS/.test(message)) {
-    return `Your smart card couldn’t sign in to ${host}. Check the card is inserted, enter your PIN when asked, and try again.`;
+    return t('Your smart card couldn’t sign in to {host}. Check the card is inserted, enter your PIN when asked, and try again.', { host });
   }
   if (/CERT_AUTHORITY_INVALID|CERT_COMMON_NAME_INVALID|CERT_DATE_INVALID|CERT_INVALID/.test(message)) {
-    return `StepForge doesn’t trust ${host}’s security certificate. If your organization uses its own certificates (for example DoD root certificates), they need to be installed on this computer, as they are for your browser.`;
+    return t('StepForge doesn’t trust {host}’s security certificate. If your organization uses its own certificates (for example DoD root certificates), they need to be installed on this computer, as they are for your browser.', { host });
   }
-  return `Couldn’t reach ${host}. Check the address and your network connection.`;
+  return t('Couldn’t reach {host}. Check the address and your network connection.', { host });
 }
 
 /** The site address as typed, and whether it's Confluence Cloud. */
@@ -117,13 +118,13 @@ class Confluence {
       this.requireEncryption();
       this.credentials = JSON.parse(this.safeStorage.decryptString(fs.readFileSync(this.file)));
     } catch {
-      this.loadError = 'Your saved Confluence sign-in couldn’t be unlocked. Disconnect and sign in again.';
+      this.loadError = t('Your saved Confluence sign-in couldn’t be unlocked. Disconnect and sign in again.');
     }
   }
 
   requireEncryption() {
     if (!this.safeStorage.isEncryptionAvailable() || this.safeStorage.getSelectedStorageBackend?.() === 'basic_text') {
-      throw new Error('Confluence sign-in requires an operating-system credential store. Unlock your keyring and restart StepForge.');
+      throw new Error(t('Confluence sign-in requires an operating-system credential store. Unlock your keyring and restart StepForge.'));
     }
   }
 
@@ -184,7 +185,7 @@ class Confluence {
   async request(target, { method = 'GET', json, body, contentType, login = this.credentials, timeout = 60000, allowMissing = false } = {}, retried = false) {
     const base = login?.baseUrl;
     const url = new URL(`${base}${target}`);
-    if (url.origin !== new URL(base).origin) throw new Error('StepForge only talks to your Confluence site.');
+    if (url.origin !== new URL(base).origin) throw new Error(t('StepForge only talks to your Confluence site.'));
     const controller = new AbortController();
     this.controllers.add(controller);
     const timer = setTimeout(() => controller.abort(), timeout);
@@ -196,7 +197,7 @@ class Confluence {
     try {
       response = await this.fetch(url.href, { method, headers, body: payload, redirect: 'manual', credentials: 'include', signal: controller.signal });
     } catch (err) {
-      if (controller.signal.aborted) throw new Error('The Confluence request was cancelled or took too long.');
+      if (controller.signal.aborted) throw new Error(t('The Confluence request was cancelled or took too long.'));
       if (CERT_NEEDED.test(err.message) && !retried) {
         // The site wants a smart card certificate: let a page make the handshake, then retry.
         await this.openHiddenPage(`${new URL(base).origin}/`);
@@ -209,8 +210,8 @@ class Confluence {
     }
     if (response.status >= 300 && response.status < 400) {
       throw Object.assign(new Error(login?.method === 'browser'
-        ? 'Your Confluence sign-in has expired. Sign in again in Settings → Accounts → Confluence.'
-        : 'Confluence sent StepForge to a sign-in page. Check your token, or use “Sign in with your browser”.'), { status: 401 });
+        ? t('Your Confluence sign-in has expired. Sign in again in Settings → Accounts → Confluence.')
+        : t('Confluence sent StepForge to a sign-in page. Check your token, or use “Sign in with your browser”.')), { status: 401 });
     }
     if (response.status === 404 && allowMissing) return null;
     const text = await response.text();
@@ -218,15 +219,15 @@ class Confluence {
     try { data = text ? JSON.parse(text) : null; } catch { data = null; }
     if (!response.ok) {
       const detail = data?.message || data?.errors?.[0]?.title || data?.errorMessage || '';
-      const error = new Error(response.status === 401 ? 'Confluence didn’t accept the sign-in. Check the token, or sign in again.'
-        : response.status === 403 ? `You don’t have permission to do that in Confluence${detail ? ` (${detail})` : ''}.`
-          : `Confluence request failed (${response.status}${detail ? `: ${String(detail).slice(0, 200)}` : ''}).`);
+      const error = new Error(response.status === 401 ? t('Confluence didn’t accept the sign-in. Check the token, or sign in again.')
+        : response.status === 403 ? (detail ? t('You don’t have permission to do that in Confluence ({detail}).', { detail }) : t('You don’t have permission to do that in Confluence.'))
+          : t('Confluence request failed ({status}).', { status: `${response.status}${detail ? `: ${String(detail).slice(0, 200)}` : ''}` }));
       error.status = response.status;
       error.detail = detail;
       throw error;
     }
     if (json === undefined && data === null && text && /<html/i.test(text)) {
-      throw Object.assign(new Error('Confluence sent StepForge to a sign-in page. Sign in again.'), { status: 401 });
+      throw Object.assign(new Error(t('Confluence sent StepForge to a sign-in page. Sign in again.')), { status: 401 });
     }
     return data;
   }
@@ -246,17 +247,17 @@ class Confluence {
   async currentUser(login) {
     const user = await this.request('/rest/api/user/current', { login });
     if (!user || user.type === 'anonymous' || (!user.displayName && !user.accountId && !user.username)) {
-      throw Object.assign(new Error('Confluence didn’t accept the sign-in.'), { status: 401 });
+      throw Object.assign(new Error(t('Confluence didn’t accept the sign-in.')), { status: 401 });
     }
-    return { displayName: user.displayName || user.publicName || user.username || 'Confluence user', id: user.accountId || user.userKey || user.username || '' };
+    return { displayName: user.displayName || user.publicName || user.username || t('Confluence user'), id: user.accountId || user.userKey || user.username || '' };
   }
 
   /** Sign in with a token: { address, token, email } (email for Cloud). */
   async connect({ address, token = '', email = '' }) {
     this.requireEncryption();
     const site = this.probe(address);
-    if (!token.trim()) throw new Error(site.cloud ? 'Enter your Atlassian API token.' : 'Enter your personal access token.');
-    if (site.cloud && !/^[^@\s]+@[^@\s]+$/.test(email.trim())) throw new Error('Enter the email address you sign in to Atlassian with.');
+    if (!token.trim()) throw new Error(site.cloud ? t('Enter your Atlassian API token.') : t('Enter your personal access token.'));
+    if (site.cloud && !/^[^@\s]+@[^@\s]+$/.test(email.trim())) throw new Error(t('Enter the email address you sign in to Atlassian with.'));
     const login = { baseUrl: site.baseUrl, cloud: site.cloud, method: site.cloud ? 'cloud-token' : 'token', token: token.trim(), email: email.trim() };
     const user = await this.currentUser(login);
     this.credentials = { ...login, user, space: null, parent: null };
@@ -271,7 +272,7 @@ class Confluence {
   async connectWithBrowser({ address }) {
     this.requireEncryption();
     const site = this.probe(address);
-    if (site.cloud) throw new Error('For Confluence Cloud, use your email address and an API token.');
+    if (site.cloud) throw new Error(t('For Confluence Cloud, use your email address and an API token.'));
     const login = { baseUrl: site.baseUrl, cloud: false, method: 'browser' };
     let user = null;
     const signedIn = async () => {
@@ -279,7 +280,7 @@ class Confluence {
     };
     if (!(await signedIn())) {
       const finished = await this.openLoginWindow(`${site.baseUrl}/`, { signedIn });
-      if (!finished || !user) throw new Error('Confluence sign-in wasn’t completed. Try again.');
+      if (!finished || !user) throw new Error(t('Confluence sign-in wasn’t completed. Try again.'));
     }
     this.credentials = { ...login, user, space: null, parent: null };
     this.save();
@@ -287,7 +288,7 @@ class Confluence {
   }
 
   requireSite() {
-    if (!this.credentials) throw new Error(this.loadError || 'Connect Confluence in Settings → Accounts → Confluence first.');
+    if (!this.credentials) throw new Error(this.loadError || t('Connect Confluence in Settings → Accounts → Confluence first.'));
     return this.credentials;
   }
 
@@ -401,7 +402,7 @@ class Confluence {
       if (existing) {
         return this.request(`/api/v2/pages/${encodeURIComponent(existing.id)}`, { method: 'PUT', json: {
           id: existing.id, status: 'current', title, spaceId: space.id, ...(parentId ? { parentId } : {}),
-          body: { representation: 'storage', value: body }, version: { number: existing.version + 1, message: 'Updated from StepForge' } } });
+          body: { representation: 'storage', value: body }, version: { number: existing.version + 1, message: t('Updated from StepForge') } } });
       }
       return this.request('/api/v2/pages', { method: 'POST', json: {
         spaceId: space.id, status: 'current', title, ...(parentId ? { parentId } : {}), body: { representation: 'storage', value: body } } });
@@ -410,13 +411,13 @@ class Confluence {
       body: { storage: { value: body, representation: 'storage' } } };
     if (existing) {
       return this.request(`/rest/api/content/${encodeURIComponent(existing.id)}`, { method: 'PUT',
-        json: { id: existing.id, ...content, version: { number: existing.version + 1, message: 'Updated from StepForge' } } });
+        json: { id: existing.id, ...content, version: { number: existing.version + 1, message: t('Updated from StepForge') } } });
     }
     return this.request('/rest/api/content', { method: 'POST', json: content });
   }
 
   async uploadAttachment(pageId, fileName, data) {
-    if (data.length > MAX_ATTACHMENT_BYTES) throw new Error(`The screenshot ${fileName} is too large to upload.`);
+    if (data.length > MAX_ATTACHMENT_BYTES) throw new Error(t('The screenshot {file} is too large to upload.', { file: fileName }));
     const base = `/rest/api/content/${encodeURIComponent(pageId)}/child/attachment`;
     const existing = await this.request(`${base}?filename=${encodeURIComponent(fileName)}`);
     const found = existing?.results?.find((a) => a.title === fileName);
@@ -440,7 +441,7 @@ class Confluence {
    */
   async publish({ guideId, space, parent = null, parentPicked = false, page, replace = false, onProgress = () => {} }) {
     this.requireSite();
-    if (!space?.key) throw new Error('Choose a Confluence space for this guide.');
+    if (!space?.key) throw new Error(t('Choose a Confluence space for this guide.'));
     let existing = null;
     const known = this.publishedFor(guideId);
     if (known && known.spaceKey === space.key) existing = await this.getPage(known.id);

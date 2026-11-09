@@ -3,6 +3,7 @@
 // Load the Node-API codec only when an image needs it. The same codec works in
 // Electron, export workers and the headless MCP process on Windows and Linux.
 const sharp = (...args) => require('sharp')(...args);
+const { t } = require('./ui-text');
 
 function createImageCodec({ platform = process.platform, electron = process.versions.electron, nodePath = '/usr/bin/node' } = {}) {
   // Linux Electron leaks GLib symbols into native addons. A plain Node process
@@ -17,17 +18,17 @@ function createImageCodec({ platform = process.platform, electron = process.vers
       const chunks = [];
       let size = 0;
       let error = '';
-      const timer = setTimeout(() => { child.kill(); reject(new Error('Image processing timed out.')); }, 120000);
+      const timer = setTimeout(() => { child.kill(); reject(new Error(t('Image processing timed out.'))); }, 120000);
       child.stdout.on('data', chunk => {
         size += chunk.length;
-        if (size > 512 * 1024 * 1024) { child.kill(); reject(new Error('Decoded image is too large.')); }
+        if (size > 512 * 1024 * 1024) { child.kill(); reject(new Error(t('Decoded image is too large.'))); }
         else chunks.push(chunk);
       });
       child.stderr.on('data', chunk => { if (error.length < 8192) error += chunk; });
       child.on('error', cause => { clearTimeout(timer); reject(cause); });
       child.on('close', code => {
         clearTimeout(timer);
-        if (code !== 0) reject(new Error(error.trim() || 'Image processing failed.'));
+        if (code !== 0) reject(new Error(error.trim() || t('Image processing failed.')));
         else resolve(size ? Buffer.concat(chunks) : null);
       });
       child.stdin.on('error', () => {}); // Exit/error handlers report a refused input pipe.

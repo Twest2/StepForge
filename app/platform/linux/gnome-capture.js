@@ -8,6 +8,7 @@ const CaptureService = require('../../capture');
 const { PortalBackend } = require('./portal-backend');
 const { mouseButtonKey } = require('../../../core/text-intel');
 const { cropGeometry } = require('../../coords');
+const { t } = require('../../../core/ui-text');
 const run = promisify(execFile);
 const UUID = 'tyler@stepforge.dev';
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -42,18 +43,18 @@ class GnomeCaptureService extends CaptureService {
       '--object-path', '/org/stepforge/Capture', '--method', 'org.stepforge.Capture1.GetInfo'], { timeout: 4000 });
     try { await probe(); return; } catch { /* first-run setup */ }
     const result = await dialog.showMessageBox(this.getWindow(), {
-      type: 'info', title: 'Enable StepForge Capture',
-      message: 'GNOME recording requires the bundled StepForge Capture extension.',
-      detail: 'Enable it to record mouse clicks and their positions. If GNOME has not loaded the newly installed extension yet, log out and log back in first.',
-      buttons: ['Enable extension', 'Cancel'], defaultId: 0, cancelId: 1,
+      type: 'info', title: t('Enable StepForge Capture'),
+      message: t('GNOME recording requires the bundled StepForge Capture extension.'),
+      detail: t('Enable it to record mouse clicks and their positions. If GNOME has not loaded the newly installed extension yet, log out and log back in first.'),
+      buttons: [t('Enable extension'), t('Cancel')], defaultId: 0, cancelId: 1,
     });
-    if (result.response !== 0) throw new Error('Enable the StepForge Capture GNOME extension before recording.');
+    if (result.response !== 0) throw new Error(t('Enable the StepForge Capture GNOME extension before recording.'));
     try {
       await run('gnome-extensions', ['enable', UUID], { timeout: 5000 });
       await delay(250);
       await probe();
     } catch {
-      throw new Error('GNOME could not load StepForge Capture. Install the Ubuntu or Fedora package (GNOME 50), then log out and back in. For a source checkout, run bash scripts/linux/install-gnome-extension.sh first.');
+      throw new Error(t('GNOME could not load StepForge Capture. Install the Ubuntu or Fedora package (GNOME 50), then log out and back in. For a source checkout, run bash scripts/linux/install-gnome-extension.sh first.'));
     }
   }
 
@@ -178,11 +179,11 @@ class GnomeCaptureService extends CaptureService {
   }
 
   async frameForClick(point, at, mode = 'fullscreen', windowRect = null) {
-    if (!this.streamBackend?.isActive()) throw new Error('Screen sharing is not ready.');
+    if (!this.streamBackend?.isActive()) throw new Error(t('Screen sharing is not ready.'));
     const frame = await this.streamBackend.frameForClick({ clickPos: point, clickAt: at,
       strict: this.strictClickFrames(), leadMs: Number(this.settings.get('capture.clickLeadMs')) || 0 });
     if (mode === 'window') {
-      if (!windowRect) throw new Error('GNOME did not identify the active window.');
+      if (!windowRect) throw new Error(t('GNOME did not identify the active window.'));
       return this.cropFrame(frame, windowRect, 'window');
     }
     return frame;
@@ -217,7 +218,7 @@ class GnomeCaptureService extends CaptureService {
         const frame = await backend.frameForClick({ clickPos: { x: rect.x, y: rect.y }, strict: false });
         const b = frame.display.bounds;
         if (rect.x + rect.width > b.x + b.width || rect.y + rect.height > b.y + b.height)
-          throw new Error('Select a region within one shared monitor.');
+          throw new Error(t('Select a region within one shared monitor.'));
         return this.storeFrameAsStep(guideId, 'region', this.cropFrame(frame, rect, 'region'));
       }));
     } catch (error) { return { ok: false, reason: error.message }; }

@@ -2,6 +2,7 @@
 
 const path = require('node:path');
 const { fork } = require('node:child_process');
+const { t } = require('../core/ui-text');
 
 const WORKER_PATH = path.join(__dirname, '..', 'core', 'export-worker.js');
 
@@ -29,11 +30,11 @@ function runExportInWorker({ dataDir, guideId, format, options, outDir, globals,
 
     worker.once('message', (msg) => {
       if (msg && msg.ok) finish(resolve, msg.result);
-      else finish(reject, new Error((msg && msg.error) || 'Export worker failed.'));
+      else finish(reject, new Error((msg && msg.error) || t('Export worker failed.')));
     });
     worker.once('error', (err) => finish(reject, err));
     worker.once('exit', (code) => {
-      finish(reject, new Error(`Export worker exited unexpectedly (code ${code}).`));
+      finish(reject, new Error(t('Export worker exited unexpectedly (code {code}).', { code })));
     });
 
     worker.send({ dataDir, guideId, format, options, outDir, globals, maxSteps, codeStyle, reviewDays, branding, language, task });

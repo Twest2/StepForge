@@ -5,6 +5,7 @@ const path = require('node:path');
 const { atomicWriteFileSync } = require('../core/util');
 const { progressBody } = require('../core/transfer-meter');
 const site = require('../core/pages-site');
+const { t } = require('../core/ui-text');
 
 /*
  * Temporary guide sharing on GitHub Pages, in a repository the user owns.
@@ -27,7 +28,7 @@ const DEVICE_GRANT = 'urn:ietf:params:oauth:grant-type:device_code';
 const MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
 const CLIENT_ID_PATTERN = /^Iv[A-Za-z0-9._-]{6,}$/;
 const APP_SLUG_PATTERN = /^[a-z0-9-]{1,100}$/;
-const SIGN_IN_EXPIRED = 'Your GitHub sign-in has expired or was revoked. Sign in again to keep sharing guides.';
+const signInExpired = () => t('Your GitHub sign-in has expired or was revoked. Sign in again to keep sharing guides.');
 const SIGN_IN_CANCELLED = 'GitHub sign-in cancelled.';
 // Uploads get at least this long, and more for big guides on slow links.
 const MIN_UPLOAD_TIMEOUT_MS = 5 * 60 * 1000;
@@ -127,16 +128,16 @@ class GitHubPages {
         this.credentials = stored;
         this.loadError = null;
       } else {
-        this.loadError = 'Sign in to GitHub again to connect this version of StepForge.';
+        this.loadError = t('Sign in to GitHub again to connect this version of StepForge.');
       }
     } catch {
-      this.loadError = 'StepForge couldn’t unlock your saved GitHub sign-in. Sign in to GitHub again.';
+      this.loadError = t('StepForge couldn’t unlock your saved GitHub sign-in. Sign in to GitHub again.');
     }
   }
 
   requireEncryption() {
     if (!this.safeStorage.isEncryptionAvailable() || this.safeStorage.getSelectedStorageBackend?.() === 'basic_text') {
-      throw new Error('GitHub sign-in requires an operating-system credential store. Unlock your keyring and restart StepForge.');
+      throw new Error(t('GitHub sign-in requires an operating-system credential store. Unlock your keyring and restart StepForge.'));
     }
   }
 
@@ -171,7 +172,7 @@ class GitHubPages {
       autoExpire: Boolean(repo?.autoExpire),
       setupNote: repo?.setupNote || '',
       pending: this.pending ? { ...this.pending } : null,
-      error: this.loadError || (credentials?.reauth ? SIGN_IN_EXPIRED : null),
+      error: this.loadError || (credentials?.reauth ? signInExpired() : null),
       links: this.links(),
       expiryDays: [...site.EXPIRY_DAYS],
       defaultExpiryDays: site.DEFAULT_EXPIRY_DAYS,
@@ -230,26 +231,26 @@ class GitHubPages {
       } catch (err) {
         // fetch() rejects with a TypeError when there is no connection at all.
         if (err?.name === 'TypeError' && !controller.signal.aborted) {
-          throw new GitHubError('StepForge couldn’t reach GitHub. Check your internet connection and try again.', 0, { transient: true });
+          throw new GitHubError(t('StepForge couldn’t reach GitHub. Check your internet connection and try again.'), 0, { transient: true });
         }
         throw err;
       }
       const declared = Number(response.headers?.get?.('content-length'));
-      if (Number.isFinite(declared) && declared > MAX_RESPONSE_BYTES) throw new GitHubError('GitHub sent an unexpectedly large response.');
+      if (Number.isFinite(declared) && declared > MAX_RESPONSE_BYTES) throw new GitHubError(t('GitHub sent an unexpectedly large response.'));
       const text = response.status === 204 ? '' : await response.text();
-      if (text.length > MAX_RESPONSE_BYTES) throw new GitHubError('GitHub sent an unexpectedly large response.');
+      if (text.length > MAX_RESPONSE_BYTES) throw new GitHubError(t('GitHub sent an unexpectedly large response.'));
       let data = null;
       if (text && !raw) { try { data = JSON.parse(text); } catch { data = null; } }
       if (!response.ok) {
         const detail = typeof data?.message === 'string' ? data.message.slice(0, 200) : '';
-        throw new GitHubError(`GitHub request failed (${response.status}${detail ? `: ${detail}` : ''}).`, response.status,
+        throw new GitHubError(t('GitHub request failed ({status}).', { status: `${response.status}${detail ? `: ${detail}` : ''}` }), response.status,
           { transient: response.status >= 500 });
       }
       return raw ? text : data;
     } catch (err) {
       if (controller.signal.aborted && err.name === 'AbortError') {
-        if (timedOut) throw new GitHubError('GitHub took too long to answer. Try again.', 0, { transient: true });
-        throw new GitHubError('GitHub request was cancelled. Nothing on this computer changed.');
+        if (timedOut) throw new GitHubError(t('GitHub took too long to answer. Try again.'), 0, { transient: true });
+        throw new GitHubError(t('GitHub request was cancelled. Nothing on this computer changed.'));
       }
       throw err;
     } finally {
@@ -288,8 +289,8 @@ class GitHubPages {
    * chosen repository.
    */
   async connect() {
-    if (!this.available) throw new Error('GitHub sign-in is unavailable in this build of StepForge.');
-    if (this.credentials?.access_token && !this.credentials.reauth) throw new Error('Disconnect the current GitHub account before signing in with another one.');
+    if (!this.available) throw new Error(t('GitHub sign-in is unavailable in this build of StepForge.'));
+    if (this.credentials?.access_token && !this.credentials.reauth) throw new Error(t('Disconnect the current GitHub account before signing in with another one.'));
     this.requireEncryption();
     this.cancelSignIn();
     const generation = this.generation;
@@ -302,8 +303,8 @@ class GitHubPages {
     const stopped = () => signal.aborted || generation !== this.generation;
     try {
       const device = await this.loginRequest('device/code', { client_id: this.clientId }, signal);
-      if (device?.error === 'device_flow_disabled') throw new Error('GitHub sign-in isn’t turned on for this StepForge GitHub App. Its maintainer needs to enable Device Flow.');
-      if (!device?.device_code || !device.user_code) throw new Error('GitHub didn’t start the sign-in. Try again.');
+      if (device?.error === 'device_flow_disabled') throw new Error(t('GitHub sign-in isn’t turned on for this StepForge GitHub App. Its maintainer needs to enable Device Flow.'));
+      if (!device?.device_code || !device.user_code) throw new Error(t('GitHub didn’t start the sign-in. Try again.'));
       const verificationUri = device.verification_uri === 'https://github.com/login/device' ? device.verification_uri : 'https://github.com/login/device';
       const userCode = String(device.user_code).slice(0, 20);
       let copied = false;
@@ -320,7 +321,7 @@ class GitHubPages {
       for (;;) {
         await Promise.race([this.wait(interval), woken]);
         if (stopped()) throw new Error(SIGN_IN_CANCELLED);
-        if (this.now() > deadline) throw new Error('The GitHub sign-in code expired. Choose Sign in with GitHub to get a new one.');
+        if (this.now() > deadline) throw new Error(t('The GitHub sign-in code expired. Choose Sign in with GitHub to get a new one.'));
         try {
           tokens = await this.loginRequest('oauth/access_token', { client_id: this.clientId, device_code: device.device_code, grant_type: DEVICE_GRANT }, signal);
         } catch (err) {
@@ -333,8 +334,8 @@ class GitHubPages {
         if (tokens?.access_token) break;
         if (tokens?.error === 'authorization_pending') continue;
         if (tokens?.error === 'slow_down') { interval = Math.max(interval + 5000, (Number(tokens.interval) || 0) * 1000); continue; }
-        if (tokens?.error === 'access_denied') throw new Error('GitHub sign-in was cancelled on github.com.');
-        if (tokens?.error === 'expired_token') throw new Error('The GitHub sign-in code expired. Choose Sign in with GitHub to get a new one.');
+        if (tokens?.error === 'access_denied') throw new Error(t('GitHub sign-in was cancelled on github.com.'));
+        if (tokens?.error === 'expired_token') throw new Error(t('The GitHub sign-in code expired. Choose Sign in with GitHub to get a new one.'));
         throw new Error(`GitHub sign-in failed${tokens?.error ? ` (${String(tokens.error).slice(0, 60)})` : ''}.`);
       }
       const next = this.storeTokens(tokens);
@@ -373,20 +374,20 @@ class GitHubPages {
 
   async accessToken(force = false) {
     const credentials = this.credentials;
-    if (!credentials?.access_token) throw new Error(this.loadError || 'Sign in to GitHub first.');
-    if (credentials.reauth) throw new GitHubError(SIGN_IN_EXPIRED, 401);
+    if (!credentials?.access_token) throw new Error(this.loadError || t('Sign in to GitHub first.'));
+    if (credentials.reauth) throw new GitHubError(signInExpired(), 401);
     const fresh = !credentials.expiresAt || credentials.expiresAt > this.now() + 60000;
     if (!force && fresh) return credentials.access_token;
     if (!credentials.refresh_token) {
       if (!force) return credentials.access_token;
-      throw new GitHubError(SIGN_IN_EXPIRED, 401);
+      throw new GitHubError(signInExpired(), 401);
     }
     this.refreshing ||= (async () => {
       // Device-flow tokens refresh without a client secret.
       const tokens = await this.loginRequest('oauth/access_token', {
         client_id: this.clientId, grant_type: 'refresh_token', refresh_token: credentials.refresh_token,
       });
-      if (!tokens?.access_token) throw new GitHubError(SIGN_IN_EXPIRED, 401);
+      if (!tokens?.access_token) throw new GitHubError(signInExpired(), 401);
       if (this.credentials !== credentials) throw new Error('GitHub account changed during sign-in.');
       this.credentials = this.storeTokens(tokens, credentials);
       this.save();
@@ -424,7 +425,7 @@ class GitHubPages {
       } catch (retry) {
         if (retry.status === 401) {
           this.signInExpired();
-          throw new GitHubError(SIGN_IN_EXPIRED, 401);
+          throw new GitHubError(signInExpired(), 401);
         }
         throw retry;
       }
@@ -463,7 +464,7 @@ class GitHubPages {
   }
 
   repoPath(suffix = '', repo = this.credentials?.repo) {
-    if (!repo) throw new Error('Choose a GitHub repository for shared guides first.');
+    if (!repo) throw new Error(t('Choose a GitHub repository for shared guides first.'));
     return `/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}${suffix}`;
   }
 
@@ -482,7 +483,7 @@ class GitHubPages {
    */
   async selectRepository({ fullName, useExisting = false, onProgress = null }) {
     const parsed = parseFullName(fullName);
-    if (!parsed) throw new Error('Choose a repository from the list.');
+    if (!parsed) throw new Error(t('Choose a repository from the list.'));
     const allowed = await this.repositories();
     const match = allowed.find((repo) => repo.fullName.toLowerCase() === fullName.toLowerCase());
     if (!match) throw new Error(`StepForge isn't installed on ${fullName}. Install the StepForge GitHub App on it first.`);
@@ -502,8 +503,8 @@ class GitHubPages {
         needsConfirmation: true,
         repo: match.fullName,
         changes: [
-          `Add ${site.WORKFLOW_PATH} to the ${inspection.defaultBranch} branch. It removes shared guides when they expire.`,
-          `Create a ${site.PAGES_BRANCH} branch for the shared guides and turn on GitHub Pages for it.`,
+          t('Add {file} to the {branch} branch. It removes shared guides when they expire.', { file: site.WORKFLOW_PATH, branch: inspection.defaultBranch }),
+          t('Create a {branch} branch for the shared guides and turn on GitHub Pages for it.', { branch: site.PAGES_BRANCH }),
         ],
       };
     }
@@ -581,7 +582,7 @@ class GitHubPages {
     return this.exclusive(async () => {
       const notes = [];
       try {
-        step('Checking the repository…');
+        step(t('Checking the repository…'));
         const info = await this.api('GET', this.repoPath());
         repo.private = Boolean(info?.private);
         const defaultBranch = String(info?.default_branch || 'main');
@@ -590,22 +591,22 @@ class GitHubPages {
         if (empty) {
           // An empty repository has no branch to hold the workflow yet. The
           // Contents API works on empty repositories and makes the first commit.
-          step('Adding a README…');
+          step(t('Adding a README…'));
           await this.api('PUT', this.repoPath(`/contents/${site.README_PATH}`), {
             message: 'Add a README for shared StepForge guides',
             content: Buffer.from(site.README).toString('base64'),
           });
         }
-        step('Adding the clean-up workflow…');
+        step(t('Adding the clean-up workflow…'));
         repo.autoExpire = await this.ensureWorkflow();
-        if (!repo.autoExpire) notes.push('StepForge could not add the clean-up workflow, so guides are only removed after they expire while StepForge is open. Check that the App has the Workflows permission.');
-        step('Creating the site…');
+        if (!repo.autoExpire) notes.push(t('StepForge could not add the clean-up workflow, so guides are only removed after they expire while StepForge is open. Check that the App has the Workflows permission.'));
+        step(t('Creating the site…'));
         await this.untilNotEmpty(async () => this.writeSite(await this.readSite(), { now: this.now() }));
-        step('Turning on GitHub Pages…');
+        step(t('Turning on GitHub Pages…'));
         const pages = await this.ensurePages();
         repo.pagesReady = Boolean(pages);
         repo.siteUrl = await this.siteUrlFrom(repo, pages);
-        if (!pages) notes.push(`Turn on GitHub Pages for ${repo.owner}/${repo.name}: in the repository's Settings → Pages, choose “Deploy from a branch”, then the ${site.PAGES_BRANCH} branch and the / (root) folder.`);
+        if (!pages) notes.push(t('Turn on GitHub Pages for {owner}/{name}: in the repository\'s Settings → Pages, choose “Deploy from a branch”, then the {branch} branch and the / (root) folder.', { owner: repo.owner, name: repo.name, branch: site.PAGES_BRANCH }));
       } catch (err) {
         throw this.accessHint(err);
       } finally {
@@ -747,9 +748,9 @@ class GitHubPages {
 
   requireSite() {
     const repo = this.credentials?.repo;
-    if (!this.credentials?.access_token) throw new Error(this.loadError || 'Sign in to GitHub in Settings → Accounts first.');
-    if (this.credentials.reauth) throw new Error(SIGN_IN_EXPIRED);
-    if (!repo) throw new Error('Choose a repository for shared guides in Settings → Accounts → GitHub first.');
+    if (!this.credentials?.access_token) throw new Error(this.loadError || t('Sign in to GitHub in Settings → Accounts first.'));
+    if (this.credentials.reauth) throw new Error(signInExpired());
+    if (!repo) throw new Error(t('Choose a repository for shared guides in Settings → Accounts → GitHub first.'));
     return repo;
   }
 
@@ -812,7 +813,7 @@ class GitHubPages {
     site.expiresAtFor(days);
     const page = Buffer.from(site.prepareGuideHtml(html));
     if (page.length > site.MAX_GUIDE_BYTES) {
-      throw new Error('This guide is larger than 50 MB. Publish fewer steps or smaller screenshots.');
+      throw new Error(t('This guide is larger than 50 MB. Publish fewer steps or smaller screenshots.'));
     }
     return this.exclusive(async () => {
       try {
@@ -839,7 +840,7 @@ class GitHubPages {
 
   unpublish({ slug }) {
     this.requireSite();
-    if (!site.isSlug(slug)) throw new Error('Unknown shared guide.');
+    if (!site.isSlug(slug)) throw new Error(t('Unknown shared guide.'));
     return this.exclusive(async () => {
       try {
         const plan = await this.writeSite(await this.readSite(), { now: this.now(), remove: slug });
@@ -855,7 +856,7 @@ class GitHubPages {
    */
   extend({ slug, days }) {
     this.requireSite();
-    if (!site.isSlug(slug)) throw new Error('Unknown shared guide.');
+    if (!site.isSlug(slug)) throw new Error(t('Unknown shared guide.'));
     site.expiresAtFor(days);
     return this.exclusive(async () => {
       try {

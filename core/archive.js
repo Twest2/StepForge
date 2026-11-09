@@ -13,6 +13,7 @@ const { createSnapshot } = require('./snapshots');
 
 const ARCHIVE_FORMAT = 'stepforge-guide-archive';
 const APP_VERSION = require('../package.json').version;
+const { t } = require('./ui-text');
 
 /**
  * Single-file share archive (.sfgz). Zip layout:
@@ -206,7 +207,7 @@ function planLinkedWrite(store, guideId, target, ours, oursHash, { force }) {
   } catch (err) {
     // Overwriting what can't be read could erase someone's work; saving anyway is the user's call.
     if (force) return { entries: ours, merged: false, conflicts: 0 };
-    throw new Error(`The shared archive could not be read (${err.message}), so it was not overwritten. Your changes are saved locally.`);
+    throw new Error(t('The shared archive could not be read ({message}), so it was not overwritten. Your changes are saved locally.', { message: err.message }));
   }
   const theirsHash = contentHash(theirs.entries);
   const base = recalledLinkedBase(store, guideId);

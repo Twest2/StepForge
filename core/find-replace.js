@@ -3,6 +3,7 @@
 const { sanitizeHtml } = require('./sanitize');
 const { decodeEntities, escapeHtml, deepClone } = require('./util');
 const { TOKEN_RE } = require('./placeholders');
+const { t } = require('./ui-text');
 
 /**
  * Find and replace across a guide's steps. Pure: findMatches() lists every
@@ -45,24 +46,24 @@ function buildPattern(query, { caseSensitive = false, wholeWord = false } = {}) 
 /** Every searchable string of a step: { path, kind, where, html }. */
 function stepFields(step) {
   const out = [];
-  out.push({ path: ['title'], kind: 'title', where: 'Title', html: false });
-  out.push({ path: ['descriptionHtml'], kind: 'description', where: 'Description', html: true });
+  out.push({ path: ['title'], kind: 'title', where: t('Title'), html: false });
+  out.push({ path: ['descriptionHtml'], kind: 'description', where: t('Description'), html: true });
   (step.textBlocks || []).forEach((tb, i) => {
-    out.push({ path: ['textBlocks', i, 'title'], kind: 'text-block-title', where: 'Text block title', html: false });
-    out.push({ path: ['textBlocks', i, 'descriptionHtml'], kind: 'text-block', where: 'Text block', html: true });
+    out.push({ path: ['textBlocks', i, 'title'], kind: 'text-block-title', where: t('Text block title'), html: false });
+    out.push({ path: ['textBlocks', i, 'descriptionHtml'], kind: 'text-block', where: t('Text block'), html: true });
   });
   (step.codeBlocks || []).forEach((cb, i) => {
-    out.push({ path: ['codeBlocks', i, 'code'], kind: 'code', where: 'Code block', html: false });
+    out.push({ path: ['codeBlocks', i, 'code'], kind: 'code', where: t('Code block'), html: false });
   });
   (step.tableBlocks || []).forEach((tbl, i) => {
     (tbl.rows || []).forEach((row, r) => {
       (row || []).forEach((cell, c) => {
-        out.push({ path: ['tableBlocks', i, 'rows', r, c], kind: 'table', where: `Table cell (row ${r + 1}, column ${c + 1})`, html: false });
+        out.push({ path: ['tableBlocks', i, 'rows', r, c], kind: 'table', where: t('Table cell (row {row}, column {column})', { row: r + 1, column: c + 1 }), html: false });
       });
     });
   });
   (step.annotations || []).forEach((a, i) => {
-    out.push({ path: ['annotations', i, 'text'], kind: 'annotation', where: 'Annotation label', html: false });
+    out.push({ path: ['annotations', i, 'text'], kind: 'annotation', where: t('Annotation label'), html: false });
   });
   return out;
 }
@@ -129,11 +130,11 @@ function protectedSpans(text) {
 function refusalReason(match, replacement) {
   const text = String(replacement == null ? '' : replacement);
   if (match.kind === 'table') {
-    if (text.includes('|')) return 'A table cell cannot contain “|”.';
-    if (/[\r\n]/.test(text)) return 'A table cell cannot contain a line break.';
+    if (text.includes('|')) return t('A table cell cannot contain “|”.');
+    if (/[\r\n]/.test(text)) return t('A table cell cannot contain a line break.');
   }
   if ((match.kind === 'title' || match.kind === 'text-block-title') && /[\r\n]/.test(text)) {
-    return 'A title cannot contain a line break.';
+    return t('A title cannot contain a line break.');
   }
   return null;
 }

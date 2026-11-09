@@ -18,10 +18,15 @@ const { LANGUAGES } = require('../core/i18n');
 const LOCALES = require('../core/locales');
 
 const ROOT = path.resolve(__dirname, '..');
-const jsFiles = (dir) => fs.readdirSync(path.join(ROOT, dir)).filter((name) => name.endsWith('.js')).map((name) => `${dir}/${name}`);
-// The interface, plus the text StepForge writes into exported guides (core/export-text.js).
-const SOURCES = ['app/main.js', 'app/platform/linux/portal-errors.js', 'app/platform/linux/portal-backend.js', ...jsFiles('app/renderer'),
-  ...jsFiles('exporters'), 'core/renderast.js', 'core/pages-site.js'];
+/** Every .js file under `dir`, as paths from the repository root. */
+const jsFiles = (dir) => fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true }).flatMap((entry) => {
+  const rel = `${dir}/${entry.name}`;
+  if (entry.isDirectory()) return entry.name === 'locales' ? [] : jsFiles(rel);
+  return entry.name.endsWith('.js') ? [rel] : [];
+});
+// The interface (renderer and main process), the main-process modules' messages
+// (core/ui-text.js) and the text StepForge writes into exported guides (core/export-text.js).
+const SOURCES = [...jsFiles('app'), ...jsFiles('core'), ...jsFiles('exporters')];
 
 const LITERAL = String.raw`'((?:[^'\\\n]|\\.)*)'`;
 const CALLS = [

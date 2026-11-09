@@ -29,6 +29,7 @@ const { buildFlowchartPrompt, parseFlowchart } = require('../core/ai-flowchart')
 const { parentMap, stepNumberMap } = require('../core/step-outline');
 const { systemPlaceholders } = require('../core/placeholders');
 const { OcrPool } = require('./ocr-pool');
+const { t } = require('../core/ui-text');
 
 // Brand CSS requests aren't for a guide; ai:cancel stops them by this id.
 const BRAND_CSS_REQUEST = 'branding-css';
@@ -155,7 +156,7 @@ class TextIntelService {
         let payload;
         try { payload = await res.json(); } catch (error) {
           if (controller.signal.aborted) throw error;
-          throw new Error('The endpoint did not return a compatible JSON response.');
+          throw new Error(t('The endpoint did not return a compatible JSON response.'));
         }
         return { ok: res.ok, status: res.status, json: async () => payload };
       }
@@ -165,7 +166,7 @@ class TextIntelService {
         // The abort reason distinguishes an explicit cancel from a timeout.
         const reasonMsg = controller.signal.reason && controller.signal.reason.message;
         const cancelled = reasonMsg === 'cancelled';
-        const wrapped = new Error(cancelled ? 'AI request cancelled.' : 'AI request timed out.');
+        const wrapped = new Error(cancelled ? t('AI request cancelled.') : t('AI request timed out.'));
         wrapped.code = 'STEPFORGE_AI_ABORTED';
         throw wrapped;
       }
@@ -418,7 +419,7 @@ class TextIntelService {
       try {
         const host = openAI.baseUrl(config.openai?.baseUrl);
         const model = normalizeWhitespace(config.openai?.model);
-        if (!model) throw new Error('Enter the model name your server expects.');
+        if (!model) throw new Error(t('Enter the model name your server expects.'));
         // A key typed in Settings but not saved yet is tried as is; otherwise the saved one.
         const apiKey = config.openai.apiKey || this.aiKeys.get(host);
         await openAI.chat(this, { host, model, prompt: 'Reply with OK.', systemPrompt: 'This is a connection test.', apiKey });
@@ -428,7 +429,7 @@ class TextIntelService {
       }
     }
     if (!config.ollama.host) {
-      return { ok: false, reason: 'Set an Ollama host first.' };
+      return { ok: false, reason: t('Set an Ollama host first.') };
     }
     let host;
     try {
@@ -444,7 +445,7 @@ class TextIntelService {
       return { ok: false, reason: err.message };
     }
     if (!res.ok) {
-      return { ok: false, reason: `Ollama check failed (${res.status})` };
+      return { ok: false, reason: t('Ollama check failed ({status})', { status: res.status }) };
     }
     const data = await res.json();
     const models = Array.isArray(data?.models) ? data.models.map((model) => model.name).filter(Boolean) : [];
@@ -531,19 +532,19 @@ class TextIntelService {
   /** Enabled AI settings with a resolved host, or { ok: false, reason }. */
   readyAiConfig() {
     const config = this.aiConfig();
-    if (!config.enabled) return { ok: false, reason: 'Turn on AI in Settings first.' };
+    if (!config.enabled) return { ok: false, reason: t('Turn on AI in Settings first.') };
     if (config.provider === 'openai') {
       try {
         const host = openAI.baseUrl(config.openai?.baseUrl);
         const model = normalizeWhitespace(config.openai?.model);
-        if (!model) throw new Error('Choose an OpenAI-compatible server and model in Settings → AI.');
+        if (!model) throw new Error(t('Choose an OpenAI-compatible server and model in Settings → AI.'));
         return { ok: true, host, model, provider: 'openai' };
       } catch (err) {
         return { ok: false, reason: err.message };
       }
     }
     if (!config.ollama.host || !config.ollama.model) {
-      return { ok: false, reason: 'Choose an Ollama host and model in Settings → AI.' };
+      return { ok: false, reason: t('Choose an Ollama host and model in Settings → AI.') };
     }
     try {
       return { ok: true, host: this.resolveHost(config.ollama.host), model: config.ollama.model, provider: 'ollama' };
@@ -578,12 +579,12 @@ class TextIntelService {
       },
     }));
     if (!response.ok) {
-      throw new Error(`Ollama request failed (${response.status})`);
+      throw new Error(t('Ollama request failed ({status})', { status: response.status }));
     }
     const payload = await response.json();
     const content = payload?.message?.content;
     if (typeof content !== 'string' || !content.trim()) {
-      throw new Error('Ollama returned an empty response');
+      throw new Error(t('Ollama returned an empty response'));
     }
     return content;
   }
@@ -602,7 +603,7 @@ class TextIntelService {
       const guide = this.store.getGuide(guideId);
       const step = this.store.getStep(guideId, stepId);
       if (!guide || !step) {
-        return { ok: false, reason: 'Guide or step not found.' };
+        return { ok: false, reason: t('Guide or step not found.') };
       }
       // Snapshot the revision now: AI generation is slow, and the user may
       // edit the step meanwhile. We save with this expectedRevision so a
@@ -711,7 +712,7 @@ class TextIntelService {
         saved = this.store.saveStep(guideId, updated, { expectedRevision: baseRevision });
       } catch (err) {
         if (err && err.code === 'STEPFORGE_REVISION_CONFLICT') {
-          return { ok: false, reason: 'The step changed while AI was generating; nothing was overwritten.' };
+          return { ok: false, reason: t('The step changed while AI was generating; nothing was overwritten.') };
         }
         throw err;
       }
@@ -730,7 +731,7 @@ class TextIntelService {
       const ready = this.readyAiConfig();
       if (!ready.ok) return ready;
       const guide = this.store.getGuide(guideId);
-      if (!guide) return { ok: false, reason: 'Guide not found.' };
+      if (!guide) return { ok: false, reason: t('Guide not found.') };
       const baseRevision = Number.isInteger(guide.revision) ? guide.revision : 0;
       const stepsMap = this.store.listSteps(guideId);
       const steps = [];
@@ -769,7 +770,7 @@ class TextIntelService {
         saved = this.store.saveGuide(applyGuidePatch(current, patch, { placeholders }), { expectedRevision: baseRevision });
       } catch (err) {
         if (err && err.code === 'STEPFORGE_REVISION_CONFLICT') {
-          return { ok: false, reason: 'The guide changed while AI was writing; nothing was overwritten.' };
+          return { ok: false, reason: t('The guide changed while AI was writing; nothing was overwritten.') };
         }
         throw err;
       }
@@ -791,7 +792,7 @@ class TextIntelService {
       const ready = this.readyAiConfig();
       if (!ready.ok) return ready;
       const guide = this.store.getGuide(guideId);
-      if (!guide) return { ok: false, reason: 'Guide not found.' };
+      if (!guide) return { ok: false, reason: t('Guide not found.') };
       const stepsMap = this.store.listSteps(guideId);
       const steps = (guide.stepsOrder || []).map((id) => stepsMap.get(id)).filter(Boolean);
       const parentOf = parentMap(steps);
@@ -823,7 +824,7 @@ class TextIntelService {
         this.store.saveGuide(nextGuide, { expectedRevision: latestGuide.revision });
       } catch (err) {
         if (err && err.code === 'STEPFORGE_REVISION_CONFLICT') {
-          return { ok: false, reason: 'The guide changed while AI was organizing it; nothing was overwritten.' };
+          return { ok: false, reason: t('The guide changed while AI was organizing it; nothing was overwritten.') };
         }
         throw err;
       }
@@ -851,7 +852,7 @@ class TextIntelService {
       }
       return { ok: true, substeps: nested, placeholders: plan.placeholders };
     } catch (err) {
-      return { ok: false, reason: err && err.message ? err.message : 'AI could not organize the guide.' };
+      return { ok: false, reason: err && err.message ? err.message : t('AI could not organize the guide.') };
     }
   }
 

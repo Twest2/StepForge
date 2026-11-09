@@ -1,4 +1,5 @@
 'use strict';
+const { t } = require('../core/ui-text');
 
 /**
  * User-initiated update check for Settings → About.
@@ -48,19 +49,19 @@ function formatVersion(value) {
 function installHint(platform, hasCommand = () => false, { chocolatey = false, store = false } = {}) {
   if (platform === 'win32') {
     if (store) {
-      return 'The Microsoft Store installs updates automatically, usually within a day or two of a release. To get it sooner, open StepForge in the Store and choose Update.';
+      return t('The Microsoft Store installs updates automatically, usually within a day or two of a release. To get it sooner, open StepForge in the Store and choose Update.');
     }
     if (chocolatey) {
-      return 'Update now installs it with Chocolatey. StepForge closes while it updates and opens again when it’s done.';
+      return t('Update now installs it with Chocolatey. StepForge closes while it updates and opens again when it’s done.');
     }
-    return 'Download the new installer from the release page. Run the installer again and keep "Keep StepForge updated with Chocolatey" checked to get one-click updates.';
+    return t('Download the new installer from the release page. Run the installer again and keep "Keep StepForge updated with Chocolatey" checked to get one-click updates.');
   }
   if (platform === 'linux') {
-    if (hasCommand('dnf')) return 'Run "sudo dnf upgrade stepforge", or download the new .rpm.';
-    if (hasCommand('apt')) return 'Run "sudo apt update && sudo apt install --only-upgrade stepforge", or download the new .deb.';
-    return 'Download the new version from the release page.';
+    if (hasCommand('dnf')) return t('Run "sudo dnf upgrade stepforge", or download the new .rpm.');
+    if (hasCommand('apt')) return t('Run "sudo apt update && sudo apt install --only-upgrade stepforge", or download the new .deb.');
+    return t('Download the new version from the release page.');
   }
-  return 'Download the new version from the release page.';
+  return t('Download the new version from the release page.');
 }
 
 async function readLimitedText(response, maxBytes) {
@@ -91,7 +92,7 @@ async function checkForUpdates({
   const current = parseVersion(currentVersion);
   const base = { currentVersion: currentVersion ? formatVersion(currentVersion) : '', releaseUrl: RELEASES_PAGE };
   if (!current) {
-    return { ...base, status: 'error', message: 'This build has no version number to compare.' };
+    return { ...base, status: 'error', message: t('This build has no version number to compare.') };
   }
 
   const controller = new AbortController();
@@ -108,19 +109,19 @@ async function checkForUpdates({
       },
     });
     if (response.status === 404) {
-      return { ...base, status: 'error', message: 'No published release was found.' };
+      return { ...base, status: 'error', message: t('No published release was found.') };
     }
     if (response.status === 403 || response.status === 429) {
-      return { ...base, status: 'error', message: 'GitHub is limiting requests right now. Try again in a few minutes.' };
+      return { ...base, status: 'error', message: t('GitHub is limiting requests right now. Try again in a few minutes.') };
     }
     if (!response.ok) {
-      return { ...base, status: 'error', message: `GitHub returned an error (${response.status}). Try again later.` };
+      return { ...base, status: 'error', message: t('GitHub returned an error ({status}). Try again later.', { status: response.status }) };
     }
     release = JSON.parse(await readLimitedText(response, MAX_RESPONSE_BYTES));
   } catch (error) {
     const message = error && error.name === 'AbortError'
-      ? 'GitHub took too long to answer. Check your connection and try again.'
-      : 'Couldn’t reach GitHub. Check your internet connection and try again.';
+      ? t('GitHub took too long to answer. Check your connection and try again.')
+      : t('Couldn’t reach GitHub. Check your internet connection and try again.');
     return { ...base, status: 'error', message };
   } finally {
     clearTimeout(timer);
@@ -128,7 +129,7 @@ async function checkForUpdates({
 
   const latest = parseVersion(release && release.tag_name);
   if (!latest) {
-    return { ...base, status: 'error', message: 'The latest release has an unrecognized version number.' };
+    return { ...base, status: 'error', message: t('The latest release has an unrecognized version number.') };
   }
   const releaseUrl = typeof release.html_url === 'string' && release.html_url.startsWith(RELEASE_URL_PREFIX)
     ? release.html_url

@@ -3,6 +3,7 @@
 const crypto = require('node:crypto');
 const zlib = require('node:zlib');
 const { assertSafeEntryName } = require('./zip');
+const { t } = require('./ui-text');
 
 /*
  * Space-saving Google Drive snapshots.
@@ -78,13 +79,13 @@ function encodeSnapshot(entries, { inlineLimit = INLINE_LIMIT } = {}) {
 
 /** Read and check a manifest downloaded from Drive. */
 function decodeSnapshot(buffer, limits = LIMITS) {
-  const damaged = () => new Error('A cloud version is damaged and can’t be read.');
+  const damaged = () => new Error(t('A cloud version is damaged and can’t be read.'));
   let raw;
   try {
     raw = JSON.parse(zlib.gunzipSync(buffer, { maxOutputLength: limits.maxManifestBytes }).toString('utf8'));
   } catch { throw damaged(); }
   if (!raw || raw.format !== MANIFEST_FORMAT || !Array.isArray(raw.entries)) throw damaged();
-  if (raw.version !== 1) throw new Error('A cloud version was saved by a newer StepForge. Update StepForge on this computer.');
+  if (raw.version !== 1) throw new Error(t('A cloud version was saved by a newer StepForge. Update StepForge on this computer.'));
   if (raw.entries.length > limits.maxEntries) throw damaged();
   const names = new Set();
   let total = 0;
@@ -116,7 +117,7 @@ function partShas(manifest) {
 function assembleEntries(manifest, part) {
   return manifest.entries.map((entry) => {
     const data = entry.data || part(entry.sha);
-    if (!data || data.length !== entry.size) throw new Error('A cloud version is missing some of its files.');
+    if (!data || data.length !== entry.size) throw new Error(t('A cloud version is missing some of its files.'));
     return { name: entry.name, data, store: isImageName(entry.name) };
   });
 }
@@ -373,12 +374,12 @@ function encodeFolderTable(table) {
 
 /** Read a folder table from Drive. Anything malformed is an error, never a partial table. */
 function decodeFolderTable(buffer) {
-  const damaged = () => new Error('A cloud folder list is damaged and can’t be read.');
+  const damaged = () => new Error(t('A cloud folder list is damaged and can’t be read.'));
   let raw;
   try { raw = JSON.parse(zlib.gunzipSync(buffer, { maxOutputLength: FOLDER_LIMITS.maxBytes }).toString('utf8')); } catch { throw damaged(); }
   if (!raw || raw.format !== FOLDER_TABLE_FORMAT || !raw.folders || !raw.guides || typeof raw.folders !== 'object' || typeof raw.guides !== 'object'
     || Array.isArray(raw.folders) || Array.isArray(raw.guides)) throw damaged();
-  if (raw.version !== 1) throw new Error('The cloud folder list was saved by a newer StepForge. Update StepForge on this computer.');
+  if (raw.version !== 1) throw new Error(t('The cloud folder list was saved by a newer StepForge. Update StepForge on this computer.'));
   const folderEntries = Object.entries(raw.folders);
   const guideEntries = Object.entries(raw.guides);
   if (folderEntries.length > FOLDER_LIMITS.maxFolders || guideEntries.length > FOLDER_LIMITS.maxGuides) throw damaged();

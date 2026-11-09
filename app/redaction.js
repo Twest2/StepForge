@@ -5,6 +5,7 @@ const crypto = require('node:crypto');
 const { normalizeAnnotation } = require('../core/schema');
 const { RevisionConflictError } = require('../core/store');
 const redaction = require('../core/redaction');
+const { t } = require('../core/ui-text');
 
 /*
  * Blurs private details in a guide's screenshots. Text recognition reads
@@ -33,7 +34,7 @@ const MAX_READ_WIDTH = 4000;
  */
 function bitmapToPpm(bgra, width, height) {
   const stride = bgra.length / height;
-  if (!Number.isInteger(stride) || stride < width * 4) throw new Error('A screenshot in this guide couldn’t be read.');
+  if (!Number.isInteger(stride) || stride < width * 4) throw new Error(t('A screenshot in this guide couldn’t be read.'));
   const header = Buffer.from(`P6\n${width} ${height}\n255\n`, 'ascii');
   const ppm = Buffer.allocUnsafe(header.length + width * height * 3);
   header.copy(ppm);

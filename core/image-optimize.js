@@ -6,6 +6,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { createSnapshot } = require('./snapshots');
 const { optimizeScreenshot, sniffImageFormat, getImageCodec, DEFAULT_WEBP_QUALITY } = require('./image-format');
+const { t } = require('./ui-text');
 
 const digest = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
 
@@ -78,11 +79,11 @@ async function optimizeGuideImages(store, guideId, {
   codec = getImageCodec(),
   concurrency = defaultConcurrency(),
 } = {}) {
-  if (format === 'webp' && !codec) throw new Error('Image optimization needs an image codec.');
+  if (format === 'webp' && !codec) throw new Error(t('Image optimization needs an image codec.'));
   const started = Date.now();
   const options = { format, lossless, webpQuality };
   const estimateHash = await imageEstimateHash(store, guideId, options, concurrency);
-  const changed = () => Object.assign(new Error('Guide changed. Estimate image savings again before applying.'), { code: 'IMAGE_ESTIMATE_CHANGED' });
+  const changed = () => Object.assign(new Error(t('Guide changed. Estimate image savings again before applying.')), { code: 'IMAGE_ESTIMATE_CHANGED' });
   if (expectedHash && estimateHash !== expectedHash) throw changed();
   const report = {
     dryRun, estimateHash, steps: 0, screenshots: 0, optimized: 0, keptPng: 0, alreadyOptimized: 0,
@@ -108,7 +109,7 @@ async function optimizeGuideImages(store, guideId, {
   const byStep = new Map();
   files.forEach(({ stepId, step, rel }, index) => {
     const { missing, size, hash, result, error } = results[index];
-    if (missing) { report.errors.push({ stepId, file: rel, message: 'Screenshot file is missing.' }); return; }
+    if (missing) { report.errors.push({ stepId, file: rel, message: t('Screenshot file is missing.') }); return; }
     report.screenshots++;
     report.bytesBefore += size;
     report.bytesAfter += size;

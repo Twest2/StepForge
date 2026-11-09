@@ -10,6 +10,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { atomicWriteFileSync } = require('../core/util');
+const { t } = require('../core/ui-text');
 
 /**
  * The server's base URL as StepForge uses it, without a trailing slash. A
@@ -21,7 +22,7 @@ function baseUrl(value) {
   try {
     url = new URL(String(value).trim());
   } catch {
-    throw new Error('Enter the server URL, for example http://localhost:8000/v1.');
+    throw new Error(t('Enter the server URL, for example http://localhost:8000/v1.'));
   }
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
     throw new Error('Use an http:// or https:// server URL without a user name, password, query or #fragment.');
@@ -51,7 +52,7 @@ class AiKeyStore {
     try {
       return JSON.parse(fs.readFileSync(this.file, 'utf8'));
     } catch {
-      throw new Error('The saved API key can’t be read. Enter it again in Settings → AI.');
+      throw new Error(t('The saved API key can’t be read. Enter it again in Settings → AI.'));
     }
   }
 
@@ -67,12 +68,12 @@ class AiKeyStore {
   /** Save `key` for this server URL, replacing any saved key; an empty key removes it. */
   set(url, key) {
     const endpoint = baseUrl(url);
-    if (typeof key !== 'string' || /[\r\n]/.test(key)) throw new Error('Enter the API key on one line.');
+    if (typeof key !== 'string' || /[\r\n]/.test(key)) throw new Error(t('Enter the API key on one line.'));
     if (!key) {
       fs.rmSync(this.file, { force: true });
       return;
     }
-    if (!this.available()) throw new Error('StepForge can’t encrypt the key because the system keyring is locked or missing. Unlock it and try again.');
+    if (!this.available()) throw new Error(t('StepForge can’t encrypt the key because the system keyring is locked or missing. Unlock it and try again.'));
     atomicWriteFileSync(this.file, JSON.stringify({ endpoint, secret: this.storage.encryptString(key).toString('base64') }));
   }
 
@@ -80,18 +81,18 @@ class AiKeyStore {
   get(url) {
     const saved = this.saved();
     if (!saved || saved.endpoint !== baseUrl(url)) return '';
-    if (!this.available()) throw new Error('Unlock the system keyring so StepForge can use the saved API key.');
+    if (!this.available()) throw new Error(t('Unlock the system keyring so StepForge can use the saved API key.'));
     try {
       return this.storage.decryptString(Buffer.from(saved.secret, 'base64'));
     } catch {
-      throw new Error('The saved API key can’t be read. Enter it again in Settings → AI.');
+      throw new Error(t('The saved API key can’t be read. Enter it again in Settings → AI.'));
     }
   }
 }
 
 /** One chat request; resolves with the reply text. `images` are base64 PNGs. */
 async function chat(service, { host, model, prompt, systemPrompt, images = [], guideId = null, apiKey = '' }) {
-  if (apiKey && (typeof apiKey !== 'string' || /[\r\n]/.test(apiKey))) throw new Error('Enter the API key on one line.');
+  if (apiKey && (typeof apiKey !== 'string' || /[\r\n]/.test(apiKey))) throw new Error(t('Enter the API key on one line.'));
   const content = images.length
     ? [{ type: 'text', text: prompt }, ...images.map((image) => ({ type: 'image_url', image_url: { url: `data:image/png;base64,${image}` } }))]
     : prompt;
@@ -102,17 +103,17 @@ async function chat(service, { host, model, prompt, systemPrompt, images = [], g
     headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
     body: { model, stream: false, temperature: 0.2, messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content }] },
   }));
-  if (response.status === 401 || response.status === 403) throw new Error(`The server refused the request (${response.status}). Check the API key.`);
-  if (response.status === 404) throw new Error('The server has no /chat/completions endpoint at this URL. Check that the URL ends in /v1 (or your server’s API path).');
-  if (!response.ok) throw new Error(`The server answered with an error (${response.status}).`);
+  if (response.status === 401 || response.status === 403) throw new Error(t('The server refused the request ({status}). Check the API key.', { status: response.status }));
+  if (response.status === 404) throw new Error(t('The server has no /chat/completions endpoint at this URL. Check that the URL ends in /v1 (or your server’s API path).'));
+  if (!response.ok) throw new Error(t('The server answered with an error ({status}).', { status: response.status }));
   let payload;
   try {
     payload = await response.json();
   } catch {
-    throw new Error('The server’s reply isn’t OpenAI-compatible JSON.');
+    throw new Error(t('The server’s reply isn’t OpenAI-compatible JSON.'));
   }
   const text = payload?.choices?.[0]?.message?.content;
-  if (typeof text !== 'string' || !text.trim()) throw new Error('The server’s reply has no message text (choices[0].message.content).');
+  if (typeof text !== 'string' || !text.trim()) throw new Error(t('The server’s reply has no message text (choices[0].message.content).'));
   return text;
 }
 

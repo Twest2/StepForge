@@ -4,6 +4,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { writeJsonSync, readJsonIfExists } = require('./util');
+const { t } = require('./ui-text');
 
 /*
  * Sync storage for services that keep plain files in a folder: OneDrive,
@@ -148,7 +149,7 @@ class FolderStorage {
   async upload({ data, name, properties, onProgress }) {
     const createdTime = new Date().toISOString();
     if (properties.stepforge === 'part-v1') {
-      if (!SHA.test(properties.sha || '')) throw new Error('A shared part has no valid hash.');
+      if (!SHA.test(properties.sha || '')) throw new Error(t('A shared part has no valid hash.'));
       // Parts are named by their content, so writing one twice is harmless.
       await this.backend.put(`parts/${properties.sha}`, data, { onProgress });
       return { id: `${PART_PREFIX}${properties.sha}`, name, createdTime, size: String(data.length), appProperties: { ...properties } };
@@ -167,14 +168,14 @@ class FolderStorage {
   async download(id, { onProgress } = {}) {
     if (id.startsWith(PART_PREFIX)) {
       const sha = id.slice(PART_PREFIX.length);
-      if (!SHA.test(sha)) throw new Error('That file isn’t in cloud storage.');
+      if (!SHA.test(sha)) throw new Error(t('That file isn’t in cloud storage.'));
       return this.backend.get(`parts/${sha}`, { onProgress });
     }
-    if (!OBJECT_ID.test(id)) throw new Error('That file isn’t in cloud storage.');
+    if (!OBJECT_ID.test(id)) throw new Error(t('That file isn’t in cloud storage.'));
     let details = this.details.get(id);
     if (!details) {
       details = JSON.parse((await this.backend.get(`objects/${id}.json`)).toString('utf8'));
-      if (!validDetails(details)) throw new Error('A cloud version is damaged and can’t be read.');
+      if (!validDetails(details)) throw new Error(t('A cloud version is damaged and can’t be read.'));
     }
     if (details.data !== undefined) {
       const data = Buffer.from(details.data, 'base64');

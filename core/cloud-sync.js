@@ -12,6 +12,7 @@ const { mergeGuideEntries } = require('./guide-merge');
 const { createSnapshot, createSnapshotFromEntries } = require('./snapshots');
 const { mergeSharedSettings, UNZIP_LIMITS: SHARED_LIMITS } = require('./shared-settings');
 const parts = require('./cloud-parts');
+const { t, tn } = require('./ui-text');
 
 const validId = (id) => typeof id === 'string' && /^[A-Za-z0-9_-]{1,100}$/.test(id) && !['__proto__', 'constructor', 'prototype'].includes(id);
 const compareText = (a, b) => a < b ? -1 : a > b ? 1 : 0;
@@ -52,11 +53,11 @@ function remainingMerges(record, absorbed) {
 }
 
 function mergeMessage(label, merged, conflicts) {
-  const synced = `Guides are synced with ${label}.`;
+  const synced = t('Guides are synced with {service}.', { service: label });
   if (!merged) return synced;
-  const guides = merged === 1 ? '1 guide' : `${merged} guides`;
-  const newest = conflicts ? ' Where both computers changed the same thing, the newest change was kept.' : '';
-  return `${synced} Combined changes from more than one computer in ${guides}.${newest}`;
+  const combined = tn(merged, 'Combined changes from more than one computer in {count} guide.', 'Combined changes from more than one computer in {count} guides.');
+  const newest = conflicts ? ` ${t('Where both computers changed the same thing, the newest change was kept.')}` : '';
+  return `${synced} ${combined}${newest}`;
 }
 
 const RETAIN_PER_BRANCH = 3; // current snapshot plus the two prior snapshots
@@ -392,7 +393,7 @@ class CloudSync {
     }
     const common = [...commonIds].filter((id) => !older.has(id)).map((vid) => byId.get(vid))
       .sort((a, b) => compareText(a.createdTime || '', b.createdTime || '') || compareText(a.id, b.id)).at(-1);
-    if (commonIds.size && !common) throw new Error('Cloud version history contains a cycle. Local guides are unchanged.');
+    if (commonIds.size && !common) throw new Error(t('Cloud version history contains a cycle. Local guides are unchanged.'));
     if (!common) return record ? this.rememberedBase(baseFile, record.hash) : null;
     return this.rememberedBase(baseFile, common.appProperties.hash) || this.versionEntries(common);
   }
@@ -403,7 +404,7 @@ class CloudSync {
     // Returning null on corruption would silently change deletion semantics.
     const entries = unzipSync(await this.downloadVersion(file));
     if (parts.contentHash(entries) !== file.appProperties.hash) {
-      throw new Error('Cloud merge base failed its integrity check. Local guides are unchanged.');
+      throw new Error(t('Cloud merge base failed its integrity check. Local guides are unchanged.'));
     }
     return entries;
   }
@@ -512,7 +513,7 @@ class CloudSync {
 
   scheduleSync() {
     if (!this.enabled()) return;
-    this.publish('pending', 'Changes waiting to sync.');
+    this.publish('pending', t('Changes waiting to sync.'));
     clearTimeout(this.timer);
     this.timer = setTimeout(() => { void this.sync(); }, this.settleMs + 50);
     this.timer.unref?.();
@@ -523,7 +524,7 @@ class CloudSync {
   }
 
   async storage() {
-    if (!this.drive.status().connected) throw new Error(`Sign in to ${this.label} first.`);
+    if (!this.drive.status().connected) throw new Error(t('Sign in to {service} first.', { service: this.label }));
     const [files, markers, partFiles, quota] = await Promise.all([this.drive.listVersions(), this.drive.listDeletions(), this.drive.listParts(),
       this.drive.quota ? this.drive.quota().catch(() => null) : null]);
     const deletedIds = new Set([...this.deletionStates(markers).values()]
@@ -533,7 +534,7 @@ class CloudSync {
   }
 
   async guides() {
-    if (!this.drive.status().connected) throw new Error(`Sign in to ${this.label} first.`);
+    if (!this.drive.status().connected) throw new Error(t('Sign in to {service} first.', { service: this.label }));
     const [files, markers, partFiles] = await Promise.all([this.drive.listVersions(), this.drive.listDeletions(), this.drive.listParts()]);
     const deleted = this.deletionStates(markers);
     const refs = await this.partRefs(files);
@@ -547,7 +548,7 @@ class CloudSync {
       // Files shared between this guide's versions count once.
       const shas = new Set(versions.flatMap((file) => refs.get(file.id) || []));
       const shared = [...shas].reduce((n, sha) => n + (partSizes.get(sha) || 0), 0);
-      return { guideId: id, title: latest.name?.replace(/\.sfgz$/, '') || 'Untitled guide',
+      return { guideId: id, title: latest.name?.replace(/\.sfgz$/, '') || t('Untitled guide'),
         snapshotCount: versions.length, bytes: versions.reduce((n, f) => n + sizeOf(f), 0) + shared,
         updatedAt: latest.createdTime || '', latestId: latest.id, local: this.store.guideExists(id) };
     }).sort((a, b) => compareText(a.title, b.title) || compareText(a.guideId, b.guideId));
@@ -566,7 +567,7 @@ class CloudSync {
   }
 
   async history(id) {
-    if (!this.drive.status().connected) throw new Error(`Sign in to ${this.label} first.`);
+    if (!this.drive.status().connected) throw new Error(t('Sign in to {service} first.', { service: this.label }));
     return (await this.drive.listVersions())
       .filter((file) => file.appProperties?.guideId === id)
       .sort((a, b) => compareText(b.createdTime || '', a.createdTime || '') || compareText(b.id, a.id))
@@ -581,7 +582,7 @@ class CloudSync {
   prune() { return this.mutate(() => this.pruneNow(1, { convert: true })); }
 
   async pruneNow(retain = RETAIN_PER_BRANCH, { convert = false } = {}) {
-    if (!this.drive.status().connected) throw new Error(`Sign in to ${this.label} first.`);
+    if (!this.drive.status().connected) throw new Error(t('Sign in to {service} first.', { service: this.label }));
     const files = await this.drive.listVersions();
     const remove = [];
     for (const versions of guideVersions(files).values()) {
@@ -629,8 +630,8 @@ class CloudSync {
   }
 
   async replaceCloudWithLocalNow() {
-    if (!this.drive.status().connected) throw new Error(`Sign in to ${this.label} first.`);
-    if (!this.enabled()) throw new Error(`Turn on automatic sync before replacing ${this.label}.`);
+    if (!this.drive.status().connected) throw new Error(t('Sign in to {service} first.', { service: this.label }));
+    if (!this.enabled()) throw new Error(t('Turn on automatic sync before replacing {service}.', { service: this.label }));
     await this.loadAccountState();
     const [files, markers] = await Promise.all([this.drive.listVersions(), this.drive.listDeletions()]);
     // Read the cloud's folders before anything is deleted: folders not on this computer are removed everywhere.
@@ -680,7 +681,7 @@ class CloudSync {
   }
 
   async setSharing(id, sharingEnabled) {
-    if (!this.store.guideExists(id)) throw new Error('Guide no longer exists.');
+    if (!this.store.guideExists(id)) throw new Error(t('Guide no longer exists.'));
     const guide = this.store.getGuide(id);
     guide.cloud = { ...(guide.cloud || {}), sharingEnabled: Boolean(sharingEnabled) };
     this.store.saveGuide(guide);
@@ -692,7 +693,7 @@ class CloudSync {
   removeGuideSnapshots(id) { return this.mutate(() => this.removeGuideSnapshotsNow(id)); }
 
   async removeGuideSnapshotsNow(id) {
-    if (!this.drive.status().connected) throw new Error(`Sign in to ${this.label} first.`);
+    if (!this.drive.status().connected) throw new Error(t('Sign in to {service} first.', { service: this.label }));
     if (this.store.guideExists(id)) await this.setSharing(id, false);
     const files = (await this.drive.listVersions()).filter((file) => file.appProperties?.guideId === id);
     for (const file of files) await this.drive.deleteFile(file.id);
@@ -705,15 +706,15 @@ class CloudSync {
   restore(id, versionId) { return this.mutate(() => this.restoreNow(id, versionId)); }
 
   async restoreNow(id, versionId) {
-    if (!this.drive.status().connected) throw new Error(`Sign in to ${this.label} first.`);
-    if (!this.canReplace(id)) throw new Error('Close the editor or stop capture before restoring a cloud snapshot.');
+    if (!this.drive.status().connected) throw new Error(t('Sign in to {service} first.', { service: this.label }));
+    if (!this.canReplace(id)) throw new Error(t('Close the editor or stop capture before restoring a cloud snapshot.'));
     await this.loadAccountState();
     const files = await this.drive.listVersions();
     const version = files.find((file) => file.id === versionId && file.appProperties?.guideId === id);
-    if (!version) throw new Error('That cloud snapshot is no longer available.');
+    if (!version) throw new Error(t('That cloud snapshot is no longer available.'));
     const bytes = await this.downloadVersion(version);
     this.validateDownload(bytes, id, version.appProperties.hash);
-    if (!this.canReplace(id)) throw new Error('The guide became active while restoring. No changes were made.');
+    if (!this.canReplace(id)) throw new Error(t('The guide became active while restoring. No changes were made.'));
     const sharing = this.store.guideExists(id) ? this.store.getGuide(id).cloud?.sharingEnabled : undefined;
     this.install(bytes, id, id);
     if (sharing === false) await this.setSharing(id, false);
@@ -814,25 +815,25 @@ class CloudSync {
   }
 
   async deletedGuides() {
-    if (!this.drive.status().connected) throw new Error(`Sign in to ${this.label} first.`);
+    if (!this.drive.status().connected) throw new Error(t('Sign in to {service} first.', { service: this.label }));
     const [files, deletionFiles] = await Promise.all([this.drive.listVersions(), this.drive.listDeletions()]);
     const states = this.deletionStates(deletionFiles);
     return [...states.values()].filter((file) => ['deleted', 'purged'].includes(file.appProperties?.state)).map((file) => {
       const recovery = files.find((candidate) => candidate.id === file.appProperties.recoveryId);
-      return { guideId: file.appProperties.guideId, title: file.appProperties.title || 'Deleted guide', deletedAt: file.appProperties.deletedAt || file.createdTime || '',
+      return { guideId: file.appProperties.guideId, title: file.appProperties.title || t('Deleted guide'), deletedAt: file.appProperties.deletedAt || file.createdTime || '',
         recoveryId: recovery?.id || null, size: Number(recovery?.size || 0), purged: file.appProperties.state === 'purged' };
     });
   }
 
   async restoreDeletedGuide(id) {
-    if (!this.canReplace(id)) throw new Error('Close the editor or stop capture before restoring a cloud guide.');
+    if (!this.canReplace(id)) throw new Error(t('Close the editor or stop capture before restoring a cloud guide.'));
     const [files, deletionFiles] = await Promise.all([this.drive.listVersions(), this.drive.listDeletions()]);
     const marker = this.deletionStates(deletionFiles).get(id);
     const recovery = files.find((file) => file.id === marker?.appProperties?.recoveryId);
-    if (!marker || marker.appProperties.state !== 'deleted' || !recovery) throw new Error('No recoverable cloud snapshot is available for this guide.');
+    if (!marker || marker.appProperties.state !== 'deleted' || !recovery) throw new Error(t('No recoverable cloud snapshot is available for this guide.'));
     const bytes = await this.downloadVersion(recovery);
     this.validateDownload(bytes, id, recovery.appProperties.hash);
-    if (!this.canReplace(id)) throw new Error('The guide became active while restoring. No changes were made.');
+    if (!this.canReplace(id)) throw new Error(t('The guide became active while restoring. No changes were made.'));
     this.install(bytes, id, id);
     const restored = await this.drive.upload({ data: Buffer.from('{}'), name: `Restored ${marker.appProperties.title || 'guide'}`,
       properties: { stepforge: 'deletion-v1', guideId: id, state: 'restored', restoredAt: new Date().toISOString() } });
@@ -846,7 +847,7 @@ class CloudSync {
   async permanentlyDeleteRecovery(id) {
     const [files, deletionFiles] = await Promise.all([this.drive.listVersions(), this.drive.listDeletions()]);
     const marker = this.deletionStates(deletionFiles).get(id);
-    if (!marker || marker.appProperties.state !== 'deleted') throw new Error('No deleted-guide recovery snapshot is available.');
+    if (!marker || marker.appProperties.state !== 'deleted') throw new Error(t('No deleted-guide recovery snapshot is available.'));
     const purged = await this.drive.upload({ data: Buffer.from('{}'), name: `Deleted ${marker.appProperties.title || 'guide'}`,
       properties: { stepforge: 'deletion-v1', guideId: id, state: 'purged', title: marker.appProperties.title || '', deletedAt: marker.appProperties.deletedAt || new Date().toISOString() } });
     await Promise.all(files.filter((file) => file.appProperties?.guideId === id).map((file) => this.drive.deleteFile(file.id)));
@@ -886,7 +887,7 @@ class CloudSync {
       if (archive.guide.guideId !== sourceId || !validId(sourceId) || !validId(targetId)
           || archive.guide.stepsOrder.some((id) => !validId(id))
           || archive.entries.some((e) => e.name.startsWith('steps/') && !validId(e.name.split('/')[1]))) {
-        throw new Error('Cloud archive contains an invalid guide or step identity.');
+        throw new Error(t('Cloud archive contains an invalid guide or step identity.'));
       }
       const staged = new GuideStore(path.join(stagingRoot, 'staged'));
       const guide = importGuideArchive(staged, file, { mode: 'linked' });
@@ -917,7 +918,7 @@ class CloudSync {
   /** One folder table version, checked against the hash it was saved with. */
   async folderTableOf(file) {
     const table = parts.decodeFolderTable(await this.drive.download(file.id));
-    if (parts.folderTableHash(table) !== file.appProperties.hash) throw new Error('A cloud folder list failed its integrity check. Folders here are unchanged.');
+    if (parts.folderTableHash(table) !== file.appProperties.hash) throw new Error(t('A cloud folder list failed its integrity check. Folders here are unchanged.'));
     return table;
   }
 
@@ -1026,7 +1027,7 @@ class CloudSync {
         for (const tip of merging ? tips : [latest]) {
           const entries = unzipSync(await this.downloadArchive(tip), { limits: SHARED_LIMITS });
           check();
-          if (parts.contentHash(entries) !== tip.appProperties.hash) throw new Error('Synced settings failed their integrity check. Settings here are unchanged.');
+          if (parts.contentHash(entries) !== tip.appProperties.hash) throw new Error(t('Synced settings failed their integrity check. Settings here are unchanged.'));
           sides.push({ entries, hash: tip.appProperties.hash, time: tip.createdTime || '' });
         }
         let incoming = mergeSharedSettings({ sides: [sides[0]] }).entries;
@@ -1079,13 +1080,13 @@ class CloudSync {
   }
 
   async run() {
-    if (!this.enabled()) return this.publish('off', `${this.label} sharing is off.`);
-    if (!this.drive.status().connected) return this.publish('disconnected', this.drive.status().error || `Sign in to ${this.label} in Settings.`);
+    if (!this.enabled()) return this.publish('off', t('{service} sharing is off.', { service: this.label }));
+    if (!this.drive.status().connected) return this.publish('disconnected', this.drive.status().error || t('Sign in to {service} in Settings.', { service: this.label }));
     const generation = this.generation;
     const check = () => {
-      if (!this.enabled() || generation !== this.generation) throw new Error('Cloud synchronization stopped.');
+      if (!this.enabled() || generation !== this.generation) throw new Error(t('Cloud synchronization stopped.'));
     };
-    this.publish('syncing', `Syncing with ${this.label}…`);
+    this.publish('syncing', t('Syncing with {service}…', { service: this.label }));
     this.partIndexCache = null;
     await this.loadAccountState();
     check();
@@ -1334,10 +1335,10 @@ class CloudSync {
       }
     }
     if (errors.length) this.publish('error', `${errors.length} guide(s) could not sync: ${errors[0]}`);
-    else if (folderError) this.publish('error', `Folders could not sync: ${folderError}`);
-    else if (sharedError) this.publish('error', `Placeholders and branding could not sync: ${sharedError}`);
-    else if (pending) this.publish('pending', 'Changes pending. Incoming updates wait until the guide is closed.');
-    else if (sharedPending) this.publish('pending', this.sharedReady() ? 'Changes waiting to sync.' : 'Placeholders and branding sync when Settings closes.');
+    else if (folderError) this.publish('error', t('Folders could not sync: {error}', { error: folderError }));
+    else if (sharedError) this.publish('error', t('Placeholders and branding could not sync: {error}', { error: sharedError }));
+    else if (pending) this.publish('pending', t('Changes pending. Incoming updates wait until the guide is closed.'));
+    else if (sharedPending) this.publish('pending', this.sharedReady() ? t('Changes waiting to sync.') : t('Placeholders and branding sync when Settings closes.'));
     else this.publish('synced', mergeMessage(this.label, merged, mergeConflicts), { lastSync: new Date().toISOString() });
     // Snapshots are immutable. Retain the current version and two prior
     // versions on every live conflict branch after a successful sync.
@@ -1351,7 +1352,7 @@ class CloudSync {
       const staging = new GuideStore(root);
       const checker = new CloudSync({ store: staging, drive: this.drive, enabled: () => false });
       checker.install(data, id, id);
-      if (snapshot(staging, id).hash !== expectedHash) throw new Error('Cloud archive integrity check failed. Local guides are unchanged.');
+      if (snapshot(staging, id).hash !== expectedHash) throw new Error(t('Cloud archive integrity check failed. Local guides are unchanged.'));
     } finally { fs.rmSync(root, { recursive: true, force: true }); }
   }
 }

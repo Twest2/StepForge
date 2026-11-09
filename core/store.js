@@ -16,6 +16,7 @@ const { sanitizeHtml } = require('./sanitize');
 const { isValidOutline } = require('./step-outline');
 const { toDateOnly } = require('./review');
 const { storedExtension } = require('./image-format');
+const { t } = require('./ui-text');
 
 // A step's screenshot is original.webp (or original.png, for PNG screenshots
 // and every guide made before WebP storage). Cropping it writes working.*;
@@ -249,7 +250,7 @@ class GuideStore {
     return this.listTrash().map((name) => {
       const guide = readJsonIfExists(path.join(this.trashDir, name, 'guide.json'), {});
       const stamp = trashStamp(name);
-      return { name, title: guide.title || 'Untitled guide', stepCount: (guide.stepsOrder || []).length,
+      return { name, title: guide.title || t('Untitled guide'), stepCount: (guide.stepsOrder || []).length,
         deletedAt: Number.isFinite(stamp) ? new Date(stamp).toISOString() : null };
     }).sort((a, b) => String(b.deletedAt || '').localeCompare(String(a.deletedAt || '')));
   }
@@ -551,7 +552,7 @@ class GuideStore {
     const current = this.getStep(guideId, stepId);
     const step = stepPatch ? this.currentImagePaths(guideId, deepClone(stepPatch)) : current;
     step.revision = current.revision;
-    if (!images?.original && !images?.working) throw new Error('No screenshot to use.');
+    if (!images?.original && !images?.working) throw new Error(t('No screenshot to use.'));
     if (!step.image) {
       const file = imageFileName(ORIGINAL_BASE, images.original || images.working);
       step.image = { originalPath: file, workingPath: file, size };
@@ -595,9 +596,9 @@ class GuideStore {
     const dir = this.stepDir(guideId, stepId);
     const renamed = new Map();
     for (const [rel, bytes] of Object.entries(buffers)) {
-      if (![step.image.originalPath, step.image.workingPath].includes(rel)) throw new Error('Screenshot changed during optimization.');
+      if (![step.image.originalPath, step.image.workingPath].includes(rel)) throw new Error(t('Screenshot changed during optimization.'));
       const hash = (data) => crypto.createHash('sha256').update(data).digest('hex');
-      if (expectedHashes[rel] && hash(fs.readFileSync(path.join(dir, rel))) !== expectedHashes[rel]) throw new Error('Screenshot changed during optimization.');
+      if (expectedHashes[rel] && hash(fs.readFileSync(path.join(dir, rel))) !== expectedHashes[rel]) throw new Error(t('Screenshot changed during optimization.'));
       // New content gets its own name, so a refused concurrent save cannot
       // overwrite bytes that another editor is already using.
       const next = imageFileName(`${baseOfImageFile(rel)}-${hash(bytes).slice(0, 16)}`, bytes);

@@ -2,6 +2,7 @@
 
 const net = require('node:net');
 const { CloudAccount } = require('./cloud-account');
+const { t } = require('../core/ui-text');
 
 /*
  * Nextcloud, ownCloud or any WebDAV server. StepForge keeps its files in a
@@ -59,13 +60,13 @@ function isLocalHost(hostname) {
 /** A server address as typed, as a URL ending in "/". */
 function normalizeServer(input) {
   let text = String(input || '').trim();
-  if (!text) throw new Error('Enter your server’s address.');
+  if (!text) throw new Error(t('Enter your server’s address.'));
   if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(text)) text = `https://${text}`;
   let url;
-  try { url = new URL(text); } catch { throw new Error('That doesn’t look like a server address. Try something like cloud.example.com.'); }
-  if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password) throw new Error('Enter an https:// address for your server.');
+  try { url = new URL(text); } catch { throw new Error(t('That doesn’t look like a server address. Try something like cloud.example.com.')); }
+  if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password) throw new Error(t('Enter an https:// address for your server.'));
   if (url.protocol === 'http:' && !isLocalHost(url.hostname)) {
-    throw new Error('Use an https:// address. StepForge only sends your password over an unencrypted connection on your own network.');
+    throw new Error(t('Use an https:// address. StepForge only sends your password over an unencrypted connection on your own network.'));
   }
   url.search = '';
   url.hash = '';
@@ -93,7 +94,7 @@ class WebDAV extends CloudAccount {
   get tokenUrl() { return ''; }
 
   async authHeaders() {
-    if (!this.credentials) throw new Error(this.loadError || `Sign in to ${this.label} first.`);
+    if (!this.credentials) throw new Error(this.loadError || t('Sign in to {service} first.', { service: this.label }));
     return { Authorization: basic(this.credentials.username, this.credentials.password) };
   }
 
@@ -161,7 +162,7 @@ class WebDAV extends CloudAccount {
     const base = new URL(found.server);
     let login;
     if (username) {
-      if (!password) throw new Error('Enter your password or app password.');
+      if (!password) throw new Error(t('Enter your password or app password.'));
       // Nextcloud and ownCloud serve the signed-in user's files here; any
       // other server's address is its WebDAV folder.
       const davUrl = found.kind === 'nextcloud' ? new URL('remote.php/webdav/', base).href : base.href;
@@ -181,7 +182,7 @@ class WebDAV extends CloudAccount {
     const endpoint = new URL(start?.poll?.endpoint || '');
     const token = start?.poll?.token;
     if (!token || loginUrl.host !== base.host || endpoint.host !== base.host || !['https:', 'http:'].includes(loginUrl.protocol)) {
-      throw new Error('This server didn’t start a Nextcloud sign-in. Enter a user name and app password instead.');
+      throw new Error(t('This server didn’t start a Nextcloud sign-in. Enter a user name and app password instead.'));
     }
     if (this.signIn) this.signIn.cancel();
     const generation = this.generation;
@@ -193,7 +194,7 @@ class WebDAV extends CloudAccount {
       const deadline = Date.now() + LOGIN_TIMEOUT_MS;
       while (Date.now() < deadline) {
         await new Promise((resolve) => setTimeout(resolve, LOGIN_POLL_MS));
-        if (cancelled || generation !== this.generation) throw new Error('Nextcloud sign-in cancelled.');
+        if (cancelled || generation !== this.generation) throw new Error(t('Nextcloud sign-in cancelled.'));
         let result;
         try {
           result = await this.request(endpoint.href, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -202,7 +203,7 @@ class WebDAV extends CloudAccount {
           if (err.status === 404 || err.transient) continue; // not signed in yet
           throw err;
         }
-        if (!result?.loginName || !result?.appPassword) throw new Error('Nextcloud didn’t finish the sign-in. Try again.');
+        if (!result?.loginName || !result?.appPassword) throw new Error(t('Nextcloud didn’t finish the sign-in. Try again.'));
         const server = new URL(result.server && new URL(result.server).host === base.host ? `${String(result.server).replace(/\/+$/, '')}/` : base.href);
         const user = await this.request(new URL('ocs/v2.php/cloud/user?format=json', server).href, {
           headers: { 'OCS-APIRequest': 'true', Accept: 'application/json', Authorization: basic(result.loginName, result.appPassword) } }).catch(() => null);
@@ -210,7 +211,7 @@ class WebDAV extends CloudAccount {
         return { server: server.href, username: result.loginName, password: result.appPassword, name: user?.ocs?.data?.displayname || '',
           davUrl: new URL(`remote.php/dav/files/${encodeURIComponent(id)}/`, server).href, kind: 'nextcloud' };
       }
-      throw new Error('Nextcloud sign-in timed out. Try again.');
+      throw new Error(t('Nextcloud sign-in timed out. Try again.'));
     } finally {
       if (this.signIn === attempt) this.signIn = null;
     }
@@ -223,10 +224,10 @@ class WebDAV extends CloudAccount {
     if (response.status === 207 || response.ok) return;
     if (response.status === 401) {
       throw new Error(login.kind === 'nextcloud'
-        ? 'Nextcloud didn’t accept the user name or password. If you use two-factor sign-in, create an app password under Settings → Security.'
-        : 'The server didn’t accept the user name or password.');
+        ? t('Nextcloud didn’t accept the user name or password. If you use two-factor sign-in, create an app password under Settings → Security.')
+        : t('The server didn’t accept the user name or password.'));
     }
-    throw new Error(`The server didn’t accept WebDAV requests at ${login.davUrl} (${response.status}). Check the address.`);
+    throw new Error(t('The server didn’t accept WebDAV requests at {davUrl} ({status}). Check the address.', { davUrl: login.davUrl, status: response.status }));
   }
 
   async loadProfile() {

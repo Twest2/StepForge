@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('node:crypto');
+const { t } = require('../core/ui-text');
 
 /*
  * The Electron side of Confluence (app/confluence.js): a browser session of
@@ -39,7 +40,7 @@ function createConfluenceSession({ session, BrowserWindow, getParent = () => nul
   // It never gets StepForge's preload or IPC.
   const makeWindow = (show) => {
     const win = new BrowserWindow({
-      show, width: 1000, height: 760, title: 'Sign in to Confluence', autoHideMenuBar: true,
+      show, width: 1000, height: 760, title: t('Sign in to Confluence'), autoHideMenuBar: true,
       parent: show ? getParent() || undefined : undefined,
       webPreferences: { session: ses, sandbox: true, contextIsolation: true, nodeIntegration: false },
     });

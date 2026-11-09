@@ -89,9 +89,10 @@ always did.
   each screenshot. HTML pages always draw a light border; this sets its color.
 - **Step layout**: **Stacked** puts the screenshot under the step's text.
   **Side by side** puts the screenshot on the left and the description on the
-  right (55% and 45% of the width). Callouts placed between them come first,
-  above both columns. Steps without a description or a screenshot stay
-  stacked. HTML pages go back to one column on narrow screens.
+  right (55% and 45% of the width). Callouts keep their place: one placed
+  after the description sits under it, one placed before the image sits above
+  the screenshot. Steps without a description or a screenshot stay stacked.
+  HTML pages go back to one column on narrow screens.
 
 ## Advanced CSS
 

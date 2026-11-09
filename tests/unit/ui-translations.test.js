@@ -75,7 +75,7 @@ test('cloud services, GitHub sharing and branding text follow the interface lang
   const es = load('es', ['branding.js']);
   const support = vm.runInContext('BRAND_SUPPORT', es);
   assert.deepEqual([...support[0]], ['HTML (simple y enriquecido)',
-    'Logotipo, banner, colores, fuentes (las fuentes subidas se incrustan), estilo de portada, texto del pie de página y tu CSS.']);
+    'Logotipo, banner, colores, fuentes (las fuentes subidas se incrustan), estilo de portada, texto del pie de página, alineación, borde y diseño de las capturas de pantalla, y tu CSS.']);
   assert.equal(support[2][0], 'PDF', 'format names stay as they are');
 });
 

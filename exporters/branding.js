@@ -105,8 +105,23 @@ function overlayWatermark(img, mark, { position = 'bottom-right', opacity = 0.6 
   raster.drawImage(img, scaled, Math.max(0, x), Math.max(0, y));
 }
 
+/**
+ * How the brand places step screenshots (core/branding.js `screenshots`);
+ * without a profile, the way exports always placed them.
+ */
+function screenshotOptions(ast) {
+  const shots = ast?.branding?.screenshots;
+  return {
+    align: shots?.align || 'left',
+    border: shots?.border === true,
+    borderColor: shots?.borderColor || '#D0D5DD',
+    layout: shots?.layout || 'stacked',
+  };
+}
+
 module.exports = {
   withBrand,
+  screenshotOptions,
   brandRaster,
   fitSize,
   fitRaster,

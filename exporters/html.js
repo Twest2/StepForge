@@ -7,7 +7,7 @@ const { highlightCode } = require('../core/code-highlight');
 const { encodePng } = require('../core/png');
 const { guideSlug, renderAllImages, LEVEL_LABEL, stepContentGroups, codeBlockText, flowchartImageKey, flowchartAlt } = require('./common');
 const { anchorFor, tocEntries, guideMetaLines } = require('./document-layout');
-const { withBrand, imageDataUri, cssFontStack, textOn } = require('./branding');
+const { withBrand, imageDataUri, cssFontStack, textOn, screenshotOptions } = require('./branding');
 
 /**
  * HTML exporters. Both variants are fully self-contained single files:
@@ -147,17 +147,23 @@ function renderStep(step, ast, images, tpl, { rich = false } = {}) {
   };
   const blocks = (list) => list.map((tb) => (tb.kind === 'flowchart' ? chartHtml() : blockHtml(tb, ast))).join('\n');
   const parts = [];
-  parts.push(blocks(groups.beforeDescription));
-  if (step.descriptionHtml) parts.push(`<div class="desc">${stepLinkRewrite(step.descriptionHtml, ast)}</div>`);
-  parts.push(blocks(groups.afterDescription));
-  parts.push(blocks(groups.beforeImage));
-  const img = images.get(step.stepId);
-  if (img && tpl.includeImages) {
+  const img = tpl.includeImages ? images.get(step.stepId) : null;
+  const desc = step.descriptionHtml ? `<div class="desc">${stepLinkRewrite(step.descriptionHtml, ast)}</div>` : '';
+  let figure = '';
+  if (img) {
     const shot = `<img alt="${escapeHtml(step.altText)}" src="${dataUri(img)}" width="${img.width}" height="${img.height}"${rich ? ' tabindex="0"' : ''}>`;
     // A flowchart shown as the main visual: its linked shapes jump to their steps.
-    parts.push(`<figure class="shot">${step.image?.flowchart ? chartLinks(shot, step.image, ast) : shot}</figure>`);
+    figure = `<figure class="shot">${step.image?.flowchart ? chartLinks(shot, step.image, ast) : shot}</figure>`;
   }
-  parts.push(blocks(groups.afterImage));
+  if (figure && desc && screenshotOptions(ast).layout === 'side-by-side') {
+    // Screenshot and description side by side; the blocks placed between them go first.
+    parts.push(blocks(groups.beforeDescription), blocks(groups.beforeImage));
+    parts.push(`<div class="step-split">${figure}${desc}</div>`);
+    parts.push(blocks(groups.afterDescription), blocks(groups.afterImage));
+  } else {
+    parts.push(blocks(groups.beforeDescription), desc, blocks(groups.afterDescription));
+    parts.push(blocks(groups.beforeImage), figure, blocks(groups.afterImage));
+  }
   for (const block of groups.rest) {
     if (block.kind === 'text') parts.push(blockHtml(block, ast));
     else if (block.kind === 'code') parts.push(codeHtml(block, ast));
@@ -364,7 +370,23 @@ function brandCss(brand) {
   const scheme = brand.html.colorScheme === 'auto'
     ? `${DARK_CSS}@media (prefers-color-scheme: light) { :root { --text: ${text}; } }`
     : `:root { color-scheme: light; --text: ${text}; }`;
-  return `\n${faces.join('\n')}\n${vars}\n${scheme}\n${BRAND_CSS}${styleText(brand.html.css)}\n`;
+  return `\n${faces.join('\n')}\n${vars}\n${scheme}\n${BRAND_CSS}${screenshotCss(brand)}${styleText(brand.html.css)}\n`;
+}
+
+/** Screenshot alignment, border color and side-by-side steps from the brand profile. */
+function screenshotCss(brand) {
+  const { align, border, borderColor, layout } = screenshotOptions({ branding: brand });
+  const rules = [];
+  if (align === 'center') rules.push('.shot img { margin-left: auto; margin-right: auto; }');
+  if (align === 'right') rules.push('.shot img { margin-left: auto; margin-right: 0; }');
+  if (border) rules.push(`.shot img { border: 1px solid ${borderColor}; }`);
+  if (layout === 'side-by-side') {
+    rules.push('.step-split { display: grid; grid-template-columns: minmax(0, 11fr) minmax(0, 9fr); gap: 24px; align-items: start; margin: 16px 0 20px; }');
+    rules.push('.step-split .shot { margin: 0; }');
+    rules.push('.step-split .desc { margin: 0; }');
+    rules.push('@media (max-width: 720px) { .step-split { grid-template-columns: minmax(0, 1fr); } }');
+  }
+  return rules.length ? `${rules.join('\n')}\n` : '';
 }
 
 const RICH_CSS = `

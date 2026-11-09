@@ -10,7 +10,7 @@ const { htmlToBlocks } = require('../core/htmlblocks');
 const { standardTextWidth } = require('../core/pdf-metrics');
 const { highlightCode } = require('../core/code-highlight');
 const { guideMetaLines } = require('./document-layout');
-const { withBrand, brandRaster, fitSize, fontKind, textOn, hexToRgb } = require('./branding');
+const { withBrand, brandRaster, fitSize, fontKind, textOn, hexToRgb, screenshotOptions } = require('./branding');
 
 const LIST_INDENT = 14;
 const QUOTE_INDENT = 10;
@@ -320,6 +320,12 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
   const usableW = size.width - 2 * M;
   const usableH = size.height - 2 * M;
   const images = tpl.includeImages ? renderAllImages(ast) : new Map();
+  // Side by side: the screenshot takes the left 55%, the description the rest.
+  const shots = screenshotOptions(ast);
+  const SPLIT_GAP = 16;
+  const splitImageW = Math.round(usableW * 0.55);
+  const splitTextIndent = splitImageW + SPLIT_GAP;
+  const sideBySide = (step) => shots.layout === 'side-by-side' && Boolean(step.descriptionHtml) && images.has(step.stepId);
 
   let y = M;
   // Never start a page break when already at the top of a page — an item
@@ -403,19 +409,20 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
   };
 
   /** Height an image will occupy on the page, including its trailing gap. */
-  const measureImage = (key) => {
-    const box = imageBox(images.get(key), key);
+  const measureImage = (key, maxW = usableW) => {
+    const box = imageBox(images.get(key), key, maxW);
     return box ? box.h + 10 : 0;
   };
 
   /**
-   * The size an image is drawn at: page width, capped by the height ratio.
-   * A flowchart block (drawn at 2x) is never shown larger than its own size.
+   * The size an image is drawn at: the width it has (the page, or its
+   * column), capped by the height ratio. A flowchart block (drawn at 2x) is
+   * never shown larger than its own size.
    */
-  function imageBox(img, key) {
+  function imageBox(img, key, maxW = usableW) {
     if (!img) return null;
     const maxH = usableH * tpl.imageMaxHeightRatio;
-    let w = String(key).startsWith('flowchart:') ? Math.min(usableW, img.width * 0.375) : usableW;
+    let w = String(key).startsWith('flowchart:') ? Math.min(maxW, img.width * 0.375) : maxW;
     let h = (img.height / img.width) * w;
     if (h > maxH) { h = maxH; w = (img.width / img.height) * h; }
     return { w, h };
@@ -490,8 +497,13 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
     for (const tb of [...beforeTitle, ...afterTitle, ...beforeDescription, ...afterDescription, ...beforeImage, ...afterImage]) {
       head += tb.kind === 'flowchart' ? measureImage(flowchartImageKey(step.stepId)) : measureBlock(tb);
     }
-    if (step.descriptionHtml) head += layoutDescription(pdf, step.descriptionHtml, usableW, 10.5, bodyFonts).height;
-    head += measureImage(step.stepId);
+    if (sideBySide(step)) {
+      head += Math.max(measureImage(step.stepId, splitImageW),
+        layoutDescription(pdf, step.descriptionHtml, usableW - splitTextIndent, 10.5, bodyFonts).height + 10);
+    } else {
+      if (step.descriptionHtml) head += layoutDescription(pdf, step.descriptionHtml, usableW, 10.5, bodyFonts).height;
+      head += measureImage(step.stepId);
+    }
 
     let restHeight = 0;
     for (const block of rest) {
@@ -628,17 +640,22 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
       afterImage,
       rest,
     } = stepContentGroups(step);
-    const drawImage = (key) => {
+    // An image in a space `width` wide starting at `left`, placed by the
+    // brand's alignment; screenshots get the brand's border.
+    const drawImage = (key, { left = M, width = usableW } = {}) => {
       const img = images.get(key);
-      const box = imageBox(img, key);
+      const box = imageBox(img, key, width);
       if (!box) return;
       ensure(box.h + 6);
-      pdf.image(img, M, y, box.w, box.h);
+      const free = width - box.w;
+      const x = left + (shots.align === 'center' ? free / 2 : shots.align === 'right' ? free : 0);
+      pdf.image(img, x, y, box.w, box.h);
+      if (shots.border && key === step.stepId) pdf.rect(x, y, box.w, box.h, { stroke: hexToRgb(shots.borderColor), lineWidth: 0.75 });
       // A flowchart's shapes linked to a step jump to it.
       const chart = key === step.stepId ? (step.image?.flowchart ? step.image : null) : step.flowchartImage;
       for (const link of chart?.links || []) {
         const target = tocTargets.get(link.stepId);
-        if (target) pdf.linkRect(M + link.x * box.w, y + link.y * box.h, link.w * box.w, link.h * box.h, target);
+        if (target) pdf.linkRect(x + link.x * box.w, y + link.y * box.h, link.w * box.w, link.h * box.h, target);
       }
       y += box.h + 10;
     };
@@ -651,12 +668,29 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
     y += 8;
 
     for (const tb of afterTitle) emit(tb);
-    for (const tb of beforeDescription) emit(tb);
-    if (step.descriptionHtml) writeDescription(step.descriptionHtml);
-    for (const tb of afterDescription) emit(tb);
-    for (const tb of beforeImage) emit(tb);
-    drawImage(step.stepId);
-    for (const tb of afterImage) emit(tb);
+    if (sideBySide(step)) {
+      // The blocks placed between them go first, then screenshot | description.
+      for (const tb of beforeDescription) emit(tb);
+      for (const tb of beforeImage) emit(tb);
+      ensure(measureImage(step.stepId, splitImageW)); // any page break comes before both columns
+      const top = y;
+      const page = pdf.pages.length;
+      drawImage(step.stepId, { width: splitImageW });
+      const imageBottom = y;
+      y = top;
+      writeDescription(step.descriptionHtml, { indent: splitTextIndent });
+      // A description longer than a page ends below the image anyway.
+      y = pdf.pages.length === page ? Math.max(imageBottom, y + 10) : y + 10;
+      for (const tb of afterDescription) emit(tb);
+      for (const tb of afterImage) emit(tb);
+    } else {
+      for (const tb of beforeDescription) emit(tb);
+      if (step.descriptionHtml) writeDescription(step.descriptionHtml);
+      for (const tb of afterDescription) emit(tb);
+      for (const tb of beforeImage) emit(tb);
+      drawImage(step.stepId);
+      for (const tb of afterImage) emit(tb);
+    }
 
     for (const block of rest) {
       if (block.kind === 'text') {

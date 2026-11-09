@@ -53,10 +53,10 @@ there, or one saved in an export template, takes their place.
 
 | Export | What it gets |
 | --- | --- |
-| HTML (simple and rich) | Logo, banner, header text, colors, fonts (uploaded font files are built in), cover style, footer text and your [Advanced CSS](#advanced-css) |
+| HTML (simple and rich) | Logo, banner, header text, colors, fonts (uploaded font files are built in), cover style, footer text, [screenshot options](#screenshots) and your [Advanced CSS](#advanced-css) |
 | GitHub Pages | Everything the HTML exports get |
-| PDF | Logo and banner on the cover in its style, colors, the closest built-in fonts, a header (logo and text) and footer (text and "Page 2 of 9") on every page after the cover |
-| Word | Normal and Heading styles in your fonts and colors, logo and banner on the cover, a header and footer with page numbers on every page after the cover |
+| PDF | Logo and banner on the cover in its style, colors, the closest built-in fonts, a header (logo and text) and footer (text and "Page 2 of 9") on every page after the cover, and [screenshot options](#screenshots) |
+| Word | Normal and Heading styles in your fonts and colors, logo and banner on the cover, a header and footer with page numbers on every page after the cover, and [screenshot options](#screenshots) |
 | PowerPoint | A theme with your colors and fonts, a title slide in your cover style, and the logo, footer text and slide numbers on every slide after it |
 | Wiki.js, Confluence | Logo, banner, header and footer text. Publishing uploads the images too |
 | Markdown | Logo, banner, header and footer text, and the color of the accent line |
@@ -75,6 +75,23 @@ A few things to know:
   PowerPoint can still change them later.
 - A watermark picked in the Export dialog (image bundle) replaces the
   profile's.
+
+## Screenshots
+
+The **Screenshots** card sets how PDF, Word and HTML exports (and GitHub
+Pages) place each step's screenshot. Every option starts at what exports
+always did.
+
+- **Alignment**: **Left**, **Center** or **Right**. It moves screenshots and
+  flowcharts that are narrower than the page, such as a tall screenshot in a
+  PDF or one smaller than the **Screenshot width** in Word.
+- **Border around screenshots**: a thin line in the **Border color** around
+  each screenshot. HTML pages always draw a light border; this sets its color.
+- **Step layout**: **Stacked** puts the screenshot under the step's text.
+  **Side by side** puts the screenshot on the left and the description on the
+  right (55% and 45% of the width). Callouts placed between them come first,
+  above both columns. Steps without a description or a screenshot stay
+  stacked. HTML pages go back to one column on narrow screens.
 
 ## Advanced CSS
 

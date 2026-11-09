@@ -1,13 +1,16 @@
 'use strict';
 
 /**
- * Just enough TrueType to embed system fonts in PDFs: read a .ttf or one face
- * of a .ttc, map characters to glyphs, report advance widths and metrics, and
- * write a subset holding only the glyphs a document uses. Glyph ids are kept
- * (unused glyphs become empty), so a PDF can address glyphs by their original
- * id through CIDToGIDMap /Identity. Only glyf-outline fonts are supported;
- * CFF ("OTTO") fonts are rejected.
+ * Just enough TrueType to use system fonts: read a .ttf or one face of a
+ * .ttc, map characters to glyphs, report advance widths and metrics, read
+ * glyph outlines (for drawing text into screenshots), and write a subset
+ * holding only the glyphs a PDF uses. Glyph ids are kept (unused glyphs become
+ * empty), so a PDF can address glyphs by their original id through
+ * CIDToGIDMap /Identity. CFF ("OTTO") fonts are rejected unless `cff: true`
+ * is passed; they can then be drawn from (core/cff.js) but not subset.
  */
+
+const { CffOutlines } = require('./cff');
 
 const TTC_TAG = 0x74746366; // 'ttcf'
 const TRUETYPE_VERSIONS = new Set([0x00010000, 0x74727565]); // 1.0, 'true'
@@ -16,10 +19,12 @@ const SUBSET_TABLES = ['cvt ', 'fpgm', 'glyf', 'head', 'hhea', 'hmtx', 'loca', '
 
 const tagAt = (buf, at) => buf.toString('latin1', at, at + 4);
 
-function tableDirectory(buf, at) {
+const OTTO = 0x4f54544f; // 'OTTO', OpenType with CFF outlines
+
+function tableDirectory(buf, at, cff) {
   const version = buf.readUInt32BE(at);
-  if (version === 0x4f54544f) throw new Error('CFF (OpenType) outlines are not supported');
-  if (!TRUETYPE_VERSIONS.has(version)) throw new Error('not a TrueType font');
+  if (version === OTTO && !cff) throw new Error('CFF (OpenType) outlines are not supported');
+  if (version !== OTTO && !TRUETYPE_VERSIONS.has(version)) throw new Error('not a TrueType font');
   const tables = {};
   const count = buf.readUInt16BE(at + 4);
   for (let i = 0; i < count; i++) {
@@ -29,7 +34,8 @@ function tableDirectory(buf, at) {
     if (offset + length > buf.length) throw new Error('font table runs past the end of the file');
     tables[tagAt(buf, rec)] = { offset, length };
   }
-  for (const tag of ['glyf', 'head', 'hhea', 'hmtx', 'loca', 'maxp']) {
+  const outlines = version === OTTO ? ['CFF '] : ['glyf', 'loca'];
+  for (const tag of [...outlines, 'head', 'hhea', 'hmtx', 'maxp']) {
     if (!tables[tag]) throw new Error(`font has no ${tag} table`);
   }
   return tables;
@@ -109,8 +115,11 @@ function readPostScriptName(buf, name) {
 }
 
 class TrueTypeFont {
-  /** @param {Buffer} buf a .ttf, or a .ttc with `index` choosing the face. */
-  constructor(buf, index = 0) {
+  /**
+   * @param {Buffer} buf a .ttf, or a .ttc with `index` choosing the face.
+   * @param {{ cff?: boolean }} [options] cff: also accept CFF-outline fonts.
+   */
+  constructor(buf, index = 0, { cff = false } = {}) {
     let at = 0;
     if (buf.readUInt32BE(0) === TTC_TAG) {
       const faces = buf.readUInt32BE(8);
@@ -118,7 +127,8 @@ class TrueTypeFont {
       at = buf.readUInt32BE(12 + index * 4);
     }
     this.buf = buf;
-    this.tables = tableDirectory(buf, at);
+    this.tables = tableDirectory(buf, at, cff);
+    this.cff = this.tables['CFF '] && !this.tables.glyf ? new CffOutlines(buf, this.tables['CFF '].offset) : null;
     const head = this.tables.head.offset;
     this.unitsPerEm = buf.readUInt16BE(head + 18);
     this.bbox = [0, 2, 4, 6].map((d) => buf.readInt16BE(head + 36 + d));
@@ -157,6 +167,77 @@ class TrueTypeFont {
     return [glyf + start, glyf + Math.max(start, end)];
   }
 
+  /**
+   * A glyph's outline in font units (y up), as path commands: ['M', x, y],
+   * ['L', x, y], ['Q', cx, cy, x, y] and ['C', c1x, c1y, c2x, c2y, x, y].
+   * Each 'M' starts a new closed contour.
+   */
+  outline(glyph, depth = 0) {
+    if (this.cff) return this.cff.outline(glyph);
+    if (glyph >= this.glyphCount || depth > 8) return [];
+    const [start, end] = this.glyphRange(glyph);
+    if (end - start < 10) return [];
+    const buf = this.buf;
+    const contours = buf.readInt16BE(start);
+    if (contours < 0) return this.compositeOutline(start, depth);
+    const ends = [];
+    for (let i = 0; i < contours; i++) ends.push(buf.readUInt16BE(start + 10 + i * 2));
+    const count = contours ? ends[contours - 1] + 1 : 0;
+    let at = start + 10 + contours * 2;
+    at += 2 + buf.readUInt16BE(at); // skip hinting instructions
+    const flags = new Uint8Array(count);
+    for (let i = 0; i < count;) {
+      const flag = buf[at++];
+      flags[i++] = flag;
+      if (flag & 0x8) for (let repeat = buf[at++]; repeat > 0 && i < count; repeat--) flags[i++] = flag;
+    }
+    const coords = (short, same) => {
+      const out = new Array(count);
+      let v = 0;
+      for (let i = 0; i < count; i++) {
+        if (flags[i] & short) { const d = buf[at++]; v += flags[i] & same ? d : -d; }
+        else if (!(flags[i] & same)) { v += buf.readInt16BE(at); at += 2; }
+        out[i] = v;
+      }
+      return out;
+    };
+    const xs = coords(0x2, 0x10);
+    const ys = coords(0x4, 0x20);
+    const path = [];
+    let first = 0;
+    for (const last of ends) {
+      quadraticContour(path, xs, ys, flags, first, last);
+      first = last + 1;
+    }
+    return path;
+  }
+
+  compositeOutline(start, depth) {
+    const buf = this.buf;
+    const path = [];
+    let at = start + 10;
+    for (;;) {
+      const flags = buf.readUInt16BE(at);
+      const glyph = buf.readUInt16BE(at + 2);
+      at += 4;
+      let dx = 0, dy = 0;
+      if (flags & 0x1) { dx = buf.readInt16BE(at); dy = buf.readInt16BE(at + 2); at += 4; }
+      else { dx = buf.readInt8(at); dy = buf.readInt8(at + 1); at += 2; }
+      if (!(flags & 0x2)) { dx = 0; dy = 0; } // point-matched placement: rare, drawn unshifted
+      const f2dot14 = (o) => buf.readInt16BE(o) / 16384;
+      let a = 1, b = 0, c = 0, d = 1;
+      if (flags & 0x8) { a = d = f2dot14(at); at += 2; }
+      else if (flags & 0x40) { a = f2dot14(at); d = f2dot14(at + 2); at += 4; }
+      else if (flags & 0x80) { a = f2dot14(at); b = f2dot14(at + 2); c = f2dot14(at + 4); d = f2dot14(at + 6); at += 8; }
+      for (const [op, ...pts] of this.outline(glyph, depth + 1)) {
+        const moved = [];
+        for (let i = 0; i < pts.length; i += 2) moved.push(a * pts[i] + c * pts[i + 1] + dx, b * pts[i] + d * pts[i + 1] + dy);
+        path.push([op, ...moved]);
+      }
+      if (!(flags & 0x20)) return path;
+    }
+  }
+
   /** Glyphs a composite glyph is built from (they must be embedded too). */
   components(glyph) {
     const [start, end] = this.glyphRange(glyph);
@@ -179,6 +260,7 @@ class TrueTypeFont {
    * they reference); every other glyph id stays valid but empty.
    */
   subset(glyphs) {
+    if (this.cff) throw new Error('CFF fonts cannot be subset');
     const keep = new Set([0]);
     const queue = [...glyphs];
     while (queue.length) {
@@ -209,6 +291,29 @@ class TrueTypeFont {
     for (const tag of ['cvt ', 'fpgm', 'prep']) if (this.tables[tag]) data[tag] = copy(tag);
     return writeFont(data);
   }
+}
+
+/** One TrueType contour (on- and off-curve points) as M/L/Q commands. */
+function quadraticContour(path, xs, ys, flags, first, last) {
+  if (last < first) return;
+  const on = (i) => flags[i] & 1;
+  const mid = (i, j) => [(xs[i] + xs[j]) / 2, (ys[i] + ys[j]) / 2];
+  let from = first, to = last, start;
+  if (on(first)) { start = [xs[first], ys[first]]; from = first + 1; }
+  else if (on(last)) { start = [xs[last], ys[last]]; to = last - 1; }
+  else start = mid(first, last);
+  path.push(['M', ...start]);
+  let ctrl = null;
+  for (let i = from; i <= to; i++) {
+    if (on(i)) {
+      path.push(ctrl ? ['Q', ...ctrl, xs[i], ys[i]] : ['L', xs[i], ys[i]]);
+      ctrl = null;
+    } else {
+      if (ctrl) path.push(['Q', ...ctrl, (ctrl[0] + xs[i]) / 2, (ctrl[1] + ys[i]) / 2]);
+      ctrl = [xs[i], ys[i]];
+    }
+  }
+  path.push(ctrl ? ['Q', ...ctrl, ...start] : ['L', ...start]);
 }
 
 function checksum(buf) {

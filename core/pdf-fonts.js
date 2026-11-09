@@ -6,10 +6,11 @@ const { execFileSync } = require('node:child_process');
 const { TrueTypeFont } = require('./ttf');
 
 /**
- * Installed fonts for PDF text the built-in PDF fonts can't show (anything
- * outside WinAnsiEncoding). Candidates are tried in order and only loaded
- * when an earlier one lacks a character, so a Western guide reads no font
- * files at all.
+ * Installed fonts for text the built-in fonts can't show: PDF text outside
+ * WinAnsiEncoding, and annotation text outside the Lato atlas that is drawn
+ * into screenshots (core/text-raster.js). Candidates are tried in order and
+ * only loaded when an earlier one lacks a character, so a Western guide reads
+ * no font files at all.
  */
 
 // Windows font files as [regular, bold] pairs, grouped by script. Every file
@@ -21,6 +22,8 @@ const WINDOWS_FONTS = {
   ko: [['malgun.ttf', 'malgunbd.ttf'], ['gulim.ttc', null]],
   other: [['LeelawUI.ttf', 'LeelaUIb.ttf'], ['Nirmala.ttc', null], ['Nirmala.ttf', 'NirmalaB.ttf'], ['seguisym.ttf', null]],
 };
+
+const loadFont = (face, options) => new TrueTypeFont(fs.readFileSync(face.file), face.index, options);
 
 const HAN_ORDER = { zh: ['zh', 'ja', 'ko'], ja: ['ja', 'zh', 'ko'], ko: ['ko', 'zh', 'ja'] };
 
@@ -55,35 +58,41 @@ function windowsCandidates(env, prefer) {
 
 const FC_LANG = { zh: 'zh-cn', ja: 'ja', ko: 'ko' };
 
-/** fontconfig's fallback list for a pattern: TrueType faces, best match first. */
-function fcMatch(pattern, run) {
+/**
+ * fontconfig's fallback list for a pattern, best match first: TrueType faces,
+ * plus CFF ones when `cff` (they can be drawn but not embedded in a PDF).
+ */
+function fcMatch(pattern, run, cff) {
   try {
     const out = run('fc-match', ['-s', '-f', '%{file}\t%{index}\t%{fontformat}\n', pattern], { encoding: 'utf8', timeout: 5000 });
     return out.split('\n').map((line) => line.split('\t'))
-      .filter(([file, , format]) => file && format === 'TrueType')
+      .filter(([file, , format]) => file && (format === 'TrueType' || (cff && format === 'CFF')))
       .map(([file, index]) => ({ file, index: Number(index) || 0 }));
   } catch {
     return [];
   }
 }
 
-function linuxCandidates(prefer, run) {
+function linuxCandidates(prefer, run, cff) {
   // Western sans first (Latin, Cyrillic, Greek), then fonts for the guide's
   // East Asian language. fc-match -s lists every installed font, so keep the
   // first few dozen: past that a font rarely adds coverage.
   const seen = new Set();
   const unique = (list) => list.filter(({ file, index }) => !seen.has(`${file}#${index}`) && seen.add(`${file}#${index}`));
-  const regular = unique([...fcMatch('sans-serif', run).slice(0, 4), ...fcMatch(`sans-serif:lang=${FC_LANG[prefer]}`, run)]).slice(0, 40);
+  const regular = unique([...fcMatch('sans-serif', run, cff).slice(0, 4), ...fcMatch(`sans-serif:lang=${FC_LANG[prefer]}`, run, cff)]).slice(0, 40);
   seen.clear();
-  const bold = unique([...fcMatch('sans-serif:weight=bold', run).slice(0, 4), ...fcMatch(`sans-serif:weight=bold:lang=${FC_LANG[prefer]}`, run)]).slice(0, 40);
+  const bold = unique([...fcMatch('sans-serif:weight=bold', run, cff).slice(0, 4), ...fcMatch(`sans-serif:weight=bold:lang=${FC_LANG[prefer]}`, run, cff)]).slice(0, 40);
   return [...regular.map((face) => ({ regular: face, bold: null })), ...bold.map((face) => ({ regular: null, bold: face }))];
 }
 
-/** Installed fonts to try, in order, as { regular, bold } face pairs. */
-function systemFontCandidates({ text = '', platform = process.platform, env = process.env, run = execFileSync } = {}) {
+/**
+ * Installed fonts to try, in order, as { regular, bold } face pairs. `cff`
+ * also lists CFF-outline fonts (most Linux CJK fonts), for drawing only.
+ */
+function systemFontCandidates({ text = '', platform = process.platform, env = process.env, run = execFileSync, cff = false } = {}) {
   const prefer = hanPreference(text);
   if (platform === 'win32') return windowsCandidates(env, prefer);
-  if (platform === 'linux') return linuxCandidates(prefer, run);
+  if (platform === 'linux') return linuxCandidates(prefer, run, cff);
   return [];
 }
 
@@ -94,7 +103,7 @@ function systemFontCandidates({ text = '', platform = process.platform, env = pr
  * one, called only when the first such character turns up.
  */
 class FallbackFonts {
-  constructor(candidates, { load = (face) => new TrueTypeFont(fs.readFileSync(face.file), face.index) } = {}) {
+  constructor(candidates, { load = loadFont } = {}) {
     this.pending = typeof candidates === 'function' ? candidates : null;
     this.candidates = this.pending ? [] : candidates;
     this.load = load;
@@ -131,4 +140,4 @@ class FallbackFonts {
   }
 }
 
-module.exports = { FallbackFonts, systemFontCandidates, hanPreference };
+module.exports = { FallbackFonts, systemFontCandidates, hanPreference, loadFont };

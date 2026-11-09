@@ -18,19 +18,23 @@ const { LANGUAGES } = require('../core/i18n');
 const LOCALES = require('../core/locales');
 
 const ROOT = path.resolve(__dirname, '..');
-const SOURCES = ['app/main.js', 'app/platform/linux/portal-errors.js', 'app/platform/linux/portal-backend.js', ...fs.readdirSync(path.join(ROOT, 'app/renderer'))
-  .filter((name) => name.endsWith('.js')).map((name) => `app/renderer/${name}`)];
+const jsFiles = (dir) => fs.readdirSync(path.join(ROOT, dir)).filter((name) => name.endsWith('.js')).map((name) => `${dir}/${name}`);
+// The interface, plus the text StepForge writes into exported guides (core/export-text.js).
+const SOURCES = ['app/main.js', 'app/platform/linux/portal-errors.js', 'app/platform/linux/portal-backend.js', ...jsFiles('app/renderer'),
+  ...jsFiles('exporters'), 'core/renderast.js', 'core/pages-site.js'];
 
 const LITERAL = String.raw`'((?:[^'\\\n]|\\.)*)'`;
 const CALLS = [
   { re: new RegExp(String.raw`(?<![\w.])t\(\s*${LITERAL}`, 'g'), plural: false },
   { re: new RegExp(String.raw`(?<![\w.])tn\([^,]+,\s*${LITERAL},\s*${LITERAL}`, 'g'), plural: true },
+  // tc('context', 'text'): the catalog key is "context|text".
+  { re: new RegExp(String.raw`(?<![\w.])tc\(\s*${LITERAL},\s*${LITERAL}`, 'g'), plural: false, context: true },
 ];
 
 // Format names that stay as they are in every language.
 const EXPORT_NAMES = new Set(['Markdown', 'Wiki.js', 'Confluence', 'GitHub Markdown', 'JSON', 'PDF', 'GIF', 'DOCX', 'PPTX', 'px']);
 
-const unescape = (text) => text.replace(/\\(.)/g, '$1');
+const unescape = (text) => text.replace(/\\(.)/g, (whole, ch) => (ch === 'n' ? '\n' : ch));
 const placeholders = (text) => [...String(text).matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(',');
 
 /** Map of English text → { plural, singular?, where }. */
@@ -38,10 +42,10 @@ function findMessages() {
   const found = new Map();
   for (const file of SOURCES) {
     const source = fs.readFileSync(path.join(ROOT, file), 'utf8');
-    for (const { re, plural } of CALLS) {
+    for (const { re, plural, context } of CALLS) {
       for (const match of source.matchAll(re)) {
         const line = source.slice(0, match.index).split('\n').length;
-        const key = unescape(plural ? match[2] : match[1]);
+        const key = context ? `${unescape(match[1])}|${unescape(match[2])}` : unescape(plural ? match[2] : match[1]);
         if (!found.has(key)) found.set(key, { plural, singular: plural ? unescape(match[1]) : null, where: `${file}:${line}` });
       }
     }

@@ -16,6 +16,8 @@ const BRAND_FONT_SUGGESTIONS = [
 const BRAND_DEFAULT_COLORS = { primary: '#2563EB', accent: '#0EA5E9', text: '#18212B' };
 // Mirrors DEFAULT_ANNOTATION_COLORS in core/branding.js: StepForge's own, used until a profile turns its own on.
 const BRAND_DEFAULT_ANNOTATION_COLORS = { shapes: '#E5484D', numbers: '#1F6FEB', tooltips: '#111827' };
+// Mirrors normalizeProfile's screenshots defaults in core/branding.js.
+const BRAND_DEFAULT_SCREENSHOTS = { align: 'left', border: false, borderColor: '#D0D5DD', layout: 'stacked' };
 
 // Mirrors MAX_CSS_CHARS in core/branding.js (a unit test keeps the two in step).
 const BRAND_CSS_MAX_CHARS = 200000;
@@ -41,10 +43,10 @@ const BRAND_AI_REQUEST_MAX_CHARS = 500;
 
 // What a profile changes in each export (the issue's support table).
 const BRAND_SUPPORT = [
-  [t('HTML (simple and rich)'), t('Logo, banner, colors, fonts (uploaded fonts are embedded), cover style, footer text and your CSS.')],
+  [t('HTML (simple and rich)'), t('Logo, banner, colors, fonts (uploaded fonts are embedded), cover style, footer text, screenshot alignment, border and layout, and your CSS.')],
   ['GitHub Pages', t('Everything the HTML exports get.')],
-  ['PDF', t('Logo, banner, colors, the closest built-in fonts, cover style, page header and footer with page numbers.')],
-  ['Word', t('Styles with your fonts and colors, logo and banner on the cover, page header and footer with page numbers.')],
+  ['PDF', t('Logo, banner, colors, the closest built-in fonts, cover style, page header and footer with page numbers, and screenshot alignment, border and layout.')],
+  ['Word', t('Styles with your fonts and colors, logo and banner on the cover, page header and footer with page numbers, and screenshot alignment, border and layout.')],
   ['PowerPoint', t('A theme with your colors and fonts, a title slide in your cover style, logo, footer and slide numbers on every slide.')],
   ['Wiki.js', t('Logo, banner, header and footer text.')],
   ['Confluence', t('Logo, banner, header and footer text.')],
@@ -58,6 +60,17 @@ const BRAND_COVER_STYLES = [
   { value: 'standard', label: t('Standard') },
   { value: 'centered', label: t('Centered') },
   { value: 'band', label: t('Brand color band') },
+];
+
+const BRAND_IMAGE_ALIGNMENTS = [
+  { value: 'left', label: t('Left') },
+  { value: 'center', label: t('Center') },
+  { value: 'right', label: t('Right') },
+];
+
+const BRAND_STEP_LAYOUTS = [
+  { value: 'stacked', label: t('Stacked') },
+  { value: 'side-by-side', label: t('Side by side') },
 ];
 
 const BRAND_WATERMARK_POSITIONS = [
@@ -144,6 +157,13 @@ function brandThumb(asset, label) {
 }
 
 /** The read-only summary of a profile under the Active brand profile list. */
+/** "Centered · Border #D0D5DD · Side by side", or "Left · Stacked" for the defaults. */
+function screenshotSummary(shots = BRAND_DEFAULT_SCREENSHOTS) {
+  const align = BRAND_IMAGE_ALIGNMENTS.find((a) => a.value === shots.align)?.label || t('Left');
+  const layout = BRAND_STEP_LAYOUTS.find((l) => l.value === shots.layout)?.label || t('Stacked');
+  return [align, shots.border ? t('Border {color}', { color: shots.borderColor }) : '', layout].filter(Boolean).join(' · ');
+}
+
 function brandSummary(data) {
   if (!data) {
     return [el('p.setting-desc.brand-none', {},
@@ -177,6 +197,7 @@ function brandSummary(data) {
     el('dt', {}, t('Cover style')), el('dd', {}, cover),
     el('dt', {}, t('Header')), el('dd', {}, [profile.header.logo && profile.logo ? t('Logo') : '', profile.header.text].filter(Boolean).join(' · ') || t('None')),
     el('dt', {}, t('Footer')), el('dd', {}, [profile.footer.text, profile.footer.pageNumbers ? t('Page numbers') : ''].filter(Boolean).join(' · ') || t('None')),
+    el('dt', {}, t('Screenshots')), el('dd', {}, screenshotSummary(profile.screenshots)),
     el('dt', {}, t('Watermark')), el('dd', {}, profile.watermark.enabled ? t('Logo, {position}', { position: BRAND_WATERMARK_POSITIONS.find((p) => p.value === profile.watermark.position)?.label.toLowerCase() }) : t('Off')),
     el('dt', {}, t('Annotations')), el('dd', {}, profile.annotations?.custom
       ? t('Shapes {shapes} · Number badges {numbers} · Tooltips {tooltips}', profile.annotations)
@@ -357,6 +378,7 @@ function showBrandProfileEditor(api, data = null) {
       html: { css: '', colorScheme: 'light', ...(base?.html || {}) },
       watermark: { enabled: false, position: 'bottom-right', opacity: 0.6, ...(base?.watermark || {}) },
       annotations: { custom: false, ...BRAND_DEFAULT_ANNOTATION_COLORS, ...(base?.annotations || {}) },
+      screenshots: { ...BRAND_DEFAULT_SCREENSHOTS, ...(base?.screenshots || {}) },
     };
     // Errors from Preview and Save show in the footer beside those buttons.
     const footerStatus = el('span.brand-footer-status.error', { role: 'alert' });
@@ -535,6 +557,16 @@ function showBrandProfileEditor(api, data = null) {
     const opacityLabel = el('output', {}, `${Math.round(draft.watermark.opacity * 100)}%`);
     opacity.addEventListener('input', () => { draft.watermark.opacity = Number(opacity.value); opacityLabel.textContent = `${Math.round(draft.watermark.opacity * 100)}%`; });
 
+    // Screenshots: alignment, border and step layout in PDF, Word and HTML.
+    const imageAlign = brandSelect(draft.screenshots.align, BRAND_IMAGE_ALIGNMENTS, { 'aria-label': t('Screenshot alignment') });
+    imageAlign.addEventListener('change', () => { draft.screenshots.align = imageAlign.value; });
+    const stepLayout = brandSelect(draft.screenshots.layout, BRAND_STEP_LAYOUTS, { 'aria-label': t('Step layout') });
+    stepLayout.addEventListener('change', () => { draft.screenshots.layout = stepLayout.value; });
+    const borderOn = el('input', { type: 'checkbox', checked: draft.screenshots.border });
+    const borderColorRow = colorRow(draft.screenshots, 'borderColor', t('Border color'), t('A thin line around each screenshot.'));
+    borderColorRow.hidden = !draft.screenshots.border;
+    borderOn.addEventListener('change', () => { draft.screenshots.border = borderOn.checked; borderColorRow.hidden = !borderOn.checked; });
+
     // Advanced CSS
     const css = el('textarea.brand-css-input', { rows: 7, spellcheck: false, placeholder: '.doc-header { padding: 2rem; }\n.step-head h2 { color: var(--brand-primary); }', 'aria-label': t('Advanced CSS') });
     css.value = draft.html.css;
@@ -690,6 +722,11 @@ function showBrandProfileEditor(api, data = null) {
       settingsCard(t('Layout'),
         settingRow(t('Cover style'), t('The title page of PDF, Word and PowerPoint, the top of HTML pages and the GIF title card.'), cover),
         settingRow(t('HTML color scheme'), t('Brand colors are usually picked for light pages.'), scheme)),
+      settingsCard(t('Screenshots'),
+        settingRow(t('Alignment'), t('Where screenshots and flowcharts narrower than the page sit in PDF, Word and HTML.'), imageAlign),
+        settingRow(t('Border around screenshots'), t('Sets screenshots apart from the page in PDF, Word and HTML.'), makeSwitch(borderOn, t('Border around screenshots'))),
+        borderColorRow,
+        settingRow(t('Step layout'), t('Side by side puts each screenshot on the left and its description on the right in PDF, Word and HTML. Steps without a description stay stacked.'), stepLayout)),
       settingsCard(t('Header and footer'),
         settingRow(t('Header text'), t('Top of every PDF and Word page; under the logo in HTML and wiki pages.'), textInput(draft.header, 'text', t('Acme Corp · IT Service Desk'), 160)),
         settingRow(t('Logo in page header'), t('PDF and Word pages after the cover.'), toggle(draft.header, 'logo', t('Logo in page header'))),

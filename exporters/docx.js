@@ -9,7 +9,7 @@ const { guideSlug, renderAllImages, calloutLabel, stepContentGroups, codeBlockTe
 const { exportText } = require('../core/export-text');
 const { highlightCode } = require('../core/code-highlight');
 const { guideMetaLines, guideSummary, tocEntries } = require('./document-layout');
-const { fitSize, textOn } = require('./branding');
+const { fitSize, textOn, screenshotOptions } = require('./branding');
 
 /**
  * DOCX exporter: WordprocessingML built directly (no dependency), one
@@ -61,7 +61,8 @@ function run(text, { bold = false, size = 22, font = '', color = '' } = {}) {
   ).join('');
 }
 
-function drawing(relId, widthPx, heightPx, maxWidthTwips, alt, name = `Screenshot ${relId}`) {
+/** An inline picture; `border` is a hex color for a thin line around it. */
+function drawing(relId, widthPx, heightPx, maxWidthTwips, alt, name = `Screenshot ${relId}`, { border = '' } = {}) {
   // scale to maxWidth (twips -> px at 96dpi: twips/15)
   const maxWpx = maxWidthTwips / 15;
   let w = widthPx, h = heightPx;
@@ -75,7 +76,9 @@ function drawing(relId, widthPx, heightPx, maxWidthTwips, alt, name = `Screensho
     `<pic:nvPicPr><pic:cNvPr id="${relId}" name="img${relId}" descr="${escapeXml(alt)}"/><pic:cNvPicPr/></pic:nvPicPr>` +
     `<pic:blipFill><a:blip r:embed="rId${relId}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>` +
     `<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm>` +
-    `<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>` +
+    `<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>` +
+    (border ? `<a:ln w="9525"><a:solidFill><a:srgbClr val="${border.replace('#', '')}"/></a:solidFill></a:ln>` : '') +
+    '</pic:spPr>' +
     `</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`;
 }
 
@@ -162,6 +165,21 @@ function table(rows) {
     return `<w:tr>${cells.join('')}</w:tr>`;
   }).join('');
   return `<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/>${borders}</w:tblPr>${grid}${body}</w:tbl>`;
+}
+
+// Side by side: the screenshot's column and the description's, inside A4 margins.
+const SPLIT_IMAGE_TWIPS = 5300;
+const SPLIT_TEXT_TWIPS = 4338;
+
+/** A borderless two-column table: screenshot on the left, description on the right. */
+function splitTable(left, right) {
+  const none = ['top', 'left', 'bottom', 'right', 'insideH', 'insideV'].map((s) => `<w:${s} w:val="nil"/>`).join('');
+  const cell = (width, content, margin) => `<w:tc><w:tcPr><w:tcW w:w="${width}" w:type="dxa"/>`
+    + `<w:tcMar><w:${margin} w:w="180" w:type="dxa"/></w:tcMar></w:tcPr>${content}</w:tc>`;
+  return `<w:tbl><w:tblPr><w:tblW w:w="${SPLIT_IMAGE_TWIPS + SPLIT_TEXT_TWIPS}" w:type="dxa"/><w:tblLayout w:type="fixed"/>`
+    + `<w:tblBorders>${none}</w:tblBorders><w:tblCellMar><w:left w:w="0" w:type="dxa"/><w:right w:w="0" w:type="dxa"/></w:tblCellMar></w:tblPr>`
+    + `<w:tblGrid><w:gridCol w:w="${SPLIT_IMAGE_TWIPS}"/><w:gridCol w:w="${SPLIT_TEXT_TWIPS}"/></w:tblGrid>`
+    + `<w:tr><w:trPr><w:cantSplit/></w:trPr>${cell(SPLIT_IMAGE_TWIPS, left, 'right')}${cell(SPLIT_TEXT_TWIPS, right, 'left')}</w:tr></w:tbl>`;
 }
 
 function fontsXml(name) {
@@ -349,6 +367,10 @@ function exportDocx(ast, outDir, template = {}) {
     body.push(pageBreak());
   }
 
+  // The brand's screenshot alignment, border and step layout.
+  const shots = screenshotOptions(ast);
+  const alignProps = shots.align === 'left' ? '' : `<w:jc w:val="${shots.align}"/>`;
+
   const emitTextBlock = (tb) => {
     const style = LEVEL_STYLE[tb.level] || LEVEL_STYLE.info;
     const label = calloutLabel(tb, ast);
@@ -373,14 +395,14 @@ function exportDocx(ast, outDir, template = {}) {
       rest,
     } = stepContentGroups(step);
     // Text blocks and the flowchart block, at their positions.
-    const emit = (tb) => {
+    const emit = (tb, maxTwips = tpl.imageWidthTwips) => {
       if (tb.kind !== 'flowchart') { emitTextBlock(tb); return; }
       const chart = images.get(flowchartImageKey(step.stepId));
       if (!chart) return;
       const relId = imageRel(`flowchart${relCounter + 1}.png`, encodePng(chart));
       // Drawn at 2x: show it at its natural size, never wider than a screenshot.
-      const widthTwips = Math.min(tpl.imageWidthTwips, Math.round((chart.width / 2) * 15));
-      body.push(p(drawing(relId, chart.width, chart.height, widthTwips, flowchartAlt(step, ast))));
+      const widthTwips = Math.min(maxTwips, Math.round((chart.width / 2) * 15));
+      body.push(p(drawing(relId, chart.width, chart.height, widthTwips, flowchartAlt(step, ast)), alignProps));
       chartLinkParagraph(step.flowchartImage);
       stepImageCount += 1;
     };
@@ -392,20 +414,34 @@ function exportDocx(ast, outDir, template = {}) {
       headingParagraphProps(step.depth, step.forceNewPage)
     ));
     for (const tb of afterTitle) emit(tb);
-    for (const tb of beforeDescription) emit(tb);
-    if (step.descriptionText) body.push(p(run(step.descriptionText, { size: 20, color: ink })));
-    for (const tb of afterDescription) emit(tb);
-    for (const tb of beforeImage) emit(tb);
-
     const img = images.get(step.stepId);
-    if (img) {
+    const description = step.descriptionText ? p(run(step.descriptionText, { size: 20, color: ink })) : '';
+    const screenshot = (maxTwips) => {
       const relId = ++relCounter;
       const name = `image${relCounter}.png`;
       media.push({ name, data: encodePng(img) });
       rels.push(`<Relationship Id="rId${relId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${name}"/>`);
-      body.push(p(drawing(relId, img.width, img.height, tpl.imageWidthTwips, step.altText)));
-      if (step.image?.flowchart) chartLinkParagraph(step.image);
       stepImageCount += 1;
+      return p(drawing(relId, img.width, img.height, maxTwips, step.altText, undefined, { border: shots.border ? shots.borderColor : '' }), alignProps);
+    };
+    if (img && description && shots.layout === 'side-by-side') {
+      // Screenshot on the left, description on the right. Callouts keep their
+      // place: before the image above it, after the description under it.
+      for (const tb of beforeDescription) emit(tb);
+      const cell = (fill) => { const start = body.length; fill(); return body.splice(start).join(''); };
+      const left = cell(() => { for (const tb of beforeImage) emit(tb, SPLIT_IMAGE_TWIPS); body.push(screenshot(SPLIT_IMAGE_TWIPS)); });
+      const right = cell(() => { body.push(description); for (const tb of afterDescription) emit(tb, SPLIT_TEXT_TWIPS); });
+      body.push(splitTable(left, right));
+      if (step.image?.flowchart) chartLinkParagraph(step.image);
+    } else {
+      for (const tb of beforeDescription) emit(tb);
+      if (description) body.push(description);
+      for (const tb of afterDescription) emit(tb);
+      for (const tb of beforeImage) emit(tb);
+      if (img) {
+        body.push(screenshot(tpl.imageWidthTwips));
+        if (step.image?.flowchart) chartLinkParagraph(step.image);
+      }
     }
 
     for (const tb of afterImage) emit(tb);

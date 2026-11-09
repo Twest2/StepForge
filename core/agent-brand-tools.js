@@ -3,7 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const {
-  BrandingStore, normalizeProfile, checkFileSize, COVER_STYLES, WATERMARK_POSITIONS, COLOR_SCHEMES, MAX_CSS_CHARS,
+  BrandingStore, normalizeProfile, checkFileSize, COVER_STYLES, WATERMARK_POSITIONS, COLOR_SCHEMES, IMAGE_ALIGNMENTS, STEP_LAYOUTS, MAX_CSS_CHARS,
 } = require('./branding');
 const { STYLE_REFERENCE } = require('./ai-brand-css');
 const { Settings } = require('./settings');
@@ -71,6 +71,19 @@ const PROFILE_FIELDS = {
     },
     additionalProperties: false,
   },
+  screenshots: {
+    type: 'object',
+    description: 'How PDF, Word and HTML exports place step screenshots. align: left, center or right (also flowcharts). '
+      + 'border: a thin line around each screenshot, in border_color. layout: stacked (screenshot under the text) or '
+      + 'side-by-side (screenshot left, description right; steps without a description stay stacked).',
+    properties: {
+      align: { type: 'string', enum: IMAGE_ALIGNMENTS },
+      border: { type: 'boolean' },
+      border_color: colorSchema,
+      layout: { type: 'string', enum: STEP_LAYOUTS },
+    },
+    additionalProperties: false,
+  },
   annotation_colors: {
     type: 'object',
     description: 'Colors new annotations start in, used only when custom is true; otherwise StepForge\'s (red shapes, blue number badges, dark tooltips).',
@@ -121,6 +134,12 @@ function createBrandTools({ settingsDir, requireEnabled, agentSettings, onChange
     header: profile.header,
     footer: { text: profile.footer.text, page_numbers: profile.footer.pageNumbers },
     watermark: profile.watermark,
+    screenshots: {
+      align: profile.screenshots.align,
+      border: profile.screenshots.border,
+      border_color: profile.screenshots.borderColor,
+      layout: profile.screenshots.layout,
+    },
     annotation_colors: profile.annotations,
     css: profile.html.css,
     updated_at: profile.updatedAt,
@@ -178,6 +197,13 @@ function createBrandTools({ settingsDir, requireEnabled, agentSettings, onChange
         if (typeof opacity !== 'number' || !(opacity >= 0.05 && opacity <= 1)) fail('watermark.opacity must be a number from 0.05 to 1.');
         next.watermark.opacity = opacity;
       }
+    }
+    if (has(fields, 'screenshots')) {
+      const shots = object(fields.screenshots, 'screenshots', ['align', 'border', 'border_color', 'layout']);
+      if (has(shots, 'align')) next.screenshots.align = choice(shots.align, IMAGE_ALIGNMENTS, 'screenshots.align');
+      if (has(shots, 'border')) next.screenshots.border = bool(shots.border, 'screenshots.border');
+      if (has(shots, 'border_color')) next.screenshots.borderColor = color(shots.border_color, 'screenshots.border_color');
+      if (has(shots, 'layout')) next.screenshots.layout = choice(shots.layout, STEP_LAYOUTS, 'screenshots.layout');
     }
     if (has(fields, 'annotation_colors')) {
       const annotations = object(fields.annotation_colors, 'annotation_colors', ['custom', 'shapes', 'numbers', 'tooltips']);
@@ -270,7 +296,7 @@ function createBrandTools({ settingsDir, requireEnabled, agentSettings, onChange
     },
     {
       name: 'update_brand_profile',
-      description: 'Change a brand profile. Leave a field out to keep it; in colors, fonts, header, footer, watermark and annotation_colors, '
+      description: 'Change a brand profile. Leave a field out to keep it; in colors, fonts, header, footer, watermark, screenshots and annotation_colors, '
         + 'only the keys you send change.',
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
       inputSchema: {

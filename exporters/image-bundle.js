@@ -5,6 +5,7 @@ const path = require('node:path');
 const { fileNameSlug, htmlToText } = require('../core/util');
 const { guideSlug, renderAllImages } = require('./common');
 const { tocEntries, guideSummary } = require('./document-layout');
+const { exportText } = require('../core/export-text');
 const raster = require('../core/raster');
 const text = require('../core/text-raster');
 const { decodePng, encodePng } = require('../core/png');
@@ -40,7 +41,8 @@ function fileNumber(number) {
   return String(number).split('.').map((part, i) => (i === 0 ? part.padStart(2, '0') : part)).join('.');
 }
 
-function addCaption(img, step, accent, ink = [24, 33, 43, 255]) {
+function addCaption(img, step, accent, ink = [24, 33, 43, 255], ast = null) {
+  const { t } = exportText(ast);
   const W = img.width;
   const h = Math.round(Math.max(40, Math.min(96, W * 0.045)));
   const out = raster.createImage(W, img.height + h, [255, 255, 255, 255]);
@@ -56,7 +58,7 @@ function addCaption(img, step, accent, ink = [24, 33, 43, 255]) {
   text.drawTextCentered(out, pad + badgeW / 2, by + badgeH / 2, num, numSize, [255, 255, 255, 255], { weight: 'bold' });
   const size = Math.round(h * 0.36);
   const tx = pad + badgeW + Math.round(h * 0.28);
-  const title = text.fitText(step.title || 'Untitled step', size, W - tx - pad, { weight: 'bold' });
+  const title = text.fitText(step.title || t('Untitled step'), size, W - tx - pad, { weight: 'bold' });
   text.drawTextCentered(out, tx + text.lineWidth(title, size, 'bold') / 2, img.height + h / 2, title, size, ink, { weight: 'bold' });
   return out;
 }
@@ -85,7 +87,7 @@ function exportImageBundle(ast, outDir, template = {}) {
     let img = rendered.get(step.stepId);
     if (!img) continue;
     if (mark) overlayWatermark(img, mark, markStyle);
-    if (tpl.captions) img = addCaption(img, step, accent, ink);
+    if (tpl.captions) img = addCaption(img, step, accent, ink, ast);
     const fileName = `step-${fileNumber(step.number)}-${fileNameSlug(step.title || step.stepId, 'step')}.png`;
     fs.writeFileSync(path.join(folder, fileName), encodePng(img));
     files.set(step.stepId, { fileName, width: img.width, height: img.height });

@@ -927,7 +927,7 @@ function setupIpc() {
     steps: orderedSteps(guideId),
   }), { validate: (a) => c.id(a.guideId) });
   // What to fix before exporting or publishing (core/quality.js).
-  h('guide:quality', ({ guideId }) => runExportInWorker({ dataDir: store.root, guideId, task: 'quality',
+  h('guide:quality', ({ guideId }) => runExportInWorker({ language: uiLanguage(), dataDir: store.root, guideId, task: 'quality',
     globals: settings.getGlobalPlaceholders(), reviewDays: exportReviewDays(),
   }), { validate: (a) => c.id(a.guideId) });
   // An AI agent may have moved the guide to the Trash meanwhile; a late save
@@ -1312,7 +1312,7 @@ function setupIpc() {
       progress({ stage: 'check' });
       await redactor.checkGuide(guideId, { onProgress: ({ done, total }) => progress({ stage: 'check', done, total }) });
       progress({ stage: 'export' });
-      const result = await runExportInWorker({ dataDir: store.root, guideId, format: 'confluence',
+      const result = await runExportInWorker({ language: uiLanguage(), dataDir: store.root, guideId, format: 'confluence',
         options: { apiFiles: true, includeImages: true, toc: true }, outDir, globals: settings.getGlobalPlaceholders(), codeStyle: exportCodeStyle(), reviewDays: exportReviewDays(),
         branding: exportBranding() });
       return await confluence.publish({ guideId, space, parent, parentPicked, replace, onProgress: progress,
@@ -1334,7 +1334,7 @@ function setupIpc() {
   h('wikijs:defaults', async ({ guideId }) => {
     if (!store.guideExists(guideId)) throw new Error(t('Guide not found.'));
     // The title as exported, with placeholders filled in, names the page.
-    const title = await runExportInWorker({ dataDir: store.root, guideId, task: 'title', globals: settings.getGlobalPlaceholders() });
+    const title = await runExportInWorker({ language: uiLanguage(), dataDir: store.root, guideId, task: 'title', globals: settings.getGlobalPlaceholders() });
     return wikijs.defaultsFor(guideId, title);
   }, { validate: (a) => c.id(a.guideId) });
   h('wikijs:publish', async ({ guideId, path: pagePath, title, locale = 'en', replace = false }) => {
@@ -1354,7 +1354,7 @@ function setupIpc() {
       await redactor.checkGuide(guideId, { onProgress: ({ done, total }) => progress({ stage: 'check', done, total }) });
       progress({ stage: 'export' });
       const assetFolder = `/${target}`;
-      const result = await runExportInWorker({ dataDir: store.root, guideId, format: 'wikijs',
+      const result = await runExportInWorker({ language: uiLanguage(), dataDir: store.root, guideId, format: 'wikijs',
         options: { includeImages: true, toc: false, frontMatter: false, assetFolder }, outDir, globals: settings.getGlobalPlaceholders(), reviewDays: exportReviewDays(),
         branding: exportBranding() });
       return await wikijs.publish({ guideId, path: target, title, locale: language, description: result.description, replace, onProgress: progress,
@@ -1388,7 +1388,7 @@ function setupIpc() {
       onProgress: ({ done, total }) => progress({ stage: 'check', done, total }),
     });
     progress({ stage: 'build' });
-    const result = await runExportInWorker({ dataDir: store.root, guideId, format: 'clipboard', options: {},
+    const result = await runExportInWorker({ language: uiLanguage(), dataDir: store.root, guideId, format: 'clipboard', options: {},
       outDir: path.join(store.tempDir, `clipboard-${guideId}`), globals: settings.getGlobalPlaceholders(),
       codeStyle: exportCodeStyle(), reviewDays: exportReviewDays(), branding: exportBranding() });
     progress({ stage: 'copy' });
@@ -1413,7 +1413,7 @@ function setupIpc() {
         if (total) progress({ stage: 'export', detail: t('Checking screenshots for private details ({done} of {total})…', { done, total }) });
       } });
       progress({ stage: 'export' });
-      const result = await runExportInWorker({
+      const result = await runExportInWorker({ language: uiLanguage(),
         dataDir: store.root,
         guideId,
         format,
@@ -1785,7 +1785,7 @@ function setupIpc() {
       chosenOutputDirs.add(dir);
     }
     settings.set(`exports.lastOutputDirs.${format}`, dir);
-    const result = await runExportInWorker({
+    const result = await runExportInWorker({ language: uiLanguage(),
       dataDir: store.root,
       guideId,
       format,
@@ -1838,7 +1838,7 @@ function setupIpc() {
   h('export:preview', async ({ guideId, format, options, brandProfileId }) => {
     const previewDir = path.join(store.tempDir, `preview-${guideId}-${format}`);
     fs.rmSync(previewDir, { recursive: true, force: true });
-    const result = await runExportInWorker({ dataDir: store.root, guideId, format, outDir: previewDir, options: options || {},
+    const result = await runExportInWorker({ language: uiLanguage(), dataDir: store.root, guideId, format, outDir: previewDir, options: options || {},
       globals: settings.getGlobalPlaceholders(),
       maxSteps: settings.get('exports.previewStepCount') || 3,
       codeStyle: exportCodeStyle(), reviewDays: exportReviewDays(),
@@ -1923,6 +1923,7 @@ function setupIpc() {
       dir: path.join(previewDir, 'library'),
       branding: profile ? branding.resolveDraft(profile) : (id ? branding.resolve(id) : null),
       codeStyle: exportCodeStyle(), reviewDays: exportReviewDays(),
+      language: uiLanguage(),
     });
     const result = runExport(format, ast, path.join(previewDir, 'export'), {});
     const target = result.previewFile || result.file;
@@ -2136,6 +2137,7 @@ if (!gotLock) {
       openExternal: (url) => shell.openExternal(url),
       // The sign-in code is copied so it can be pasted on github.com.
       copyText: (text) => clipboard.writeText(text),
+      language: uiLanguage,
       onStatus: (status) => sendToRenderer('github:status', status) });
     cloudSync = new CloudSync({
       store, drive: activeCloud(),

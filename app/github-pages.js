@@ -90,6 +90,8 @@ class GitHubPages {
     wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     onStatus = () => {},
     copyText = null,
+    // The interface language, for the site's front page.
+    language = () => 'en',
   }) {
     this.file = path.join(directory, 'github.credentials');
     this.clientId = clientId;
@@ -102,6 +104,7 @@ class GitHubPages {
     this.wait = wait;
     this.onStatus = onStatus;
     this.copyText = copyText;
+    this.language = language;
 
     this.credentials = null;
     this.loadError = null;
@@ -729,7 +732,7 @@ class GitHubPages {
     const unchanged = current.head && !publish && !extend && !plan.removed.length && !remove
       && current.entries.size === tree.length + 2 && current.entries.has(site.ROOT_INDEX_PATH);
     if (unchanged) return { ...plan, changed: false };
-    tree.push({ path: site.ROOT_INDEX_PATH, mode: '100644', type: 'blob', sha: await this.blob(Buffer.from(site.ROOT_INDEX)) });
+    tree.push({ path: site.ROOT_INDEX_PATH, mode: '100644', type: 'blob', sha: await this.blob(Buffer.from(site.rootIndex(this.language()))) });
     tree.push({ path: site.MANIFEST_PATH, mode: '100644', type: 'blob', sha: await this.blob(Buffer.from(site.serializeManifest(plan.manifest))) });
     const createdTree = await this.api('POST', this.repoPath('/git/trees'), { tree });
     const message = publish ? 'Publish a StepForge guide' : extend ? 'Extend a shared StepForge guide' : remove ? 'Remove a StepForge guide' : 'Update shared StepForge guides';

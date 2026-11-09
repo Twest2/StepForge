@@ -5,7 +5,8 @@ const path = require('node:path');
 const { slugify, escapeXml, htmlToText, NAMED_ENTITIES } = require('../core/util');
 const { encodePng } = require('../core/png');
 const { guideSlug, renderAllImages, stepContentGroups, codeBlockText, flowchartImageKey, flowchartAlt, chartLinksHtml } = require('./common');
-const { anchorFor, guideMetaLines } = require('./document-layout');
+const { anchorFor, guideMetaLines, stepCount } = require('./document-layout');
+const { exportText } = require('../core/export-text');
 const { buildConfluenceWord } = require('./confluence-word');
 const { scaledPng } = require('./branding');
 
@@ -150,14 +151,15 @@ function renderStep(step, ast, attachmentNames, tpl) {
     const name = attachmentNames.get(flowchartImageKey(step.stepId));
     if (!name) return '';
     const links = chartLinksHtml(step.flowchartImage, ast);
-    return `<p><ac:image ac:alt="${escapeXml(flowchartAlt(step))}"><ri:attachment ri:filename="${escapeXml(name)}" /></ac:image></p>${links ? toStorage(links, ast) : ''}`;
+    return `<p><ac:image ac:alt="${escapeXml(flowchartAlt(step, ast))}"><ri:attachment ri:filename="${escapeXml(name)}" /></ac:image></p>${links ? toStorage(links, ast) : ''}`;
   };
   const panels = (list) => list.map((tb) => (tb.kind === 'flowchart' ? chart() : panel(tb, ast))).filter(Boolean);
   const out = [];
   out.push(...panels(groups.beforeTitle));
   const tag = step.depth > 0 ? 'h3' : 'h2';
-  out.push(`<${tag}>${macro('anchor', { '': anchorFor(step) })}${escapeXml(step.number)}. ${escapeXml(step.title || 'Untitled step')}</${tag}>`);
-  if (step.skipped) out.push(`<p>${macro('status', { colour: 'Yellow', title: 'Skipped' })}</p>`);
+  const { t } = exportText(ast);
+  out.push(`<${tag}>${macro('anchor', { '': anchorFor(step) })}${escapeXml(step.number)}. ${escapeXml(step.title || t('Untitled step'))}</${tag}>`);
+  if (step.skipped) out.push(`<p>${macro('status', { colour: 'Yellow', title: t('Skipped') })}</p>`);
   out.push(...panels(groups.afterTitle), ...panels(groups.beforeDescription));
   if (step.descriptionHtml) out.push(toStorage(step.descriptionHtml, ast));
   out.push(...panels(groups.afterDescription), ...panels(groups.beforeImage));
@@ -186,85 +188,80 @@ function renderStep(step, ast, attachmentNames, tpl) {
   return out.join('\n');
 }
 
-function importGuide(ast, wordFile, attachmentCount, apiFiles) {
-  const title = ast.guide.title || 'Untitled guide';
-  const web = `How to add "${title}" to Confluence
-${'='.repeat(title.length + 26)}
+/** A heading underlined with `mark` characters, as plain-text files do. */
+function textHeading(text, mark) {
+  return `${text}\n${mark.repeat(text.length)}`;
+}
 
-Import this Word document from your browser:
+/**
+ * HOW-TO-IMPORT.txt: how to bring the Word file (and, with `apiFiles`, the
+ * REST API files) into Confluence, in the export's language.
+ */
+function importGuide(ast, wordFile, attachmentCount, apiFiles) {
+  const { t, tn } = exportText(ast);
+  const title = ast.guide.title || t('Untitled guide');
+  const fields = [
+    [t('Root page title:'), title],
+    [t('Where to import:'), t('Import as a new page in the current space')],
+    [t('Split by heading:'), t('Don\'t split')],
+  ];
+  const labelWidth = Math.max(...fields.map(([label]) => label.length));
+  const web = `${textHeading(t('How to add "{title}" to Confluence', { title }), '=')}
+
+${t('Import this Word document from your browser:')}
 
   ${wordFile}
 
-No admin rights or API access needed, just permission to create pages in
-the space. The screenshots come in with the document.
+${t('No admin rights or API access needed, just permission to create pages in\nthe space. The screenshots come in with the document.')}
 
 
-Confluence Cloud (your-site.atlassian.net)
-------------------------------------------
+${textHeading(t('Confluence Cloud (your-site.atlassian.net)'), '-')}
 
-1. In the space, select + Create and choose Page to open a blank page.
-2. Next to Share, select More actions (...) > Templates and import.
-3. Open the Import tab and select Word document (.docx).
-4. Select "${wordFile}" and choose Open.
-5. When the import finishes, select Finish. The guide opens as a draft:
-   check the title and content, then Publish.
+${t('1. In the space, select + Create and choose Page to open a blank page.\n2. Next to Share, select More actions (...) > Templates and import.\n3. Open the Import tab and select Word document (.docx).\n4. Select "{file}" and choose Open.\n5. When the import finishes, select Finish. The guide opens as a draft:\n   check the title and content, then Publish.', { file: wordFile })}
 
 
-Confluence Data Center / Server
--------------------------------
+${textHeading(t('Confluence Data Center / Server'), '-')}
 
-1. Go to the page the guide should sit under, in view mode (not editing).
-2. Select More options (...) > Import Word Document.
-3. Choose File, pick "${wordFile}", and select Next.
-4. Set the options:
-     Root page title:  ${title}
-     Where to import:  Import as a new page in the current space
-     Split by heading: Don't split
-5. Select Import.
+${t('1. Go to the page the guide should sit under, in view mode (not editing).\n2. Select More options (...) > Import Word Document.\n3. Choose File, pick "{file}", and select Next.\n4. Set the options:', { file: wordFile })}
+${fields.map(([label, value]) => `     ${label.padEnd(labelWidth + 1)}${value}`).join('\n')}
+${t('5. Select Import.')}
 
 
-Tips
-----
+${textHeading(t('Tips'), '-')}
 
-- Re-importing creates a new page. To update an existing guide, import it
-  again and delete the old page, or copy the new content across.
+${t('- Re-importing creates a new page. To update an existing guide, import it\n  again and delete the old page, or copy the new content across.')}
 `;
   if (!apiFiles) return web;
   return `${web}
 
-Optional: publish with the REST API
------------------------------------
+${textHeading(t('Optional: publish with the REST API'), '-')}
 
-rest-api/ holds the same page for scripts and admins with API access:
+${t('rest-api/ holds the same page for scripts and admins with API access:')}
 
-  page.xhtml             The page body, in Confluence storage format.
-  page-cloud.json        The page as a Confluence Cloud REST API request.
-  page-datacenter.json   The page as a Confluence Data Center REST API request.
-  attachments/           ${attachmentCount} screenshot${attachmentCount === 1 ? '' : 's'} the page shows.
+  page.xhtml             ${t('The page body, in Confluence storage format.')}
+  page-cloud.json        ${t('The page as a Confluence Cloud REST API request.')}
+  page-datacenter.json   ${t('The page as a Confluence Data Center REST API request.')}
+  attachments/           ${tn(attachmentCount, '{count} screenshot the page shows.', '{count} screenshots the page shows.')}
 
-Create the page first, then upload the files in attachments/ to it. The page
-refers to its screenshots by file name, so they appear as soon as they are
-uploaded. Run these from the rest-api folder in a bash shell with curl
-(macOS, Linux, or Git Bash / WSL on Windows).
+${t('Create the page first, then upload the files in attachments/ to it. The page\nrefers to its screenshots by file name, so they appear as soon as they are\nuploaded. Run these from the rest-api folder in a bash shell with curl\n(macOS, Linux, or Git Bash / WSL on Windows).')}
 
-Confluence Cloud: use your Atlassian email and an API token from
+${t('Confluence Cloud: use your Atlassian email and an API token from')}
 https://id.atlassian.com/manage-profile/security/api-tokens
 
-1. Find the ID of the space (KEY is the space key from its URL):
+${t('1. Find the ID of the space (KEY is the space key from its URL):')}
 
      curl -u you@example.com:API_TOKEN \\
        "https://YOUR-SITE.atlassian.net/wiki/api/v2/spaces?keys=KEY"
 
-2. In page-cloud.json, replace SPACE_ID with the "id" from that response.
-   To nest the page, also add  "parentId": "PARENT_PAGE_ID",  next to it.
+${t('2. In page-cloud.json, replace SPACE_ID with the "id" from that response.\n   To nest the page, also add  "parentId": "PARENT_PAGE_ID",  next to it.')}
 
-3. Create the page, then note the "id" in the response:
+${t('3. Create the page, then note the "id" in the response:')}
 
      curl -u you@example.com:API_TOKEN -H "Content-Type: application/json" \\
        -X POST -d @page-cloud.json \\
        https://YOUR-SITE.atlassian.net/wiki/api/v2/pages
 
-4. Upload the screenshots (replace PAGE_ID):
+${t('4. Upload the screenshots (replace PAGE_ID):')}
 
      for f in attachments/*.png; do
        curl -u you@example.com:API_TOKEN -H "X-Atlassian-Token: nocheck" \\
@@ -272,19 +269,17 @@ https://id.atlassian.com/manage-profile/security/api-tokens
          https://YOUR-SITE.atlassian.net/wiki/rest/api/content/PAGE_ID/child/attachment
      done
 
-Confluence Data Center: use a personal access token (Profile > Personal
-Access Tokens).
+${t('Confluence Data Center: use a personal access token (Profile > Personal\nAccess Tokens).')}
 
-1. In page-datacenter.json, replace SPACEKEY with the space key. To nest the
-   page, add  "ancestors": [{"id": "PARENT_PAGE_ID"}],  next to "space".
+${t('1. In page-datacenter.json, replace SPACEKEY with the space key. To nest the\n   page, add  "ancestors": [{"id": "PARENT_PAGE_ID"}],  next to "space".')}
 
-2. Create the page, then note the "id" in the response:
+${t('2. Create the page, then note the "id" in the response:')}
 
      curl -H "Authorization: Bearer TOKEN" -H "Content-Type: application/json" \\
        -X POST -d @page-datacenter.json \\
        https://YOUR-CONFLUENCE/rest/api/content
 
-3. Upload the screenshots (replace PAGE_ID):
+${t('3. Upload the screenshots (replace PAGE_ID):')}
 
      for f in attachments/*.png; do
        curl -H "Authorization: Bearer TOKEN" -H "X-Atlassian-Token: nocheck" \\
@@ -333,19 +328,20 @@ function writeApiFiles(ast, dir, images, tpl) {
     return `<p><ac:image${align}${attrs(png)}><ri:attachment ri:filename="${name}" /></ac:image></p>`;
   };
   const count = ast.steps.length;
+  const { t } = exportText(ast);
   const intro = [
-    brandImage(brand?.banner, 'brand-banner.png', 1600, 480, () => ` ac:width="${Math.max(100, Math.round(Number(tpl.imageWidth) || DEFAULT_TEMPLATE.imageWidth))}" ac:alt="Banner"`),
-    brandImage(brand?.logo, 'brand-logo.png', 480, 96, (png) => ` ac:height="${Math.min(48, png.height)}" ac:alt="Logo"`),
+    brandImage(brand?.banner, 'brand-banner.png', 1600, 480, () => ` ac:width="${Math.max(100, Math.round(Number(tpl.imageWidth) || DEFAULT_TEMPLATE.imageWidth))}" ac:alt="${escapeXml(t('Banner'))}"`),
+    brandImage(brand?.logo, 'brand-logo.png', 480, 96, (png) => ` ac:height="${Math.min(48, png.height)}" ac:alt="${escapeXml(t('Logo'))}"`),
     brand?.header.text ? `<p><em>${escapeXml(brand.header.text)}</em></p>` : '',
     ast.guide.descriptionHtml ? toStorage(ast.guide.descriptionHtml, ast) : '',
-    `<p><em>${escapeXml([`${count} step${count === 1 ? '' : 's'}`, ...guideMetaLines(ast)].join(' · '))}</em></p>`,
+    `<p><em>${escapeXml([stepCount(ast), ...guideMetaLines(ast)].join(' · '))}</em></p>`,
     tpl.toc && count > 1 ? macro('toc', { maxLevel: '3', style: 'none' }) : '',
   ].filter(Boolean);
   const outro = brand?.footer.text ? [`<p><em>${escapeXml(brand.footer.text)}</em></p>`] : [];
   const body = [...intro, ...ast.steps.map((step) => renderStep(step, ast, attachmentNames, tpl)), ...outro].join('\n');
 
   fs.writeFileSync(path.join(dir, 'page.xhtml'), `${body}\n`);
-  const title = ast.guide.title || 'Untitled guide';
+  const title = ast.guide.title || t('Untitled guide');
   fs.writeFileSync(path.join(dir, 'page-cloud.json'), `${JSON.stringify({
     spaceId: 'SPACE_ID',
     status: 'current',
@@ -383,4 +379,4 @@ function exportConfluence(ast, outDir, template = {}) {
   };
 }
 
-module.exports = { exportConfluence, DEFAULT_TEMPLATE, OPTION_INFO };
+module.exports = { exportConfluence, importGuide, DEFAULT_TEMPLATE, OPTION_INFO };

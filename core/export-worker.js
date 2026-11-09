@@ -17,12 +17,12 @@ const { stepNumberMap } = require('./step-outline');
 process.on('message', async (job) => {
   let payload;
   try {
-    const { dataDir, guideId, format, options, outDir, globals, maxSteps, codeStyle, reviewDays, branding, task = 'export' } = job;
+    const { dataDir, guideId, format, options, outDir, globals, maxSteps, codeStyle, reviewDays, branding, language, task = 'export' } = job;
     if (!['export', 'quality', 'title'].includes(task)) throw new Error('Unknown render task.');
     const store = new GuideStore(dataDir);
     // Decode stored screenshots in the worker through the shared codec.
     const images = task === 'export' ? await prepareExportImages(store, guideId, { maxSteps }) : null;
-    const ast = buildRenderAst(store, guideId, { globals, maxSteps, codeStyle, reviewDays, branding, images });
+    const ast = buildRenderAst(store, guideId, { globals, maxSteps, codeStyle, reviewDays, branding, images, language });
     let result;
     if (task === 'quality') {
       const steps = store.listSteps(guideId);

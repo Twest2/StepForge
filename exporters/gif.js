@@ -6,7 +6,8 @@ const { encodeGif } = require('../core/gif');
 const raster = require('../core/raster');
 const text = require('../core/text-raster');
 const { guideSlug, renderAllImages } = require('./common');
-const { guideMetaLines } = require('./document-layout');
+const { guideMetaItems, stepCount } = require('./document-layout');
+const { exportText } = require('../core/export-text');
 const { withBrand, brandRaster, fitRaster, overlayWatermark, textOn, hexToRgb } = require('./branding');
 
 /**
@@ -48,6 +49,7 @@ function captionHeight(W) {
 }
 
 function drawTitleCard(W, H, ast, frameCount, accent, bg, ink = INK) {
+  const { t } = exportText(ast);
   const brand = ast.branding;
   const style = brand?.cover || 'standard';
   // Band: the whole card in the brand's primary color.
@@ -55,10 +57,10 @@ function drawTitleCard(W, H, ast, frameCount, accent, bg, ink = INK) {
   const card = raster.createImage(W, H, style === 'band' ? accent : bg);
   const pad = Math.round(W * 0.08);
   const titleSize = Math.round(Math.max(22, Math.min(W * 0.05, H * 0.1)));
-  const lines = text.wrapText(ast.guide.title || 'Untitled guide', titleSize, W - pad * 2, { weight: 'bold', maxLines: 3 });
+  const lines = text.wrapText(ast.guide.title || t('Untitled guide'), titleSize, W - pad * 2, { weight: 'bold', maxLines: 3 });
   const lineH = titleSize * 1.2;
   const subSize = Math.round(titleSize * 0.42);
-  const meta = [`${frameCount} step${frameCount === 1 ? '' : 's'}`, ...guideMetaLines(ast).map((l) => l.replace(/^[^:]+:\s*/, ''))].join('  ·  ');
+  const meta = [stepCount(ast, frameCount), ...guideMetaItems(ast).map((item) => item.value)].join('  ·  ');
   const logoImg = brand ? brandRaster(brand.logo) : null;
   const logo = logoImg ? fitRaster(logoImg, Math.round(W * 0.3), Math.round(H * 0.16)) : null;
   const logoH = logo ? logo.height + Math.round(titleSize * 1.5) : 0;
@@ -81,7 +83,8 @@ function drawTitleCard(W, H, ast, frameCount, accent, bg, ink = INK) {
   return card;
 }
 
-function drawCaption(frame, y, h, step, accent, ink = INK) {
+function drawCaption(frame, y, h, step, accent, ink = INK, ast = null) {
+  const { t } = exportText(ast);
   const W = frame.width;
   raster.fillRect(frame, 0, y, W, h, WHITE);
   raster.fillRect(frame, 0, y, W, 1, RULE);
@@ -95,7 +98,7 @@ function drawCaption(frame, y, h, step, accent, ink = INK) {
   raster.fillRoundRect(frame, pad, by, badgeW, badgeH, badgeH / 2, accent);
   text.drawTextCentered(frame, pad + badgeW / 2, by + badgeH / 2, num, numSize, WHITE, { weight: 'bold' });
   const tx = pad + badgeW + Math.round(h * 0.28);
-  const title = text.fitText(step.title || 'Untitled step', size, W - tx - pad, { weight: 'bold' });
+  const title = text.fitText(step.title || t('Untitled step'), size, W - tx - pad, { weight: 'bold' });
   text.drawTextCentered(frame, tx + text.lineWidth(title, size, 'bold') / 2, y + h / 2, title, size, ink, { weight: 'bold' });
 }
 
@@ -139,7 +142,7 @@ function exportGifGuide(ast, outDir, template = {}) {
     const shot = raster.resize(src, dw, dh);
     if (mark) overlayWatermark(shot, mark, brand.watermark);
     raster.drawImage(frame, shot, Math.round((W - dw) / 2), Math.round((shotH - dh) / 2));
-    if (tpl.titleOverlay) drawCaption(frame, shotH, capH, step, accent, ink);
+    if (tpl.titleOverlay) drawCaption(frame, shotH, capH, step, accent, ink, ast);
     if (tpl.progressBar) {
       raster.fillRect(frame, 0, H - progH, W, progH, RULE);
       raster.fillRect(frame, 0, H - progH, Math.round((W * (i + 1)) / stepsWithImages.length), progH, accent);

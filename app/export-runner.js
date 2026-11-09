@@ -9,9 +9,10 @@ const WORKER_PATH = path.join(__dirname, '..', 'core', 'export-worker.js');
  * Run an export, quality check or title job in a forked helper process, so building the render AST
  * and rendering the output (e.g. a multi-step PDF) never blocks the main
  * process — and therefore never freezes the editor window — no matter how
- * large the guide is.
+ * large the guide is. `language` is the interface language the text
+ * StepForge adds to the export is written in (core/export-text.js).
  */
-function runExportInWorker({ dataDir, guideId, format, options, outDir, globals, maxSteps, codeStyle, reviewDays, branding = null, task = 'export' }) {
+function runExportInWorker({ dataDir, guideId, format, options, outDir, globals, maxSteps, codeStyle, reviewDays, branding = null, language = 'en', task = 'export' }) {
   return new Promise((resolve, reject) => {
     const worker = fork(WORKER_PATH, [], {
       env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
@@ -35,7 +36,7 @@ function runExportInWorker({ dataDir, guideId, format, options, outDir, globals,
       finish(reject, new Error(`Export worker exited unexpectedly (code ${code}).`));
     });
 
-    worker.send({ dataDir, guideId, format, options, outDir, globals, maxSteps, codeStyle, reviewDays, branding, task });
+    worker.send({ dataDir, guideId, format, options, outDir, globals, maxSteps, codeStyle, reviewDays, branding, language, task });
   });
 }
 

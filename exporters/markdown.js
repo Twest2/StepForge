@@ -22,7 +22,6 @@ function exportMarkdown(ast, outDir, template = {}) {
   return renderMarkdownGuide(ast, outDir, template, {
     defaults: DEFAULT_TEMPLATE,
     alertStyle: github ? 'gfm' : 'html',
-    tocTitle: 'Contents',
     fileExt: '.md',
     accentBar: !github,
   });

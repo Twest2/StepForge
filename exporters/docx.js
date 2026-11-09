@@ -5,7 +5,8 @@ const path = require('node:path');
 const { zipSync } = require('../core/zip');
 const { escapeXml } = require('../core/util');
 const { encodePng } = require('../core/png');
-const { guideSlug, renderAllImages, LEVEL_LABEL, stepContentGroups, codeBlockText, wordCodeRuns, wordCodeShading, flowchartImageKey, flowchartAlt } = require('./common');
+const { guideSlug, renderAllImages, calloutLabel, stepContentGroups, codeBlockText, wordCodeRuns, wordCodeShading, flowchartImageKey, flowchartAlt, stepLinkText, goToParts } = require('./common');
+const { exportText } = require('../core/export-text');
 const { highlightCode } = require('../core/code-highlight');
 const { guideMetaLines, guideSummary, tocEntries } = require('./document-layout');
 const { fitSize, textOn } = require('./branding');
@@ -268,15 +269,21 @@ function footerXml(content = '') {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<w:ftr ${HDR_NS}>${content || p('')}</w:ftr>`;
 }
 
-/** "Page 3 of 9", kept current by Word's PAGE and NUMPAGES fields. */
-function pageNumberRuns(rpr) {
-  const text = (t) => `<w:r>${rpr}<w:t xml:space="preserve">${t}</w:t></w:r>`;
+/**
+ * "Page 3 of 9" in the export's language, kept current by Word's PAGE and
+ * NUMPAGES fields.
+ */
+function pageNumberRuns(rpr, ast) {
+  const text = (value) => (value ? `<w:r>${rpr}<w:t xml:space="preserve">${escapeXml(value)}</w:t></w:r>` : '');
   const field = (instr) => `<w:fldSimple w:instr=" ${instr} "><w:r>${rpr}<w:t>1</w:t></w:r></w:fldSimple>`;
-  return `${text('Page ')}${field('PAGE')}${text(' of ')}${field('NUMPAGES')}`;
+  const { t } = exportText(ast);
+  return t('Page {page} of {total}').split(/(\{page\}|\{total\})/)
+    .map((part) => (part === '{page}' ? field('PAGE') : part === '{total}' ? field('NUMPAGES') : text(part))).join('');
 }
 
 function exportDocx(ast, outDir, template = {}) {
   const tpl = { ...DEFAULT_TEMPLATE, ...template };
+  const { t, tc } = exportText(ast);
   const images = tpl.includeImages ? renderAllImages(ast) : new Map();
 
   const media = [];   // { name, data }
@@ -303,9 +310,11 @@ function exportDocx(ast, outDir, template = {}) {
     const seen = new Set();
     const links = (chart?.links || []).filter((link) => !seen.has(link.stepId) && seen.add(link.stepId)).map((link) => {
       const target = ast.steps.find((s) => s.stepId === link.stepId);
-      return target ? `<w:hyperlink w:anchor="${bookmarkName(target)}">${run(`Step ${target.number}: ${target.title || 'Untitled step'}`, { size: 20, color: primary })}</w:hyperlink>` : '';
+      return target ? `<w:hyperlink w:anchor="${bookmarkName(target)}">${run(stepLinkText(target, ast), { size: 20, color: primary })}</w:hyperlink>` : '';
     }).filter(Boolean);
-    if (links.length) body.push(p(run('Go to: ', { size: 20, color: ink }) + links.join(run(' · ', { size: 20, color: ink }))));
+    const { before, after } = goToParts(ast);
+    const plain = (text) => (text ? run(text, { size: 20, color: ink }) : '');
+    if (links.length) body.push(p(plain(before) + links.join(run(' · ', { size: 20, color: ink })) + plain(after)));
   };
   // Cover: banner, logo and title. Centered centers them; Band sets the
   // logo and title on the brand's primary color.
@@ -314,11 +323,11 @@ function exportDocx(ast, outDir, template = {}) {
   const band = cover === 'band' ? `<w:shd w:val="clear" w:color="auto" w:fill="${primary}"/>` : '';
   if (brand?.banner?.png) {
     const size = fitSize(brand.banner.width, brand.banner.height, 600, 200);
-    body.push(p(drawing(imageRel('brand-banner.png', brand.banner.png), size.width, size.height, 99999, 'Banner', 'Banner'), jc));
+    body.push(p(drawing(imageRel('brand-banner.png', brand.banner.png), size.width, size.height, 99999, t('Banner'), 'Banner'), jc));
   }
   if (brand?.logo?.png) {
     const size = fitSize(brand.logo.width, brand.logo.height, 240, 80);
-    body.push(p(drawing(imageRel('brand-logo.png', brand.logo.png), size.width, size.height, 99999, 'Logo', 'Logo'),
+    body.push(p(drawing(imageRel('brand-logo.png', brand.logo.png), size.width, size.height, 99999, t('Logo'), 'Logo'),
       `${band}${band ? '<w:spacing w:before="0" w:after="0"/><w:ind w:left="0"/>' : ''}${jc}`));
   }
   body.push(band
@@ -333,7 +342,7 @@ function exportDocx(ast, outDir, template = {}) {
 
   if (tpl.includeToc && ast.steps.length > 1) {
     body.push(p(
-      run('Contents', { bold: true, size: 28 }),
+      run(tc('Table of contents', 'Contents'), { bold: true, size: 28 }),
       `<w:pBdr><w:bottom w:val="single" w:sz="20" w:space="8" w:color="${primary}"/></w:pBdr>`
     ));
     body.push(...tocFieldParagraphs(ast));
@@ -342,7 +351,7 @@ function exportDocx(ast, outDir, template = {}) {
 
   const emitTextBlock = (tb) => {
     const style = LEVEL_STYLE[tb.level] || LEVEL_STYLE.info;
-    const label = `${LEVEL_LABEL[tb.level] || 'Note'}${tb.title ? `: ${tb.title}` : ''}`;
+    const label = calloutLabel(tb, ast);
     body.push(p(
       `${run(label, { bold: true, size: 20, color: style.color })}${tb.descriptionText ? run('\n' + tb.descriptionText, { size: 20, color: ink }) : ''}`,
       `<w:shd w:val="clear" w:fill="${style.fill}"/><w:pBdr><w:left w:val="single" w:sz="24" w:space="4" w:color="${style.color}"/></w:pBdr>`
@@ -371,14 +380,14 @@ function exportDocx(ast, outDir, template = {}) {
       const relId = imageRel(`flowchart${relCounter + 1}.png`, encodePng(chart));
       // Drawn at 2x: show it at its natural size, never wider than a screenshot.
       const widthTwips = Math.min(tpl.imageWidthTwips, Math.round((chart.width / 2) * 15));
-      body.push(p(drawing(relId, chart.width, chart.height, widthTwips, flowchartAlt(step))));
+      body.push(p(drawing(relId, chart.width, chart.height, widthTwips, flowchartAlt(step, ast))));
       chartLinkParagraph(step.flowchartImage);
       stepImageCount += 1;
     };
     for (const tb of beforeTitle) emit(tb);
     body.push(p(
       `<w:bookmarkStart w:id="${bookmarkId}" w:name="${anchor}"/>` +
-      run(`${step.number}. ${step.title || 'Untitled step'}`, { bold: true, size: headSize }) +
+      run(`${step.number}. ${step.title || t('Untitled step')}`, { bold: true, size: headSize }) +
       `<w:bookmarkEnd w:id="${bookmarkId}"/>`,
       headingParagraphProps(step.depth, step.forceNewPage)
     ));
@@ -430,11 +439,11 @@ function exportDocx(ast, outDir, template = {}) {
     let headLogo = '';
     if (brand.header.logo && brand.logo?.png) {
       const size = fitSize(brand.logo.width, brand.logo.height, 160, 32);
-      headLogo = drawing(1, size.width, size.height, 99999, 'Logo', 'Header logo');
+      headLogo = drawing(1, size.width, size.height, 99999, t('Logo'), 'Header logo');
       headerRels.push('<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/brand-logo.png"/>');
       if (!media.some((m) => m.name === 'brand-logo.png')) media.push({ name: 'brand-logo.png', data: brand.logo.png });
     }
-    const pageNumbers = brand.footer.pageNumbers ? pageNumberRuns(rpr) : '';
+    const pageNumbers = brand.footer.pageNumbers ? pageNumberRuns(rpr, ast) : '';
     const add = (kind, n, xml, partRels = []) => {
       const relId = ++relCounter;
       parts.push({ name: `word/${kind}${n}.xml`, data: xml, kind, rels: partRels });

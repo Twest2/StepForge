@@ -27,6 +27,9 @@ const { sanitizeSvg, svgSize } = require('./svg-sanitize');
 const COVER_STYLES = ['standard', 'band', 'centered'];
 const WATERMARK_POSITIONS = ['bottom-right', 'bottom-left', 'top-right', 'top-left'];
 const COLOR_SCHEMES = ['light', 'auto'];
+const IMAGE_ALIGNMENTS = ['left', 'center', 'right'];
+const STEP_LAYOUTS = ['stacked', 'side-by-side'];
+const DEFAULT_BORDER_COLOR = '#D0D5DD';
 const DEFAULT_COLORS = { primary: '#2563EB', accent: '#0EA5E9', text: '#18212B' };
 // StepForge's own annotation colors: red shapes and click markers, blue
 // number badges, near-black tooltips. A profile only changes them when its
@@ -148,6 +151,14 @@ function normalizeProfile(raw = {}, { id = raw.id, createdAt = raw.createdAt, up
       enabled: raw.watermark?.enabled === true,
       position: oneOf(raw.watermark?.position, WATERMARK_POSITIONS, 'bottom-right'),
       opacity: Number.isFinite(opacity) ? Math.round(Math.max(0.05, Math.min(1, opacity)) * 100) / 100 : 0.6,
+    },
+    // How PDF, Word and HTML place step screenshots. The defaults are what
+    // those exports did before these options existed.
+    screenshots: {
+      align: oneOf(raw.screenshots?.align, IMAGE_ALIGNMENTS, 'left'),
+      border: raw.screenshots?.border === true,
+      borderColor: normalizeColor(raw.screenshots?.borderColor, DEFAULT_BORDER_COLOR),
+      layout: oneOf(raw.screenshots?.layout, STEP_LAYOUTS, 'stacked'),
     },
   };
 }
@@ -625,6 +636,7 @@ function loadBranding(resolved) {
     cover: p.cover,
     html: p.html,
     watermark: p.watermark,
+    screenshots: p.screenshots,
   };
 }
 
@@ -670,6 +682,9 @@ module.exports = {
   COVER_STYLES,
   WATERMARK_POSITIONS,
   COLOR_SCHEMES,
+  IMAGE_ALIGNMENTS,
+  STEP_LAYOUTS,
+  DEFAULT_BORDER_COLOR,
   DEFAULT_COLORS,
   DEFAULT_ANNOTATION_COLORS,
   FONT_SUGGESTIONS,

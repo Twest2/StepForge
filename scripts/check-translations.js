@@ -7,6 +7,8 @@
 //
 //   npm run translations           # every language
 //   npm run translations -- fr     # one language
+//   npm run translations -- --same # also list translations identical to the English
+//                                  # (often right: "Description", "Logo", "OK")
 //
 // It finds text in t('…') and tn(count, '…', '…') calls with plain string
 // literals, and in index.html's data-i18n-* attributes. Text built at run
@@ -82,7 +84,7 @@ function findMessages() {
   return found;
 }
 
-function check(codes) {
+function check(codes, { same = false } = {}) {
   const messages = findMessages();
   let problems = 0;
   for (const code of codes) {
@@ -103,19 +105,26 @@ function check(codes) {
       }
     }
     const unused = Object.keys(catalog).filter((key) => !messages.has(key));
+    const identical = same ? [...messages].filter(([key, info]) => {
+      const value = catalog[key];
+      const forms = value && typeof value === 'object' ? Object.values(value) : [value];
+      return forms.some((form) => form === key || (info.plural && form === info.singular));
+    }).map(([key]) => key) : [];
     problems += missing.length + wrong.length;
     console.log(`${code}: ${messages.size - missing.length} of ${messages.size} translated`);
     for (const line of missing) console.log(`  missing  ${line}`);
     for (const line of wrong) console.log(`  check    ${line}`);
     for (const key of unused) console.log(`  unused   ${key}`);
+    for (const key of identical) console.log(`  same     ${key}`);
   }
   return problems;
 }
 
 if (require.main === module) {
-  const asked = process.argv.slice(2);
+  const args = process.argv.slice(2);
+  const asked = args.filter((arg) => !arg.startsWith('--'));
   const codes = asked.length ? asked : LANGUAGES.map((l) => l.code).filter((code) => code !== 'en');
-  process.exitCode = check(codes) ? 1 : 0;
+  process.exitCode = check(codes, { same: args.includes('--same') }) ? 1 : 0;
 }
 
 module.exports = { findMessages };

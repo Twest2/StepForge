@@ -156,10 +156,13 @@ function renderStep(step, ast, images, tpl, { rich = false } = {}) {
     figure = `<figure class="shot">${step.image?.flowchart ? chartLinks(shot, step.image, ast) : shot}</figure>`;
   }
   if (figure && desc && screenshotOptions(ast).layout === 'side-by-side') {
-    // Screenshot and description side by side; the blocks placed between them go first.
-    parts.push(blocks(groups.beforeDescription), blocks(groups.beforeImage));
-    parts.push(`<div class="step-split">${figure}${desc}</div>`);
-    parts.push(blocks(groups.afterDescription), blocks(groups.afterImage));
+    // Screenshot on the left, description on the right. Callouts keep their
+    // place: before the image above it, after the description under it.
+    parts.push(blocks(groups.beforeDescription));
+    const media = [blocks(groups.beforeImage), figure].filter(Boolean).join('');
+    const text = [desc, blocks(groups.afterDescription)].filter(Boolean).join('');
+    parts.push(`<div class="step-split"><div class="split-media">${media}</div><div class="split-text">${text}</div></div>`);
+    parts.push(blocks(groups.afterImage));
   } else {
     parts.push(blocks(groups.beforeDescription), desc, blocks(groups.afterDescription));
     parts.push(blocks(groups.beforeImage), figure, blocks(groups.afterImage));
@@ -377,13 +380,14 @@ function brandCss(brand) {
 function screenshotCss(brand) {
   const { align, border, borderColor, layout } = screenshotOptions({ branding: brand });
   const rules = [];
-  if (align === 'center') rules.push('.shot img { margin-left: auto; margin-right: auto; }');
-  if (align === 'right') rules.push('.shot img { margin-left: auto; margin-right: 0; }');
+  // text-align moves a linked flowchart's inline-block wrapper; the margins move a plain image.
+  if (align === 'center') rules.push('.shot { text-align: center; }', '.shot img { margin-left: auto; margin-right: auto; }');
+  if (align === 'right') rules.push('.shot { text-align: right; }', '.shot img { margin-left: auto; margin-right: 0; }');
   if (border) rules.push(`.shot img { border: 1px solid ${borderColor}; }`);
   if (layout === 'side-by-side') {
     rules.push('.step-split { display: grid; grid-template-columns: minmax(0, 11fr) minmax(0, 9fr); gap: 24px; align-items: start; margin: 16px 0 20px; }');
     rules.push('.step-split .shot { margin: 0; }');
-    rules.push('.step-split .desc { margin: 0; }');
+    rules.push('.split-text > .desc { margin-top: 0; }');
     rules.push('@media (max-width: 720px) { .step-split { grid-template-columns: minmax(0, 1fr); } }');
   }
   return rules.length ? `${rules.join('\n')}\n` : '';

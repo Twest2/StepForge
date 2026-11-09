@@ -401,9 +401,9 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
   };
 
   /** Height a callout block (emitBlock) will occupy, including its trailing gap. */
-  const measureBlock = (tb) => {
+  const measureBlock = (tb, width = usableW) => {
     const { height: bodyH } = tb.descriptionHtml
-      ? layoutDescription(pdf, tb.descriptionHtml, usableW - 18, 9.5, bodyFonts)
+      ? layoutDescription(pdf, tb.descriptionHtml, width - 18, 9.5, bodyFonts)
       : { height: 0 };
     return 16 + bodyH + 6;
   };
@@ -479,6 +479,22 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
    * the trailing gap, used to decide whether the whole step fits on a
    * fresh page.
    */
+  /** Height of callout and flowchart blocks drawn `width` wide. */
+  const measureBlocks = (step, list, width = usableW) => list.reduce((sum, tb) => sum
+    + (tb.kind === 'flowchart' ? measureImage(flowchartImageKey(step.stepId), width) : measureBlock(tb, width)), 0);
+
+  /**
+   * Height of a side-by-side step's columns. Left: callouts placed before the
+   * image, then the screenshot. Right: the description, then callouts placed
+   * after it.
+   */
+  const splitHeight = (step) => {
+    const { beforeImage, afterDescription } = stepContentGroups(step);
+    const textW = usableW - splitTextIndent;
+    return Math.max(measureBlocks(step, beforeImage, splitImageW) + measureImage(step.stepId, splitImageW),
+      layoutDescription(pdf, step.descriptionHtml, textW, 10.5, bodyFonts).height + 10 + measureBlocks(step, afterDescription, textW));
+  };
+
   const measureStep = (step) => {
     const headSize = step.depth > 0 ? 12 : 14;
     const titleText = `${step.number}. ${step.title || 'Untitled step'}${step.skipped ? '  (skipped)' : ''}`;
@@ -494,13 +510,12 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
       afterImage,
       rest,
     } = stepContentGroups(step);
-    for (const tb of [...beforeTitle, ...afterTitle, ...beforeDescription, ...afterDescription, ...beforeImage, ...afterImage]) {
-      head += tb.kind === 'flowchart' ? measureImage(flowchartImageKey(step.stepId)) : measureBlock(tb);
-    }
+    const measure = (list) => measureBlocks(step, list);
     if (sideBySide(step)) {
-      head += Math.max(measureImage(step.stepId, splitImageW),
-        layoutDescription(pdf, step.descriptionHtml, usableW - splitTextIndent, 10.5, bodyFonts).height + 10);
+      head += measure([...beforeTitle, ...afterTitle, ...beforeDescription, ...afterImage]);
+      head += splitHeight(step);
     } else {
+      head += measure([...beforeTitle, ...afterTitle, ...beforeDescription, ...afterDescription, ...beforeImage, ...afterImage]);
       if (step.descriptionHtml) head += layoutDescription(pdf, step.descriptionHtml, usableW, 10.5, bodyFonts).height;
       head += measureImage(step.stepId);
     }
@@ -660,7 +675,7 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
       y += box.h + 10;
     };
     // Text blocks and the flowchart block, at their positions.
-    const emit = (tb) => (tb.kind === 'flowchart' ? drawImage(flowchartImageKey(step.stepId)) : emitBlock(tb));
+    const emit = (tb, column) => (tb.kind === 'flowchart' ? drawImage(flowchartImageKey(step.stepId), column) : emitBlock(tb, column));
     for (const tb of beforeTitle) emit(tb);
     const headSize = step.depth > 0 ? 12 : 14;
     writeLines(`${step.number}. ${step.title || 'Untitled step'}${step.skipped ? '  (skipped)' : ''}`, { size: headSize, font: headFonts.bold });
@@ -669,19 +684,23 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
 
     for (const tb of afterTitle) emit(tb);
     if (sideBySide(step)) {
-      // The blocks placed between them go first, then screenshot | description.
+      // Screenshot on the left, description on the right. Callouts keep their
+      // place: before the image above it, after the description under it.
       for (const tb of beforeDescription) emit(tb);
-      for (const tb of beforeImage) emit(tb);
-      ensure(measureImage(step.stepId, splitImageW)); // any page break comes before both columns
+      const leftColumn = { left: M, width: splitImageW };
+      const rightColumn = { left: M + splitTextIndent, width: usableW - splitTextIndent };
+      ensure(splitHeight(step)); // any page break comes before both columns
       const top = y;
       const page = pdf.pages.length;
-      drawImage(step.stepId, { width: splitImageW });
-      const imageBottom = y;
-      y = top;
+      for (const tb of beforeImage) emit(tb, leftColumn);
+      drawImage(step.stepId, leftColumn);
+      const leftBottom = y;
+      // A left column taller than a page leaves the text to continue below it.
+      if (pdf.pages.length === page) y = top;
       writeDescription(step.descriptionHtml, { indent: splitTextIndent });
-      // A description longer than a page ends below the image anyway.
-      y = pdf.pages.length === page ? Math.max(imageBottom, y + 10) : y + 10;
-      for (const tb of afterDescription) emit(tb);
+      y += 10;
+      for (const tb of afterDescription) emit(tb, rightColumn);
+      if (pdf.pages.length === page) y = Math.max(leftBottom, y);
       for (const tb of afterImage) emit(tb);
     } else {
       for (const tb of beforeDescription) emit(tb);
@@ -721,27 +740,28 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
     forcedFresh = totalHeight > usableH;
   }
 
-  function emitBlock(tb) {
+  /** A callout block in a space `width` wide starting at `left` (the page, or a side-by-side column). */
+  function emitBlock(tb, { left = M, width = usableW } = {}) {
     const label = `${LEVEL_LABEL[tb.level] || 'Note'}${tb.title ? `: ${tb.title}` : ''}`;
     const { items, height: bodyH } = tb.descriptionHtml
-      ? layoutDescription(pdf, tb.descriptionHtml, usableW - 18, 9.5, bodyFonts)
+      ? layoutDescription(pdf, tb.descriptionHtml, width - 18, 9.5, bodyFonts)
       : { items: [], height: 0 };
     const blockH = 16 + bodyH;
     const style = LEVEL_STYLE[tb.level] || LEVEL_STYLE.info;
     ensure(blockH + 4);
-    pdf.rect(M, y, usableW, blockH, { fill: style.tint });
-    pdf.rect(M, y, 3, blockH, { fill: style.accent });
-    pdf.text(label, M + 10, y + 2, { size: 9.5, font: bodyFonts.bold, color: style.accent });
+    pdf.rect(left, y, width, blockH, { fill: style.tint });
+    pdf.rect(left, y, 3, blockH, { fill: style.accent });
+    pdf.text(label, left + 10, y + 2, { size: 9.5, font: bodyFonts.bold, color: style.accent });
     let by = y + 16;
     for (const item of items) {
       if (item.kind === 'hr') {
-        pdf.rect(M + 10, by + 5, item.width, 0.8, { fill: [225, 228, 232] });
+        pdf.rect(left + 10, by + 5, item.width, 0.8, { fill: [225, 228, 232] });
         by += 12;
         continue;
       }
       if (item.kind === 'table') {
         for (const row of item.rows) {
-          drawTableRow(pdf, item, row, M + 10 + item.indent, by, { color: ink, linkColor });
+          drawTableRow(pdf, item, row, left + 10 + item.indent, by, { color: ink, linkColor });
           by += row.height;
         }
         by += 6;
@@ -749,7 +769,7 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
       }
       by += item.space || 0;
       item.lines.forEach((line, idx) => {
-        const textX = M + 10 + item.indent;
+        const textX = left + 10 + item.indent;
         if (idx === 0 && item.prefix) pdf.text(item.prefix, textX - LIST_INDENT, by, { size: item.size, font: bodyFonts.regular, color: ink });
         const parts = line.map((word) => ({
           text: word.text,

@@ -386,13 +386,13 @@ function exportDocx(ast, outDir, template = {}) {
       rest,
     } = stepContentGroups(step);
     // Text blocks and the flowchart block, at their positions.
-    const emit = (tb) => {
+    const emit = (tb, maxTwips = tpl.imageWidthTwips) => {
       if (tb.kind !== 'flowchart') { emitTextBlock(tb); return; }
       const chart = images.get(flowchartImageKey(step.stepId));
       if (!chart) return;
       const relId = imageRel(`flowchart${relCounter + 1}.png`, encodePng(chart));
       // Drawn at 2x: show it at its natural size, never wider than a screenshot.
-      const widthTwips = Math.min(tpl.imageWidthTwips, Math.round((chart.width / 2) * 15));
+      const widthTwips = Math.min(maxTwips, Math.round((chart.width / 2) * 15));
       body.push(p(drawing(relId, chart.width, chart.height, widthTwips, flowchartAlt(step)), alignProps));
       chartLinkParagraph(step.flowchartImage);
       stepImageCount += 1;
@@ -416,12 +416,14 @@ function exportDocx(ast, outDir, template = {}) {
       return p(drawing(relId, img.width, img.height, maxTwips, step.altText, undefined, { border: shots.border ? shots.borderColor : '' }), alignProps);
     };
     if (img && description && shots.layout === 'side-by-side') {
-      // The blocks placed between them go first, then screenshot | description.
+      // Screenshot on the left, description on the right. Callouts keep their
+      // place: before the image above it, after the description under it.
       for (const tb of beforeDescription) emit(tb);
-      for (const tb of beforeImage) emit(tb);
-      body.push(splitTable(screenshot(SPLIT_IMAGE_TWIPS), description));
+      const cell = (fill) => { const start = body.length; fill(); return body.splice(start).join(''); };
+      const left = cell(() => { for (const tb of beforeImage) emit(tb, SPLIT_IMAGE_TWIPS); body.push(screenshot(SPLIT_IMAGE_TWIPS)); });
+      const right = cell(() => { body.push(description); for (const tb of afterDescription) emit(tb, SPLIT_TEXT_TWIPS); });
+      body.push(splitTable(left, right));
       if (step.image?.flowchart) chartLinkParagraph(step.image);
-      for (const tb of afterDescription) emit(tb);
     } else {
       for (const tb of beforeDescription) emit(tb);
       if (description) body.push(description);

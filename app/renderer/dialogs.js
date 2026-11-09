@@ -2096,7 +2096,7 @@ const SHORTCUTS = [
     ['Ctrl+C', t('Copy selected annotation (in step-select mode, paste it onto many steps)')],
     ['Delete', t('Delete selected annotation')],
     ['Esc', t('Deselect annotation')],
-    ['Arrows / Shift+Arrows', t('Nudge selection by 1 px / 10 px')],
+    [t('Arrows / Shift+Arrows'), t('Nudge selection by 1 px / 10 px')],
   ]],
   [t('View'), [
     ['Ctrl+= / Ctrl+-', t('Zoom in / out')],

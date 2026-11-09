@@ -1,6 +1,8 @@
 'use strict';
 
 const crypto = require('node:crypto');
+const { escapeHtml } = require('./util');
+const { exportTranslator } = require('./export-text');
 
 /*
  * Layout and rules for a guide-sharing site hosted on GitHub Pages in the
@@ -132,7 +134,8 @@ function planSite(manifest, { now = Date.now(), publish = null, remove = null, e
 const ROBOTS_META = '<meta name="robots" content="noindex, nofollow, noarchive">';
 const REFERRER_META = '<meta name="referrer" content="no-referrer">';
 const PROJECT_URL = 'https://github.com/Twest2/StepForge';
-const FOOTER_CREDIT = '<footer class="doc-footer">Made with StepForge';
+// The exported guide's "Made with StepForge" credit, in the export's language (exporters/html.js).
+const FOOTER_CREDIT = /<footer class="doc-footer"><span class="credit">[^<]*<\/span>/;
 const FOOTER_LINK = ` · <a href="${PROJECT_URL}" rel="noopener noreferrer">GitHub</a>`;
 
 /**
@@ -147,9 +150,9 @@ function prepareGuideHtml(html) {
   if (!match) throw new Error('The exported guide has no <head> element.');
   const at = match.index + match[0].length;
   const withMeta = `${text.slice(0, at)}\n${ROBOTS_META}\n${REFERRER_META}${text.slice(at)}`;
-  const credit = withMeta.lastIndexOf(FOOTER_CREDIT);
-  if (credit < 0) return withMeta;
-  const end = credit + FOOTER_CREDIT.length;
+  const credit = FOOTER_CREDIT.exec(withMeta);
+  if (!credit) return withMeta;
+  const end = credit.index + credit[0].length;
   return `${withMeta.slice(0, end)}${FOOTER_LINK}${withMeta.slice(end)}`;
 }
 
@@ -161,22 +164,29 @@ function titleFromHtml(html) {
   return match[1].replace(/&(amp|lt|gt|quot|#39|#x27);/g, (_, name) => entities[name]).trim();
 }
 
-const ROOT_INDEX = `<!DOCTYPE html>
-<html lang="en">
+/** The site's front page, in the interface language of the person publishing. */
+function rootIndex(language = 'en') {
+  const { t, language: code } = exportTranslator(language);
+  const title = escapeHtml(t('Shared guides'));
+  return `<!DOCTYPE html>
+<html lang="${code}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 ${ROBOTS_META}
 ${REFERRER_META}
-<title>Shared guides</title>
+<title>${title}</title>
 <style>body{font:16px/1.5 system-ui,sans-serif;max-width:36rem;margin:15vh auto;padding:0 1rem;color:#374151}</style>
 </head>
 <body>
-<h1>Shared guides</h1>
-<p>Guides on this site are shared by direct link only. Ask the person who shared a guide for its link.</p>
+<h1>${title}</h1>
+<p>${escapeHtml(t('Guides on this site are shared by direct link only. Ask the person who shared a guide for its link.'))}</p>
 </body>
 </html>
 `;
+}
+
+const ROOT_INDEX = rootIndex();
 
 /** Base URL of the Pages site, always ending in "/". */
 function siteBaseUrl({ owner, repo, htmlUrl = '' }) {
@@ -303,6 +313,7 @@ module.exports = {
   DEFAULT_EXPIRY_DAYS,
   MAX_GUIDE_BYTES,
   ROOT_INDEX,
+  rootIndex,
   README,
   WORKFLOW,
   EXPIRE_SCRIPT,

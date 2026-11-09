@@ -6,6 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { atomicWriteFileSync } = require('../core/util');
 const { progressBody } = require('../core/transfer-meter');
+const { t } = require('../core/ui-text');
 
 // Release builds get the client stamped into google-oauth-config.json. A source
 // checkout leaves it empty; developers can supply the client through the
@@ -97,12 +98,12 @@ class GoogleDrive {
           }
         } else {
           this.loadError =
-            'Please sign in again to connect this version of StepForge.';
+            t('Please sign in again to connect this version of StepForge.');
         }
       }
     } catch {
       this.loadError =
-        'Stored Google credentials could not be unlocked. Disconnect and sign in again.';
+        t('Stored Google credentials could not be unlocked. Disconnect and sign in again.');
     }
   }
 
@@ -141,7 +142,7 @@ class GoogleDrive {
 
   requireEncryption() {
     if (!this.safeStorage.isEncryptionAvailable() || this.safeStorage.getSelectedStorageBackend?.() === 'basic_text') {
-      throw new Error('Google sign-in requires an operating-system credential store. Unlock your keyring and restart StepForge.');
+      throw new Error(t('Google sign-in requires an operating-system credential store. Unlock your keyring and restart StepForge.'));
     }
   }
 
@@ -202,8 +203,8 @@ class GoogleDrive {
         }
         const error = new Error(
           response.status === 401 || reason === 'invalid_grant'
-            ? 'Google authorization expired or was revoked. Disconnect and sign in again.'
-            : `Google Drive request failed (${response.status}${reason ? ': ' + reason : ''}${description ? ' — ' + description : ''}).`
+            ? t('Google authorization expired or was revoked. Disconnect and sign in again.')
+            : t('Google Drive request failed ({status}{reason}{description}).', { status: response.status, reason: reason ? ': ' + reason : '', description: description ? ' — ' + description : '' })
         );
         error.status = response.status;
         throw error;
@@ -213,7 +214,7 @@ class GoogleDrive {
       if (options.uploadSession) {
         const location = new URL(response.headers.get('location') || '');
         if (location.origin !== 'https://www.googleapis.com' || !location.pathname.startsWith('/upload/drive/v3/')) {
-          throw new Error('Google returned an unexpected upload destination.');
+          throw new Error(t('Google returned an unexpected upload destination.'));
         }
         return location.href;
       }
@@ -222,7 +223,7 @@ class GoogleDrive {
         let length = 0;
         for await (const chunk of response.body) {
           length += chunk.length;
-          if (length > MAX_ARCHIVE_BYTES) { controller.abort(); throw new Error('Cloud archive exceeds the 256 MB transfer limit.'); }
+          if (length > MAX_ARCHIVE_BYTES) { controller.abort(); throw new Error(t('Cloud archive exceeds the 256 MB transfer limit.')); }
           chunks.push(Buffer.from(chunk));
           onProgress?.(length);
         }
@@ -230,7 +231,7 @@ class GoogleDrive {
       }
       return await response.json();
     } catch (err) {
-      if (controller.signal.aborted && err.name === 'AbortError') throw new Error('Google Drive request was cancelled or timed out. Local guides are unchanged.');
+      if (controller.signal.aborted && err.name === 'AbortError') throw new Error(t('Google Drive request was cancelled or timed out. Local guides are unchanged.'));
       throw err;
     } finally {
       clearTimeout(timer);
@@ -245,11 +246,11 @@ class GoogleDrive {
   }
 
   async connect() {
-    if (!this.available) throw new Error('Google sign-in is unavailable in this build of StepForge. Please use a release with Google sign-in enabled.');
+    if (!this.available) throw new Error(t('Google sign-in is unavailable in this build of StepForge. Please use a release with Google sign-in enabled.'));
     const clientId = this.clientId;
-    if (this.cancelLogin) throw new Error('Google sign-in is already in progress.');
+    if (this.cancelLogin) throw new Error(t('Google sign-in is already in progress.'));
     await this.recovering;
-    if (this.credentials) throw new Error('Disconnect the current Google account before signing in again.');
+    if (this.credentials) throw new Error(t('Disconnect the current Google account before signing in again.'));
     this.requireEncryption();
     const generation = this.generation;
     const verifier = crypto.randomBytes(32).toString('base64url');
@@ -258,25 +259,25 @@ class GoogleDrive {
     let timer;
     try {
       const codePromise = new Promise((resolve, reject) => {
-        this.cancelLogin = () => reject(new Error('Google sign-in cancelled.'));
+        this.cancelLogin = () => reject(new Error(t('Google sign-in cancelled.')));
         server.on('error', reject);
         server.on('request', (req, res) => {
           const url = new URL(req.url, 'http://127.0.0.1');
           if (req.method !== 'GET' || url.pathname !== '/' || url.searchParams.get('state') !== state) {
-            res.writeHead(400).end('Invalid sign-in callback.');
+            res.writeHead(400).end(t('Invalid sign-in callback.'));
             return;
           }
           res.setHeader('Content-Type', 'text/plain; charset=utf-8');
           res.setHeader('Cache-Control', 'no-store');
           if (url.searchParams.has('error') || !url.searchParams.get('code')) {
-            res.end('Google sign-in was not completed. Return to StepForge.');
-            reject(new Error('Google sign-in was denied or cancelled.'));
+            res.end(t('Google sign-in was not completed. Return to StepForge.'));
+            reject(new Error(t('Google sign-in was denied or cancelled.')));
           } else {
-            res.end('Signed in to Google Drive. You can close this tab and go back to StepForge.');
+            res.end(t('Signed in to Google Drive. You can close this tab and go back to StepForge.'));
             resolve(url.searchParams.get('code'));
           }
         });
-        timer = setTimeout(() => reject(new Error('Google sign-in timed out. Try again.')), SIGN_IN_TIMEOUT_MS);
+        timer = setTimeout(() => reject(new Error(t('Google sign-in timed out. Try again.'))), SIGN_IN_TIMEOUT_MS);
       });
       // Attach a rejection handler before awaiting browser/server startup.
       codePromise.catch(() => {});
@@ -285,7 +286,7 @@ class GoogleDrive {
       const query = new URLSearchParams({ client_id: clientId, redirect_uri: redirectUri, response_type: 'code', scope: SCOPE,
         access_type: 'offline', prompt: 'consent select_account', state, code_challenge_method: 'S256',
         code_challenge: crypto.createHash('sha256').update(verifier).digest('base64url') });
-      if (generation !== this.generation) throw new Error('Google sign-in cancelled.');
+      if (generation !== this.generation) throw new Error(t('Google sign-in cancelled.'));
       // Never wait for the browser: on some systems opening a URL only returns
       // once the browser closes. If it doesn't open, the user can open the link
       // from StepForge.
@@ -299,8 +300,8 @@ class GoogleDrive {
         redirect_uri: redirectUri,
         grant_type: 'authorization_code'
       });
-      if (generation !== this.generation) throw new Error('Google sign-in cancelled.');
-      if (!tokens.refresh_token || (tokens.scope && !tokens.scope.split(' ').includes(SCOPE))) throw new Error('Google did not grant offline Drive access. Sign in again and allow app storage access.');
+      if (generation !== this.generation) throw new Error(t('Google sign-in cancelled.'));
+      if (!tokens.refresh_token || (tokens.scope && !tokens.scope.split(' ').includes(SCOPE))) throw new Error(t('Google did not grant offline Drive access. Sign in again and allow app storage access.'));
       this.credentials = { ...tokens, clientId, expiresAt: Date.now() + Number(tokens.expires_in || 3600) * 1000 };
       try { this.save(); } catch (err) { this.credentials = null; throw err; }
       return this.status();
@@ -314,7 +315,7 @@ class GoogleDrive {
 
   async accessToken(force = false) {
     const credentials = this.credentials;
-    if (!credentials?.refresh_token) throw new Error(this.loadError || 'Sign in to Google Drive first.');
+    if (!credentials?.refresh_token) throw new Error(this.loadError || t('Sign in to Google Drive first.'));
     if (!force && credentials.access_token && credentials.expiresAt > Date.now() + 60000) return credentials.access_token;
     if (!this.refreshing) {
       this.refreshing = (async () => {
@@ -324,7 +325,7 @@ class GoogleDrive {
           refresh_token: credentials.refresh_token,
           grant_type: 'refresh_token'
         });
-        if (this.credentials !== credentials) throw new Error('Google account changed during authentication.');
+        if (this.credentials !== credentials) throw new Error(t('Google account changed during authentication.'));
         Object.assign(credentials, tokens, { expiresAt: Date.now() + Number(tokens.expires_in || 3600) * 1000 });
         this.save();
         return credentials.access_token;
@@ -336,13 +337,13 @@ class GoogleDrive {
   async authorized(url, options = {}) {
     const generation = this.generation;
     const token = await this.accessToken();
-    if (generation !== this.generation) throw new Error('Google Drive request cancelled.');
+    if (generation !== this.generation) throw new Error(t('Google Drive request cancelled.'));
     try {
       return await this.request(url, { ...options, headers: { ...options.headers, Authorization: `Bearer ${token}` } });
     } catch (err) {
       if (err.status !== 401) throw err;
       const refreshed = await this.accessToken(true);
-      if (generation !== this.generation) throw new Error('Google Drive request cancelled.');
+      if (generation !== this.generation) throw new Error(t('Google Drive request cancelled.'));
       return this.request(url, { ...options, headers: { ...options.headers, Authorization: `Bearer ${refreshed}` } });
     }
   }
@@ -355,8 +356,8 @@ class GoogleDrive {
     const promise = (async () => {
       try {
         const info = await this.authorized(`${API}/about?fields=user(permissionId,emailAddress,photoLink)`);
-        if (credentials !== this.credentials) throw new Error('Google account changed.');
-        if (!info.user?.permissionId) throw new Error('Google did not return an account identity.');
+        if (credentials !== this.credentials) throw new Error(t('Google account changed.'));
+        if (!info.user?.permissionId) throw new Error(t('Google did not return an account identity.'));
         credentials.accountId = info.user.permissionId;
         credentials.email = info.user.emailAddress || '';
         credentials.photoLink = googlePhotoLink(info.user.photoLink);
@@ -414,7 +415,7 @@ class GoogleDrive {
     const files = [];
     let pageToken = '';
     do {
-      if (generation !== this.generation) throw new Error('Google Drive request cancelled.');
+      if (generation !== this.generation) throw new Error(t('Google Drive request cancelled.'));
       const query = new URLSearchParams({ spaces: 'appDataFolder', q: queryText,
         fields: 'nextPageToken,files(id,name,createdTime,size,appProperties)', pageSize: '1000', ...(pageToken ? { pageToken } : {}) });
       const page = await this.authorized(`${API}/files?${query}`);
@@ -427,14 +428,14 @@ class GoogleDrive {
   // `onProgress(bytes)` reports how many of the archive's bytes have been sent.
   async upload({ data, name, properties, onProgress }) {
     const generation = this.generation;
-    if (data.length > MAX_ARCHIVE_BYTES) throw new Error('Cloud archive exceeds the 256 MB transfer limit.');
+    if (data.length > MAX_ARCHIVE_BYTES) throw new Error(t('Cloud archive exceeds the 256 MB transfer limit.'));
     if (data.length > 5 * 1024 * 1024) {
       const session = await this.authorized('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,name,createdTime,appProperties', {
         method: 'POST', uploadSession: true,
         headers: { 'Content-Type': 'application/json; charset=UTF-8', 'X-Upload-Content-Type': 'application/octet-stream', 'X-Upload-Content-Length': String(data.length) },
         body: JSON.stringify({ name, parents: ['appDataFolder'], appProperties: properties }),
       });
-      if (generation !== this.generation) throw new Error('Google Drive upload cancelled.');
+      if (generation !== this.generation) throw new Error(t('Google Drive upload cancelled.'));
       return this.authorized(session, { method: 'PUT', headers: { 'Content-Type': 'application/octet-stream' }, body: data, onProgress });
     }
     const boundary = `stepforge_${crypto.randomBytes(16).toString('hex')}`;
@@ -454,32 +455,37 @@ class GoogleDrive {
     return this.authorized(`${API}/files/${encodeURIComponent(id)}`, { method: 'DELETE' });
   }
 
+  /**
+   * Sign in, list, upload, download and delete a test file. Each check is
+   * { text, ok }: its text is in the interface language, so pass or fail is
+   * never read from it.
+   */
   async test() {
     const checks = [];
     let probe;
     try {
       await this.accessToken(true);
-      checks.push('Authentication and token refresh: passed');
+      checks.push({ text: t('Authentication and token refresh: passed'), ok: true });
       await this.listVersions();
-      checks.push('Drive app storage access: passed');
+      checks.push({ text: t('Drive app storage access: passed'), ok: true });
       const bytes = crypto.randomBytes(32);
       probe = await this.upload({ data: bytes, name: 'StepForge connection test', properties: { stepforge: 'connection-test' } });
-      checks.push('Test upload: passed');
+      checks.push({ text: t('Test upload: passed'), ok: true });
       const downloaded = await this.download(probe.id);
-      if (!bytes.equals(downloaded)) throw new Error('The test download did not match the uploaded data.');
-      checks.push('Test download and integrity: passed');
+      if (!bytes.equals(downloaded)) throw new Error(t('The test download did not match the uploaded data.'));
+      checks.push({ text: t('Test download and integrity: passed'), ok: true });
     } catch (err) {
-      checks.push(`Failed: ${err.message}`);
+      checks.push({ text: t('Failed: {message}', { message: err.message }), ok: false });
       return { ok: false, checks };
     } finally {
       if (probe) {
         try {
           await this.deleteFile(probe.id);
-          checks.push('Test file cleanup: passed');
-        } catch { checks.push('Test file cleanup failed; a small test file remains in app storage.'); }
+          checks.push({ text: t('Test file cleanup: passed'), ok: true });
+        } catch { checks.push({ text: t('Test file cleanup failed; a small test file remains in app storage.'), ok: false }); }
       }
     }
-    return { ok: checks.every((line) => !line.includes('failed')), checks };
+    return { ok: checks.every((check) => check.ok), checks };
   }
 }
 

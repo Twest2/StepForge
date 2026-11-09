@@ -4,6 +4,7 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { EventEmitter } = require('node:events');
 const { failureCode, failureMessage, logFailure, plainText } = require('./portal-errors');
+const { t } = require('../../../core/ui-text');
 
 class PortalBackend extends EventEmitter {
   // `desktop` picks the helper's click companion: 'gnome' (the Shell
@@ -23,7 +24,7 @@ class PortalBackend extends EventEmitter {
   }
 
   start(options = {}) {
-    if (this.child) return Promise.reject(new Error('Screen sharing is already starting or active.'));
+    if (this.child) return Promise.reject(new Error(t('Screen sharing is already starting or active.')));
     this.stopping = false;
     this.failureReason = null;
     return new Promise((resolve, reject) => {
@@ -92,9 +93,9 @@ class PortalBackend extends EventEmitter {
   }
 
   async arm() {
-    if (!this.active) throw new Error('Screen sharing is not ready.');
+    if (!this.active) throw new Error(t('Screen sharing is not ready.'));
     await new Promise((resolve, reject) => {
-      this.armTimer = setTimeout(() => { this.armResolve = this.armReject = null; reject(new Error(this.desktop === 'plasma' ? 'KWin did not start recording clicks.' : 'GNOME extension did not start.')); }, 5000);
+      this.armTimer = setTimeout(() => { this.armResolve = this.armReject = null; reject(new Error(this.desktop === 'plasma' ? t('KWin did not start recording clicks.') : t('GNOME extension did not start.'))); }, 5000);
       this.armResolve = () => { clearTimeout(this.armTimer); resolve(); };
       this.armReject = reject;
       this.send({ type: 'arm' });
@@ -102,8 +103,8 @@ class PortalBackend extends EventEmitter {
   }
 
   request(type, args = {}) {
-    if (!this.active || this.stopping) return Promise.reject(new Error(`No active ${this.label} screen stream.`));
-    if (this.pending.size >= 32) return Promise.reject(new Error('Capture is busy encoding earlier clicks.'));
+    if (!this.active || this.stopping) return Promise.reject(new Error(t('No active {label} screen stream.', { label: this.label })));
+    if (this.pending.size >= 32) return Promise.reject(new Error(t('Capture is busy encoding earlier clicks.')));
     const id = this.nextId++;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -144,9 +145,9 @@ class PortalBackend extends EventEmitter {
     this.active = false;
     clearTimeout(this.startTimer);
     clearTimeout(this.armTimer);
-    this.armReject?.(new Error(this.failureReason || 'Recording cancelled.'));
+    this.armReject?.(new Error(this.failureReason || t('Recording cancelled.')));
     this.armResolve = this.armReject = null;
-    this.startReject?.(new Error('Recording cancelled.'));
+    this.startReject?.(new Error(t('Recording cancelled.')));
     this.startReject = this.startResolve = null;
     this.send({ type: 'disarm' });
     if (immediate || !this.pending.size) this.destroy();

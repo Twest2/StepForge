@@ -10,8 +10,13 @@
  * a number uses tn(count, singular, plural), and its catalog entry is an
  * object with one string per plural category of that language (Intl.PluralRules).
  *
- * The main process and the sandboxed renderer (which loads this file and the
- * catalogs with script tags) share it. Exported guides stay in English.
+ * The same English text can mean two things ("Contents" as an option group
+ * and as the heading over a table of contents): tc(context, text) looks it up
+ * as "context|text" instead, and shows `text` when the catalog lacks that key.
+ *
+ * The main process, the export worker (core/export-text.js: the text
+ * StepForge writes into exported guides) and the sandboxed renderer (which
+ * loads this file and the catalogs with script tags) share it.
  */
 
 (function attachI18n(root, factory) {
@@ -67,7 +72,7 @@
   }
 
   /**
-   * { t, tn, language } for `language`. `catalogs` maps a language code to
+   * { t, tn, tc, language } for `language`. `catalogs` maps a language code to
    * its messages.
    */
   function createTranslator(language, catalogs = {}) {
@@ -78,10 +83,12 @@
       plurals = plurals || new Intl.PluralRules(code);
       return plurals.select(count);
     };
-    const t = (text, params) => {
-      const found = messages[text];
+    const lookup = (key, text, params) => {
+      const found = messages[key];
       return fill(typeof found === 'string' && found ? found : text, params);
     };
+    const t = (text, params) => lookup(text, text, params);
+    const tc = (context, text, params) => lookup(`${context}|${text}`, text, params);
     // `plural` is the key; `{count}` is filled in unless params set it.
     const tn = (count, singular, plural, params) => {
       const values = { count, ...params };
@@ -92,7 +99,7 @@
       }
       return fill(count === 1 ? singular : plural, values);
     };
-    return { t, tn, language: code };
+    return { t, tn, tc, language: code };
   }
 
   return { LANGUAGES, createTranslator, matchLocale, resolveLanguage };

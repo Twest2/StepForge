@@ -5,7 +5,8 @@ const path = require('node:path');
 const { zipSync } = require('../core/zip');
 const { escapeXml } = require('../core/util');
 const { encodePng } = require('../core/png');
-const { guideSlug, renderAllImages, LEVEL_LABEL, stepContentGroups, flowchartImageKey, flowchartAlt } = require('./common');
+const { guideSlug, renderAllImages, calloutLabel, stepContentGroups, flowchartImageKey, flowchartAlt } = require('./common');
+const { exportText } = require('../core/export-text');
 const { tocEntries, guideMetaLines, guideSummary } = require('./document-layout');
 const { fitSize, textOn } = require('./branding');
 
@@ -90,10 +91,10 @@ function picture(relId, x, y, w, h, alt, { id = relId + 100, name = 'Screenshot'
 }
 
 const CALLOUT_STYLE = {
-  info: { fill: 'EFF6FF', accent: '2563EB', label: 'Note', color: '1D4ED8' },
-  success: { fill: 'ECFDF5', accent: '10B981', label: 'Tip', color: '047857' },
-  warn: { fill: 'FFFBEB', accent: 'F59E0B', label: 'Warning', color: 'B45309' },
-  error: { fill: 'FEF2F2', accent: 'EF4444', label: 'Important', color: 'B91C1C' },
+  info: { fill: 'EFF6FF', accent: '2563EB', color: '1D4ED8' },
+  success: { fill: 'ECFDF5', accent: '10B981', color: '047857' },
+  warn: { fill: 'FFFBEB', accent: 'F59E0B', color: 'B45309' },
+  error: { fill: 'FEF2F2', accent: 'EF4444', color: 'B91C1C' },
 };
 
 function estimateWrappedLines(text, charsPerLine) {
@@ -102,16 +103,16 @@ function estimateWrappedLines(text, charsPerLine) {
   return raw.split(/\n+/).reduce((sum, line) => sum + Math.max(1, Math.ceil(line.length / charsPerLine)), 0);
 }
 
-function calloutHeight(tb) {
-  const label = `${LEVEL_LABEL[tb.level] || 'Note'}${tb.title ? `: ${tb.title}` : ''}`;
+function calloutHeight(tb, ast) {
+  const label = calloutLabel(tb, ast);
   const lines = estimateWrappedLines(label, 46) + estimateWrappedLines(tb.descriptionText, 72);
   return Math.max(CALL_OUT_HEIGHT, 360000 + (lines * 150000));
 }
 
-function calloutXml(tb, x, y, w) {
+function calloutXml(tb, x, y, w, ast) {
   const style = CALLOUT_STYLE[tb.level] || CALLOUT_STYLE.info;
-  const height = calloutHeight(tb);
-  const label = `${style.label}${tb.title ? `: ${tb.title}` : ''}`;
+  const height = calloutHeight(tb, ast);
+  const label = calloutLabel({ ...tb, level: CALLOUT_STYLE[tb.level] ? tb.level : 'info' }, ast);
   const titlePara = para(label, { size: 1400, bold: true, color: style.color });
   const bodyPara = tb.descriptionText ? para(tb.descriptionText.slice(0, 400), { size: 1250, color: '374151' }) : '';
   const innerX = x + CALL_OUT_BAR_W + 24000;
@@ -152,9 +153,10 @@ function chunkArray(items, size) {
 }
 
 function tocSlideXml(ast, entries, { continued = false } = {}) {
+  const { t, tc } = exportText(ast);
   let tocContent = rectShape(0, 0, SLIDE_W, 18000, 'scheme:accent1');
   tocContent += textBox(914400, 760000, SLIDE_W - 1828800, 700000,
-    para(continued ? 'Contents (continued)' : 'Contents', { size: 3000, bold: true, font: '+mj-lt' }));
+    para(continued ? t('Contents (continued)') : tc('Table of contents', 'Contents'), { size: 3000, bold: true, font: '+mj-lt' }));
   tocContent += rectShape(914400, 1500000, 1600000, 14000, 'scheme:accent1');
   tocContent += textBox(914400, 1680000, SLIDE_W - 1828800, 450000,
     para(guideSummary(ast), { size: 1500, color: '6B7280' }));
@@ -190,10 +192,11 @@ function themeXml(brand) {
  * The slide master. With a brand profile it carries the logo (top right),
  * the footer text and the slide number, so they're on every slide.
  */
-function masterXml(brand, logoBox) {
+function masterXml(brand, logoBox, ast) {
+  const { t } = exportText(ast);
   let shapes = '';
   if (logoBox) {
-    shapes += picture(3, SLIDE_W - 457200 - logoBox.w, LOGO_TOP, logoBox.w, logoBox.h, 'Logo', { id: 2, name: 'Logo' });
+    shapes += picture(3, SLIDE_W - 457200 - logoBox.w, LOGO_TOP, logoBox.w, logoBox.h, t('Logo'), { id: 2, name: 'Logo' });
   }
   const footerText = (id, x, w, align, runs) => `<p:sp><p:nvSpPr><p:cNvPr id="${id}" name="Footer"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>` +
     `<p:spPr><a:xfrm><a:off x="${x}" y="${SLIDE_H - 360000}"/><a:ext cx="${w}" cy="260000"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr>` +
@@ -229,6 +232,7 @@ const LAYOUT_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 </p:sldLayout>`;
 
 function exportPptx(ast, outDir, template = {}) {
+  const { t } = exportText(ast);
   shapeIdCounter = 10;
   const tpl = { ...DEFAULT_TEMPLATE, ...template };
   const images = tpl.includeImages ? renderAllImages(ast) : new Map();
@@ -261,7 +265,7 @@ function exportPptx(ast, outDir, template = {}) {
     if (brand?.banner?.png) {
       const box = emuBox(brand.banner, SLIDE_W, 1500000);
       rels.push({ id: 2, name: 'brand-banner.png' });
-      titleContent += picture(2, Math.round((SLIDE_W - box.w) / 2), 0, box.w, box.h, 'Banner', { id: shapeIdCounter++, name: 'Banner' });
+      titleContent += picture(2, Math.round((SLIDE_W - box.w) / 2), 0, box.w, box.h, t('Banner'), { id: shapeIdCounter++, name: 'Banner' });
       top = box.h;
     }
     let titleY = 2050000;
@@ -269,7 +273,7 @@ function exportPptx(ast, outDir, template = {}) {
       const box = emuBox(brand.logo, 2400000, 800000);
       const y = top + (top ? 350000 : 650000);
       rels.push({ id: 3, name: 'brand-logo.png' });
-      titleContent += picture(3, centered ? Math.round((SLIDE_W - box.w) / 2) : SLIDE_MARGIN, y, box.w, box.h, 'Logo', { id: shapeIdCounter++, name: 'Logo' });
+      titleContent += picture(3, centered ? Math.round((SLIDE_W - box.w) / 2) : SLIDE_MARGIN, y, box.w, box.h, t('Logo'), { id: shapeIdCounter++, name: 'Logo' });
       titleY = Math.max(titleY, y + box.h + 250000);
     } else if (top) {
       titleY = Math.max(titleY, top + 350000);
@@ -309,7 +313,7 @@ function exportPptx(ast, outDir, template = {}) {
       // A flowchart block sits beside the screenshot on its slide, wherever it goes elsewhere.
       .map(([group, list]) => [group, list.filter((block) => block.kind !== 'flowchart')]));
     let content = rectShape(0, 0, SLIDE_W, 18000, 'scheme:accent1');
-    const beforeTitleReserve = beforeTitle.reduce((sum, tb) => sum + calloutHeight(tb) + CALL_OUT_GAP, 0);
+    const beforeTitleReserve = beforeTitle.reduce((sum, tb) => sum + calloutHeight(tb, ast) + CALL_OUT_GAP, 0);
     const titleY = beforeTitle.length ? 220000 + beforeTitleReserve + 120000 : TITLE_Y;
     const titleRuleY = beforeTitle.length ? titleY + TITLE_H + 120000 : TITLE_RULE_Y;
     const contentY = beforeTitle.length ? Math.max(CONTENT_Y, titleRuleY + 180000) : CONTENT_Y;
@@ -317,23 +321,23 @@ function exportPptx(ast, outDir, template = {}) {
 
     let y = beforeTitleY;
     for (const tb of beforeTitle) {
-      const block = calloutXml(tb, 457200, y, SLIDE_W - 914400);
+      const block = calloutXml(tb, 457200, y, SLIDE_W - 914400, ast);
       content += block.xml;
       y += block.height + CALL_OUT_GAP;
     }
 
     content += textBox(457200, titleY, titleWidth, TITLE_H,
-      para(`${step.number}. ${step.title || 'Untitled step'}`, { size: 2600, bold: true, font: '+mj-lt' }));
+      para(`${step.number}. ${step.title || t('Untitled step')}`, { size: 2600, bold: true, font: '+mj-lt' }));
     content += rectShape(457200, titleRuleY, 2400000, 12000, 'scheme:accent1');
 
     y = contentY;
     for (const tb of afterTitle) {
-      const block = calloutXml(tb, 457200, y, SLIDE_W - 914400);
+      const block = calloutXml(tb, 457200, y, SLIDE_W - 914400, ast);
       content += block.xml;
       y += block.height + CALL_OUT_GAP;
     }
     for (const tb of beforeDescription) {
-      const block = calloutXml(tb, 457200, y, SLIDE_W - 914400);
+      const block = calloutXml(tb, 457200, y, SLIDE_W - 914400, ast);
       content += block.xml;
       y += block.height + CALL_OUT_GAP;
     }
@@ -346,17 +350,17 @@ function exportPptx(ast, outDir, template = {}) {
     }
 
     for (const tb of afterDescription) {
-      const block = calloutXml(tb, 457200, y, SLIDE_W - 914400);
+      const block = calloutXml(tb, 457200, y, SLIDE_W - 914400, ast);
       content += block.xml;
       y += block.height + CALL_OUT_GAP;
     }
     for (const tb of beforeImage) {
-      const block = calloutXml(tb, 457200, y, SLIDE_W - 914400);
+      const block = calloutXml(tb, 457200, y, SLIDE_W - 914400, ast);
       content += block.xml;
       y += block.height + CALL_OUT_GAP;
     }
 
-    const postImageReserve = afterImage.reduce((sum, tb) => sum + calloutHeight(tb) + CALL_OUT_GAP, 0);
+    const postImageReserve = afterImage.reduce((sum, tb) => sum + calloutHeight(tb, ast) + CALL_OUT_GAP, 0);
     const rels = [];
     const media = [];
 
@@ -366,7 +370,7 @@ function exportPptx(ast, outDir, template = {}) {
     const img = images.get(step.stepId);
     if (img) pictures.push({ img, alt: step.altText });
     const chart = (step.blocks || []).some((b) => b.kind === 'flowchart') ? images.get(flowchartImageKey(step.stepId)) : null;
-    if (chart) pictures.push({ img: chart, alt: flowchartAlt(step) });
+    if (chart) pictures.push({ img: chart, alt: flowchartAlt(step, ast) });
     if (pictures.length) {
       const gap = 228600;
       // Fit into the remaining centered region before the trailing blocks.
@@ -392,7 +396,7 @@ function exportPptx(ast, outDir, template = {}) {
     }
 
     for (const tb of afterImage) {
-      const block = calloutXml(tb, 457200, y, SLIDE_W - 914400);
+      const block = calloutXml(tb, 457200, y, SLIDE_W - 914400, ast);
       content += block.xml;
       y += block.height + CALL_OUT_GAP;
     }
@@ -466,7 +470,7 @@ ${overrides.join('\n')}
       data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${presRels.join('')}</Relationships>`,
     },
-    { name: 'ppt/slideMasters/slideMaster1.xml', data: masterXml(brand, logoBox) },
+    { name: 'ppt/slideMasters/slideMaster1.xml', data: masterXml(brand, logoBox, ast) },
     {
       name: 'ppt/slideMasters/_rels/slideMaster1.xml.rels',
       data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>

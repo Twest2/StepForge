@@ -48,7 +48,7 @@ function sampleScreenshot(accent) {
  * Write the sample guide under `dir` and return its render AST with
  * `branding` (a BrandingStore.resolve() result, or null) applied.
  */
-function buildSampleAst({ dir, branding = null, codeStyle, reviewDays, now = new Date() } = {}) {
+function buildSampleAst({ dir, branding = null, codeStyle, reviewDays, language = 'en', now = new Date() } = {}) {
   fs.mkdirSync(dir, { recursive: true });
   const store = new GuideStore(dir);
   const guide = store.createGuide({
@@ -79,7 +79,7 @@ function buildSampleAst({ dir, branding = null, codeStyle, reviewDays, now = new
     annotations: [{ type: 'rect', x: 0.785, y: 0.75, w: 0.155, h: 0.09, style: { stroke: '#E5484D', strokeWidth: 4, fill: 'transparent' } }],
   }, encodePng(shot), size);
 
-  return buildRenderAst(store, guide.guideId, { now, codeStyle, reviewDays, branding });
+  return buildRenderAst(store, guide.guideId, { now, codeStyle, reviewDays, branding, language });
 }
 
 module.exports = { buildSampleAst, sampleScreenshot };

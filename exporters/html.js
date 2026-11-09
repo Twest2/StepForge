@@ -5,8 +5,9 @@ const path = require('node:path');
 const { escapeHtml } = require('../core/util');
 const { highlightCode } = require('../core/code-highlight');
 const { encodePng } = require('../core/png');
-const { guideSlug, renderAllImages, LEVEL_LABEL, stepContentGroups, codeBlockText, flowchartImageKey, flowchartAlt } = require('./common');
-const { anchorFor, tocEntries, guideMetaLines } = require('./document-layout');
+const { guideSlug, renderAllImages, LEVEL_LABEL, levelLabel, stepContentGroups, codeBlockText, flowchartImageKey, flowchartAlt } = require('./common');
+const { anchorFor, tocEntries, guideMetaLines, stepCount } = require('./document-layout');
+const { exportText } = require('../core/export-text');
 const { withBrand, imageDataUri, cssFontStack, textOn, screenshotOptions } = require('./branding');
 
 /**
@@ -48,7 +49,7 @@ function stepLinkRewrite(html, ast) {
 
 function blockHtml(tb, ast) {
   const level = LEVEL_LABEL[tb.level] ? tb.level : 'info';
-  const label = LEVEL_LABEL[level];
+  const label = escapeHtml(levelLabel(level, ast));
   const heading = tb.title ? escapeHtml(tb.title) : label;
   return `<aside class="callout callout-${level}" aria-label="${label}">`
     + `<div class="callout-title">${heading}</div>`
@@ -66,24 +67,25 @@ function tableHtml(rows) {
 }
 
 function metaLine(ast) {
-  const count = ast.steps.length;
+  const { t } = exportText(ast);
   const date = String(ast.generatedAt || '').slice(0, 10);
   return [
-    `${count} step${count === 1 ? '' : 's'}`,
+    stepCount(ast),
     ...guideMetaLines(ast),
-    date && `Updated ${date}`,
+    date && t('Updated {date}', { date }),
   ].filter(Boolean).map((part) => `<span>${escapeHtml(part)}</span>`).join('');
 }
 
 /** The brand's banner, logo and header text, above the title. */
-function brandHeader(brand) {
+function brandHeader(brand, ast) {
+  const { t } = exportText(ast);
   if (!brand) return '';
   const parts = [];
   if (brand.banner) {
     parts.push(`<img class="brand-banner" src="${imageDataUri(brand.banner)}" alt=""${brand.banner.width ? ` width="${brand.banner.width}" height="${brand.banner.height}"` : ''}>`);
   }
   const logo = brand.logo
-    ? `<img class="brand-logo" src="${imageDataUri(brand.logo)}" alt="Logo"${brand.logo.width ? ` width="${brand.logo.width}" height="${brand.logo.height}"` : ''}>`
+    ? `<img class="brand-logo" src="${imageDataUri(brand.logo)}" alt="${escapeHtml(t('Logo'))}"${brand.logo.width ? ` width="${brand.logo.width}" height="${brand.logo.height}"` : ''}>`
     : '';
   const tagline = brand.header.text ? `<p class="brand-tagline">${escapeHtml(brand.header.text)}</p>` : '';
   if (logo || tagline) parts.push(`<div class="brand-bar">${logo}${tagline}</div>`);
@@ -91,12 +93,13 @@ function brandHeader(brand) {
 }
 
 function renderHeader(ast) {
+  const { t } = exportText(ast);
   const brand = ast.branding;
   return `
 <header class="doc-header${brand ? ` cover-${brand.cover}` : ''}">
-  ${brandHeader(brand)}
+  ${brandHeader(brand, ast)}
   <div class="rule"></div>
-  <h1>${escapeHtml(ast.guide.title || 'Untitled guide')}</h1>
+  <h1>${escapeHtml(ast.guide.title || t('Untitled guide'))}</h1>
   ${ast.guide.descriptionHtml ? `<div class="lede">${stepLinkRewrite(ast.guide.descriptionHtml, ast)}</div>` : ''}
   <p class="meta">${metaLine(ast)}</p>
 </header>`;
@@ -131,18 +134,20 @@ function chartLinks(imgHtml, chart, ast) {
     const target = ast.steps.find((s) => s.stepId === link.stepId);
     if (!target) return '';
     const pct = (v) => `${(v * 100).toFixed(3)}%`;
-    const label = escapeHtml(`Go to step ${target.number}: ${target.title || 'Untitled step'}`);
+    const { t } = exportText(ast);
+    const label = escapeHtml(t('Go to step {number}: {title}', { number: target.number, title: target.title || t('Untitled step') }));
     return `<a class="chart-link" href="#${anchorFor(target)}" title="${label}" aria-label="${label}" style="left:${pct(link.x)};top:${pct(link.y)};width:${pct(link.w)};height:${pct(link.h)}"></a>`;
   }).join('');
   return links ? `<span class="chart-links">${imgHtml}${links}</span>` : imgHtml;
 }
 
 function renderStep(step, ast, images, tpl, { rich = false } = {}) {
+  const { t } = exportText(ast);
   const groups = stepContentGroups(step);
   const chartHtml = () => {
     const chart = images.get(flowchartImageKey(step.stepId));
     return chart && tpl.includeImages
-      ? `<figure class="shot flowchart">${chartLinks(`<img alt="${escapeHtml(flowchartAlt(step))}" src="${dataUri(chart)}" width="${chart.width / 2}" height="${chart.height / 2}">`, step.flowchartImage, ast)}</figure>`
+      ? `<figure class="shot flowchart">${chartLinks(`<img alt="${escapeHtml(flowchartAlt(step, ast))}" src="${dataUri(chart)}" width="${chart.width / 2}" height="${chart.height / 2}">`, step.flowchartImage, ast)}</figure>`
       : '';
   };
   const blocks = (list) => list.map((tb) => (tb.kind === 'flowchart' ? chartHtml() : blockHtml(tb, ast))).join('\n');
@@ -174,15 +179,15 @@ function renderStep(step, ast, images, tpl, { rich = false } = {}) {
   }
 
   const toggle = rich
-    ? `<label class="done-toggle" title="Mark step as done"><input type="checkbox" class="step-done" data-step="${escapeHtml(step.stepId)}"><span>Done</span></label>`
+    ? `<label class="done-toggle" title="${escapeHtml(t('Mark step as done'))}"><input type="checkbox" class="step-done" data-step="${escapeHtml(step.stepId)}"><span>${escapeHtml(t('Done'))}</span></label>`
     : '';
-  const skipped = step.skipped ? '<span class="pill">Skipped</span>' : '';
+  const skipped = step.skipped ? `<span class="pill">${escapeHtml(t('Skipped'))}</span>` : '';
   return `
 <section class="step depth-${Math.min(step.depth || 0, 3)}${step.skipped ? ' skipped' : ''}" id="${anchorFor(step)}">
   ${blocks(groups.beforeTitle)}
   <div class="step-head">
     <span class="step-num">${escapeHtml(step.number)}</span>
-    <h2>${escapeHtml(step.title || 'Untitled step')}</h2>
+    <h2>${escapeHtml(step.title || t('Untitled step'))}</h2>
     ${skipped}${toggle}
   </div>
   ${blocks(groups.afterTitle)}
@@ -204,10 +209,15 @@ function rootStyle(tpl) {
   return `--accent:rgb(${r},${g},${b});--accent-rgb:${r},${g},${b};`;
 }
 
+// The "Made with StepForge" credit, which the GitHub Pages copy links to the project (core/pages-site.js).
+const CREDIT_START = '<span class="credit">';
+
 function footer(ast) {
+  const { t } = exportText(ast);
   const date = escapeHtml(String(ast.generatedAt || '').slice(0, 10));
   const text = ast.branding?.footer.text;
-  return `<footer class="doc-footer">${text ? `${escapeHtml(text)} · ${date}` : `Made with StepForge · ${date}`}</footer>`;
+  const credit = `${CREDIT_START}${escapeHtml(t('Made with StepForge'))}</span>`;
+  return `<footer class="doc-footer">${text ? `${escapeHtml(text)} · ${date}` : `${credit} · ${date}`}</footer>`;
 }
 
 const BASE_CSS = `
@@ -427,6 +437,7 @@ const RICH_CSS = `
 // text, never the colors.
 const COPY_SCRIPT = `
 (function () {
+  var TEXT = __COPY_TEXT__;
   function fallbackCopy(text) {
     var area = document.createElement('textarea');
     area.value = text;
@@ -471,11 +482,11 @@ const COPY_SCRIPT = `
     function flash(icon, label) {
       show(icon, label);
       clearTimeout(timer);
-      timer = setTimeout(function () { show('copy', 'Copy code'); }, 1500);
+      timer = setTimeout(function () { show('copy', TEXT.copy); }, 1500);
     }
-    show('copy', 'Copy code');
+    show('copy', TEXT.copy);
     button.addEventListener('click', function () {
-      copyText(pre.querySelector('code').textContent).then(function () { flash('copied', 'Copied'); }, function () { flash('failed', 'Copy failed'); });
+      copyText(pre.querySelector('code').textContent).then(function () { flash('copied', TEXT.copied); }, function () { flash('failed', TEXT.failed); });
     });
     wrap.appendChild(button);
   });
@@ -485,6 +496,7 @@ const COPY_SCRIPT = `
 const RICH_SCRIPT = `
 (function () {
   var key = __KEY__;
+  var DONE_COUNT = __DONE_TEXT__;
   var state = {};
   try { state = JSON.parse(localStorage.getItem(key) || '{}'); } catch (e) {}
   var boxes = Array.prototype.slice.call(document.querySelectorAll('input.step-done'));
@@ -501,7 +513,7 @@ const RICH_SCRIPT = `
     var fill = document.querySelector('.progress .fill');
     if (fill) fill.style.width = (boxes.length ? (100 * done / boxes.length) : 0) + '%';
     var label = document.querySelector('.progress .count');
-    if (label) label.textContent = done + ' of ' + boxes.length + ' done';
+    if (label) label.textContent = DONE_COUNT.replace('{done}', done).replace('{total}', boxes.length);
   }
   boxes.forEach(function (b) {
     b.checked = !!state[b.dataset.step];
@@ -577,14 +589,26 @@ const RICH_SCRIPT = `
 })();
 `;
 
+/** A value for an inline script: JSON that can't end the <script> element. */
+function scriptValue(value) {
+  return JSON.stringify(value).replace(/</g, '\\u003c');
+}
+
+/** The copy button's labels, in the export's language. */
+function copyScript(ast) {
+  const { t } = exportText(ast);
+  return COPY_SCRIPT.replace('__COPY_TEXT__', () => scriptValue({ copy: t('Copy code'), copied: t('Copied'), failed: t('Copy failed') }));
+}
+
 function page(ast, tpl, css, body, script = '') {
+  const { t } = exportText(ast);
   return `<!DOCTYPE html>
-<html lang="en" style="${rootStyle(tpl)}">
+<html lang="${ast.language && ast.language !== 'en' ? escapeHtml(ast.language) : 'en'}" style="${rootStyle(tpl)}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="generator" content="StepForge">
-<title>${escapeHtml(ast.guide.title || 'Untitled guide')}</title>
+<title>${escapeHtml(ast.guide.title || t('Untitled guide'))}</title>
 <style>${css}${brandCss(ast.branding)}${styleText(tpl.customCss)}</style>
 </head>
 <body>
@@ -599,8 +623,10 @@ function exportHtmlSimple(ast, outDir, template = {}) {
   const tpl = withBrand('html-simple', DEFAULT_TEMPLATE, ast, template);
   fs.mkdirSync(outDir, { recursive: true });
   const images = tpl.includeImages ? renderAllImages(ast) : new Map();
+  const { tc } = exportText(ast);
+  const contents = escapeHtml(tc('Table of contents', 'Contents'));
   const toc = tpl.toc && ast.steps.length > 1
-    ? `<nav class="contents" aria-label="Contents"><h2>Contents</h2><ul class="toc-list">${renderTocItems(ast)}</ul></nav>`
+    ? `<nav class="contents" aria-label="${contents}"><h2>${contents}</h2><ul class="toc-list">${renderTocItems(ast)}</ul></nav>`
     : '';
   const body = `<div class="page">
 ${renderHeader(ast)}
@@ -611,7 +637,7 @@ ${ast.steps.map((step) => renderStep(step, ast, images, tpl)).join('\n')}
 ${footer(ast)}
 </div>`;
   const file = path.join(outDir, `${guideSlug(ast)}.html`);
-  fs.writeFileSync(file, page(ast, tpl, BASE_CSS, body, body.includes('<pre class="code') ? COPY_SCRIPT : ''));
+  fs.writeFileSync(file, page(ast, tpl, BASE_CSS, body, body.includes('<pre class="code') ? copyScript(ast) : ''));
   return { file, imageCount: images.size };
 }
 
@@ -619,14 +645,16 @@ function exportHtmlRich(ast, outDir, template = {}) {
   const tpl = withBrand('html-rich', DEFAULT_TEMPLATE, ast, template);
   fs.mkdirSync(outDir, { recursive: true });
   const images = tpl.includeImages ? renderAllImages(ast) : new Map();
+  const { t, tc } = exportText(ast);
   const storageKey = `stepforge-progress-${ast.guide.id}`;
   const progress = `<div class="progress">
-    <div class="label"><span class="count"></span><button type="button">Reset</button></div>
+    <div class="label"><span class="count"></span><button type="button">${escapeHtml(t('Reset'))}</button></div>
     <div class="bar"><div class="fill"></div></div>
   </div>`;
+  const contents = escapeHtml(tc('Table of contents', 'Contents'));
   const toc = tpl.toc && ast.steps.length > 1
-    ? `<nav class="toc" aria-label="Contents">${progress}<h2>Contents</h2><ul class="toc-list">${renderTocItems(ast)}</ul></nav>`
-    : `<nav class="toc" aria-label="Progress">${progress}</nav>`;
+    ? `<nav class="toc" aria-label="${contents}">${progress}<h2>${contents}</h2><ul class="toc-list">${renderTocItems(ast)}</ul></nav>`
+    : `<nav class="toc" aria-label="${escapeHtml(t('Progress'))}">${progress}</nav>`;
   const body = `<div class="page rich">
 ${toc}
 <div class="content">
@@ -637,9 +665,10 @@ ${ast.steps.map((step) => renderStep(step, ast, images, tpl, { rich: true })).jo
 ${footer(ast)}
 </div>
 </div>
-<div class="lightbox" role="dialog" aria-label="Screenshot"><img alt=""></div>`;
+<div class="lightbox" role="dialog" aria-label="${escapeHtml(t('Screenshot'))}"><img alt=""></div>`;
   const file = path.join(outDir, `${guideSlug(ast)}-rich.html`);
-  const script = RICH_SCRIPT.replace('__KEY__', JSON.stringify(storageKey)) + (body.includes('<pre class="code') ? COPY_SCRIPT : '');
+  const script = RICH_SCRIPT.replace('__KEY__', () => scriptValue(storageKey))
+    .replace('__DONE_TEXT__', () => scriptValue(t('{done} of {total} done'))) + (body.includes('<pre class="code') ? copyScript(ast) : '');
   fs.writeFileSync(file, page(ast, tpl, BASE_CSS + RICH_CSS, body, script));
   return { file, imageCount: images.size };
 }

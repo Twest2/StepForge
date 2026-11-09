@@ -6,6 +6,7 @@ const { isDeepStrictEqual } = require('node:util');
 const { DEFAULT_SETTINGS, SHARED_SETTING_PATHS } = require('./settings');
 const { normalizeProfile, profileAssetIds, prepareAsset } = require('./branding');
 const { contentHash } = require('./cloud-parts');
+const { t } = require('./ui-text');
 
 /*
  * Settings that follow you to every computer that syncs: global
@@ -55,7 +56,7 @@ const UNZIP_LIMITS = { maxEntries: 5000, maxTotalUncompressed: 1024 * 1024 * 102
 const compareText = (a, b) => a < b ? -1 : a > b ? 1 : 0;
 const same = (a, b) => isDeepStrictEqual(a, b);
 const sortedObject = (obj) => Object.fromEntries(Object.keys(obj).sort(compareText).map((key) => [key, obj[key]]));
-const newerSettings = () => new Error('These settings were synced by a newer StepForge. Update StepForge on this computer.');
+const newerSettings = () => new Error(t('These settings were synced by a newer StepForge. Update StepForge on this computer.'));
 const plainObject = (value) => value && typeof value === 'object' && !Array.isArray(value);
 
 // Refuse fields an older client would silently strip when publishing a merge.
@@ -130,7 +131,7 @@ function toEntries(model) {
  * StepForge wrote it, and merging without it would lose it.
  */
 function fromEntries(entries) {
-  const damaged = () => new Error('Synced settings are damaged and can’t be read.');
+  const damaged = () => new Error(t('Synced settings are damaged and can’t be read.'));
   const model = emptyModel();
   const parse = (entry) => {
     try { return JSON.parse(textOf(entry)); } catch { throw damaged(); }
@@ -375,11 +376,11 @@ class SharedSettings {
     const prepared = new Map();
     for (const [id, asset] of Object.entries(next.assets)) {
       try { prepared.set(id, prepareAsset(asset.data, { kind: asset.kind, fileName: asset.name })); }
-      catch (error) { throw new Error(`Synced brand asset ${id} could not be read: ${error.message}`); }
+      catch (error) { throw new Error(t('Synced brand asset {id} could not be read: {message}', { id, message: error.message })); }
     }
     for (const profile of Object.values(next.profiles)) {
       for (const id of profileAssetIds(profile)) {
-        if (!prepared.has(id)) throw new Error(`Synced brand asset ${id} is missing. Settings here are unchanged.`);
+        if (!prepared.has(id)) throw new Error(t('Synced brand asset {id} is missing. Settings here are unchanged.', { id }));
       }
     }
     const changes = [];

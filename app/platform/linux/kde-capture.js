@@ -6,6 +6,7 @@ const path = require('node:path');
 const { execFile } = require('node:child_process');
 const GnomeCaptureService = require('./gnome-capture');
 const { PortalBackend } = require('./portal-backend');
+const { t } = require('../../../core/ui-text');
 
 // Plasma's panel, its tray and the menus they open belong to plasmashell. A
 // click there may be the one that opens StepForge's tray menu or picks Pause
@@ -18,9 +19,9 @@ function runSpectacle(file) {
     execFile('spectacle', ['--background', '--region', '--nonotify', '--output', file],
       { timeout: 125000 }, (error) => {
         if (error && error.code === 'ENOENT') {
-          reject(new Error('Install Spectacle to select a region on KDE Plasma.'));
+          reject(new Error(t('Install Spectacle to select a region on KDE Plasma.')));
         } else if (error && !error.killed) {
-          reject(new Error('Spectacle could not take the region screenshot.'));
+          reject(new Error(t('Spectacle could not take the region screenshot.')));
         } else {
           resolve();
         }
@@ -112,9 +113,9 @@ class KdeCaptureService extends GnomeCaptureService {
         await this.runSpectacle(file);
         return fs.promises.readFile(file).catch(() => null);
       });
-      if (!png) return { ok: false, reason: 'selection cancelled' };
+      if (!png) return { ok: false, reason: t('selection cancelled') };
       const size = this.imageFromPng(png).getSize();
-      if (!size.width || !size.height) return { ok: false, reason: 'empty selection' };
+      if (!size.width || !size.height) return { ok: false, reason: t('empty selection') };
       return await this.storeFrameAsStep(guideId, 'region', { mode: 'region', png, size, display: null, cursor: null });
     } catch (error) {
       return { ok: false, reason: error.message };

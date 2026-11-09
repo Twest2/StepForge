@@ -4,9 +4,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { slugify, fileNameSlug, escapeXml } = require('../core/util');
 const { encodePng } = require('../core/png');
-const { renderStepImage, renderFlowchartImage } = require('../core/renderast');
+const { renderStepImage, renderFlowchartImage, flowchartAltText } = require('../core/renderast');
 const { flowchartImageKey } = require('../core/image-format');
 const { orderedBlocks, blockText } = require('../core/blocks');
+const { exportText } = require('../core/export-text');
 
 /**
  * Shared exporter helpers: every image-bearing exporter renders annotated
@@ -79,6 +80,22 @@ function publishedImageName(file, used) {
   return name;
 }
 
+/** "Step 3: Title", the text of a link to a step, in the export's language. */
+function stepLinkText(target, ast) {
+  const { t } = exportText(ast);
+  return t('Step {number}: {title}', { number: target.number, title: target.title || t('Untitled step') });
+}
+
+/**
+ * The text around a flowchart's list of step links: { before, after } of
+ * "Go to: {links}" in the export's language.
+ */
+function goToParts(ast) {
+  const { t } = exportText(ast);
+  const [before, after = ''] = t('Go to: {links}').split('{links}');
+  return { before, after };
+}
+
 /**
  * The steps a flowchart's shapes link to, as a line of step links to put
  * under its picture where a picture can't hold links (Word, Confluence):
@@ -89,14 +106,15 @@ function chartLinksHtml(chart, ast) {
   const seen = new Set();
   const links = (chart?.links || []).filter((link) => !seen.has(link.stepId) && seen.add(link.stepId)).map((link) => {
     const target = ast.steps.find((s) => s.stepId === link.stepId);
-    return target ? `<a href="step:${esc(target.stepId)}" data-step-id="${esc(target.stepId)}">Step ${esc(target.number)}: ${esc(target.title || 'Untitled step')}</a>` : '';
+    return target ? `<a href="step:${esc(target.stepId)}" data-step-id="${esc(target.stepId)}">${esc(stepLinkText(target, ast))}</a>` : '';
   }).filter(Boolean);
-  return links.length ? `<p>Go to: ${links.join(' · ')}</p>` : '';
+  const { before, after } = goToParts(ast);
+  return links.length ? `<p>${esc(before)}${links.join(' · ')}${esc(after)}</p>` : '';
 }
 
 /** Alt text for a step's flowchart block. */
-function flowchartAlt(step) {
-  return step.altText.replace(/^Screenshot/, 'Flowchart');
+function flowchartAlt(step, ast) {
+  return flowchartAltText(step.number, step.title, ast && ast.language);
 }
 
 function stepBlocks(step) {
@@ -177,13 +195,32 @@ function wordCodeRuns(hl, { size = 0 } = {}) {
 /** Paragraph shading for a highlighted code block's background. */
 const wordCodeShading = (hl) => `<w:shd w:val="clear" w:color="auto" w:fill="${hl.background.slice(1).toUpperCase()}"/>`;
 
+// English callout names: GitHub alert keywords (> [!NOTE]) and the levels exporters know.
 const LEVEL_LABEL = { info: 'Note', warn: 'Warning', error: 'Important', success: 'Tip' };
+
+/** A callout's name ("Note", "Tip", ...) in the export's language; Note for an unknown level. */
+function levelLabel(level, ast) {
+  const { t } = exportText(ast);
+  if (level === 'warn') return t('Warning');
+  if (level === 'error') return t('Important');
+  if (level === 'success') return t('Tip');
+  return t('Note');
+}
+
+/** "Tip: Back up first" (or just "Tip"): a callout's name and its title. */
+function calloutLabel(tb, ast) {
+  const { t } = exportText(ast);
+  const label = levelLabel(tb.level, ast);
+  return tb.title ? t('{label}: {title}', { label, title: tb.title }) : label;
+}
 
 module.exports = {
   guideSlug,
   flowchartImageKey,
   flowchartAlt,
   chartLinksHtml,
+  stepLinkText,
+  goToParts,
   publishedImageName,
   imagesDirName,
   writeStepImages,
@@ -194,4 +231,6 @@ module.exports = {
   wordCodeRuns,
   wordCodeShading,
   LEVEL_LABEL,
+  levelLabel,
+  calloutLabel,
 };

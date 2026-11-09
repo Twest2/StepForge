@@ -4,9 +4,10 @@ const { zipSync } = require('../core/zip');
 const { escapeXml } = require('../core/util');
 const { encodePng } = require('../core/png');
 const { htmlToBlocks } = require('../core/htmlblocks');
-const { LEVEL_LABEL, stepContentGroups, codeBlockText, wordCodeRuns, wordCodeShading, flowchartImageKey, flowchartAlt, chartLinksHtml } = require('./common');
+const { levelLabel, stepContentGroups, codeBlockText, wordCodeRuns, wordCodeShading, flowchartImageKey, flowchartAlt, chartLinksHtml } = require('./common');
 const { highlightCode } = require('../core/code-highlight');
-const { guideMetaLines } = require('./document-layout');
+const { guideMetaLines, stepCount } = require('./document-layout');
+const { exportText } = require('../core/export-text');
 const { fitSize } = require('./branding');
 
 /**
@@ -132,7 +133,7 @@ class WordDocument {
 
   callout(tb) {
     const style = CALLOUT[tb.level] || CALLOUT.info;
-    const label = tb.title || LEVEL_LABEL[tb.level] || 'Note';
+    const label = tb.title || levelLabel(tb.level, this.ast);
     const border = `<w:left w:val="single" w:sz="24" w:space="0" w:color="${style.border}"/>`;
     const content = paragraph(runXml(label, { bold: true })) + (this.richText(tb.descriptionHtml) || paragraph(''));
     return `<w:tbl><w:tblPr><w:tblW w:w="5000" w:type="pct"/><w:tblBorders>${border}</w:tblBorders></w:tblPr>`
@@ -179,12 +180,13 @@ class WordDocument {
   }
 
   step(step, images, tpl) {
+    const { t } = exportText(this.ast);
     const g = stepContentGroups(step);
     const chart = () => {
       const img = images.get(flowchartImageKey(step.stepId));
       if (!img || !tpl.includeImages) return '';
       const scale = Math.min(0.5, MAX_IMAGE_PX / img.width); // drawn at 2x
-      return this.picture(encodePng(img), img.width * scale, img.height * scale, flowchartAlt(step))
+      return this.picture(encodePng(img), img.width * scale, img.height * scale, flowchartAlt(step, this.ast))
         + this.richText(chartLinksHtml(step.flowchartImage, this.ast));
     };
     const blocks = (list) => list.map((tb) => (tb.kind === 'flowchart' ? chart() : this.callout(tb))).join('');
@@ -192,12 +194,12 @@ class WordDocument {
     const style = step.depth > 0 ? 'Heading3' : 'Heading2';
     const heading = paragraph(
       `<w:bookmarkStart w:id="${bm}" w:name="${this.anchorFor(step)}"/>`
-      + runXml(`${step.number}. ${step.title || 'Untitled step'}`)
+      + runXml(`${step.number}. ${step.title || t('Untitled step')}`)
       + `<w:bookmarkEnd w:id="${bm}"/>`,
       `<w:pStyle w:val="${style}"/>`,
     );
     const parts = [blocks(g.beforeTitle), heading];
-    if (step.skipped) parts.push(paragraph(runXml('Skipped', { italic: true })));
+    if (step.skipped) parts.push(paragraph(runXml(t('Skipped'), { italic: true })));
     parts.push(blocks(g.afterTitle), blocks(g.beforeDescription), this.richText(step.descriptionHtml),
       blocks(g.afterDescription), blocks(g.beforeImage));
     const img = images.get(step.stepId);
@@ -221,22 +223,22 @@ class WordDocument {
 
   build(images, tpl) {
     const ast = this.ast;
+    const { t } = exportText(ast);
     const brand = ast.branding;
     const intro = [];
     // The brand's banner and logo open the page; its footer text closes it.
     const jc = brand?.cover === 'centered' ? '<w:jc w:val="center"/>' : '';
     if (brand?.banner?.png) {
       const size = fitSize(brand.banner.width, brand.banner.height, MAX_IMAGE_PX, 220);
-      intro.push(this.picture(brand.banner.png, size.width, size.height, 'Banner', jc));
+      intro.push(this.picture(brand.banner.png, size.width, size.height, t('Banner'), jc));
     }
     if (brand?.logo?.png) {
       const size = fitSize(brand.logo.width, brand.logo.height, 240, 64);
-      intro.push(this.picture(brand.logo.png, size.width, size.height, 'Logo', jc));
+      intro.push(this.picture(brand.logo.png, size.width, size.height, t('Logo'), jc));
     }
     if (brand?.header.text) intro.push(paragraph(runXml(brand.header.text, { italic: true }), jc));
     if (ast.guide.descriptionHtml) intro.push(this.richText(ast.guide.descriptionHtml));
-    const count = ast.steps.length;
-    const meta = [`${count} step${count === 1 ? '' : 's'}`, ...guideMetaLines(ast)].join(' · ');
+    const meta = [stepCount(ast), ...guideMetaLines(ast)].join(' · ');
     intro.push(paragraph(runXml(meta, { italic: true })));
     const outro = brand?.footer.text ? paragraph(runXml(brand.footer.text, { italic: true })) : '';
     const body = intro.join('') + ast.steps.map((s) => this.step(s, images, tpl)).join('') + outro;
@@ -249,7 +251,7 @@ class WordDocument {
     return zipSync([
       { name: '[Content_Types].xml', data: CONTENT_TYPES },
       { name: '_rels/.rels', data: ROOT_RELS },
-      { name: 'docProps/core.xml', data: coreProps(ast.guide.title || 'Untitled guide') },
+      { name: 'docProps/core.xml', data: coreProps(ast.guide.title || t('Untitled guide')) },
       { name: 'word/document.xml', data: documentXml },
       { name: 'word/styles.xml', data: STYLES },
       { name: 'word/numbering.xml', data: numberingXml(this.nums) },

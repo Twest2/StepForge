@@ -21,6 +21,7 @@
 const nodeFs = require('node:fs');
 const { win32 } = require('node:path');
 const { spawn } = require('node:child_process');
+const { t } = require('../core/ui-text');
 
 const DEFAULT_CHOCOLATEY_ROOT = 'C:\\ProgramData\\chocolatey';
 const PACKAGE_ID = 'stepforge';
@@ -326,17 +327,17 @@ async function updateNow({
   launch = launchElevated,
 } = {}) {
   if (platform !== 'win32' || packaged !== true) {
-    return { ok: false, reason: 'unsupported', message: 'Update now is only available in the Windows app.' };
+    return { ok: false, reason: 'unsupported', message: t('Update now is only available in the Windows app.') };
   }
   if (store === true) {
-    return { ok: false, reason: 'unsupported', message: 'The Microsoft Store installs StepForge updates. Open StepForge in the Store to update it.' };
+    return { ok: false, reason: 'unsupported', message: t('The Microsoft Store installs StepForge updates. Open StepForge in the Store to update it.') };
   }
   const status = chocolateyStatus({ env, fs });
   if (!status.registered) {
-    return { ok: false, reason: 'not-registered', message: 'StepForge isn’t registered with Chocolatey, so it can’t update itself. Download the new installer instead.' };
+    return { ok: false, reason: 'not-registered', message: t('StepForge isn’t registered with Chocolatey, so it can’t update itself. Download the new installer instead.') };
   }
   if (!lastCheck || lastCheck.status !== 'update-available' || !lastCheck.latestVersion) {
-    return { ok: false, reason: 'no-update', message: 'Check for updates first.' };
+    return { ok: false, reason: 'no-update', message: t('Check for updates first.') };
   }
   let command;
   try {
@@ -344,15 +345,15 @@ async function updateNow({
       pid, exePath, chocoPath: status.chocoPath, targetVersion: lastCheck.latestVersion,
     }));
   } catch {
-    return { ok: false, reason: 'failed', message: 'Couldn’t prepare the update. Download the new installer instead.' };
+    return { ok: false, reason: 'failed', message: t('Couldn’t prepare the update. Download the new installer instead.') };
   }
   if (command.length > MAX_COMMAND_LINE - 200) {
-    return { ok: false, reason: 'failed', message: 'Couldn’t prepare the update. Download the new installer instead.' };
+    return { ok: false, reason: 'failed', message: t('Couldn’t prepare the update. Download the new installer instead.') };
   }
   const result = await launch(command, { env });
   if (result.started) return { ok: true };
-  if (result.declined) return { ok: false, reason: 'declined', message: 'Update cancelled' };
-  return { ok: false, reason: 'failed', message: 'Couldn’t start the update. Try again, or download the new installer.' };
+  if (result.declined) return { ok: false, reason: 'declined', message: t('Update cancelled') };
+  return { ok: false, reason: 'failed', message: t('Couldn’t start the update. Try again, or download the new installer.') };
 }
 
 module.exports = {

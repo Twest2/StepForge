@@ -1,6 +1,7 @@
 'use strict';
 
 const { pointInBounds } = require('./click-frames');
+const { t } = require('../core/ui-text');
 
 /**
  * Coordinate-space conversion between physical (OS event) pixels and
@@ -141,7 +142,7 @@ function cropGeometry(bounds, rect, size) {
   const y = Math.max(bounds.y, rect.y);
   const right = Math.min(bounds.x + bounds.width, rect.x + rect.width);
   const bottom = Math.min(bounds.y + bounds.height, rect.y + rect.height);
-  if (right <= x || bottom <= y) throw new Error('The selected area is outside the shared monitor.');
+  if (right <= x || bottom <= y) throw new Error(t('The selected area is outside the shared monitor.'));
   const sx = size.width / bounds.width;
   const sy = size.height / bounds.height;
   const px = Math.round((x - bounds.x) * sx);

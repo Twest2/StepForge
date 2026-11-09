@@ -7,6 +7,7 @@ const path = require('node:path');
 const { atomicWriteFileSync } = require('../core/util');
 const { progressBody } = require('../core/transfer-meter');
 const { FolderStorage } = require('../core/folder-storage');
+const { t } = require('../core/ui-text');
 
 /*
  * What OneDrive, Dropbox and Nextcloud/WebDAV sync have in common: sign-in
@@ -54,7 +55,7 @@ class CloudAccount {
         this.credentials = stored;
         this.loadError = null;
       } else {
-        this.loadError = 'Please sign in again to connect this version of StepForge.';
+        this.loadError = t('Please sign in again to connect this version of StepForge.');
       }
     } catch {
       this.loadError = `Stored ${this.label} sign-in could not be unlocked. Disconnect and sign in again.`;
@@ -199,7 +200,7 @@ class CloudAccount {
         if (response.body) {
           for await (const chunk of response.body) {
             length += chunk.length;
-            if (length > MAX_TRANSFER_BYTES) { controller.abort(); throw new Error('Cloud archive exceeds the 256 MB transfer limit.'); }
+            if (length > MAX_TRANSFER_BYTES) { controller.abort(); throw new Error(t('Cloud archive exceeds the 256 MB transfer limit.')); }
             chunks.push(Buffer.from(chunk));
             onProgress?.(length);
           }
@@ -221,7 +222,7 @@ class CloudAccount {
 
   async authorized(url, options = {}) {
     const generation = this.generation;
-    if (!this.credentials) throw new Error(this.loadError || `Sign in to ${this.label} first.`);
+    if (!this.credentials) throw new Error(this.loadError || t('Sign in to {service} first.', { service: this.label }));
     const headers = await this.authHeaders();
     if (generation !== this.generation) throw new Error(`${this.label} request cancelled.`);
     try {
@@ -259,7 +260,7 @@ class CloudAccount {
         this.onCallback = (req, res) => {
           const url = new URL(req.url, 'http://localhost');
           if (req.method !== 'GET' || url.pathname !== '/' || url.searchParams.get('state') !== state) {
-            res.writeHead(400).end('Invalid sign-in callback.');
+            res.writeHead(400).end(t('Invalid sign-in callback.'));
             return;
           }
           res.setHeader('Content-Type', 'text/plain; charset=utf-8');
@@ -268,7 +269,7 @@ class CloudAccount {
             res.end(`${this.label} sign-in was not completed. Return to StepForge.`);
             reject(new Error(`${this.label} sign-in was denied or cancelled.`));
           } else {
-            res.end(`Signed in to ${this.label}. You can close this tab and go back to StepForge.`);
+            res.end(t('Signed in to {service}. You can close this tab and go back to StepForge.', { service: this.label }));
             resolve(url.searchParams.get('code'));
           }
         };
@@ -320,7 +321,7 @@ class CloudAccount {
   /** A current OAuth access token, refreshed when it's about to expire. */
   async accessToken(force = false) {
     const credentials = this.credentials;
-    if (!credentials?.refresh_token) throw new Error(this.loadError || `Sign in to ${this.label} first.`);
+    if (!credentials?.refresh_token) throw new Error(this.loadError || t('Sign in to {service} first.', { service: this.label }));
     if (!force && credentials.access_token && credentials.expiresAt > Date.now() + 60000) return credentials.access_token;
     this.refreshing ||= (async () => {
       let response;
@@ -358,37 +359,42 @@ class CloudAccount {
   quota() { return this.storage.quota(); }
 
   async account() {
-    if (!this.credentials) throw new Error(this.loadError || `Sign in to ${this.label} first.`);
+    if (!this.credentials) throw new Error(this.loadError || t('Sign in to {service} first.', { service: this.label }));
     if (!this.credentials.accountId) await this.loadProfile();
     return this.credentials.accountId;
   }
 
+  /**
+   * Sign in, list, upload, download and delete a test file. Each check is
+   * { text, ok }: its text is in the interface language, so pass or fail is
+   * never read from it.
+   */
   async test() {
     const checks = [];
     let probe;
     try {
       await this.authHeaders(true);
-      checks.push('Sign-in: passed');
+      checks.push({ text: t('Sign-in: passed'), ok: true });
       await this.storage.objects();
-      checks.push(`${this.label} storage access: passed`);
+      checks.push({ text: t('{service} storage access: passed', { service: this.label }), ok: true });
       const bytes = crypto.randomBytes(8 * 1024);
       probe = await this.upload({ data: bytes, name: 'StepForge connection test', properties: { stepforge: 'connection-test' } });
-      checks.push('Test upload: passed');
+      checks.push({ text: t('Test upload: passed'), ok: true });
       const downloaded = await this.download(probe.id);
-      if (!bytes.equals(downloaded)) throw new Error('The test download did not match the uploaded data.');
-      checks.push('Test download and integrity: passed');
+      if (!bytes.equals(downloaded)) throw new Error(t('The test download did not match the uploaded data.'));
+      checks.push({ text: t('Test download and integrity: passed'), ok: true });
     } catch (err) {
-      checks.push(`Failed: ${err.message}`);
+      checks.push({ text: t('Failed: {message}', { message: err.message }), ok: false });
       return { ok: false, checks };
     } finally {
       if (probe) {
         try {
           await this.deleteFile(probe.id);
-          checks.push('Test file cleanup: passed');
-        } catch { checks.push('Test file cleanup failed; a small test file remains in StepForge’s folder.'); }
+          checks.push({ text: t('Test file cleanup: passed'), ok: true });
+        } catch { checks.push({ text: t('Test file cleanup failed; a small test file remains in StepForge’s folder.'), ok: false }); }
       }
     }
-    return { ok: checks.every((line) => !line.includes('failed')), checks };
+    return { ok: checks.every((check) => check.ok), checks };
   }
 }
 

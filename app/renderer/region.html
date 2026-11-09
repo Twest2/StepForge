@@ -12,9 +12,14 @@
 </style>
 </head>
 <body>
-<div id="hint">Drag to select a region — Esc to cancel</div>
+<div id="hint"></div>
 <div id="sel"></div>
 <script>
+  // The hint comes in the interface language (app/capture.js pickRegionOverlay).
+  const query = new URLSearchParams(location.search);
+  document.getElementById('hint').textContent = query.get('hint') || 'Drag to select a region — Esc to cancel';
+  if (query.get('lang')) document.documentElement.lang = query.get('lang');
+  if (query.get('title')) document.title = query.get('title');
   const sel = document.getElementById('sel');
   let start = null;
   function rectFrom(a, b) {

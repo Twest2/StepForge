@@ -63,7 +63,6 @@ function exportWikiJs(ast, outDir, template = {}) {
   const result = renderMarkdownGuide(ast, outDir, tpl, {
     defaults: WIKIJS_TEMPLATE,
     alertStyle: 'wikijs',
-    tocTitle: 'Contents',
     fileExt: '.md',
     accentBar: false,
     // Wiki.js shows the page title above the content already.

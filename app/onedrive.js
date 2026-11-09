@@ -2,6 +2,7 @@
 
 const { CloudAccount } = require('./cloud-account');
 const { resolveCloudApps, ONEDRIVE_CLIENT_PATTERN } = require('./cloud-apps');
+const { t } = require('../core/ui-text');
 
 /*
  * OneDrive through Microsoft Graph. StepForge only asks for its own app
@@ -31,7 +32,7 @@ class OneDrive extends CloudAccount {
   refreshParams(refreshToken) { return { client_id: this.key, grant_type: 'refresh_token', refresh_token: refreshToken, scope: SCOPE }; }
 
   async connect() {
-    if (!this.available) throw new Error('OneDrive sign-in is unavailable in this build of StepForge. Please use a release with OneDrive sign-in enabled.');
+    if (!this.available) throw new Error(t('OneDrive sign-in is unavailable in this build of StepForge. Please use a release with OneDrive sign-in enabled.'));
     this.requireEncryption();
     const { code, verifier, redirectUri } = await this.browserSignIn({
       authorizeUrl: ({ redirectUri, state, challenge }) => `${AUTHORITY}/authorize?${new URLSearchParams({
@@ -41,7 +42,7 @@ class OneDrive extends CloudAccount {
     const response = await this.tokenRequest(this.tokenUrl, { client_id: this.key, grant_type: 'authorization_code', code,
       redirect_uri: redirectUri, code_verifier: verifier, scope: SCOPE });
     const tokens = this.tokens(response);
-    if (!tokens.refresh_token) throw new Error('Microsoft did not allow StepForge to stay signed in. Sign in again and accept the permissions.');
+    if (!tokens.refresh_token) throw new Error(t('Microsoft did not allow StepForge to stay signed in. Sign in again and accept the permissions.'));
     this.finishSignIn(tokens);
     try { await this.loadProfile(); } catch (err) { this.disconnect(); throw err; }
     return this.status();
@@ -53,15 +54,15 @@ class OneDrive extends CloudAccount {
       this.authorized(`${GRAPH}/me/drive?$select=id`),
       this.authorized(`${GRAPH}/me?$select=displayName,mail,userPrincipalName`).catch(() => ({})),
     ]);
-    if (this.credentials !== credentials) throw new Error('OneDrive account changed.');
-    if (!drive?.id) throw new Error('Microsoft did not return a OneDrive for this account.');
+    if (this.credentials !== credentials) throw new Error(t('OneDrive account changed.'));
+    if (!drive?.id) throw new Error(t('Microsoft did not return a OneDrive for this account.'));
     Object.assign(credentials, { accountId: drive.id, email: me.mail || me.userPrincipalName || '', name: me.displayName || '' });
     this.save();
   }
 
   describeError(status, body) {
     const code = body?.error?.code;
-    if (status === 403 && /accessDenied/i.test(code || '')) return 'OneDrive refused access. Your organization may need to approve StepForge.';
+    if (status === 403 && /accessDenied/i.test(code || '')) return t('OneDrive refused access. Your organization may need to approve StepForge.');
     return super.describeError(status, body);
   }
 
@@ -89,7 +90,7 @@ class OneDrive extends CloudAccount {
               if (entry.file) files.push({ name: entry.name, size: entry.size, modified: entry.lastModifiedDateTime });
             }
             url = page['@odata.nextLink'] || '';
-            if (url && !url.startsWith(`${GRAPH}/`)) throw new Error('OneDrive returned an unexpected page link.');
+            if (url && !url.startsWith(`${GRAPH}/`)) throw new Error(t('OneDrive returned an unexpected page link.'));
           }
         } catch (err) {
           if (err.status === 404) return [];
@@ -105,7 +106,7 @@ class OneDrive extends CloudAccount {
         const session = await withFolder(file, () => this.authorized(`${item(file)}/createUploadSession`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ item: { '@microsoft.graph.conflictBehavior': 'replace' } }) }));
         const target = new URL(session?.uploadUrl || '');
-        if (target.protocol !== 'https:') throw new Error('OneDrive returned an unexpected upload destination.');
+        if (target.protocol !== 'https:') throw new Error(t('OneDrive returned an unexpected upload destination.'));
         // The session URL carries its own authorization.
         for (let start = 0; start < data.length; start += CHUNK_BYTES) {
           const chunk = data.subarray(start, Math.min(data.length, start + CHUNK_BYTES));
@@ -119,7 +120,7 @@ class OneDrive extends CloudAccount {
         const result = await this.authorized(`${item(file)}/content`, { redirect: 'manual', location: true, binary: true, onProgress });
         if (Buffer.isBuffer(result)) return result;
         const target = new URL(result);
-        if (target.protocol !== 'https:') throw new Error('OneDrive returned an unexpected download link.');
+        if (target.protocol !== 'https:') throw new Error(t('OneDrive returned an unexpected download link.'));
         return this.request(target.href, { binary: true, onProgress, redirect: 'follow' });
       },
       remove: async (file) => {

@@ -3,8 +3,9 @@
 const { escapeHtml, htmlToText } = require('../core/util');
 const { encodePng } = require('../core/png');
 const { highlightCode } = require('../core/code-highlight');
-const { renderAllImages, stepContentGroups, codeBlockText, LEVEL_LABEL, flowchartImageKey, flowchartAlt } = require('./common');
-const { guideMetaLines } = require('./document-layout');
+const { renderAllImages, stepContentGroups, codeBlockText, LEVEL_LABEL, levelLabel, flowchartImageKey, flowchartAlt } = require('./common');
+const { guideMetaLines, stepCount } = require('./document-layout');
+const { exportText } = require('../core/export-text');
 const { fitRaster, scaledPng, cssFontStack } = require('./branding');
 
 /**
@@ -58,10 +59,10 @@ function inlineDescription(html) {
     .replace(/<code>/gi, `<code${style(`font-family:${MONO};font-size:13px`)}>`);
 }
 
-function callout(block) {
+function callout(block, ast) {
   const level = LEVEL_LABEL[block.level] ? block.level : 'info';
   const { color, background } = LEVEL_COLORS[level];
-  const heading = block.title ? escapeHtml(block.title) : LEVEL_LABEL[level];
+  const heading = escapeHtml(block.title || levelLabel(level, ast));
   const body = block.descriptionHtml ? `<div>${inlineDescription(block.descriptionHtml)}</div>` : '';
   return `<div${style(`margin:12px 0;padding:8px 12px;border:1px solid ${color};border-radius:6px;background:${background}`)}>`
     + `<p${style(`margin:0;font-weight:bold;color:${color}`)}>${heading}</p>${body}</div>`;
@@ -99,19 +100,20 @@ function imageTag({ src, width, height }, alt, extra = '') {
 }
 
 function renderStep(step, ast, images, tpl) {
+  const { t } = exportText(ast);
   const groups = stepContentGroups(step);
   const chart = () => {
     const img = images.get(flowchartImageKey(step.stepId));
-    return img ? `<p${style('margin:12px 0')}>${imageTag(pngImage(img, tpl.maxImageWidth), flowchartAlt(step), '')}</p>` : '';
+    return img ? `<p${style('margin:12px 0')}>${imageTag(pngImage(img, tpl.maxImageWidth), flowchartAlt(step, ast), '')}</p>` : '';
   };
   // Text blocks and the flowchart block, at their positions.
-  const callouts = (list) => list.map((tb) => (tb.kind === 'flowchart' ? chart() : callout(tb))).filter(Boolean);
+  const callouts = (list) => list.map((tb) => (tb.kind === 'flowchart' ? chart() : callout(tb, ast))).filter(Boolean);
   const out = [...callouts(groups.beforeTitle)];
   const tag = step.depth > 0 ? 'h3' : 'h2';
   const size = step.depth > 0 ? 16 : 18;
-  const skipped = step.skipped ? ` <span${style(`font-size:12px;font-weight:normal;color:${MUTED}`)}>(Skipped)</span>` : '';
+  const skipped = step.skipped ? ` <span${style(`font-size:12px;font-weight:normal;color:${MUTED}`)}>${escapeHtml(t('(Skipped)'))}</span>` : '';
   out.push(`<${tag}${style(`font-size:${size}px;line-height:1.3;margin:24px 0 8px;color:${TEXT}`)}>`
-    + `<span${style(`color:${tpl.accentColor}`)}>${escapeHtml(step.number)}.</span> ${escapeHtml(step.title || 'Untitled step')}${skipped}</${tag}>`);
+    + `<span${style(`color:${tpl.accentColor}`)}>${escapeHtml(step.number)}.</span> ${escapeHtml(step.title || t('Untitled step'))}${skipped}</${tag}>`);
   out.push(...callouts(groups.afterTitle), ...callouts(groups.beforeDescription));
   if (step.descriptionHtml) out.push(`<div>${inlineDescription(step.descriptionHtml)}</div>`);
   out.push(...callouts(groups.afterDescription), ...callouts(groups.beforeImage));
@@ -119,7 +121,7 @@ function renderStep(step, ast, images, tpl) {
   if (img) out.push(`<p${style('margin:12px 0')}>${imageTag(pngImage(img, tpl.maxImageWidth), step.altText, `;border:1px solid ${BORDER}`)}</p>`);
   out.push(...callouts(groups.afterImage));
   for (const block of groups.rest) {
-    if (block.kind === 'text') out.push(callout(block));
+    if (block.kind === 'text') out.push(callout(block, ast));
     else if (block.kind === 'code') out.push(codeHtml(block, ast));
     else if (block.kind === 'table' && block.rows && block.rows.length) out.push(tableHtml(block.rows));
   }
@@ -127,27 +129,28 @@ function renderStep(step, ast, images, tpl) {
 }
 
 function metaText(ast) {
-  const count = ast.steps.length;
-  return [`${count} step${count === 1 ? '' : 's'}`, ...guideMetaLines(ast)].join(' · ');
+  return [stepCount(ast), ...guideMetaLines(ast)].join(' · ');
 }
 
-function brandHeader(brand, tpl) {
+function brandHeader(brand, tpl, ast) {
+  const { t } = exportText(ast);
   if (!brand) return [];
   const out = [];
   const banner = brand.banner ? scaledPng(brand.banner, tpl.maxImageWidth, 240) : null;
   if (banner) out.push(`<p${style('margin:0 0 16px')}>${imageTag({ src: `data:image/png;base64,${banner.data.toString('base64')}`, width: banner.width, height: banner.height }, '')}</p>`);
   const logo = brand.logo ? scaledPng(brand.logo, 260, 48) : null;
-  if (logo) out.push(`<p${style('margin:0 0 8px')}>${imageTag({ src: `data:image/png;base64,${logo.data.toString('base64')}`, width: logo.width, height: logo.height }, 'Logo')}</p>`);
+  if (logo) out.push(`<p${style('margin:0 0 8px')}>${imageTag({ src: `data:image/png;base64,${logo.data.toString('base64')}`, width: logo.width, height: logo.height }, t('Logo'))}</p>`);
   if (brand.header.text) out.push(`<p${style(`margin:0 0 12px;color:${MUTED};font-size:13px`)}>${escapeHtml(brand.header.text)}</p>`);
   return out;
 }
 
 function clipboardHtml(ast, tpl, images) {
+  const { t } = exportText(ast);
   const brand = ast.branding;
   const font = brand?.fonts?.body?.name ? cssFontStack(brand.fonts.body.name) : '"Segoe UI", Arial, sans-serif';
   const parts = [
-    ...brandHeader(brand, tpl),
-    `<h1${style(`font-size:24px;line-height:1.25;margin:0 0 8px;color:${TEXT}`)}>${escapeHtml(ast.guide.title || 'Untitled guide')}</h1>`,
+    ...brandHeader(brand, tpl, ast),
+    `<h1${style(`font-size:24px;line-height:1.25;margin:0 0 8px;color:${TEXT}`)}>${escapeHtml(ast.guide.title || t('Untitled guide'))}</h1>`,
     ast.guide.descriptionHtml ? `<div>${inlineDescription(ast.guide.descriptionHtml)}</div>` : '',
     `<p${style(`margin:8px 0 0;color:${MUTED};font-size:12px`)}>${escapeHtml(metaText(ast))}</p>`,
     ...ast.steps.map((step) => renderStep(step, ast, images, tpl)),
@@ -158,16 +161,18 @@ function clipboardHtml(ast, tpl, images) {
 
 const indent = (text, prefix) => text.split('\n').map((line) => (line ? prefix + line : line)).join('\n');
 
-function textBlock(block) {
-  const level = LEVEL_LABEL[block.level] ? block.level : 'info';
-  const heading = block.title ? `${LEVEL_LABEL[level]}: ${block.title}` : `${LEVEL_LABEL[level]}:`;
+function textBlock(block, ast) {
+  const { t } = exportText(ast);
+  const label = levelLabel(block.level, ast);
+  const heading = block.title ? t('{label}: {title}', { label, title: block.title }) : t('{label}:', { label });
   const body = htmlToText(block.descriptionHtml || '').trim();
   return body ? `${heading}\n${body}` : heading;
 }
 
 /** The same guide as plain text, for apps that don't take HTML. */
 function clipboardText(ast) {
-  const out = [ast.guide.title || 'Untitled guide'];
+  const { t } = exportText(ast);
+  const out = [ast.guide.title || t('Untitled guide')];
   const description = htmlToText(ast.guide.descriptionHtml || '').trim();
   if (description) out.push(description);
   out.push(metaText(ast));
@@ -176,15 +181,15 @@ function clipboardText(ast) {
     const groups = stepContentGroups(step);
     const parts = [];
     // Plain text has no pictures: a flowchart block is left out.
-    const texts = (list) => list.filter((tb) => tb.kind !== 'flowchart').map(textBlock);
+    const texts = (list) => list.filter((tb) => tb.kind !== 'flowchart').map((tb) => textBlock(tb, ast));
     parts.push(...texts(groups.beforeTitle));
-    parts.push(`${step.number}. ${step.title || 'Untitled step'}${step.skipped ? ' (Skipped)' : ''}`);
+    parts.push(`${step.number}. ${step.title || t('Untitled step')}${step.skipped ? ` ${t('(Skipped)')}` : ''}`);
     parts.push(...texts(groups.afterTitle), ...texts(groups.beforeDescription));
     const desc = htmlToText(step.descriptionHtml || '').trim();
     if (desc) parts.push(desc);
     parts.push(...texts(groups.afterDescription), ...texts(groups.beforeImage), ...texts(groups.afterImage));
     for (const block of groups.rest) {
-      if (block.kind === 'text') parts.push(textBlock(block));
+      if (block.kind === 'text') parts.push(textBlock(block, ast));
       else if (block.kind === 'code') parts.push(indent(codeBlockText(block), '    '));
       else if (block.kind === 'table' && block.rows && block.rows.length) parts.push(block.rows.map((row) => row.join(' | ')).join('\n'));
     }

@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { readJsonIfExists, writeJsonSync } = require('./util');
+const { t } = require('./ui-text');
 
 // What StepForge keeps in a library folder. Only these move: on Windows the
 // old default folder (%APPDATA%\stepforge) is also Electron's profile, whose
@@ -45,7 +46,7 @@ class LibraryLocation {
     if (hasLibrary(this.defaultPath)) {
       // Another StepForge (the Microsoft Store one, say) already uses the new
       // folder. Keep using the old one rather than mix the two.
-      this.error = `Your guides are still in ${this.legacyPath}, because ${this.defaultPath} already holds a StepForge library.`;
+      this.error = t('Your guides are still in {legacyPath}, because {defaultPath} already holds a StepForge library.', { legacyPath: this.legacyPath, defaultPath: this.defaultPath });
       return false;
     }
     this.state = { ...this.state, pending: { source: this.legacyPath, target: this.defaultPath, automatic: true } };
@@ -55,13 +56,13 @@ class LibraryLocation {
     fs.mkdirSync(target, { recursive: true });
     const from = fs.realpathSync(source), to = fs.realpathSync(target);
     const nested = (a, b) => { const rel = path.relative(a, b); return !rel || (!rel.startsWith(`..${path.sep}`) && rel !== '..' && !path.isAbsolute(rel)); };
-    if (nested(from, to) || nested(to, from)) throw new Error('Choose a separate folder outside the current library.');
-    if (!allowNonEmpty && fs.readdirSync(to).length) throw new Error('Choose an empty folder. Existing files will not be overwritten.');
+    if (nested(from, to) || nested(to, from)) throw new Error(t('Choose a separate folder outside the current library.'));
+    if (!allowNonEmpty && fs.readdirSync(to).length) throw new Error(t('Choose an empty folder. Existing files will not be overwritten.'));
     fs.accessSync(to, fs.constants.W_OK);
     return { source: from, target: to };
   }
   schedule(target) {
-    if (this.override) throw new Error('STEPFORGE_DATA_DIR controls this session. Remove that override before changing storage.');
+    if (this.override) throw new Error(t('STEPFORGE_DATA_DIR controls this session. Remove that override before changing storage.'));
     const pending = this.validate(this.status().current, path.resolve(target));
     this.state = { ...this.state, current: pending.source, pending };
     writeJsonSync(this.file, this.state);
@@ -74,16 +75,16 @@ class LibraryLocation {
     const walk = (dir, prefix = '') => {
       for (const entry of fs.readdirSync(dir, { withFileTypes: true }).sort((a,b) => a.name.localeCompare(b.name))) {
         const relative = path.join(prefix, entry.name), full = path.join(dir, entry.name);
-        if (entry.isSymbolicLink()) throw new Error('The library contains symbolic links. Move it manually to preserve their targets.');
+        if (entry.isSymbolicLink()) throw new Error(t('The library contains symbolic links. Move it manually to preserve their targets.'));
         if (entry.isDirectory()) { files.push([relative, 'directory']); walk(full, relative); }
         else if (entry.isFile()) files.push([relative, crypto.createHash('sha256').update(fs.readFileSync(full)).digest('hex')]);
-        else throw new Error('The library contains an unsupported file type.');
+        else throw new Error(t('The library contains an unsupported file type.'));
       }
     };
     for (const name of LIBRARY_ENTRIES) {
       const full = path.join(root, name);
       if (!fs.existsSync(full)) continue;
-      if (!fs.lstatSync(full).isDirectory()) throw new Error(`The library's ${name} is not a folder.`);
+      if (!fs.lstatSync(full).isDirectory()) throw new Error(t('The library\'s {name} is not a folder.', { name }));
       files.push([name, 'directory']); walk(full, name);
     }
     return JSON.stringify(files);
@@ -105,7 +106,7 @@ class LibraryLocation {
         // commit the location file nor move the copy back. Adopt it only if
         // neither side has changed since that attempt.
         if (before !== remembered || this.manifest(target) !== remembered) {
-          throw Object.assign(new Error('A previous migration left two different library copies. Both have been kept; choose an empty folder in Guide storage or combine the copies manually before trying again.'), { code: 'MIGRATION_DIVERGED' });
+          throw Object.assign(new Error(t('A previous migration left two different library copies. Both have been kept; choose an empty folder in Guide storage or combine the copies manually before trying again.')), { code: 'MIGRATION_DIVERGED' });
         }
       } else {
         // Copy into a new staging folder, on the destination's filesystem.
@@ -115,7 +116,7 @@ class LibraryLocation {
         for (const name of LIBRARY_ENTRIES) {
           if (fs.existsSync(path.join(source, name))) fs.cpSync(path.join(source, name), path.join(staging, name), { recursive: true, force: false, errorOnExist: true });
         }
-        if (before !== this.manifest(staging) || before !== this.manifest(source)) throw new Error('Library verification failed; the original is unchanged.');
+        if (before !== this.manifest(staging) || before !== this.manifest(source)) throw new Error(t('Library verification failed; the original is unchanged.'));
         if (automatic) {
           // Record ownership and exact content before installing the copy,
           // so a failed rollback (or interrupted startup) can be recovered.
@@ -163,10 +164,11 @@ class LibraryLocation {
         const { source } = this.state.pending;
         delete this.state.pending;
         const recoveryNeeded = error.code === 'MIGRATION_DIVERGED';
-        this.error = `Your guides are still in ${source}: StepForge couldn't move them to ${this.defaultPath} (${error.message}).${recoveryNeeded ? '' : ' It tries again the next time it starts.'}`;
+        this.error = t('Your guides are still in {source}: StepForge couldn\'t move them to {target} ({error}).', { source, target: this.defaultPath, error: error.message })
+          + (recoveryNeeded ? '' : ` ${t('It tries again the next time it starts.')}`);
         return this.status().current;
       }
-      this.error = `The library was not moved: ${error.message}`;
+      this.error = t('The library was not moved: {message}', { message: error.message });
       return this.status().current;
     }
   }

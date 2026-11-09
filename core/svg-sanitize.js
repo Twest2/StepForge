@@ -1,4 +1,5 @@
 'use strict';
+const { t } = require('./ui-text');
 
 /**
  * Sanitize an SVG logo or banner so it can be embedded in exports. Exports
@@ -145,10 +146,10 @@ function sanitizeSvg(input) {
       continue;
     }
     if (!sawRoot) {
-      if (name !== 'svg') throw new Error('Not an SVG image.');
+      if (name !== 'svg') throw new Error(t('Not an SVG image.'));
       sawRoot = true;
     }
-    if (stack.length >= MAX_DEPTH) throw new Error('The SVG is nested too deeply.');
+    if (stack.length >= MAX_DEPTH) throw new Error(t('The SVG is nested too deeply.'));
     let entry;
     if (dropping) {
       entry = { name, dropped: true };
@@ -180,7 +181,7 @@ function sanitizeSvg(input) {
     }
     stack.push(entry);
   }
-  if (!sawRoot) throw new Error('Not an SVG image.');
+  if (!sawRoot) throw new Error(t('Not an SVG image.'));
   while (stack.length) {
     const top = stack.pop();
     if (top.kept) out.push(`</${top.name}>`);

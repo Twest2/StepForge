@@ -7,6 +7,7 @@ const { atomicWriteFileSync, writeJsonSync, readJsonIfExists, slugify } = requir
 const { normalizeServer } = require('./webdav');
 const { check: c, isPlainArgs } = require('./security');
 const { publishedImageName } = require('../exporters/common');
+const { t } = require('../core/ui-text');
 
 /*
  * Publishing guides as Wiki.js 2 pages, through the wiki's GraphQL API.
@@ -54,7 +55,7 @@ const LOCALE_SEGMENT = /^[a-z]{2}(-[a-z]{2})?$/i;
 
 // Wiki.js wants a code from the user's authenticator app. publish() and
 // connect() answer { needsCode } instead, so the user can be asked for one.
-const needsCode = () => Object.assign(new Error('Enter the 6-digit code from your authenticator app.'), { needsCode: true });
+const needsCode = () => Object.assign(new Error(t('Enter the 6-digit code from your authenticator app.')), { needsCode: true });
 
 // Wiki.js error codes (server/helpers/error.js).
 const CODES = { authFailed: 1002, authRequired: 1019, folderExists: 2002, duplicate: 6002, notFound: 6003, illegalPath: 6005,
@@ -63,9 +64,9 @@ const CODES = { authFailed: 1002, authRequired: 1019, folderExists: 2002, duplic
 function friendlyNetworkError(err, host) {
   const message = `${err?.message || err} ${err?.cause?.code || ''} ${err?.cause?.message || ''}`;
   if (/CERT_|_CERT\b|SELF_SIGNED|UNABLE_TO_VERIFY|UNABLE_TO_GET_ISSUER|ALTNAME|SSL_PROTOCOL/i.test(message)) {
-    return `StepForge doesn’t trust ${host}’s security certificate. If your organization uses its own certificates, they need to be installed on this computer, as they are for your browser.`;
+    return t('StepForge doesn’t trust {host}’s security certificate. If your organization uses its own certificates, they need to be installed on this computer, as they are for your browser.', { host });
   }
-  return `Couldn’t reach ${host}. Check the address and your network connection.`;
+  return t('Couldn’t reach {host}. Check the address and your network connection.', { host });
 }
 
 /** The wiki's address. Wiki.js 2 runs at the root of its site, so any page's address will do. */
@@ -87,22 +88,22 @@ function pageSlug(title) {
 function normalizePagePath(input) {
   const text = String(input || '').trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '').replace(/\/{2,}/g, '/')
     .toLowerCase().replace(/\s+/g, '-');
-  if (!text) throw new Error('Enter where the page goes, such as guides/reset-a-password.');
+  if (!text) throw new Error(t('Enter where the page goes, such as guides/reset-a-password.'));
   const segments = text.split('/');
   if (segments.some((segment) => !/^[\p{L}\p{N}_-]+$/u.test(segment))) {
-    throw new Error('Use only letters, numbers, dashes and underscores in the page path, with / between folders.');
+    throw new Error(t('Use only letters, numbers, dashes and underscores in the page path, with / between folders.'));
   }
   const [first] = segments;
   if (first.length <= 1 || LOCALE_SEGMENT.test(first) || RESERVED_SEGMENTS.includes(first) || first.startsWith('_')) {
-    throw new Error(`Wiki.js keeps “${first}” for itself, so a page path can’t start with it. Try guides/${segments.slice(1).join('/') || 'my-guide'}.`);
+    throw new Error(t('Wiki.js keeps “{first}” for itself, so a page path can’t start with it. Try guides/{path}.', { first, path: segments.slice(1).join('/') || 'my-guide' }));
   }
-  if (text.length > 255) throw new Error('That page path is too long.');
+  if (text.length > 255) throw new Error(t('That page path is too long.'));
   return text;
 }
 
 function normalizeLocale(input) {
   const locale = String(input || '').trim().toLowerCase() || 'en';
-  if (!LOCALE_SEGMENT.test(locale)) throw new Error('Enter a language code such as en, de or pt-br.');
+  if (!LOCALE_SEGMENT.test(locale)) throw new Error(t('Enter a language code such as en, de or pt-br.'));
   return locale;
 }
 
@@ -176,13 +177,13 @@ class WikiJs {
       this.requireEncryption();
       this.restore(JSON.parse(this.safeStorage.decryptString(fs.readFileSync(this.file))));
     } catch {
-      this.loadError = 'Your saved Wiki.js sign-in couldn’t be unlocked. Sign in again.';
+      this.loadError = t('Your saved Wiki.js sign-in couldn’t be unlocked. Sign in again.');
     }
   }
 
   requireEncryption() {
     if (!this.safeStorage.isEncryptionAvailable() || this.safeStorage.getSelectedStorageBackend?.() === 'basic_text') {
-      throw new Error('Wiki.js sign-in requires an operating-system credential store. Unlock your keyring and restart StepForge.');
+      throw new Error(t('Wiki.js sign-in requires an operating-system credential store. Unlock your keyring and restart StepForge.'));
     }
   }
 
@@ -266,7 +267,7 @@ class WikiJs {
   }
 
   requireSite() {
-    if (!this.credentials) throw new Error(this.loadError || 'Connect Wiki.js in Settings → Accounts → Wiki.js first.');
+    if (!this.credentials) throw new Error(this.loadError || t('Connect Wiki.js in Settings → Accounts → Wiki.js first.'));
     return this.credentials;
   }
 
@@ -279,7 +280,7 @@ class WikiJs {
    */
   async request(baseUrl, target, { method = 'GET', json, body, contentType, token = '', timeout = 60000 } = {}) {
     const url = new URL(target, `${baseUrl}/`);
-    if (url.origin !== new URL(baseUrl).origin) throw new Error('StepForge only talks to your Wiki.js site.');
+    if (url.origin !== new URL(baseUrl).origin) throw new Error(t('StepForge only talks to your Wiki.js site.'));
     const controller = new AbortController();
     this.controllers.add(controller);
     const timer = setTimeout(() => controller.abort(), timeout);
@@ -294,14 +295,14 @@ class WikiJs {
       response = await this.fetch(url.href, { method, headers, body: payload, redirect: 'manual', credentials: 'omit', signal: controller.signal });
       text = await response.text();
     } catch (err) {
-      if (controller.signal.aborted) throw new Error('The Wiki.js request was cancelled or took too long.');
+      if (controller.signal.aborted) throw new Error(t('The Wiki.js request was cancelled or took too long.'));
       throw new Error(friendlyNetworkError(err, url.host));
     } finally {
       clearTimeout(timer);
       this.controllers.delete(controller);
     }
     if ((response.status >= 300 && response.status < 400) || response.type === 'opaqueredirect') {
-      throw new Error(`${url.host} sent StepForge to another address. Check the site address; StepForge doesn’t follow redirects, so your sign-in stays on your wiki.`);
+      throw new Error(t('{host} sent StepForge to another address. Check the site address; StepForge doesn’t follow redirects, so your sign-in stays on your wiki.', { host: url.host }));
     }
     let data = null;
     try { data = text ? JSON.parse(text) : null; } catch { data = null; }
@@ -315,20 +316,20 @@ class WikiJs {
     if (!response.data || (!response.ok && !errors?.length)) {
       // A page that isn't JSON: another kind of site, or a proxy in front of the wiki having trouble.
       throw Object.assign(new Error(response.ok || response.status === 404
-        ? `${new URL(baseUrl).host} doesn’t look like a Wiki.js 2 site. Check the address.`
-        : `Wiki.js request failed (${response.status}).`), { status: response.status });
+        ? t('{host} doesn’t look like a Wiki.js 2 site. Check the address.', { host: new URL(baseUrl).host })
+        : t('Wiki.js request failed ({status}).', { status: response.status })), { status: response.status });
     }
     if (errors?.length) {
       const first = errors[0];
       const message = String(first.message || '');
       const code = first.extensions?.exception?.code || null;
       // Sent by Wiki.js before it runs the query, for API keys.
-      if (/API is disabled/i.test(message)) throw Object.assign(new Error('API access is turned off on this wiki. An administrator can turn it on under Administration → API Access.'), { auth: true });
-      if (/API Key is invalid|revoked/i.test(message)) throw Object.assign(new Error('Wiki.js didn’t accept the API key. It may have expired or been revoked; create a new one under Administration → API Access.'), { auth: true });
-      if (/Too many requests/i.test(message)) throw new Error('Wiki.js has had too many sign-in attempts from this computer. Wait a minute and try again.');
+      if (/API is disabled/i.test(message)) throw Object.assign(new Error(t('API access is turned off on this wiki. An administrator can turn it on under Administration → API Access.')), { auth: true });
+      if (/API Key is invalid|revoked/i.test(message)) throw Object.assign(new Error(t('Wiki.js didn’t accept the API key. It may have expired or been revoked; create a new one under Administration → API Access.')), { auth: true });
+      if (/Too many requests/i.test(message)) throw new Error(t('Wiki.js has had too many sign-in attempts from this computer. Wait a minute and try again.'));
       const auth = code === CODES.authRequired || message === 'Forbidden';
-      throw Object.assign(new Error(message === 'Forbidden' ? 'You don’t have permission to do that on this wiki.'
-        : code === CODES.authRequired ? 'Wiki.js didn’t accept the sign-in. Sign in again.'
+      throw Object.assign(new Error(message === 'Forbidden' ? t('You don’t have permission to do that on this wiki.')
+        : code === CODES.authRequired ? t('Wiki.js didn’t accept the sign-in. Sign in again.')
           : `Wiki.js: ${message.slice(0, 300)}`), { code, auth, detail: message });
     }
     return { data: response.data.data, renewed: response.headers?.get?.('new-jwt') || '' };
@@ -337,7 +338,7 @@ class WikiJs {
   /** A mutation's responseResult, as an error when it didn't succeed. */
   static check(result, describe = (r) => `Wiki.js: ${r.message}`) {
     const r = result?.responseResult;
-    if (!r) throw new Error('Wiki.js sent an unexpected answer.');
+    if (!r) throw new Error(t('Wiki.js sent an unexpected answer.'));
     if (!r.succeeded) throw Object.assign(new Error(describe(r)), { code: r.errorCode, slug: r.slug, detail: r.message });
     return result;
   }
@@ -349,7 +350,7 @@ class WikiJs {
     const { data } = await this.graphql(baseUrl, `{ authentication { activeStrategies(enabledOnly: true) {
       key displayName order isEnabled strategy { key useForm usernameType } } } }`);
     const list = data?.authentication?.activeStrategies;
-    if (!Array.isArray(list)) throw new Error(`${new URL(baseUrl).host} doesn’t look like a Wiki.js 2 site. Check the address.`);
+    if (!Array.isArray(list)) throw new Error(t('{host} doesn’t look like a Wiki.js 2 site. Check the address.', { host: new URL(baseUrl).host }));
     return list.filter((s) => s.isEnabled !== false && s.strategy?.useForm)
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
       .map((s) => ({ key: String(s.key), name: String(s.displayName || s.strategy.key), usernameType: s.strategy.usernameType === 'email' ? 'email' : 'username' }));
@@ -374,30 +375,30 @@ class WikiJs {
         responseResult { succeeded errorCode slug message } jwt mustChangePwd mustProvideTFA mustSetupTFA continuationToken } } }`,
     { username, password, strategy });
     let result = WikiJs.check(data?.authentication?.login, (r) => (r.errorCode === CODES.authFailed
-      ? 'Wiki.js didn’t accept that username and password.'
-      : `Wiki.js couldn’t sign you in (${r.message}).`));
+      ? t('Wiki.js didn’t accept that username and password.')
+      : t('Wiki.js couldn’t sign you in ({message}).', { message: r.message })));
     if (result.mustSetupTFA) {
-      throw new Error('This wiki wants you to set up two-step verification first. Sign in to the wiki in your browser to set it up, then sign in here again.');
+      throw new Error(t('This wiki wants you to set up two-step verification first. Sign in to the wiki in your browser to set it up, then sign in here again.'));
     }
     const twoStep = Boolean(result.mustProvideTFA);
     if (twoStep) {
       const securityCode = String(code).replace(/\s+/g, '');
       if (!securityCode) throw needsCode();
-      if (!/^\d{6}$/.test(securityCode)) throw new Error('Enter the 6-digit code from your authenticator app.');
+      if (!/^\d{6}$/.test(securityCode)) throw new Error(t('Enter the 6-digit code from your authenticator app.'));
       // The continuation token works once, right or wrong, so each code needs a fresh login.
       const answer = await this.graphql(baseUrl, `mutation ($continuationToken: String!, $securityCode: String!) {
         authentication { loginTFA(continuationToken: $continuationToken, securityCode: $securityCode) {
           responseResult { succeeded errorCode slug message } jwt mustChangePwd } } }`,
       { continuationToken: String(result.continuationToken || ''), securityCode });
       result = WikiJs.check(answer.data?.authentication?.loginTFA, (r) => (/TFAFailed/i.test(r.slug)
-        ? 'Wiki.js didn’t accept that code. Codes change every 30 seconds; enter the one your app shows now.'
-        : /TFAInvalid/i.test(r.slug) ? 'The sign-in took too long. Enter a new code.'
-          : `Wiki.js couldn’t sign you in (${r.message}).`));
+        ? t('Wiki.js didn’t accept that code. Codes change every 30 seconds; enter the one your app shows now.')
+        : /TFAInvalid/i.test(r.slug) ? t('The sign-in took too long. Enter a new code.')
+          : t('Wiki.js couldn’t sign you in ({message}).', { message: r.message })));
     }
     if (result.mustChangePwd) {
-      throw new Error('Wiki.js wants a new password for this account. Sign in to the wiki in your browser to change it, then try again, or use an API key.');
+      throw new Error(t('Wiki.js wants a new password for this account. Sign in to the wiki in your browser to change it, then try again, or use an API key.'));
     }
-    if (!result.jwt) throw new Error('Wiki.js didn’t send a sign-in token. Try an API key instead.');
+    if (!result.jwt) throw new Error(t('Wiki.js didn’t send a sign-in token. Try an API key instead.'));
     const expires = (decodeToken(result.jwt)?.exp || 0) * 1000 || Date.now() + 30 * 60 * 1000;
     return { token: result.jwt, expires, twoStep };
   }
@@ -463,7 +464,7 @@ class WikiJs {
   /** Sign in again with a code from the authenticator app, after Wiki.js ended the session. */
   async signInAgain({ code }) {
     const login = this.requireSite();
-    if (login.method !== 'password') throw new Error('Only a password sign-in uses codes.');
+    if (login.method !== 'password') throw new Error(t('Only a password sign-in uses codes.'));
     // A code isn't needed if two-step verification was turned off on the wiki; the sign-in is kept either way.
     this.useSession(await this.login(login, { code }));
     this.save();
@@ -495,7 +496,7 @@ class WikiJs {
   async profile(baseUrl, token) {
     const { data } = await this.graphql(baseUrl, '{ users { profile { id name email } } }', {}, { token });
     const profile = data?.users?.profile;
-    if (!profile) throw new Error('Wiki.js didn’t accept the sign-in.');
+    if (!profile) throw new Error(t('Wiki.js didn’t accept the sign-in.'));
     return profile;
   }
 
@@ -512,17 +513,17 @@ class WikiJs {
     let login;
     if (method === 'apikey') {
       const key = apiKey.trim();
-      if (!key) throw new Error('Paste your Wiki.js API key.');
-      if (!decodeToken(key)?.api) throw new Error('That isn’t a Wiki.js API key. Create one under Administration → API Access and paste all of it.');
+      if (!key) throw new Error(t('Paste your Wiki.js API key.'));
+      if (!decodeToken(key)?.api) throw new Error(t('That isn’t a Wiki.js API key. Create one under Administration → API Access and paste all of it.'));
       login = { baseUrl, method, apiKey: key };
       // The answer is the first administrator's profile, whoever made the key, so only its existence counts.
-      await this.profile(baseUrl, key).catch((err) => { throw err.code === CODES.authRequired ? new Error('Wiki.js didn’t accept the API key.') : err; });
+      await this.profile(baseUrl, key).catch((err) => { throw err.code === CODES.authRequired ? new Error(t('Wiki.js didn’t accept the API key.')) : err; });
     } else if (method === 'password') {
-      if (!username.trim() || !password) throw new Error('Enter your username and password.');
+      if (!username.trim() || !password) throw new Error(t('Enter your username and password.'));
       const strategies = await this.strategies(baseUrl);
-      if (!strategies.length) throw new Error('This wiki only offers single sign-on, so StepForge can’t sign in with a username and password. Use an API key instead.');
+      if (!strategies.length) throw new Error(t('This wiki only offers single sign-on, so StepForge can’t sign in with a username and password. Use an API key instead.'));
       const chosen = strategies.find((s) => s.key === strategy) || (strategies.length === 1 || !strategy ? strategies[0] : null);
-      if (!chosen) throw new Error('Choose how to sign in.');
+      if (!chosen) throw new Error(t('Choose how to sign in.'));
       login = { baseUrl, method, username: username.trim(), password, strategy: chosen.key, strategyName: chosen.name };
       let session;
       try {
@@ -536,7 +537,7 @@ class WikiJs {
       if (session.twoStep) login.twoStep = true;
       this.session = { token: session.token, expires: session.expires };
     } else {
-      throw new Error('Choose how to sign in.');
+      throw new Error(t('Choose how to sign in.'));
     }
     this.credentials = login;
     this.save();
@@ -568,7 +569,7 @@ class WikiJs {
     const folder = typeof site.lastFolder === 'string' ? site.lastFolder : 'guides';
     return {
       path: known?.path || [folder, pageSlug(title)].filter(Boolean).join('/'),
-      title: String(title || 'Untitled guide'),
+      title: String(title || t('Untitled guide')),
       locale: known?.locale || 'en',
       published: known,
       site: this.credentials.baseUrl,
@@ -609,9 +610,9 @@ class WikiJs {
         const data = await this.call('mutation ($id: Int!, $slug: String!) { assets { createFolder(parentFolderId: $id, slug: $slug, name: $slug) { responseResult { succeeded errorCode slug message } } } }',
           { id: parentId, slug });
         const result = data?.assets?.createFolder;
-        if (result?.responseResult?.errorCode !== CODES.folderExists) WikiJs.check(result, (r) => `Wiki.js couldn’t make the screenshot folder ${slug} (${r.message}).`);
+        if (result?.responseResult?.errorCode !== CODES.folderExists) WikiJs.check(result, (r) => t('Wiki.js couldn’t make the screenshot folder {slug} ({message}).', { slug, message: r.message }));
         folder = (await list()).find((f) => f.slug === slug);
-        if (!folder) throw new Error(`Wiki.js couldn’t make the screenshot folder ${slug}. Check that you can upload files to this wiki.`);
+        if (!folder) throw new Error(t('Wiki.js couldn’t make the screenshot folder {slug}. Check that you can upload files to this wiki.', { slug }));
       }
       parentId = folder.id;
     }
@@ -619,7 +620,7 @@ class WikiJs {
   }
 
   async uploadAsset(folderId, fileName, data) {
-    if (data.length > MAX_ASSET_BYTES) throw new Error(`The screenshot ${fileName} is too large to upload.`);
+    if (data.length > MAX_ASSET_BYTES) throw new Error(t('The screenshot {fileName} is too large to upload.', { fileName }));
     const send = async (fresh) => {
       const login = this.requireSite();
       const { body, contentType } = uploadBody(folderId, fileName, data);
@@ -634,10 +635,10 @@ class WikiJs {
     if (response.ok) return;
     const message = response.data?.message || '';
     if (response.status === 413 || /too large/i.test(message || response.text)) {
-      throw new Error(`The screenshot ${fileName} is larger than this wiki accepts. An administrator can raise the upload size limit in Wiki.js.`);
+      throw new Error(t('The screenshot {fileName} is larger than this wiki accepts. An administrator can raise the upload size limit in Wiki.js.', { fileName }));
     }
-    if (response.status === 403) throw new Error('You don’t have permission to upload files to this wiki, so the screenshots can’t be added.');
-    throw new Error(`Wiki.js couldn’t upload ${fileName} (${response.status}${message ? `: ${String(message).slice(0, 200)}` : ''}).`);
+    if (response.status === 403) throw new Error(t('You don’t have permission to upload files to this wiki, so the screenshots can’t be added.'));
+    throw new Error(t('Wiki.js couldn’t upload {fileName} ({status}).', { fileName, status: `${response.status}${message ? `: ${String(message).slice(0, 200)}` : ''}` }));
   }
 
   async savePage({ existing, path: pagePath, locale, title, description, content }) {
@@ -648,7 +649,7 @@ class WikiJs {
       // Updating keeps a page's editor, so one switched to another editor on the wiki is switched back first.
       if (existing.editor && existing.editor !== 'markdown') {
         const converted = await this.call('mutation ($id: Int!) { pages { convert(id: $id, editor: "markdown") { responseResult { succeeded errorCode slug message } } } }', { id: existing.id });
-        WikiJs.check(converted?.pages?.convert, (r) => `Wiki.js couldn’t switch the page back to Markdown (${r.message}).`);
+        WikiJs.check(converted?.pages?.convert, (r) => t('Wiki.js couldn’t switch the page back to Markdown ({message}).', { message: r.message }));
       }
       const data = await this.call(`mutation ($id: Int!, $content: String!, $description: String!, $editor: String!, $isPublished: Boolean!, $isPrivate: Boolean!,
         $locale: String!, $path: String!, $tags: [String]!, $title: String!, $scriptCss: String, $scriptJs: String) {
@@ -657,7 +658,7 @@ class WikiJs {
       // Tags and page scripts are kept: updating without them would clear them.
       { ...common, id: existing.id, tags: existing.tags || [], scriptCss: existing.scriptCss ?? null, scriptJs: existing.scriptJs ?? null });
       return WikiJs.check(data?.pages?.update, (r) => ([CODES.updateForbidden, CODES.deleteForbidden].includes(r.errorCode)
-        ? `You don’t have permission to change the page at ${pagePath}.` : `Wiki.js couldn’t update the page (${r.message}).`)).page;
+        ? t('You don’t have permission to change the page at {pagePath}.', { pagePath }) : t('Wiki.js couldn’t update the page ({message}).', { message: r.message }))).page;
     }
     const data = await this.call(`mutation ($content: String!, $description: String!, $editor: String!, $isPublished: Boolean!, $isPrivate: Boolean!,
       $locale: String!, $path: String!, $tags: [String]!, $title: String!) {
@@ -665,9 +666,9 @@ class WikiJs {
         locale: $locale, path: $path, tags: $tags, title: $title) { ${fields} } } }`, { ...common, tags: [] });
     // Wiki.js reports a missing write permission on create as "not authorized to delete".
     return WikiJs.check(data?.pages?.create, (r) => ([CODES.createForbidden, CODES.deleteForbidden].includes(r.errorCode)
-      ? `You don’t have permission to create pages at ${pagePath}.`
-      : r.errorCode === CODES.illegalPath ? 'Wiki.js doesn’t accept that page path.'
-        : `Wiki.js couldn’t create the page (${r.message}).`)).page;
+      ? t('You don’t have permission to create pages at {pagePath}.', { pagePath })
+      : r.errorCode === CODES.illegalPath ? t('Wiki.js doesn’t accept that page path.')
+        : t('Wiki.js couldn’t create the page ({message}).', { message: r.message }))).page;
   }
 
   /**
@@ -696,7 +697,7 @@ class WikiJs {
     const pagePath = normalizePagePath(rawPath);
     const locale = normalizeLocale(rawLocale);
     const pageTitle = String(title || '').trim();
-    if (!pageTitle) throw new Error('Enter a title for the page.');
+    if (!pageTitle) throw new Error(t('Enter a title for the page.'));
     // A password sign-in whose token is missing or about to run out signs
     // in again now. Not on every publish: Wiki.js allows five sign-ins a minute.
     await this.token(this.credentials);

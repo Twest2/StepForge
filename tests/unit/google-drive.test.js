@@ -202,7 +202,7 @@ test('failed connection test still cleans up its test file', async (t) => {
   drive.authorized = async () => { cleaned = true; };
   const result = await drive.test();
   assert.equal(result.ok, false); assert.equal(cleaned, true);
-  assert.match(result.checks.join(' '), /Download failed/);
+  assert.match(result.checks.map((check) => check.text).join(' '), /Download failed/);
 });
 
 test('connection test reports cleanup failure instead of success', async (t) => {
@@ -213,7 +213,8 @@ test('connection test reports cleanup failure instead of success', async (t) => 
   drive.download = async () => data;
   drive.authorized = async () => { throw new Error('Offline'); };
   const result = await drive.test(); assert.equal(result.ok, false);
-  assert.match(result.checks.at(-1), /cleanup failed/);
+  assert.match(result.checks.at(-1).text, /cleanup failed/);
+  assert.equal(result.checks.at(-1).ok, false);
 });
 
 test('disconnect removes encrypted tokens and never permits a late refresh to restore them', async (t) => {
@@ -488,4 +489,43 @@ test('a late account response cannot restore a disconnected profile', async (t) 
   await assert.rejects(pending, /account changed/);
   assert.equal(drive.status().photoLink, '');
   assert.equal(fs.existsSync(drive.file), false);
+});
+
+test('connection test results do not depend on the interface language', async (t) => {
+  const { setUiLanguage } = require('../../core/ui-text');
+  const { CloudAccount } = require('../../app/cloud-account');
+  setUiLanguage('zh-CN');
+  t.after(() => setUiLanguage('en'));
+
+  const { drive } = setup(t); authorize(drive);
+  drive.accessToken = async () => 'access'; drive.listVersions = async () => [];
+  let data;
+  drive.upload = async (args) => { data = args.data; return { id: 'probe' }; };
+  drive.download = async () => data;
+  drive.authorized = async () => { throw new Error('Offline'); };
+  const result = await drive.test();
+  assert.equal(result.ok, false, 'a translated cleanup failure still fails the test');
+  assert.deepEqual(result.checks.map((check) => check.ok), [true, true, true, true, false]);
+  assert.match(result.checks.at(-1).text, /清理测试文件失败/);
+
+  // Every other service (OneDrive, Dropbox, WebDAV) shares CloudAccount.test().
+  const account = Object.create(CloudAccount.prototype);
+  let stored;
+  Object.assign(account, {
+    label: 'OneDrive',
+    authHeaders: async () => ({}),
+    storage: { objects: async () => [] },
+    upload: async ({ data: bytes }) => { stored = bytes; return { id: 'probe' }; },
+    download: async () => stored,
+    deleteFile: async () => { throw new Error('Offline'); },
+  });
+  const other = await account.test();
+  assert.equal(other.ok, false);
+  assert.deepEqual(other.checks.map((check) => check.text).slice(0, 2), ['登录：通过', 'OneDrive 存储访问：通过']);
+  account.deleteFile = async () => {};
+  assert.equal((await account.test()).ok, true);
+  account.download = async () => { throw new Error('超时'); };
+  const failed = await account.test();
+  assert.equal(failed.ok, false);
+  assert.ok(failed.checks.some((check) => !check.ok && check.text === '失败：超时'));
 });

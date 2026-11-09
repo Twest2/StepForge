@@ -4,7 +4,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { PdfBuilder, FONT_FAMILIES, breakChunks, isWide } = require('../core/pdf');
 const { FallbackFonts, systemFontCandidates } = require('../core/pdf-fonts');
-const { guideSlug, renderAllImages, LEVEL_LABEL, stepContentGroups, codeBlockText, flowchartImageKey } = require('./common');
+const { guideSlug, renderAllImages, calloutLabel, stepContentGroups, codeBlockText, flowchartImageKey } = require('./common');
+const { exportText } = require('../core/export-text');
 const { htmlToText } = require('../core/util');
 const { htmlToBlocks } = require('../core/htmlblocks');
 const { standardTextWidth } = require('../core/pdf-metrics');
@@ -287,9 +288,13 @@ const OPTION_INFO = {
   imageMaxHeightRatio: { label: 'Maximum screenshot height', group: 'Screenshots', unit: '%', scale: 0.01, min: 1, max: 100, step: 'any', hint: 'Percentage of the page height inside the margins.' },
 };
 
-/** Text that hints which East Asian fonts a guide needs. */
+/**
+ * Text that hints which East Asian fonts a guide needs: its own text and the
+ * labels StepForge adds in the export's language (Japanese ones have kana).
+ */
 function guideText(ast) {
-  return [ast.guide.title, ...(ast.steps || []).flatMap((step) => [
+  const { t, tc } = exportText(ast);
+  return [ast.guide.title, t('Untitled step'), tc('Table of contents', 'Contents'), ...(ast.steps || []).flatMap((step) => [
     step.title, step.descriptionText,
     ...(step.blocks || []).map((block) => [block.title, block.descriptionText].filter(Boolean).join(' ')),
   ])].filter(Boolean).join('\n');
@@ -301,6 +306,8 @@ function guideText(ast) {
  */
 function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
   const tpl = withBrand('pdf', DEFAULT_TEMPLATE, ast, template);
+  const { t, tn, tc } = exportText(ast);
+  const stepHeading = (step) => `${step.number}. ${step.title || t('Untitled step')}${step.skipped ? `  ${t('(skipped)')}` : ''}`;
   // A brand profile sets the text and link colors, and the closest built-in
   // fonts to its own (Helvetica, Times or Courier).
   const brand = ast.branding;
@@ -312,7 +319,7 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
   const pdf = new PdfBuilder({
     pageWidth: size.width,
     pageHeight: size.height,
-    title: ast.guide.title || 'Untitled guide',
+    title: ast.guide.title || t('Untitled guide'),
     author: ast.guide.metadata?.author || '',
     fallbackFonts: fallbackFonts || new FallbackFonts(() => systemFontCandidates({ text: guideText(ast) })),
   });
@@ -497,7 +504,7 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
 
   const measureStep = (step) => {
     const headSize = step.depth > 0 ? 12 : 14;
-    const titleText = `${step.number}. ${step.title || 'Untitled step'}${step.skipped ? '  (skipped)' : ''}`;
+    const titleText = stepHeading(step);
     const titleLines = pdf.wrapText(titleText, headSize, usableW, headFonts.bold);
     let head = Math.max(40, titleLines.length * headSize * 1.35 + 8);
 
@@ -597,21 +604,21 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
     if (metaLines.length) y += 8;
     if (ast.guide.descriptionHtml) writeDescription(ast.guide.descriptionHtml, { size: 12, color: [70, 70, 70] });
     y += 14;
-    coverLine(`${ast.steps.length} steps — generated ${ast.generatedAt.slice(0, 10)}`, { size: 10, color: [120, 120, 120] });
+    coverLine(tn(ast.steps.length, '{count} step — generated {date}', '{count} steps — generated {date}', { date: ast.generatedAt.slice(0, 10) }), { size: 10, color: [120, 120, 120] });
     pdf.addPage();
     y = M;
   }
 
 
   if (tpl.includeToc && ast.steps.length > 1) {
-    writeLines('Contents', { size: 16, font: headFonts.bold });
+    writeLines(tc('Table of contents', 'Contents'), { size: 16, font: headFonts.bold });
     y += 4;
     const tocSize = 10.5;
     const lineH = tocSize * 1.35;
     for (const step of ast.steps) {
       const indent = 14 * step.depth;
       const target = tocTargets.get(step.stepId);
-      for (const line of pdf.wrapText(`${step.number}.  ${step.title || 'Untitled step'}`, tocSize, usableW - indent, bodyFonts.regular)) {
+      for (const line of pdf.wrapText(`${step.number}.  ${step.title || t('Untitled step')}`, tocSize, usableW - indent, bodyFonts.regular)) {
         ensure(lineH);
         pdf.text(line, M + indent, y, { size: tocSize, font: bodyFonts.regular, color: tpl.accentColor });
         pdf.linkRect(M + indent, y, usableW - indent, lineH, target);
@@ -640,7 +647,7 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
     // Keep the title, accent rule, lead-in blocks, description, and image
     // together — never split across a page boundary.
     ensure(headHeight);
-    pdf.bookmark(`${step.number}. ${step.title || 'Untitled step'}`);
+    pdf.bookmark(`${step.number}. ${step.title || t('Untitled step')}`);
     const tocTarget = tocTargets.get(step.stepId);
     if (tocTarget) {
       tocTarget.pageIndex = pdf.pages.length - 1;
@@ -678,7 +685,7 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
     const emit = (tb, column) => (tb.kind === 'flowchart' ? drawImage(flowchartImageKey(step.stepId), column) : emitBlock(tb, column));
     for (const tb of beforeTitle) emit(tb);
     const headSize = step.depth > 0 ? 12 : 14;
-    writeLines(`${step.number}. ${step.title || 'Untitled step'}${step.skipped ? '  (skipped)' : ''}`, { size: headSize, font: headFonts.bold });
+    writeLines(stepHeading(step), { size: headSize, font: headFonts.bold });
     pdf.rect(M, y, usableW, 0.8, { fill: [225, 228, 232] });
     y += 8;
 
@@ -742,7 +749,7 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
 
   /** A callout block in a space `width` wide starting at `left` (the page, or a side-by-side column). */
   function emitBlock(tb, { left = M, width = usableW } = {}) {
-    const label = `${LEVEL_LABEL[tb.level] || 'Note'}${tb.title ? `: ${tb.title}` : ''}`;
+    const label = calloutLabel(tb, ast);
     const { items, height: bodyH } = tb.descriptionHtml
       ? layoutDescription(pdf, tb.descriptionHtml, width - 18, 9.5, bodyFonts)
       : { items: [], height: 0 };
@@ -801,7 +808,7 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
         const footY = size.height - M / 2 - 4;
         if (brand.footer.text) pdf.text(brand.footer.text, M, footY, { size: 8, font: bodyFonts.regular, color: muted });
         if (brand.footer.pageNumbers) {
-          const label = `Page ${i + 1} of ${total}`;
+          const label = t('Page {page} of {total}', { page: i + 1, total });
           pdf.text(label, rightAlign(label, bodyFonts.regular), footY, { size: 8, font: bodyFonts.regular, color: muted });
         }
       });

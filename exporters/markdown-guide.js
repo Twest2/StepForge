@@ -3,7 +3,8 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { escapeHtml } = require('../core/util');
-const { guideSlug, imagesDirName, writeStepImages, LEVEL_LABEL, stepContentGroups, codeBlockText, flowchartImageKey, flowchartAlt } = require('./common');
+const { guideSlug, imagesDirName, writeStepImages, LEVEL_LABEL, levelLabel, stepContentGroups, codeBlockText, flowchartImageKey, flowchartAlt, stepLinkText, goToParts } = require('./common');
+const { exportText } = require('../core/export-text');
 const { markdownFenceLanguage } = require('../core/code-highlight');
 const { htmlToMarkdown } = require('./htmlmd');
 const { tocEntries, guideMetaLines, guideSummary } = require('./document-layout');
@@ -25,10 +26,10 @@ const WIKIJS_CALLOUT_CLASS = {
 };
 
 const HTML_CALLOUT_THEME = {
-  info: { label: 'Note', border: '#2563eb', fg: '#1d4ed8', kind: 'note' },
-  success: { label: 'Tip', border: '#10b981', fg: '#047857', kind: 'tip' },
-  warn: { label: 'Warning', border: '#f59e0b', fg: '#b45309', kind: 'warning' },
-  error: { label: 'Important', border: '#ef4444', fg: '#b91c1c', kind: 'important' },
+  info: { border: '#2563eb', fg: '#1d4ed8', kind: 'note' },
+  success: { border: '#10b981', fg: '#047857', kind: 'tip' },
+  warn: { border: '#f59e0b', fg: '#b45309', kind: 'warning' },
+  error: { border: '#ef4444', fg: '#b91c1c', kind: 'important' },
 };
 
 /** Alt text inside ![…]: backslash-escape what would end it early or read as markup. */
@@ -64,17 +65,20 @@ function chartLinkLine(chart, ast) {
   const seen = new Set();
   const links = (chart?.links || []).filter((link) => !seen.has(link.stepId) && seen.add(link.stepId)).map((link) => {
     const target = ast.steps.find((s) => s.stepId === link.stepId);
-    return target ? `[Step ${target.number}: ${target.title || 'Untitled step'}](#step-${target.stepId})` : '';
+    return target ? `[${stepLinkText(target, ast)}](#step-${target.stepId})` : '';
   }).filter(Boolean);
-  return links.length ? [`Go to: ${links.join(' · ')}`, ''] : [];
+  const { before, after } = goToParts(ast);
+  return links.length ? [`${before}${links.join(' · ')}${after}`, ''] : [];
 }
 
-function emitBlock(lines, tb, { alertStyle = 'gfm' } = {}) {
+function emitBlock(lines, tb, { alertStyle = 'gfm', ast = null } = {}) {
+  const { t } = exportText(ast);
   const body = htmlToMarkdown(tb.descriptionHtml);
   if (alertStyle === 'html') {
-    const theme = HTML_CALLOUT_THEME[tb.level] || HTML_CALLOUT_THEME.info;
-    const label = theme.label;
-    const title = tb.title ? `${label}: ${tb.title}` : label;
+    const level = HTML_CALLOUT_THEME[tb.level] ? tb.level : 'info';
+    const theme = HTML_CALLOUT_THEME[level];
+    const label = levelLabel(level, ast);
+    const title = tb.title ? t('{label}: {title}', { label, title: tb.title }) : label;
     const style = `border-left: 4px solid ${theme.border}; padding: 14px 16px; margin: 14px 0; border-radius: 0 16px 16px 0;`;
     lines.push(
       `<div class="sf-callout sf-callout-${theme.kind}" style="${style}">`,
@@ -85,7 +89,7 @@ function emitBlock(lines, tb, { alertStyle = 'gfm' } = {}) {
     return;
   }
   if (alertStyle === 'wikijs') {
-    const label = tb.title || LEVEL_LABEL[tb.level] || 'Note';
+    const label = tb.title || levelLabel(tb.level, ast);
     const className = WIKIJS_CALLOUT_CLASS[tb.level] || 'is-info';
     lines.push(`> **${label}**`);
     if (body) lines.push(`> ${quoteBody(body)}`);
@@ -93,6 +97,7 @@ function emitBlock(lines, tb, { alertStyle = 'gfm' } = {}) {
     return;
   }
 
+  // GitHub only knows the English alert names (> [!NOTE]).
   const label = LEVEL_LABEL[tb.level] || 'Note';
   lines.push(`> [!${label.toUpperCase()}]`);
   if (tb.title) lines.push(`> **${tb.title}**`);
@@ -114,6 +119,7 @@ const BRAND_FILES = ['brand-banner.png', 'brand-logo.png'];
  * their own size, for wikis that don't allow HTML.
  */
 function brandImageLines(ast, outDir, { html, imageUrl }) {
+  const { t } = exportText(ast);
   const brand = ast.branding;
   const dir = path.join(outDir, imagesDirName(ast));
   if (!brand) {
@@ -136,7 +142,8 @@ function brandImageLines(ast, outDir, { html, imageUrl }) {
   const logo = brand.logo ? scaledPng(brand.logo, html ? 480 : 320, html ? 96 : 64) : null;
   if (logo) {
     const url = write('brand-logo.png', logo);
-    lines.push(html ? `<p${align}><img src="${escapeHtml(url)}" alt="Logo" height="${Math.min(48, logo.height)}"></p>` : `![Logo](${url})`, '');
+    const alt = t('Logo');
+    lines.push(html ? `<p${align}><img src="${escapeHtml(url)}" alt="${escapeHtml(alt)}" height="${Math.min(48, logo.height)}"></p>` : `![${markdownAlt(alt)}](${url})`, '');
   }
   if (brand.header.text) lines.push(`*${markdownText(brand.header.text)}*`, '');
   return lines;
@@ -145,7 +152,7 @@ function brandImageLines(ast, outDir, { html, imageUrl }) {
 function renderMarkdownGuide(ast, outDir, template = {}, {
   defaults = DEFAULT_TEMPLATE,
   alertStyle = 'gfm',
-  tocTitle = 'Contents',
+  tocTitle = null, // the export language's "Contents"
   fileExt = '.md',
   accentBar = true,
   titleHeading = true,
@@ -154,6 +161,7 @@ function renderMarkdownGuide(ast, outDir, template = {}, {
   brandHtml = true, // show the brand's logo and banner with <img> tags
 } = {}) {
   const tpl = { ...defaults, ...template };
+  const { t, tc } = exportText(ast);
   fs.mkdirSync(outDir, { recursive: true });
   const images = tpl.includeImages ? writeStepImages(ast, outDir) : new Map();
   const lines = frontMatter ? frontMatter(ast) : [];
@@ -169,7 +177,7 @@ function renderMarkdownGuide(ast, outDir, template = {}, {
   if (ast.guide.descriptionHtml) lines.push(htmlToMarkdown(ast.guide.descriptionHtml), '');
 
   if (withToc) {
-    lines.push(`## ${tocTitle}`, '');
+    lines.push(`## ${tocTitle || tc('Table of contents', 'Contents')}`, '');
     for (const entry of tocEntries(ast)) {
       const indent = '  '.repeat(entry.depth);
       lines.push(`${indent}- [${entry.number}. ${entry.title}](#${entry.anchor})`);
@@ -204,14 +212,14 @@ function renderMarkdownGuide(ast, outDir, template = {}, {
     } = stepContentGroups(step);
     // Text blocks and the flowchart block, at their positions.
     const emit = (tb) => {
-      if (tb.kind !== 'flowchart') { emitBlock(lines, tb, { alertStyle }); return; }
+      if (tb.kind !== 'flowchart') { emitBlock(lines, tb, { alertStyle, ast }); return; }
       const chart = images.get(flowchartImageKey(step.stepId));
-      if (chart) lines.push(`![${markdownAlt(flowchartAlt(step))}](${imageUrl(chart.relPath)})`, '', ...chartLinkLine(step.flowchartImage, ast));
+      if (chart) lines.push(`![${markdownAlt(flowchartAlt(step, ast))}](${imageUrl(chart.relPath)})`, '', ...chartLinkLine(step.flowchartImage, ast));
     };
     if (accentBar || withToc || linkTargets.has(step.stepId)) lines.push(`<a id="${anchorFor(step)}"></a>`, '');
     for (const tb of beforeTitle) emit(tb);
-    lines.push(`${heading} ${step.number}. ${step.title || 'Untitled step'}`, '');
-    if (step.skipped) lines.push('*(skipped)*', '');
+    lines.push(`${heading} ${step.number}. ${step.title || t('Untitled step')}`, '');
+    if (step.skipped) lines.push(`*${t('(skipped)')}*`, '');
     for (const tb of afterTitle) emit(tb);
     for (const tb of beforeDescription) emit(tb);
     if (step.descriptionMarkdown) lines.push(markdownSource(step.descriptionMarkdown), '');
@@ -232,7 +240,7 @@ function renderMarkdownGuide(ast, outDir, template = {}, {
 
     for (const block of rest) {
       if (block.kind === 'text') {
-        emitBlock(lines, block, { alertStyle });
+        emitBlock(lines, block, { alertStyle, ast });
       } else if (block.kind === 'code') {
         lines.push(`\`\`\`${markdownFenceLanguage(block.language)}`, codeBlockText(block), '```', '');
       } else if (block.kind === 'table') {

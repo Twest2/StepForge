@@ -6,6 +6,7 @@ const { pathToFileURL } = require('node:url');
 const { decodePng } = require('./png');
 const { createImageCodec } = require('./image-codec');
 const flowchart = require('./flowchart');
+const { t } = require('./ui-text');
 
 /** The prepareExportImages key for a step's flowchart PNG. */
 const flowchartImageKey = (stepId) => `flowchart:${stepId}`;
@@ -160,7 +161,7 @@ async function prepareExportImages(store, guideId, { codec = activeCodec, maxSte
     if (maxSteps > 0 && ++visible > maxSteps) break;
     if (flowchart.hasFlowchart(step)) {
       // The flowchart's SVG, drawn by the same codec (Sharp reads SVG input).
-      if (!codec) throw new Error(`StepForge can't draw the flowchart in ${stepId}.`);
+      if (!codec) throw new Error(t('StepForge can\'t draw the flowchart in {stepId}.', { stepId }));
       images.set(flowchartImageKey(stepId), await codec.decodeToPng(Buffer.from(flowchart.toSvg(step.flowchart, { steps: stepRefs }))));
     }
     if (!step.image) continue;

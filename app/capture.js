@@ -19,6 +19,7 @@ const {
 const { physicalToDip, physicalRectToDip, displayForDipPoint, cropGeometry } = require('./coords');
 const { WINDOW_BOUNDS_CS, parseWindowBounds, readActiveWindow } = require('./platform/windows/window-bounds');
 const { defaultCaptureTitle, mouseButtonKey } = require('../core/text-intel');
+const { t, tn, uiLanguage } = require('../core/ui-text');
 
 /** True when two presses (DIP points) are close enough to be one double-click. */
 function withinDoubleClickRadius(a, b) {
@@ -71,10 +72,10 @@ const MIN_DOUBLE_CLICK_GAP_MS = 20;
 // something else that the debounce happened to drop.
 const DOUBLE_CLICK_RADIUS = 8;
 // Shown before and during a recording whose Window setting can't be honoured.
-const WINDOW_FALLBACK_NOTE = 'Window capture is not available on this desktop, so StepForge records the full screen.';
+const windowFallbackNote = () => t('Window capture is not available on this desktop, so StepForge records the full screen.');
 // Window mode on Windows, when a capture has no window to show (a click on
 // the desktop or taskbar, or the active window could not be read).
-const WINDOW_NOT_FOUND_NOTE = 'StepForge couldn’t tell which window to capture, so it captured the full screen.';
+const windowNotFoundNote = () => t('StepForge couldn’t tell which window to capture, so it captured the full screen.');
 // How long a Linux raw button event waits for its regular twin (the
 // representation that carries root coordinates) before firing without them.
 const LINUX_CLICK_TWIN_MS = 25;
@@ -333,7 +334,7 @@ class CaptureService {
 
   state() {
     // Said up front, so the recording bar shows it before anything is captured.
-    const modeNote = this.windowModeFallsBack() ? WINDOW_FALLBACK_NOTE : '';
+    const modeNote = this.windowModeFallsBack() ? windowFallbackNote() : '';
     return this.session
       ? {
         active: true,
@@ -487,19 +488,19 @@ class CaptureService {
       const img = raster.createImage(16, 16, [0, 0, 0, 0]);
       raster.fillOval(img, 2, 2, 12, 12, [229, 72, 77, 255]);
       this.tray = new Tray(nativeImage.createFromBuffer(encodePng(img)));
-      this.tray.setToolTip('StepForge — capture session running');
+      this.tray.setToolTip(t('StepForge — capture session running'));
       const rebuild = () => {
         if (!this.tray || this.tray.isDestroyed()) return;
         this.tray.setContextMenu(Menu.buildFromTemplate([
-          { label: `Captured ${this.session ? this.session.count : 0} steps`, enabled: false },
+          { label: tn(this.session ? this.session.count : 0, 'Captured {count} step', 'Captured {count} steps'), enabled: false },
           { type: 'separator' },
-          { label: 'Capture now', click: () => this.sessionCapture('manual').then(rebuild).catch(() => {}) },
+          { label: t('Capture now'), click: () => this.sessionCapture('manual').then(rebuild).catch(() => {}) },
           {
-            label: this.session && this.session.paused ? 'Resume capturing' : 'Pause capturing',
+            label: this.session && this.session.paused ? t('Resume capturing') : t('Pause capturing'),
             click: () => { this.noteUiStopGesture(); this.togglePause(); rebuild(); },
           },
           {
-            label: 'Open StepForge (pauses capture)',
+            label: t('Open StepForge (pauses capture)'),
             click: () => {
               this.noteUiStopGesture();
               this.togglePause(true);
@@ -508,7 +509,7 @@ class CaptureService {
             },
           },
           { type: 'separator' },
-          { label: 'Finish session', click: () => { this.noteUiStopGesture(); this.finishSession(); } },
+          { label: t('Finish session'), click: () => { this.noteUiStopGesture(); this.finishSession(); } },
         ]));
       };
       rebuild();
@@ -800,7 +801,7 @@ class CaptureService {
         this.notify('capture:diagnostic', {
           kind: 'strict-click-skipped',
           guideId,
-          reason: 'No pre-click frame was ready for this click. In strict timing mode StepForge skips the shot rather than capturing the screen after the click.',
+          reason: t('No pre-click frame was ready for this click. In strict timing mode StepForge skips the shot rather than capturing the screen after the click.'),
         });
         return { ok: false, reason: 'strict mode: no pre-click frame available for this click' };
       }
@@ -853,7 +854,7 @@ class CaptureService {
       return { ok: false, reason: 'waiting for the screen-share stream' };
     }
 
-    if (this.shooting) return { ok: false, reason: 'capture already in progress' };
+    if (this.shooting) return { ok: false, reason: t('capture already in progress') };
     this.shooting = true;
     try {
       const mode = this.settings.get('capture.mode') || 'fullscreen';
@@ -1005,7 +1006,7 @@ class CaptureService {
         this.notify('capture:diagnostic', {
           kind: 'window-mode-unavailable',
           guideId: this.session.guideId,
-          reason: WINDOW_FALLBACK_NOTE,
+          reason: windowFallbackNote(),
         });
       }
       grabMode = 'fullscreen';
@@ -2319,7 +2320,7 @@ ${WINDOW_BOUNDS_CS}
     this.notify('capture:diagnostic', {
       kind: 'window-not-found',
       guideId: this.session ? this.session.guideId : null,
-      reason: WINDOW_NOT_FOUND_NOTE,
+      reason: windowNotFoundNote(),
     });
   }
 
@@ -2563,11 +2564,11 @@ ${WINDOW_BOUNDS_CS}
     }
     const { image, display } = grabbed;
     const rect = await this.pickRegion(display, image);
-    if (!rect) return { ok: false, reason: 'selection cancelled' };
+    if (!rect) return { ok: false, reason: t('selection cancelled') };
 
     const cropped = image.crop(rect);
     const size = cropped.getSize();
-    if (!size.width || !size.height) return { ok: false, reason: 'empty selection' };
+    if (!size.width || !size.height) return { ok: false, reason: t('empty selection') };
     return { ok: true, frame: { image: cropped, size, display, cursor: null } };
   }
 
@@ -2578,8 +2579,8 @@ ${WINDOW_BOUNDS_CS}
    * is running, since it owns the window, the hotkey and the click capture.
    */
   async retakeFrame({ mode = 'fullscreen', delayMs = 3000 } = {}) {
-    if (this.session) return { ok: false, reason: 'Stop the recording session before retaking a screenshot.' };
-    if (this.shooting) return { ok: false, reason: 'capture already in progress' };
+    if (this.session) return { ok: false, reason: t('Stop the recording session before retaking a screenshot.') };
+    if (this.shooting) return { ok: false, reason: t('capture already in progress') };
     this.shooting = true;
     try {
       let frame;
@@ -2684,7 +2685,9 @@ ${WINDOW_BOUNDS_CS}
       ipcMain.on('region:picked', onPick);
       overlay.on('closed', () => finish(null));
       overlay.webContents.on('did-fail-load', () => finish(null));
-      overlay.loadFile(path.join(__dirname, 'renderer', 'region.html')).catch(() => finish(null));
+      overlay.loadFile(path.join(__dirname, 'renderer', 'region.html'), {
+        query: { hint: t('Drag to select a region — Esc to cancel'), title: t('Select region'), lang: uiLanguage() },
+      }).catch(() => finish(null));
     });
   }
 }

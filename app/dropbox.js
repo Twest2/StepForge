@@ -2,6 +2,7 @@
 
 const { CloudAccount } = require('./cloud-account');
 const { resolveCloudApps, DROPBOX_KEY_PATTERN } = require('./cloud-apps');
+const { t } = require('../core/ui-text');
 
 /*
  * Dropbox with an "App folder" app: StepForge can only see Apps/StepForge in
@@ -30,7 +31,7 @@ class Dropbox extends CloudAccount {
   refreshParams(refreshToken) { return { client_id: this.key, grant_type: 'refresh_token', refresh_token: refreshToken }; }
 
   async connect() {
-    if (!this.available) throw new Error('Dropbox sign-in is unavailable in this build of StepForge. Please use a release with Dropbox sign-in enabled.');
+    if (!this.available) throw new Error(t('Dropbox sign-in is unavailable in this build of StepForge. Please use a release with Dropbox sign-in enabled.'));
     this.requireEncryption();
     const { code, verifier, redirectUri } = await this.browserSignIn({
       ports: REDIRECT_PORTS,
@@ -41,7 +42,7 @@ class Dropbox extends CloudAccount {
     const response = await this.tokenRequest(this.tokenUrl, { client_id: this.key, grant_type: 'authorization_code', code,
       redirect_uri: redirectUri, code_verifier: verifier });
     const tokens = this.tokens(response);
-    if (!tokens.refresh_token) throw new Error('Dropbox did not allow StepForge to stay signed in. Sign in again.');
+    if (!tokens.refresh_token) throw new Error(t('Dropbox did not allow StepForge to stay signed in. Sign in again.'));
     this.finishSignIn(tokens);
     try { await this.loadProfile(); } catch (err) { this.disconnect(); throw err; }
     return this.status();
@@ -50,14 +51,14 @@ class Dropbox extends CloudAccount {
   async loadProfile() {
     const credentials = this.credentials;
     const account = await this.rpc('users/get_current_account');
-    if (this.credentials !== credentials) throw new Error('Dropbox account changed.');
-    if (!account?.account_id) throw new Error('Dropbox did not return an account identity.');
+    if (this.credentials !== credentials) throw new Error(t('Dropbox account changed.'));
+    if (!account?.account_id) throw new Error(t('Dropbox did not return an account identity.'));
     Object.assign(credentials, { accountId: account.account_id, email: account.email || '', name: account.name?.display_name || '' });
     this.save();
   }
 
   describeError(status, body) {
-    if (typeof body?.error_summary === 'string' && /insufficient_space/.test(body.error_summary)) return 'Your Dropbox is full. Free up space there, then try again.';
+    if (typeof body?.error_summary === 'string' && /insufficient_space/.test(body.error_summary)) return t('Your Dropbox is full. Free up space there, then try again.');
     return super.describeError(status, body);
   }
 

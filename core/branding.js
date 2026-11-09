@@ -9,6 +9,7 @@ const { newId, nowIso, writeJsonSync, readJsonIfExists, atomicWriteFileSync } = 
 const { zipSync, unzipSync } = require('./zip');
 const { decodePng } = require('./png');
 const { sanitizeSvg, svgSize } = require('./svg-sanitize');
+const { t } = require('./ui-text');
 
 /**
  * Brand profiles: a company's logo, banner, colors, fonts, header/footer
@@ -71,20 +72,20 @@ const FONT_SUGGESTIONS = [
 // CSS is limited by characters; a UTF-8 file under 4 bytes a character can't fit.
 const MAX_FILE_BYTES = { image: MAX_IMAGE_BYTES, font: MAX_FONT_BYTES, css: MAX_CSS_CHARS * 4 };
 const TOO_LARGE = {
-  image: 'This image is larger than 10 MB. Choose a smaller one.',
-  font: 'This font file is larger than 10 MB. Choose a smaller one, such as its WOFF2 version.',
-  css: 'This CSS file is longer than 200,000 characters, the most a profile can hold. Shorten it and load it again.',
+  image: () => t('This image is larger than 10 MB. Choose a smaller one.'),
+  font: () => t('This font file is larger than 10 MB. Choose a smaller one, such as its WOFF2 version.'),
+  css: () => t('This CSS file is longer than 200,000 characters, the most a profile can hold. Shorten it and load it again.'),
 };
 
 /** Refuse a file that's too large for its kind (image, font or css) before it's read. */
 function checkFileSize(kind, bytes) {
-  if (bytes > MAX_FILE_BYTES[kind]) throw new Error(TOO_LARGE[kind]);
+  if (bytes > MAX_FILE_BYTES[kind]) throw new Error(TOO_LARGE[kind]());
 }
 
 /** The text of a loaded .css file; one over the limit is refused, never cut short. */
 function cssFromFile(data) {
   const css = data.toString('utf8').replace(/^\uFEFF/, '');
-  if (css.length > MAX_CSS_CHARS) throw new Error(TOO_LARGE.css);
+  if (css.length > MAX_CSS_CHARS) throw new Error(TOO_LARGE.css());
   return css;
 }
 
@@ -121,7 +122,7 @@ function normalizeProfile(raw = {}, { id = raw.id, createdAt = raw.createdAt, up
   return {
     schemaVersion: 1,
     id,
-    name: cleanText(raw.name, 80) || 'Untitled brand',
+    name: cleanText(raw.name, 80) || t('Untitled brand'),
     createdAt: createdAt || nowIso(),
     updatedAt: updatedAt || nowIso(),
     colors: {
@@ -265,18 +266,18 @@ function fontFamilyName(bytes) {
 /** "AcmeSans-Bold.woff2" -> "AcmeSans". */
 function familyFromFileName(fileName) {
   const base = path.basename(String(fileName || '')).replace(/\.[^.]+$/, '');
-  return cleanFontName(base.split(/[-_]/)[0] || base) || 'Brand font';
+  return cleanFontName(base.split(/[-_]/)[0] || base) || t('Brand font');
 }
 
 /** Validate and normalize an image or font without writing to the library. */
 function prepareAsset(bytes, { kind, fileName = '' }) {
-  if (!Buffer.isBuffer(bytes) || !bytes.length) throw new Error('That file is empty.');
+  if (!Buffer.isBuffer(bytes) || !bytes.length) throw new Error(t('That file is empty.'));
   let data = bytes;
   let meta;
   if (kind === 'image') {
     checkFileSize('image', bytes.length);
     const type = imageType(bytes);
-    if (!type) throw new Error('Choose a PNG, JPG or SVG image.');
+    if (!type) throw new Error(t('Choose a PNG, JPG or SVG image.'));
     let size;
     if (type === 'svg') {
       data = Buffer.from(sanitizeSvg(bytes), 'utf8');
@@ -284,12 +285,12 @@ function prepareAsset(bytes, { kind, fileName = '' }) {
     } else {
       size = type === 'png' ? pngSize(bytes) : jpegSize(bytes);
     }
-    if (!(size.width > 0 && size.height > 0) && type !== 'svg') throw new Error('StepForge couldn’t read the size of that image.');
+    if (!(size.width > 0 && size.height > 0) && type !== 'svg') throw new Error(t('StepForge couldn’t read the size of that image.'));
     meta = { kind, ...IMAGE_TYPES[type], width: size.width || 0, height: size.height || 0 };
   } else if (kind === 'font') {
     checkFileSize('font', bytes.length);
     const type = fontType(bytes);
-    if (!type) throw new Error('Choose a WOFF2, WOFF, TTF or OTF font file.');
+    if (!type) throw new Error(t('Choose a WOFF2, WOFF, TTF or OTF font file.'));
     meta = { kind, ...FONT_TYPES[type], family: fontFamilyName(bytes) || familyFromFileName(fileName) };
   } else {
     throw new Error('Unknown asset kind.');
@@ -309,7 +310,7 @@ class BrandingStore {
   }
 
   profileFile(id) {
-    if (typeof id !== 'string' || !/^brand-[A-Za-z0-9-]{1,64}$/.test(id)) throw new Error('Unknown brand profile.');
+    if (typeof id !== 'string' || !/^brand-[A-Za-z0-9-]{1,64}$/.test(id)) throw new Error(t('Unknown brand profile.'));
     return path.join(this.profilesDir, `${id}.json`);
   }
 
@@ -375,7 +376,7 @@ class BrandingStore {
 
   duplicate(id) {
     const source = this.get(id);
-    if (!source) throw new Error('That brand profile no longer exists.');
+    if (!source) throw new Error(t('That brand profile no longer exists.'));
     const { id: _id, createdAt, updatedAt, ...rest } = source;
     return this.save({ ...rest, name: `${source.name} copy`.slice(0, 80) });
   }
@@ -431,16 +432,16 @@ class BrandingStore {
   /** The renderer's PNG drawing of an image asset (for SVG, JPG, and PNGs StepForge can't decode). */
   setRaster(id, png) {
     const meta = this.assetMeta(id);
-    if (!meta || meta.kind !== 'image') throw new Error('Unknown image.');
+    if (!meta || meta.kind !== 'image') throw new Error(t('Unknown image.'));
     // Check the header before decoding: a small compressed file can describe
     // a huge image and otherwise allocate gigabytes in the main process.
     if (imageType(png) === 'png') {
       const size = pngSize(png);
-      if (size.width > MAX_RASTER_DIM || size.height > MAX_RASTER_DIM) throw new Error('The converted image is too large.');
+      if (size.width > MAX_RASTER_DIM || size.height > MAX_RASTER_DIM) throw new Error(t('The converted image is too large.'));
     }
     let img;
-    try { img = decodePng(png); } catch { throw new Error('The image couldn’t be converted to PNG.'); }
-    if (img.width > MAX_RASTER_DIM || img.height > MAX_RASTER_DIM) throw new Error('The converted image is too large.');
+    try { img = decodePng(png); } catch { throw new Error(t('The image couldn’t be converted to PNG.')); }
+    if (img.width > MAX_RASTER_DIM || img.height > MAX_RASTER_DIM) throw new Error(t('The converted image is too large.'));
     atomicWriteFileSync(this.rasterFile(meta), png);
     meta.raster = { width: img.width, height: img.height };
     if (!meta.width || !meta.height) { meta.width = img.width; meta.height = img.height; }
@@ -529,7 +530,7 @@ class BrandingStore {
   /** Write a profile and its assets as a .sfbrand file. */
   exportProfile(id, destFile) {
     const profile = this.get(id);
-    if (!profile) throw new Error('That brand profile no longer exists.');
+    if (!profile) throw new Error(t('That brand profile no longer exists.'));
     const entries = [
       { name: 'manifest.json', data: JSON.stringify({ format: 'stepforge-brand-profile', formatVersion: 1, name: profile.name, exportedAt: nowIso() }, null, 2) },
       { name: 'profile.json', data: JSON.stringify(profile, null, 2) },
@@ -556,10 +557,10 @@ class BrandingStore {
       try { return JSON.parse(entries.get(name).toString('utf8')); } catch { return null; }
     };
     const manifest = entries.has('manifest.json') ? json('manifest.json') : null;
-    if (manifest?.format !== 'stepforge-brand-profile') throw new Error('This isn’t a StepForge brand profile.');
-    if (manifest.formatVersion > 1) throw new Error('This brand profile was made by a newer StepForge. Update StepForge to import it.');
+    if (manifest?.format !== 'stepforge-brand-profile') throw new Error(t('This isn’t a StepForge brand profile.'));
+    if (manifest.formatVersion > 1) throw new Error(t('This brand profile was made by a newer StepForge. Update StepForge to import it.'));
     const raw = json('profile.json');
-    if (!raw || typeof raw !== 'object') throw new Error('This brand profile is damaged.');
+    if (!raw || typeof raw !== 'object') throw new Error(t('This brand profile is damaged.'));
     const mapped = new Map();
     const extensions = [...Object.values(IMAGE_TYPES), ...Object.values(FONT_TYPES)].map((t) => t.ext);
     for (const asset of new Set(profileAssetIds(normalizeProfile(raw)))) {
@@ -575,7 +576,7 @@ class BrandingStore {
     }
     const remap = (asset) => (asset ? mapped.get(asset) || null : null);
     const names = new Set(this.list().map((p) => p.name));
-    let name = cleanText(raw.name, 80) || 'Imported brand';
+    let name = cleanText(raw.name, 80) || t('Imported brand');
     if (names.has(name)) name = `${name} (imported)`.slice(0, 80);
     return this.save({
       ...raw,

@@ -134,8 +134,8 @@ Any other character is drawn from an installed TrueType font:
 `core/pdf-fonts.js` lists candidates (Windows font folder by script, with
 Chinese, Japanese or Korean first depending on the guide's text; fontconfig's
 `fc-match -s` on Linux) and loads each only when an earlier one lacks a
-character. `core/ttf.js` reads `.ttf`/`.ttc` files (glyf outlines only; CFF
-fonts are skipped) and writes a subset that keeps glyph ids, which
+character. `core/ttf.js` reads `.ttf`/`.ttc` files (glyf outlines only for
+PDFs; CFF fonts are skipped there) and writes a subset that keeps glyph ids, which
 `core/pdf.js` embeds as a Type0/CIDFontType2 font with `/CIDToGIDMap
 /Identity`, real widths, and a ToUnicode CMap so viewers can copy and search
 the text. Lines may break between Chinese, Japanese and Korean characters
@@ -149,7 +149,12 @@ PNG pixels decoded by `core/png.js`. Before building the AST, export workers
 prepare referenced WebP screenshots as PNG through `core/image-format.js`;
 preview preparation follows guide order and the preview step limit. Text in rasterized images (annotation
 labels, GIF captions) is anti-aliased from the glyph atlases in `core/fonts/`
-(rendered from Lato by `scripts/make-font-atlas.js`; SIL Open Font License). Every exporter accepts a template object
+(rendered from Lato by `scripts/make-font-atlas.js`; SIL Open Font License).
+Characters outside the atlas (Chinese, Cyrillic, Thai, ...) are filled from
+installed-font outlines in `core/text-raster.js`, using the same
+`core/pdf-fonts.js` candidates plus CFF fonts such as Noto Sans CJK
+(`core/cff.js` reads their charstrings); right-to-left order and shaping are
+not handled there either. Every exporter accepts a template object
 (per-format settings persisted under `settings/templates/`, shareable as
 `.sfglt` zip files).
 

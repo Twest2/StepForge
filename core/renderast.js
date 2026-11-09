@@ -13,6 +13,7 @@ const { orderedBlocks, blockText } = require('./blocks');
 const { DEFAULT_CODE_STYLE } = require('./code-highlight');
 const { DEFAULT_REVIEW_DAYS, reviewStatus } = require('./review');
 const { loadBranding } = require('./branding');
+const { exportTranslator } = require('./export-text');
 
 /**
  * The Render AST is the single normalized document model every exporter
@@ -20,26 +21,43 @@ const { loadBranding } = require('./branding');
  * filtering, and absolute image paths — exporters never read the store.
  */
 
-/**
- * Alt text for a step's screenshot: "Screenshot for step 3: Click Save", or
- * "Screenshot for step 3" when the step has no title. Control characters
- * (illegal in XML and PDF text) are dropped and whitespace collapsed, so every
- * exporter can escape it for its own format without further cleanup.
- */
-function screenshotAltText(number, title) {
-  const clean = String(title || '')
+/** A title as alt text: control characters dropped, whitespace collapsed. */
+function altTitle(title) {
+  return String(title || '')
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
-  return clean ? `Screenshot for step ${number}: ${clean}` : `Screenshot for step ${number}`;
+}
+
+/**
+ * Alt text for a step's screenshot: "Screenshot for step 3: Click Save", or
+ * "Screenshot for step 3" when the step has no title, in the export's
+ * `language`. Control characters (illegal in XML and PDF text) are dropped and
+ * whitespace collapsed, so every exporter can escape it for its own format
+ * without further cleanup.
+ */
+function screenshotAltText(number, title, language = 'en') {
+  const { t } = exportTranslator(language);
+  const clean = altTitle(title);
+  return clean ? t('Screenshot for step {number}: {title}', { number, title: clean }) : t('Screenshot for step {number}', { number });
+}
+
+/** Alt text for a step's flowchart: "Flowchart for step 3: Click Save". */
+function flowchartAltText(number, title, language = 'en') {
+  const { t } = exportTranslator(language);
+  const clean = altTitle(title);
+  return clean ? t('Flowchart for step {number}: {title}', { number, title: clean }) : t('Flowchart for step {number}', { number });
 }
 
 /**
  * `images` (optional): Map of absolute screenshot path -> PNG bytes, for the
  * screenshots the store keeps as WebP (see prepareExportImages in
  * core/image-format.js). The exporters only ever see PNG pixels.
+ * `language` is the interface language (core/i18n.js) the text StepForge
+ * adds to the export is written in (core/export-text.js).
  */
-function buildRenderAst(store, guideId, { globals = {}, now = new Date(), maxSteps = 0, codeStyle = DEFAULT_CODE_STYLE, reviewDays = DEFAULT_REVIEW_DAYS, branding = null, images = null } = {}) {
+function buildRenderAst(store, guideId, { globals = {}, now = new Date(), maxSteps = 0, codeStyle = DEFAULT_CODE_STYLE, reviewDays = DEFAULT_REVIEW_DAYS, branding = null, images = null, language = 'en' } = {}) {
+  language = exportTranslator(language).language;
   const guide = store.getGuide(guideId);
   const stepsMap = store.listSteps(guideId);
 
@@ -98,7 +116,7 @@ function buildRenderAst(store, guideId, { globals = {}, now = new Date(), maxSte
       skipped: step.skipped,
       forceNewPage: Boolean(step.forceNewPage),
       title,
-      altText: screenshotAltText(number, title),
+      altText: screenshotAltText(number, title, language),
       descriptionHtml: sanitizeHtml(expandDesc(step.descriptionHtml)),
       descriptionText: htmlToText(expandDesc(step.descriptionHtml)),
       // The Markdown source, for a description written in Markdown (Markdown exports use it as is).
@@ -152,7 +170,7 @@ function buildRenderAst(store, guideId, { globals = {}, now = new Date(), maxSte
         ast.image = chart;
         ast.annotations = [];
         ast.focusedView = { enabled: false };
-        ast.altText = flowchartAltText(number, title);
+        ast.altText = flowchartAltText(number, title, language);
       }
     }
     steps.push(ast);
@@ -202,6 +220,8 @@ function buildRenderAst(store, guideId, { globals = {}, now = new Date(), maxSte
     format: 'stepforge-render-ast',
     version: 1,
     generatedAt: now.toISOString(),
+    // The language of the text StepForge adds (core/export-text.js).
+    language,
     placeholders: values,
     codeStyle,
     // The brand profile to apply (BrandingStore.resolve), or null for none.
@@ -230,19 +250,15 @@ function buildRenderAst(store, guideId, { globals = {}, now = new Date(), maxSte
   };
 }
 
-/**
- * Decode a step's working image and burn in annotations + focused view.
- * Returns an RGBA raster image, or null for steps without images.
- */
-function flowchartAltText(number, title) {
-  return screenshotAltText(number, title).replace(/^Screenshot/, 'Flowchart');
-}
-
 /** A step's flowchart block as an RGBA raster image, or null when it has none. */
 function renderFlowchartImage(astStep) {
   return astStep.flowchartImage ? decodePng(astStep.flowchartImage.png) : null;
 }
 
+/**
+ * Decode a step's working image and burn in annotations + focused view.
+ * Returns an RGBA raster image, or null for steps without images.
+ */
 function renderStepImage(astStep) {
   if (!astStep.image) return null;
   const bytes = astStep.image.png || fs.readFileSync(astStep.image.absPath);

@@ -364,32 +364,37 @@ class CloudAccount {
     return this.credentials.accountId;
   }
 
+  /**
+   * Sign in, list, upload, download and delete a test file. Each check is
+   * { text, ok }: its text is in the interface language, so pass or fail is
+   * never read from it.
+   */
   async test() {
     const checks = [];
     let probe;
     try {
       await this.authHeaders(true);
-      checks.push('Sign-in: passed');
+      checks.push({ text: t('Sign-in: passed'), ok: true });
       await this.storage.objects();
-      checks.push(`${this.label} storage access: passed`);
+      checks.push({ text: t('{service} storage access: passed', { service: this.label }), ok: true });
       const bytes = crypto.randomBytes(8 * 1024);
       probe = await this.upload({ data: bytes, name: 'StepForge connection test', properties: { stepforge: 'connection-test' } });
-      checks.push(t('Test upload: passed'));
+      checks.push({ text: t('Test upload: passed'), ok: true });
       const downloaded = await this.download(probe.id);
       if (!bytes.equals(downloaded)) throw new Error(t('The test download did not match the uploaded data.'));
-      checks.push(t('Test download and integrity: passed'));
+      checks.push({ text: t('Test download and integrity: passed'), ok: true });
     } catch (err) {
-      checks.push(`Failed: ${err.message}`);
+      checks.push({ text: t('Failed: {message}', { message: err.message }), ok: false });
       return { ok: false, checks };
     } finally {
       if (probe) {
         try {
           await this.deleteFile(probe.id);
-          checks.push(t('Test file cleanup: passed'));
-        } catch { checks.push(t('Test file cleanup failed; a small test file remains in StepForge’s folder.')); }
+          checks.push({ text: t('Test file cleanup: passed'), ok: true });
+        } catch { checks.push({ text: t('Test file cleanup failed; a small test file remains in StepForge’s folder.'), ok: false }); }
       }
     }
-    return { ok: checks.every((line) => !line.includes('failed')), checks };
+    return { ok: checks.every((check) => check.ok), checks };
   }
 }
 

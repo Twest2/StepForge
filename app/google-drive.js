@@ -455,32 +455,37 @@ class GoogleDrive {
     return this.authorized(`${API}/files/${encodeURIComponent(id)}`, { method: 'DELETE' });
   }
 
+  /**
+   * Sign in, list, upload, download and delete a test file. Each check is
+   * { text, ok }: its text is in the interface language, so pass or fail is
+   * never read from it.
+   */
   async test() {
     const checks = [];
     let probe;
     try {
       await this.accessToken(true);
-      checks.push(t('Authentication and token refresh: passed'));
+      checks.push({ text: t('Authentication and token refresh: passed'), ok: true });
       await this.listVersions();
-      checks.push(t('Drive app storage access: passed'));
+      checks.push({ text: t('Drive app storage access: passed'), ok: true });
       const bytes = crypto.randomBytes(32);
       probe = await this.upload({ data: bytes, name: 'StepForge connection test', properties: { stepforge: 'connection-test' } });
-      checks.push(t('Test upload: passed'));
+      checks.push({ text: t('Test upload: passed'), ok: true });
       const downloaded = await this.download(probe.id);
       if (!bytes.equals(downloaded)) throw new Error(t('The test download did not match the uploaded data.'));
-      checks.push(t('Test download and integrity: passed'));
+      checks.push({ text: t('Test download and integrity: passed'), ok: true });
     } catch (err) {
-      checks.push(`Failed: ${err.message}`);
+      checks.push({ text: t('Failed: {message}', { message: err.message }), ok: false });
       return { ok: false, checks };
     } finally {
       if (probe) {
         try {
           await this.deleteFile(probe.id);
-          checks.push(t('Test file cleanup: passed'));
-        } catch { checks.push(t('Test file cleanup failed; a small test file remains in app storage.')); }
+          checks.push({ text: t('Test file cleanup: passed'), ok: true });
+        } catch { checks.push({ text: t('Test file cleanup failed; a small test file remains in app storage.'), ok: false }); }
       }
     }
-    return { ok: checks.every((line) => !line.includes('failed')), checks };
+    return { ok: checks.every((check) => check.ok), checks };
   }
 }
 

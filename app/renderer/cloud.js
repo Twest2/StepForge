@@ -302,10 +302,8 @@ function makeCloudSettings(api, { provider = 'google' } = {}) {
     testResults.replaceChildren();
     testResults.classList.add('hidden');
     const result = await api.cloud.test();
-    testResults.replaceChildren(...result.checks.map((line) => {
-      const failed = /fail/i.test(line);
-      return el(`li.${failed ? 'fail' : 'pass'}`, {}, el('span.cloud-check-icon', { 'aria-hidden': 'true' }, failed ? '✕' : '✓'), line.replace(/: passed$/, ''));
-    }));
+    testResults.replaceChildren(...result.checks.map(({ text, ok }) => el(`li.${ok ? 'pass' : 'fail'}`, {},
+      el('span.cloud-check-icon', { 'aria-hidden': 'true' }, ok ? '✓' : '✕'), text.replace(/: passed$/, ''))));
     testResults.classList.remove('hidden');
     say(result.ok ? t('Connection test passed.') : t('Connection test needs attention.'), result.ok ? 'success' : 'error');
   }) }, t('Test connection'));

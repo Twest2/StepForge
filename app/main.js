@@ -11,6 +11,7 @@ const {
 const { GuideStore } = require('../core/store');
 const { libraryLocationFor } = require('./data-dir');
 const { Settings } = require('../core/settings');
+const { addWelcomeGuide, isNewLibrary } = require('../core/welcome-guide');
 const { saveGuideFromEditor, saveStepFromEditor } = require('../core/editor-save');
 const flowchartModel = require('../core/flowchart');
 const { descriptionToMarkdown, descriptionFromMarkdown } = require('../core/description-markdown');
@@ -288,6 +289,20 @@ function handleZoomShortcut(kind) {
     dispatchZoomShortcut(kind);
   } else {
     applyUiZoom(kind);
+  }
+}
+
+/**
+ * A new library starts with the "Welcome to StepForge" sample guide, once:
+ * the setting is saved even if adding it fails, so a deleted (or broken)
+ * welcome guide never comes back.
+ */
+function addFirstGuide() {
+  settings.set('welcomeGuideAdded', true);
+  try {
+    addWelcomeGuide(store, { t, hotkeys: { capture: settings.get('capture.hotkeyCapture'), pauseResume: settings.get('capture.hotkeyPauseResume') } });
+  } catch (error) {
+    console.error('[StepForge] Could not add the welcome guide:', error);
   }
 }
 
@@ -2084,11 +2099,14 @@ if (!gotLock) {
     libraryLocation.scheduleMigration();
     const dataDir = libraryLocation.applyPending();
     store = new GuideStore(dataDir);
+    // Checked before Settings, which may write its file.
+    const newLibrary = isNewLibrary(store);
     settings = new Settings(store.settingsDir, {
       defaultOverrides: plasmaWayland ? { capture: require('./platform/linux/desktop').PLASMA_HOTKEYS } : {},
     });
     // Messages from the services below follow the interface language from the start.
     setUiLanguage(uiLanguage());
+    if (newLibrary && !settings.get('welcomeGuideAdded')) addFirstGuide();
     // Shared lossless codec, also available in export workers and headless MCP.
     imageCodec = createImageCodec();
     setImageCodec(imageCodec);

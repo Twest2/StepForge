@@ -27,6 +27,16 @@ const FORMAT_LABELS = {
   pptx: 'PPTX',
 };
 
+/**
+ * Markdown templates saved before the "Write for" dropdown kept two
+ * switches (githubAlerts, azureWiki); read them as the matching choice.
+ */
+function migrateOptions(format, options) {
+  if (format !== 'markdown' || options.target || !('githubAlerts' in options || 'azureWiki' in options)) return options;
+  const { githubAlerts, azureWiki, ...rest } = options;
+  return { ...rest, target: githubAlerts ? 'github' : azureWiki ? 'azure' : 'standard' };
+}
+
 class TemplateManager {
   constructor(templatesDir) {
     this.dir = templatesDir;
@@ -54,7 +64,7 @@ class TemplateManager {
   load(format, name) {
     const file = this.fileFor(format, name);
     if (!fs.existsSync(file)) return null;
-    return readJsonSync(file).options || {};
+    return migrateOptions(format, readJsonSync(file).options || {});
   }
 
   save(format, name, options) {

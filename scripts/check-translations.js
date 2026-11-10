@@ -39,7 +39,7 @@ const CALLS = [
 ];
 
 // Format names that stay as they are in every language.
-const EXPORT_NAMES = new Set(['Markdown', 'Wiki.js', 'Confluence', 'GitHub Markdown', 'JSON', 'PDF', 'GIF', 'DOCX', 'PPTX', 'px']);
+const EXPORT_NAMES = new Set(['Markdown', 'Wiki.js', 'Confluence', 'GitHub Markdown', 'GitHub', 'MkDocs', 'Docusaurus', 'JSON', 'PDF', 'GIF', 'DOCX', 'PPTX', 'px']);
 
 const unescape = (text) => text.replace(/\\(.)/g, (whole, ch) => (ch === 'n' ? '\n' : ch));
 const placeholders = (text) => [...String(text).matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(',');

@@ -36,7 +36,7 @@ function fakeCanvasElement() {
 function loadRenderer() {
   const context = {
     ...rendererI18n(),
-    window: { stepforge: {}, StepForgeDialogs: {}, StepForgeAnnotationProperties: require('../../core/annotation-properties') },
+    window: { stepforge: {}, StepForgeDialogs: {}, StepForgeAnnotationProperties: require('../../core/annotation-properties'), StepForgeTextWrap: require('../../core/text-wrap') },
     document: { createElement: () => fakeCanvasElement() },
   };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/canvas.js'), 'utf8'), context);

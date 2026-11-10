@@ -2706,6 +2706,8 @@ class GuideEditor {
       const ann = this.canvas.selected();
       if (!ann) return;
       Object.assign(ann, patch);
+      // A tooltip grows to fit longer text or a bigger font, instead of squeezing it.
+      if ('text' in patch || 'style' in patch) this.canvas.growTooltipToFit?.(ann);
       this.beforeCanvasSnapshot = null;
       step.annotations = clone(this.canvas.annotations || []);
       this.pendingSave = true;
@@ -4900,6 +4902,7 @@ class GuideEditor {
       const selected = this.canvas.selected();
       if (!selected) return;
       selected.text = nextText;
+      this.canvas.growTooltipToFit?.(selected);
       step.annotations = clone(this.canvas.annotations || []);
       this.pendingSave = true;
       this.canvas.setAnnotations(step.annotations || []);

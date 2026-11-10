@@ -66,32 +66,8 @@ const OUTSIDE_WINANSI = new RegExp(`[^\\x00-\\xff${Object.keys(WINANSI_EXTRA).ma
 const encodable = (code) => code <= 0xff || WINANSI_EXTRA[code] !== undefined;
 const BOLD_FONTS = new Set(['F2', 'F5', 'F6', 'F8', 'F10', 'F12']);
 
-// Chinese, Japanese and Korean have no spaces between words: a line may
-// break between any two of these characters.
-const WIDE = /[\u1100-\u11ff\u2e80-\u303f\u3040-\u30ff\u3100-\u31ff\u3200-\u9fff\uac00-\ud7af\uf900-\ufaff\ufe30-\ufe4f\uff00-\uffef\u{20000}-\u{3134f}]/u;
-// ...except before closing punctuation, or after opening punctuation.
-const NO_BREAK_BEFORE = new Set([...'、。，．：；！？）」』】〉》〕｝〙〗”’ゝゞーヽヾ々ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮヵヶ']);
-const NO_BREAK_AFTER = new Set([...'（「『【〈《〔｛〘〖“‘']);
-
-/** True for a character that takes two columns in monospaced text. */
-const isWide = (ch) => WIDE.test(ch);
-
-/**
- * Split a word (no spaces) into the pieces a line may break between: each
- * Chinese, Japanese or Korean character on its own, other text kept whole.
- */
-function breakChunks(word) {
-  const chunks = [];
-  let prev = '';
-  for (const ch of String(word)) {
-    const breakable = chunks.length && (isWide(ch) || isWide(prev))
-      && !NO_BREAK_BEFORE.has(ch) && !NO_BREAK_AFTER.has(prev);
-    if (!chunks.length || breakable) chunks.push(ch);
-    else chunks[chunks.length - 1] += ch;
-    prev = ch;
-  }
-  return chunks;
-}
+// Line breaks for Chinese, Japanese and Korean (core/text-wrap.js, shared with annotations).
+const { breakChunks, isWide } = require('./text-wrap');
 
 function toLatin1(text) {
   let out = '';

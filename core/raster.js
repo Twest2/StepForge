@@ -1,6 +1,7 @@
 'use strict';
 
 const text = require('./text-raster');
+const { layoutBoxText, tooltipPadding } = require('./text-wrap');
 const { pixelRect, fillFromSurroundings } = require('./blur-fill');
 const shapes = require('./annotation-shapes');
 const { spotlightAreas } = require('./annotation-properties');
@@ -502,7 +503,13 @@ function renderAnnotations(baseImg, annotations = []) {
         if (tail === 'top') fillPolygon(img, [[x + w / 2 - ts, y], [x + w / 2 + ts, y], [x + w / 2, y - ts * 1.4]], bg);
         if (tail === 'left') fillPolygon(img, [[x, y + h / 2 - ts], [x, y + h / 2 + ts], [x - ts * 1.4, y + h / 2]], bg);
         if (tail === 'right') fillPolygon(img, [[x + w, y + h / 2 - ts], [x + w, y + h / 2 + ts], [x + w + ts * 1.4, y + h / 2]], bg);
-        drawTextCentered(img, x + w / 2, y + h / 2, text.fitText(ann.text || '', fontPx(style), Math.max(8, w - 8), semibold), fontPx(style), textColor, semibold);
+        // Wrapped onto as many lines as the box holds (core/text-wrap.js), like the editor.
+        const pad = tooltipPadding(fontPx(style));
+        const layout = layoutBoxText({
+          text: ann.text || '', width: w - pad.x * 2, height: h - pad.y * 2, size: fontPx(style),
+          measure: (str, size) => text.lineWidth(str, size, semibold.weight),
+        });
+        drawTextCentered(img, x + w / 2, y + h / 2, layout.lines.join('\n'), layout.size, textColor, semibold);
         break;
       }
       case 'number': {

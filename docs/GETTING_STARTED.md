@@ -255,6 +255,10 @@ can always change or remove them later. The **Stroke** and **Fill** pickers
 offer default colors, your recent colors, and your brand colors when a brand
 profile is active.
 
+Tooltip text wraps onto as many lines as it needs, in any language, and the
+tooltip grows taller as you type so its tail still points at the same place.
+Press **Enter** in the text box to start a new line yourself.
+
 A blur replaces what's under it with the colors around it, rather than
 softening it. Nothing it covers is kept in exported or published images, so
 it can't be recovered from them.

@@ -9,6 +9,8 @@
  * editor shows what exports produce.
  */
 
+const textWrap = () => window.StepForgeTextWrap;
+
 const DRAW_ORDER = { blur: 0, highlight: 1, magnify: 2, spotlight: 2.5, rect: 3, oval: 3, line: 3, pen: 3, arrow: 3, curvedArrow: 3, cursor: 4, number: 5, text: 6, tooltip: 7 };
 const POINT_TOOLS = new Set(['line', 'arrow', 'curvedArrow']);
 // Drawn strokes are picked by distance to the stroke, not by their box.
@@ -296,6 +298,40 @@ class AnnotationCanvas {
     return Math.max(1, ((ann.style && ann.style.strokeWidth) || 3) * this.viewW / 1000 / r.w);
   }
 
+  /** Width of tooltip text at `size` px, in the font the canvas draws it with. */
+  measureLabel(str, size) {
+    const { ctx } = this;
+    ctx.save();
+    ctx.font = `600 ${size}px system-ui, sans-serif`;
+    const width = ctx.measureText(str).width;
+    ctx.restore();
+    return width;
+  }
+
+  /**
+   * Make a tooltip tall enough for its text at its font size, never
+   * shorter. The tail keeps pointing at the same place: a bottom tail
+   * grows the box upward, a top tail downward, a side tail both ways.
+   * Returns true when the box changed.
+   */
+  growTooltipToFit(ann) {
+    if (!ann || ann.type !== 'tooltip' || !this.image) return false;
+    const box = this.px(ann);
+    if (!box.h) return false;
+    const needPx = textWrap().tooltipHeight({
+      text: String(ann.text || ''), width: Math.abs(box.w), size: this.fontPx(ann),
+      measure: (str, size) => this.measureLabel(str, size),
+    });
+    const need = needPx * (ann.h / box.h);
+    const extra = need - Math.abs(ann.h);
+    if (!(extra > 1e-4) || ann.h < 0) return false;
+    const tail = ann.style?.tail || 'bottom';
+    const shift = tail === 'bottom' ? extra : tail === 'top' ? 0 : extra / 2;
+    ann.h = need;
+    ann.y = Math.max(0, ann.y - shift);
+    return true;
+  }
+
   fontPx(ann) {
     const r = this.viewRect();
     return Math.max(9, ((ann.style && ann.style.fontSize) || 0.022) * this.viewH / r.h);
@@ -506,10 +542,17 @@ class AnnotationCanvas {
         if (tail === 'left') { ctx.moveTo(x, y + h / 2 - ts); ctx.lineTo(x, y + h / 2 + ts); ctx.lineTo(x - ts * 1.4, y + h / 2); }
         if (tail === 'right') { ctx.moveTo(x + w, y + h / 2 - ts); ctx.lineTo(x + w, y + h / 2 + ts); ctx.lineTo(x + w + ts * 1.4, y + h / 2); }
         ctx.closePath(); ctx.fill();
+        // Wrapped onto as many lines as the box holds (core/text-wrap.js), like exports.
+        const pad = textWrap().tooltipPadding(this.fontPx(ann));
+        const layout = textWrap().layoutBoxText({
+          text: String(ann.text || '…'), width: Math.abs(w) - pad.x * 2, height: Math.abs(h) - pad.y * 2,
+          size: this.fontPx(ann), measure: (str, size) => this.measureLabel(str, size),
+        });
         ctx.fillStyle = style.textColor || '#fff';
-        ctx.font = `600 ${this.fontPx(ann)}px system-ui, sans-serif`;
+        ctx.font = `600 ${layout.size}px system-ui, sans-serif`;
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText(String(ann.text || '…'), x + w / 2, y + h / 2, Math.abs(w) - 8);
+        const top = y + h / 2 - ((layout.lines.length - 1) * layout.lineHeight) / 2;
+        layout.lines.forEach((line, i) => ctx.fillText(line, x + w / 2, top + i * layout.lineHeight));
         break;
       }
       case 'number': {

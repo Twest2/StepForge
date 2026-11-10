@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { decodePng } = require('./png');
 const { FallbackFonts, systemFontCandidates, hanPreference, loadFont } = require('./pdf-fonts');
-const { breakChunks } = require('./pdf');
+const { breakChunks } = require('./text-wrap');
 
 /**
  * Anti-aliased text for the software rasterizer. Glyphs come from Lato

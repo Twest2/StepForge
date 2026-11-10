@@ -255,6 +255,10 @@ can always change or remove them later. The **Stroke** and **Fill** pickers
 offer default colors, your recent colors, and your brand colors when a brand
 profile is active.
 
+Tooltip text wraps onto as many lines as it needs, in any language, and the
+tooltip grows taller as you type so its tail still points at the same place.
+Press **Enter** in the text box to start a new line yourself.
+
 A blur replaces what's under it with the colors around it, rather than
 softening it. Nothing it covers is kept in exported or published images, so
 it can't be recovered from them.
@@ -306,6 +310,12 @@ an item to go to that step, or export anyway.
 | **GIF** | A short animated walkthrough |
 | **Image bundle** | Numbered, annotated PNGs for use anywhere |
 | **JSON** | Feeding guides into your own tools |
+
+For **Markdown**, choose **Write for** under *Compatibility* to match where the
+page will live: **GitHub** (callouts as GitHub alerts), **Azure DevOps wiki**
+(with a maximum screenshot width), **MkDocs** (`!!!` admonitions and a title in
+front matter) or **Docusaurus** (`:::` admonitions, front matter, and text that
+is safe for MDX). **Standard Markdown** writes callouts as styled HTML.
 
 For Confluence and Wiki.js, **Share → Publish to Confluence…** or **Publish to
 Wiki.js…** is usually the better choice: it creates the page for you, uploads

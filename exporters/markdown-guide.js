@@ -13,9 +13,8 @@ const { scaledPng } = require('./branding');
 const DEFAULT_TEMPLATE = {
   toc: true,
   includeImages: true,
-  azureWiki: false,
-  githubAlerts: false,
-  imageMaxWidth: 0, // 0 = natural size
+  target: 'standard', // standard | github | azure | mkdocs | docusaurus
+  imageMaxWidth: 0, // Azure DevOps only; 0 = natural size
 };
 
 const WIKIJS_CALLOUT_CLASS = {
@@ -24,6 +23,10 @@ const WIKIJS_CALLOUT_CLASS = {
   warn: 'is-warning',
   error: 'is-danger',
 };
+
+// MkDocs (admonition extension) and Docusaurus admonition types.
+const MKDOCS_KIND = { info: 'note', success: 'tip', warn: 'warning', error: 'danger' };
+const DOCUSAURUS_KIND = { info: 'info', success: 'tip', warn: 'warning', error: 'danger' };
 
 const HTML_CALLOUT_THEME = {
   info: { border: '#2563eb', fg: '#1d4ed8', kind: 'note' },
@@ -88,6 +91,21 @@ function emitBlock(lines, tb, { alertStyle = 'gfm', ast = null } = {}) {
     lines.push('</div>', '');
     return;
   }
+  if (alertStyle === 'mkdocs') {
+    // !!! note "Title", then the body indented four spaces.
+    const title = (tb.title || levelLabel(tb.level, ast)).replace(/\s+/g, ' ');
+    lines.push(`!!! ${MKDOCS_KIND[tb.level] || 'note'} "${title}"`);
+    if (body) lines.push(...body.split('\n').map((line) => (line ? `    ${line}` : '')));
+    lines.push('');
+    return;
+  }
+  if (alertStyle === 'docusaurus') {
+    const title = (tb.title || levelLabel(tb.level, ast)).replace(/\s+/g, ' ').replace(/[[\]\\]/g, '\\$&');
+    lines.push(`:::${DOCUSAURUS_KIND[tb.level] || 'info'}[${title}]`, '');
+    if (body) lines.push(body, '');
+    lines.push(':::', '');
+    return;
+  }
   if (alertStyle === 'wikijs') {
     const label = tb.title || levelLabel(tb.level, ast);
     const className = WIKIJS_CALLOUT_CLASS[tb.level] || 'is-info';
@@ -149,6 +167,27 @@ function brandImageLines(ast, outDir, { html, imageUrl }) {
   return lines;
 }
 
+/**
+ * Docusaurus reads .md files as MDX, where `{` starts a JavaScript
+ * expression and `<` a JSX tag: escape them outside code, keeping the
+ * step anchors StepForge writes.
+ */
+function mdxSafe(markdown) {
+  let fence = null;
+  return markdown.split('\n').map((line) => {
+    const marker = line.match(/^\s*(`{3,}|~{3,})/);
+    if (fence) {
+      if (marker && marker[1][0] === fence[0] && marker[1].length >= fence.length) fence = null;
+      return line;
+    }
+    if (marker) { fence = marker[1]; return line; }
+    if (/^<a id="[\w-]+"><\/a>$/.test(line)) return line;
+    // Odd parts are inline code, which MDX leaves alone.
+    return line.split(/(`+[^`]*`+)/).map((part, i) => (i % 2 ? part
+      : part.replace(/\\?[{}<]/g, (m) => (m.length === 2 ? m : `\\${m}`)))).join('');
+  }).join('\n');
+}
+
 function renderMarkdownGuide(ast, outDir, template = {}, {
   defaults = DEFAULT_TEMPLATE,
   alertStyle = 'gfm',
@@ -159,12 +198,15 @@ function renderMarkdownGuide(ast, outDir, template = {}, {
   frontMatter = null, // (ast) => lines, written before the body
   imageUrl = (relPath) => relPath,
   brandHtml = true, // show the brand's logo and banner with <img> tags
+  imageWidth = 0, // > 0: Azure DevOps image size syntax (=WIDTHx)
+  mdx = false, // escape text that MDX (Docusaurus) would read as code
 } = {}) {
   const tpl = { ...defaults, ...template };
   const { t, tc } = exportText(ast);
   fs.mkdirSync(outDir, { recursive: true });
   const images = tpl.includeImages ? writeStepImages(ast, outDir) : new Map();
-  const lines = frontMatter ? frontMatter(ast) : [];
+  const head = frontMatter ? frontMatter(ast) : [];
+  const lines = [];
   const withToc = tpl.toc && ast.steps.length > 1;
 
   lines.push(...brandImageLines(ast, outDir, { html: brandHtml, imageUrl }));
@@ -229,8 +271,8 @@ function renderMarkdownGuide(ast, outDir, template = {}, {
     for (const tb of beforeImage) emit(tb);
     const img = images.get(step.stepId);
     if (img) {
-      if (tpl.azureWiki && tpl.imageMaxWidth > 0) {
-        lines.push(`![${markdownAlt(step.altText)}](${imageUrl(img.relPath)} =${tpl.imageMaxWidth}x)`, '');
+      if (imageWidth > 0) {
+        lines.push(`![${markdownAlt(step.altText)}](${imageUrl(img.relPath)} =${imageWidth}x)`, '');
       } else {
         lines.push(`![${markdownAlt(step.altText)}](${imageUrl(img.relPath)})`, '');
       }
@@ -258,7 +300,9 @@ function renderMarkdownGuide(ast, outDir, template = {}, {
   if (ast.branding?.footer.text) lines.push('---', '', `*${markdownText(ast.branding.footer.text)}*`);
 
   const file = path.join(outDir, `${guideSlug(ast)}${fileExt}`);
-  let text = lines.join('\n').replace(/\n{3,}/g, '\n\n');
+  let body = lines.join('\n');
+  if (mdx) body = mdxSafe(body);
+  let text = [...head, body].join('\n').replace(/\n{3,}/g, '\n\n');
   // Step links in descriptions point at step ids; retarget them to the
   // exported heading anchors.
   for (const step of ast.steps) text = text.split(`(#step-${step.stepId})`).join(`(#${anchorFor(step)})`);
@@ -270,4 +314,5 @@ module.exports = {
   DEFAULT_TEMPLATE,
   anchorFor,
   renderMarkdownGuide,
+  mdxSafe,
 };

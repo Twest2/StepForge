@@ -1418,9 +1418,9 @@ function showExportDialog({
     refreshOutDir();
     const optionsHost = el('div', { className: 'export-options' });
     // Branding: the active profile unless another (or none) is picked for this export.
+    // Your profiles, then the built-in themes, each in its own group (app/renderer/branding.js).
     const brandProfiles = branding?.profiles || [];
-    const brandChoice = makeSelect(brandProfiles.some((p) => p.id === branding?.activeId) ? branding.activeId : '',
-      [{ value: '', label: t('No branding') }, ...brandProfiles.map((p) => ({ value: p.id, label: p.name }))]);
+    const brandChoice = el('select', {}, ...brandOptions(brandProfiles, brandProfiles.some((p) => p.id === branding?.activeId) ? branding.activeId : ''));
     brandChoice.setAttribute('aria-label', t('Branding'));
     const brandNote = el('span.muted');
     const refreshBrandNote = () => {
@@ -1498,7 +1498,13 @@ function showExportDialog({
       const meta = formatInfo(formatSelect.value).options || {};
       const entries = Object.entries(defaults)
         .filter(([key, v]) => ['boolean', 'number', 'string'].includes(typeof v) && !meta[key]?.hidden)
-        .filter(([key]) => !meta[key]?.dependsOn || (current[meta[key].dependsOn] ?? defaults[meta[key].dependsOn]));
+        .filter(([key]) => {
+          const info = meta[key];
+          if (!info?.dependsOn) return true;
+          // Shown while the option it depends on is on, or set to dependsOnValue.
+          const value = current[info.dependsOn] ?? defaults[info.dependsOn];
+          return info.dependsOnValue === undefined ? Boolean(value) : value === info.dependsOnValue;
+        });
       if (!entries.length) {
         optionsHost.append(el('div.muted', {}, t('This format has no adjustable options.')));
         return;

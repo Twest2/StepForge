@@ -636,3 +636,19 @@ function describeTransfer(transfer) {
     detail: `${progress}${rate ? ` · ${rate}` : ''}`,
   };
 }
+
+/**
+ * The options of a brand profile list: No branding, your profiles, then the
+ * built-in themes in their own group. `list` is api.branding.list().
+ * Used by Settings → Branding and the Export dialog.
+ */
+function brandOptions(list, value) {
+  const option = (p) => el('option', { value: p.id, selected: p.id === value }, p.name);
+  const mine = list.filter((p) => !p.builtIn);
+  const themes = list.filter((p) => p.builtIn);
+  return [
+    el('option', { value: '', selected: !value }, t('No branding')),
+    ...(mine.length ? [el('optgroup', { label: t('Your profiles') }, ...mine.map(option))] : []),
+    ...(themes.length ? [el('optgroup', { label: t('Built-in themes') }, ...themes.map(option))] : []),
+  ];
+}

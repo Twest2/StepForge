@@ -83,7 +83,10 @@ test('brand tools are off by default, and say which switch turns them on', async
 
 test('agents create and update profiles; only what they send changes, and nothing deletes one', async (t) => {
   const { call, json, error, changes, branding } = makeLibrary(t);
-  assert.equal((await call('list_brand_profiles')).content[0].text, 'No brand profiles yet. Make one with create_brand_profile.');
+  const empty = json(await call('list_brand_profiles'));
+  assert.deepEqual(empty.profiles, []);
+  assert.match(empty.note, /No brand profiles yet\. Make one with create_brand_profile, or choose a built-in theme\./);
+  assert.ok(empty.built_in_themes.some((theme) => theme.profile_id === 'brand-theme-ocean' && theme.name === 'Ocean'));
   assert.match(error(await call('create_brand_profile', {})), /Give the profile a name/);
 
   const created = json(await call('create_brand_profile', {

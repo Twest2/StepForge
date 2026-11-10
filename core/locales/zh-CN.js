@@ -2325,4 +2325,5 @@
   "Click {export} to save a PDF, Word, PowerPoint, Markdown or HTML file. {share} puts the guide on the web, in Confluence or in Wiki.js.": "点击 {export} 可保存为 PDF、Word、PowerPoint、Markdown 或 HTML 文件。{share} 可将指南发布到网页、Confluence 或 Wiki.js。",
   "Make it yours": "打造你的风格",
   "Add your logo, colors and fonts to every export in {place}.": "在 {place} 中为所有导出添加你的徽标、颜色和字体。",
+  "Text blocks like this one add tips, warnings and notes to a step.": "像这样的文本块可以为步骤添加提示、警告和备注。",
 });

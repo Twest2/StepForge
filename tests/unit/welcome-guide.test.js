@@ -44,6 +44,7 @@ test('the welcome guide: five steps, four with screenshots, code and a table', (
   assert.match(steps[0].descriptionHtml, /Click <strong>New Capture<\/strong>, then/);
   assert.match(steps[2].textBlocks[0].descriptionHtml, /<strong>More → Find private details…<\/strong>/);
   assert.equal(steps[3].codeBlocks[0].language, 'bash');
+  assert.deepEqual(steps[3].textBlocks.map((b) => [b.level, b.position]), [['info', 'after-description']]);
   assert.deepEqual(steps[3].tableBlocks[0].rows[1], ['Ctrl+Shift+1', 'Take a step without clicking']);
 });
 

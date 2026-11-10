@@ -93,6 +93,10 @@ function addWelcomeGuide(store, { t, hotkeys = {} } = {}) {
       title: t('Add code and tables'),
       kind: 'empty',
       descriptionHtml: paragraph(t('Steps can hold code with syntax colors, tables and notes, so setup guides and runbooks stay ready to copy and paste.')),
+      textBlocks: [{
+        position: 'after-description', level: 'info',
+        descriptionHtml: paragraph(t('Text blocks like this one add tips, warnings and notes to a step.')),
+      }],
       codeBlocks: [{ language: 'bash', code: 'git clone https://github.com/your-org/your-app.git\ncd your-app\nnpm install' }],
       tableBlocks: [{ rows: [
         [t('Shortcut'), t('What it does')],

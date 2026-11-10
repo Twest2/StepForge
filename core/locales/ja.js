@@ -2325,4 +2325,5 @@
   "Click {export} to save a PDF, Word, PowerPoint, Markdown or HTML file. {share} puts the guide on the web, in Confluence or in Wiki.js.": "{export} をクリックすると、PDF、Word、PowerPoint、Markdown、HTML ファイルとして保存できます。{share} では、ガイドを Web、Confluence、Wiki.js に公開できます。",
   "Make it yours": "自分らしく",
   "Add your logo, colors and fonts to every export in {place}.": "{place} で、すべてのエクスポートにロゴ、色、フォントを追加できます。",
+  "Text blocks like this one add tips, warnings and notes to a step.": "このようなテキスト ブロックで、ステップにヒント、警告、メモを追加できます。",
 });

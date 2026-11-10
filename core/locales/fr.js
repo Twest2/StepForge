@@ -2325,4 +2325,5 @@
   "Click {export} to save a PDF, Word, PowerPoint, Markdown or HTML file. {share} puts the guide on the web, in Confluence or in Wiki.js.": "Cliquez sur {export} pour enregistrer un fichier PDF, Word, PowerPoint, Markdown ou HTML. {share} publie le guide sur le web, dans Confluence ou dans Wiki.js.",
   "Make it yours": "À votre image",
   "Add your logo, colors and fonts to every export in {place}.": "Ajoutez votre logo, vos couleurs et vos polices à tous les exports dans {place}.",
+  "Text blocks like this one add tips, warnings and notes to a step.": "Les blocs de texte comme celui-ci ajoutent des astuces, des avertissements et des notes à une étape.",
 });

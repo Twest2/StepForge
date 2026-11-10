@@ -91,7 +91,6 @@ function addWelcomeGuide(store, { t, hotkeys = {} } = {}) {
     },
     {
       title: t('Add code and tables'),
-      kind: 'empty',
       descriptionHtml: paragraph(t('Steps can hold code with syntax colors, tables and notes, so setup guides and runbooks stay ready to copy and paste.')),
       textBlocks: [{
         position: 'after-description', level: 'info',
@@ -103,6 +102,9 @@ function addWelcomeGuide(store, { t, hotkeys = {} } = {}) {
         [keys(hotkeys.capture || 'CommandOrControl+Shift+1'), t('Take a step without clicking')],
         [keys(hotkeys.pauseResume || 'CommandOrControl+Shift+2'), t('Pause or resume recording')],
       ] }],
+      // An arrow down to Blocks, where a step's text blocks, code and tables are.
+      annotations: [{ type: 'arrow', x: 0.62, y: 0.28, w: 0.122, h: 0.148, style: { stroke: '#E5484D', strokeWidth: 6 } }],
+      file: 'blocks.webp',
     },
     {
       title: t('Export or share it'),

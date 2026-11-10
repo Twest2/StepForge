@@ -19,7 +19,7 @@ const { makeTmpDir, rmrf } = require('./helpers');
 
 const english = createTranslator('en').t;
 
-test('the welcome guide: five steps, four with screenshots, code and a table', (t) => {
+test('the welcome guide: five steps with screenshots, code and a table', (t) => {
   const root = makeTmpDir('welcome');
   t.after(() => rmrf(root));
   const store = new GuideStore(root);
@@ -32,7 +32,8 @@ test('the welcome guide: five steps, four with screenshots, code and a table', (
   assert.deepEqual(steps.map((s) => s.title), [
     'Start a new capture', 'Tidy up your steps', 'Draw on the screenshot', 'Add code and tables', 'Export or share it',
   ]);
-  assert.deepEqual(steps.map((s) => s.kind), ['image', 'image', 'image', 'empty', 'image']);
+  assert.deepEqual(steps.map((s) => s.kind), ['image', 'image', 'image', 'image', 'image']);
+  assert.equal(steps[3].annotations[0].type, 'arrow', 'Add code and tables points at Blocks');
   for (const step of steps.filter((s) => s.kind === 'image')) {
     const file = path.join(store.stepDir(guideId, step.stepId), step.image.workingPath);
     assert.equal(sniffImageFormat(fs.readFileSync(file)), 'webp');
@@ -74,7 +75,7 @@ test('the welcome guide exports (PDF, Word, Markdown)', async (t) => {
   }
   const md = fs.readFileSync(runExport('markdown', ast, path.join(root, 'md2'), {}).file, 'utf8');
   assert.match(md, /```bash\ngit clone/);
-  assert.equal(md.match(/!\[[^\]]*\]\(steps-[^)]+\)/g).length, 4);
+  assert.equal(md.match(/!\[[^\]]*\]\(steps-[^)]+\)/g).length, 5);
 });
 
 test('only a new library gets it, and only once', (t) => {
@@ -109,7 +110,7 @@ test('only a new library gets it, and only once', (t) => {
 test('the welcome screenshots ship inside app/ (packaged on every platform)', () => {
   assert.equal(path.relative(path.join(__dirname, '..', '..', 'app'), IMAGES_DIR), path.join('assets', 'welcome-guide'));
   const files = fs.readdirSync(IMAGES_DIR).sort();
-  assert.deepEqual(files, ['annotate.webp', 'edit-steps.webp', 'export.webp', 'start-capture.webp']);
+  assert.deepEqual(files, ['annotate.webp', 'blocks.webp', 'edit-steps.webp', 'export.webp', 'start-capture.webp']);
   const total = files.reduce((sum, f) => sum + fs.statSync(path.join(IMAGES_DIR, f)).size, 0);
   assert.ok(total < 1024 * 1024, `screenshots stay small (${total} bytes)`);
 });

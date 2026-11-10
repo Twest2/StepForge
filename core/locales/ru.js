@@ -2305,7 +2305,7 @@
   "The SVG is nested too deeply.": "В SVG слишком глубокая вложенность.",
   "Arrows / Shift+Arrows": "Стрелки / Shift+Стрелки",
   "Welcome to StepForge": "Добро пожаловать в StepForge",
-  "A sample guide to show you around. Delete it whenever you like: it won’t come back.": "Пример инструкции, чтобы познакомиться с программой. Удалите её когда угодно — она больше не появится.",
+  "A sample guide to show you around.": "Пример инструкции, чтобы познакомиться с программой.",
   "Start a new capture": "Начните новую запись",
   "Click {button}, then do your task as usual. Every click becomes a step: a screenshot, a marker where you clicked, and a title read from what you clicked.": "Нажмите {button} и выполняйте задачу как обычно. Каждый щелчок становится шагом: снимок экрана, отметка в месте щелчка и заголовок по тому, на что вы нажали.",
   "When you’re done, click {button} at the top right.": "Когда закончите, нажмите {button} в правом верхнем углу.",

@@ -2305,7 +2305,7 @@
   "The SVG is nested too deeply.": "SVG 嵌套层级过深。",
   "Arrows / Shift+Arrows": "方向键 / Shift+方向键",
   "Welcome to StepForge": "欢迎使用 StepForge",
-  "A sample guide to show you around. Delete it whenever you like: it won’t come back.": "这是一份带你熟悉 StepForge 的示例指南。你可以随时删除它，删除后不会再出现。",
+  "A sample guide to show you around.": "这是一份带你熟悉 StepForge 的示例指南。",
   "Start a new capture": "开始新的捕获",
   "Click {button}, then do your task as usual. Every click becomes a step: a screenshot, a marker where you clicked, and a title read from what you clicked.": "点击 {button}，然后照常完成你的任务。每次点击都会成为一个步骤：一张截图、一个点击位置标记，以及根据你点击的内容生成的标题。",
   "When you’re done, click {button} at the top right.": "完成后，点击右上角的 {button}。",

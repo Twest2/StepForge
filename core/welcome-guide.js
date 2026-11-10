@@ -52,7 +52,7 @@ function image(name) {
 function addWelcomeGuide(store, { t, hotkeys = {} } = {}) {
   const guide = store.createGuide({
     title: t('Welcome to StepForge'),
-    descriptionHtml: paragraph(t('A sample guide to show you around. Delete it whenever you like: it won’t come back.')),
+    descriptionHtml: paragraph(t('A sample guide to show you around.')),
   });
   const rect = (x, y, w, h) => ({ type: 'rect', x, y, w, h, style: { stroke: '#E5484D', strokeWidth: 4, fill: 'transparent' } });
   const badge = (value, x, y) => ({ type: 'number', value, x, y, w: 0.045, h: 0.07, style: { stroke: '#E5484D' } });

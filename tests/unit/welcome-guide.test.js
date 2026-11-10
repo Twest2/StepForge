@@ -27,7 +27,7 @@ test('the welcome guide: five steps, four with screenshots, code and a table', (
 
   const guide = store.getGuide(guideId);
   assert.equal(guide.title, 'Welcome to StepForge');
-  assert.match(guide.descriptionHtml, /it won’t come back/);
+  assert.equal(guide.descriptionHtml, '<p>A sample guide to show you around.</p>');
   const steps = guide.stepsOrder.map((id) => store.getStep(guideId, id));
   assert.deepEqual(steps.map((s) => s.title), [
     'Start a new capture', 'Tidy up your steps', 'Draw on the screenshot', 'Add code and tables', 'Export or share it',

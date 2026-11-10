@@ -2305,7 +2305,7 @@
   "The SVG is nested too deeply.": "SVG の入れ子が深すぎます。",
   "Arrows / Shift+Arrows": "矢印キー / Shift+矢印キー",
   "Welcome to StepForge": "StepForge へようこそ",
-  "A sample guide to show you around. Delete it whenever you like: it won’t come back.": "StepForge の使い方を紹介するサンプル ガイドです。いつでも削除でき、削除すると再び表示されることはありません。",
+  "A sample guide to show you around.": "StepForge の使い方を紹介するサンプル ガイドです。",
   "Start a new capture": "新しいキャプチャを開始する",
   "Click {button}, then do your task as usual. Every click becomes a step: a screenshot, a marker where you clicked, and a title read from what you clicked.": "{button} をクリックし、いつもどおりに作業します。クリックするたびにステップが作成されます。スクリーンショット、クリックした位置のマーカー、クリックした項目から読み取ったタイトルが含まれます。",
   "When you’re done, click {button} at the top right.": "終わったら、右上の {button} をクリックします。",

@@ -2305,7 +2305,7 @@
   "The SVG is nested too deeply.": "Le SVG est imbriqué trop profondément.",
   "Arrows / Shift+Arrows": "Flèches / Maj+Flèches",
   "Welcome to StepForge": "Bienvenue dans StepForge",
-  "A sample guide to show you around. Delete it whenever you like: it won’t come back.": "Un guide d’exemple pour vous faire découvrir l’application. Supprimez-le quand vous voulez : il ne reviendra pas.",
+  "A sample guide to show you around.": "Un guide d’exemple pour vous faire découvrir l’application.",
   "Start a new capture": "Lancer une nouvelle capture",
   "Click {button}, then do your task as usual. Every click becomes a step: a screenshot, a marker where you clicked, and a title read from what you clicked.": "Cliquez sur {button}, puis effectuez votre tâche comme d’habitude. Chaque clic devient une étape : une capture d’écran, un repère à l’endroit du clic et un titre tiré de l’élément cliqué.",
   "When you’re done, click {button} at the top right.": "Quand vous avez terminé, cliquez sur {button} en haut à droite.",

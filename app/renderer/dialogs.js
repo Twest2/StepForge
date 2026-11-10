@@ -1498,7 +1498,13 @@ function showExportDialog({
       const meta = formatInfo(formatSelect.value).options || {};
       const entries = Object.entries(defaults)
         .filter(([key, v]) => ['boolean', 'number', 'string'].includes(typeof v) && !meta[key]?.hidden)
-        .filter(([key]) => !meta[key]?.dependsOn || (current[meta[key].dependsOn] ?? defaults[meta[key].dependsOn]));
+        .filter(([key]) => {
+          const info = meta[key];
+          if (!info?.dependsOn) return true;
+          // Shown while the option it depends on is on, or set to dependsOnValue.
+          const value = current[info.dependsOn] ?? defaults[info.dependsOn];
+          return info.dependsOnValue === undefined ? Boolean(value) : value === info.dependsOnValue;
+        });
       if (!entries.length) {
         optionsHost.append(el('div.muted', {}, t('This format has no adjustable options.')));
         return;

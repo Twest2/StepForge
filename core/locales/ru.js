@@ -302,7 +302,7 @@
   'A .md file plus a folder of screenshots, for GitHub, GitLab, Azure DevOps, MkDocs, Docusaurus and other docs sites.': 'Файл .md и папка снимков экрана для GitHub, GitLab, Azure DevOps, MkDocs, Docusaurus и других сайтов документации.',
   'Write for': 'Для сайта',
   'Callouts, page title and image links follow what this site expects.': 'Выноски, заголовок страницы и ссылки на изображения оформляются так, как ожидает этот сайт.',
-  'Any Markdown viewer': 'Любой просмотрщик Markdown',
+  'Standard Markdown': 'Стандартный Markdown',
   'A Word document you can keep editing.': 'Документ Word, который можно продолжать редактировать.',
   'A PowerPoint deck with one slide per step.': 'Презентация PowerPoint: один слайд на шаг.',
   'A single web page with screenshots built in. Easy to email, share or print.': 'Одна веб-страница со встроенными снимками экрана. Её легко отправить, переслать или распечатать.',

@@ -25,7 +25,7 @@ function exportAs(t, options) {
   return { md: fs.readFileSync(file, 'utf8'), outDir };
 }
 
-test('Write for: a dropdown of the five targets, Any Markdown viewer by default', () => {
+test('Write for: a dropdown of the five targets, Standard Markdown by default', () => {
   assert.deepEqual(OPTION_INFO.target.choices.map((c) => c.value), ['standard', 'github', 'azure', 'mkdocs', 'docusaurus']);
   assert.equal(OPTION_INFO.target.group, 'Compatibility');
   // The width only shows for Azure DevOps.
@@ -35,7 +35,7 @@ test('Write for: a dropdown of the five targets, Any Markdown viewer by default'
   assert.equal(OPTION_INFO.azureWiki, undefined);
 });
 
-test('Any Markdown viewer is unchanged: styled HTML callouts and an accent bar, no front matter', (t) => {
+test('Standard Markdown is unchanged: styled HTML callouts and an accent bar, no front matter', (t) => {
   const { md } = exportAs(t, {});
   assert.ok(md.startsWith('# Configure AcmeSync backups\n'));
   assert.ok(md.includes('<div class="sf-callout sf-callout-warning"'));

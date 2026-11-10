@@ -18,7 +18,7 @@ const OPTION_INFO = {
   toc: { label: 'Add a table of contents', group: 'Contents' },
   includeImages: { label: 'Include screenshots', group: 'Contents' },
   target: { label: 'Write for', group: 'Compatibility', hint: 'Callouts, page title and image links follow what this site expects.', choices: [
-    { value: 'standard', label: 'Any Markdown viewer' },
+    { value: 'standard', label: 'Standard Markdown' },
     { value: 'github', label: 'GitHub' },
     { value: 'azure', label: 'Azure DevOps wiki' },
     { value: 'mkdocs', label: 'MkDocs' },

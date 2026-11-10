@@ -311,7 +311,7 @@ For **Markdown**, choose **Write for** under *Compatibility* to match where the
 page will live: **GitHub** (callouts as GitHub alerts), **Azure DevOps wiki**
 (with a maximum screenshot width), **MkDocs** (`!!!` admonitions and a title in
 front matter) or **Docusaurus** (`:::` admonitions, front matter, and text that
-is safe for MDX). **Any Markdown viewer** writes callouts as styled HTML.
+is safe for MDX). **Standard Markdown** writes callouts as styled HTML.
 
 For Confluence and Wiki.js, **Share → Publish to Confluence…** or **Publish to
 Wiki.js…** is usually the better choice: it creates the page for you, uploads

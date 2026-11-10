@@ -302,7 +302,7 @@
   'A .md file plus a folder of screenshots, for GitHub, GitLab, Azure DevOps, MkDocs, Docusaurus and other docs sites.': '一个 .md 文件和一个截图文件夹，适用于 GitHub、GitLab、Azure DevOps、MkDocs、Docusaurus 等文档站点。',
   'Write for': '目标站点',
   'Callouts, page title and image links follow what this site expects.': '标注框、页面标题和图片链接按该站点的要求编写。',
-  'Any Markdown viewer': '任意 Markdown 查看器',
+  'Standard Markdown': '标准 Markdown',
   'A Word document you can keep editing.': '可继续编辑的 Word 文档。',
   'A PowerPoint deck with one slide per step.': '每个步骤一张幻灯片的 PowerPoint 演示文稿。',
   'A single web page with screenshots built in. Easy to email, share or print.': '内嵌截图的单个网页，便于通过电子邮件发送、分享或打印。',

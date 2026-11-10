@@ -10,6 +10,7 @@ const { zipSync, unzipSync } = require('./zip');
 const { decodePng } = require('./png');
 const { sanitizeSvg, svgSize } = require('./svg-sanitize');
 const { t } = require('./ui-text');
+const { isThemeId, brandThemes, brandTheme } = require('./brand-themes');
 
 /**
  * Brand profiles: a company's logo, banner, colors, fonts, header/footer
@@ -21,6 +22,8 @@ const { t } = require('./ui-text');
  *   assets/<hash>.json       what an asset is (type, size, font family)
  *   assets/<hash>.raster.png a PNG copy of an image, for exports that can't
  *                            use SVG or JPEG (PDF, Word, PowerPoint, GIF…)
+ * Built-in themes (core/brand-themes.js) are read-only profiles that live
+ * in code, not in profiles/; get() and resolve() treat them like the rest.
  * Settings → Branding picks the active profile (settings.branding).
  * Profiles are shared as .sfbrand files.
  */
@@ -318,14 +321,26 @@ class BrandingStore {
   list() {
     if (!fs.existsSync(this.profilesDir)) return [];
     return fs.readdirSync(this.profilesDir)
-      .filter((f) => /^brand-[A-Za-z0-9-]+\.json$/.test(f))
+      .filter((f) => /^brand-[A-Za-z0-9-]+\.json$/.test(f) && !isThemeId(f.slice(0, -5)))
       .map((f) => this.get(f.slice(0, -5)))
       .filter(Boolean)
       .map(({ id, name, updatedAt, colors, annotations }) => ({ id, name, updatedAt, colors, annotations }))
       .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }) || a.id.localeCompare(b.id));
   }
 
+  /** The built-in themes, in list()'s shape plus { description, builtIn: true }. */
+  themes() {
+    return brandThemes().map((theme) => {
+      const { id, name, updatedAt, colors, annotations } = normalizeProfile(theme, { id: theme.id });
+      return { id, name, updatedAt, colors, annotations, description: theme.description, builtIn: true };
+    });
+  }
+
   get(id) {
+    if (isThemeId(id)) {
+      const theme = brandTheme(id);
+      return theme ? { ...normalizeProfile(theme, { id }), builtIn: true, description: theme.description } : null;
+    }
     let file;
     try { file = this.profileFile(id); } catch { return null; }
     const raw = readJsonIfExists(file, null);
@@ -334,7 +349,8 @@ class BrandingStore {
 
   /** Create (no id, or an unknown one) or update a profile. Asset references that don't exist are dropped. */
   save(raw) {
-    const existing = raw?.id ? this.get(raw.id) : null;
+    // A theme can't change: saving one (Customize) makes a new profile.
+    const existing = raw?.id && !isThemeId(raw.id) ? this.get(raw.id) : null;
     const id = existing ? existing.id : newId('brand');
     const profile = normalizeProfile(raw, { id, createdAt: existing?.createdAt || nowIso(), updatedAt: nowIso() });
     const exists = (asset) => (asset && this.assetMeta(asset) ? asset : null);
@@ -348,6 +364,7 @@ class BrandingStore {
   }
 
   remove(id) {
+    if (isThemeId(id)) throw new Error(t('Built-in themes can’t be deleted.'));
     fs.rmSync(this.profileFile(id), { force: true });
     this.collectGarbage();
   }
@@ -360,6 +377,7 @@ class BrandingStore {
   replaceProfiles(profiles) {
     const keep = new Set();
     for (const raw of profiles) {
+      if (isThemeId(raw?.id)) continue;
       const profile = normalizeProfile(raw, { id: raw.id });
       const file = this.profileFile(profile.id);
       const exists = (asset) => (asset && this.assetMeta(asset) ? asset : null);

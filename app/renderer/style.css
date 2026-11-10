@@ -2116,6 +2116,16 @@ fieldset legend {
 .brand-settings .settings-card > .setting-desc[role="status"]:empty { display: none; }
 .brand-profile-row { justify-content: space-between; gap: 8px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; }
 .brand-profile-name { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.brand-themes-heading { margin: 18px 0 8px; font-size: 13px; }
+.brand-theme-row { justify-content: flex-start; }
+.brand-theme-row > button { margin-left: auto; flex: none; }
+.brand-theme-colors { display: flex; flex: none; }
+.brand-theme-color { width: 16px; height: 28px; border: 1px solid color-mix(in srgb, var(--text) 12%, transparent); }
+.brand-theme-color:first-child { border-radius: 4px 0 0 4px; }
+.brand-theme-color:last-child { border-radius: 0 4px 4px 0; border-left: 0; }
+.brand-theme-text { display: flex; flex-direction: column; min-width: 0; }
+.brand-theme-text .setting-desc { margin: 0; }
+.brand-theme-note { margin: 0 0 12px; }
 .brand-editor { display: flex; flex-direction: column; gap: 14px; }
 .brand-editor .brand-asset-row .setting-desc + .setting-desc { margin-top: 4px; }
 .setting-control .brand-hex { width: 96px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }

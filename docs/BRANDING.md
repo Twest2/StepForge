@@ -4,6 +4,27 @@ A **brand profile** puts your company's look on everything you export: your
 logo and banner, colors, fonts, a cover style, header and footer text, and
 extra CSS for web pages. Set it up once and every guide uses it.
 
+## Start from a built-in theme
+
+StepForge comes with ready-made themes, so a guide can look finished without
+making a profile first. Open **Settings → Branding** and pick one under
+**Built-in themes** in the **Active brand profile** list:
+
+| Theme | Looks like |
+| --- | --- |
+| **Slate** | Quiet grays for internal docs, centered screenshots with a thin border |
+| **Ocean** | A blue band across the cover, with blue accents |
+| **Forest** | Green accents and a centered cover |
+| **Sunset** | A warm orange band across the cover |
+| **Compact** | Each screenshot beside its text, for shorter PDF and Word documents |
+| **Midnight** | Purple accents; HTML pages follow the reader's dark mode |
+| **Classic** | Serif headings and a centered cover, made for printing |
+
+Themes can't be changed. To make one your own, choose **Customize…** next to
+the list (or in **Manage**). That opens the profile editor with the theme's
+settings; add your logo, change colors, and save. The copy is an ordinary
+profile you can edit, share and delete, and it becomes the active one.
+
 ## Make a brand profile
 
 1. Open **Settings → Branding** and choose **Manage**.

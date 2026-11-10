@@ -429,3 +429,61 @@ test('Write with AI uses the ids and limits the main process does', () => {
   const index = fs.readFileSync(path.join(__dirname, '../../app/renderer/index.html'), 'utf8');
   assert.ok(index.indexOf('core/brand-palette.js') < index.indexOf('"branding.js"'), 'the palette loads before the editor uses it');
 });
+
+test('settings: built-in themes are their own group; Customize saves an editable copy and uses it', async () => {
+  const t = ui();
+  const theme = {
+    id: 'brand-theme-ocean', name: 'Ocean', builtIn: true, description: 'A blue band across the cover, with blue accents.',
+    colors: { primary: '#1D4ED8', accent: '#38BDF8', text: '#0F172A' }, fonts: { heading: { name: '', asset: null }, body: { name: '', asset: null } },
+    logo: null, banner: null, header: { text: '', logo: true }, footer: { text: '', pageNumbers: true }, cover: 'band',
+    html: { css: '', colorScheme: 'light' }, annotations: { custom: false, shapes: '#E5484D', numbers: '#1F6FEB', tooltips: '#111827' },
+    watermark: { enabled: false, position: 'bottom-right', opacity: 0.6 },
+    screenshots: { align: 'center', border: true, borderColor: '#BFDBFE', layout: 'stacked' },
+    createdAt: '2026-11-09T00:00:00.000Z', updatedAt: '2026-11-09T00:00:00.000Z',
+  };
+  let list = [{ id: 'brand-acme', name: 'Acme', colors: theme.colors }, { id: theme.id, name: 'Ocean', builtIn: true, description: theme.description, colors: theme.colors }];
+  const api = fakeApi(async () => null, {
+    list: async () => list,
+    get: async ({ id }) => (id === theme.id ? { profile: theme, assets: {} } : { profile: { ...theme, id, name: 'Acme', builtIn: undefined }, assets: {} }),
+    save: async ({ profile }) => {
+      api.saved.push(JSON.parse(JSON.stringify(profile)));
+      list = [...list, { id: 'brand-new', name: profile.name, colors: profile.colors }];
+      return { profile: { ...profile, id: 'brand-new' }, assets: {} };
+    },
+  });
+  const panel = t.context.makeBrandingSettings(api, { activeProfileId: '' });
+  await settle(); await settle();
+  const select = t.all(panel.node).find((n) => n.tag === 'select' && n['aria-label'] === 'Active brand profile');
+  assert.deepEqual(select.children.map((c) => (c.tag === 'optgroup' ? [c.label, c.children.map((o) => o.textContent)] : c.textContent)),
+    ['No branding', ['Your profiles', ['Acme']], ['Built-in themes', ['Ocean']]]);
+  const customize = t.button(panel.node, 'Customize…');
+  assert.equal(customize.hidden, true, 'nothing to customize without a theme');
+
+  select.value = theme.id;
+  select.listeners.change();
+  await settle();
+  assert.equal(customize.hidden, false);
+  assert.equal(panel.value(), theme.id, 'a theme can be the active profile as it is');
+  assert.ok(t.all(panel.node).some((n) => n.classList.contains('brand-theme-note') && /Choose Customize to make your own copy/.test(n.textContent)));
+
+  t.click(customize);
+  await settle();
+  assert.ok(t.all(t.root).some((n) => n.textContent === 'New brand profile'), 'the editor makes a new profile');
+  await t.click(t.button(t.root, 'Save'));
+  await settle(); await settle();
+  const [copy] = api.saved;
+  assert.equal(copy.id, undefined, 'the theme itself is never saved over');
+  assert.equal(copy.name, 'Ocean (custom)');
+  assert.equal(copy.cover, 'band');
+  assert.deepEqual(copy.screenshots, theme.screenshots);
+  assert.equal(panel.value(), 'brand-new', 'the copy becomes the active profile');
+  assert.equal(customize.hidden, true);
+});
+
+test('Export dialog: the Branding list shows the same groups', () => {
+  const t = ui();
+  const options = t.context.brandOptions([{ id: 'brand-theme-slate', name: 'Slate', builtIn: true }], 'brand-theme-slate');
+  assert.deepEqual(Array.from(options, (o) => o.tag), ['option', 'optgroup'], 'no empty Your profiles group');
+  assert.equal(options[1].children[0].selected, true);
+  assert.match(fs.readFileSync(path.join(__dirname, '../../app/renderer/dialogs.js'), 'utf8'), /brandOptions\(brandProfiles,/);
+});

@@ -85,6 +85,18 @@ function brandSelect(value, options, attrs = {}) {
 }
 
 /**
+ * Customize a built-in theme: the profile editor, starting from the theme.
+ * Saving makes a new profile of your own; the theme stays as it is.
+ * Resolves with the saved { profile, assets }, or null.
+ */
+async function customizeBrandTheme(api, themeId) {
+  const theme = await api.branding.get({ id: themeId });
+  if (!theme) return null;
+  const { id, builtIn, description, createdAt, updatedAt, ...fields } = theme.profile;
+  return showBrandProfileEditor(api, { profile: { ...fields, name: t('{name} (custom)', { name: theme.profile.name }) }, assets: {} });
+}
+
+/**
  * Draw an SVG or JPG (or a PNG StepForge can't decode itself) to a PNG, for
  * the exports that can't use the original: SVGs at 1200–2400 px on the long
  * side so they stay sharp in print, photos at most 2400 px. Returns base64.
@@ -172,6 +184,10 @@ function brandSummary(data) {
   const { profile, assets } = data;
   const sections = [];
   const section = (title, ...children) => el('section.brand-section', {}, el('h4', {}, title), ...children);
+  if (profile.builtIn) {
+    sections.push(el('p.setting-desc.brand-theme-note', {}, profile.description, ' ',
+      t('Built-in themes can’t be changed. Choose Customize to make your own copy.')));
+  }
   const asset = (id) => (id ? assets[id] : null);
   const assetRow = (title, desc, id) => el('div.brand-asset-row', {},
     brandThumb(asset(id), title),
@@ -231,8 +247,8 @@ function makeBrandingSettings(api, { activeProfileId = '' } = {}) {
 
   const fillSelect = () => {
     if (active && !profiles.some((p) => p.id === active)) active = '';
-    select.replaceChildren(el('option', { value: '', selected: !active }, t('No branding')),
-      ...profiles.map((p) => el('option', { value: p.id, selected: p.id === active }, p.name)));
+    select.replaceChildren(...brandOptions(profiles, active));
+    customizeBtn.hidden = !profiles.find((p) => p.id === active)?.builtIn;
   };
 
   const refresh = async () => {
@@ -245,7 +261,20 @@ function makeBrandingSettings(api, { activeProfileId = '' } = {}) {
     await showSummary();
   };
 
-  select.addEventListener('change', () => { active = select.value; void showSummary(); });
+  select.addEventListener('change', () => { active = select.value; fillSelect(); void showSummary(); });
+  // A built-in theme can't change; Customize saves an editable copy and uses it.
+  const customizeBtn = el('button', {
+    type: 'button',
+    hidden: true,
+    onClick: async () => {
+      const saved = await customizeBrandTheme(api, active);
+      if (!saved) return;
+      active = saved.profile.id;
+      profiles = await api.branding.list();
+      fillSelect();
+      await showSummary();
+    },
+  }, t('Customize…'));
   const manageBtn = el('button', {
     type: 'button',
     onClick: async () => {
@@ -273,7 +302,7 @@ function makeBrandingSettings(api, { activeProfileId = '' } = {}) {
     settingsCard(null,
       el('div.brand-active', {},
         el('label', { htmlFor: 'brand-active' }, t('Active brand profile')),
-        el('div.brand-active-row', {}, select, manageBtn)),
+        el('div.brand-active-row', {}, select, customizeBtn, manageBtn)),
       summary,
       el('div.brand-preview-row', {},
         el('div.setting-text', {}, el('div.setting-title', {}, t('Preview generated output')),
@@ -312,11 +341,13 @@ function showBrandProfiles(api) {
       await reload();
     };
     function render() {
-      if (!list.length) {
-        rows.replaceChildren(el('div.muted', {}, t('No brand profiles yet. Choose New profile to make one.')));
+      const mine = list.filter((p) => !p.builtIn);
+      renderThemes(list.filter((p) => p.builtIn));
+      if (!mine.length) {
+        rows.replaceChildren(el('div.muted', {}, t('No brand profiles yet. Choose New profile to make one, or customize a built-in theme.')));
         return;
       }
-      rows.replaceChildren(...list.map((p) => el('div.row.brand-profile-row', {},
+      rows.replaceChildren(...mine.map((p) => el('div.row.brand-profile-row', {},
         el('span.brand-profile-name', {}, p.name),
         el('div.row', {},
           el('button', { type: 'button', onClick: () => edit(p.id).catch(fail) }, t('Edit')),
@@ -330,6 +361,23 @@ function showBrandProfiles(api) {
             if (!await confirmDialog(t('Delete the brand profile “{name}”? Exports that use it go back to no branding.', { name: p.name }), { danger: true, okLabel: t('Delete') })) return;
             try { list = await api.branding.delete({ id: p.id }); render(); } catch (err) { fail(err); }
           } }, t('Delete'))))));
+    }
+
+    // Built-in themes: read-only, each with Customize to start a profile from it.
+    const themeRows = el('div.card-list.brand-profile-list');
+    function renderThemes(themes) {
+      themeRows.replaceChildren(...themes.map((p) => el('div.row.brand-profile-row.brand-theme-row', {},
+        el('span.brand-theme-colors', { 'aria-hidden': 'true' },
+          ...[p.colors.primary, p.colors.accent].map((color) => el('span.brand-theme-color', { style: { background: color } }))),
+        el('div.brand-theme-text', {},
+          el('span.brand-profile-name', {}, p.name),
+          el('span.setting-desc', {}, p.description)),
+        el('button', { type: 'button', onClick: async () => {
+          try {
+            const saved = await customizeBrandTheme(api, p.id);
+            if (saved) { created.push(saved.profile.id); await reload(); }
+          } catch (err) { fail(err); }
+        } }, t('Customize…')))));
     }
 
     const { close } = openModal({
@@ -348,6 +396,8 @@ function showBrandProfiles(api) {
           } }, t('Import .sfbrand…')),
           el('span.muted', {}, t('Profiles are shareable as .sfbrand files.'))),
         rows,
+        el('h4.brand-themes-heading', {}, t('Built-in themes')),
+        themeRows,
         status),
       footer: [el('button.primary', { type: 'button', onClick: () => { close(); resolve({ created }); } }, t('Done'))],
       wide: true,
@@ -779,7 +829,7 @@ function showBrandProfileEditor(api, data = null) {
     // Edits to the draft (any field, colors, images, CSS) count as unsaved until Save.
     const isDraftDirty = unsavedChanges(() => draft);
     const { close, requestDismiss } = openModal({
-      title: base ? t('Edit brand profile') : t('New brand profile'),
+      title: base?.id ? t('Edit brand profile') : t('New brand profile'),
       body,
       footer: [previewFormat, previewBtn, footerStatus,
         el('button', { type: 'button', onClick: () => requestDismiss() }, t('Cancel')), saveBtn],

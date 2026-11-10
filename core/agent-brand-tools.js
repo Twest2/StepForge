@@ -7,6 +7,7 @@ const {
 } = require('./branding');
 const { STYLE_REFERENCE } = require('./ai-brand-css');
 const { Settings } = require('./settings');
+const { isThemeId } = require('./brand-themes');
 const { decodePng, encodePng } = require('./png');
 const { resize } = require('./raster');
 
@@ -109,6 +110,10 @@ function createBrandTools({ settingsDir, requireEnabled, agentSettings, onChange
   };
   const activeId = () => new Settings(settingsDir).get('branding.activeProfileId') || '';
   const loadProfile = (id) => store.get(id) || fail(`No brand profile with id "${id}". Call list_brand_profiles to find it.`);
+  // Built-in themes can be read and made active, not changed.
+  const loadEditable = (id) => (isThemeId(id)
+    ? fail(`"${id}" is a built-in theme and can't be changed. Make a profile with create_brand_profile, starting from its values (get_brand_profile).`)
+    : loadProfile(id));
 
   const imageInfo = (asset) => {
     const meta = asset ? store.assetMeta(asset) : null;
@@ -246,10 +251,15 @@ function createBrandTools({ settingsDir, requireEnabled, agentSettings, onChange
         requireBranding();
         const active = activeId();
         const profiles = store.list().map((p) => ({ profile_id: p.id, name: p.name, active: p.id === active, updated_at: p.updatedAt }));
+        // Ready-made, read-only themes that set_active_brand_profile can also choose.
+        const themes = store.themes().map((p) => ({ profile_id: p.id, name: p.name, description: p.description, active: p.id === active }));
         return {
-          content: [text(profiles.length
-            ? { active_profile_id: profiles.some((p) => p.active) ? active : null, profiles }
-            : 'No brand profiles yet. Make one with create_brand_profile.')],
+          content: [text({
+            active_profile_id: [...profiles, ...themes].some((p) => p.active) ? active : null,
+            profiles,
+            built_in_themes: themes,
+            ...(profiles.length ? {} : { note: 'No brand profiles yet. Make one with create_brand_profile, or choose a built-in theme.' }),
+          })],
         };
       },
     },
@@ -308,7 +318,7 @@ function createBrandTools({ settingsDir, requireEnabled, agentSettings, onChange
       handler({ profile_id: id, ...fields } = {}) {
         requireBranding();
         onlyKnown(fields, []);
-        const profile = loadProfile(id);
+        const profile = loadEditable(id);
         if (!Object.values(fields).some((v) => v !== undefined)) fail('Give at least one field to change.');
         const saved = store.save(applyFields(profile, fields));
         onChange({});
@@ -333,7 +343,7 @@ function createBrandTools({ settingsDir, requireEnabled, agentSettings, onChange
       },
       handler({ profile_id: id, slot, file_path: filePath, remove = false } = {}) {
         requireBranding();
-        const profile = loadProfile(id);
+        const profile = loadEditable(id);
         if (!Object.hasOwn(FILE_SLOTS, slot)) fail(`slot must be one of: ${Object.keys(FILE_SLOTS).join(', ')}.`);
         const kind = FILE_SLOTS[slot];
         if (typeof remove !== 'boolean') fail('remove must be true or false.');

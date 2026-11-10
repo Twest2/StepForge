@@ -1873,14 +1873,16 @@ function setupIpc() {
     font: { title: () => t('Choose a font file'), filters: () => [{ name: t('Fonts (WOFF2, WOFF, TTF, OTF)'), extensions: ['woff2', 'woff', 'ttf', 'otf'] }] },
     css: { title: () => t('Choose a CSS file'), filters: () => [{ name: 'CSS', extensions: ['css'] }] },
   };
-  h('branding:list', () => branding.list());
+  // Your profiles, then the built-in themes (builtIn: true).
+  const brandList = () => [...branding.list(), ...branding.themes()];
+  h('branding:list', () => brandList());
   h('branding:get', ({ id }) => brandProfile(id), { validate: (a) => validBrandId(a.id) });
   h('branding:save', ({ profile }) => brandProfile(branding.save(profile).id),
     { validate: (a) => security.isPlainArgs(a.profile) && (a.profile.id === undefined || a.profile.id === null || validBrandId(a.profile.id)) });
   h('branding:delete', ({ id }) => {
     branding.remove(id);
     if (settings.get('branding.activeProfileId') === id) settings.set('branding.activeProfileId', '');
-    return branding.list();
+    return brandList();
   }, { validate: (a) => validBrandId(a.id) });
   h('branding:duplicate', ({ id }) => brandProfile(branding.duplicate(id).id), { validate: (a) => validBrandId(a.id) });
   h('branding:chooseAsset', async ({ kind }) => {

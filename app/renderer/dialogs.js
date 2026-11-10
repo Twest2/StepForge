@@ -1418,9 +1418,9 @@ function showExportDialog({
     refreshOutDir();
     const optionsHost = el('div', { className: 'export-options' });
     // Branding: the active profile unless another (or none) is picked for this export.
+    // Your profiles, then the built-in themes, each in its own group (app/renderer/branding.js).
     const brandProfiles = branding?.profiles || [];
-    const brandChoice = makeSelect(brandProfiles.some((p) => p.id === branding?.activeId) ? branding.activeId : '',
-      [{ value: '', label: t('No branding') }, ...brandProfiles.map((p) => ({ value: p.id, label: p.name }))]);
+    const brandChoice = el('select', {}, ...brandOptions(brandProfiles, brandProfiles.some((p) => p.id === branding?.activeId) ? branding.activeId : ''));
     brandChoice.setAttribute('aria-label', t('Branding'));
     const brandNote = el('span.muted');
     const refreshBrandNote = () => {

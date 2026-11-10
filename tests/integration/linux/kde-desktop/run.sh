@@ -27,6 +27,10 @@ done
 [[ -f /tmp/kde-desktop/ready ]] || { echo 'Plasma did not start.' >&2; exit 1; }
 bash /artifacts/run-in-session.sh python3 /artifacts/target.py > /artifacts/target.log 2>&1 &
 export STEPFORGE_DATA_DIR=/artifacts/data
+# Not a first start: a new library also gets the "Welcome to StepForge" guide
+# (core/welcome-guide.js), and scenario.cjs reads the one guide it records.
+mkdir -p "$STEPFORGE_DATA_DIR/settings"
+echo '{"welcomeGuideAdded": true}' > "$STEPFORGE_DATA_DIR/settings/app-settings.json"
 bash /artifacts/run-in-session.sh env -u ELECTRON_RUN_AS_NODE \
   /opt/stepforge/node_modules/electron/dist/electron --no-sandbox --disable-dev-shm-usage \
   --ozone-platform=wayland --remote-debugging-port=9365 /opt/stepforge > /artifacts/app.log 2>&1 &

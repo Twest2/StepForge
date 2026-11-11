@@ -122,7 +122,7 @@ function chooseCaptureTrigger(capabilities, userTriggerPreference = 'hotkey') {
   if (click === 'gnome-extension-required') {
     return { trigger: 'click', clickSource: 'gnome-extension-required',
       coordinates: true, marker: true,
-      note: 'Requires StepForge Capture for GNOME 50. Records sampled mouse-button transitions with logical coordinates; recording is blocked until the extension and portal streams are ready.' };
+      note: 'Requires StepForge Capture for GNOME 50 or 51. Records sampled mouse-button transitions with logical coordinates; recording is blocked until the extension and portal streams are ready.' };
   }
 
   if (click === 'kwin-script-required') {

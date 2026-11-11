@@ -14,10 +14,10 @@ fi
 SUDO=""
 if [ "$(id -u)" -ne 0 ]; then SUDO="sudo"; fi
 
-# The desktop's own portal: KDE Plasma or GNOME 50.
+# The desktop's own portal: KDE Plasma or GNOME 50/51.
 case "${XDG_CURRENT_DESKTOP:-}" in
   *KDE*) DESKTOP_PACKAGES=(xdg-desktop-portal-kde spectacle) ;;
-  *) DESKTOP_PACKAGES=('gnome-shell >= 50' 'gnome-shell < 51' xdg-desktop-portal-gnome) ;;
+  *) DESKTOP_PACKAGES=('gnome-shell >= 50' 'gnome-shell < 52' xdg-desktop-portal-gnome) ;;
 esac
 
 PACKAGES=(

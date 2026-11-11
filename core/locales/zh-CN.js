@@ -2113,7 +2113,7 @@
   "Enable it to record mouse clicks and their positions. If GNOME has not loaded the newly installed extension yet, log out and log back in first.": "启用后即可记录鼠标点击及其位置。如果 GNOME 尚未加载刚安装的扩展，请先注销并重新登录。",
   "Enable extension": "启用扩展",
   "Enable the StepForge Capture GNOME extension before recording.": "录制前请先启用 StepForge Capture GNOME 扩展。",
-  "GNOME could not load StepForge Capture. Install the Ubuntu or Fedora package (GNOME 50), then log out and back in. For a source checkout, run bash scripts/linux/install-gnome-extension.sh first.": "GNOME 无法加载 StepForge Capture。请安装 Ubuntu 或 Fedora 软件包（GNOME 50），然后注销并重新登录。如果使用源码，请先运行 bash scripts/linux/install-gnome-extension.sh。",
+  "GNOME could not load StepForge Capture. Install the Ubuntu or Fedora package (GNOME 50 or 51), then log out and back in. For a source checkout, run bash scripts/linux/install-gnome-extension.sh first.": "GNOME 无法加载 StepForge Capture。请安装 Ubuntu 或 Fedora 软件包（GNOME 50 或 51），然后注销并重新登录。如果使用源码，请先运行 bash scripts/linux/install-gnome-extension.sh。",
   "Screen sharing is not ready.": "屏幕共享尚未就绪。",
   "GNOME did not identify the active window.": "GNOME 未识别出活动窗口。",
   "Select a region within one shared monitor.": "请在同一个共享显示器内选择区域。",

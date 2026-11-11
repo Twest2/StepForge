@@ -199,7 +199,7 @@ Docs, prompts, tests, and dev dependencies are left out.
 
 ## Testing on Ubuntu and GNOME Wayland
 
-The main Linux target is **Ubuntu 26.04 with GNOME Shell 50 on Wayland**. Click
+The main Linux target is **Ubuntu 26.04 with GNOME Shell 50 on Wayland** (GNOME Shell 51 on Ubuntu 26.10 is also supported). Click
 recording depends on the StepForge GNOME extension, which the `.deb` bundles.
 
 ### Install a test package
@@ -259,7 +259,7 @@ bash tests/integration/linux/gnome-shell.test.sh
 
 This runs a private headless GNOME Shell with its own D-Bus session and a
 test-only virtual pointer. It never enables extensions or sends input to your
-real desktop. It needs the GNOME 50 runtime, GTK 4 / AT-SPI introspection,
+real desktop. It needs the GNOME 50 or 51 runtime, GTK 4 / AT-SPI introspection,
 PipeWire, and WirePlumber.
 
 > [!NOTE]

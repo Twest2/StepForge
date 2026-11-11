@@ -85,6 +85,20 @@ Your guides and settings in `~/.local/share/stepforge` are kept.
 
 ## Troubleshooting
 
+**`apt update` says the StepForge repository "is not signed" or the key "is
+not signing capable".** StepForge changed its repository signing key in
+November 2026. Download the key again, then update:
+
+```bash
+sudo curl -fsSL -o /etc/apt/keyrings/stepforge.gpg \
+  https://packages.twestbrook.com/debian/stepforge/keys/stepforge.gpg
+sudo apt update
+```
+
+If you installed a downloaded `.deb`, install the latest `.deb` from the
+[releases page](https://github.com/Twest2/StepForge/releases/latest) instead.
+It brings the new key.
+
 **StepForge reports a sandbox error at launch.** StepForge always runs with
 Chromium's security sandbox enabled and refuses to start without it rather
 than quietly running unprotected. On a standard Ubuntu install this works

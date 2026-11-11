@@ -56,7 +56,7 @@ fi
 # --- launcher ----------------------------------------------------------------
 install -m 0755 "$ROOT_DIR/packaging/linux/common/launcher.sh" "$STAGE_ROOT/usr/bin/stepforge"
 
-# GNOME 50 companion, installed with the app and enabled per user on first run.
+# GNOME 50/51 companion, installed with the app and enabled per user on first run.
 # GNOME Shell refuses to load an extension whose metadata uuid differs from its
 # directory name, so a mismatch must fail the build rather than ship silently.
 EXT_UUID=tyler@stepforge.dev

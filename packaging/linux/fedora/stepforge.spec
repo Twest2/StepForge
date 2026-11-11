@@ -42,11 +42,11 @@ Requires:       libXdamage
 Requires:       libXfixes
 Requires:       libXrandr
 Requires:       libxshmfence
-# Same consented portal pipeline as the Ubuntu package, on GNOME 50 (with the
+# Same consented portal pipeline as the Ubuntu package, on GNOME 50 and 51 (with the
 # bundled Shell extension) or KDE Plasma 6 (KWin script + input devices).
 # GNOME is not pulled onto Plasma systems; only a mismatched GNOME is refused.
 Conflicts:      gnome-shell < 50
-Conflicts:      gnome-shell >= 51
+Conflicts:      gnome-shell >= 52
 Requires:       python3
 Requires:       python3-gobject
 Requires:       gdk-pixbuf2

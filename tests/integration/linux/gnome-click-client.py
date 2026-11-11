@@ -73,4 +73,4 @@ assert len(clicked) == 5, f'Native GTK client received {len(clicked)} of 5 click
 assert len(events) == 5, f'StepForge received {len(events)} of 5 clicks: {events}'
 assert not other_events, 'Click signals leaked to another bus connection'
 assert all(e['x'] == 500 and e['y'] == 350 and e['button'] == 1 for e in events), events
-print('GNOME 50 native Wayland click integration: 5/5 clicks, exact sampled coordinates; GTK received all clicks.')
+print('GNOME native Wayland click integration: 5/5 clicks, exact sampled coordinates; GTK received all clicks.')

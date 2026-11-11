@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 UUID=tyler@stepforge.dev
 DEST="${XDG_DATA_HOME:-$HOME/.local/share}/gnome-shell/extensions/$UUID"
 if ! gnome-shell --version | grep -qE 'GNOME Shell 50([.]|$)'; then
-  echo 'StepForge Capture currently supports GNOME Shell 50 (Ubuntu 26.04).' >&2
+  echo 'StepForge Capture currently supports GNOME Shell 50 and 51 (Ubuntu 26.04 and 26.10).' >&2
   exit 1
 fi
 mkdir -p "$DEST"

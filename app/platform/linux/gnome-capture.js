@@ -54,7 +54,7 @@ class GnomeCaptureService extends CaptureService {
       await delay(250);
       await probe();
     } catch {
-      throw new Error(t('GNOME could not load StepForge Capture. Install the Ubuntu or Fedora package (GNOME 50), then log out and back in. For a source checkout, run bash scripts/linux/install-gnome-extension.sh first.'));
+      throw new Error(t('GNOME could not load StepForge Capture. Install the Ubuntu or Fedora package (GNOME 50 or 51), then log out and back in. For a source checkout, run bash scripts/linux/install-gnome-extension.sh first.'));
     }
   }
 

@@ -2113,7 +2113,7 @@
   "Enable it to record mouse clicks and their positions. If GNOME has not loaded the newly installed extension yet, log out and log back in first.": "Включите его, чтобы записывать щелчки мыши и их положение. Если GNOME ещё не загрузил только что установленное расширение, сначала выйдите из системы и войдите снова.",
   "Enable extension": "Включить расширение",
   "Enable the StepForge Capture GNOME extension before recording.": "Перед записью включите расширение GNOME StepForge Capture.",
-  "GNOME could not load StepForge Capture. Install the Ubuntu or Fedora package (GNOME 50), then log out and back in. For a source checkout, run bash scripts/linux/install-gnome-extension.sh first.": "GNOME не удалось загрузить StepForge Capture. Установите пакет для Ubuntu или Fedora (GNOME 50), затем выйдите из системы и войдите снова. Для исходного кода сначала выполните bash scripts/linux/install-gnome-extension.sh.",
+  "GNOME could not load StepForge Capture. Install the Ubuntu or Fedora package (GNOME 50 or 51), then log out and back in. For a source checkout, run bash scripts/linux/install-gnome-extension.sh first.": "GNOME не удалось загрузить StepForge Capture. Установите пакет для Ubuntu или Fedora (GNOME 50 или 51), затем выйдите из системы и войдите снова. Для исходного кода сначала выполните bash scripts/linux/install-gnome-extension.sh.",
   "Screen sharing is not ready.": "Демонстрация экрана не готова.",
   "GNOME did not identify the active window.": "GNOME не определил активное окно.",
   "Select a region within one shared monitor.": "Выберите область в пределах одного общего монитора.",

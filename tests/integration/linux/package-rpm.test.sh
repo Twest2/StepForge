@@ -69,7 +69,7 @@ for requirement in 'nodejs >= 22.12.0' 'nss' 'python3-gobject' \
   grep -qFx "$requirement" <<< "$requires" || fail "missing dependency: $requirement"
 done
 conflicts="$(rpm -qp --conflicts "$RPM")"
-for constraint in 'gnome-shell < 50' 'gnome-shell >= 51'; do
+for constraint in 'gnome-shell < 50' 'gnome-shell >= 52'; do
   grep -qFx "$constraint" <<< "$conflicts" || fail "missing incompatible GNOME constraint: $constraint"
 done
 if grep -qE '^lib(ffmpeg|vips-cpp)[.]so' <<< "$requires"; then

@@ -1,8 +1,8 @@
 # StepForge on Linux
 
-StepForge ships native packages for **Ubuntu / Kubuntu 26.04** and **Fedora 44
+StepForge ships native packages for **Ubuntu 26.04 and 26.10, Kubuntu 26.04** and **Fedora 44
 Workstation / KDE Plasma Desktop** on 64-bit Intel/AMD (x86_64), with
-**GNOME 50 or KDE Plasma 6 on Wayland**.
+**GNOME 50 or 51, or KDE Plasma 6, on Wayland**.
 
 ## Choose how to install
 

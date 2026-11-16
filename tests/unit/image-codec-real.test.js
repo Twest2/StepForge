@@ -269,3 +269,31 @@ test('Linux Electron isolates real image operations in a plain Node process', as
   assert.deepEqual(decodePng(await isolated.decodeToPng(webp)), decodePng(png));
   await assert.rejects(isolated.decodeToPng(Buffer.from('broken input')), /unsupported|Input buffer/i);
 });
+
+/** A 4x2 image with a different color in every pixel, and the same as Electron's premultiplied BGRA. */
+function pixelGrid() {
+  const image = raster.createImage(4, 2, [0, 0, 0, 255]);
+  const colors = [[255, 0, 0], [0, 255, 0], [0, 0, 255], [255, 255, 0], [0, 255, 255], [255, 0, 255], [10, 20, 30], [200, 150, 100]];
+  colors.forEach(([r, g, b], i) => raster.fillRect(image, i % 4, Math.floor(i / 4), 1, 1, [r, g, b, 255]));
+  const bgra = Buffer.alloc(4 * 2 * 4);
+  colors.forEach(([r, g, b], i) => bgra.set([b, g, r, 255], i * 4));
+  return { png: encodePng(image), rgba: decodePng(encodePng(image)).data, bgra };
+}
+
+test('window crops and frame encodes run in the codec, in-process and in the Linux helper, with exact pixels', async () => {
+  const isolated = createImageCodec({ platform: 'linux', electron: 'test', nodePath: process.execPath });
+  const { png, rgba, bgra } = pixelGrid();
+  for (const each of [codec, isolated]) {
+    const cut = decodePng(await each.cropPng(png, { x: 1, y: 0, width: 2, height: 2 }));
+    assert.deepEqual([cut.width, cut.height], [2, 2]);
+    const expected = Buffer.concat([rgba.subarray(4, 12), rgba.subarray(20, 28)]);
+    assert.deepEqual(Buffer.from(cut.data), expected, 'the cut keeps exactly the pixels inside the rectangle');
+
+    const encoded = decodePng(await each.bitmapToPng(bgra, 4, 2));
+    assert.deepEqual([encoded.width, encoded.height], [4, 2]);
+    assert.deepEqual(Buffer.from(encoded.data), Buffer.from(rgba), 'BGRA becomes RGBA with every pixel intact');
+
+    await assert.rejects(each.cropPng(png, { x: 0, y: 0, width: 0, height: 2 }), /Invalid crop rectangle/);
+    await assert.rejects(each.bitmapToPng(bgra, 5, 2), /Bitmap size/);
+  }
+});

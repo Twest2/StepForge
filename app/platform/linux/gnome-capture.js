@@ -144,7 +144,7 @@ class GnomeCaptureService extends CaptureService {
       if (gate && !(await gate)) return;
       const { frame, error } = await framePromise;
       if (error) throw error;
-      const output = this.prepareClickFrame(frame, mode, event.window);
+      const output = await this.prepareClickFrame(frame, mode, event.window);
       const result = await this.storeFrameAsStep(guideId, output.mode, output, point, clickMeta);
       if (result.ok) {
         // Accepted clicks stay with their original guide even across pause,

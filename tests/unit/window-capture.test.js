@@ -79,6 +79,8 @@ function windowsService({ settings = {}, cursor } = {}) {
     const { width, height } = JSON.parse(png.toString());
     return fakeImage(width, height);
   };
+  // The fake PNGs record rectangles; the real codec's cut is tested below.
+  service.cropPng = async (png, rect) => service.imageFromPng(png).crop(rect).toPNG();
   return { service, added, events };
 }
 
@@ -222,13 +224,13 @@ test('Window recordings on Windows pair clicks with full-screen stream frames', 
   assert.equal(region.recorderMode(), 'fullscreen');
 });
 
-test('a frame-loop frame is cut from its decoded image, which stays available for OCR', () => {
+test('a frame-loop frame is cut from its decoded image, which stays available for OCR', async () => {
   const { service } = windowsService();
   const frame = {
     mode: 'fullscreen', image: fakeImage(3440, 1440), size: { width: 3440, height: 1440 },
     display: { id: 1, bounds: MONITORS[0].bounds }, capturedAt: Date.now(),
   };
-  const cut = service.windowFrame(frame, { x: 100, y: 50, width: 800, height: 600 });
+  const cut = await service.windowFrame(frame, { x: 100, y: 50, width: 800, height: 600 });
   assert.equal(cut.mode, 'window');
   assert.equal(cut.png, null);
   assert.deepEqual(cut.size, { width: 800, height: 600 });
@@ -345,5 +347,57 @@ test('the active window can be read on its own, as Capture window and Retake do'
   if (process.platform === 'win32') {
     const found = await readActiveWindow();
     assert.ok(found === null || (found.right > found.left && found.bottom > found.top), JSON.stringify(found));
+  }
+});
+
+test('a stream frame is cut by the image codec, never decoded on the main process, and still cut if the codec fails', async () => {
+  const { setImageCodec, getImageCodec } = require('../../core/image-format');
+  const { encodePng, decodePng } = require('../../core/png');
+  const raster = require('../../core/raster');
+  const before = getImageCodec();
+  const service = new CaptureService({ store: {}, settings: { get: () => null }, getWindow: () => null, notify: () => {} });
+  const image = raster.createImage(40, 20, [255, 255, 255, 255]);
+  raster.fillRect(image, 10, 5, 20, 10, [0, 0, 255, 255]);
+  const frame = { mode: 'fullscreen', png: encodePng(image), size: { width: 40, height: 20 },
+    display: { id: 1, bounds: { x: 0, y: 0, width: 40, height: 20 } }, source: 'stream' };
+  try {
+    let decodedHere = 0;
+    service.imageFromPng = (png) => { decodedHere += 1; return { crop: () => ({ toPNG: () => png }) }; };
+    const cut = await service.windowFrame(frame, { x: 10, y: 5, width: 20, height: 10 });
+    assert.equal(decodedHere, 0, 'the main process does not decode the full-screen PNG');
+    assert.deepEqual(cut.size, { width: 20, height: 10 });
+    const pixels = decodePng(cut.png);
+    assert.deepEqual([pixels.width, pixels.height], [20, 10]);
+    assert.ok(pixels.data.every((v, i) => (i % 4 === 2 || i % 4 === 3 ? v === 255 : v === 0)), 'only the blue window is kept');
+
+    setImageCodec({ ...before, cropPng: async () => { throw new Error('codec unavailable'); } });
+    const fallback = await service.windowFrame(frame, { x: 10, y: 5, width: 20, height: 10 });
+    assert.equal(decodedHere, 1, 'a failed codec falls back to cutting in-process');
+    assert.equal(fallback.mode, 'window');
+  } finally {
+    setImageCodec(before);
+  }
+});
+
+test('a frame-loop frame is encoded from its raw pixels by the codec, not with toPNG on the main process', async () => {
+  const { setImageCodec, getImageCodec } = require('../../core/image-format');
+  const before = getImageCodec();
+  const service = new CaptureService({ store: {}, settings: { get: () => null }, getWindow: () => null, notify: () => {} });
+  const bgra = Buffer.from([255, 0, 0, 255, 0, 0, 255, 255]);
+  let toPng = 0;
+  const frame = { image: { getSize: () => ({ width: 2, height: 1 }), toBitmap: () => bgra, toPNG: () => { toPng += 1; return Buffer.from('in-process'); } } };
+  try {
+    const calls = [];
+    setImageCodec({ ...before, bitmapToPng: async (...args) => { calls.push(args); return Buffer.from('codec'); } });
+    assert.equal(String(await service.framePng(frame)), 'codec');
+    assert.deepEqual(calls, [[bgra, 2, 1]]);
+    assert.equal(toPng, 0);
+    assert.equal(String(await service.framePng({ png: Buffer.from('stream') })), 'stream', 'stream frames keep their PNG');
+
+    setImageCodec({ ...before, bitmapToPng: async () => { throw new Error('codec unavailable'); } });
+    assert.equal(String(await service.framePng(frame)), 'in-process', 'a failed codec still keeps the step');
+    assert.equal(toPng, 1);
+  } finally {
+    setImageCodec(before);
   }
 });

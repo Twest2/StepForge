@@ -814,6 +814,29 @@ function showSettingsDialog({
     const removeKeyBtn = el('button', { type: 'button', hidden: true }, t('Remove key'));
     const keyDesc = el('span', { role: 'status', 'aria-live': 'polite' });
     const openaiVision = el('input', { type: 'checkbox', checked: Boolean(settings.ai?.openai?.vision) });
+    // Filled with the server's models after Test connection, when it lists them.
+    const openaiModels = el('datalist', { id: 'openai-models' });
+    openaiModel.setAttribute('list', 'openai-models');
+    // Temperature (ai.temperature) for either provider: a number from 0 to 2,
+    // or null so the model uses its own default, for models that refuse any other.
+    const savedTemperature = settings.ai?.temperature === null ? null
+      : Number.isFinite(settings.ai?.temperature) ? settings.ai.temperature : 0.2;
+    const temperatureMode = makeSelect(savedTemperature === null ? 'default' : 'custom', [
+      { value: 'default', label: t('Model default') },
+      { value: 'custom', label: t('Custom') },
+    ]);
+    const temperatureValue = makeInput(String(savedTemperature ?? 0.2), 'number',
+      { min: '0', max: '2', step: '0.1', inputMode: 'decimal', 'aria-label': t('Temperature value') });
+    const temperatureChoice = () => {
+      if (temperatureMode.value === 'default') return null;
+      const value = Number(temperatureValue.value);
+      return temperatureValue.value.trim() && Number.isFinite(value) ? Math.round(Math.min(2, Math.max(0, value)) * 100) / 100 : 0.2;
+    };
+    const syncTemperature = () => { temperatureValue.hidden = temperatureMode.value === 'default'; };
+    temperatureMode.addEventListener('change', syncTemperature);
+    // Show the value that will be saved: out-of-range numbers are clamped to 0–2.
+    temperatureValue.addEventListener('change', () => { temperatureValue.value = String(temperatureChoice() ?? 0.2); });
+    syncTemperature();
     let keySaved = false;
     let keySave = null;
     const aiScreenshots = el('input', { type: 'checkbox', checked: settings.ai?.attachScreenshots !== false });
@@ -846,7 +869,12 @@ function showSettingsDialog({
     }).catch((err) => {
       agentSetup.replaceChildren(el('div.setting-desc.error', {}, t('Could not build the setup commands: {error}', { error: err.message || err })));
     });
-    const aiStatus = el('div', { className: 'ai-status' }, t('Not tested yet. Vision-capable models can also inspect each step’s screenshot.'));
+    // Test connection's result: a message, buttons that fix what it found, and
+    // the request and the server's own reply under Details.
+    const aiStatusText = el('div.ai-status-text', {}, t('Not tested yet. Vision-capable models can also inspect each step’s screenshot.'));
+    const aiStatusActions = el('div.ai-status-actions', { hidden: true });
+    const aiStatusDetails = el('details.ai-status-details', { hidden: true });
+    const aiStatus = el('div', { className: 'ai-status', role: 'status', 'aria-live': 'polite' }, aiStatusText, aiStatusActions, aiStatusDetails);
     const testAiBtn = el('button', { type: 'button' }, t('Test connection'));
     const persistOllamaModel = debounce(() => {
       const model = ollamaModel.value.trim();
@@ -862,11 +890,34 @@ function showSettingsDialog({
     fallbackTrigger.addEventListener('change', syncFallbackUi);
     syncFallbackUi();
 
-    const updateAiStatus = (message, { error = false, ok = false } = {}) => {
-      aiStatus.textContent = message;
+    const updateAiStatus = (message, { error = false, ok = false, diagnosis = null, actions = [] } = {}) => {
+      aiStatusText.textContent = message;
       aiStatus.classList.toggle('error', Boolean(error));
       aiStatus.classList.toggle('ok', Boolean(ok));
+      aiStatusActions.replaceChildren(...actions);
+      aiStatusActions.hidden = !actions.length;
+      const details = diagnosis ? [
+        [t('Request'), diagnosis.url ? `POST ${diagnosis.url}` : ''],
+        [t('HTTP status'), diagnosis.status ? String(diagnosis.status) : ''],
+        [t('Server message'), diagnosis.serverMessage || ''],
+        [t('Error'), diagnosis.detail || ''],
+        [t('Temperature'), diagnosis.kind === 'temperature' ? String(diagnosis.temperature) : ''],
+      ].filter(([, value]) => value) : [];
+      aiStatusDetails.replaceChildren(el('summary', {}, t('Details')),
+        el('dl', {}, ...details.flatMap(([label, value]) => [el('dt', {}, label), el('dd', {}, value)])));
+      aiStatusDetails.open = false;
+      aiStatusDetails.hidden = !details.length;
     };
+    // Set by a fix button, so the result after it reminds the user to save.
+    let aiFixApplied = false;
+    const fixButton = (label, apply) => el('button', {
+      type: 'button',
+      onClick: () => {
+        apply();
+        aiFixApplied = true;
+        void testAiConnection();
+      },
+    }, label);
 
     const testAiConnection = async () => {
       setButtonLoading(testAiBtn, true, t('Testing…'));
@@ -879,13 +930,34 @@ function showSettingsDialog({
             host: ollamaHost.value.trim(),
             model: ollamaModel.value.trim(),
           },
+          temperature: temperatureChoice(),
         });
+        const fixed = aiFixApplied;
+        aiFixApplied = false;
+        const listed = result.models || result.diagnosis?.models;
+        if (aiProvider.value === 'openai' && listed?.length) {
+          openaiModels.replaceChildren(...listed.map((model) => el('option', { value: model })));
+        }
         if (!result.ok) {
-          updateAiStatus(result.reason || t('Could not connect to Ollama.'), { error: true });
+          const diagnosis = result.diagnosis || null;
+          const actions = [];
+          if (diagnosis?.kind === 'temperature' && temperatureMode.value !== 'default') {
+            actions.push(fixButton(t('Use model default'), () => {
+              temperatureMode.value = 'default';
+              syncTemperature();
+            }));
+          }
+          if (diagnosis?.suggestion) {
+            actions.push(fixButton(t('Use “{model}”', { model: diagnosis.suggestion }), () => {
+              openaiModel.value = diagnosis.suggestion;
+            }));
+          }
+          updateAiStatus(result.reason || t('Could not connect to Ollama.'), { error: true, diagnosis, actions });
           return;
         }
         if (result.provider === 'openai') {
-          updateAiStatus(t('Connected to {host} with {model}.', { host: result.host, model: result.model }), { ok: true });
+          const connected = t('Connected to {host} with {model}.', { host: result.host, model: result.model });
+          updateAiStatus(fixed ? `${connected} ${t('Choose Save to keep the change.')}` : connected, { ok: true });
           return;
         }
         ollamaModels.replaceChildren(...(result.models || []).map((model) => el('option', { value: model })));
@@ -1009,8 +1081,8 @@ function showSettingsDialog({
       settingRow(t('Model'), el('span', {}, t('Any installed model. Choose Test connection to list them.'), ' ',
         docLink(t('AI guide'), AI_GUIDE_URL), ' · ', docLink(t('Recommended models'), `${AI_GUIDE_URL}#recommended-models`)), ollamaModel));
     const openaiFields = el('div.ai-provider-fields', {},
-      settingRow(t('Server URL'), t('The API’s base address, including /v1. Works with vLLM, LM Studio, LocalAI, LiteLLM and other OpenAI-compatible servers.'), openaiUrl),
-      settingRow(t('Model'), t('The model name your server expects.'), openaiModel),
+      settingRow(t('Server URL'), t('The address before /chat/completions, often ending in /v1. Works with vLLM, LM Studio, LocalAI, LiteLLM and other OpenAI-compatible servers.'), openaiUrl),
+      settingRow(t('Model'), t('The model name exactly as your server lists it. Test connection suggests the server’s models.'), openaiModel),
       settingRow(t('API key (optional)'), keyDesc, el('div.row.ai-key-control', {}, openaiKey, removeKeyBtn)),
       settingRow(t('Model can read images'), t('Turn on only for a model that accepts images. It then sees each step’s screenshot, with blurred areas hidden.'),
         makeSwitch(openaiVision, t('Model can read images'))));
@@ -1029,11 +1101,15 @@ function showSettingsDialog({
       updateAiStatus(t('Not tested yet. Vision-capable models can also inspect each step’s screenshot.'));
     });
     syncProvider();
+    const temperatureRow = settingRow(t('Temperature'),
+      t('How much the wording varies, from 0 to 2: lower is steadier and more literal. Model default sends none, for models that accept only their own, such as OpenAI’s reasoning models.'),
+      el('div.row.ai-temperature', {}, temperatureMode, temperatureValue));
     const ollamaCard = settingsCard(t('AI model'),
       settingRow(t('Provider'), providerDesc, aiProvider),
       ollamaFields,
       openaiFields,
-      el('div.settings-test', {}, aiStatus, testAiBtn, ollamaModels));
+      temperatureRow,
+      el('div.settings-test', {}, aiStatus, testAiBtn, ollamaModels, openaiModels));
     const agentOptions = el('div', { dataset: { aiDependent: 'agents' } },
       settingRow(t('Agents can see screenshots'), t('Blurred areas are filled in first. Turn off to share step text only.'), makeSwitch(agentsScreenshots, t('Agents can see screenshots'))),
       settingRow(t('Let AI agents edit brand profiles'), t('Agents can make and change brand profiles: logo, colors, fonts and CSS, and choose the one exports use. They can’t delete a profile.'), makeSwitch(agentsBranding, t('Let AI agents edit brand profiles'))), agentSetup);
@@ -1261,6 +1337,7 @@ function showSettingsDialog({
         ...settings.ai,
         provider: aiProvider.value,
         openai: { baseUrl: openaiUrl.value.trim(), model: openaiModel.value.trim(), vision: openaiVision.checked },
+        temperature: temperatureChoice(),
         enabled: aiEnabled.checked,
         autoDoc: aiAutoDoc.checked,
         attachScreenshots: aiScreenshots.checked,

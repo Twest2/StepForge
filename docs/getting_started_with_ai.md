@@ -104,13 +104,36 @@ LocalAI or LiteLLM Proxy, use it instead of Ollama in
 **Settings → AI → AI model**:
 
 1. Set **Provider** to **OpenAI-compatible server**.
-2. Enter the **Server URL**, including `/v1`, for example
-   `https://llm.internal.example.com/v1`, and the **Model** name.
-3. If the server needs an **API key**, type it and press **Enter**. It's saved
+2. Enter the **Server URL**: the address before `/chat/completions`. It often
+   ends in `/v1`, for example `https://llm.internal.example.com/v1`, but not
+   always: use the address your server's documentation gives.
+3. Enter the **Model** name exactly as the server lists it, including any
+   prefix such as `protected.`.
+4. If the server needs an **API key**, type it and press **Enter**. It's saved
    straight away, encrypted, and only sent to this server. **Remove key**
    deletes it.
-4. Turn on **Model can read images** if the model accepts images.
-5. Choose **Test connection**.
+5. Turn on **Model can read images** if the model accepts images.
+6. Choose **Test connection**. It sends the model a short test message and
+   asks the server for its list of models, which the **Model** box then
+   suggests.
+
+If the test fails, StepForge says what to fix, such as an API key the server
+refused or a model name it doesn't list, and offers a button for the usual
+fix. For example, for a model listed as `protected.gpt-4.1` it offers
+**Use “protected.gpt-4.1”**. **Details** shows the address the request went
+to, the HTTP status and the server's own message.
+
+### Temperature
+
+**Settings → AI → AI model → Temperature** sets how much the model's wording
+varies, from 0 to 2, for Ollama and OpenAI-compatible servers alike. The
+default, 0.2, keeps descriptions steady and literal; higher values vary the
+wording more.
+
+Some models accept only their own temperature, among them OpenAI's reasoning
+models such as GPT-5 and o3. For those, choose **Model default**: StepForge
+then sends no temperature at all. If a model refuses the temperature, Test
+connection says so and offers **Use model default**.
 
 ## Recommended models
 
@@ -181,6 +204,9 @@ The [privacy policy](PRIVACY.md#optional-ai) has the full details.
 | --- | --- |
 | Test connection can't reach Ollama | Make sure Ollama is running (`ollama list` should respond) and the host is correct. |
 | "unable to load model" | Update Ollama to the latest version. Gemma 4 needs 0.30.9 or newer, and Gemma 3 needs 0.30.0 or newer. |
-| Model not found | Run `ollama list` and copy the model name exactly, including any tag like `:1b`. |
+| Model not found | Run `ollama list` and copy the model name exactly, including any tag like `:1b`. On an OpenAI-compatible server, choose **Test connection** and pick the model from the names the **Model** box suggests. |
+| "The server refused the request (403)" or "didn't accept the API key (401)" | Check the API key. A 403 can also mean the key has no access to that model: Test connection says so when the server doesn't list the model. |
+| "Nothing at … answers chat requests (404)" | Check the **Server URL**: it's the address before `/chat/completions`, with `/v1` only if your server uses it. |
+| "This model doesn't accept a temperature of …" | Set **Temperature** to **Model default**, or choose **Use model default** after Test connection. |
 | The AI ▾ menu items are greyed out | Turn on **Settings → AI → Enable AI** and save, then select a step for the step actions. |
 | Descriptions are vague | Try a model that reads screenshots from [Recommended models](#recommended-models), or a larger one if your computer can handle it. |

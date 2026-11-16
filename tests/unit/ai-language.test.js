@@ -31,7 +31,7 @@ function recordingFetch(reply) {
     const [system, user] = JSON.parse(init.body).messages;
     requests.push({ url: String(url), system: system.content, user: user.content });
     const content = typeof reply === 'function' ? reply(String(url)) : reply;
-    return { ok: true, status: 200, json: async () => ({ message: { content }, choices: [{ message: { content } }] }) };
+    return new Response(JSON.stringify({ message: { content }, choices: [{ message: { content } }] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   };
   return { requests, fetchImpl };
 }

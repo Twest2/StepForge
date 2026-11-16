@@ -661,7 +661,9 @@ body.platform-linux #capture-status button {
 }
 /* Each substep row carries a piece of every thread it is in, reaching across the 4px row gap. */
 .step-thread-line { top: -1px; bottom: -5px; }
-.step-thread-line.end { bottom: 6px; }
+/* On the last substep the line stops at the middle of the row and curves into its status dot
+   (18px to the right: one STEP_INDENT), as in a YouTube reply thread. */
+.step-thread-line.end { bottom: calc(50% - 1px); }
 /* Two classes, so body.platform-linux button { padding } doesn't win on Linux. */
 .step-item .step-thread-start {
   left: 8px;
@@ -683,7 +685,15 @@ body.platform-linux #capture-status button {
   border-radius: 1px;
   background: var(--border);
 }
+.step-thread-line.end::before {
+  width: 12px;
+  border: solid var(--border);
+  border-width: 0 0 2px 2px;
+  border-radius: 0 0 0 8px;
+  background: none;
+}
 .step-thread-line.hot::before, .step-thread-start.hot::before { background: var(--accent); }
+.step-thread-line.end.hot::before { background: none; border-color: var(--accent); }
 .step-item .step-thread-start:hover, .step-item .step-thread-start:active { background: none; transform: none; }
 /* Keyboard focus shows on the line itself, not as a box around it. */
 .step-item .step-thread-start:focus-visible { outline: none; }

@@ -1832,7 +1832,8 @@ class GuideEditor {
   /**
    * What the Steps pane draws, Reddit-thread style: `visible` rows (substeps
    * of a collapsed step are left out), `parents` (steps that have substeps),
-   * each visible step's `ancestors` from the top level down, and `collapsed`.
+   * each visible step's `ancestors` from the top level down, `lastChild` (each
+   * parent's last listed direct substep, where its line ends), and `collapsed`.
    */
   stepThreads() {
     const parentOf = outline.parentMap(this.steps);
@@ -1845,23 +1846,27 @@ class GuideEditor {
       for (let id = parentOf.get(step.stepId); id && !chain.includes(id); id = parentOf.get(id)) chain.unshift(id);
       return [step.stepId, chain];
     }));
-    return { visible, parents, ancestors, collapsed, parentOf };
+    const lastChild = new Map(visible.map((step) => [parentOf.get(step.stepId), step.stepId]));
+    return { visible, parents, ancestors, collapsed, parentOf, lastChild };
   }
 
   /**
    * The thread lines on a step row: one segment for each step it is a
    * substep of, under that step's status dot, and on a step with open
    * substeps, the start of its own line (a button: Enter or Space folds
-   * it). Clicking any segment of a thread collapses the step it belongs to.
+   * it). A thread ends on its step's last substep, curving into that
+   * substep's status dot, as in a YouTube reply thread. Clicking any
+   * segment of a thread collapses the step it belongs to.
    */
   stepThreadLines(step, depth, number, threads) {
     const lines = [];
     const chain = threads.ancestors.get(step.stepId);
-    const index = threads.visible.indexOf(step);
-    const nextChain = threads.ancestors.get(threads.visible[index + 1]?.stepId) || [];
     chain.forEach((ancestorId, level) => {
+      const branch = chain[level + 1] || step.stepId; // the substep of ancestorId this row is in
+      const last = threads.lastChild.get(ancestorId) === branch;
+      if (last && branch !== step.stepId) return; // below the curve that ended this thread
       lines.push(el('span.step-thread-line', {
-        className: `step-thread-line${nextChain.includes(ancestorId) ? '' : ' end'}`,
+        className: `step-thread-line${last ? ' end' : ''}`,
         dataset: { thread: ancestorId },
         style: { left: `${THREAD_X - (depth - level) * STEP_INDENT - THREAD_HIT / 2}px` },
         'aria-hidden': 'true',

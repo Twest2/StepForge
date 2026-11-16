@@ -69,18 +69,33 @@ test('a step with substeps starts a thread that each of its substeps continues, 
   assert.ok(start(row(list, 'A')), 'A starts a thread');
   assert.ok(start(row(list, 'a2')), 'a2 starts its own, nested thread');
   assert.equal(start(row(list, 'B')), undefined, 'a step without substeps has no thread');
-  assert.deepEqual(lines(row(list, 'a21')).map((l) => l.dataset.thread), ['A', 'a2']);
+  assert.deepEqual(lines(row(list, 'a1')).map((l) => l.dataset.thread), ['A']);
+  assert.deepEqual(lines(row(list, 'a2')).map((l) => l.dataset.thread), ['A']);
+  // A thread ends on its last direct substep, curving into it (YouTube style); nothing of it is drawn below.
+  assert.ok(!lines(row(list, 'a1'))[0].props.className.includes('end'));
+  assert.ok(lines(row(list, 'a2'))[0].props.className.includes('end'), 'A ends at a2, its last substep');
+  assert.deepEqual(lines(row(list, 'a21')).map((l) => [l.dataset.thread, l.props.className.includes('end')]), [['a2', true]],
+    'a21, under a2, only ends the a2 thread');
+});
+
+test('a thread runs on past a substep\'s own substeps to the next substep', () => {
+  const { e, list } = editor();
+  e.steps.splice(4, 0, { stepId: 'a3', parentStepId: 'A', title: 'Privacy', status: 'todo' });
+  e.stepMap = new Map(e.steps.map((s) => [s.stepId, s]));
+  e.renderStepList();
+  assert.deepEqual(rows(list), ['A', 'a1', 'a2', 'a21', 'a3', 'B', 'C', 'c1']);
+  const ends = (id) => lines(row(list, id)).map((l) => [l.dataset.thread, l.props.className.includes('end')]);
+  assert.deepEqual(ends('a2'), [['A', false]]);
+  assert.deepEqual(ends('a21'), [['A', false], ['a2', true]]);
+  assert.deepEqual(ends('a3'), [['A', true]]);
   // Every piece of a thread sits under that step's status dot, whatever row it is on.
   const x = (r, thread) => Number.parseFloat(lines(r).find((l) => l.dataset.thread === thread).props.style.left);
-  assert.equal(x(row(list, 'a1'), 'A') - x(row(list, 'a21'), 'A'), 18, 'one level deeper, the same line is 18px further left in the row');
-  // The thread stops at its last substep.
-  assert.ok(lines(row(list, 'a21')).every((l) => l.props.className.includes('end')), 'a21 ends both threads');
-  assert.ok(!lines(row(list, 'a1'))[0].props.className.includes('end'));
+  assert.equal(x(row(list, 'a2'), 'A') - x(row(list, 'a21'), 'A'), 18, 'one level deeper, the same line is 18px further left in the row');
 });
 
 test('clicking a thread folds its substeps away and leaves a "+N" that brings them back', async () => {
   const { e, list } = editor();
-  await click(lines(row(list, 'a21'))[0]); // the A thread, clicked down at a21
+  await click(lines(row(list, 'a2'))[0]); // the A thread, clicked on its curve at a2
   assert.deepEqual(rows(list), ['A', 'B', 'C', 'c1']);
   const plus = fold(row(list, 'A'));
   assert.equal(plus.children[0], '+3');

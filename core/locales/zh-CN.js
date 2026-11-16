@@ -2364,7 +2364,7 @@
   "Choose Save to keep the change.": "选择“保存”以保留此更改。",
   "The address before /chat/completions, often ending in /v1. Works with vLLM, LM Studio, LocalAI, LiteLLM and other OpenAI-compatible servers.": "/chat/completions 之前的地址，通常以 /v1 结尾。适用于 vLLM、LM Studio、LocalAI、LiteLLM 和其他兼容 OpenAI 的服务器。",
   "The model name exactly as your server lists it. Test connection suggests the server’s models.": "与服务器列出的完全一致的模型名称。“测试连接”会推荐服务器上的模型。",
-  "How much the wording varies, from 0 to 2: lower is steadier and more literal. Model default sends none, for models that accept only their own, such as OpenAI’s reasoning models.": "措辞的变化程度，范围为 0 到 2：值越低，文字越稳定、越贴近字面。“模型默认值”不发送温度，适用于只接受自身默认值的模型，例如 OpenAI 的推理模型。",
+  "How much the wording varies, from 0 to 2.": "措辞的变化程度，范围为 0 到 2。",
   "The server has no model named “{model}”. Did you mean “{suggestion}”?": "服务器上没有名为“{model}”的模型。你是不是要找“{suggestion}”？",
   "The server has no model named “{model}”. Choose one of the models it lists.": "服务器上没有名为“{model}”的模型。请从它列出的模型中选择一个。",
 });

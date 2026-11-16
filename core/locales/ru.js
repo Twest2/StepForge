@@ -2364,7 +2364,7 @@
   "Choose Save to keep the change.": "Нажмите «Сохранить», чтобы сохранить изменение.",
   "The address before /chat/completions, often ending in /v1. Works with vLLM, LM Studio, LocalAI, LiteLLM and other OpenAI-compatible servers.": "Адрес перед /chat/completions, обычно заканчивается на /v1. Работает с vLLM, LM Studio, LocalAI, LiteLLM и другими серверами, совместимыми с OpenAI.",
   "The model name exactly as your server lists it. Test connection suggests the server’s models.": "Название модели точно так, как его указывает сервер. «Проверить подключение» предложит модели сервера.",
-  "How much the wording varies, from 0 to 2: lower is steadier and more literal. Model default sends none, for models that accept only their own, such as OpenAI’s reasoning models.": "Насколько меняются формулировки, от 0 до 2: чем ниже, тем ровнее и буквальнее текст. «По умолчанию модели» не отправляет значение — для моделей, которые принимают только своё, например моделей рассуждений OpenAI.",
+  "How much the wording varies, from 0 to 2.": "Насколько меняются формулировки, от 0 до 2.",
   "The server has no model named “{model}”. Did you mean “{suggestion}”?": "На сервере нет модели «{model}». Возможно, вы имели в виду «{suggestion}»?",
   "The server has no model named “{model}”. Choose one of the models it lists.": "На сервере нет модели «{model}». Выберите одну из моделей, которые он предлагает.",
 });

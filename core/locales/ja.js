@@ -2364,7 +2364,7 @@
   "Choose Save to keep the change.": "変更を残すには [保存] を選んでください。",
   "The address before /chat/completions, often ending in /v1. Works with vLLM, LM Studio, LocalAI, LiteLLM and other OpenAI-compatible servers.": "/chat/completions の前の部分のアドレスで、多くは /v1 で終わります。vLLM、LM Studio、LocalAI、LiteLLM などの OpenAI 互換サーバーで使えます。",
   "The model name exactly as your server lists it. Test connection suggests the server’s models.": "サーバーに表示されているとおりのモデル名です。[接続をテスト] でサーバーのモデルが候補に表示されます。",
-  "How much the wording varies, from 0 to 2: lower is steadier and more literal. Model default sends none, for models that accept only their own, such as OpenAI’s reasoning models.": "文章の言い回しがどれだけ変わるか（0～2）。低いほど安定した、文字どおりの文章になります。[モデルの既定値] では値を送らないため、OpenAI の推論モデルなど既定値しか受け付けないモデルに使えます。",
+  "How much the wording varies, from 0 to 2.": "文章の言い回しがどれだけ変わるか（0～2）。",
   "The server has no model named “{model}”. Did you mean “{suggestion}”?": "サーバーに「{model}」という名前のモデルはありません。「{suggestion}」のことですか？",
   "The server has no model named “{model}”. Choose one of the models it lists.": "サーバーに「{model}」という名前のモデルはありません。サーバーが提供するモデルから選んでください。",
 });

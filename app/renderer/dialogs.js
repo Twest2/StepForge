@@ -1102,7 +1102,7 @@ function showSettingsDialog({
     });
     syncProvider();
     const temperatureRow = settingRow(t('Temperature'),
-      t('How much the wording varies, from 0 to 2: lower is steadier and more literal. Model default sends none, for models that accept only their own, such as OpenAI’s reasoning models.'),
+      t('How much the wording varies, from 0 to 2.'),
       el('div.row.ai-temperature', {}, temperatureMode, temperatureValue));
     const ollamaCard = settingsCard(t('AI model'),
       settingRow(t('Provider'), providerDesc, aiProvider),

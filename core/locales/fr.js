@@ -2364,7 +2364,7 @@
   "Choose Save to keep the change.": "Choisissez Enregistrer pour conserver la modification.",
   "The address before /chat/completions, often ending in /v1. Works with vLLM, LM Studio, LocalAI, LiteLLM and other OpenAI-compatible servers.": "L’adresse qui précède /chat/completions, se terminant souvent par /v1. Fonctionne avec vLLM, LM Studio, LocalAI, LiteLLM et les autres serveurs compatibles OpenAI.",
   "The model name exactly as your server lists it. Test connection suggests the server’s models.": "Le nom du modèle, exactement tel que votre serveur l’indique. Tester la connexion propose les modèles du serveur.",
-  "How much the wording varies, from 0 to 2: lower is steadier and more literal. Model default sends none, for models that accept only their own, such as OpenAI’s reasoning models.": "Dans quelle mesure la formulation varie, de 0 à 2 : plus la valeur est basse, plus le texte est stable et littéral. Valeur du modèle n’en envoie aucune, pour les modèles qui n’acceptent que la leur, comme les modèles de raisonnement d’OpenAI.",
+  "How much the wording varies, from 0 to 2.": "Dans quelle mesure la formulation varie, de 0 à 2.",
   "The server has no model named “{model}”. Did you mean “{suggestion}”?": "Le serveur n’a aucun modèle nommé « {model} ». Vouliez-vous dire « {suggestion} » ?",
   "The server has no model named “{model}”. Choose one of the models it lists.": "Le serveur n’a aucun modèle nommé « {model} ». Choisissez l’un des modèles qu’il propose.",
 });

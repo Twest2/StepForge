@@ -1,4 +1,6 @@
-<!-- Thanks for contributing! Delete any sections or checkboxes that don't apply. -->
+<!-- Thanks for contributing! Keep the Issue, Summary, Changes, Testing and Checklist
+sections and tick "Allow edits by maintainers", or the pull request is closed
+automatically. Delete any other sections or checkboxes that don't apply. -->
 
 ## Issue
 

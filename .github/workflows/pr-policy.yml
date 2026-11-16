@@ -1,0 +1,42 @@
+name: Pull request rules
+
+# Closes pull requests from outside contributors that don't allow edits by
+# maintainers or don't follow the pull request template, with a comment that
+# says why (rules: scripts/pr-policy.js).
+#
+# pull_request_target runs with write access to this repository, so it must
+# never check out or run the pull request's code. It reads the pull request's
+# details from the event and runs only main's own copy of the rules.
+on:
+  pull_request_target:
+    types: [opened, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  check:
+    name: Check pull request rules
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts/pr-policy.js
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const { checkPullRequest, closingComment } = require(`${process.env.GITHUB_WORKSPACE}/scripts/pr-policy.js`);
+            const pr = context.payload.pull_request;
+            const { exempt, problems } = checkPullRequest(pr);
+            if (exempt) return core.info(`#${pr.number} is from a maintainer or a bot; not checked.`);
+            if (!problems.length) return core.info(`#${pr.number} meets the pull request rules.`);
+            const { owner, repo } = context.repo;
+            await github.rest.issues.createComment({ owner, repo, issue_number: pr.number, body: closingComment(problems) });
+            await github.rest.pulls.update({ owner, repo, pull_number: pr.number, state: 'closed' });
+            core.notice(`Closed #${pr.number}: ${problems.length} rule(s) not met.`);

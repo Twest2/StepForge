@@ -233,10 +233,23 @@ class AppPage {
       return { current: select.selectedIndex, target: options.findIndex((o) => o.textContent.trim() === ${JSON.stringify(optionLabel)}) };
     })()`), { timeout: timeout || DEFAULT_TIMEOUT_MS, label: `select ${selector}` });
     if (info.target < 0) throw new Error(`No option "${optionLabel}" in ${selector}`);
-    await this.click(selector, { timeout });
-    const steps = info.target - info.current;
-    for (let i = 0; i < Math.abs(steps); i++) await this.key(steps > 0 ? 'ArrowDown' : 'ArrowUp');
-    await this.key('Enter');
+    const visible = `[...document.querySelectorAll(${JSON.stringify(selector)})].find((node) => node.getBoundingClientRect().width > 0)`;
+    // ':open' is true while the native list is showing (true if unsupported, so it never blocks).
+    const isOpen = () => this.evaluate(`(() => { const s = ${visible}; try { return Boolean(s && s.matches(':open')); } catch { return true; } })()`);
+    const selected = () => this.evaluate(`(() => { const s = ${visible}; return Boolean(s) && s.selectedIndex === ${info.target}; })()`);
+    for (let attempt = 1; ; attempt += 1) {
+      await this.click(selector, { timeout });
+      // Keys sent before the list has opened are lost on X11.
+      await poll(isOpen, { timeout: 5000, label: `${selector} list open` });
+      // The list's highlight can start on the item under the pointer, not the
+      // selected one (a long list opens over the click). Count from the top.
+      await this.key('Home');
+      for (let i = 0; i < info.target; i++) await this.key('ArrowDown');
+      await this.key('Enter');
+      if (await poll(selected, { timeout: 2000, label: `"${optionLabel}" selected` }).then(() => true, () => false)) return;
+      if (attempt === 3) throw new Error(`Could not select "${optionLabel}" in ${selector}`);
+      if (await isOpen()) await this.key('Escape'); // closes only the list
+    }
   }
 
   async screenshot(file) {
@@ -262,6 +275,7 @@ const KEY_CODES = {
   ArrowDown: { key: 'ArrowDown', code: 'ArrowDown', keyCode: 40 },
   ArrowLeft: { key: 'ArrowLeft', code: 'ArrowLeft', keyCode: 37 },
   ArrowRight: { key: 'ArrowRight', code: 'ArrowRight', keyCode: 39 },
+  Home: { key: 'Home', code: 'Home', keyCode: 36 },
   Space: { key: ' ', code: 'Space', keyCode: 32 },
 };
 

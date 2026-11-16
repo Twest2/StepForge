@@ -342,6 +342,9 @@ class CaptureService {
         paused: this.session.paused,
         guideId: this.session.guideId,
         count: this.session.count,
+        // Clicks accepted but still being turned into steps (frame, title,
+        // image encode, save). The bar and tray count them straight away.
+        pending: this.session.pending || 0,
         intervalSec: this.session.intervalSec || 0,
         // clickCapture reflects any live global click source (xinput/evdev/
         // Windows hook), not just the spawned-process watcher — evdev has no
@@ -492,7 +495,7 @@ class CaptureService {
       const rebuild = () => {
         if (!this.tray || this.tray.isDestroyed()) return;
         this.tray.setContextMenu(Menu.buildFromTemplate([
-          { label: tn(this.session ? this.session.count : 0, 'Captured {count} step', 'Captured {count} steps'), enabled: false },
+          { label: tn(this.session ? this.session.count + (this.session.pending || 0) : 0, 'Captured {count} step', 'Captured {count} steps'), enabled: false },
           { type: 'separator' },
           { label: t('Capture now'), click: () => this.sessionCapture('manual').then(rebuild).catch(() => {}) },
           {
@@ -787,7 +790,11 @@ class CaptureService {
         // Window mode on Windows: the frame is the whole screen; keep the clicked window.
         const shot = this.windowModeCrops() ? await this.windowFrame(frame, clickMeta ? clickMeta.windowBounds : null) : frame;
         const result = await this.storeFrameAsStep(guideId, shot.mode, shot, clickPos, clickMeta);
-        if (result.ok) this.noteStepAdded(result.step, trigger, guideId);
+        // Pending -> stored in one update, so the count never jumps by two.
+        if (result.ok) {
+          this.settlePendingClick(clickMeta, false);
+          this.noteStepAdded(result.step, trigger, guideId);
+        }
         return result;
       }
       if (!sessionLive) return { ok: false, reason: 'session ended before the fallback shot' };
@@ -869,7 +876,10 @@ class CaptureService {
         // The clicked window, not whichever is active by the time this runs.
         ...(trigger === 'click' && this.windowModeCrops() ? { windowBounds: clickMeta ? clickMeta.windowBounds : null } : {}),
       });
-      if (finalResult.ok) this.noteStepAdded(finalResult.step, trigger);
+      if (finalResult.ok) {
+        this.settlePendingClick(clickMeta, false);
+        this.noteStepAdded(finalResult.step, trigger);
+      }
       return finalResult;
     } finally {
       this.shooting = false;
@@ -2180,11 +2190,38 @@ ${WINDOW_BOUNDS_CS}
       clickMeta.guideId = this.session.guideId;
       clickMeta.framePromise = this.frameForClick(clickPos, clickMeta.at)
         .catch(() => null);
+      // Count it now: storing waits behind earlier clicks (image encode and
+      // save, about a second each on a large screen), and a bar that only
+      // counted stored steps fell further behind with every quick click.
+      clickMeta.pendingFor = this.session;
+      this.session.pending = (this.session.pending || 0) + 1;
+      this.refreshStepCount();
     }
     this.clickQueue = this.clickQueue
       .then(() => this.sessionCapture('click', clickPos, clickMeta))
-      .catch(() => {});
+      .catch(() => {})
+      .then(() => this.settlePendingClick(clickMeta));
     return this.clickQueue;
+  }
+
+  /**
+   * A counted click is no longer pending: it became a step (noteStepAdded
+   * counts it from here) or was dropped. Runs once per click; `refresh`
+   * false leaves updating the bar to the caller.
+   */
+  settlePendingClick(clickMeta, refresh = true) {
+    const session = clickMeta && clickMeta.pendingFor;
+    if (!session) return;
+    clickMeta.pendingFor = null;
+    session.pending = Math.max(0, (session.pending || 0) - 1);
+    if (refresh && session === this.session) this.refreshStepCount();
+  }
+
+  /** Show the current step count on the bar, the tray and the editor. */
+  refreshStepCount() {
+    if (this.recordingControls) this.recordingControls.update();
+    this.notify('capture:state', this.state());
+    if (this.rebuildTrayMenu) this.rebuildTrayMenu();
   }
 
   // --- Keyboard context tracking -------------------------------------------

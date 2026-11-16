@@ -418,3 +418,33 @@ test('quitting closes the floating bar without starting the tray; an unexpected 
     assert.equal(trayStarts, quitting ? 0 : 1);
   }
 });
+
+test('the bar counts each click at once while slow saves catch up, and takes back a click that never becomes a step', async () => {
+  const shown = [];
+  const svc = new CaptureService({ store: {}, settings: { get: () => null }, getWindow: () => null, notify: () => {} });
+  svc.session = { guideId: 'guide-1', paused: false, count: 0 };
+  svc.recordingControls = { update: () => { const s = svc.state(); shown.push(s.count + s.pending); }, destroy: () => {} };
+  svc.userIsInApp = () => false;
+  svc.frameForClick = async () => ({ mode: 'fullscreen', png: Buffer.alloc(0), size: { width: 10, height: 10 } });
+  // Each save waits until the test lets it finish, like a slow image encode.
+  const saves = [];
+  svc.storeFrameAsStep = () => new Promise((resolve) => saves.push(resolve));
+  const settle = async () => { for (let i = 0; i < 5; i++) await new Promise(setImmediate); };
+
+  for (let i = 0; i < 3; i++) svc.enqueueClickCapture({ x: 10 * i, y: 10 }, Date.now() + i * 300, 'left');
+  assert.deepEqual(shown, [1, 2, 3], 'each accepted click shows up on the bar immediately');
+  assert.equal(svc.state().count, 0, 'nothing is stored yet');
+
+  await settle();
+  saves.shift()({ ok: true, step: { stepId: 's1' } });
+  await settle();
+  saves.shift()({ ok: false, reason: 'no capture frame available' });
+  await settle();
+  saves.shift()({ ok: true, step: { stepId: 's3' } });
+  await settle();
+
+  assert.equal(svc.state().count, 2);
+  assert.equal(svc.state().pending, 0);
+  assert.equal(shown.at(-1), 2, 'the click that was not stored is taken back');
+  assert.ok(shown.every((n) => n <= 3), `the bar never over-counts: ${shown.join(',')}`);
+});

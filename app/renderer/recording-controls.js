@@ -9,7 +9,9 @@
     document.documentElement.lang = language;
     document.documentElement.classList.toggle('dark', state.dark);
     document.getElementById('state').textContent = state.paused ? t('Paused') : t('Recording');
-    document.getElementById('count').textContent = tn(state.count, '{count} step', '{count} steps');
+    // Clicks still being saved count already, so the number keeps up with clicking.
+    const count = (state.count || 0) + (state.pending || 0);
+    document.getElementById('count').textContent = tn(count, '{count} step', '{count} steps');
     pause.textContent = state.paused ? t('Resume') : t('Pause');
     finish.textContent = t('Finish');
   });

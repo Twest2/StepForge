@@ -35,7 +35,7 @@ function makeDom() {
     const node = {
       nodeType: 1, tagName: tag.toUpperCase(), localName: tag.toLowerCase(),
       children: [], parent: null, listeners: [], style: {}, dataset: {},
-      hidden: false, inert: false, disabled: false, tabIndex: 0, type: '', value: '', title: '', role: '', id: '',
+      hidden: false, inert: false, disabled: false, tabIndex: 0, type: '', value: '', checked: false, title: '', role: '', id: '',
       classList: {
         add: (...names) => names.forEach((c) => classes.add(c)),
         remove: (...names) => names.forEach((c) => classes.delete(c)),
@@ -57,6 +57,8 @@ function makeDom() {
         }
       },
       replaceChildren(...items) { for (const c of this.children) c.parent = null; this.children = []; this.append(...items); },
+      get firstChild() { return this.children[0] || null; },
+      removeChild(child) { this.children = this.children.filter((c) => c !== child); child.parent = null; return child; },
       remove() {
         if (!this.parent) return;
         this.parent.children = this.parent.children.filter((c) => c !== this);
@@ -606,17 +608,25 @@ test('editor shortcuts stand down while a dialog is open', () => {
   assert.deepEqual(tools, ['rect']);
 });
 
-test('Export closes on ×, Escape and Cancel without a discard prompt, even after settings change', async () => {
+function openExportDialog(extra = {}) {
+  const u = loadUtil('en', true);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/quality.js'), 'utf8'), u.context);
+  const saved = [];
+  let exported = 0;
+  const done = u.window.StepForgeDialogs.showExportDialog({
+    formats: [{ id: 'pdf', label: 'PDF' }, { id: 'docx', label: 'Word' }],
+    defaultFormat: 'pdf',
+    onLoadDefaults: async () => ({ includeToc: true }),
+    onExport: async () => { exported++; return true; },
+    onRemember: (choices) => saved.push(JSON.parse(JSON.stringify(choices))),
+    ...extra,
+  });
+  return { u, done, saved, exported: () => exported };
+}
+
+test('Export closes on ×, Escape and Cancel without a discard prompt and keeps what was changed', async () => {
   for (const how of ['×', 'Escape', 'Cancel']) {
-    const u = loadUtil('en', true);
-    vm.runInContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/quality.js'), 'utf8'), u.context);
-    let exported = 0;
-    const done = u.window.StepForgeDialogs.showExportDialog({
-      formats: [{ id: 'pdf', label: 'PDF' }, { id: 'docx', label: 'Word' }],
-      defaultFormat: 'pdf',
-      onLoadDefaults: async () => ({ includeToc: true }),
-      onExport: async () => { exported++; return true; },
-    });
+    const { u, done, saved, exported } = openExportDialog();
     await settle();
     const dialog = u.modalRoot.children[0];
     // Change what the dialog offers: format, output folder and an option.
@@ -637,6 +647,35 @@ test('Export closes on ×, Escape and Cancel without a discard prompt, even afte
 
     assert.equal(u.modalRoot.children.length, 0, `${how} closes the dialog with no "Discard your changes?" prompt`);
     assert.equal(await done, false, `${how} resolves as not exported`);
-    assert.equal(exported, 0);
+    assert.equal(exported(), 0);
+    assert.deepEqual(saved, [{ format: 'docx', templates: { pdf: '', docx: '' }, options: { pdf: {}, docx: { includeToc: false } } }],
+      `${how} keeps the changed format and option for next time`);
   }
+});
+
+test('Export reopens with the last format and options, per format, and keeps them after exporting', async () => {
+  const { u, done, saved, exported } = openExportDialog({
+    remembered: { format: 'docx', templates: {}, options: { docx: { includeToc: false } } },
+  });
+  await settle();
+  const dialog = u.modalRoot.children[0];
+  const format = u.walk(dialog).find((n) => n.localName === 'select');
+  const toggle = () => u.walk(dialog).find((n) => n.localName === 'input' && n.type === 'checkbox');
+  assert.equal(format.value, 'docx', 'opens on the format used last');
+  assert.equal(toggle().checked, false, 'with that format’s option as it was left');
+
+  // PDF has nothing remembered, so it shows its defaults; Word's choice survives the switch.
+  format.value = 'pdf';
+  u.dispatch(format, { type: 'change' });
+  await settle();
+  assert.equal(toggle().checked, true);
+  format.value = 'docx';
+  u.dispatch(format, { type: 'change' });
+  await settle();
+  assert.equal(toggle().checked, false);
+
+  u.button(dialog, 'Export').click();
+  assert.equal(await done, true);
+  assert.equal(exported(), 1);
+  assert.deepEqual(saved, [{ format: 'docx', templates: { pdf: '', docx: '' }, options: { pdf: {}, docx: { includeToc: false } } }]);
 });

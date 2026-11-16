@@ -129,6 +129,9 @@ const DEFAULT_SETTINGS = {
     // Code block colors: a theme id from core/code-themes.js, or 'plain'.
     codeTheme: 'atom-one-dark',
     lastOutputDirs: {}, // format -> dir
+    // The Export dialog's last choices: its format, and per format the
+    // template and the options that differ from the defaults.
+    dialog: { format: '', templates: {}, options: {} },
   },
   library: {
     sortBy: 'updatedAt',

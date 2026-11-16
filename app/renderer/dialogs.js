@@ -1130,7 +1130,7 @@ function showSettingsDialog({
           settingRow(t('Enable AI'), t('Turn on the AI ▾ menu in the guide toolbar: write a whole guide, a step, or one field.'), makeSwitch(aiEnabled, t('Enable AI'))),
           aiOptions),
         ollamaCard,
-        settingsCard(t('AI agents (Claude, Codex)'),
+        settingsCard(t('MCP'),
           el('div.setting-desc', {}, t('AI apps such as Claude and Codex can connect to StepForge and edit your guides. They can create and delete guides and steps, reorder steps, replace or remove screenshots, edit text, add placeholders, and add or delete annotations except blurs. StepForge saves snapshots before step creation, moves, deletions and screenshot changes; restore them from More → Backups & snapshots. Deleted guides go to the Trash.')),
           settingRow(t('Let AI agents edit your guides'), t('Turning off takes effect immediately, even if Settings is canceled. Turning on requires Save.'), makeSwitch(agentsEnabled, t('Let AI agents edit your guides'))),
           agentAccessStatus, agentOptions),

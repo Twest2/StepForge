@@ -16,7 +16,7 @@ window opens, and nothing runs when no agent is connected.
 ## 1. Turn on agent access
 
 1. Open **Settings → AI**.
-2. Under **AI agents (Claude, Codex)**, turn on **Let AI agents edit your
+2. Under **MCP**, turn on **Let AI agents edit your
    guides**.
 3. **Save.**
 
@@ -29,7 +29,7 @@ profiles**. It's off by default. See
 
 ## 2. Connect your agent
 
-Use the setup shown in **Settings → AI → AI agents**. It's made for this
+Use the setup shown in **Settings → AI → MCP**. It's made for this
 computer, with StepForge's exact location. (From the
 [Microsoft Store](windows/microsoft-store.md), it uses the `stepforge.exe`
 command instead, which stays the same when the Store updates StepForge.)

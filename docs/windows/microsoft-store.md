@@ -93,7 +93,7 @@ its `library`, `settings`, `cloud` and `shared-links` folders. Leave
 ## AI agents
 
 The Store version adds a `stepforge.exe` command to your PATH, and the setup in
-**Settings → AI → AI agents** uses it, so agents stay connected after each
+**Settings → AI → MCP** uses it, so agents stay connected after each
 update. See [Let Claude or Codex write your guides](../AI_AGENTS.md).
 
 ## Uninstall

@@ -1600,9 +1600,7 @@ function showExportDialog({
     refreshFormatDesc();
     templateSelect.addEventListener('change', () => refreshOptions());
     refreshTemplates();
-    // Once the first options have loaded, what the dialog offers is the baseline for unsaved changes.
-    let optionsBaseline = null;
-    refreshOptions().then(() => { optionsBaseline = payloadKey(); });
+    refreshOptions();
 
     const effectiveOptions = () => {
       // only keep values that differ from defaults, so templates stay minimal
@@ -1661,7 +1659,6 @@ function showExportDialog({
       publish: publishing() ? { days: Number(publishDays.value) } : null,
       brandProfileId: branding ? brandChoice.value : undefined,
     });
-    const payloadKey = () => JSON.stringify(payload());
 
     const cancelBtn = el('button', { onClick: () => requestDismiss() }, t('Cancel'));
     const previewBtn = el('button', {
@@ -1703,7 +1700,8 @@ function showExportDialog({
       body,
       footer: [cancelBtn, previewBtn, exportBtn],
       wide: true,
-      isDirty: () => optionsBaseline !== null && payloadKey() !== optionsBaseline,
+      // No discard prompt: export settings are choices for this one export,
+      // not work to protect, so ×, Esc and Cancel just close the dialog.
       onClose: () => resolve(false),
     });
   });

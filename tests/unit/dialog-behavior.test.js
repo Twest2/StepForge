@@ -605,3 +605,38 @@ test('editor shortcuts stand down while a dialog is open', () => {
   assert.equal(deleted, 1);
   assert.deepEqual(tools, ['rect']);
 });
+
+test('Export closes on ×, Escape and Cancel without a discard prompt, even after settings change', async () => {
+  for (const how of ['×', 'Escape', 'Cancel']) {
+    const u = loadUtil('en', true);
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/quality.js'), 'utf8'), u.context);
+    let exported = 0;
+    const done = u.window.StepForgeDialogs.showExportDialog({
+      formats: [{ id: 'pdf', label: 'PDF' }, { id: 'docx', label: 'Word' }],
+      defaultFormat: 'pdf',
+      onLoadDefaults: async () => ({ includeToc: true }),
+      onExport: async () => { exported++; return true; },
+    });
+    await settle();
+    const dialog = u.modalRoot.children[0];
+    // Change what the dialog offers: format, output folder and an option.
+    const format = u.walk(dialog).find((n) => n.localName === 'select');
+    format.value = 'docx';
+    u.dispatch(format, { type: 'change' });
+    await settle();
+    const folder = u.walk(dialog).find((n) => n.localName === 'input' && n.type === 'text');
+    folder.value = '/tmp/elsewhere';
+    u.dispatch(folder, { type: 'input' });
+    const toggle = u.walk(dialog).find((n) => n.localName === 'input' && n.type === 'checkbox');
+    toggle.checked = !toggle.checked;
+    u.dispatch(toggle, { type: 'change' });
+
+    if (how === '×') u.walk(dialog).find((n) => n.localName === 'button' && n.className.includes('close')).click();
+    else if (how === 'Escape') u.press('Escape');
+    else u.button(dialog, 'Cancel').click();
+
+    assert.equal(u.modalRoot.children.length, 0, `${how} closes the dialog with no "Discard your changes?" prompt`);
+    assert.equal(await done, false, `${how} resolves as not exported`);
+    assert.equal(exported, 0);
+  }
+});

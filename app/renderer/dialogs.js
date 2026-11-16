@@ -1392,6 +1392,8 @@ function showExportDialog({
   quality = [],        // findings from api.guide.quality, shown above the options
   onShowFinding,       // (finding) => jump to it; runs after the dialog closes
   branding = null,     // { profiles: [{ id, name }], activeId }: brand profile choice (Settings → Branding)
+  remembered = null,   // { format, templates: { format: name }, options: { format: {...} } } from the last time
+  onRemember,          // (same shape) => save it; called whenever the dialog closes
 } = {}) {
   return new Promise((resolve) => {
     const formatOptions = (formats || []).map((f) => {
@@ -1405,8 +1407,16 @@ function showExportDialog({
       };
     });
     const formatInfo = (value) => formatOptions.find((f) => f.value === value) || {};
+    // What was chosen last time, per format: it opens that way again, and
+    // whatever is changed here is kept for next time however the dialog closes.
+    const memory = {
+      templates: { ...(remembered?.templates || {}) },
+      options: { ...(remembered?.options || {}) },
+    };
+    const startFormat = formatOptions.some((f) => f.value === remembered?.format) ? remembered.format : defaultFormat;
     // A list option can only hold text, so the badge goes in its label too.
-    const formatSelect = makeSelect(defaultFormat, formatOptions.map((f) => ({ ...f, label: f.badge ? `${f.label} (${t(f.badge)})` : f.label })));
+    const formatSelect = makeSelect(startFormat, formatOptions.map((f) => ({ ...f, label: f.badge ? `${f.label} (${t(f.badge)})` : f.label })));
+    formatSelect.value = startFormat;
     const formatDesc = el('div.muted.export-format-desc');
     const templateSelect = makeSelect('', [{ value: '', label: t('Default template') }]);
     const outDirInput = makeInput(defaultOutDir, 'text', { placeholder: t('Choose an output folder') });
@@ -1523,12 +1533,21 @@ function showExportDialog({
       }
     }
 
-    async function refreshOptions() {
-      defaults = (await onLoadDefaults?.(formatSelect.value, brandChoice.value)) || {};
+    // The format whose options `current` holds, once they have loaded.
+    let optionsFormat = null;
+    // `restore` brings back what was last chosen for this format; picking a
+    // template or a brand loads that afresh instead.
+    async function refreshOptions({ restore = false } = {}) {
+      const format = formatSelect.value;
+      optionsFormat = null;
+      const loadedDefaults = (await onLoadDefaults?.(format, brandChoice.value)) || {};
       const saved = templateSelect.value
-        ? (await onLoadTemplate?.(formatSelect.value, templateSelect.value)) || {}
+        ? (await onLoadTemplate?.(format, templateSelect.value)) || {}
         : {};
-      current = { ...saved };
+      if (format !== formatSelect.value) return; // the format changed meanwhile
+      defaults = loadedDefaults;
+      current = restore && memory.options[format] ? { ...memory.options[format] } : { ...saved };
+      optionsFormat = format;
       renderOptions();
     }
 
@@ -1537,6 +1556,10 @@ function showExportDialog({
       templateSelect.append(el('option', { value: '' }, t('Default template')));
       for (const name of list) templateSelect.append(el('option', { value: name }, name));
     }
+    const restoreTemplate = () => {
+      const name = memory.templates[formatSelect.value];
+      if (name && (templatesByFormat[formatSelect.value] || []).includes(name)) templateSelect.value = name;
+    };
 
     const refreshFormatDesc = () => {
       const info = formatInfo(formatSelect.value);
@@ -1587,12 +1610,33 @@ function showExportDialog({
     }
     publishInsteadBtn.addEventListener('click', () => {
       const format = formatSelect.value;
-      close();
-      resolve(false);
+      finish(false);
       onPublishInstead(format);
     });
 
-    formatSelect.addEventListener('change', () => { refreshFormatDesc(); refreshPublishInstead(); refreshTemplates(); refreshOptions(); refreshPublish(); refreshBrandNote(); });
+    // The format on screen, and keeping its choices when leaving it.
+    let shownFormat = formatSelect.value;
+    const keepFormatChoices = () => {
+      if (optionsFormat !== shownFormat) return; // never loaded: keep what was remembered
+      memory.templates[shownFormat] = templateSelect.value;
+      memory.options[shownFormat] = effectiveOptions();
+    };
+    let rememberedOnClose = false;
+    const remember = () => {
+      if (rememberedOnClose) return;
+      rememberedOnClose = true;
+      keepFormatChoices();
+      onRemember?.({ format: shownFormat, templates: { ...memory.templates }, options: { ...memory.options } });
+    };
+    // Every way out of the dialog keeps what was chosen.
+    const finish = (value) => { remember(); close(); resolve(value); };
+
+    formatSelect.addEventListener('change', () => {
+      keepFormatChoices();
+      shownFormat = formatSelect.value;
+      refreshFormatDesc(); refreshPublishInstead(); refreshTemplates(); restoreTemplate();
+      refreshOptions({ restore: true }); refreshPublish(); refreshBrandNote();
+    });
     // The brand's colors are the options' defaults.
     brandChoice.addEventListener('change', () => refreshOptions());
     refreshBrandNote();
@@ -1600,9 +1644,8 @@ function showExportDialog({
     refreshFormatDesc();
     templateSelect.addEventListener('change', () => refreshOptions());
     refreshTemplates();
-    // Once the first options have loaded, what the dialog offers is the baseline for unsaved changes.
-    let optionsBaseline = null;
-    refreshOptions().then(() => { optionsBaseline = payloadKey(); });
+    restoreTemplate();
+    refreshOptions({ restore: true });
 
     const effectiveOptions = () => {
       // only keep values that differ from defaults, so templates stay minimal
@@ -1636,7 +1679,7 @@ function showExportDialog({
     }, t('Manage…'));
 
     const body = el('div.export-dialog', {},
-      qualityPanel(quality, (finding) => { close(); resolve(false); onShowFinding?.(finding); }),
+      qualityPanel(quality, (finding) => { finish(false); onShowFinding?.(finding); }),
       labeledRow(t('Format'), el('div.export-format', {}, formatSelect, formatDesc, publishInsteadNote)),
       labeledRow(t('Template'), el('div.row', {}, templateSelect, saveTplBtn, manageBtn)),
       branding ? labeledRow(t('Branding'), el('div.row', {}, brandChoice, brandNote)) : null,
@@ -1661,7 +1704,6 @@ function showExportDialog({
       publish: publishing() ? { days: Number(publishDays.value) } : null,
       brandProfileId: branding ? brandChoice.value : undefined,
     });
-    const payloadKey = () => JSON.stringify(payload());
 
     const cancelBtn = el('button', { onClick: () => requestDismiss() }, t('Cancel'));
     const previewBtn = el('button', {
@@ -1684,8 +1726,7 @@ function showExportDialog({
         try {
           const ok = await onExport(payload());
           if (ok !== false) {
-            close();
-            resolve(true);
+            finish(true);
             return;
           }
         } finally {
@@ -1703,8 +1744,9 @@ function showExportDialog({
       body,
       footer: [cancelBtn, previewBtn, exportBtn],
       wide: true,
-      isDirty: () => optionsBaseline !== null && payloadKey() !== optionsBaseline,
-      onClose: () => resolve(false),
+      // No discard prompt: ×, Esc and Cancel close the dialog, and what was
+      // changed is kept for next time rather than thrown away.
+      onClose: () => { remember(); resolve(false); },
     });
   });
 }

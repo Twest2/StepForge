@@ -4461,7 +4461,12 @@ class GuideEditor {
       } : null,
       branding: { profiles: brandProfiles, activeId: settings.branding?.activeProfileId || '' },
       defaultFormat: 'pdf',
-      defaultOutDir: settings.exports?.lastOutputDirs?.pdf || '',
+      defaultOutDir: settings.exports?.lastOutputDirs?.[settings.exports?.dialog?.format || 'pdf']
+        || settings.exports?.lastOutputDirs?.pdf || '',
+      // Opens with what was chosen last time, and keeps changes however it closes.
+      remembered: settings.exports?.dialog || null,
+      onRemember: (choices) => api.settings.set({ keyPath: 'exports.dialog', value: choices })
+        .catch((err) => console.warn('[stepforge] could not save export choices:', err?.message || err)),
       onChooseDir: async (format) => api.export.chooseDir({ format }),
       onChooseImage: async () => api.export.chooseImage(),
       onLoadDefaults: async (format, brandProfileId) => api.export.defaults({ format, brandProfileId }),

@@ -1,0 +1,34 @@
+{
+  "ordinary": [
+    { "title": "Open preferences", "instructions": "Choose an option and review the result.", "screenshot": [240, 120] },
+    { "title": "Save preferences", "instructions": "Save the selected option.", "screenshot": [240, 120] }
+  ],
+  "nested": [
+    { "key": "process", "title": "Configure the workspace", "newPage": true },
+    { "title": "Choose a layout", "parent": "process", "instructions": "Select the layout to use.", "screenshot": [240, 120] },
+    { "title": "Confirm the layout", "parent": "process", "instructions": "Review the selected layout.", "screenshot": [240, 120] },
+    { "title": "Verify the workspace", "instructions": "Check that setup is complete.", "screenshot": [240, 120] }
+  ],
+  "caption": [
+    {
+      "title": "Review the sample panel",
+      "instructions": "Check the displayed example.",
+      "screenshot": [240, 120],
+      "notes": [
+        { "position": "after-image", "title": "Example values", "text": "This example is illustrative; your setup may differ." }
+      ]
+    }
+  ],
+  "oversized": [
+    {
+      "title": "Review a long explanation",
+      "instructions": "Choose an option, review the result, and continue. ",
+      "repeat": 2000,
+      "screenshot": [240, 120],
+      "notes": [
+        { "position": "after-image", "title": "Check the result", "text": "Verify this action before moving on." }
+      ]
+    },
+    { "title": "Continue setup", "instructions": "Proceed to the next action.", "screenshot": [240, 120] }
+  ]
+}

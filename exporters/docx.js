@@ -43,6 +43,100 @@ const LEVEL_STYLE = {
 };
 
 const EMU_PER_PX = 9525; // 96 dpi
+// Match the fixed A4 section below. Leave headroom for font/layout differences
+// between Word and LibreOffice; this is a conservative fit estimate, not a
+// replacement for either application's pagination engine.
+const PRINTABLE_HEIGHT_TWIPS = 16838 - 1134 * 2;
+const PRINTABLE_WIDTH_TWIPS = 11906 - 1134 * 2;
+const STEP_KEEP_BUDGET = PRINTABLE_HEIGHT_TWIPS - 720;
+
+function paragraphText(xml) {
+  return xml.replace(/<w:br\b[^>]*\/>/g, '\n')
+    .replace(/<[^>]*>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&');
+}
+
+/** Estimate emitted blocks only; do not read or resize screenshot pixels. */
+function blockHeight(xml, width = PRINTABLE_WIDTH_TWIPS) {
+  if (xml.startsWith('<w:tbl>')) {
+    const cells = [...xml.matchAll(/<w:tc>([\s\S]*?)<\/w:tc>/g)];
+    return 160 + Math.max(0, ...cells.map((cell) => {
+      const cellWidth = Number(cell[1].match(/<w:tcW w:w="(\d+)"/)?.[1]) || width;
+      return [...cell[1].matchAll(/<w:p>[\s\S]*?<\/w:p>/g)]
+        .reduce((sum, match) => sum + blockHeight(match[0], cellWidth - 360), 0);
+    }));
+  }
+  const imageHeights = [...xml.matchAll(/<wp:extent cx="\d+" cy="(\d+)"/g)]
+    .map((match) => Number(match[1]) / 635);
+  const font = Math.max(22, ...[...xml.matchAll(/<w:sz w:val="(\d+)"/g)].map((m) => Number(m[1])));
+  // Half-points -> twips, with a deliberately generous average glyph width.
+  const charsPerLine = Math.max(1, Math.floor(width / (font * 10 * 0.65)));
+  const lines = paragraphText(xml).split('\n').reduce((sum, line) =>
+    sum + Math.max(1, Math.ceil([...line].reduce((n, c) => n + (c.codePointAt(0) > 0x2ff ? 2 : 1), 0) / charsPerLine)), 0);
+  const heading = /<w:pStyle w:val="Heading/.test(xml);
+  return Math.max(imageHeights.reduce((a, b) => a + b, 0), lines * font * 10 * 1.3)
+    + (heading ? 480 : 160);
+}
+
+function paragraphKeeps(xml, next, lines) {
+  if (!xml.startsWith('<w:p>')) return xml;
+  const match = xml.match(/^<w:p>(?:<w:pPr>([\s\S]*?)<\/w:pPr>)?/);
+  const props = (match[1] || '').replace(/<w:keep(?:Next|Lines)\b[^>]*\/>/g, '');
+  const style = props.match(/<w:pStyle\b[^>]*\/>/)?.[0] || '';
+  const keeps = `<w:keepNext w:val="${next ? 1 : 0}"/><w:keepLines w:val="${lines ? 1 : 0}"/>`;
+  return `<w:p><w:pPr>${style}${keeps}${props.replace(style, '')}</w:pPr>${xml.slice(match[0].length)}`;
+}
+
+/**
+ * A keep chain belongs to one emitted step, never to Normal or to a sibling.
+ * Short notes following its picture are part of the chain. Oversized steps
+ * release their long lead-in paragraphs, keeping only the fitting suffix
+ * around the picture; long instructions may then split naturally.
+ */
+function paginateStep(parts, screenshot, { hasChildren, forceNewPage }) {
+  const imageIndex = screenshot ? parts.findIndex((xml) => xml.includes(screenshot)) : -1;
+  const headingIndex = parts.findIndex((xml) => /<w:bookmarkStart\b/.test(xml));
+  if (imageIndex < 0) {
+    // Preserve a process heading's attachment to its first child, but don't
+    // attach a standalone title-only step to an unrelated following step.
+    if (!hasChildren && headingIndex === parts.length - 1) {
+      parts[headingIndex] = paragraphKeeps(parts[headingIndex], false, blockHeight(parts[headingIndex]) <= STEP_KEEP_BUDGET);
+    }
+    return parts;
+  }
+  // A leading callout is part of a forced-new-page step too. Keep just one
+  // break, before its first paragraph, rather than stranding that callout.
+  if (forceNewPage && headingIndex > 0 && parts[0].startsWith('<w:p>')) {
+    parts[headingIndex] = parts[headingIndex].replace('<w:pageBreakBefore/>', '');
+    // CT_PPr is an ordered sequence: pageBreakBefore must follow keepLines and
+    // precede the callout's border and shading.
+    parts[0] = paragraphKeeps(parts[0], true, true).replace('<w:keepLines w:val="1"/>', '$&<w:pageBreakBefore/>');
+  }
+  const heights = parts.map((xml) => blockHeight(xml));
+  let end = imageIndex;
+  let height = heights[imageIndex];
+  // Do not pull code blocks, tables, extra figures or long commentary into
+  // the screenshot's caption chain.
+  while (end + 1 < parts.length) {
+    const note = parts[end + 1];
+    if (!note.startsWith('<w:p>') || /<w:drawing>|Courier New|<w:rFonts/.test(note)
+      || paragraphText(note).length > 600 || heights[end + 1] > 2800
+      || height + heights[end + 1] > STEP_KEEP_BUDGET) break;
+    height += heights[++end];
+  }
+  let start = imageIndex;
+  while (start > 0 && height + heights[start - 1] <= STEP_KEEP_BUDGET) height += heights[--start];
+  return parts.map((xml, i) => {
+    if (xml.startsWith('<w:tbl>')) {
+      // The normal side-by-side row stays atomic. An over-page row must be
+      // allowed to split instead of overflowing or creating blank pages.
+      return heights[i] > STEP_KEEP_BUDGET ? xml.replace('<w:cantSplit/>', '') : xml;
+    }
+    if (i >= start && i <= end && height <= STEP_KEEP_BUDGET) return paragraphKeeps(xml, i < end, true);
+    const next = i === headingIndex && i + 1 < parts.length;
+    return paragraphKeeps(xml, next, heights[i] <= STEP_KEEP_BUDGET);
+  });
+}
 
 function p(children, props = '') {
   return `<w:p>${props ? `<w:pPr>${props}</w:pPr>` : ''}${children}</w:p>`;
@@ -66,8 +160,11 @@ function drawing(relId, widthPx, heightPx, maxWidthTwips, alt, name = `Screensho
   // scale to maxWidth (twips -> px at 96dpi: twips/15)
   const maxWpx = maxWidthTwips / 15;
   let w = widthPx, h = heightPx;
-  if (w > maxWpx) { h = Math.round((h * maxWpx) / w); w = Math.round(maxWpx); }
-  const cx = Math.round(w * EMU_PER_PX), cy = Math.round(h * EMU_PER_PX);
+  if (w > maxWpx) { h = (h * maxWpx) / w; w = maxWpx; }
+  // Whole pixels as before, but a very narrow picture keeps its sub-pixel
+  // width rather than rounding to an invisible zero extent.
+  const px = (v) => (v >= 1 ? Math.round(v) : v);
+  const cx = Math.max(1, Math.round(px(w) * EMU_PER_PX)), cy = Math.max(1, Math.round(px(h) * EMU_PER_PX));
   return `<w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0">` +
     `<wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="${relId}" name="${escapeXml(name)}" descr="${escapeXml(alt)}"/>` +
     `<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">` +
@@ -380,7 +477,10 @@ function exportDocx(ast, outDir, template = {}) {
     ));
   };
 
+  const parentIds = new Set(ast.steps.map((step) => step.parentStepId).filter(Boolean));
   for (const step of ast.steps) {
+    const stepStart = body.length;
+    let screenshotParagraph = '';
     const headingLevel = Math.min(3, Math.max(1, step.depth + 1));
     const headSize = headingLevel === 1 ? 30 : headingLevel === 2 ? 26 : 22;
     const bookmarkId = ++bookmarkCounter;
@@ -422,7 +522,11 @@ function exportDocx(ast, outDir, template = {}) {
       media.push({ name, data: encodePng(img) });
       rels.push(`<Relationship Id="rId${relId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${name}"/>`);
       stepImageCount += 1;
-      return p(drawing(relId, img.width, img.height, maxTwips, step.altText, undefined, { border: shots.border ? shots.borderColor : '' }), alignProps);
+      // Very tall pictures must still fit a printable page. Limit only their
+      // on-page extent; the embedded PNG bytes and annotations are untouched.
+      const boundedWidth = Math.min(maxTwips, (img.width / img.height) * (PRINTABLE_HEIGHT_TWIPS - 1440));
+      screenshotParagraph = p(drawing(relId, img.width, img.height, boundedWidth, step.altText, undefined, { border: shots.border ? shots.borderColor : '' }), alignProps);
+      return screenshotParagraph;
     };
     if (img && description && shots.layout === 'side-by-side') {
       // Screenshot on the left, description on the right. Callouts keep their
@@ -458,6 +562,10 @@ function exportDocx(ast, outDir, template = {}) {
         if (block.rows && block.rows.length) body.push(table(block.rows), p(''));
       }
     }
+    const stepParts = body.splice(stepStart);
+    body.push(...paginateStep(stepParts, screenshotParagraph, {
+      hasChildren: parentIds.has(step.stepId), forceNewPage: step.forceNewPage,
+    }));
   }
 
   const settingsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>

@@ -101,7 +101,7 @@ the model writes the CSS for you to review. See
 
 If your organization runs an OpenAI-compatible server, such as vLLM, LM Studio,
 LocalAI or LiteLLM Proxy, use it instead of Ollama in
-**Settings → AI → AI connection**:
+**Settings → AI → AI model**:
 
 1. Set **Provider** to **OpenAI-compatible server**.
 2. Enter the **Server URL**, including `/v1`, for example

@@ -952,6 +952,10 @@ function showSettingsDialog({
               openaiModel.value = diagnosis.suggestion;
             }));
           }
+          // The fix to make next is the primary (blue) button: the model fix
+          // when there are two, since a refused temperature only shows once
+          // the server has the model.
+          actions.at(-1)?.classList.add('primary');
           updateAiStatus(result.reason || t('Could not connect to Ollama.'), { error: true, diagnosis, actions });
           return;
         }

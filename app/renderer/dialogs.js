@@ -1029,7 +1029,7 @@ function showSettingsDialog({
       updateAiStatus(t('Not tested yet. Vision-capable models can also inspect each step’s screenshot.'));
     });
     syncProvider();
-    const ollamaCard = settingsCard(t('AI connection'),
+    const ollamaCard = settingsCard(t('AI model'),
       settingRow(t('Provider'), providerDesc, aiProvider),
       ollamaFields,
       openaiFields,
@@ -1125,8 +1125,8 @@ function showSettingsDialog({
           settingRow(t('Blur while recording'), t('Check each new capture as soon as it’s taken, instead of waiting until you publish.'), makeSwitch(redactOnCapture, t('Blur while recording'))),
           settingRow(t('Always hide these words'), t('Names, project codes, or anything else to blur wherever it appears. One per line.'), redactTerms)),
       ] },
-      { id: 'ai', label: t('AI'), description: t('Let AI write your guides: a model on your own computer through Ollama, or an AI agent such as Claude or Codex.'), content: [
-        settingsCard(null,
+      { id: 'ai', label: t('AI'), description: t('Two ways to use AI: write guides with a model you choose, or let AI apps such as Claude and Codex edit them through MCP.'), content: [
+        settingsCard(t('Write with AI'),
           settingRow(t('Enable AI'), t('Turn on the AI ▾ menu in the guide toolbar: write a whole guide, a step, or one field.'), makeSwitch(aiEnabled, t('Enable AI'))),
           aiOptions),
         ollamaCard,

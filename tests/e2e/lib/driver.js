@@ -160,6 +160,13 @@ class AppPage {
     await this.cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: to.x, y: to.y, button: 'left', buttons: 0, clickCount: 1 });
   }
 
+  /** Real mouse wheel over the centre of the first visible match; positive deltaY scrolls down. */
+  async wheel(selector, deltaY) {
+    const point = await this.waitForVisible(selector, { label: `scrollable ${selector}` });
+    await this.cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: point.x, y: point.y, button: 'none' });
+    await this.cdp.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: point.x, y: point.y, deltaX: 0, deltaY });
+  }
+
   /** Presses a key chord, e.g. key('z', { ctrl: true }) or key('Delete'). */
   async key(name, { ctrl = false, shift = false, alt = false } = {}) {
     const info = keyInfo(name);

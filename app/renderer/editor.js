@@ -663,6 +663,7 @@ class GuideEditor {
   async open(guideId, stepId = null) {
     if (this.guideId !== guideId) this.stopAiWriting({ quiet: true });
     this.guideId = guideId;
+    this.stepListGuideId = null; // start the step list at the top, then show the opened step
     this.stepSelectMode = false;
     this.selectedSteps = new Set();
     this.stepSelectionAnchor = null;
@@ -1688,6 +1689,13 @@ class GuideEditor {
     const focusKey = document.activeElement?.dataset?.stepFocus;
     const current = this.currentStep;
     const numbers = stepNumberMap(this.steps);
+    // Emptying the list scrolls it to the top, so put the scroll position
+    // back after rebuilding it. Another guide starts at the top.
+    const sameGuide = this.stepListGuideId === this.guideId;
+    const scrollTop = sameGuide ? this.dom.stepsList.scrollTop : 0;
+    if (!sameGuide) this.revealedStepId = null;
+    this.stepListGuideId = this.guideId;
+    let selectedItem = null;
     clearNode(this.dom.stepsList);
     this.dom.stepCount.textContent = tn(this.steps.length, '{count} step', '{count} steps');
     this.dom.selectStepsBtn.className = this.stepSelectMode ? 'primary' : '';
@@ -1809,18 +1817,40 @@ class GuideEditor {
         }, '⋯'),
         ...(threads ? this.stepThreadLines(step, depth, number, threads) : []),
       );
+      if (selected) selectedItem = item;
       this.dom.stepsList.append(item);
     }
     if (!this.steps.length) {
       this.dom.stepsList.append(el('div.empty-state', { style: { marginTop: '40px' } }, t('No steps yet.')));
     }
+    this.dom.stepsList.scrollTop = scrollTop;
     this.renderStepBulkBar();
     this.focusStepControl(focusKey);
+    this.revealStepItem(selectedItem);
+  }
+
+  /**
+   * When the selected step changes (arrow keys, a new capture, Go to step),
+   * scroll the list just enough to show it. A step that is already in view,
+   * like one that was just clicked, leaves the list where it is.
+   */
+  revealStepItem(item) {
+    const list = this.dom.stepsList;
+    const stepId = item?.dataset?.stepId;
+    if (!stepId || stepId === this.revealedStepId || !list.clientHeight) return;
+    this.revealedStepId = stepId;
+    const gap = 10; // the list's padding
+    const top = item.offsetTop, bottom = top + item.offsetHeight;
+    if (top - gap < list.scrollTop) list.scrollTop = top - gap;
+    else if (bottom + gap > list.scrollTop + list.clientHeight) list.scrollTop = bottom + gap - list.clientHeight;
   }
 
   focusStepControl(key, { force = false } = {}) {
     if (!key || (!force && document.activeElement?.isConnected && document.activeElement !== document.body)) return;
-    [...(this.dom.root?.querySelectorAll?.('[data-step-focus]') || [])].find(button => button.dataset.stepFocus === key && !button.disabled)?.focus();
+    // preventScroll: focusing would scroll the step to the middle of the list.
+    // renderStepList keeps the list's position and reveals the selected step.
+    const control = [...(this.dom.root?.querySelectorAll?.('[data-step-focus]') || [])].find(button => button.dataset.stepFocus === key && !button.disabled);
+    control?.focus({ preventScroll: true });
   }
 
   /** The collapsed step ids of the open guide. */
@@ -2031,7 +2061,7 @@ class GuideEditor {
     this.stepSelectMode = false;
     this.selectedSteps = new Set();
     this.stepSelectionAnchor = null;
-    await this.reload(null);
+    await this.reload(this.stepAfterDeleting(order, new Set(ids)));
     this.onToast(tn(ids.length, '{count} step deleted. Press Ctrl+Z to undo.', '{count} steps deleted. Press Ctrl+Z to undo.'));
   }
 
@@ -3876,11 +3906,20 @@ class GuideEditor {
     const entry = await this.snapshotStepForDeletion(step);
     await api.step.delete({ guideId: this.guideId, stepId: step.stepId });
     this.pushCanvasHistory({ type: 'delete-step', steps: [entry], order });
-    const next = this.steps[this.steps.findIndex((s) => s.stepId === step.stepId) + 1]
-      || this.steps[this.steps.findIndex((s) => s.stepId === step.stepId) - 1]
-      || null;
-    await this.reload(next && next.stepId);
+    await this.reload(this.stepAfterDeleting(order, new Set([step.stepId]), step.stepId));
     this.onToast(t('Step deleted. Press Ctrl+Z to undo.'));
+  }
+
+  /**
+   * The step to show once `deletedIds` are gone from `order`: `fromId` if it
+   * stays, else the nearest step after it that stays, else the one before.
+   */
+  stepAfterDeleting(order, deletedIds, fromId = this.selectedStepId) {
+    const at = order.indexOf(fromId);
+    if (at >= 0 && !deletedIds.has(fromId)) return fromId;
+    const kept = (id) => !deletedIds.has(id);
+    if (at < 0) return order.find(kept) || null;
+    return order.slice(at + 1).find(kept) || order.slice(0, at).reverse().find(kept) || null;
   }
 
   /** Move the current step, with its substeps, past the neighbouring step and its substeps. */
@@ -4720,10 +4759,9 @@ class GuideEditor {
       await api.step.delete({ guideId: this.guideId, stepId: entry.step.stepId });
     }
     const deletedIds = new Set(record.steps.map((entry) => entry.step.stepId));
-    const remaining = record.order.filter((id) => !deletedIds.has(id));
     this.saveStepDebounced.cancel();
     this.pendingSave = false;
-    await this.reload(remaining[0] || null);
+    await this.reload(this.stepAfterDeleting(record.order, deletedIds));
     this.onToast(tn(record.steps.length, 'Deleted {count} step.', 'Deleted {count} steps.'));
   }
 

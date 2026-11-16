@@ -10,6 +10,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { withApp, readSteps, readJson, writeTestPng, decodeStoredImage, pixelAt } = require('./lib/fixtures');
 const { openGuideCard, openLibrary, eventually, confirmDialog } = require('./lib/flows');
+const { GuideStore } = require('../../core/store');
 
 const SAMPLE_ID = 'guide-sample-reset-password';
 const SAMPLE_GUIDE = path.join('library', 'guides', SAMPLE_ID);
@@ -137,4 +138,55 @@ test('Duplicate adds a copy; Delete then Ctrl+Z brings the step back', () => wit
   await app.key('z', { ctrl: true });
   await eventually(() => readSteps(guideDir(env)).length === 7, 'Ctrl+Z restored the step on disk');
   assert.equal(titlesOnDisk(env).filter((t) => t === `${before[0]} copy`).length, 1, 'the copy is still there');
+}));
+
+/** The step list's scroll position and the selected step, as the editor shows them. */
+function stepListView(app) {
+  return app.evaluate(`(() => {
+    const list = document.querySelector('.steps-list');
+    const item = document.querySelector('.step-item.selected');
+    const view = list.getBoundingClientRect(), box = item.getBoundingClientRect();
+    return { scrollTop: list.scrollTop, selected: item.querySelector('.t').textContent, inView: box.top >= view.top && box.bottom <= view.bottom };
+  })()`);
+}
+
+test('clicking, deleting and redoing a delete keep the step list where it is', () => withApp('editor-step-scroll', {
+  // Enough steps for the list to scroll.
+  setup: (env) => {
+    const store = new GuideStore(env.dataDir);
+    for (let i = 1; i <= 30; i++) store.addStep(SAMPLE_ID, { kind: 'empty', title: `Extra ${i}`, status: 'todo' });
+  },
+}, async (app) => {
+  await openSample(app);
+  await app.wheel('.steps-list', 900);
+  const scrolled = await eventually(async () => {
+    const { scrollTop } = await stepListView(app);
+    return scrollTop > 0 && scrollTop;
+  }, 'step list scrolled');
+
+  // A step in the lower part of the list, so centering it would scroll the list.
+  const target = await app.evaluate(`(() => {
+    const view = document.querySelector('.steps-list').getBoundingClientRect();
+    const shown = [...document.querySelectorAll('.step-item')].filter((item) => { const r = item.getBoundingClientRect(); return r.top >= view.top && r.bottom <= view.bottom; });
+    return shown[shown.length - 2].querySelector('.t').textContent;
+  })()`);
+  const n = Number(target.replace('Extra ', ''));
+  await app.clickWhere('.step-select', `(el) => el.querySelector('.t').textContent === ${JSON.stringify(target)}`);
+  await eventually(async () => (await stepListView(app)).selected === target, 'clicked step selected');
+  assert.equal((await stepListView(app)).scrollTop, scrolled, 'clicking a step does not scroll the list');
+
+  // Focus is on the deleted step's button, which is what used to send the list back to the top.
+  await app.key('Delete', { ctrl: true });
+  if (await app.isVisible('#modal-root .primary')) await confirmDialog(app, 'Delete');
+  await eventually(async () => (await stepListView(app)).selected === `Extra ${n + 1}`, 'next step selected');
+  let view = await stepListView(app);
+  assert.equal(view.scrollTop, scrolled, 'deleting a step does not scroll the list');
+  assert.ok(view.inView, 'the next step is in view');
+
+  await app.click('[aria-label="Undo"]');
+  await eventually(async () => (await stepListView(app)).selected === target, 'undo brings the step back');
+  await app.click('[aria-label="Redo"]');
+  await eventually(async () => (await stepListView(app)).selected === `Extra ${n + 1}`, 'redo selects the step after the deleted one');
+  view = await stepListView(app);
+  assert.equal(view.scrollTop, scrolled, 'redo does not scroll the list');
 }));

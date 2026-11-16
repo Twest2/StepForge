@@ -112,3 +112,17 @@ test('keyboard annotation movement records its previous geometry for undo', () =
   e.onDocumentKeyDown({ key: 'ArrowRight', target: { tagName: 'CANVAS', closest: () => null }, preventDefault() {} });
   assert.equal(e.canvasHistory.at(-1).step.annotations[0].x, 0.2);assert.equal(step.annotations[0].x, 0.3);
 });
+
+test('after a delete the editor shows the nearest kept step, not the first one', () => {
+  const e = editor();
+  const order = ['a', 'b', 'c', 'd', 'e'];
+  const after = (deleted, from) => e.stepAfterDeleting(order, new Set(deleted), from);
+  assert.equal(after(['c'], 'c'), 'd', 'the next step');
+  assert.equal(after(['c', 'd'], 'c'), 'e', 'the next step that was kept');
+  assert.equal(after(['d', 'e'], 'e'), 'c', 'the step before, when nothing after is kept');
+  assert.equal(after(['b', 'd'], 'c'), 'c', 'the current step when it was kept');
+  assert.equal(after(['a', 'b', 'c', 'd', 'e'], 'c'), null);
+  assert.equal(after(['a'], 'gone'), 'b', 'the first kept step when the current one is unknown');
+  e.selectedStepId = 'd';
+  assert.equal(e.stepAfterDeleting(order, new Set(['d'])), 'e', 'defaults to the selected step');
+});

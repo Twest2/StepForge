@@ -785,7 +785,7 @@ class CaptureService {
         clog('click@', clickAt, 'frame', frame.source || 'loop',
           'started', frame.startedAt - clickAt, 'ms, captured', frame.capturedAt - clickAt, 'ms rel. click');
         // Window mode on Windows: the frame is the whole screen; keep the clicked window.
-        const shot = this.windowModeCrops() ? this.windowFrame(frame, clickMeta ? clickMeta.windowBounds : null) : frame;
+        const shot = this.windowModeCrops() ? await this.windowFrame(frame, clickMeta ? clickMeta.windowBounds : null) : frame;
         const result = await this.storeFrameAsStep(guideId, shot.mode, shot, clickPos, clickMeta);
         if (result.ok) this.noteStepAdded(result.step, trigger, guideId);
         return result;
@@ -832,7 +832,7 @@ class CaptureService {
         failable: false, // a slow timed-capture encode must not kill the stream
       }).catch(() => null);
       if (frame) {
-        const shot = windowMode ? this.windowFrame(frame, windowBounds) : frame;
+        const shot = windowMode ? await this.windowFrame(frame, windowBounds) : frame;
         const result = await this.storeFrameAsStep(guideId, shot.mode, shot);
         if (result.ok) this.noteStepAdded(result.step, trigger);
         clog(trigger, 'capture stored from stream; total', this.session && this.session.count);
@@ -2280,14 +2280,14 @@ ${WINDOW_BOUNDS_CS}
    * The full-screen `frame` cut down to `bounds` (DIP). Without a window on
    * the frame's monitor the step keeps the full screen, and the user is told.
    */
-  windowFrame(frame, bounds) {
-    const cropped = bounds ? this.cropFrameToBounds(frame, bounds) : null;
+  async windowFrame(frame, bounds) {
+    const cropped = bounds ? await this.cropFrameToBounds(frame, bounds) : null;
     if (cropped) return cropped;
     this.noteWindowNotFound();
     return frame;
   }
 
-  cropFrameToBounds(frame, bounds) {
+  async cropFrameToBounds(frame, bounds) {
     let geometry;
     try {
       geometry = cropGeometry(frame.display.bounds, bounds, frame.size);
@@ -2295,16 +2295,59 @@ ${WINDOW_BOUNDS_CS}
       return null; // the window is not on this monitor
     }
     if (geometry.pixels.width <= 0 || geometry.pixels.height <= 0) return null;
-    const image = (frame.image || this.imageFromPng(frame.png)).crop(geometry.pixels);
     const cropped = {
       ...frame,
       mode: 'window',
-      size: image.getSize(),
       captureBounds: geometry.bounds,
       display: { ...frame.display, bounds: geometry.bounds },
     };
+    if (frame.image) {
+      // A frame-loop frame is already decoded: cutting it is a cheap copy,
+      // and the image stays available for OCR.
+      const image = frame.image.crop(geometry.pixels);
+      return { ...cropped, image, size: image.getSize(), png: null };
+    }
     // Stream frames carry PNG bytes only; keep it that way for them.
-    return frame.image ? { ...cropped, image, png: null } : { ...cropped, png: image.toPNG() };
+    const { width, height } = geometry.pixels;
+    return { ...cropped, png: await this.cropPng(frame.png, geometry.pixels), size: { width, height } };
+  }
+
+  /**
+   * `rect` (pixels) of a PNG, as a PNG. The image codec does it off the main
+   * process: decoding, cutting and re-encoding a full-screen PNG here blocked
+   * it for hundreds of ms per click. Without a codec, or if it fails, the
+   * slower in-process way still keeps the step.
+   */
+  async cropPng(png, rect) {
+    const codec = getImageCodec();
+    if (codec && typeof codec.cropPng === 'function') {
+      try {
+        return await codec.cropPng(png, rect);
+      } catch (error) {
+        clog('window crop: image codec failed, cutting in-process:', error.message);
+      }
+    }
+    return this.imageFromPng(png).crop(rect).toPNG();
+  }
+
+  /**
+   * A frame's PNG bytes. Frame-loop frames hold a decoded image; its raw
+   * pixels are copied in a few ms and encoded by the image codec off the
+   * main process, instead of toPNG() blocking it for hundreds of ms.
+   */
+  async framePng(frame) {
+    if (frame.png) return frame.png;
+    const image = frame.image;
+    const codec = getImageCodec();
+    if (codec && typeof codec.bitmapToPng === 'function' && typeof image.toBitmap === 'function') {
+      try {
+        const { width, height } = image.getSize();
+        return await codec.bitmapToPng(image.toBitmap(), width, height);
+      } catch (error) {
+        clog('frame encode: image codec failed, encoding in-process:', error.message);
+      }
+    }
+    return image.toPNG();
   }
 
   imageFromPng(png) {
@@ -2417,7 +2460,7 @@ ${WINDOW_BOUNDS_CS}
       ? smartCrop(frame.size, cropBounds, clickPos, this.settings.get('capture.focusAmount') ?? 1.25) : null;
     await this.settleClickKind(clickMeta);
     const { title, captureMetadata } = await this.buildStepMeta(mode, frame, clickPos, clickMeta);
-    const stored = await this.storeScreenshot(frame.png || frame.image.toPNG());
+    const stored = await this.storeScreenshot(await this.framePng(frame));
     const step = this.store.addStep(guideId, {
       title,
       captureMetadata,
@@ -2598,7 +2641,7 @@ ${WINDOW_BOUNDS_CS}
           return { ok: false, reason: err.message };
         }
       }
-      return { ok: true, png: frame.png || frame.image.toPNG(), size: frame.size };
+      return { ok: true, png: await this.framePng(frame), size: frame.size };
     } finally {
       this.shooting = false;
     }

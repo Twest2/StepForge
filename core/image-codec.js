@@ -5,6 +5,26 @@
 const sharp = (...args) => require('sharp')(...args);
 const { t } = require('./ui-text');
 
+// Electron's nativeImage.toBitmap() is premultiplied BGRA; swap B and R, keep alpha.
+const BGRA_TO_RGBA = [[0, 0, 1, 0], [0, 1, 0, 0], [1, 0, 0, 0], [0, 0, 0, 1]];
+
+/** The {x, y, width, height} pixel rectangle as whole numbers, or an error. */
+function cropRect({ x, y, width, height } = {}) {
+  const rect = { left: x, top: y, width, height };
+  if (!Object.values(rect).every(Number.isInteger) || x < 0 || y < 0 || width <= 0 || height <= 0) {
+    throw new Error('Invalid crop rectangle.');
+  }
+  return rect;
+}
+
+function bitmapSize(bgra, width, height) {
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0
+    || !Buffer.isBuffer(bgra) || bgra.length !== width * height * 4) {
+    throw new Error('Bitmap size does not match its pixels.');
+  }
+  return { width, height };
+}
+
 function createImageCodec({ platform = process.platform, electron = process.versions.electron, nodePath = '/usr/bin/node' } = {}) {
   // Linux Electron leaks GLib symbols into native addons. A plain Node process
   // keeps libvips isolated in UI, export helpers and Electron-hosted MCP alike.
@@ -37,12 +57,23 @@ function createImageCodec({ platform = process.platform, electron = process.vers
     return {
       decodeToPng: buffer => run('decode', buffer),
       encodeWebp: (buffer, options) => run('encode', buffer, options),
+      cropPng: async (png, rect) => { cropRect(rect); return run('crop', png, rect); },
+      bitmapToPng: async (bgra, width, height) => { bitmapSize(bgra, width, height); return run('bitmap', bgra, { width, height }); },
       close() {},
     };
   }
   return {
     async decodeToPng(buffer) {
       return sharp(buffer).autoOrient().ensureAlpha().png().toBuffer();
+    },
+    /** `rect` ({x, y, width, height}, pixels) of a PNG, as a PNG. */
+    async cropPng(png, rect) {
+      return sharp(png).extract(cropRect(rect)).png().toBuffer();
+    },
+    /** A nativeImage.toBitmap() buffer as a PNG, encoded off the main thread. */
+    async bitmapToPng(bgra, width, height) {
+      const size = bitmapSize(bgra, width, height);
+      return sharp(bgra, { raw: { ...size, channels: 4, premultiplied: true } }).recomb(BGRA_TO_RGBA).png().toBuffer();
     },
     async encodeWebp(png, { lossless = true, quality = 0.95 } = {}) {
       const metadata = await sharp(png).metadata();

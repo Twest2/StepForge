@@ -209,6 +209,7 @@ function fixture(settings = {}) {
     crop: (rect) => ({ getSize: () => ({ width: rect.width, height: rect.height }), toPNG: () => Buffer.from(JSON.stringify(rect)) }),
     getSize: () => (png.equals(PNG) ? { width: 3840, height: 2160 } : { width: 640, height: 480 }),
   });
+  service.cropPng = async (png, rect) => service.imageFromPng(png).crop(rect).toPNG();
   service.session = { guideId: 'g1', paused: false, count: 0, intervalSec: 0 };
   service.streamBackend = backend;
   return { service, saved, events };

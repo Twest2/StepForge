@@ -30,6 +30,7 @@ const { parentMap, stepNumberMap } = require('../core/step-outline');
 const { systemPlaceholders } = require('../core/placeholders');
 const { OcrPool } = require('./ocr-pool');
 const { t } = require('../core/ui-text');
+const { normalizeAiTemperature } = require('../core/settings');
 
 // Brand CSS requests aren't for a guide; ai:cancel stops them by this id.
 const BRAND_CSS_REQUEST = 'branding-css';
@@ -152,13 +153,11 @@ class TextIntelService {
         body: body ? JSON.stringify(body) : undefined,
         signal: controller.signal,
       });
-      if (parseBody && res.ok) {
-        let payload;
-        try { payload = await res.json(); } catch (error) {
-          if (controller.signal.aborted) throw error;
-          throw new Error(t('The endpoint did not return a compatible JSON response.'));
-        }
-        return { ok: res.ok, status: res.status, json: async () => payload };
+      if (parseBody) {
+        // Read the whole body, error replies too, while the deadline still
+        // applies: a server that stalls mid-reply then times out.
+        const text = await res.text();
+        return { ok: res.ok, status: res.status, text: async () => text, json: async () => JSON.parse(text) };
       }
       return res;
     } catch (err) {
@@ -409,24 +408,64 @@ class TextIntelService {
         host: normalizeOllamaHost(merged.ollama?.host || ''),
         model: normalizeWhitespace(merged.ollama?.model || ''),
       },
+      // An unsaved choice in Settings (override) is tested before it's saved.
+      temperature: normalizeAiTemperature(override && override.temperature !== undefined ? override.temperature : stored.temperature),
     };
+  }
+
+  /**
+   * Test connection for an OpenAI-compatible server: a real (tiny) chat
+   * request, since many servers have no model list to check against. The
+   * server's model list, when it has one, fills the Model suggestions and
+   * explains a model name it doesn't know. A failure comes with `diagnosis`:
+   * the AiServerError fields, plus `suggestion` (a listed model that the
+   * name probably means) and `models`.
+   */
+  async testOpenAiConnection(config) {
+    let host;
+    let model;
+    let apiKey = '';
+    try {
+      host = openAI.baseUrl(config.openai?.baseUrl);
+      model = normalizeWhitespace(config.openai?.model);
+      if (!model) throw new Error(t('Enter the model name your server expects.'));
+      // A key typed in Settings but not saved yet is tried as is; otherwise the saved one.
+      apiKey = config.openai.apiKey || this.aiKeys.get(host);
+    } catch (err) {
+      return { ok: false, reason: err.message };
+    }
+    const { temperature } = config;
+    try {
+      await openAI.chat(this, { host, model, prompt: 'Reply with OK.', systemPrompt: 'This is a connection test.', apiKey, temperature });
+    } catch (err) {
+      if (!(err instanceof openAI.AiServerError)) return { ok: false, reason: err.message };
+      const diagnosis = { kind: err.kind, status: err.status, serverMessage: err.serverMessage, detail: err.detail, url: err.url, temperature };
+      let reason = err.message;
+      // The key and the address work but the request was refused: the model
+      // name is the likeliest cause when the server doesn't list that model.
+      if (['forbidden', 'endpoint', 'model', 'server'].includes(err.kind)) {
+        const models = await openAI.listModels(this, { host, apiKey });
+        if (models?.length) {
+          diagnosis.models = models;
+          if (!models.includes(model)) {
+            diagnosis.kind = 'model';
+            diagnosis.suggestion = openAI.suggestModel(model, models);
+            reason = diagnosis.suggestion
+              ? t('The server has no model named “{model}”. Did you mean “{suggestion}”?', { model, suggestion: diagnosis.suggestion })
+              : t('The server has no model named “{model}”. Choose one of the models it lists.', { model });
+          }
+        }
+      }
+      return { ok: false, reason, diagnosis };
+    }
+    const models = await openAI.listModels(this, { host, apiKey });
+    return { ok: true, provider: 'openai', installed: true, host, model, models: models?.length ? models : [model], vision: Boolean(config.openai.vision), temperature };
   }
 
   async testAiConnection(override = null) {
     const config = this.aiConfig(override);
     if (config.provider === 'openai') {
-      // A real (tiny) chat request: many compatible servers have no model list to check against.
-      try {
-        const host = openAI.baseUrl(config.openai?.baseUrl);
-        const model = normalizeWhitespace(config.openai?.model);
-        if (!model) throw new Error(t('Enter the model name your server expects.'));
-        // A key typed in Settings but not saved yet is tried as is; otherwise the saved one.
-        const apiKey = config.openai.apiKey || this.aiKeys.get(host);
-        await openAI.chat(this, { host, model, prompt: 'Reply with OK.', systemPrompt: 'This is a connection test.', apiKey });
-        return { ok: true, provider: 'openai', installed: true, host, model, models: [model], vision: Boolean(config.openai.vision) };
-      } catch (err) {
-        return { ok: false, reason: err.message };
-      }
+      return this.testOpenAiConnection(config);
     }
     if (!config.ollama.host) {
       return { ok: false, reason: t('Set an Ollama host first.') };
@@ -555,8 +594,9 @@ class TextIntelService {
 
   // Sends one prompt to the chosen provider: Ollama's /api/chat, or an
   // OpenAI-compatible server's /chat/completions (app/openai-compatible.js).
-  async callOllama({ host, model, prompt, systemPrompt, images = [], guideId = null, provider = this.aiConfig().provider }) {
-    if (provider === 'openai') return openAI.chat(this, { host, model, prompt, systemPrompt, images, guideId, apiKey: this.aiKeys.get(host) });
+  // `temperature` null sends none, so the model uses its own default.
+  async callOllama({ host, model, prompt, systemPrompt, images = [], guideId = null, provider = this.aiConfig().provider, temperature = this.aiConfig().temperature }) {
+    if (provider === 'openai') return openAI.chat(this, { host, model, prompt, systemPrompt, images, guideId, apiKey: this.aiKeys.get(host), temperature });
     const url = new URL('/api/chat', `${host.replace(/\/+$/, '')}/`);
     const userMessage = { role: 'user', content: prompt };
     if (Array.isArray(images) && images.length) {
@@ -573,9 +613,7 @@ class TextIntelService {
           { role: 'system', content: systemPrompt },
           userMessage,
         ],
-        options: {
-          temperature: 0.2,
-        },
+        ...(temperature === null ? {} : { options: { temperature } }),
       },
     }));
     if (!response.ok) {

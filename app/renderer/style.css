@@ -2061,10 +2061,28 @@ fieldset legend {
   font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   white-space: pre-wrap; word-break: break-all; user-select: all;
 }
-.settings-test { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-top: 1px solid var(--border); }
+/* The button lines up with the first line of the result, which can grow (fix buttons, Details). */
+.settings-test { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 12px 0; border-top: 1px solid var(--border); }
 .ai-status { flex: 1; font-size: 12px; color: var(--muted); padding: 7px 10px; border-radius: 8px; background: var(--panel-2); }
 .ai-status.ok { color: inherit; background: color-mix(in srgb, var(--ok) 12%, var(--panel-solid)); }
 .ai-status.error { color: var(--danger); background: color-mix(in srgb, var(--danger) 9%, var(--panel-solid)); }
+.ai-status { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.ai-status-text { overflow-wrap: anywhere; }
+.ai-status-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.ai-status-actions button { font-size: 12px; padding: 4px 10px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Test connection's Details: the request and the server's reply, as plain text to copy. */
+.ai-status-details > summary { width: fit-content; cursor: pointer; color: var(--muted); }
+.ai-status-details dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px; margin: 8px 0 0; }
+.ai-status-details dt { color: var(--muted); }
+.ai-status-details dd {
+  margin: 0; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text;
+  font: 11.5px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+/* Temperature: Model default or Custom, with the custom value beside it. */
+.setting-control .ai-temperature { flex-wrap: nowrap; gap: 6px; width: 220px; max-width: 100%; }
+.setting-control .ai-temperature select { width: auto; flex: 1 1 auto; min-width: 0; }
+.setting-control .ai-temperature input[type="number"] { width: 76px; flex: none; font-variant-numeric: tabular-nums; }
+.ai-status-actions[hidden], .ai-status-details[hidden], .setting-control .ai-temperature input[hidden] { display: none; }
 .settings-chip {
   padding: 1px 7px; border-radius: 999px; font-size: 10px; font-weight: 650; letter-spacing: 0.03em;
   color: var(--accent-strong); background: color-mix(in srgb, var(--accent) 12%, var(--panel-solid));

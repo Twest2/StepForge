@@ -1516,13 +1516,20 @@ function setupIpc() {
   }, { validate: (a) => typeof a.baseUrl === 'string' && a.baseUrl.length <= 4096 && typeof a.apiKey === 'string' && a.apiKey.length <= 16384 });
   h('ai:keyStatus', ({ baseUrl }) => ({ saved: textIntel.aiKeys.has(baseUrl), canSave: textIntel.aiKeys.available() }),
     { validate: (a) => typeof a.baseUrl === 'string' && a.baseUrl.length <= 4096 });
-  h('ai:test', async ({ enabled = null, ollama = null, provider = null, openai = null } = {}) => {
+  // `temperature` is the unsaved choice in Settings: a number from 0 to 2, or
+  // null for the model's default. Left out, the saved one is used.
+  h('ai:test', async ({ enabled = null, ollama = null, provider = null, openai = null, temperature } = {}) => {
     return textIntel.testAiConnection({
       enabled,
       ollama,
       ...(provider ? { provider } : {}), openai,
+      ...(temperature !== undefined ? { temperature } : {}),
     });
-  }, { validate: (a) => (a.ollama == null || security.isPlainArgs(a.ollama)) && (a.openai == null || security.isPlainArgs(a.openai)) && (a.provider === undefined || ['ollama', 'openai'].includes(a.provider)) });
+  }, {
+    validate: (a) => (a.ollama == null || security.isPlainArgs(a.ollama)) && (a.openai == null || security.isPlainArgs(a.openai))
+      && (a.provider === undefined || ['ollama', 'openai'].includes(a.provider))
+      && (a.temperature === undefined || a.temperature === null || (typeof a.temperature === 'number' && a.temperature >= 0 && a.temperature <= 2)),
+  });
   h('ai:fillStep', async ({ guideId, stepId, target = 'all' } = {}) => {
     const result = await textIntel.generateStepPatch({ guideId, stepId, target });
     if (result.ok) reindex(guideId);

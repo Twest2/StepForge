@@ -102,6 +102,9 @@ AI descriptions are **off by default**. When you enable them
 - Screenshots can be left out entirely by turning off **Settings → AI → Let
   the model see screenshots**.
 - Every request has a timeout and is cancelled when you close the guide.
+- **Test connection** on an OpenAI-compatible server sends a short test
+  message and asks the server for its list of models. Neither includes any
+  guide content.
 
 ## Optional AI agents
 

@@ -51,6 +51,32 @@ test('an old settings file loses its allowRemoteHost switch, keeping the other A
 
 // ---- host policy enforced by the service -----------------------------------
 
+test('the AI temperature is 0 to 2, null for the model default, and the default when unreadable', (t) => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const { normalizeAiTemperature } = require('../../core/settings');
+  assert.equal(normalizeAiTemperature(undefined), 0.2);
+  assert.equal(normalizeAiTemperature(null), null);
+  assert.equal(normalizeAiTemperature(0), 0);
+  assert.equal(normalizeAiTemperature(1.234), 1.23);
+  assert.equal(normalizeAiTemperature(5), 2);
+  assert.equal(normalizeAiTemperature(-1), 0);
+  for (const bad of ['0.5', NaN, Infinity, {}, true]) assert.equal(normalizeAiTemperature(bad), 0.2, String(bad));
+
+  const read = (temperature) => {
+    const dir = makeTmpDir('ai-temperature');
+    t.after(() => rmrf(dir));
+    const ai = temperature === undefined ? { enabled: true } : { enabled: true, temperature };
+    fs.writeFileSync(path.join(dir, 'app-settings.json'), JSON.stringify({ schemaVersion: 1, ai }));
+    return new Settings(dir).get('ai.temperature');
+  };
+  assert.equal(read(undefined), 0.2, 'settings saved before temperature existed keep 0.2');
+  assert.equal(read(null), null, 'Model default is kept');
+  assert.equal(read(0.9), 0.9);
+  assert.equal(read(7), 2);
+  assert.equal(read('hot'), 0.2);
+});
+
 test('AI connection test talks to Ollama on another computer', async (t) => {
   const root = makeTmpDir('ai-remote-allow');
   t.after(() => rmrf(root));

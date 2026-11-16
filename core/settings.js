@@ -7,6 +7,20 @@ const { writeJsonSync, readJsonIfExists, deepClone } = require('./util');
 const { colors } = require('./annotation-properties');
 const { normalizeWidths } = require('./editor-layout');
 
+const DEFAULT_AI_TEMPERATURE = 0.2;
+
+/**
+ * The AI temperature as stored: null for the model's own default, otherwise
+ * a number from 0 to 2, rounded to two decimals. Anything else (missing, not
+ * a number) is the default.
+ */
+function normalizeAiTemperature(value) {
+  if (value === null) return null;
+  const number = typeof value === 'number' ? value : NaN;
+  if (!Number.isFinite(number)) return DEFAULT_AI_TEMPERATURE;
+  return Math.round(Math.min(2, Math.max(0, number)) * 100) / 100;
+}
+
 const DEFAULT_SETTINGS = {
   schemaVersion: 1,
   appearance: 'system', // system | light | dark
@@ -89,6 +103,10 @@ const DEFAULT_SETTINGS = {
     provider: 'ollama',
     openai: { baseUrl: 'http://127.0.0.1:8000/v1', model: '', vision: false },
     enabled: false,
+    // How much the model's wording varies, 0 to 2, sent with every request.
+    // null sends none, so the model uses its own default: some models (such
+    // as OpenAI's reasoning models) refuse any other value.
+    temperature: 0.2,
     // Auto-document captured steps in the background when a session capture
     // lands. Requires enabled + a reachable model.
     autoDoc: false,
@@ -199,7 +217,10 @@ class Settings {
     }
     if (!data.editor || typeof data.editor !== 'object' || Array.isArray(data.editor)) data.editor = deepClone(DEFAULT_SETTINGS.editor);
     // AI may use a server on any computer now; the old on/off switch for that is gone.
-    if (data.ai && typeof data.ai === 'object') delete data.ai.allowRemoteHost;
+    if (data.ai && typeof data.ai === 'object') {
+      delete data.ai.allowRemoteHost;
+      data.ai.temperature = normalizeAiTemperature(data.ai.temperature);
+    }
     data.editor.recentColors = colors(data.editor.recentColors);
     data.editor.paneWidths = normalizeWidths(data.editor.paneWidths);
     const mermaidWidth = Number(data.editor.mermaidWidth);
@@ -285,4 +306,4 @@ function mergeDeep(base, extra) {
   return base;
 }
 
-module.exports = { Settings, DEFAULT_SETTINGS, SHARED_SETTING_PATHS };
+module.exports = { Settings, DEFAULT_SETTINGS, SHARED_SETTING_PATHS, normalizeAiTemperature };

@@ -84,10 +84,11 @@ function brandHeader(brand, ast) {
   if (brand.banner) {
     parts.push(`<img class="brand-banner" src="${imageDataUri(brand.banner)}" alt=""${brand.banner.width ? ` width="${brand.banner.width}" height="${brand.banner.height}"` : ''}>`);
   }
-  // On the band, a logo that wouldn't show up sits on a white card.
-  const card = brand.cover === 'band' && coverLogo(brand, brand.colors.primary)?.carded;
+  // On the band, a logo that wouldn't show up sits on a card it stands out on.
+  const cover = brand.cover === 'band' ? coverLogo(brand, brand.colors.primary) : null;
+  const card = cover?.carded ? cover.color : null;
   const logo = brand.logo
-    ? `<img class="brand-logo${card ? ' on-card' : ''}" src="${imageDataUri(brand.logo)}" alt="${escapeHtml(t('Logo'))}"${brand.logo.width ? ` width="${brand.logo.width}" height="${brand.logo.height}"` : ''}>`
+    ? `<img class="brand-logo${card ? ' on-card' : ''}"${card ? ` style="background: ${card}"` : ''} src="${imageDataUri(brand.logo)}" alt="${escapeHtml(t('Logo'))}"${brand.logo.width ? ` width="${brand.logo.width}" height="${brand.logo.height}"` : ''}>`
     : '';
   const tagline = brand.header.text ? `<p class="brand-tagline">${escapeHtml(brand.header.text)}</p>` : '';
   if (logo || tagline) parts.push(`<div class="brand-bar">${logo}${tagline}</div>`);

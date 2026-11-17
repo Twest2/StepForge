@@ -76,6 +76,23 @@ test('a dark logo gets a white card on a dark band, and not on white', () => {
   assert.equal(coverLogo(brand, '#FFFFFF').img.width, 300);
 });
 
+test('a white logo on a light band gets a dark card, so the card never hides it', () => {
+  // A white wordmark on light gray: faint on the band, invisible on a white card.
+  const logo = raster.createImage(300, 80, [0, 0, 0, 0]);
+  raster.fillRect(logo, 0, 0, 80, 80, [255, 255, 255, 255]);
+  raster.fillRect(logo, 100, 25, 200, 30, [255, 255, 255, 255]);
+  const brand = { logo: { png: encodePng(logo), width: 300, height: 80 } };
+  const card = coverLogo(brand, '#AAAAAA');
+  assert.equal(card.carded, true);
+  assert.equal(card.color, '#1F2937');
+  const at = (x, y) => [...card.img.data.subarray((y * card.img.width + x) * 4, (y * card.img.width + x) * 4 + 4)];
+  assert.deepEqual(at(Math.round(card.img.width / 2), 2), [0x1F, 0x29, 0x37, 255], 'dark card');
+  const pad = (card.img.width - 300) / 2;
+  assert.deepEqual(at(pad + 40, pad + 40), [255, 255, 255, 255], 'the logo shows on the card');
+  // A dark logo still gets the white card.
+  assert.equal(coverLogo({ logo: { png: encodePng(darkLogo()), width: 300, height: 80 } }, '#0E7490').color, '#FFFFFF');
+});
+
 test('the Band cover puts a dark logo on a card in PDF, Word, HTML and the GIF title card', (t) => {
   const { root, ast } = bandGuide(t, 'band-card');
   // PDF: the cover's logo image is the carded one (wider than the logo, with padding).
@@ -88,7 +105,7 @@ test('the Band cover puts a dark logo on a card in PDF, Word, HTML and the GIF t
   assert.match(docx.get('word/_rels/document.xml.rels').toString('utf8'), /Target="media\/brand-logo-card.png"/);
   // HTML: the logo carries the card class.
   const html = fs.readFileSync(exportHtmlRich(ast, path.join(root, 'html')).file, 'utf8');
-  assert.match(html, /<img class="brand-logo on-card"/);
+  assert.match(html, /<img class="brand-logo on-card" style="background: #FFFFFF"/);
   // GIF: white card pixels on the band's title card.
   const gif = decodeGif(fs.readFileSync(exportGifGuide(ast, path.join(root, 'gif')).file));
   const first = gif.frames[0];

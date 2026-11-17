@@ -10,7 +10,7 @@ const { exportText, languageTag } = require('../core/export-text');
 const { guideSlug, renderAllImages, calloutLabel, stepContentGroups, flowchartImageKey, flowchartAlt, codeBlockText } = require('./common');
 const { tocEntries, guideMetaLines, guideSummary } = require('./document-layout');
 const { SLIDE_SCREENSHOT_POSITIONS } = require('../core/branding');
-const { withBrand, fitSize, textOn, brandRaster, hexToRgb, luminance, contrast, logoNeedsCard } = require('./branding');
+const { withBrand, fitSize, textOn, brandRaster, hexToRgb, luminance, contrast, logoNeedsCard, logoCardColor } = require('./branding');
 const metrics = require('./text-metrics');
 const { richParagraphs, sliceRuns, markedText } = require('./pptx-text');
 const X = require('./pptx-xml');
@@ -802,9 +802,10 @@ function titleSlide(ctx) {
     const x = centered ? Math.round((SLIDE_W - box.w) / 2) : MARGIN_X;
     rels.push({ id: 3, name: 'brand-logo.png' });
     const under = picture ? imageTone(brandRaster(picture.asset), [0, 0, centered ? 1 : 0.4, 0.3]) : { mean: behind, spread: 0 };
-    if (under && (under.spread > BUSY_SPREAD || logoNeedsCard(brandRaster(brand.logo), under.mean))) {
+    const logoImg = brandRaster(brand.logo);
+    if (under && (under.spread > BUSY_SPREAD || logoNeedsCard(logoImg, under.mean))) {
       const pad = Math.round(0.14 * IN);
-      xml += X.shape(nextId, { name: 'Logo card', box: { x: x - pad, y: y - pad, w: box.w + pad * 2, h: box.h + pad * 2 }, geom: 'roundRect', radius: Math.round(0.1 * IN), fill: 'FFFFFF' });
+      xml += X.shape(nextId, { name: 'Logo card', box: { x: x - pad, y: y - pad, w: box.w + pad * 2, h: box.h + pad * 2 }, geom: 'roundRect', radius: Math.round(0.1 * IN), fill: (logoImg ? logoCardColor(logoImg) : '#FFFFFF').slice(1) });
     }
     xml += X.picture(nextId, { relId: 3, box: { x, y, w: box.w, h: box.h }, alt: t('Logo'), name: 'Logo' });
     top = y + box.h + Math.round(0.2 * IN);

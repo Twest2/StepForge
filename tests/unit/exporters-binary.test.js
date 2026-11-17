@@ -613,11 +613,14 @@ test('PPTX export: TOC paginates onto additional slides before it would overflow
   const entries = new Map(unzipSync(fs.readFileSync(file)).map((e) => [e.name, e.data]));
   const slideXmls = Array.from({ length: slideCount }, (_, i) => entries.get(`ppt/slides/slide${i + 1}.xml`).toString('utf8'));
   const tocSlides = slideXmls.filter((xml) => xml.includes('Contents'));
+  // Each entry is the step number, then its title.
+  const entriesOn = (xml) => [...xml.matchAll(/<a:t>(\d+)<\/a:t><\/a:r><a:r>.*?<a:t> ([^<]*)<\/a:t>/g)].map((m) => `${m[1]}. ${m[2]}`);
 
   assert.ok(tocSlides.length >= 2, 'large TOC should span multiple slides');
-  assert.ok(tocSlides[0].includes('1. Step 1'));
-  assert.ok(!tocSlides[0].includes('40. Step 40'));
-  assert.ok(tocSlides.at(-1).includes('40. Step 40'));
+  assert.ok(entriesOn(tocSlides[0]).includes('1. Step 1'));
+  assert.ok(!entriesOn(tocSlides[0]).includes('40. Step 40'));
+  assert.ok(entriesOn(tocSlides.at(-1)).includes('40. Step 40'));
+  assert.deepEqual(tocSlides.flatMap(entriesOn), Array.from({ length: 40 }, (_, i) => `${i + 1}. Step ${i + 1}`), 'every step once, in order');
 });
 
 test('template manager: save/load/rename/duplicate/delete and .sfglt round-trip', (t) => {

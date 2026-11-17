@@ -317,6 +317,14 @@ page will live: **GitHub** (callouts as GitHub alerts), **Azure DevOps wiki**
 front matter) or **Docusaurus** (`:::` admonitions, front matter, and text that
 is safe for MDX). **Standard Markdown** writes callouts as styled HTML.
 
+For **PPTX**, each step gets a slide with its number, title, text, callouts,
+code and tables laid out so nothing overlaps. **Screenshot position** under
+*Slide layout* puts the screenshot right or left of the text, below it, or
+across the whole slide with the text in the speaker notes; **Automatic** puts
+it beside long text and under short text. A step with more text than fits
+carries on to a "(continued)" slide instead of being cut, and **Add speaker
+notes** copies each step's full text into its slide's notes.
+
 For Confluence and Wiki.js, **Share → Publish to Confluence…** or **Publish to
 Wiki.js…** is usually the better choice: it creates the page for you, uploads
 the screenshots, and updates the same page when you publish again. The Export

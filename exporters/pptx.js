@@ -12,7 +12,7 @@ const { tocEntries, guideMetaLines, guideSummary } = require('./document-layout'
 const { SLIDE_SCREENSHOT_POSITIONS } = require('../core/branding');
 const { withBrand, fitSize, textOn, brandRaster, hexToRgb } = require('./branding');
 const metrics = require('./text-metrics');
-const { richParagraphs, sliceRuns, markedText } = require('./pptx-text');
+const { richParagraphs, sliceRuns, joinRuns, markedText } = require('./pptx-text');
 const X = require('./pptx-xml');
 
 /**
@@ -246,17 +246,32 @@ function stackHeight(ctx, items, width, scale) {
 }
 
 /**
+ * Where `text` ends after its first `count` wrapped `lines`. Lines are the
+ * text with whitespace collapsed and a long word broken between characters,
+ * so walk both together rather than rejoining the lines.
+ */
+function offsetAfterLines(text, lines, count) {
+  let at = 0;
+  for (const line of lines.slice(0, count)) {
+    for (const ch of line) {
+      if (/\s/.test(ch)) continue;
+      while (at < text.length && /\s/.test(text[at])) at += 1;
+      at += ch.length;
+    }
+  }
+  return at;
+}
+
+/**
  * Split wrapped text after its first `fit` lines, at the end of a sentence
- * when one ends in the second half of them. Null when fewer than two lines
- * fit or everything does.
+ * when one ends in the second half of them. Returns the character offset in
+ * `text` to cut at, or null when fewer than two lines fit or everything does.
  */
 function splitText(text, lines, fit) {
   if (fit < 2 || fit >= lines.length) return null;
-  const head = lines.slice(0, fit).join(' ');
+  const head = text.slice(0, offsetAfterLines(text, lines, fit));
   const sentence = [...head.matchAll(/[.!?。！？](?=\s|$)/g)].map((m) => m.index + 1).filter((i) => i > head.length / 2).pop();
-  const cut = sentence || head.length;
-  const flat = lines.join(' ');
-  return [flat.slice(0, cut).trim(), flat.slice(cut).trim()];
+  return sentence || head.length;
 }
 
 /**
@@ -267,14 +282,14 @@ function splitText(text, lines, fit) {
 function splitItem(ctx, item, width, scale, maxH) {
   if (item.kind === 'para') {
     const m = measure(ctx, 'body', SIZE.body * scale, paraBold(item));
-    const parts = splitText(item.text, metrics.wrapText(item.text, width - paraIndent(item), m).flat(), Math.floor(maxH / pt(m.lineHeight)));
-    if (!parts) return null;
+    const cut = splitText(item.text, metrics.wrapText(item.text, width - paraIndent(item), m).flat(), Math.floor(maxH / pt(m.lineHeight)));
+    if (cut == null) return null;
     // Both halves keep their formatting; the second continues a list item without a new bullet.
-    const head = sliceRuns(item.runs, 0, parts[0].length);
-    const tail = sliceRuns(item.runs, item.text.length - parts[1].length);
+    const head = sliceRuns(item.runs, 0, cut);
+    const tail = sliceRuns(item.runs, cut);
     return [
-      { ...item, runs: head, text: parts[0] },
-      { ...item, runs: tail, text: parts[1], list: item.list && { ...item.list, continued: true } },
+      { ...item, runs: head, text: joinRuns(head) },
+      { ...item, runs: tail, text: joinRuns(tail), list: item.list && { ...item.list, continued: true } },
     ];
   }
   if (item.kind === 'code') {
@@ -290,8 +305,8 @@ function splitItem(ctx, item, width, scale, maxH) {
     const labelH = label ? metrics.textHeight(label, inner, measure(ctx, 'body', SIZE.callout * scale, true)) : 0;
     const m = measure(ctx, 'body', SIZE.callout * scale);
     const fit = Math.floor((maxH - labelH - pt(3) - CALLOUT_PAD_Y * 2) / pt(m.lineHeight));
-    const parts = splitText(body, metrics.wrapText(body, inner, m).flat(), fit);
-    return parts && [{ ...item, label, body: parts[0], paras: null }, { ...item, label, body: parts[1], paras: null }];
+    const cut = splitText(body, metrics.wrapText(body, inner, m).flat(), fit);
+    return cut == null ? null : [{ ...item, label, body: body.slice(0, cut).trim(), paras: null }, { ...item, label, body: body.slice(cut).trim(), paras: null }];
   }
   if (item.kind === 'table') {
     const cols = tableColumns(ctx, item.rows, width, scale);

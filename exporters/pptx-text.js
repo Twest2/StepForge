@@ -64,7 +64,7 @@ function sliceRuns(runs, start, end = Infinity) {
   return normalizeRuns(out);
 }
 
-const joined = (runs) => runs.map((r) => r.text).join('');
+const joinRuns = (runs) => runs.map((r) => r.text).join('');
 
 function richParagraphs(html) {
   const out = [];
@@ -84,8 +84,8 @@ function richParagraphs(html) {
       const continued = block.cont || i > 0;
       out.push({
         runs,
-        text: joined(runs),
-        list: isList ? { ordered: block.type === 'oli', n: block.n || 1, level: Math.max(0, (block.indent || 1) - 1), continued } : null,
+        text: joinRuns(runs),
+        list: isList ? { ordered: block.type === 'oli', n: block.n || 1, level: block.indent || 0, continued } : null,
         quote: block.type === 'blockquote',
         heading: /^h[1-4]$/.test(block.type),
       });
@@ -102,4 +102,4 @@ function markedText(para) {
   return `${indent}${para.list.ordered ? `${para.list.n}.` : '•'} ${para.text}`;
 }
 
-module.exports = { richParagraphs, sliceRuns, normalizeRuns, markedText };
+module.exports = { richParagraphs, sliceRuns, joinRuns, normalizeRuns, markedText };

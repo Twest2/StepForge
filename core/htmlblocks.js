@@ -147,7 +147,8 @@ function htmlToBlocks(html) {
         if (closing) styleStack.pop();
         else {
           const hrefM = HREF_RE.exec(rawAttrs);
-          styleStack.push({ ...currentStyle(), href: hrefM ? (hrefM[1] ?? hrefM[2]) : undefined });
+          // Decoded like text: "?a=1&amp;b=2" is the link "?a=1&b=2".
+          styleStack.push({ ...currentStyle(), href: hrefM ? decodeEntities(hrefM[1] ?? hrefM[2]) : undefined });
         }
         break;
       default:

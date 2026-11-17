@@ -147,3 +147,55 @@ test('Word rich text: the Confluence (styled) form refers to styles and keeps th
   assert.deepEqual(rels, ['https://example.com']);
   assert.match(rich.numberingXml(), /<w:lvlText w:val=""\/>[^]*?<w:rFonts w:ascii="Symbol"/);
 });
+
+/** A one-step guide with `descriptionHtml`, as a render AST. */
+function oneStepGuide(t, descriptionHtml) {
+  const root = makeTmpDir('rich-text-one');
+  t.after(() => rmrf(root));
+  const store = new GuideStore(path.join(root, 'data'));
+  const guide = store.createGuide({ title: 'One step' });
+  store.addStep(guide.guideId, { kind: 'empty', title: 'The step', descriptionHtml });
+  return { root, ast: buildRenderAst(store, guide.guideId) };
+}
+
+const NESTED = '<ol><li>Parent<ul><li>Child<ol><li>Grandchild</li></ol></li></ul></li><li>Next</li></ol>';
+
+test('nested lists keep their depth on slides and in Word, and the outer list keeps counting', (t) => {
+  assert.deepEqual(richParagraphs(NESTED).map((p) => [p.text, p.list.level]), [['Parent', 0], ['Child', 1], ['Grandchild', 2], ['Next', 0]]);
+  assert.deepEqual(richParagraphs(NESTED).map(markedText), ['1. Parent', '  • Child', '    1. Grandchild', '2. Next']);
+
+  const { root, ast } = oneStepGuide(t, NESTED);
+  const doc = unzip(exportDocx(ast, path.join(root, 'docx')).file).get('word/document.xml');
+  const items = [...doc.matchAll(/<w:ilvl w:val="(\d)"\/><w:numId w:val="(\d+)"\/>[^]*?<w:t xml:space="preserve">([^<]*)<\/w:t>/g)]
+    .map((m) => ({ text: m[3], lvl: Number(m[1]), num: m[2] }));
+  assert.deepEqual(items.map((i) => [i.text, i.lvl]), [['Parent', 0], ['Child', 1], ['Grandchild', 2], ['Next', 0]]);
+  assert.equal(items[3].num, items[0].num, '"Next" continues the outer numbered list, so it is numbered 2');
+});
+
+test('links with several query parameters keep their "&" in Word and PowerPoint', (t) => {
+  const { root, ast } = oneStepGuide(t, '<p>See <a href="https://example.com/?a=1&amp;b=2">the page</a>.</p>');
+  const docxRels = unzip(exportDocx(ast, path.join(root, 'docx')).file).get('word/_rels/document.xml.rels');
+  assert.match(docxRels, /Target="https:\/\/example\.com\/\?a=1&amp;b=2" TargetMode="External"/);
+  const pptx = unzip(exportPptx(ast, path.join(root, 'pptx')).file);
+  const slideRels = [...pptx].filter(([name]) => /^ppt\/slides\/_rels\/slide\d+\.xml\.rels$/.test(name)).map(([, xml]) => xml).join('');
+  assert.match(slideRels, /Target="https:\/\/example\.com\/\?a=1&amp;b=2" TargetMode="External"/);
+  assert.doesNotMatch(docxRels + slideRels, /&amp;amp;/);
+});
+
+test('PowerPoint splits long unbroken text onto "(continued)" slides without repeating or losing any of it', (t) => {
+  // No spaces to wrap at, so lines break between characters.
+  const bold = '粗'.repeat(1500);
+  const plain = '文'.repeat(1500);
+  const { root, ast } = oneStepGuide(t, `<p><b>${bold}</b>${plain}</p>`);
+  const { file, slideCount } = exportPptx(ast, path.join(root, 'pptx'));
+  const z = unzip(file);
+  const slides = Array.from({ length: slideCount }, (_, i) => z.get(`ppt/slides/slide${i + 1}.xml`)).filter((xml) => xml.includes('<a:t>The step'));
+  assert.ok(slides.length >= 2, 'the step continues');
+  const runs = slides.flatMap((xml) => [...xml.matchAll(/<a:rPr ([^>]*)>(?:(?!<\/a:rPr>)[^])*<\/a:rPr><a:t>([^<]*)<\/a:t>/g)]);
+  const count = (ch) => runs.reduce((n, m) => n + [...m[2]].filter((c) => c === ch).length, 0);
+  assert.equal(count('粗'), 1500);
+  assert.equal(count('文'), 1500);
+  for (const m of runs) {
+    if (m[2].includes('粗')) assert.ok(m[1].includes('b="1"') && !m[2].includes('文'), 'bold text stays bold and apart from plain text');
+  }
+});

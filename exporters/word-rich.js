@@ -104,31 +104,35 @@ class WordRichText {
     const options = { ...this.runOptions, ...rpr };
     const styled = this.styled;
     const out = [];
-    let list = null; // { ordered, id }
+    const lists = []; // the open list at each depth: { ordered, id }
     let rows = []; // consecutive table rows, written as one Word table
     const endTable = () => { if (rows.length) out.push(this.tableXml(rows)); rows = []; };
     const props = (own) => paragraphProps({ ...ppr, ...own });
     for (const block of htmlToBlocks(html || '')) {
-      if (block.type === 'tr') { list = null; rows.push(block.cells); continue; }
+      if (block.type === 'tr') { lists.length = 0; rows.push(block.cells); continue; }
       endTable();
       const isList = block.type === 'li' || block.type === 'oli';
       const ordered = block.type === 'oli';
-      if (!isList) list = null;
+      if (!isList) lists.length = 0;
       if (block.type === 'hr') {
         out.push(paragraph('', props({ pBdr: '<w:pBdr><w:bottom w:val="single" w:sz="6" w:space="1" w:color="C1C7D0"/></w:pBdr>' })));
         continue;
       }
       if (isList && flatLists) {
-        const nested = '\u2003'.repeat(Math.max(0, block.indent - 1));
+        const nested = '\u2003'.repeat(block.indent || 0);
         const marker = block.cont ? '\u2003' : (ordered ? `${block.n}.` : '\u2022');
         out.push(paragraph(runXml(`${nested}${marker}\u2002`, {}, options) + this.runs(block.runs, options), props()));
         continue;
       }
       if (isList) {
-        if (!list || list.ordered !== ordered || (ordered && block.n === 1 && block.indent <= 1 && !block.cont)) {
-          list = { ordered, id: this.newList(ordered) };
+        // One list per nesting depth (zero-based), so a parent list keeps
+        // counting after a nested list of either kind ends.
+        const lvl = Math.min(2, block.indent || 0);
+        lists.length = Math.min(lists.length, lvl + 1);
+        let list = lists[lvl];
+        if (!list || list.ordered !== ordered || (ordered && block.n === 1 && !block.cont)) {
+          list = lists[lvl] = { ordered, id: this.newList(ordered) };
         }
-        const lvl = Math.min(2, Math.max(0, block.indent - 1));
         const style = styled ? 'ListParagraph' : '';
         const spacing = styled ? '' : '<w:spacing w:after="60"/>';
         // A line after a break in the item continues it: same indent, no new number.
@@ -172,7 +176,7 @@ function numberingXml(nums, { bullet: mark = SYMBOL_BULLET } = {}) {
 <w:numbering xmlns:w="${W_NS}">
 <w:abstractNum w:abstractNumId="0"><w:multiLevelType w:val="hybridMultilevel"/>${bullet}</w:abstractNum>
 <w:abstractNum w:abstractNumId="1"><w:multiLevelType w:val="hybridMultilevel"/>${decimal}</w:abstractNum>
-${nums.map((n) => `<w:num w:numId="${n.id}"><w:abstractNumId w:val="${n.abstractId}"/>${n.abstractId === 1 ? '<w:lvlOverride w:ilvl="0"><w:startOverride w:val="1"/></w:lvlOverride>' : ''}</w:num>`).join('\n')}
+${nums.map((n) => `<w:num w:numId="${n.id}"><w:abstractNumId w:val="${n.abstractId}"/>${n.abstractId === 1 ? [0, 1, 2].map((l) => `<w:lvlOverride w:ilvl="${l}"><w:startOverride w:val="1"/></w:lvlOverride>`).join('') : ''}</w:num>`).join('\n')}
 </w:numbering>`;
 }
 

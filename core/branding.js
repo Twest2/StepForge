@@ -33,6 +33,9 @@ const WATERMARK_POSITIONS = ['bottom-right', 'bottom-left', 'top-right', 'top-le
 const COLOR_SCHEMES = ['light', 'auto'];
 const IMAGE_ALIGNMENTS = ['left', 'center', 'right'];
 const STEP_LAYOUTS = ['stacked', 'side-by-side'];
+// PowerPoint: where the master puts the logo, and where step screenshots go (exporters/pptx.js).
+const SLIDE_LOGO_POSITIONS = ['top-right', 'top-left', 'bottom-right', 'bottom-left', 'none'];
+const SLIDE_SCREENSHOT_POSITIONS = ['auto', 'right', 'left', 'below', 'full'];
 const DEFAULT_BORDER_COLOR = '#D0D5DD';
 const DEFAULT_COLORS = { primary: '#2563EB', accent: '#0EA5E9', text: '#18212B' };
 // StepForge's own annotation colors: red shapes and click markers, blue
@@ -164,11 +167,44 @@ function normalizeProfile(raw = {}, { id = raw.id, createdAt = raw.createdAt, up
       borderColor: normalizeColor(raw.screenshots?.borderColor, DEFAULT_BORDER_COLOR),
       layout: oneOf(raw.screenshots?.layout, STEP_LAYOUTS, 'stacked'),
     },
+    // PowerPoint: background pictures for the title slide and the other
+    // slides, where the logo goes, and the default screenshot position.
+    pptx: {
+      titleBackground: assetRef(raw.pptx?.titleBackground),
+      slideBackground: assetRef(raw.pptx?.slideBackground),
+      logoPosition: oneOf(raw.pptx?.logoPosition, SLIDE_LOGO_POSITIONS, 'top-right'),
+      screenshotPosition: oneOf(raw.pptx?.screenshotPosition, SLIDE_SCREENSHOT_POSITIONS, 'auto'),
+    },
   };
 }
 
+/** The images a profile uses: logo, banner and PowerPoint backgrounds. */
+function profileImageIds(profile) {
+  return [profile.logo, profile.banner, profile.pptx?.titleBackground, profile.pptx?.slideBackground].filter(Boolean);
+}
+
+/** Every file a profile uses: its images, then its font files. */
 function profileAssetIds(profile) {
-  return [profile.logo, profile.banner, profile.fonts?.heading?.asset, profile.fonts?.body?.asset].filter(Boolean);
+  return [...profileImageIds(profile), profile.fonts?.heading?.asset, profile.fonts?.body?.asset].filter(Boolean);
+}
+
+/**
+ * A copy of a profile with every asset reference (images and font files)
+ * passed through `fn`, which gets the id or null. Saving, importing and
+ * syncing all use it, so a new kind of file can't be left out of one.
+ */
+function mapProfileAssets(profile, fn) {
+  const ref = (value) => fn(value || null);
+  return {
+    ...profile,
+    logo: ref(profile.logo),
+    banner: ref(profile.banner),
+    fonts: {
+      heading: { ...profile.fonts?.heading, asset: ref(profile.fonts?.heading?.asset) },
+      body: { ...profile.fonts?.body, asset: ref(profile.fonts?.body?.asset) },
+    },
+    pptx: { ...profile.pptx, titleBackground: ref(profile.pptx?.titleBackground), slideBackground: ref(profile.pptx?.slideBackground) },
+  };
 }
 
 // ---- file sniffing -----------------------------------------------------------
@@ -352,12 +388,8 @@ class BrandingStore {
     // A theme can't change: saving one (Customize) makes a new profile.
     const existing = raw?.id && !isThemeId(raw.id) ? this.get(raw.id) : null;
     const id = existing ? existing.id : newId('brand');
-    const profile = normalizeProfile(raw, { id, createdAt: existing?.createdAt || nowIso(), updatedAt: nowIso() });
     const exists = (asset) => (asset && this.assetMeta(asset) ? asset : null);
-    profile.logo = exists(profile.logo);
-    profile.banner = exists(profile.banner);
-    profile.fonts.heading.asset = exists(profile.fonts.heading.asset);
-    profile.fonts.body.asset = exists(profile.fonts.body.asset);
+    const profile = mapProfileAssets(normalizeProfile(raw, { id, createdAt: existing?.createdAt || nowIso(), updatedAt: nowIso() }), exists);
     writeJsonSync(this.profileFile(id), profile);
     this.collectGarbage();
     return profile;
@@ -378,13 +410,9 @@ class BrandingStore {
     const keep = new Set();
     for (const raw of profiles) {
       if (isThemeId(raw?.id)) continue;
-      const profile = normalizeProfile(raw, { id: raw.id });
-      const file = this.profileFile(profile.id);
       const exists = (asset) => (asset && this.assetMeta(asset) ? asset : null);
-      profile.logo = exists(profile.logo);
-      profile.banner = exists(profile.banner);
-      profile.fonts.heading.asset = exists(profile.fonts.heading.asset);
-      profile.fonts.body.asset = exists(profile.fonts.body.asset);
+      const profile = mapProfileAssets(normalizeProfile(raw, { id: raw.id }), exists);
+      const file = this.profileFile(profile.id);
       if (!isDeepStrictEqual(readJsonIfExists(file, null), profile)) writeJsonSync(file, profile);
       keep.add(profile.id);
     }
@@ -478,14 +506,15 @@ class BrandingStore {
   }
 
   /**
-   * Logos and banners in use that still need the renderer's PNG drawing:
-   * SVGs and JPGs an AI agent added, or an import without its drawing.
+   * Images in use (logos, banners, slide backgrounds) that still need the
+   * renderer's PNG drawing: SVGs and JPGs an AI agent added, or an import
+   * without its drawing.
    */
   pendingRasters() {
     const ids = new Set();
     for (const { id } of this.list()) {
       const profile = this.get(id);
-      for (const asset of [profile?.logo, profile?.banner]) if (asset) ids.add(asset);
+      if (profile) for (const asset of profileImageIds(profile)) ids.add(asset);
     }
     return [...ids].map((id) => this.describe(id)).filter((d) => d && d.kind === 'image' && d.needsRaster);
   }
@@ -540,7 +569,13 @@ class BrandingStore {
       const meta = this.assetMeta(profile.fonts[role].asset);
       return meta && meta.kind === 'font' ? { file: this.assetFile(meta), mime: meta.mime, format: meta.format, family: meta.family } : null;
     };
-    return { profile, logo: image(profile.logo), banner: image(profile.banner), fonts: { heading: font('heading'), body: font('body') } };
+    return {
+      profile,
+      logo: image(profile.logo),
+      banner: image(profile.banner),
+      fonts: { heading: font('heading'), body: font('body') },
+      pptx: { titleBackground: image(profile.pptx.titleBackground), slideBackground: image(profile.pptx.slideBackground) },
+    };
   }
 
   // ---- sharing -----------------------------------------------------------------
@@ -596,17 +631,7 @@ class BrandingStore {
     const names = new Set(this.list().map((p) => p.name));
     let name = cleanText(raw.name, 80) || t('Imported brand');
     if (names.has(name)) name = `${name} (imported)`.slice(0, 80);
-    return this.save({
-      ...raw,
-      id: undefined,
-      name,
-      logo: remap(raw.logo),
-      banner: remap(raw.banner),
-      fonts: {
-        heading: { ...raw.fonts?.heading, asset: remap(raw.fonts?.heading?.asset) },
-        body: { ...raw.fonts?.body, asset: remap(raw.fonts?.body?.asset) },
-      },
-    });
+    return this.save({ ...mapProfileAssets(normalizeProfile(raw), remap), id: undefined, name });
   }
 }
 
@@ -614,9 +639,9 @@ class BrandingStore {
 
 /**
  * Read a resolved profile's files for exporting (in the export worker). The
- * result is `ast.branding`: colors, fonts (with font file bytes), the logo
- * and banner (original bytes plus a PNG raster when there is one), and the
- * rest of the profile.
+ * result is `ast.branding`: colors, fonts (with font file bytes), the logo,
+ * banner and PowerPoint backgrounds (original bytes plus a PNG raster when
+ * there is one), and the rest of the profile.
  */
 function loadBranding(resolved) {
   if (!resolved || !resolved.profile) return null;
@@ -656,6 +681,11 @@ function loadBranding(resolved) {
     html: p.html,
     watermark: p.watermark,
     screenshots: p.screenshots,
+    pptx: {
+      ...p.pptx,
+      titleBackground: image(resolved.pptx?.titleBackground),
+      slideBackground: image(resolved.pptx?.slideBackground),
+    },
   };
 }
 
@@ -680,6 +710,8 @@ function brandTemplateDefaults(format, profile) {
       return { accentColor: primary };
     case 'pdf':
       return { accentColor: hexToRgb(primary) };
+    case 'pptx':
+      return { screenshotPosition: profile.pptx?.screenshotPosition || 'auto' };
     default:
       return {};
   }
@@ -689,6 +721,8 @@ module.exports = {
   BrandingStore,
   normalizeProfile,
   profileAssetIds,
+  profileImageIds,
+  mapProfileAssets,
   prepareAsset,
   loadBranding,
   brandTemplateDefaults,
@@ -703,6 +737,8 @@ module.exports = {
   COLOR_SCHEMES,
   IMAGE_ALIGNMENTS,
   STEP_LAYOUTS,
+  SLIDE_LOGO_POSITIONS,
+  SLIDE_SCREENSHOT_POSITIONS,
   DEFAULT_BORDER_COLOR,
   DEFAULT_COLORS,
   DEFAULT_ANNOTATION_COLORS,

@@ -176,7 +176,7 @@ test('set_brand_file adds a logo, banner or font from a file, checks it like an 
   assert.match(error(await call('set_brand_file', { profile_id: id, slot: 'logo', file_path: ROOT })), /isn't a file/);
   assert.match(error(await call('set_brand_file', { profile_id: id, slot: 'logo', file_path: file('notes.png', 'just text') })), /Choose a PNG, JPG or SVG image/);
   assert.match(error(await call('set_brand_file', { profile_id: id, slot: 'body_font', file_path: logoFile })), /Choose a WOFF2, WOFF, TTF or OTF font file/);
-  assert.match(error(await call('set_brand_file', { profile_id: id, slot: 'favicon', file_path: logoFile })), /slot must be one of: logo, banner, heading_font, body_font/);
+  assert.match(error(await call('set_brand_file', { profile_id: id, slot: 'favicon', file_path: logoFile })), /slot must be one of: logo, banner, title_slide_background, slide_background, heading_font, body_font/);
   const big = file('big.png', Buffer.alloc(10 * 1024 * 1024 + 1));
   assert.match(error(await call('set_brand_file', { profile_id: id, slot: 'logo', file_path: big })), /larger than 10 MB/);
   assert.match(error(await call('set_brand_file', { profile_id: id, slot: 'logo', file_path: logoFile, remove: true })), /not both/);
@@ -239,4 +239,24 @@ test('set_brand_file refuses inherited slot names and non-boolean removal withou
   }
   assert.match(error(await call('set_brand_file', { profile_id: id, slot: 'logo', remove: 'true' })), /remove must be true or false/);
   assert.equal(changes.length, 1, 'only profile creation changed the library');
+});
+
+test('agents set PowerPoint slide backgrounds, logo position and screenshot position', async (t) => {
+  const { call, json, error, file, branding } = makeLibrary(t);
+  const id = json(await call('create_brand_profile', { name: 'Slides', powerpoint: { logo_position: 'bottom-left', screenshot_position: 'left' } })).profile_id;
+  assert.deepEqual(json(await call('get_brand_profile', { profile_id: id })).powerpoint, {
+    title_slide_background: null, slide_background: null, logo_position: 'bottom-left', screenshot_position: 'left',
+  });
+  const picture = file('title.png', encodePng(createImage(192, 108, [10, 40, 80, 255])));
+  const withTitle = json(await call('set_brand_file', { profile_id: id, slot: 'title_slide_background', file_path: picture }));
+  assert.equal(withTitle.powerpoint.title_slide_background.file_name, 'title.png');
+  const withBoth = json(await call('set_brand_file', { profile_id: id, slot: 'slide_background', file_path: picture }));
+  assert.equal(withBoth.powerpoint.slide_background.width, 192);
+  assert.ok(branding.get(id).pptx.slideBackground);
+  const cleared = json(await call('set_brand_file', { profile_id: id, slot: 'title_slide_background', remove: true }));
+  assert.equal(cleared.powerpoint.title_slide_background, null);
+  assert.ok(cleared.powerpoint.slide_background, 'removing one background keeps the other');
+  assert.equal(json(await call('update_brand_profile', { profile_id: id, powerpoint: { screenshot_position: 'full' } })).powerpoint.logo_position, 'bottom-left');
+  assert.match(error(await call('update_brand_profile', { profile_id: id, powerpoint: { logo_position: 'middle' } })), /powerpoint\.logo_position must be one of: top-right, top-left, bottom-right, bottom-left, none/);
+  assert.match(error(await call('update_brand_profile', { profile_id: id, powerpoint: { theme: 'dark' } })), /powerpoint has no field "theme"/);
 });

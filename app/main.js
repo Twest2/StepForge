@@ -34,7 +34,7 @@ const { createCredentialVault } = require('./credential-vault');
 const { SearchIndex } = require('../core/search');
 const { findMatches, applyReplacements, isMatchArg } = require('../core/find-replace');
 const { TemplateManager, FORMATS, FORMAT_LABELS } = require('../core/templates');
-const { BrandingStore, brandTemplateDefaults, checkFileSize, cssFromFile, MAX_CSS_CHARS } = require('../core/branding');
+const { BrandingStore, brandTemplateDefaults, checkFileSize, cssFromFile, profileAssetIds, MAX_CSS_CHARS } = require('../core/branding');
 const { MAX_REQUEST_CHARS: MAX_BRAND_CSS_REQUEST_CHARS } = require('../core/ai-brand-css');
 const { buildSampleAst } = require('../core/branding-sample');
 const { setImageCodec, rasterToPng, sniffImageFormat, readImageSize, optimizeScreenshot, imagePreviewUrl } = require('../core/image-format');
@@ -1884,7 +1884,7 @@ function setupIpc() {
     const profile = branding.get(id);
     if (!profile) return null;
     const assets = {};
-    for (const asset of [profile.logo, profile.banner, profile.fonts.heading.asset, profile.fonts.body.asset]) {
+    for (const asset of profileAssetIds(profile)) {
       if (asset && !assets[asset]) assets[asset] = branding.describe(asset);
     }
     return { profile, assets };

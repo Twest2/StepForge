@@ -9,7 +9,8 @@ const { highlightCode } = require('../core/code-highlight');
 const { exportText, languageTag } = require('../core/export-text');
 const { guideSlug, renderAllImages, calloutLabel, stepContentGroups, flowchartImageKey, flowchartAlt, codeBlockText } = require('./common');
 const { tocEntries, guideMetaLines, guideSummary } = require('./document-layout');
-const { fitSize, textOn, brandRaster, hexToRgb } = require('./branding');
+const { SLIDE_SCREENSHOT_POSITIONS } = require('../core/branding');
+const { withBrand, fitSize, textOn, brandRaster, hexToRgb } = require('./branding');
 const metrics = require('./text-metrics');
 const X = require('./pptx-xml');
 
@@ -25,10 +26,12 @@ const X = require('./pptx-xml');
  *
  * Titles, accent shapes and body text use the theme's fonts and colors, so a
  * brand profile (or a theme picked later in PowerPoint) restyles the deck; the
- * brand's logo, footer and slide numbers sit on the slide master.
+ * brand's logo (in the corner it picks), footer, slide numbers and slide
+ * background sit on the slide master. A title slide background gets text in
+ * whichever of dark or white reads on it, on a panel when neither does.
  */
 
-const SCREENSHOT_POSITIONS = ['auto', 'right', 'left', 'below', 'full'];
+const SCREENSHOT_POSITIONS = SLIDE_SCREENSHOT_POSITIONS;
 
 const DEFAULT_TEMPLATE = {
   includeImages: true,
@@ -78,11 +81,12 @@ const BADGE_GAP = Math.round(0.18 * IN);
 const FOOTER_Y = SLIDE_H - 360000;
 const FOOTER_H = 260000;
 const FOOTER_CLEAR = Math.round(0.12 * IN);
-// Brand logo on the master (top right).
+// Brand logo on the master: in a top corner, or in the footer row.
 const LOGO_MAX_W = 1800000;
 const LOGO_MAX_H = 400000;
+const FOOTER_LOGO_MAX_H = Math.round(0.32 * IN);
 const LOGO_TOP = 150000;
-const LOGO_RIGHT = 457200;
+const LOGO_BOTTOM = Math.round(0.14 * IN);
 
 const CALLOUT_BAR = Math.round(0.06 * IN);
 const CALLOUT_PAD_X = Math.round(0.16 * IN);
@@ -107,6 +111,8 @@ const CALLOUT_STYLE = {
 };
 
 const MUTED = '64748B';
+// A picture whose luminance varies more than this under the title is busy: the text goes on a panel.
+const BUSY_SPREAD = 0.18;
 const CODE_FONT = 'Consolas';
 
 // ---- text measuring ------------------------------------------------------------
@@ -348,8 +354,8 @@ function planHeader(ctx, label, title, { titleRight }) {
   const lineH = pt(measure(ctx, 'heading', size, true).lineHeight);
   const titleH = Math.ceil(lines.length * lineH);
   const first = Math.max(lineH, badgeW ? BADGE : 0);
-  const badge = badgeW ? { x: MARGIN_X, y: TOP + Math.round((first - BADGE) / 2), w: badgeW, h: BADGE, text: badgeText } : null;
-  const titleBox = { x: titleX, y: TOP + Math.round((first - lineH) / 2), w: titleW, h: titleH };
+  const badge = badgeW ? { x: MARGIN_X, y: ctx.top + Math.round((first - BADGE) / 2), w: badgeW, h: BADGE, text: badgeText } : null;
+  const titleBox = { x: titleX, y: ctx.top + Math.round((first - lineH) / 2), w: titleW, h: titleH };
   const bottom = Math.max(titleBox.y + titleBox.h, badge ? badge.y + badge.h : 0);
   return { badge, title: { box: titleBox, size, text: title }, bottom };
 }
@@ -537,9 +543,9 @@ function headerXml(ctx, nextId, header) {
   return xml;
 }
 
-/** The slide's top accent bar. */
+/** The slide's top accent bar (left off when a background picture styles the slides). */
 function accentBar(ctx, nextId) {
-  return X.shape(nextId, { name: 'Accent', box: { x: 0, y: 0, w: SLIDE_W, h: ACCENT_BAR_H }, fill: 'scheme:accent1' });
+  return ctx.slideBackground ? '' : X.shape(nextId, { name: 'Accent', box: { x: 0, y: 0, w: SLIDE_W, h: ACCENT_BAR_H }, fill: 'scheme:accent1' });
 }
 
 /** The step's full text for its speaker notes. */
@@ -584,29 +590,35 @@ function titlePlaceholder(id) {
 }
 
 /**
- * The slide master. With a brand profile it carries the logo (top right),
- * the footer text and the slide number, so they're on every slide.
+ * The slide master. With a brand profile it carries the logo (in the corner
+ * the profile picks, or none), the footer text, the slide number and the
+ * slide background, so they're on every slide.
  */
 function masterXml(ctx) {
-  const { brand, logoBox, t } = ctx;
+  const { brand, logoAt, t } = ctx;
   let shapes = titlePlaceholder(2);
-  if (logoBox) {
-    shapes += X.picture(X.ids(3), { relId: 3, box: { x: SLIDE_W - LOGO_RIGHT - logoBox.w, y: LOGO_TOP, w: logoBox.w, h: logoBox.h }, alt: t('Logo'), name: 'Logo' });
-  }
-  const footerText = (id, x, w, align, runs) => `<p:sp><p:nvSpPr><p:cNvPr id="${id}" name="Footer ${id}"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>`
-    + `<p:spPr><a:xfrm><a:off x="${x}" y="${FOOTER_Y}"/><a:ext cx="${w}" cy="${FOOTER_H}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr>`
+  if (logoAt) shapes += X.picture(X.ids(3), { relId: 3, box: logoAt, alt: t('Logo'), name: 'Logo' });
+  const footerText = (id, x, w, align, runs) => `<p:sp><p:nvSpPr><p:cNvPr id="${id}" name="Footer"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>`
+    + `<p:spPr><a:xfrm><a:off x="${Math.round(x)}" y="${FOOTER_Y}"/><a:ext cx="${Math.round(w)}" cy="${FOOTER_H}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr>`
     + `<p:txBody><a:bodyPr wrap="square" lIns="0" rIns="0" tIns="0" bIns="0" anchor="ctr"/><a:lstStyle/><a:p><a:pPr algn="${align}"/>${runs}</a:p></p:txBody></p:sp>`;
   const rpr = `<a:rPr lang="${ctx.lang}" sz="1000" dirty="0"><a:solidFill><a:srgbClr val="${MUTED}"/></a:solidFill><a:latin typeface="+mn-lt"/></a:rPr>`;
+  // The footer row makes room for a logo in a bottom corner.
+  const gap = Math.round(0.2 * IN);
+  const left = ctx.logoPosition === 'bottom-left' && logoAt ? logoAt.x + logoAt.w + gap : MARGIN_X;
+  const right = ctx.logoPosition === 'bottom-right' && logoAt ? logoAt.x - gap : SLIDE_W - MARGIN_X;
+  const numberW = 900000;
   if (brand?.footer.text) {
-    shapes += footerText(4, MARGIN_X, Math.round(SLIDE_W * 0.65), 'l', `<a:r>${rpr}<a:t>${escapeXml(brand.footer.text)}</a:t></a:r>`);
+    const w = (brand.footer.pageNumbers ? right - numberW - gap : right) - left;
+    shapes += footerText(4, left, w, 'l', `<a:r>${rpr}<a:t>${escapeXml(brand.footer.text)}</a:t></a:r>`);
   }
   if (brand?.footer.pageNumbers) {
-    shapes += footerText(5, SLIDE_W - MARGIN_X - 1500000, 1500000, 'r',
+    shapes += footerText(5, right - numberW, numberW, 'r',
       `<a:fld id="{B6F15528-21DE-4FAA-801E-634DDDAF4B2B}" type="slidenum">${rpr}<a:t>‹#›</a:t></a:fld>`);
   }
+  const background = ctx.slideBackground ? X.backgroundXml(4) : '<p:bg><p:bgRef idx="1001"><a:schemeClr val="bg1"/></p:bgRef></p:bg>';
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <p:sldMaster ${X.NS}>
-<p:cSld><p:bg><p:bgRef idx="1001"><a:schemeClr val="bg1"/></p:bgRef></p:bg><p:spTree>${X.GROUP_PROPS}
+<p:cSld>${background}<p:spTree>${X.GROUP_PROPS}
 ${shapes}</p:spTree></p:cSld>
 <p:clrMap ${X.CLR_MAP}/>
 <p:sldLayoutIdLst><p:sldLayoutId id="2147483649" r:id="rId1"/></p:sldLayoutIdLst>
@@ -631,24 +643,80 @@ function contrast(a, b) {
   return (hi + 0.05) / (lo + 0.05);
 }
 
-/** The average luminance of an image's visible pixels (null for an empty or unreadable one). */
-function imageLuminance(img) {
-  if (!img) return null;
-  let sum = 0;
-  let weight = 0;
-  const step = Math.max(1, Math.floor((img.width * img.height) / 20000));
-  for (let i = 0; i < img.width * img.height; i += step) {
-    const a = img.data[i * 4 + 3] / 255;
-    if (a < 0.2) continue;
-    sum += luminance([img.data[i * 4], img.data[i * 4 + 1], img.data[i * 4 + 2]]) * a;
-    weight += a;
-  }
-  return weight ? sum / weight : null;
+/**
+ * The average luminance of an image's visible pixels, in the part of it
+ * between fractions x0..x1 and y0..y1 (null for an empty or unreadable one).
+ */
+function imageLuminance(img, rect) {
+  return imageTone(img, rect)?.mean ?? null;
 }
 
 /**
- * The title slide: Standard, Centered or Band, with the brand's banner and a
- * larger logo. A logo that would vanish on a dark band sits on a white card.
+ * The luminance of part of an image (fractions x0..x1, y0..y1): its average
+ * and its spread (standard deviation). A large spread is a busy picture.
+ */
+function imageTone(img, [x0, y0, x1, y1] = [0, 0, 1, 1]) {
+  if (!img) return null;
+  const left = Math.floor(img.width * x0);
+  const right = Math.max(left + 1, Math.ceil(img.width * x1));
+  const top = Math.floor(img.height * y0);
+  const bottom = Math.max(top + 1, Math.ceil(img.height * y1));
+  const step = Math.max(1, Math.floor(Math.sqrt(((right - left) * (bottom - top)) / 20000)));
+  let sum = 0;
+  let squares = 0;
+  let weight = 0;
+  for (let y = top; y < Math.min(bottom, img.height); y += step) {
+    for (let x = left; x < Math.min(right, img.width); x += step) {
+      const i = (y * img.width + x) * 4;
+      const a = img.data[i + 3] / 255;
+      if (a < 0.2) continue;
+      const l = luminance([img.data[i], img.data[i + 1], img.data[i + 2]]);
+      sum += l * a;
+      squares += l * l * a;
+      weight += a;
+    }
+  }
+  if (!weight) return null;
+  const mean = sum / weight;
+  return { mean, spread: Math.sqrt(Math.max(0, squares / weight - mean * mean)) };
+}
+
+/**
+ * Whether a logo needs a white card to show on a background of luminance
+ * `behind`: when more than a quarter of its visible pixels barely stand out
+ * from it (a dark wordmark on a dark band, say).
+ */
+function logoNeedsCard(img, behind) {
+  if (!img || behind == null) return false;
+  const step = Math.max(1, Math.floor(Math.sqrt((img.width * img.height) / 20000)));
+  let visible = 0;
+  let faint = 0;
+  for (let y = 0; y < img.height; y += step) {
+    for (let x = 0; x < img.width; x += step) {
+      const i = (y * img.width + x) * 4;
+      if (img.data[i + 3] < 128) continue;
+      visible += 1;
+      if (contrast(luminance([img.data[i], img.data[i + 1], img.data[i + 2]]), behind) < 2) faint += 1;
+    }
+  }
+  return visible > 0 && faint / visible > 0.25;
+}
+
+/**
+ * A background picture as slide media: a JPEG as it is (PowerPoint shows
+ * JPEG, and photos stay small), anything else as its PNG drawing.
+ */
+function backgroundMedia(asset, name) {
+  if (!asset) return null;
+  if (asset.mime === 'image/jpeg' && asset.data) return { name: `${name}.jpg`, data: asset.data };
+  return asset.png ? { name: `${name}.png`, data: asset.png } : null;
+}
+
+/**
+ * The title slide: Standard, Centered or Band, with the brand's banner, a
+ * larger logo and the title slide background. Text is dark or white,
+ * whichever reads on what's behind it; on a busy picture where neither does,
+ * it sits on a translucent panel. A logo that would vanish sits on a white card.
  */
 function titleSlide(ctx) {
   const { ast, brand, t } = ctx;
@@ -656,15 +724,35 @@ function titleSlide(ctx) {
   const style = brand?.cover || 'standard';
   const centered = style === 'centered';
   const align = centered ? 'ctr' : 'l';
-  const bandColor = style === 'band' ? brand.colors.primary : null;
-  const ink = bandColor ? textOn(bandColor).slice(1) : 'scheme:tx1';
-  const muted = bandColor ? ink : MUTED;
+  const own = ctx.titleBackground;
+  // A picture behind the title: its own, or the slide background it inherits (a band covers that).
+  const picture = own || (style !== 'band' ? ctx.slideBackground : null);
+  const bandColor = style === 'band' && !own ? brand.colors.primary : null;
   const rels = [];
-  let xml = bandColor
-    ? X.shape(nextId, { name: 'Band', box: { x: 0, y: 0, w: SLIDE_W, h: SLIDE_H }, fill: 'scheme:accent1' })
-    : X.shape(nextId, { name: 'Accent', box: { x: 0, y: 0, w: SLIDE_W, h: ACCENT_BAR_H }, fill: 'scheme:accent1' });
+  const media = [];
+  let xml = '';
+  let behind = null; // luminance behind the text
+  let busy = false;
+  if (picture) {
+    // A picture with both light and dark areas under the text (or one not drawn yet) needs a panel.
+    const tone = imageTone(brandRaster(picture.asset), centered ? [0.15, 0.25, 0.85, 0.9] : [0, 0.25, 0.7, 0.9]);
+    behind = tone?.mean ?? null;
+    busy = !tone || tone.spread > BUSY_SPREAD;
+    if (own) rels.push({ id: 4, name: own.media.name });
+  } else if (bandColor) {
+    behind = luminance(hexToRgb(bandColor));
+    xml += X.shape(nextId, { name: 'Band', box: { x: 0, y: 0, w: SLIDE_W, h: SLIDE_H }, fill: 'scheme:accent1' });
+  } else {
+    xml += X.shape(nextId, { name: 'Accent', box: { x: 0, y: 0, w: SLIDE_W, h: ACCENT_BAR_H }, fill: 'scheme:accent1' });
+  }
+  const darkInk = (brand?.colors.text || '#111827').slice(1);
+  const onDark = behind != null && behind < 0.4;
+  const ink = behind == null ? (picture ? 'FFFFFF' : 'scheme:tx1') : (onDark ? 'FFFFFF' : darkInk);
+  const muted = behind == null && !picture ? MUTED : ink;
+  const inkLum = ink === 'FFFFFF' ? 1 : luminance(hexToRgb(`#${darkInk}`));
+  const panel = picture && (busy || contrast(inkLum, behind ?? 0) < 4.5);
 
-  let top = ACCENT_BAR_H;
+  let top = picture ? 0 : ACCENT_BAR_H;
   if (brand?.banner?.png) {
     const box = ctx.emuBox(brand.banner, SLIDE_W, 1500000);
     rels.push({ id: 2, name: 'brand-banner.png' });
@@ -676,8 +764,8 @@ function titleSlide(ctx) {
     const y = top + Math.round(0.5 * IN);
     const x = centered ? Math.round((SLIDE_W - box.w) / 2) : MARGIN_X;
     rels.push({ id: 3, name: 'brand-logo.png' });
-    const logoLum = imageLuminance(brandRaster(brand.logo));
-    if (bandColor && logoLum != null && contrast(logoLum, luminance(hexToRgb(bandColor))) < 2.2) {
+    const under = picture ? imageTone(brandRaster(picture.asset), [0, 0, centered ? 1 : 0.4, 0.3]) : { mean: behind, spread: 0 };
+    if (under && (under.spread > BUSY_SPREAD || logoNeedsCard(brandRaster(brand.logo), under.mean))) {
       const pad = Math.round(0.14 * IN);
       xml += X.shape(nextId, { name: 'Logo card', box: { x: x - pad, y: y - pad, w: box.w + pad * 2, h: box.h + pad * 2 }, geom: 'roundRect', radius: Math.round(0.1 * IN), fill: 'FFFFFF' });
     }
@@ -699,26 +787,40 @@ function titleSlide(ctx) {
   const subH = sub.reduce((sum, line, i) => sum + metrics.textHeight(line, textW, measure(ctx, 'body', i ? 16 : 20)), 0) + (sub.length - 1) * pt(4);
   const RULE_H = Math.round(0.06 * IN);
   const ruleGap = Math.round(0.28 * IN);
-  const blockH = RULE_H + ruleGap + titleH + Math.round(0.25 * IN) + subH;
+  const titleGap = Math.round(0.25 * IN);
+  const blockH = RULE_H + ruleGap + titleH + (sub.length ? titleGap + subH : 0);
   const bottomLimit = SLIDE_H - Math.round(0.6 * IN);
-  let y = Math.max(top + Math.round(0.2 * IN), Math.round(top + (bottomLimit - top - blockH) * 0.45));
+  const blockTop = Math.max(top + Math.round(0.2 * IN), Math.round(top + (bottomLimit - top - blockH) * 0.45));
+  const blockW = centered ? SLIDE_W - MARGIN_X * 2 : textW;
+  if (panel) {
+    const widest = Math.max(...[ast.guide.title, ...sub].map((line, i) => pt(measure(ctx, i ? 'body' : 'heading', i ? 20 : size, !i).width(line))));
+    const w = Math.min(blockW, Math.round(widest)) + Math.round(0.6 * IN);
+    const pad = Math.round(0.3 * IN);
+    xml += X.shape(nextId, {
+      name: 'Text panel',
+      box: { x: centered ? Math.round((SLIDE_W - w) / 2) : MARGIN_X - pad, y: blockTop - pad, w, h: blockH + pad * 2 },
+      geom: 'roundRect', radius: Math.round(0.12 * IN),
+      fill: ink === 'FFFFFF' ? '0F172A' : 'FFFFFF', fillAlpha: ink === 'FFFFFF' ? 0.55 : 0.82,
+    });
+  }
+  let y = blockTop;
   const ruleW = Math.round(1.2 * IN);
-  xml += X.shape(nextId, { name: 'Rule', box: { x: centered ? Math.round((SLIDE_W - ruleW) / 2) : MARGIN_X, y, w: ruleW, h: RULE_H }, fill: bandColor ? ink : 'scheme:accent1' });
+  xml += X.shape(nextId, { name: 'Rule', box: { x: centered ? Math.round((SLIDE_W - ruleW) / 2) : MARGIN_X, y, w: ruleW, h: RULE_H }, fill: bandColor || picture ? ink : 'scheme:accent1' });
   y += RULE_H + ruleGap;
   xml += X.shape(nextId, {
-    name: 'Title', ph: 'title', box: { x: MARGIN_X, y, w: centered ? SLIDE_W - MARGIN_X * 2 : textW, h: titleH },
+    name: 'Title', ph: 'title', box: { x: MARGIN_X, y, w: blockW, h: titleH },
     paras: X.paragraphs(ast.guide.title, { size, bold: true, font: '+mj-lt', color: ink, lang: ctx.lang }, { align }),
     text: { inset: 0 },
   });
-  y += titleH + Math.round(0.25 * IN);
+  y += titleH + titleGap;
   if (sub.length) {
     xml += X.shape(nextId, {
-      name: 'Details', box: { x: MARGIN_X, y, w: centered ? SLIDE_W - MARGIN_X * 2 : textW, h: subH },
+      name: 'Details', box: { x: MARGIN_X, y, w: blockW, h: subH },
       paras: sub.map((line, i) => X.paragraph(X.run(line, { size: i ? 16 : 20, color: muted, lang: ctx.lang }), { align, spaceAfter: i < sub.length - 1 ? 4 : 0 })),
       text: { inset: 0 },
     });
   }
-  return { xml: X.slideXml(xml, { hideMaster: Boolean(brand) }), rels, media: [] };
+  return { xml: X.slideXml(xml, { hideMaster: Boolean(brand), background: own ? X.backgroundXml(4) : '' }), rels, media };
 }
 
 /** Contents slides: one line per step in up to two columns, paginated. */
@@ -728,7 +830,7 @@ function tocSlides(ctx, entries) {
   const rowH = Math.round(0.42 * IN);
   const headH = Math.round(0.62 * IN);
   const summaryH = Math.round(0.36 * IN);
-  const areaTop = TOP + headH + summaryH + Math.round(0.2 * IN);
+  const areaTop = ctx.top + headH + summaryH + Math.round(0.2 * IN);
   const areaH = ctx.bottomLimit - areaTop;
   const perColumn = Math.max(1, Math.floor(areaH / rowH));
   const columns = entries.length > perColumn ? 2 : 1;
@@ -739,12 +841,12 @@ function tocSlides(ctx, entries) {
     const nextId = X.ids();
     let xml = accentBar(ctx, nextId);
     xml += X.shape(nextId, {
-      name: 'Title', ph: 'title', box: { x: MARGIN_X, y: TOP, w: ctx.titleRight - MARGIN_X, h: headH },
+      name: 'Title', ph: 'title', box: { x: MARGIN_X, y: ctx.top, w: ctx.titleRight - MARGIN_X, h: headH },
       paras: X.paragraphs(page ? t('Contents (continued)') : tc('Table of contents', 'Contents'), { size: 32, bold: true, font: '+mj-lt', color: 'scheme:tx1', lang: ctx.lang }),
       text: { inset: 0 },
     });
     xml += X.shape(nextId, {
-      name: 'Summary', box: { x: MARGIN_X, y: TOP + headH, w: SLIDE_W - MARGIN_X * 2, h: summaryH },
+      name: 'Summary', box: { x: MARGIN_X, y: ctx.top + headH, w: SLIDE_W - MARGIN_X * 2, h: summaryH },
       paras: X.paragraphs(guideSummary(ast), { size: 14, color: MUTED, lang: ctx.lang }),
       text: { inset: 0 },
     });
@@ -817,7 +919,7 @@ function stepSlides(ctx, step, tpl) {
           box: { x: p.picBox.x + at.x, y: picTop + at.y, w: at.w, h: at.h },
           alt: pics[i].alt,
           name: 'Screenshot',
-          border: { color: 'CBD5E1', w: 9525 },
+          border: ctx.screenshotBorder,
           shadow: true,
         });
       });
@@ -852,7 +954,7 @@ function relsXml(list) {
 }
 
 function exportPptx(ast, outDir, template = {}) {
-  const tpl = { ...DEFAULT_TEMPLATE, ...template };
+  const tpl = withBrand('pptx', DEFAULT_TEMPLATE, ast, template);
   const brand = ast.branding;
   const { t, tc } = exportText(ast);
   // A brand image's size on a slide: its pixels at 96 dpi, shrunk to fit.
@@ -860,8 +962,25 @@ function exportPptx(ast, outDir, template = {}) {
     const size = fitSize(asset.width * EMU_PER_PX, asset.height * EMU_PER_PX, maxW, maxH);
     return { w: size.width, h: size.height };
   };
-  const logoBox = brand?.logo?.png ? emuBox(brand.logo, LOGO_MAX_W, LOGO_MAX_H) : null;
+  // The master's logo: in the corner the profile picks (top right unless it says otherwise), or none.
+  const logoPosition = brand?.pptx?.logoPosition || 'top-right';
+  const atBottom = logoPosition.startsWith('bottom');
+  const logoBox = brand?.logo?.png && logoPosition !== 'none' ? emuBox(brand.logo, LOGO_MAX_W, atBottom ? FOOTER_LOGO_MAX_H : LOGO_MAX_H) : null;
+  const logoAt = logoBox && {
+    ...logoBox,
+    x: logoPosition.endsWith('left') ? MARGIN_X : SLIDE_W - MARGIN_X - logoBox.w,
+    y: atBottom ? SLIDE_H - LOGO_BOTTOM - logoBox.h : LOGO_TOP,
+  };
   const footer = Boolean(brand && (brand.footer.text || brand.footer.pageNumbers));
+  let bottomLimit = footer ? FOOTER_Y - FOOTER_CLEAR : SLIDE_H - BOTTOM;
+  if (logoAt && atBottom) bottomLimit = Math.min(bottomLimit, logoAt.y - FOOTER_CLEAR);
+  // Background pictures, as slide media.
+  const background = (asset, name) => {
+    const media = backgroundMedia(asset, name);
+    return media ? { asset, media } : null;
+  };
+  const titleBackground = tpl.titleSlide ? background(brand?.pptx?.titleBackground, 'brand-title-background') : null;
+  const slideBackground = background(brand?.pptx?.slideBackground, 'brand-slide-background');
   let mediaCounter = 0;
   const ctx = {
     ast,
@@ -873,11 +992,17 @@ function exportPptx(ast, outDir, template = {}) {
     bodyFont: brand?.fonts.body.name || 'Calibri',
     onPrimary: textOn(brand?.colors.primary || '#2563EB').slice(1),
     images: tpl.includeImages ? renderAllImages(ast) : new Map(),
-    logoBox,
+    logoAt,
+    logoPosition,
     emuBox,
-    // Titles stop short of the master's logo; body text stops above the footer.
-    titleRight: SLIDE_W - MARGIN_X - (logoBox ? logoBox.w + LOGO_RIGHT - MARGIN_X + Math.round(0.25 * IN) : 0),
-    bottomLimit: footer ? FOOTER_Y - FOOTER_CLEAR : SLIDE_H - BOTTOM,
+    titleBackground,
+    slideBackground,
+    screenshotBorder: brand?.screenshots?.border ? { color: brand.screenshots.borderColor.slice(1), w: 12700 } : { color: 'CBD5E1', w: 9525 },
+    // Step headers start below a top-left logo and stop short of a top-right
+    // one; body text stops above the footer row and a bottom logo.
+    top: logoAt && logoPosition === 'top-left' ? Math.max(TOP, logoAt.y + logoAt.h + Math.round(0.15 * IN)) : TOP,
+    titleRight: logoAt && logoPosition === 'top-right' ? logoAt.x - Math.round(0.25 * IN) : SLIDE_W - MARGIN_X,
+    bottomLimit,
     nextMedia: () => ++mediaCounter,
   };
 
@@ -927,6 +1052,7 @@ function exportPptx(ast, outDir, template = {}) {
   // The brand's images, shared by the master and the title slide.
   if (brand?.logo?.png) entries.push({ name: 'ppt/media/brand-logo.png', data: brand.logo.png, store: true });
   if (brand?.banner?.png && tpl.titleSlide) entries.push({ name: 'ppt/media/brand-banner.png', data: brand.banner.png, store: true });
+  for (const bg of [titleBackground, slideBackground]) if (bg) entries.push({ name: `ppt/media/${bg.media.name}`, data: bg.media.data, store: true });
 
   let notesMasterRef = '';
   if (withNotes) {
@@ -948,7 +1074,8 @@ function exportPptx(ast, outDir, template = {}) {
     `<Relationship Id="rId1" Type="${REL}/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>`,
     `<Relationship Id="rId2" Type="${REL}/theme" Target="../theme/theme1.xml"/>`,
   ];
-  if (logoBox) masterRels.push(`<Relationship Id="rId3" Type="${REL}/image" Target="../media/brand-logo.png"/>`);
+  if (logoAt) masterRels.push(`<Relationship Id="rId3" Type="${REL}/image" Target="../media/brand-logo.png"/>`);
+  if (slideBackground) masterRels.push(`<Relationship Id="rId4" Type="${REL}/image" Target="../media/${slideBackground.media.name}"/>`);
 
   entries.push(
     {
@@ -958,6 +1085,7 @@ function exportPptx(ast, outDir, template = {}) {
 <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
 <Default Extension="xml" ContentType="application/xml"/>
 <Default Extension="png" ContentType="image/png"/>
+<Default Extension="jpg" ContentType="image/jpeg"/>
 <Override PartName="/ppt/presentation.xml" ContentType="${CT}.presentation.main+xml"/>
 <Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="${CT}.slideMaster+xml"/>
 <Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="${CT}.slideLayout+xml"/>

@@ -52,6 +52,9 @@ profile you can edit, share and delete, and it becomes the active one.
      numbers**. Header and footer text can use placeholders, such as
      `© [[Year]] Acme Corp`.
    - **Watermark screenshots with the logo**, with its corner and opacity.
+   - **PowerPoint**: background pictures for the title slide and the other
+     slides, where the logo goes on slides, and where screenshots go. See
+     [PowerPoint](#powerpoint).
    - **Annotation colors**: turn on **Use your own annotation colors** to
      pick colors for **Shapes** (including the click marker), **Number
      badges** and **Tooltips**. New annotations start in these colors;
@@ -78,7 +81,7 @@ there, or one saved in an export template, takes their place.
 | GitHub Pages | Everything the HTML exports get |
 | PDF | Logo and banner on the cover in its style, colors, the closest built-in fonts, a header (logo and text) and footer (text and "Page 2 of 9") on every page after the cover, and [screenshot options](#screenshots) |
 | Word | Normal and Heading styles in your fonts and colors, logo and banner on the cover, a header and footer with page numbers on every page after the cover, and [screenshot options](#screenshots) |
-| PowerPoint | A theme with your colors and fonts, a title slide in your cover style, and the logo, footer text and slide numbers on every slide after it |
+| PowerPoint | A theme with your colors and fonts, a title slide in your cover style, and the logo, footer text and slide numbers on every slide after it, plus the [PowerPoint options](#powerpoint): slide backgrounds, logo position and screenshot position. **Border around screenshots** sets the screenshot border color |
 | Wiki.js, Confluence | Logo, banner, header and footer text. Publishing uploads the images too |
 | Markdown | Logo, banner, header and footer text, and the color of the accent line |
 | GIF, image bundle | Logo on the GIF title card, your colors, and the logo as a watermark if you turn it on |
@@ -277,6 +280,36 @@ With **Follow light or dark mode**, change something only in dark mode:
   the page.
 - **Limit:** 200,000 characters.
 
+## PowerPoint
+
+The **PowerPoint** card sets how slide decks look. Every option is optional.
+
+- **Title slide background**: a picture behind the first slide, stretched to
+  fill it, so 1920 × 1080 (or any 16:9 size) fits best. It replaces the
+  primary color of the **Brand color band** cover. The title and details turn
+  white on a dark picture and your **Text** color on a light one. On a busy
+  picture with light and dark areas under the title, they sit on a
+  see-through panel. A logo that wouldn't show up on the picture sits on a
+  white card.
+- **Slide background**: a picture behind every other slide, such as a
+  letterhead strip or a light pattern. It's the slide master's background, so
+  **Format Background** in PowerPoint shows it. Slides with it leave off the
+  thin accent bar along the top. Keep it light: step text and screenshots sit
+  on top of it. Without a title slide background, the title slide uses this
+  one too, unless the cover is a color band.
+- **Logo on slides**: **Top right** (the default), **Top left**, **Bottom
+  right**, **Bottom left**, or **Title slide only**. A logo at the bottom
+  shares the row with the footer text and slide number, which move over to
+  make room. At the top left, the step titles start below it.
+- **Screenshot position**: where each step's screenshot goes.
+  **Automatic** puts it beside long text and under short text, whichever
+  shows it larger. **Right of the text**, **Left of the text** and **Below
+  the text** always do that. **Whole slide, text in speaker notes** fills the
+  slide with the screenshot. The Export dialog's **Screenshot position** can
+  change it for one export.
+
+JPG pictures go into the deck as JPG, so photos stay small.
+
 ## Let an AI agent set up your brand
 
 AI agents such as Claude Code and Codex ([setup](AI_AGENTS.md)) can make and
@@ -295,8 +328,8 @@ An agent can:
 
 - list and read your profiles, and see the logo
 - make a profile and change any of its settings, including Advanced CSS
-- add a logo, banner or font file from your computer, checked exactly like
-  a file you upload
+- add a logo, banner, slide background or font file from your computer,
+  checked exactly like a file you upload
 - choose the active profile
 
 It can't delete a profile. If StepForge is closed when an agent adds an SVG

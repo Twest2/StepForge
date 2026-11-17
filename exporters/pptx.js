@@ -5,24 +5,37 @@ const path = require('node:path');
 const { zipSync } = require('../core/zip');
 const { escapeXml } = require('../core/util');
 const { encodePng } = require('../core/png');
-const { guideSlug, renderAllImages, calloutLabel, stepContentGroups, flowchartImageKey, flowchartAlt } = require('./common');
-const { exportText } = require('../core/export-text');
+const { highlightCode } = require('../core/code-highlight');
+const { exportText, languageTag } = require('../core/export-text');
+const { guideSlug, renderAllImages, calloutLabel, stepContentGroups, flowchartImageKey, flowchartAlt, codeBlockText } = require('./common');
 const { tocEntries, guideMetaLines, guideSummary } = require('./document-layout');
-const { fitSize, textOn } = require('./branding');
+const { fitSize, textOn, brandRaster, hexToRgb } = require('./branding');
+const metrics = require('./text-metrics');
+const X = require('./pptx-xml');
 
 /**
- * PPTX exporter: a title slide plus one 16:9 slide per step, with
- * positioned text blocks laid out around the step title, description, and
- * screenshot. PresentationML written directly. Titles, accent bars and body
- * text use the theme's fonts and colors, so a brand profile (or a theme
- * picked later in PowerPoint) restyles the whole deck; the brand's logo,
- * footer and slide numbers sit on the slide master.
+ * PPTX exporter: a title slide, contents, and a slide per step, written as
+ * PresentationML directly.
+ *
+ * Every step slide is laid out from measured text (exporters/text-metrics.js),
+ * so nothing overlaps: the step's number and title, then its description,
+ * callouts, code and tables beside or above the screenshot. Text that doesn't
+ * fit is set smaller, then carries on to a "(continued)" slide; nothing is
+ * cut. Each step's full text is also in the slide's speaker notes.
+ *
+ * Titles, accent shapes and body text use the theme's fonts and colors, so a
+ * brand profile (or a theme picked later in PowerPoint) restyles the deck; the
+ * brand's logo, footer and slide numbers sit on the slide master.
  */
+
+const SCREENSHOT_POSITIONS = ['auto', 'right', 'left', 'below', 'full'];
 
 const DEFAULT_TEMPLATE = {
   includeImages: true,
   titleSlide: true,
   includeToc: true,
+  speakerNotes: true,
+  screenshotPosition: 'auto',
 };
 
 // The Export dialog's labels, groups and units for these options (exporters/index.js FORMAT_INFO).
@@ -30,65 +43,61 @@ const OPTION_INFO = {
   titleSlide: { label: 'Add a title slide', group: 'Contents' },
   includeToc: { label: 'Add a table of contents', group: 'Contents' },
   includeImages: { label: 'Include screenshots', group: 'Contents' },
+  speakerNotes: { label: 'Add speaker notes', group: 'Contents', hint: 'Each step’s full text in its slide’s notes, for presenting.' },
+  screenshotPosition: {
+    label: 'Screenshot position',
+    group: 'Slide layout',
+    hint: 'Automatic puts the screenshot beside long text and under short text.',
+    choices: [
+      { value: 'auto', label: 'Automatic' },
+      { value: 'right', label: 'Right of the text' },
+      { value: 'left', label: 'Left of the text' },
+      { value: 'below', label: 'Below the text' },
+      { value: 'full', label: 'Whole slide, text in speaker notes' },
+    ],
+  },
 };
 
-const SLIDE_W = 12192000; // EMU, 16:9
+// ---- geometry (EMU) ----------------------------------------------------------
+
+const IN = 914400;
+const SLIDE_W = 12192000; // 16:9
 const SLIDE_H = 6858000;
 const EMU_PER_PX = 9525;
-const SLIDE_MARGIN = 914400;
-const TITLE_Y = 420000;
-const TITLE_H = 620000;
-const TITLE_RULE_Y = 1120000;
-const CONTENT_Y = 1500000;
-const CONTENT_FOOTER_Y = 720000;
-const CALL_OUT_HEIGHT = 620000;
-const CALL_OUT_GAP = 90000;
-const CALL_OUT_BAR_W = 24000;
-const TOC_ENTRY_START_Y = 2300000;
-const TOC_ENTRY_SPACING = 255000;
-const TOC_ENTRY_HEIGHT = 220000;
-const TOC_BOTTOM_MARGIN = 500000;
-const TOC_MAX_ENTRIES_PER_SLIDE = Math.max(
-  1,
-  Math.floor((SLIDE_H - TOC_BOTTOM_MARGIN - TOC_ENTRY_START_Y - TOC_ENTRY_HEIGHT) / TOC_ENTRY_SPACING) + 1,
-);
-
-let shapeIdCounter = 10; // reset per export for deterministic output
-
-// Brand logo on the slide master (top right) and the footer row it adds.
+const MARGIN_X = Math.round(0.6 * IN);
+const TOP = Math.round(0.45 * IN);
+const BOTTOM = Math.round(0.42 * IN);
+const ACCENT_BAR_H = Math.round(0.07 * IN);
+const HEADER_GAP = Math.round(0.24 * IN); // header → body
+const GAP = Math.round(0.16 * IN); // between blocks
+const PARA_GAP = Math.round(0.09 * IN); // between description paragraphs
+const COLUMN_GAP = Math.round(0.4 * IN);
+const BADGE = Math.round(0.5 * IN);
+const BADGE_GAP = Math.round(0.18 * IN);
+// The footer row on the master: text and slide number.
+const FOOTER_Y = SLIDE_H - 360000;
+const FOOTER_H = 260000;
+const FOOTER_CLEAR = Math.round(0.12 * IN);
+// Brand logo on the master (top right).
 const LOGO_MAX_W = 1800000;
 const LOGO_MAX_H = 400000;
 const LOGO_TOP = 150000;
-const FOOTER_RESERVE = 380000;
+const LOGO_RIGHT = 457200;
 
-/** A hex color, or "scheme:<name>" for one of the theme's colors. */
-function colorXml(color) {
-  return String(color).startsWith('scheme:') ? `<a:schemeClr val="${color.slice(7)}"/>` : `<a:srgbClr val="${color}"/>`;
-}
+const CALLOUT_BAR = Math.round(0.06 * IN);
+const CALLOUT_PAD_X = Math.round(0.16 * IN);
+const CALLOUT_PAD_Y = Math.round(0.1 * IN);
+const CODE_PAD = Math.round(0.12 * IN);
+const TABLE_MARGIN = 64008;
 
-function textBox(x, y, w, h, runsXml) {
-  return `<p:sp><p:nvSpPr><p:cNvPr id="${shapeIdCounter++}" name="TextBox"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>` +
-    `<p:spPr><a:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="${w}" cy="${h}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr>` +
-    `<p:txBody><a:bodyPr wrap="square"><a:normAutofit/></a:bodyPr><a:lstStyle/>${runsXml}</p:txBody></p:sp>`;
-}
-
-function rectShape(x, y, w, h, fill) {
-  return `<p:sp><p:nvSpPr><p:cNvPr id="${shapeIdCounter++}" name="Rect"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>` +
-    `<p:spPr><a:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="${w}" cy="${h}"/></a:xfrm>` +
-    `<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:solidFill>${colorXml(fill)}</a:solidFill><a:ln><a:noFill/></a:ln></p:spPr></p:sp>`;
-}
-
-/** One paragraph; `font` is the theme's heading (+mj-lt) or body (+mn-lt) font. */
-function para(text, { size = 1800, bold = false, color = 'scheme:tx1', font = '+mn-lt', align = '' } = {}) {
-  return `<a:p>${align ? `<a:pPr algn="${align}"/>` : ''}<a:r><a:rPr lang="en-US" sz="${size}" b="${bold ? 1 : 0}" dirty="0"><a:solidFill>${colorXml(color)}</a:solidFill>` +
-    `<a:latin typeface="${font}"/></a:rPr><a:t>${escapeXml(text)}</a:t></a:r></a:p>`;
-}
-
-function picture(relId, x, y, w, h, alt, { id = relId + 100, name = 'Screenshot' } = {}) {
-  return `<p:pic><p:nvPicPr><p:cNvPr id="${id}" name="${name}" descr="${escapeXml(alt)}"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr>` +
-    `<p:blipFill><a:blip r:embed="rId${relId}"/><a:stretch><a:fillRect/></a:stretch></p:blipFill>` +
-    `<p:spPr><a:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="${w}" cy="${h}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>`;
-}
+// Point sizes at full scale; a crowded slide sets body text at SCALES.
+const SIZE = { title: 28, body: 16, callout: 14, code: 12, table: 12, badge: 16 };
+const TITLE_SIZES = [28, 24, 20];
+const SCALES = [1, 0.9, 0.8];
+// A screenshot is never drawn more than this much larger than 96 dpi.
+const MAX_UPSCALE = 1.5;
+// "Below the text" needs at least this much height left for the picture.
+const MIN_PICTURE_SHARE = 0.4;
 
 const CALLOUT_STYLE = {
   info: { fill: 'EFF6FF', accent: '2563EB', color: '1D4ED8' },
@@ -97,80 +106,457 @@ const CALLOUT_STYLE = {
   error: { fill: 'FEF2F2', accent: 'EF4444', color: 'B91C1C' },
 };
 
-function estimateWrappedLines(text, charsPerLine) {
-  const raw = String(text || '').trim();
-  if (!raw) return 0;
-  return raw.split(/\n+/).reduce((sum, line) => sum + Math.max(1, Math.ceil(line.length / charsPerLine)), 0);
+const MUTED = '64748B';
+const CODE_FONT = 'Consolas';
+
+// ---- text measuring ------------------------------------------------------------
+
+function fontFor(ctx, role) {
+  if (role === 'heading') return ctx.headingFont;
+  if (role === 'mono') return CODE_FONT;
+  return ctx.bodyFont;
 }
 
-function calloutHeight(tb, ast) {
-  const label = calloutLabel(tb, ast);
-  const lines = estimateWrappedLines(label, 46) + estimateWrappedLines(tb.descriptionText, 72);
-  return Math.max(CALL_OUT_HEIGHT, 360000 + (lines * 150000));
+function measure(ctx, role, size, bold = false) {
+  return metrics.fontMetrics({ size, font: fontFor(ctx, role), bold });
 }
 
-function calloutXml(tb, x, y, w, ast) {
-  const style = CALLOUT_STYLE[tb.level] || CALLOUT_STYLE.info;
-  const height = calloutHeight(tb, ast);
-  const label = calloutLabel({ ...tb, level: CALLOUT_STYLE[tb.level] ? tb.level : 'info' }, ast);
-  const titlePara = para(label, { size: 1400, bold: true, color: style.color });
-  const bodyPara = tb.descriptionText ? para(tb.descriptionText.slice(0, 400), { size: 1250, color: '374151' }) : '';
-  const innerX = x + CALL_OUT_BAR_W + 24000;
-  const innerW = Math.max(0, w - CALL_OUT_BAR_W - 72000);
+const pt = (v) => v * metrics.EMU_PER_PT;
+
+// ---- content blocks ------------------------------------------------------------
+
+/**
+ * A step's text as layout items, in order: { kind: 'para' | 'callout' |
+ * 'code' | 'table', after } where `after` items follow the screenshot.
+ */
+function stepItems(step) {
+  const groups = Object.fromEntries(Object.entries(stepContentGroups(step))
+    // A flowchart block sits beside the screenshot on its slide, wherever it goes elsewhere.
+    .map(([group, list]) => [group, list.filter((block) => block.kind !== 'flowchart')]));
+  const callouts = (list, after = false) => list.map((tb) => ({ kind: 'callout', tb, label: null, body: tb.descriptionText || '', after }));
+  const description = String(step.descriptionText || '').split('\n').map((s) => s.trim()).filter(Boolean)
+    .map((text) => ({ kind: 'para', text, after: false }));
+  const rest = groups.rest.map((block) => {
+    if (block.kind === 'code') return { kind: 'code', code: codeBlockText(block), language: block.language, after: true };
+    if (block.kind === 'table' && block.rows?.length) return { kind: 'table', rows: block.rows.map((r) => r.map((c) => String(c ?? ''))), header: true, after: true };
+    if (block.kind === 'text') return callouts([block], true)[0];
+    return null;
+  }).filter(Boolean);
+  return [
+    ...callouts(groups.beforeTitle),
+    ...callouts(groups.afterTitle),
+    ...callouts(groups.beforeDescription),
+    ...description,
+    ...callouts(groups.afterDescription),
+    ...callouts(groups.beforeImage),
+    ...callouts(groups.afterImage, true),
+    ...rest,
+  ];
+}
+
+function calloutParts(ctx, item) {
+  return { label: item.label ?? calloutLabel({ ...item.tb, level: CALLOUT_STYLE[item.tb.level] ? item.tb.level : 'info' }, ctx.ast), body: item.body };
+}
+
+/** Column widths for a table `width` wide: by content, every column at least a share. */
+function tableColumns(ctx, rows, width, scale) {
+  const m = measure(ctx, 'body', SIZE.table * scale, true);
+  const cols = Math.max(...rows.map((r) => r.length));
+  const natural = Array.from({ length: cols }, (_, c) => Math.max(...rows.map((r) => pt(m.width(r[c] || ''))), 1) + TABLE_MARGIN * 2);
+  const floor = width / (cols * 2.5);
+  const weights = natural.map((w) => Math.max(w, floor));
+  const total = weights.reduce((a, b) => a + b, 0);
+  return weights.map((w) => Math.floor((w / total) * width));
+}
+
+function tableRowHeights(ctx, rows, colWidths, scale) {
+  const lineH = pt(measure(ctx, 'body', SIZE.table * scale).lineHeight);
+  return rows.map((row, r) => {
+    const m = measure(ctx, 'body', SIZE.table * scale, r === 0);
+    const lines = Math.max(1, ...colWidths.map((w, c) => metrics.wrapText(row[c] || '', w - TABLE_MARGIN * 2, m).reduce((n, p) => n + p.length, 0)));
+    return Math.ceil(lines * lineH + TABLE_MARGIN * 1.2 + 20000);
+  });
+}
+
+/** The height of an item set `width` wide at `scale`. */
+function itemHeight(ctx, item, width, scale) {
+  switch (item.kind) {
+    case 'para':
+      return metrics.textHeight(item.text, width, measure(ctx, 'body', SIZE.body * scale));
+    case 'callout': {
+      const { label, body } = calloutParts(ctx, item);
+      const inner = width - CALLOUT_BAR - CALLOUT_PAD_X * 2;
+      const labelH = label ? metrics.textHeight(label, inner, measure(ctx, 'body', SIZE.callout * scale, true)) : 0;
+      const bodyH = body ? metrics.textHeight(body, inner, measure(ctx, 'body', SIZE.callout * scale)) : 0;
+      return labelH + bodyH + (label && body ? pt(3) : 0) + CALLOUT_PAD_Y * 2;
+    }
+    case 'code':
+      return metrics.textHeight(item.code, width - CODE_PAD * 2, measure(ctx, 'mono', SIZE.code * scale)) + CODE_PAD * 2;
+    case 'table': {
+      const cols = tableColumns(ctx, item.rows, width, scale);
+      return tableRowHeights(ctx, item.rows, cols, scale).reduce((a, b) => a + b, 0);
+    }
+    default:
+      return 0;
+  }
+}
+
+function gapBetween(prev, next) {
+  return prev.kind === 'para' && next.kind === 'para' ? PARA_GAP : GAP;
+}
+
+function stackHeight(ctx, items, width, scale) {
+  return items.reduce((sum, item, i) => sum + (i ? gapBetween(items[i - 1], item) : 0) + itemHeight(ctx, item, width, scale), 0);
+}
+
+/**
+ * Split wrapped text after its first `fit` lines, at the end of a sentence
+ * when one ends in the second half of them. Null when fewer than two lines
+ * fit or everything does.
+ */
+function splitText(text, lines, fit) {
+  if (fit < 2 || fit >= lines.length) return null;
+  const head = lines.slice(0, fit).join(' ');
+  const sentence = [...head.matchAll(/[.!?。！？](?=\s|$)/g)].map((m) => m.index + 1).filter((i) => i > head.length / 2).pop();
+  const cut = sentence || head.length;
+  const flat = lines.join(' ');
+  return [flat.slice(0, cut).trim(), flat.slice(cut).trim()];
+}
+
+/**
+ * Split an item so its first part fits `maxH`: a paragraph, callout or code
+ * block between lines, a table between rows (repeating the header). Returns
+ * [head, tail], or null when not even a little fits.
+ */
+function splitItem(ctx, item, width, scale, maxH) {
+  if (item.kind === 'para') {
+    const m = measure(ctx, 'body', SIZE.body * scale);
+    const parts = splitText(item.text, metrics.wrapText(item.text, width, m).flat(), Math.floor(maxH / pt(m.lineHeight)));
+    return parts && [{ ...item, text: parts[0] }, { ...item, text: parts[1] }];
+  }
+  if (item.kind === 'code') {
+    const lines = item.code.split('\n');
+    let n = 0;
+    while (n < lines.length && itemHeight(ctx, { kind: 'code', code: lines.slice(0, n + 1).join('\n') }, width, scale) <= maxH) n += 1;
+    if (n < 2 || n >= lines.length) return null;
+    return [{ ...item, code: lines.slice(0, n).join('\n') }, { ...item, code: lines.slice(n).join('\n') }];
+  }
+  if (item.kind === 'callout') {
+    const { label, body } = calloutParts(ctx, item);
+    const inner = width - CALLOUT_BAR - CALLOUT_PAD_X * 2;
+    const labelH = label ? metrics.textHeight(label, inner, measure(ctx, 'body', SIZE.callout * scale, true)) : 0;
+    const m = measure(ctx, 'body', SIZE.callout * scale);
+    const fit = Math.floor((maxH - labelH - pt(3) - CALLOUT_PAD_Y * 2) / pt(m.lineHeight));
+    const parts = splitText(body, metrics.wrapText(body, inner, m).flat(), fit);
+    return parts && [{ ...item, label, body: parts[0] }, { ...item, label, body: parts[1] }];
+  }
+  if (item.kind === 'table') {
+    const cols = tableColumns(ctx, item.rows, width, scale);
+    const heights = tableRowHeights(ctx, item.rows, cols, scale);
+    let used = 0;
+    let n = 0;
+    while (n < heights.length && used + heights[n] <= maxH) { used += heights[n]; n += 1; }
+    if (n < 2 || n >= item.rows.length) return null;
+    return [{ ...item, rows: item.rows.slice(0, n) }, { ...item, rows: [item.rows[0], ...item.rows.slice(n)] }];
+  }
+  return null;
+}
+
+/**
+ * Take items from the front of `queue` that fit `maxH` in a column `width`
+ * wide, splitting the first one that doesn't when it can be. With `force`,
+ * at least one item (or part of one) is always taken so pages make progress.
+ */
+function takeFitting(ctx, queue, width, scale, maxH, { force = false } = {}) {
+  const taken = [];
+  let used = 0;
+  while (queue.length) {
+    const next = queue[0];
+    const gap = taken.length ? gapBetween(taken[taken.length - 1], next) : 0;
+    const h = itemHeight(ctx, next, width, scale);
+    if (used + gap + h <= maxH) {
+      taken.push(queue.shift());
+      used += gap + h;
+      continue;
+    }
+    const parts = splitItem(ctx, next, width, scale, maxH - used - gap);
+    if (parts) {
+      queue.shift();
+      queue.unshift(parts[1]);
+      taken.push(parts[0]);
+    } else if (force && !taken.length) {
+      taken.push(queue.shift());
+    }
+    break;
+  }
+  return taken;
+}
+
+// ---- pictures ----------------------------------------------------------------------
+
+/**
+ * Fit pictures into `box`: side by side or stacked, whichever shows them
+ * larger. Returns { w, h, placed: [{ x, y, w, h }] } relative to the box's
+ * top left, the group centered horizontally.
+ */
+function fitPictures(pics, box) {
+  if (!pics.length || box.w <= 0 || box.h <= 0) return { w: 0, h: 0, area: 0, placed: [] };
+  const arrange = (horizontal) => {
+    const n = pics.length;
+    const cellW = horizontal ? (box.w - GAP * (n - 1)) / n : box.w;
+    const cellH = horizontal ? box.h : (box.h - GAP * (n - 1)) / n;
+    const sized = pics.map((p) => {
+      const w = p.img.width * EMU_PER_PX;
+      const h = p.img.height * EMU_PER_PX;
+      const scale = Math.max(0, Math.min(cellW / w, cellH / h, MAX_UPSCALE));
+      return { w: Math.floor(w * scale), h: Math.floor(h * scale) };
+    });
+    const w = horizontal ? sized.reduce((s, p) => s + p.w, 0) + GAP * (n - 1) : Math.max(...sized.map((p) => p.w));
+    const h = horizontal ? Math.max(...sized.map((p) => p.h)) : sized.reduce((s, p) => s + p.h, 0) + GAP * (n - 1);
+    let cursor = 0;
+    const placed = sized.map((p) => {
+      const at = horizontal
+        ? { x: Math.round((box.w - w) / 2) + cursor, y: 0, w: p.w, h: p.h }
+        : { x: Math.round((box.w - p.w) / 2), y: cursor, w: p.w, h: p.h };
+      cursor += (horizontal ? p.w : p.h) + GAP;
+      return at;
+    });
+    return { w, h, area: sized.reduce((s, p) => s + p.w * p.h, 0), placed };
+  };
+  if (pics.length === 1) return arrange(true);
+  const across = arrange(true);
+  const down = arrange(false);
+  return down.area > across.area ? down : across;
+}
+
+// ---- step slide planning ------------------------------------------------------------
+
+/** The step's number badge and title, measured: sizes and boxes. */
+function planHeader(ctx, label, title, { titleRight }) {
+  const badgeText = String(label || '');
+  const badgeM = measure(ctx, 'heading', SIZE.badge, true);
+  const badgeW = badgeText ? Math.max(BADGE, Math.round(pt(badgeM.width(badgeText))) + Math.round(0.24 * IN)) : 0;
+  const titleX = MARGIN_X + (badgeW ? badgeW + BADGE_GAP : 0);
+  const titleW = Math.max(IN, titleRight - titleX);
+  let size = TITLE_SIZES[0];
+  let lines = [];
+  for (const s of TITLE_SIZES) {
+    size = s;
+    lines = metrics.wrapText(title, titleW, measure(ctx, 'heading', s, true)).flat();
+    if (lines.length <= 2) break;
+  }
+  const lineH = pt(measure(ctx, 'heading', size, true).lineHeight);
+  const titleH = Math.ceil(lines.length * lineH);
+  const first = Math.max(lineH, badgeW ? BADGE : 0);
+  const badge = badgeW ? { x: MARGIN_X, y: TOP + Math.round((first - BADGE) / 2), w: badgeW, h: BADGE, text: badgeText } : null;
+  const titleBox = { x: titleX, y: TOP + Math.round((first - lineH) / 2), w: titleW, h: titleH };
+  const bottom = Math.max(titleBox.y + titleBox.h, badge ? badge.y + badge.h : 0);
+  return { badge, title: { box: titleBox, size, text: title }, bottom };
+}
+
+/**
+ * Try one arrangement of a step's items and pictures in `area` at `scale`.
+ * Returns { fits, area (picture area), ... } with the boxes to draw.
+ */
+function arrange(ctx, mode, items, pics, area, scale) {
+  if (mode === 'full') {
+    const fit = fitPictures(pics, area);
+    return { mode, fits: true, scale, pictureArea: fit.area, picBox: { x: area.x, y: area.y, w: area.w, h: area.h }, fit, column: null, items: [], below: [] };
+  }
+  if (mode === 'text' || !pics.length) {
+    const h = stackHeight(ctx, items, area.w, scale);
+    return { mode: 'text', fits: h <= area.h, scale, pictureArea: 0, column: { x: area.x, y: area.y, w: area.w }, items, below: [] };
+  }
+  if (mode === 'below') {
+    const top = items.filter((i) => !i.after);
+    const after = items.filter((i) => i.after);
+    const topH = top.length ? stackHeight(ctx, top, area.w, scale) + GAP : 0;
+    const afterH = after.length ? stackHeight(ctx, after, area.w, scale) + GAP : 0;
+    const picH = area.h - topH - afterH;
+    const fit = fitPictures(pics, { w: area.w, h: Math.max(0, picH) });
+    const fits = picH >= Math.max(area.h * MIN_PICTURE_SHARE, IN) && fit.h > 0;
+    return {
+      mode, fits, scale, pictureArea: fits ? fit.area : 0,
+      column: { x: area.x, y: area.y, w: area.w }, items: top,
+      picBox: { x: area.x, y: area.y + topH, w: area.w, h: picH }, fit,
+      below: after,
+    };
+  }
+  // Beside the text: the picture column takes what the pictures need, up to 62%.
+  const maxPicW = Math.round((area.w - COLUMN_GAP) * 0.62);
+  const fit0 = fitPictures(pics, { w: maxPicW, h: area.h });
+  const picW = Math.max(fit0.w, Math.round(area.w * 0.3));
+  const textW = area.w - picW - COLUMN_GAP;
+  const fit = fitPictures(pics, { w: picW, h: area.h });
+  const h = stackHeight(ctx, items, textW, scale);
+  const left = mode === 'left';
   return {
-    height,
-    xml: [
-      rectShape(x, y, w, height, style.fill),
-      rectShape(x, y, CALL_OUT_BAR_W, height, style.accent),
-      textBox(innerX, y + 12000, innerW, Math.max(0, height - 24000), `${titlePara}${bodyPara}`),
-    ].join(''),
+    mode, fits: h <= area.h, scale, pictureArea: fit.area,
+    column: { x: left ? area.x + picW + COLUMN_GAP : area.x, y: area.y, w: textW }, items,
+    picBox: { x: left ? area.x : area.x + textW + COLUMN_GAP, y: area.y, w: picW, h: area.h }, fit,
+    below: [],
   };
 }
 
-function descriptionHeight(text) {
-  const lines = estimateWrappedLines(text, 95);
-  if (!lines) return 0;
-  return Math.max(360000, 260000 + (lines * 130000));
-}
-
-function slideXml(content, { hideMaster = false } = {}) {
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
- xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
- xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"${hideMaster ? ' showMasterSp="0"' : ''}>
-<p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
-<p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>
-${content}
-</p:spTree></p:cSld><p:clrMapOvr><a:overrideClrMapping bg1="lt1" tx1="dk1" bg2="lt2" tx2="dk2" accent1="accent1" accent2="accent2" accent3="accent3" accent4="accent4" accent5="accent5" accent6="accent6" hlink="hlink" folHlink="folHlink"/></p:clrMapOvr></p:sld>`;
-}
-
-function chunkArray(items, size) {
-  const chunks = [];
-  for (let i = 0; i < items.length; i += size) {
-    chunks.push(items.slice(i, i + size));
+/**
+ * Lay out one step: the arrangement for its first slide and the items that
+ * carry on to "(continued)" slides.
+ */
+function planStep(ctx, items, pics, area, position) {
+  if (position === 'full' && pics.length) return { first: arrange(ctx, 'full', items, pics, area, 1), rest: [] };
+  const modes = !pics.length ? ['text'] : position === 'auto' ? ['right', 'below'] : [position];
+  for (const scale of SCALES) {
+    const options = modes.map((mode) => arrange(ctx, mode, items, pics, area, scale)).filter((a) => a.fits);
+    if (options.length) {
+      options.sort((a, b) => b.pictureArea - a.pictureArea);
+      return { first: options[0], rest: [] };
+    }
   }
-  return chunks;
+  // Too much for one slide: as much as fits beside (or above) the picture, the rest after.
+  const scale = SCALES[1];
+  const mode = !pics.length ? 'text' : position === 'auto' ? 'right' : position;
+  const queue = items.slice();
+  let first;
+  if (mode === 'text') {
+    first = arrange(ctx, 'text', takeFitting(ctx, queue, area.w, scale, area.h, { force: true }), [], area, scale);
+  } else if (mode === 'below') {
+    // Only text from above the picture goes on this slide; what follows the picture waits.
+    const room = area.h - Math.max(area.h * MIN_PICTURE_SHARE, IN) - GAP;
+    const before = queue.filter((i) => !i.after);
+    const taken = takeFitting(ctx, before, area.w, scale, room);
+    queue.splice(0, queue.length, ...before, ...items.filter((i) => i.after));
+    first = arrange(ctx, 'below', taken, pics, area, scale);
+  } else {
+    const probe = arrange(ctx, mode, [], pics, area, scale);
+    const taken = takeFitting(ctx, queue, probe.column.w, scale, area.h);
+    first = arrange(ctx, mode, taken, pics, area, scale);
+  }
+  return { first, rest: queue };
 }
 
-function tocSlideXml(ast, entries, { continued = false } = {}) {
-  const { t, tc } = exportText(ast);
-  let tocContent = rectShape(0, 0, SLIDE_W, 18000, 'scheme:accent1');
-  tocContent += textBox(914400, 760000, SLIDE_W - 1828800, 700000,
-    para(continued ? t('Contents (continued)') : tc('Table of contents', 'Contents'), { size: 3000, bold: true, font: '+mj-lt' }));
-  tocContent += rectShape(914400, 1500000, 1600000, 14000, 'scheme:accent1');
-  tocContent += textBox(914400, 1680000, SLIDE_W - 1828800, 450000,
-    para(guideSummary(ast), { size: 1500, color: '6B7280' }));
+// ---- drawing ------------------------------------------------------------------------
 
-  entries.forEach((entry, index) => {
-    const x = 914400 + (entry.depth * 220000);
-    const y = TOC_ENTRY_START_Y + (index * TOC_ENTRY_SPACING);
-    tocContent += rectShape(x, y + 78000, 24000, 90000, 'scheme:accent1');
-    tocContent += textBox(x + 48000, y, SLIDE_W - x - 1200000, TOC_ENTRY_HEIGHT,
-      para(`${entry.number}. ${entry.title}`, { size: entry.depth === 0 ? 1550 : 1450, bold: entry.depth === 0 }));
+function itemXml(ctx, nextId, item, box, scale) {
+  const ink = 'scheme:tx1';
+  const lang = ctx.lang;
+  switch (item.kind) {
+    case 'para':
+      return X.shape(nextId, {
+        name: 'Text',
+        box,
+        paras: X.paragraphs(item.text, { size: SIZE.body * scale, color: ink, lang }),
+        text: { inset: 0 },
+      });
+    case 'callout': {
+      const style = CALLOUT_STYLE[item.tb.level] || CALLOUT_STYLE.info;
+      const { label, body } = calloutParts(ctx, item);
+      const paras = [
+        ...(label ? X.paragraphs(label, { size: SIZE.callout * scale, bold: true, color: style.color, lang }) : []),
+        ...(body ? X.paragraphs(body, { size: SIZE.callout * scale, color: '1F2937', lang }, { spaceBefore: label ? 3 : 0 }) : []),
+      ];
+      return X.shape(nextId, { name: 'Callout', box, fill: style.fill })
+        + X.shape(nextId, { name: 'Callout bar', box: { x: box.x, y: box.y, w: CALLOUT_BAR, h: box.h }, fill: style.accent })
+        + X.shape(nextId, {
+          name: 'Callout text',
+          box: { x: box.x + CALLOUT_BAR + CALLOUT_PAD_X, y: box.y + CALLOUT_PAD_Y, w: box.w - CALLOUT_BAR - CALLOUT_PAD_X * 2, h: box.h - CALLOUT_PAD_Y * 2 },
+          paras,
+          text: { inset: 0 },
+        });
+    }
+    case 'code': {
+      const hl = highlightCode(item.code, item.language, ctx.ast.codeStyle);
+      const size = SIZE.code * scale;
+      const lines = hl ? hl.lines : item.code.split('\n').map((text) => [{ text, color: '#1F2937' }]);
+      const paras = lines.map((line) => X.paragraph(line.length
+        ? line.map((r) => X.run(r.text, { size, bold: r.bold, italic: r.italic, color: (r.color || '#1F2937').slice(1), font: CODE_FONT, lang }))
+        : '', { endSize: line.length ? 0 : size }));
+      return X.shape(nextId, {
+        name: 'Code',
+        box,
+        geom: 'roundRect',
+        radius: Math.round(0.06 * IN),
+        fill: hl ? hl.background.slice(1) : 'F3F4F6',
+        line: hl?.dark ? null : { color: 'E5E7EB', w: 9525 },
+        paras,
+        text: { inset: CODE_PAD },
+      });
+    }
+    case 'table': {
+      const colWidths = tableColumns(ctx, item.rows, box.w, scale);
+      const heights = tableRowHeights(ctx, item.rows, colWidths, scale);
+      const cols = colWidths.length;
+      const rows = item.rows.map((row, r) => ({
+        h: heights[r],
+        cells: Array.from({ length: cols }, (_, c) => ({
+          paras: X.paragraphs(row[c] || '', { size: SIZE.table * scale, bold: r === 0, color: 'scheme:tx1', lang }),
+          fill: r === 0 ? 'F1F5F9' : null,
+        })),
+      }));
+      return X.table(nextId, { box: { ...box, w: colWidths.reduce((a, b) => a + b, 0), h: heights.reduce((a, b) => a + b, 0) }, colWidths, rows, margin: TABLE_MARGIN });
+    }
+    default:
+      return '';
+  }
+}
+
+/** Draw items stacked down a column from `y`; returns the xml and the bottom. */
+function columnXml(ctx, nextId, items, { x, y, w }, scale) {
+  let xml = '';
+  let cursor = y;
+  items.forEach((item, i) => {
+    if (i) cursor += gapBetween(items[i - 1], item);
+    const h = itemHeight(ctx, item, w, scale);
+    xml += itemXml(ctx, nextId, item, { x, y: cursor, w, h }, scale);
+    cursor += h;
   });
-
-  return slideXml(tocContent);
+  return { xml, bottom: cursor };
 }
+
+function headerXml(ctx, nextId, header) {
+  let xml = '';
+  if (header.badge) {
+    const b = header.badge;
+    xml += X.shape(nextId, {
+      name: 'Step number',
+      box: b,
+      geom: b.w > b.h ? 'roundRect' : 'ellipse',
+      radius: b.h / 2,
+      fill: 'scheme:accent1',
+      paras: [X.paragraph(X.run(b.text, { size: SIZE.badge, bold: true, color: ctx.onPrimary, font: '+mj-lt', lang: ctx.lang }), { align: 'ctr' })],
+      text: { inset: 0, anchor: 'ctr', autofit: false },
+    });
+  }
+  const t = header.title;
+  xml += X.shape(nextId, {
+    name: 'Title',
+    ph: 'title',
+    box: t.box,
+    paras: X.paragraphs(t.text, { size: t.size, bold: true, font: '+mj-lt', color: 'scheme:tx1', lang: ctx.lang }),
+    text: { inset: 0, anchor: 't' },
+  });
+  return xml;
+}
+
+/** The slide's top accent bar. */
+function accentBar(ctx, nextId) {
+  return X.shape(nextId, { name: 'Accent', box: { x: 0, y: 0, w: SLIDE_W, h: ACCENT_BAR_H }, fill: 'scheme:accent1' });
+}
+
+/** The step's full text for its speaker notes. */
+function notesText(ctx, step, items) {
+  const lines = [`${step.number}. ${step.title || ctx.t('Untitled step')}`];
+  for (const item of items) {
+    if (item.kind === 'para') lines.push(item.text);
+    else if (item.kind === 'callout') {
+      const { label, body } = calloutParts(ctx, item);
+      lines.push([label, body].filter(Boolean).join(' — '));
+    } else if (item.kind === 'code') lines.push(item.code);
+    else if (item.kind === 'table') lines.push(...item.rows.map((r) => r.join(' | ')));
+  }
+  return lines.join('\n');
+}
+
+// ---- the deck ------------------------------------------------------------------------
 
 /** The theme: the brand's text, primary and accent colors and its heading and body fonts, else StepForge's. */
 function themeXml(brand) {
@@ -188,249 +574,381 @@ function themeXml(brand) {
 </a:themeElements></a:theme>`;
 }
 
+// Title placeholders on the master and layout, so slide titles inherit from them.
+const TITLE_PH_BOX = { x: MARGIN_X, y: TOP, w: SLIDE_W - MARGIN_X * 2, h: Math.round(0.8 * IN) };
+
+function titlePlaceholder(id) {
+  return `<p:sp><p:nvSpPr><p:cNvPr id="${id}" name="Title Placeholder"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr><p:ph type="title"/></p:nvPr></p:nvSpPr>`
+    + `<p:spPr><a:xfrm><a:off x="${TITLE_PH_BOX.x}" y="${TITLE_PH_BOX.y}"/><a:ext cx="${TITLE_PH_BOX.w}" cy="${TITLE_PH_BOX.h}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr>`
+    + `<p:txBody><a:bodyPr lIns="0" tIns="0" rIns="0" bIns="0" anchor="t"><a:normAutofit/></a:bodyPr><a:lstStyle/><a:p><a:r><a:rPr lang="en-US" dirty="0"/><a:t>Title</a:t></a:r></a:p></p:txBody></p:sp>`;
+}
+
 /**
  * The slide master. With a brand profile it carries the logo (top right),
  * the footer text and the slide number, so they're on every slide.
  */
-function masterXml(brand, logoBox, ast) {
-  const { t } = exportText(ast);
-  let shapes = '';
+function masterXml(ctx) {
+  const { brand, logoBox, t } = ctx;
+  let shapes = titlePlaceholder(2);
   if (logoBox) {
-    shapes += picture(3, SLIDE_W - 457200 - logoBox.w, LOGO_TOP, logoBox.w, logoBox.h, t('Logo'), { id: 2, name: 'Logo' });
+    shapes += X.picture(X.ids(3), { relId: 3, box: { x: SLIDE_W - LOGO_RIGHT - logoBox.w, y: LOGO_TOP, w: logoBox.w, h: logoBox.h }, alt: t('Logo'), name: 'Logo' });
   }
-  const footerText = (id, x, w, align, runs) => `<p:sp><p:nvSpPr><p:cNvPr id="${id}" name="Footer"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>` +
-    `<p:spPr><a:xfrm><a:off x="${x}" y="${SLIDE_H - 360000}"/><a:ext cx="${w}" cy="260000"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr>` +
-    `<p:txBody><a:bodyPr wrap="square" lIns="0" rIns="0" tIns="0" bIns="0" anchor="ctr"/><a:lstStyle/><a:p><a:pPr algn="${align}"/>${runs}</a:p></p:txBody></p:sp>`;
-  const rpr = '<a:rPr lang="en-US" sz="1000" dirty="0"><a:solidFill><a:srgbClr val="6B7280"/></a:solidFill><a:latin typeface="+mn-lt"/></a:rPr>';
+  const footerText = (id, x, w, align, runs) => `<p:sp><p:nvSpPr><p:cNvPr id="${id}" name="Footer ${id}"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>`
+    + `<p:spPr><a:xfrm><a:off x="${x}" y="${FOOTER_Y}"/><a:ext cx="${w}" cy="${FOOTER_H}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr>`
+    + `<p:txBody><a:bodyPr wrap="square" lIns="0" rIns="0" tIns="0" bIns="0" anchor="ctr"/><a:lstStyle/><a:p><a:pPr algn="${align}"/>${runs}</a:p></p:txBody></p:sp>`;
+  const rpr = `<a:rPr lang="${ctx.lang}" sz="1000" dirty="0"><a:solidFill><a:srgbClr val="${MUTED}"/></a:solidFill><a:latin typeface="+mn-lt"/></a:rPr>`;
   if (brand?.footer.text) {
-    shapes += footerText(3, 457200, Math.round(SLIDE_W * 0.65), 'l', `<a:r>${rpr}<a:t>${escapeXml(brand.footer.text)}</a:t></a:r>`);
+    shapes += footerText(4, MARGIN_X, Math.round(SLIDE_W * 0.65), 'l', `<a:r>${rpr}<a:t>${escapeXml(brand.footer.text)}</a:t></a:r>`);
   }
   if (brand?.footer.pageNumbers) {
-    shapes += footerText(4, SLIDE_W - 457200 - 1500000, 1500000, 'r',
+    shapes += footerText(5, SLIDE_W - MARGIN_X - 1500000, 1500000, 'r',
       `<a:fld id="{B6F15528-21DE-4FAA-801E-634DDDAF4B2B}" type="slidenum">${rpr}<a:t>‹#›</a:t></a:fld>`);
   }
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<p:sldMaster xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
- xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
- xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
-<p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
-<p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>
+<p:sldMaster ${X.NS}>
+<p:cSld><p:bg><p:bgRef idx="1001"><a:schemeClr val="bg1"/></p:bgRef></p:bg><p:spTree>${X.GROUP_PROPS}
 ${shapes}</p:spTree></p:cSld>
-<p:clrMap bg1="lt1" tx1="dk1" bg2="lt2" tx2="dk2" accent1="accent1" accent2="accent2" accent3="accent3" accent4="accent4" accent5="accent5" accent6="accent6" hlink="hlink" folHlink="folHlink"/>
+<p:clrMap ${X.CLR_MAP}/>
 <p:sldLayoutIdLst><p:sldLayoutId id="2147483649" r:id="rId1"/></p:sldLayoutIdLst>
 </p:sldMaster>`;
 }
 
 const LAYOUT_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<p:sldLayout xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
- xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
- xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" type="blank">
-<p:cSld name="Blank"><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
-<p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>
+<p:sldLayout ${X.NS} type="titleOnly" preserve="1">
+<p:cSld name="Title Only"><p:spTree>${X.GROUP_PROPS}${titlePlaceholder(2)}
 </p:spTree></p:cSld>
 <p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>
 </p:sldLayout>`;
 
+/** Relative luminance (0..1) of an sRGB color. */
+function luminance([r, g, b]) {
+  const lin = (c) => { const s = c / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; };
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+}
+
+function contrast(a, b) {
+  const [hi, lo] = a > b ? [a, b] : [b, a];
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+/** The average luminance of an image's visible pixels (null for an empty or unreadable one). */
+function imageLuminance(img) {
+  if (!img) return null;
+  let sum = 0;
+  let weight = 0;
+  const step = Math.max(1, Math.floor((img.width * img.height) / 20000));
+  for (let i = 0; i < img.width * img.height; i += step) {
+    const a = img.data[i * 4 + 3] / 255;
+    if (a < 0.2) continue;
+    sum += luminance([img.data[i * 4], img.data[i * 4 + 1], img.data[i * 4 + 2]]) * a;
+    weight += a;
+  }
+  return weight ? sum / weight : null;
+}
+
+/**
+ * The title slide: Standard, Centered or Band, with the brand's banner and a
+ * larger logo. A logo that would vanish on a dark band sits on a white card.
+ */
+function titleSlide(ctx) {
+  const { ast, brand, t } = ctx;
+  const nextId = X.ids();
+  const style = brand?.cover || 'standard';
+  const centered = style === 'centered';
+  const align = centered ? 'ctr' : 'l';
+  const bandColor = style === 'band' ? brand.colors.primary : null;
+  const ink = bandColor ? textOn(bandColor).slice(1) : 'scheme:tx1';
+  const muted = bandColor ? ink : MUTED;
+  const rels = [];
+  let xml = bandColor
+    ? X.shape(nextId, { name: 'Band', box: { x: 0, y: 0, w: SLIDE_W, h: SLIDE_H }, fill: 'scheme:accent1' })
+    : X.shape(nextId, { name: 'Accent', box: { x: 0, y: 0, w: SLIDE_W, h: ACCENT_BAR_H }, fill: 'scheme:accent1' });
+
+  let top = ACCENT_BAR_H;
+  if (brand?.banner?.png) {
+    const box = ctx.emuBox(brand.banner, SLIDE_W, 1500000);
+    rels.push({ id: 2, name: 'brand-banner.png' });
+    xml += X.picture(nextId, { relId: 2, box: { x: Math.round((SLIDE_W - box.w) / 2), y: 0, w: box.w, h: box.h }, alt: t('Banner'), name: 'Banner' });
+    top = box.h;
+  }
+  if (brand?.logo?.png) {
+    const box = ctx.emuBox(brand.logo, 2400000, 760000);
+    const y = top + Math.round(0.5 * IN);
+    const x = centered ? Math.round((SLIDE_W - box.w) / 2) : MARGIN_X;
+    rels.push({ id: 3, name: 'brand-logo.png' });
+    const logoLum = imageLuminance(brandRaster(brand.logo));
+    if (bandColor && logoLum != null && contrast(logoLum, luminance(hexToRgb(bandColor))) < 2.2) {
+      const pad = Math.round(0.14 * IN);
+      xml += X.shape(nextId, { name: 'Logo card', box: { x: x - pad, y: y - pad, w: box.w + pad * 2, h: box.h + pad * 2 }, geom: 'roundRect', radius: Math.round(0.1 * IN), fill: 'FFFFFF' });
+    }
+    xml += X.picture(nextId, { relId: 3, box: { x, y, w: box.w, h: box.h }, alt: t('Logo'), name: 'Logo' });
+    top = y + box.h + Math.round(0.2 * IN);
+  }
+
+  // The title block: accent rule, title, summary and details, centered in the space left.
+  const textW = SLIDE_W - MARGIN_X * 2 - (centered ? 0 : Math.round(1.2 * IN));
+  let size = 40;
+  let lines = [];
+  for (const s of [40, 34, 28]) {
+    size = s;
+    lines = metrics.wrapText(ast.guide.title, textW, measure(ctx, 'heading', s, true)).flat();
+    if (lines.length <= 2) break;
+  }
+  const titleH = Math.ceil(lines.length * pt(measure(ctx, 'heading', size, true).lineHeight));
+  const sub = [guideSummary(ast), ...guideMetaLines(ast)].filter(Boolean);
+  const subH = sub.reduce((sum, line, i) => sum + metrics.textHeight(line, textW, measure(ctx, 'body', i ? 16 : 20)), 0) + (sub.length - 1) * pt(4);
+  const RULE_H = Math.round(0.06 * IN);
+  const ruleGap = Math.round(0.28 * IN);
+  const blockH = RULE_H + ruleGap + titleH + Math.round(0.25 * IN) + subH;
+  const bottomLimit = SLIDE_H - Math.round(0.6 * IN);
+  let y = Math.max(top + Math.round(0.2 * IN), Math.round(top + (bottomLimit - top - blockH) * 0.45));
+  const ruleW = Math.round(1.2 * IN);
+  xml += X.shape(nextId, { name: 'Rule', box: { x: centered ? Math.round((SLIDE_W - ruleW) / 2) : MARGIN_X, y, w: ruleW, h: RULE_H }, fill: bandColor ? ink : 'scheme:accent1' });
+  y += RULE_H + ruleGap;
+  xml += X.shape(nextId, {
+    name: 'Title', ph: 'title', box: { x: MARGIN_X, y, w: centered ? SLIDE_W - MARGIN_X * 2 : textW, h: titleH },
+    paras: X.paragraphs(ast.guide.title, { size, bold: true, font: '+mj-lt', color: ink, lang: ctx.lang }, { align }),
+    text: { inset: 0 },
+  });
+  y += titleH + Math.round(0.25 * IN);
+  if (sub.length) {
+    xml += X.shape(nextId, {
+      name: 'Details', box: { x: MARGIN_X, y, w: centered ? SLIDE_W - MARGIN_X * 2 : textW, h: subH },
+      paras: sub.map((line, i) => X.paragraph(X.run(line, { size: i ? 16 : 20, color: muted, lang: ctx.lang }), { align, spaceAfter: i < sub.length - 1 ? 4 : 0 })),
+      text: { inset: 0 },
+    });
+  }
+  return { xml: X.slideXml(xml, { hideMaster: Boolean(brand) }), rels, media: [] };
+}
+
+/** Contents slides: one line per step in up to two columns, paginated. */
+function tocSlides(ctx, entries) {
+  const { ast, t, tc } = ctx;
+  const slides = [];
+  const rowH = Math.round(0.42 * IN);
+  const headH = Math.round(0.62 * IN);
+  const summaryH = Math.round(0.36 * IN);
+  const areaTop = TOP + headH + summaryH + Math.round(0.2 * IN);
+  const areaH = ctx.bottomLimit - areaTop;
+  const perColumn = Math.max(1, Math.floor(areaH / rowH));
+  const columns = entries.length > perColumn ? 2 : 1;
+  const colGap = Math.round(0.5 * IN);
+  const colW = (SLIDE_W - MARGIN_X * 2 - (columns - 1) * colGap) / columns;
+  const perSlide = perColumn * columns;
+  for (let start = 0, page = 0; start < entries.length; start += perSlide, page += 1) {
+    const nextId = X.ids();
+    let xml = accentBar(ctx, nextId);
+    xml += X.shape(nextId, {
+      name: 'Title', ph: 'title', box: { x: MARGIN_X, y: TOP, w: ctx.titleRight - MARGIN_X, h: headH },
+      paras: X.paragraphs(page ? t('Contents (continued)') : tc('Table of contents', 'Contents'), { size: 32, bold: true, font: '+mj-lt', color: 'scheme:tx1', lang: ctx.lang }),
+      text: { inset: 0 },
+    });
+    xml += X.shape(nextId, {
+      name: 'Summary', box: { x: MARGIN_X, y: TOP + headH, w: SLIDE_W - MARGIN_X * 2, h: summaryH },
+      paras: X.paragraphs(guideSummary(ast), { size: 14, color: MUTED, lang: ctx.lang }),
+      text: { inset: 0 },
+    });
+    entries.slice(start, start + perSlide).forEach((entry, i) => {
+      const col = Math.floor(i / perColumn);
+      const row = i % perColumn;
+      const indent = Math.min(entry.depth, 3) * Math.round(0.3 * IN);
+      const x = MARGIN_X + col * (colW + colGap) + indent;
+      const y = areaTop + row * rowH;
+      const top = entry.depth === 0;
+      const size = top ? 16 : 14;
+      const numW = Math.round(0.65 * IN);
+      const titleW = colW - indent - numW;
+      xml += X.shape(nextId, {
+        name: 'Entry', box: { x, y, w: colW - indent, h: rowH },
+        paras: [X.paragraph([
+          X.run(`${entry.number}`, { size, bold: true, color: 'scheme:accent1', lang: ctx.lang }),
+          X.run(` ${metrics.fitOneLine(entry.title, titleW, measure(ctx, 'body', size, top))}`, { size, bold: top, color: 'scheme:tx1', lang: ctx.lang }),
+        ])],
+        text: { inset: 0, anchor: 'ctr', autofit: false },
+      });
+    });
+    slides.push({ xml: X.slideXml(xml), rels: [], media: [] });
+  }
+  return slides;
+}
+
+/** One step's slides: the first with its pictures, then any "(continued)" ones. */
+function stepSlides(ctx, step, tpl) {
+  const { t } = ctx;
+  const items = stepItems(step);
+  const pics = [];
+  const img = ctx.images.get(step.stepId);
+  if (img) pics.push({ img, alt: step.altText });
+  const chart = (step.blocks || []).some((b) => b.kind === 'flowchart') ? ctx.images.get(flowchartImageKey(step.stepId)) : null;
+  if (chart) pics.push({ img: chart, alt: flowchartAlt(step, ctx.ast) });
+
+  const title = step.title || t('Untitled step');
+  const header = planHeader(ctx, step.number, title, { titleRight: ctx.titleRight });
+  const area = { x: MARGIN_X, y: header.bottom + HEADER_GAP, w: SLIDE_W - MARGIN_X * 2 };
+  area.h = ctx.bottomLimit - area.y;
+  const position = SCREENSHOT_POSITIONS.includes(tpl.screenshotPosition) ? tpl.screenshotPosition : 'auto';
+  const plan = planStep(ctx, items, pics, area, position);
+
+  const slides = [];
+  const notes = tpl.speakerNotes || plan.first.mode === 'full' ? notesText(ctx, step, items) : '';
+  // The first slide.
+  {
+    const nextId = X.ids();
+    const p = plan.first;
+    let xml = accentBar(ctx, nextId) + headerXml(ctx, nextId, header);
+    const rels = [];
+    const media = [];
+    let bottom = area.y;
+    if (p.column && p.items.length) {
+      const col = columnXml(ctx, nextId, p.items, p.column, p.scale);
+      xml += col.xml;
+      bottom = col.bottom;
+    }
+    if (p.fit && p.fit.placed.length) {
+      // Beside the text the pictures start at the top; below it they follow the text.
+      const picTop = p.mode === 'below' ? (p.items.length ? bottom + GAP : area.y) : p.picBox.y;
+      p.fit.placed.forEach((at, i) => {
+        const relId = 2 + i; // rId1 = layout
+        const name = `image${ctx.nextMedia()}.png`;
+        media.push({ name, data: encodePng(pics[i].img) });
+        rels.push({ id: relId, name });
+        xml += X.picture(nextId, {
+          relId,
+          box: { x: p.picBox.x + at.x, y: picTop + at.y, w: at.w, h: at.h },
+          alt: pics[i].alt,
+          name: 'Screenshot',
+          border: { color: 'CBD5E1', w: 9525 },
+          shadow: true,
+        });
+      });
+      if (p.below.length) {
+        xml += columnXml(ctx, nextId, p.below, { x: area.x, y: picTop + p.fit.h + GAP, w: area.w }, p.scale).xml;
+      }
+    }
+    slides.push({ xml: X.slideXml(xml), rels, media, notes });
+  }
+  // The rest of the text, on as many slides as it needs.
+  const queue = plan.rest.slice();
+  const contHeader = planHeader(ctx, step.number, t('{title} (continued)', { title }), { titleRight: ctx.titleRight });
+  const contArea = { x: MARGIN_X, y: contHeader.bottom + HEADER_GAP, w: SLIDE_W - MARGIN_X * 2 };
+  contArea.h = ctx.bottomLimit - contArea.y;
+  let guard = 0;
+  while (queue.length && guard++ < 200) {
+    const scale = SCALES[0];
+    const taken = takeFitting(ctx, queue, contArea.w, scale, contArea.h, { force: true });
+    const nextId = X.ids();
+    const xml = accentBar(ctx, nextId) + headerXml(ctx, nextId, contHeader) + columnXml(ctx, nextId, taken, contArea, scale).xml;
+    slides.push({ xml: X.slideXml(xml), rels: [], media: [], notes: '' });
+  }
+  return slides;
+}
+
+const REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+const CT = 'application/vnd.openxmlformats-officedocument.presentationml';
+
+function relsXml(list) {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${list.join('')}</Relationships>`;
+}
+
 function exportPptx(ast, outDir, template = {}) {
-  const { t } = exportText(ast);
-  shapeIdCounter = 10;
   const tpl = { ...DEFAULT_TEMPLATE, ...template };
-  const images = tpl.includeImages ? renderAllImages(ast) : new Map();
-
-  const slides = []; // { xml, rels: [{id, target}], media: [{name, data}] }
-  const toc = tpl.includeToc && ast.steps.length > 1 ? tocEntries(ast) : [];
-
   const brand = ast.branding;
+  const { t, tc } = exportText(ast);
   // A brand image's size on a slide: its pixels at 96 dpi, shrunk to fit.
   const emuBox = (asset, maxW, maxH) => {
     const size = fitSize(asset.width * EMU_PER_PX, asset.height * EMU_PER_PX, maxW, maxH);
     return { w: size.width, h: size.height };
   };
   const logoBox = brand?.logo?.png ? emuBox(brand.logo, LOGO_MAX_W, LOGO_MAX_H) : null;
-  const footerReserve = brand && (brand.footer.text || brand.footer.pageNumbers) ? FOOTER_RESERVE : 0;
-  // Step titles stop short of the master's logo.
-  const titleWidth = SLIDE_W - 914400 - (logoBox ? logoBox.w + 200000 : 0);
-
-  if (tpl.titleSlide) {
-    // Its own layout (Standard, Centered or Band) with a larger logo and the
-    // banner, so it hides the master's shapes.
-    const metaLines = guideMetaLines(ast);
-    const style = brand?.cover || 'standard';
-    const centered = style === 'centered';
-    const align = centered ? 'ctr' : '';
-    const onBand = style === 'band' ? textOn(brand.colors.primary).slice(1) : null;
-    const rels = [];
-    let titleContent = style === 'band' ? rectShape(0, 0, SLIDE_W, SLIDE_H, 'scheme:accent1') : rectShape(0, 0, SLIDE_W, 18000, 'scheme:accent1');
-    let top = 0;
-    if (brand?.banner?.png) {
-      const box = emuBox(brand.banner, SLIDE_W, 1500000);
-      rels.push({ id: 2, name: 'brand-banner.png' });
-      titleContent += picture(2, Math.round((SLIDE_W - box.w) / 2), 0, box.w, box.h, t('Banner'), { id: shapeIdCounter++, name: 'Banner' });
-      top = box.h;
-    }
-    let titleY = 2050000;
-    if (brand?.logo?.png) {
-      const box = emuBox(brand.logo, 2400000, 800000);
-      const y = top + (top ? 350000 : 650000);
-      rels.push({ id: 3, name: 'brand-logo.png' });
-      titleContent += picture(3, centered ? Math.round((SLIDE_W - box.w) / 2) : SLIDE_MARGIN, y, box.w, box.h, t('Logo'), { id: shapeIdCounter++, name: 'Logo' });
-      titleY = Math.max(titleY, y + box.h + 250000);
-    } else if (top) {
-      titleY = Math.max(titleY, top + 350000);
-    }
-    titleContent += textBox(SLIDE_MARGIN, titleY, SLIDE_W - 1828800, 1200000,
-      para(ast.guide.title, { size: 4000, bold: true, font: '+mj-lt', align, color: onBand || 'scheme:tx1' }));
-    titleContent += rectShape(centered ? Math.round((SLIDE_W - 2200000) / 2) : SLIDE_MARGIN, titleY + 1250000, 2200000, 14000, onBand || 'scheme:accent1');
-    titleContent += textBox(SLIDE_MARGIN, titleY + 1450000, SLIDE_W - 1828800, 1100000,
-      [para(guideSummary(ast), { size: 1800, color: onBand || '6B7280', align }),
-        ...metaLines.map((line) => para(line, { size: 1500, color: onBand || '6B7280', align }))].join(''));
-    slides.push({
-      xml: slideXml(titleContent, { hideMaster: Boolean(brand) }),
-      rels, media: [],
-    });
-  }
-
-  if (toc.length) {
-    const tocPages = chunkArray(toc, TOC_MAX_ENTRIES_PER_SLIDE);
-    tocPages.forEach((page, index) => {
-      slides.push({
-        xml: tocSlideXml(ast, page, { continued: index > 0 }),
-        rels: [], media: [],
-      });
-    });
-  }
-
+  const footer = Boolean(brand && (brand.footer.text || brand.footer.pageNumbers));
   let mediaCounter = 0;
-  for (const step of ast.steps) {
-    const {
-      beforeTitle,
-      afterTitle,
-      beforeDescription,
-      afterDescription,
-      beforeImage,
-      afterImage,
-    } = Object.fromEntries(Object.entries(stepContentGroups(step))
-      // A flowchart block sits beside the screenshot on its slide, wherever it goes elsewhere.
-      .map(([group, list]) => [group, list.filter((block) => block.kind !== 'flowchart')]));
-    let content = rectShape(0, 0, SLIDE_W, 18000, 'scheme:accent1');
-    const beforeTitleReserve = beforeTitle.reduce((sum, tb) => sum + calloutHeight(tb, ast) + CALL_OUT_GAP, 0);
-    const titleY = beforeTitle.length ? 220000 + beforeTitleReserve + 120000 : TITLE_Y;
-    const titleRuleY = beforeTitle.length ? titleY + TITLE_H + 120000 : TITLE_RULE_Y;
-    const contentY = beforeTitle.length ? Math.max(CONTENT_Y, titleRuleY + 180000) : CONTENT_Y;
-    const beforeTitleY = beforeTitle.length ? 220000 : CONTENT_Y;
+  const ctx = {
+    ast,
+    brand,
+    t,
+    tc,
+    lang: languageTag(ast.language),
+    headingFont: brand?.fonts.heading.name || brand?.fonts.body.name || 'Calibri',
+    bodyFont: brand?.fonts.body.name || 'Calibri',
+    onPrimary: textOn(brand?.colors.primary || '#2563EB').slice(1),
+    images: tpl.includeImages ? renderAllImages(ast) : new Map(),
+    logoBox,
+    emuBox,
+    // Titles stop short of the master's logo; body text stops above the footer.
+    titleRight: SLIDE_W - MARGIN_X - (logoBox ? logoBox.w + LOGO_RIGHT - MARGIN_X + Math.round(0.25 * IN) : 0),
+    bottomLimit: footer ? FOOTER_Y - FOOTER_CLEAR : SLIDE_H - BOTTOM,
+    nextMedia: () => ++mediaCounter,
+  };
 
-    let y = beforeTitleY;
-    for (const tb of beforeTitle) {
-      const block = calloutXml(tb, 457200, y, SLIDE_W - 914400, ast);
-      content += block.xml;
-      y += block.height + CALL_OUT_GAP;
-    }
+  const slides = []; // { xml, rels: [{ id, name }], media: [{ name, data }], notes }
+  if (tpl.titleSlide) slides.push(titleSlide(ctx));
+  const toc = tpl.includeToc && ast.steps.length > 1 ? tocEntries(ast) : [];
+  if (toc.length) slides.push(...tocSlides(ctx, toc));
+  for (const step of ast.steps) slides.push(...stepSlides(ctx, step, tpl));
 
-    content += textBox(457200, titleY, titleWidth, TITLE_H,
-      para(`${step.number}. ${step.title || t('Untitled step')}`, { size: 2600, bold: true, font: '+mj-lt' }));
-    content += rectShape(457200, titleRuleY, 2400000, 12000, 'scheme:accent1');
-
-    y = contentY;
-    for (const tb of afterTitle) {
-      const block = calloutXml(tb, 457200, y, SLIDE_W - 914400, ast);
-      content += block.xml;
-      y += block.height + CALL_OUT_GAP;
-    }
-    for (const tb of beforeDescription) {
-      const block = calloutXml(tb, 457200, y, SLIDE_W - 914400, ast);
-      content += block.xml;
-      y += block.height + CALL_OUT_GAP;
-    }
-
-    if (step.descriptionText) {
-      const descH = descriptionHeight(step.descriptionText);
-      content += textBox(457200, y, SLIDE_W - 914400, Math.max(360000, descH || 420000),
-        para(step.descriptionText.slice(0, 300), { size: 1400, color: '374151' }));
-      y += Math.max(360000, descH || 420000) + 90000;
-    }
-
-    for (const tb of afterDescription) {
-      const block = calloutXml(tb, 457200, y, SLIDE_W - 914400, ast);
-      content += block.xml;
-      y += block.height + CALL_OUT_GAP;
-    }
-    for (const tb of beforeImage) {
-      const block = calloutXml(tb, 457200, y, SLIDE_W - 914400, ast);
-      content += block.xml;
-      y += block.height + CALL_OUT_GAP;
-    }
-
-    const postImageReserve = afterImage.reduce((sum, tb) => sum + calloutHeight(tb, ast) + CALL_OUT_GAP, 0);
-    const rels = [];
-    const media = [];
-
-    // The screenshot (or main-visual flowchart) and a flowchart block share
-    // the space left on the slide: side by side when there are both.
-    const pictures = [];
-    const img = images.get(step.stepId);
-    if (img) pictures.push({ img, alt: step.altText });
-    const chart = (step.blocks || []).some((b) => b.kind === 'flowchart') ? images.get(flowchartImageKey(step.stepId)) : null;
-    if (chart) pictures.push({ img: chart, alt: flowchartAlt(step, ast) });
-    if (pictures.length) {
-      const gap = 228600;
-      // Fit into the remaining centered region before the trailing blocks.
-      const maxW = (SLIDE_W - 1219200 - gap * (pictures.length - 1)) / pictures.length;
-      const maxH = Math.max(0, SLIDE_H - y - postImageReserve - 100000 - footerReserve);
-      const sized = pictures.map((p) => {
-        const w = p.img.width * EMU_PER_PX;
-        const h = p.img.height * EMU_PER_PX;
-        const scale = Math.min(maxW / w, maxH / h, 1);
-        return { ...p, w: Math.round(w * scale), h: Math.round(h * scale) };
-      });
-      let x = Math.round((SLIDE_W - sized.reduce((sum, p) => sum + p.w, 0) - gap * (sized.length - 1)) / 2);
-      sized.forEach((p, i) => {
-        mediaCounter += 1;
-        const name = `image${mediaCounter}.png`;
-        media.push({ name, data: encodePng(p.img) });
-        const relId = 2 + i; // rId1 = layout, then the pictures
-        rels.push({ id: relId, name });
-        content += picture(relId, x, y, p.w, p.h, p.alt);
-        x += p.w + gap;
-      });
-      y += Math.max(...sized.map((p) => p.h)) + 100000;
-    }
-
-    for (const tb of afterImage) {
-      const block = calloutXml(tb, 457200, y, SLIDE_W - 914400, ast);
-      content += block.xml;
-      y += block.height + CALL_OUT_GAP;
-    }
-    slides.push({ xml: slideXml(content), rels, media });
-  }
-
+  const withNotes = slides.some((s) => s.notes);
   const entries = [];
   const overrides = [];
-  const presRels = [
-    `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="slideMasters/slideMaster1.xml"/>`,
-  ];
+  const presRels = [`<Relationship Id="rId1" Type="${REL}/slideMaster" Target="slideMasters/slideMaster1.xml"/>`];
   const sldIds = [];
+  let notesCount = 0;
 
   slides.forEach((slide, i) => {
     const n = i + 1;
     entries.push({ name: `ppt/slides/slide${n}.xml`, data: slide.xml });
-    overrides.push(`<Override PartName="/ppt/slides/slide${n}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>`);
+    overrides.push(`<Override PartName="/ppt/slides/slide${n}.xml" ContentType="${CT}.slide+xml"/>`);
     const slideRels = [
-      `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>`,
-      ...slide.rels.map((r) => `<Relationship Id="rId${r.id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/${r.name}"/>`),
+      `<Relationship Id="rId1" Type="${REL}/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>`,
+      ...slide.rels.map((r) => `<Relationship Id="rId${r.id}" Type="${REL}/image" Target="../media/${r.name}"/>`),
     ];
-    entries.push({
-      name: `ppt/slides/_rels/slide${n}.xml.rels`,
-      data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${slideRels.join('')}</Relationships>`,
-    });
+    if (slide.notes) {
+      notesCount += 1;
+      const notesId = Math.max(1, ...slide.rels.map((r) => r.id)) + 1;
+      slideRels.push(`<Relationship Id="rId${notesId}" Type="${REL}/notesSlide" Target="../notesSlides/notesSlide${notesCount}.xml"/>`);
+      entries.push(
+        { name: `ppt/notesSlides/notesSlide${notesCount}.xml`, data: X.notesXml(slide.notes) },
+        {
+          name: `ppt/notesSlides/_rels/notesSlide${notesCount}.xml.rels`,
+          data: relsXml([
+            `<Relationship Id="rId1" Type="${REL}/notesMaster" Target="../notesMasters/notesMaster1.xml"/>`,
+            `<Relationship Id="rId2" Type="${REL}/slide" Target="../slides/slide${n}.xml"/>`,
+          ]),
+        },
+      );
+      overrides.push(`<Override PartName="/ppt/notesSlides/notesSlide${notesCount}.xml" ContentType="${CT}.notesSlide+xml"/>`);
+    }
+    entries.push({ name: `ppt/slides/_rels/slide${n}.xml.rels`, data: relsXml(slideRels) });
     for (const m of slide.media) entries.push({ name: `ppt/media/${m.name}`, data: m.data, store: true });
-    presRels.push(`<Relationship Id="rId${n + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide${n}.xml"/>`);
+    presRels.push(`<Relationship Id="rId${n + 1}" Type="${REL}/slide" Target="slides/slide${n}.xml"/>`);
     sldIds.push(`<p:sldId id="${256 + i}" r:id="rId${n + 1}"/>`);
   });
 
   // The brand's images, shared by the master and the title slide.
   if (brand?.logo?.png) entries.push({ name: 'ppt/media/brand-logo.png', data: brand.logo.png, store: true });
   if (brand?.banner?.png && tpl.titleSlide) entries.push({ name: 'ppt/media/brand-banner.png', data: brand.banner.png, store: true });
+
+  let notesMasterRef = '';
+  if (withNotes) {
+    const relId = slides.length + 2;
+    presRels.push(`<Relationship Id="rId${relId}" Type="${REL}/notesMaster" Target="notesMasters/notesMaster1.xml"/>`);
+    notesMasterRef = `<p:notesMasterIdLst><p:notesMasterId r:id="rId${relId}"/></p:notesMasterIdLst>`;
+    entries.push(
+      { name: 'ppt/notesMasters/notesMaster1.xml', data: X.notesMasterXml() },
+      { name: 'ppt/notesMasters/_rels/notesMaster1.xml.rels', data: relsXml([`<Relationship Id="rId1" Type="${REL}/theme" Target="../theme/theme2.xml"/>`]) },
+      { name: 'ppt/theme/theme2.xml', data: themeXml(brand) },
+    );
+    overrides.push(
+      `<Override PartName="/ppt/notesMasters/notesMaster1.xml" ContentType="${CT}.notesMaster+xml"/>`,
+      '<Override PartName="/ppt/theme/theme2.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>',
+    );
+  }
+
+  const masterRels = [
+    `<Relationship Id="rId1" Type="${REL}/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>`,
+    `<Relationship Id="rId2" Type="${REL}/theme" Target="../theme/theme1.xml"/>`,
+  ];
+  if (logoBox) masterRels.push(`<Relationship Id="rId3" Type="${REL}/image" Target="../media/brand-logo.png"/>`);
 
   entries.push(
     {
@@ -440,53 +958,33 @@ function exportPptx(ast, outDir, template = {}) {
 <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
 <Default Extension="xml" ContentType="application/xml"/>
 <Default Extension="png" ContentType="image/png"/>
-<Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>
-<Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/>
-<Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/>
+<Override PartName="/ppt/presentation.xml" ContentType="${CT}.presentation.main+xml"/>
+<Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="${CT}.slideMaster+xml"/>
+<Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="${CT}.slideLayout+xml"/>
 <Override PartName="/ppt/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>
 ${overrides.join('\n')}
 </Types>`,
     },
     {
       name: '_rels/.rels',
-      data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="ppt/presentation.xml"/>
-</Relationships>`,
+      data: relsXml([`<Relationship Id="rId1" Type="${REL}/officeDocument" Target="ppt/presentation.xml"/>`]),
     },
     {
       name: 'ppt/presentation.xml',
       data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<p:presentation xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
- xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
- xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
-<p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></p:sldMasterIdLst>
+<p:presentation ${X.NS}>
+<p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></p:sldMasterIdLst>${notesMasterRef}
 <p:sldIdLst>${sldIds.join('')}</p:sldIdLst>
 <p:sldSz cx="${SLIDE_W}" cy="${SLIDE_H}"/><p:notesSz cx="${SLIDE_H}" cy="${SLIDE_W}"/>
 </p:presentation>`,
     },
-    {
-      name: 'ppt/_rels/presentation.xml.rels',
-      data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${presRels.join('')}</Relationships>`,
-    },
-    { name: 'ppt/slideMasters/slideMaster1.xml', data: masterXml(brand, logoBox, ast) },
-    {
-      name: 'ppt/slideMasters/_rels/slideMaster1.xml.rels',
-      data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>
-<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="../theme/theme1.xml"/>
-${logoBox ? '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/brand-logo.png"/>' : ''}
-</Relationships>`,
-    },
+    { name: 'ppt/_rels/presentation.xml.rels', data: relsXml(presRels) },
+    { name: 'ppt/slideMasters/slideMaster1.xml', data: masterXml(ctx) },
+    { name: 'ppt/slideMasters/_rels/slideMaster1.xml.rels', data: relsXml(masterRels) },
     { name: 'ppt/slideLayouts/slideLayout1.xml', data: LAYOUT_XML },
     {
       name: 'ppt/slideLayouts/_rels/slideLayout1.xml.rels',
-      data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="../slideMasters/slideMaster1.xml"/>
-</Relationships>`,
+      data: relsXml([`<Relationship Id="rId1" Type="${REL}/slideMaster" Target="../slideMasters/slideMaster1.xml"/>`]),
     },
     { name: 'ppt/theme/theme1.xml', data: themeXml(brand) },
   );
@@ -497,4 +995,11 @@ ${logoBox ? '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/off
   return { file, slideCount: slides.length, imageCount: mediaCounter };
 }
 
-module.exports = { exportPptx, DEFAULT_TEMPLATE, OPTION_INFO };
+module.exports = {
+  exportPptx,
+  DEFAULT_TEMPLATE,
+  OPTION_INFO,
+  SCREENSHOT_POSITIONS,
+  // For tests.
+  _internal: { stepItems, planStep, fitPictures, itemHeight, SLIDE_W, SLIDE_H },
+};

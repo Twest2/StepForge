@@ -5,11 +5,11 @@ const path = require('node:path');
 const { zipSync } = require('../core/zip');
 const { escapeXml } = require('../core/util');
 const { encodePng } = require('../core/png');
-const { guideSlug, renderAllImages, calloutLabel, stepContentGroups, codeBlockText, wordCodeRuns, wordCodeShading, flowchartImageKey, flowchartAlt, stepLinkText, goToParts } = require('./common');
+const { guideSlug, renderAllImages, calloutLabel, stepContentGroups, codeBlockText, wordCodeRuns, flowchartImageKey, flowchartAlt, stepLinkText, goToParts } = require('./common');
 const { exportText } = require('../core/export-text');
 const { highlightCode } = require('../core/code-highlight');
 const { guideMetaLines, guideSummary, tocEntries } = require('./document-layout');
-const { fitSize, textOn, screenshotOptions } = require('./branding');
+const { fitSize, textOn, screenshotOptions, coverLogo } = require('./branding');
 const { WordRichText } = require('./word-rich');
 
 /**
@@ -62,7 +62,9 @@ function blockHeight(xml, width = PRINTABLE_WIDTH_TWIPS) {
   if (xml.startsWith('<w:tbl>')) {
     const cells = [...xml.matchAll(/<w:tc>([\s\S]*?)<\/w:tc>/g)];
     return 160 + Math.max(0, ...cells.map((cell) => {
-      const cellWidth = Number(cell[1].match(/<w:tcW w:w="(\d+)"/)?.[1]) || width;
+      // A cell's width in twips, or as a share of the table (pct is fiftieths of a percent).
+      const tcW = cell[1].match(/<w:tcW w:w="(\d+)" w:type="(\w+)"/);
+      const cellWidth = tcW ? (tcW[2] === 'pct' ? (width * Number(tcW[1])) / 5000 : Number(tcW[1])) || width : width;
       return [...cell[1].matchAll(/<w:p>[\s\S]*?<\/w:p>/g)]
         .reduce((sum, match) => sum + blockHeight(match[0], cellWidth - 360), 0);
     }));
@@ -261,9 +263,26 @@ function headingParagraphProps(depth, forceNewPage = false) {
   return parts.join('');
 }
 
+/**
+ * A code block's paragraph: shaded, with padding. Borders in the shading's
+ * own color, set off from the text, pad the box; the indent keeps that
+ * padding inside the text column.
+ */
+function codeBoxProps(fill) {
+  const side = (name) => `<w:${name} w:val="single" w:sz="4" w:space="6" w:color="${fill}"/>`;
+  return `<w:pBdr>${side('top')}${side('left')}${side('bottom')}${side('right')}</w:pBdr>`
+    + `<w:shd w:val="clear" w:color="auto" w:fill="${fill}"/><w:spacing w:before="120" w:after="160"/><w:ind w:left="140" w:right="140"/>`;
+}
+
+/**
+ * A table across the full width of where it sits (the page, or a
+ * side-by-side column), its first row shaded as a header.
+ */
 function table(rows) {
   const cols = Math.max(...rows.map((r) => r.length));
-  const grid = `<w:tblGrid>${'<w:gridCol w:w="2400"/>'.repeat(cols)}</w:tblGrid>`;
+  const colW = Math.floor(PRINTABLE_WIDTH_TWIPS / cols);
+  const colPct = Math.floor(5000 / cols);
+  const grid = `<w:tblGrid>${`<w:gridCol w:w="${colW}"/>`.repeat(cols)}</w:tblGrid>`;
   const borders = '<w:tblBorders>' +
     ['top', 'left', 'bottom', 'right', 'insideH', 'insideV']
       .map((s) => `<w:${s} w:val="single" w:sz="4" w:color="C8CCD2"/>`).join('') +
@@ -271,11 +290,11 @@ function table(rows) {
   const body = rows.map((row, ri) => {
     const cells = [];
     for (let c = 0; c < cols; c++) {
-      cells.push(`<w:tc><w:tcPr><w:tcW w:w="2400" w:type="dxa"/></w:tcPr>${p(run(row[c] ?? '', { bold: ri === 0, size: 20 }))}</w:tc>`);
+      cells.push(`<w:tc><w:tcPr><w:tcW w:w="${colPct}" w:type="pct"/>${ri === 0 ? '<w:shd w:val="clear" w:color="auto" w:fill="F1F5F9"/>' : ''}</w:tcPr>${p(run(row[c] ?? '', { bold: ri === 0, size: 20 }))}</w:tc>`);
     }
     return `<w:tr>${cells.join('')}</w:tr>`;
   }).join('');
-  return `<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/>${borders}</w:tblPr>${grid}${body}</w:tbl>`;
+  return `<w:tbl><w:tblPr><w:tblW w:w="5000" w:type="pct"/>${borders}<w:tblCellMar><w:top w:w="40" w:type="dxa"/><w:bottom w:w="40" w:type="dxa"/></w:tblCellMar></w:tblPr>${grid}${body}</w:tbl>`;
 }
 
 // Side by side: the screenshot's column and the description's, inside A4 margins.
@@ -472,7 +491,13 @@ function exportDocx(ast, outDir, template = {}) {
     const size = fitSize(brand.banner.width, brand.banner.height, 600, 200);
     body.push(p(drawing(imageRel('brand-banner.png', brand.banner.png), size.width, size.height, 99999, t('Banner'), 'Banner'), jc));
   }
-  if (brand?.logo?.png) {
+  // On the band, a logo that wouldn't show up sits on a white card.
+  const carded = band ? coverLogo(brand, brand.colors.primary) : null;
+  if (carded?.carded) {
+    const size = fitSize(carded.img.width, carded.img.height, 260, 96);
+    body.push(p(drawing(imageRel('brand-logo-card.png', encodePng(carded.img)), size.width, size.height, 99999, t('Logo'), 'Logo'),
+      `${band}<w:spacing w:before="0" w:after="0"/><w:ind w:left="0"/>${jc}`));
+  } else if (brand?.logo?.png) {
     const size = fitSize(brand.logo.width, brand.logo.height, 240, 80);
     body.push(p(drawing(imageRel('brand-logo.png', brand.logo.png), size.width, size.height, 99999, t('Logo'), 'Logo'),
       `${band}${band ? '<w:spacing w:before="0" w:after="0"/><w:ind w:left="0"/>' : ''}${jc}`));
@@ -595,9 +620,10 @@ function exportDocx(ast, outDir, template = {}) {
         emitTextBlock(block);
       } else if (block.kind === 'code') {
         const hl = highlightCode(codeBlockText(block), block.language, ast.codeStyle);
+        const fill = hl ? hl.background.slice(1).toUpperCase() : 'F3F4F6';
         body.push(hl
-          ? p(wordCodeRuns(hl, { size: 18 }), wordCodeShading(hl))
-          : p(run(codeBlockText(block), { size: 18, font: 'Courier New', color: '1F2937' }), '<w:shd w:val="clear" w:fill="F3F4F6"/>'));
+          ? p(wordCodeRuns(hl, { size: 18 }), codeBoxProps(fill))
+          : p(run(codeBlockText(block), { size: 18, font: 'Courier New', color: '1F2937' }), codeBoxProps(fill)));
       } else if (block.kind === 'table') {
         if (block.rows && block.rows.length) body.push(table(block.rows), p(''));
       }

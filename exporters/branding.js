@@ -87,6 +87,56 @@ function textOn(hex) {
   return luminance > 0.36 ? '#111111' : '#FFFFFF';
 }
 
+/** Relative luminance (0..1) of an sRGB color given as [r, g, b]. */
+function luminance([r, g, b]) {
+  const lin = (c) => { const s = c / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; };
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+}
+
+/** The WCAG contrast ratio of two luminances. */
+function contrast(a, b) {
+  const [hi, lo] = a > b ? [a, b] : [b, a];
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+/**
+ * Whether a logo needs a white card to show up on a background of luminance
+ * `behind`: when more than a quarter of its visible pixels stand out from it
+ * by less than 3:1, the WCAG minimum for graphics (a dark wordmark on a dark
+ * band, say).
+ */
+function logoNeedsCard(img, behind) {
+  if (!img || behind == null) return false;
+  const step = Math.max(1, Math.floor(Math.sqrt((img.width * img.height) / 20000)));
+  let visible = 0;
+  let faint = 0;
+  for (let y = 0; y < img.height; y += step) {
+    for (let x = 0; x < img.width; x += step) {
+      const i = (y * img.width + x) * 4;
+      if (img.data[i + 3] < 128) continue;
+      visible += 1;
+      if (contrast(luminance([img.data[i], img.data[i + 1], img.data[i + 2]]), behind) < 3) faint += 1;
+    }
+  }
+  return visible > 0 && faint / visible > 0.25;
+}
+
+/**
+ * The brand's logo for a cover on `background` (hex): the logo itself, or,
+ * when it wouldn't show up there, the logo on a white rounded card. Returns
+ * an RGBA image and whether it's carded, or null without a logo raster.
+ */
+function coverLogo(brand, background) {
+  const img = brand ? brandRaster(brand.logo) : null;
+  if (!img) return null;
+  if (!background || !logoNeedsCard(img, luminance(hexToRgb(background)))) return { img, carded: false };
+  const pad = Math.max(8, Math.round(Math.min(img.width, img.height) * 0.18));
+  const card = raster.createImage(img.width + pad * 2, img.height + pad * 2, [0, 0, 0, 0]);
+  raster.fillRoundRect(card, 0, 0, card.width, card.height, Math.round(pad * 0.9), [255, 255, 255, 255]);
+  raster.drawImage(card, img, pad, pad);
+  return { img: card, carded: true };
+}
+
 /**
  * Lay a logo over an image as a watermark: at most a fifth of the image's
  * width (and half its height), in a corner, at `opacity`. Changes `img` in place.
@@ -132,4 +182,8 @@ module.exports = {
   textOn,
   overlayWatermark,
   hexToRgb,
+  luminance,
+  contrast,
+  logoNeedsCard,
+  coverLogo,
 };

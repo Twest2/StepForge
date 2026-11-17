@@ -8,7 +8,7 @@ const { encodePng } = require('../core/png');
 const { guideSlug, renderAllImages, LEVEL_LABEL, levelLabel, stepContentGroups, codeBlockText, flowchartImageKey, flowchartAlt } = require('./common');
 const { anchorFor, tocEntries, guideMetaLines, stepCount } = require('./document-layout');
 const { exportText } = require('../core/export-text');
-const { withBrand, imageDataUri, cssFontStack, textOn, screenshotOptions } = require('./branding');
+const { withBrand, imageDataUri, cssFontStack, textOn, screenshotOptions, coverLogo } = require('./branding');
 
 /**
  * HTML exporters. Both variants are fully self-contained single files:
@@ -84,8 +84,10 @@ function brandHeader(brand, ast) {
   if (brand.banner) {
     parts.push(`<img class="brand-banner" src="${imageDataUri(brand.banner)}" alt=""${brand.banner.width ? ` width="${brand.banner.width}" height="${brand.banner.height}"` : ''}>`);
   }
+  // On the band, a logo that wouldn't show up sits on a white card.
+  const card = brand.cover === 'band' && coverLogo(brand, brand.colors.primary)?.carded;
   const logo = brand.logo
-    ? `<img class="brand-logo" src="${imageDataUri(brand.logo)}" alt="${escapeHtml(t('Logo'))}"${brand.logo.width ? ` width="${brand.logo.width}" height="${brand.logo.height}"` : ''}>`
+    ? `<img class="brand-logo${card ? ' on-card' : ''}" src="${imageDataUri(brand.logo)}" alt="${escapeHtml(t('Logo'))}"${brand.logo.width ? ` width="${brand.logo.width}" height="${brand.logo.height}"` : ''}>`
     : '';
   const tagline = brand.header.text ? `<p class="brand-tagline">${escapeHtml(brand.header.text)}</p>` : '';
   if (logo || tagline) parts.push(`<div class="brand-bar">${logo}${tagline}</div>`);
@@ -190,9 +192,8 @@ function renderStep(step, ast, images, tpl, { rich = false } = {}) {
     <h2>${escapeHtml(step.title || t('Untitled step'))}</h2>
     ${skipped}${toggle}
   </div>
-  ${blocks(groups.afterTitle)}
   <div class="step-body">
-    ${parts.filter(Boolean).join('\n    ')}
+    ${[blocks(groups.afterTitle), ...parts].filter(Boolean).join('\n    ')}
   </div>
 </section>`;
 }
@@ -264,8 +265,9 @@ a { color: var(--link); text-underline-offset: 2px; }
 .toc-list .d1 a { padding-left: 1.4em; } .toc-list .d2 a { padding-left: 2.8em; } .toc-list .d3 a { padding-left: 4.2em; }
 .step { padding: 28px 0 8px; border-top: 1px solid var(--border); scroll-margin-top: 16px; }
 .step.depth-1, .step.depth-2, .step.depth-3 { margin-left: 44px; border-top-style: dashed; }
-.step-head { display: flex; align-items: center; gap: 14px; margin-bottom: 10px; }
-.step-head h2 { flex: 1; min-width: 0; font-size: 1.3rem; line-height: 1.3; margin: 0; letter-spacing: -.01em; }
+/* Top-aligned, so the number sits beside the first line of a long title. */
+.step-head { display: flex; align-items: flex-start; gap: 14px; margin-bottom: 10px; }
+.step-head h2 { flex: 1; min-width: 0; font-size: 1.3rem; line-height: 1.3; margin: 0; padding-top: 1px; letter-spacing: -.01em; }
 .step-num {
   flex: none; display: inline-grid; place-items: center; min-width: 30px; height: 30px; padding: 0 8px;
   border-radius: 999px; background: var(--accent); color: var(--on-primary, #fff); font-size: .85rem; font-weight: 700;
@@ -341,6 +343,7 @@ const BRAND_CSS = `
 .brand-banner { display: block; width: 100%; height: auto; max-height: 240px; object-fit: cover; border-radius: 10px; margin-bottom: 24px; }
 .brand-bar { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
 .brand-logo { display: block; width: auto; height: auto; max-width: 260px; max-height: 64px; }
+.brand-logo.on-card { box-sizing: content-box; background: #fff; padding: 8px 12px; border-radius: 8px; }
 .brand-tagline { margin: 0; color: var(--muted); font-size: .9rem; }
 .doc-header.cover-band { background: var(--brand-primary); color: var(--on-primary); padding: 32px 32px 28px; border-radius: 12px; }
 .doc-header.cover-band .rule { background: var(--on-primary); opacity: .7; }

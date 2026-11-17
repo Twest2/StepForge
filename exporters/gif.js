@@ -8,7 +8,7 @@ const text = require('../core/text-raster');
 const { guideSlug, renderAllImages } = require('./common');
 const { guideMetaItems, stepCount } = require('./document-layout');
 const { exportText } = require('../core/export-text');
-const { withBrand, brandRaster, fitRaster, overlayWatermark, textOn, hexToRgb } = require('./branding');
+const { withBrand, brandRaster, fitRaster, overlayWatermark, textOn, hexToRgb, coverLogo } = require('./branding');
 
 /**
  * Animated GIF exporter: an optional title card, then one frame per image
@@ -48,7 +48,16 @@ function captionHeight(W) {
   return Math.round(Math.max(44, W * 0.058));
 }
 
-function drawTitleCard(W, H, ast, frameCount, accent, bg, ink = INK) {
+/**
+ * The title card's detail line: the step count and the guide's details.
+ * Every step counts, with a screenshot or not, so the total matches the step
+ * numbers on the frames.
+ */
+function titleCardMeta(ast) {
+  return [stepCount(ast), ...guideMetaItems(ast).map((item) => item.value)].join('  ·  ');
+}
+
+function drawTitleCard(W, H, ast, accent, bg, ink = INK) {
   const { t } = exportText(ast);
   const brand = ast.branding;
   const style = brand?.cover || 'standard';
@@ -60,8 +69,10 @@ function drawTitleCard(W, H, ast, frameCount, accent, bg, ink = INK) {
   const lines = text.wrapText(ast.guide.title || t('Untitled guide'), titleSize, W - pad * 2, { weight: 'bold', maxLines: 3 });
   const lineH = titleSize * 1.2;
   const subSize = Math.round(titleSize * 0.42);
-  const meta = [stepCount(ast, frameCount), ...guideMetaItems(ast).map((item) => item.value)].join('  ·  ');
-  const logoImg = brand ? brandRaster(brand.logo) : null;
+  const meta = titleCardMeta(ast);
+  // On the band, a logo that wouldn't show up sits on a white card.
+  const bandHex = `#${accent.slice(0, 3).map((c) => c.toString(16).padStart(2, '0')).join('')}`;
+  const logoImg = brand ? (style === 'band' ? coverLogo(brand, bandHex)?.img : brandRaster(brand.logo)) : null;
   const logo = logoImg ? fitRaster(logoImg, Math.round(W * 0.3), Math.round(H * 0.16)) : null;
   const logoH = logo ? logo.height + Math.round(titleSize * 1.5) : 0;
   const blockH = logoH + lines.length * lineH + titleSize * 0.6 + subSize * 1.6;
@@ -130,7 +141,7 @@ function exportGifGuide(ast, outDir, template = {}) {
   const stepDelay = Math.max(20, Number(tpl.frameDelayCs) || DEFAULT_TEMPLATE.frameDelayCs);
 
   if (tpl.titleCard) {
-    frames.push(drawTitleCard(W, H, ast, stepsWithImages.length, accent, bg, ink));
+    frames.push(drawTitleCard(W, H, ast, accent, bg, ink));
     delays.push(Math.max(150, Math.round(stepDelay * 0.8)));
   }
 
@@ -158,4 +169,4 @@ function exportGifGuide(ast, outDir, template = {}) {
   return { file, frameCount: frames.length, width: W, height: H };
 }
 
-module.exports = { exportGifGuide, DEFAULT_TEMPLATE, OPTION_INFO };
+module.exports = { exportGifGuide, titleCardMeta, DEFAULT_TEMPLATE, OPTION_INFO };

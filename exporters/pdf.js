@@ -11,7 +11,7 @@ const { htmlToBlocks } = require('../core/htmlblocks');
 const { standardTextWidth } = require('../core/pdf-metrics');
 const { highlightCode } = require('../core/code-highlight');
 const { guideMetaLines } = require('./document-layout');
-const { withBrand, brandRaster, fitSize, fontKind, textOn, hexToRgb, screenshotOptions } = require('./branding');
+const { withBrand, brandRaster, fitSize, fontKind, textOn, hexToRgb, coverLogo, screenshotOptions } = require('./branding');
 
 const LIST_INDENT = 14;
 const QUOTE_INDENT = 10;
@@ -21,11 +21,13 @@ const HEADING_SCALE = { h1: 1.6, h2: 1.35, h3: 1.18, h4: 1.1 };
 
 // Callout styling per text-block level, matching the colors used in the
 // HTML/editor UI so a "Tip" looks distinct from a "Warning" at a glance.
+// The bar uses the bright accent; the label a darker shade of it that reads
+// on the tint (at least 4.5:1, like Word, HTML and Markdown exports).
 const LEVEL_STYLE = {
-  info: { accent: [59, 130, 246], tint: [239, 246, 255] }, // blue — Note
-  success: { accent: [16, 185, 129], tint: [236, 253, 245] }, // green — Tip
-  warn: { accent: [245, 158, 11], tint: [255, 251, 235] }, // amber — Warning
-  error: { accent: [239, 68, 68], tint: [254, 242, 242] }, // red — Important
+  info: { accent: [59, 130, 246], label: [29, 78, 216], tint: [239, 246, 255] }, // blue — Note
+  success: { accent: [16, 185, 129], label: [4, 120, 87], tint: [236, 253, 245] }, // green — Tip
+  warn: { accent: [245, 158, 11], label: [180, 83, 9], tint: [255, 251, 235] }, // amber — Warning
+  error: { accent: [239, 68, 68], label: [185, 28, 28], tint: [254, 242, 242] }, // red — Important
 };
 
 const CODE_SIZE = 9;
@@ -561,13 +563,16 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
     const logoBox = logo ? fitSize(logo.width, logo.height, 200, 56) : null;
     const titleLines = pdf.wrapText(ast.guide.title, titleSize, usableW, headFonts.bold);
     if (style === 'band') {
+      // A logo that wouldn't show up on the band sits on a white card.
+      const bandLogo = coverLogo(brand, brand.colors.primary)?.img;
+      const logoBox = bandLogo ? fitSize(bandLogo.width, bandLogo.height, 200, 56) : null;
       const top = banner ? y - 8 : 0;
       const padTop = banner ? 24 : M;
       const height = padTop + (logoBox ? logoBox.height + 18 : 0) + titleLines.length * lineH + 28;
       const onBand = hexToRgb(textOn(brand.colors.primary));
       pdf.rect(0, top, size.width, height, { fill: hexToRgb(brand.colors.primary) });
       y = top + padTop;
-      if (logoBox) { pdf.image(logo, M, y, logoBox.width, logoBox.height); y += logoBox.height + 18; }
+      if (logoBox) { pdf.image(bandLogo, M, y, logoBox.width, logoBox.height); y += logoBox.height + 18; }
       for (const line of titleLines) { pdf.text(line, M, y, { size: titleSize, font: headFonts.bold, color: onBand }); y += lineH; }
       y = top + height + 22;
       return;
@@ -663,12 +668,13 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
       rest,
     } = stepContentGroups(step);
     // An image in a space `width` wide starting at `left`, placed by the
-    // brand's alignment; screenshots get the brand's border.
-    const drawImage = (key, { left = M, width = usableW } = {}) => {
+    // brand's alignment; screenshots get the brand's border. `keepWith` is
+    // the height of what must stay on its page (callouts right after it).
+    const drawImage = (key, { left = M, width = usableW, keepWith = 0 } = {}) => {
       const img = images.get(key);
       const box = imageBox(img, key, width);
       if (!box) return;
-      ensure(box.h + 6);
+      ensure(box.h + 6 + (box.h + 6 + keepWith <= usableH ? keepWith : 0));
       const free = width - box.w;
       const x = left + (shots.align === 'center' ? free / 2 : shots.align === 'right' ? free : 0);
       pdf.image(img, x, y, box.w, box.h);
@@ -714,7 +720,10 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
       if (step.descriptionHtml) writeDescription(step.descriptionHtml);
       for (const tb of afterDescription) emit(tb);
       for (const tb of beforeImage) emit(tb);
-      drawImage(step.stepId);
+      // Short callouts after the screenshot stay on its page rather than
+      // starting the next one on their own.
+      const after = measureBlocks(step, afterImage);
+      drawImage(step.stepId, { keepWith: after <= usableH * 0.35 ? after + 10 : 0 });
       for (const tb of afterImage) emit(tb);
     }
 
@@ -758,7 +767,7 @@ function exportPdf(ast, outDir, template = {}, { fallbackFonts = null } = {}) {
     ensure(blockH + 4);
     pdf.rect(left, y, width, blockH, { fill: style.tint });
     pdf.rect(left, y, 3, blockH, { fill: style.accent });
-    pdf.text(label, left + 10, y + 2, { size: 9.5, font: bodyFonts.bold, color: style.accent });
+    pdf.text(label, left + 10, y + 2, { size: 9.5, font: bodyFonts.bold, color: style.label });
     let by = y + 16;
     for (const item of items) {
       if (item.kind === 'hr') {

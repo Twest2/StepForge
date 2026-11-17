@@ -99,6 +99,9 @@ A few things to know:
   PowerPoint can still change them later.
 - A watermark picked in the Export dialog (image bundle) replaces the
   profile's.
+- On the **Brand color band** cover, a logo that wouldn't show up on your
+  primary color (a dark wordmark on a dark band, say) sits on a white card,
+  in every export that has a cover: PDF, Word, HTML, GIF and PowerPoint.
 
 ## Screenshots
 

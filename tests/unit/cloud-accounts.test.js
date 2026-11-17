@@ -3,6 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
+const net = require('node:net');
 const path = require('node:path');
 const { OneDrive, SCOPE } = require('../../app/onedrive');
 const { Dropbox, REDIRECT_PORTS } = require('../../app/dropbox');
@@ -198,6 +199,50 @@ test('OneDrive sign-in keeps waiting when the browser could not be opened, and s
   const page = await fetch(redirect);
   assert.match(await page.text(), /Signed in to OneDrive\. You can close this tab and go back to StepForge\./);
   assert.equal((await connected).connected, true);
+});
+
+test('the loopback sign-in page closes its connection, leaving no socket to the stopped server', async (t) => {
+  let link;
+  const { account } = setup(t, OneDrive, {
+    clientId: ONEDRIVE_ID,
+    openExternal: async (url) => { link = url; },
+    fetchImpl: async (url) => {
+      if (url.endsWith('/oauth2/v2.0/token')) return json({ access_token: 'access', refresh_token: 'refresh', expires_in: 3600 });
+      if (url.startsWith('https://graph.microsoft.com/v1.0/me/drive?')) return json({ id: 'drive-123' });
+      return json({});
+    },
+  });
+  const connected = account.connect();
+  while (!link) await new Promise((resolve) => setTimeout(resolve, 5));
+  const authorization = new URL(link);
+  const redirect = new URL(authorization.searchParams.get('redirect_uri'));
+
+  // Both answers the browser can get: the refusal and the success page.
+  redirect.searchParams.set('code', 'the-code');
+  redirect.searchParams.set('state', 'wrong');
+  const refused = await fetch(redirect);
+  assert.equal(refused.status, 400);
+  assert.equal(refused.headers.get('connection'), 'close', 'a refused callback closes the connection');
+  await refused.text();
+
+  redirect.searchParams.set('state', authorization.searchParams.get('state'));
+  const accepted = await fetch(redirect);
+  assert.equal(accepted.status, 200);
+  assert.equal(accepted.headers.get('connection'), 'close', 'the success page closes the connection');
+  await accepted.text();
+
+  assert.equal((await connected).connected, true);
+
+  // Nothing may still be connected to the loopback port once sign-in is over,
+  // or the dead socket raises an error after the test that owns it has ended.
+  const port = Number(redirect.port);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  const reusable = await new Promise((resolve) => {
+    const probe = net.createServer();
+    probe.once('error', () => resolve(false));
+    probe.listen(port, '127.0.0.1', () => probe.close(() => resolve(true)));
+  });
+  assert.equal(reusable, true, `port ${port} is free for another listener after sign-in`);
 });
 
 // ---- Dropbox --------------------------------------------------------------

@@ -274,6 +274,10 @@ class CloudAccount {
         rejectCode = reject;
         timer = setTimeout(() => reject(new Error(`${this.label} sign-in timed out. Try again.`)), SIGN_IN_TIMEOUT_MS);
         this.onCallback = (req, res) => {
+          // A redirect is answered once, so the socket is closed with the reply.
+          // Keeping it alive leaves the browser holding an idle connection to a
+          // server that is about to shut down.
+          res.setHeader('Connection', 'close');
           const url = new URL(req.url, 'http://localhost');
           if (req.method !== 'GET' || url.pathname !== '/' || url.searchParams.get('state') !== state) {
             res.writeHead(400).end(t('Invalid sign-in callback.'));

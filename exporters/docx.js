@@ -10,6 +10,7 @@ const { exportText } = require('../core/export-text');
 const { highlightCode } = require('../core/code-highlight');
 const { guideMetaLines, guideSummary, tocEntries } = require('./document-layout');
 const { fitSize, textOn, screenshotOptions } = require('./branding');
+const { WordRichText } = require('./word-rich');
 
 /**
  * DOCX exporter: WordprocessingML built directly (no dependency), one
@@ -51,7 +52,7 @@ const PRINTABLE_WIDTH_TWIPS = 11906 - 1134 * 2;
 const STEP_KEEP_BUDGET = PRINTABLE_HEIGHT_TWIPS - 720;
 
 function paragraphText(xml) {
-  return xml.replace(/<w:br\b[^>]*\/>/g, '\n')
+  return xml.replace(/<w:br\b[^>]*\/>/g, '\n').replace(/<\/w:p>(?=.)/g, '\n')
     .replace(/<[^>]*>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&');
 }
@@ -78,8 +79,21 @@ function blockHeight(xml, width = PRINTABLE_WIDTH_TWIPS) {
     + (heading ? 480 : 160);
 }
 
+/**
+ * Keep settings for an emitted block. A block of several paragraphs (a
+ * callout's label and text, a description) that fits a page is kept
+ * together: each paragraph keeps with the next, and the last takes `next`.
+ * A block holding a table sets only its first paragraph.
+ */
 function paragraphKeeps(xml, next, lines) {
   if (!xml.startsWith('<w:p>')) return xml;
+  const paras = xml.includes('<w:tbl>') ? [xml] : xml.split(/(?=<w:p>)/);
+  // A block too tall to keep together (lines off) may break between its paragraphs.
+  if (paras.length > 1) return paras.map((para, i) => keepOne(para, i < paras.length - 1 ? lines : next, lines)).join('');
+  return keepOne(xml, next, lines);
+}
+
+function keepOne(xml, next, lines) {
   const match = xml.match(/^<w:p>(?:<w:pPr>([\s\S]*?)<\/w:pPr>)?/);
   const props = (match[1] || '').replace(/<w:keep(?:Next|Lines)\b[^>]*\/>/g, '');
   const style = props.match(/<w:pStyle\b[^>]*\/>/)?.[0] || '';
@@ -419,6 +433,24 @@ function exportDocx(ast, outDir, template = {}) {
     return relId;
   };
 
+  // Descriptions and callouts keep their formatting: bold, italic, inline
+  // code, links (to web pages and other steps), real lists, quotes, tables.
+  const rich = new WordRichText({
+    ast,
+    styled: false,
+    size: 20,
+    color: ink,
+    linkColor: primary,
+    bullet: '\u2022',
+    anchorFor: bookmarkName,
+    table,
+    rel: (type, target, external) => {
+      const relId = ++relCounter;
+      rels.push(`<Relationship Id="rId${relId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/${type}" Target="${escapeXml(target)}"${external ? ' TargetMode="External"' : ''}/>`);
+      return `rId${relId}`;
+    },
+  });
+
   const body = [];
   // Under a flowchart picture: its shapes' step links (Word can't link parts of a picture).
   const chartLinkParagraph = (chart) => {
@@ -449,7 +481,7 @@ function exportDocx(ast, outDir, template = {}) {
     ? p(run(ast.guide.title, { bold: true, size: 48, color: textOn(brand.colors.primary).slice(1) }), `${band}<w:spacing w:before="120" w:after="240"/>`)
     : p(run(ast.guide.title, { bold: true, size: 48 }),
       `<w:pBdr><w:bottom w:val="single" w:sz="24" w:space="12" w:color="${primary}"/></w:pBdr>${jc}`));
-  if (ast.guide.descriptionText) body.push(p(run(ast.guide.descriptionText, { size: 22, color: '444444' })));
+  if (ast.guide.descriptionHtml) body.push(rich.richText(ast.guide.descriptionHtml, { rpr: { size: 22, color: '444444' } }));
   for (const line of guideMetaLines(ast)) body.push(p(run(line, { size: 20, color: '6B7280' })));
   body.push(p(run(guideSummary(ast), { size: 18, color: '888888' })));
 
@@ -468,13 +500,21 @@ function exportDocx(ast, outDir, template = {}) {
   const shots = screenshotOptions(ast);
   const alignProps = shots.align === 'left' ? '' : `<w:jc w:val="${shots.align}"/>`;
 
+  // A callout: its label, then its text with formatting, as paragraphs that
+  // share one border and shading, so Word draws them as a single box.
   const emitTextBlock = (tb) => {
     const style = LEVEL_STYLE[tb.level] || LEVEL_STYLE.info;
     const label = calloutLabel(tb, ast);
-    body.push(p(
-      `${run(label, { bold: true, size: 20, color: style.color })}${tb.descriptionText ? run('\n' + tb.descriptionText, { size: 20, color: ink }) : ''}`,
-      `<w:shd w:val="clear" w:fill="${style.fill}"/><w:pBdr><w:left w:val="single" w:sz="24" w:space="4" w:color="${style.color}"/></w:pBdr>`
-    ));
+    const box = {
+      pBdr: `<w:pBdr><w:left w:val="single" w:sz="24" w:space="4" w:color="${style.color}"/></w:pBdr>`,
+      shd: `<w:shd w:val="clear" w:fill="${style.fill}"/>`,
+      spacing: '<w:spacing w:before="0" w:after="0"/>',
+    };
+    const text = tb.descriptionHtml ? rich.richText(tb.descriptionHtml, { ppr: box, flatLists: true }) : '';
+    const xml = p(run(label, { bold: true, size: 20, color: style.color }), `${box.pBdr}${box.shd}${box.spacing}`) + text;
+    // Space after the box, not between its paragraphs.
+    const last = xml.lastIndexOf(box.spacing);
+    body.push(`${xml.slice(0, last)}<w:spacing w:before="0" w:after="160"/>${xml.slice(last + box.spacing.length)}`);
   };
 
   const parentIds = new Set(ast.steps.map((step) => step.parentStepId).filter(Boolean));
@@ -515,7 +555,7 @@ function exportDocx(ast, outDir, template = {}) {
     ));
     for (const tb of afterTitle) emit(tb);
     const img = images.get(step.stepId);
-    const description = step.descriptionText ? p(run(step.descriptionText, { size: 20, color: ink })) : '';
+    const description = step.descriptionHtml ? rich.richText(step.descriptionHtml) : '';
     const screenshot = (maxTwips) => {
       const relId = ++relCounter;
       const name = `image${relCounter}.png`;
@@ -600,6 +640,13 @@ function exportDocx(ast, outDir, template = {}) {
     const firstFooter = add('footer', 2, footerXml());
     sectionRefs = `<w:headerReference w:type="default" r:id="${header}"/><w:headerReference w:type="first" r:id="${firstHeader}"/>`
       + `<w:footerReference w:type="default" r:id="${footer}"/><w:footerReference w:type="first" r:id="${firstFooter}"/>`;
+  }
+
+  // Lists in descriptions and callouts need a numbering part.
+  if (rich.nums.length) {
+    const relId = ++relCounter;
+    rels.push(`<Relationship Id="rId${relId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/>`);
+    parts.push({ name: 'word/numbering.xml', data: rich.numberingXml(), kind: 'numbering', rels: [] });
   }
 
   const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>

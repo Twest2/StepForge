@@ -437,7 +437,7 @@ test('branding: Word gets brand styles, the logo on the cover, and a header and 
   assert.ok(z.has('word/media/brand-logo.png') && z.has('word/media/brand-banner.png'));
   assert.match(z.get('[Content_Types].xml'), /PartName="\/word\/footer1.xml" ContentType="[^"]+footer\+xml"/);
   const rels = z.get('word/_rels/document.xml.rels');
-  for (const m of rels.matchAll(/Target="([^"]+)"/g)) assert.ok(z.has(`word/${m[1]}`), `${m[1]} exists`);
+  for (const m of rels.matchAll(/Target="([^"]+)"(?! TargetMode="External")/g)) assert.ok(z.has(`word/${m[1]}`), `${m[1]} exists`);
 
   const p = zipEntries(exportDocx(plain, path.join(root, 'plain')).file);
   assert.ok(!p.has('word/header1.xml'));
@@ -468,7 +468,8 @@ test('branding: PowerPoint gets a brand theme, logo, footer and slide numbers on
   for (const [name, xml] of z) {
     if (!name.endsWith('.rels')) continue;
     const base = path.posix.dirname(path.posix.dirname(name));
-    for (const m of xml.matchAll(/Target="([^"]+)"/g)) assert.ok(z.has(path.posix.normalize(path.posix.join(base, m[1]))), `${name} → ${m[1]}`);
+    // Web links point outside the package.
+    for (const m of xml.matchAll(/Target="([^"]+)"(?! TargetMode="External")/g)) assert.ok(z.has(path.posix.normalize(path.posix.join(base, m[1]))), `${name} → ${m[1]}`);
   }
 
   const p = zipEntries(exportPptx(plain, path.join(root, 'plain')).file);

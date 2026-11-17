@@ -88,8 +88,8 @@ function blocks(xml) {
 
 const overlaps = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 
-/** All the text on a slide, runs joined with spaces. */
-const slideText = (xml) => [...xml.matchAll(/<a:t>([^<]*)<\/a:t>/g)].map((m) => m[1]).join(' ').replace(/&apos;/g, '\'').replace(/&quot;/g, '"').replace(/\s+/g, ' ');
+/** All the text on a slide: a paragraph's runs joined as written, paragraphs with spaces. */
+const slideText = (xml) => [...xml.matchAll(/<a:p>([\s\S]*?)<\/a:p>/g)].map((p) => [...p[1].matchAll(/<a:t>([^<]*)<\/a:t>/g)].map((m) => m[1]).join('')).join(' ').replace(/&apos;/g, '\'').replace(/&quot;/g, '"').replace(/\s+/g, ' ');
 
 /** The step slides whose title starts with `title` (the first, then any "(continued)"). */
 const stepSlides = (slides, title) => slides.filter((xml) => xml.includes('name="Step number"') && new RegExp(`<p:ph type="title"/>[\\s\\S]*?<a:t>${title}`).test(xml));
@@ -118,7 +118,8 @@ test('PPTX layout: no text is cut; long steps carry on to "(continued)" slides',
   const { slides } = deck(ast, path.join(root, 'out'));
   const all = slides.map(slideText).join(' ');
   for (const step of ast.steps) {
-    for (const para of step.descriptionText.split('\n')) assert.ok(all.includes(para.trim()), `"${para.slice(0, 40)}…" is on a slide`);
+    // List items are real bullets on the slide, not "•" in the text.
+    for (const para of step.descriptionText.split('\n')) assert.ok(all.includes(para.replace(/^• /, '').trim()), `"${para.slice(0, 40)}…" is on a slide`);
   }
   assert.ok(all.includes('Do not reset service accounts') && all.includes('Service accounts break integrations'));
   const long = stepSlides(slides, 'If the reset email never arrives');
@@ -179,7 +180,8 @@ test('PPTX layout: speaker notes hold each step’s full text, and can be left o
   for (const [name, xml] of z) {
     if (!name.endsWith('.rels')) continue;
     const base = path.posix.dirname(path.posix.dirname(name));
-    for (const m of xml.matchAll(/Target="([^"]+)"/g)) assert.ok(z.has(path.posix.normalize(path.posix.join(base, m[1]))), `${name} → ${m[1]}`);
+    // Web links point outside the package.
+    for (const m of xml.matchAll(/Target="([^"]+)"(?! TargetMode="External")/g)) assert.ok(z.has(path.posix.normalize(path.posix.join(base, m[1]))), `${name} → ${m[1]}`);
   }
 
   const none = deck(ast, path.join(root, 'none'), { speakerNotes: false }).z;

@@ -60,20 +60,31 @@ const SHADOW = '<a:effectLst><a:outerShdw blurRad="76200" dist="19050" dir="5400
 
 /**
  * One run of text. `font` is a typeface name, or the theme's heading
- * (+mj-lt) or body (+mn-lt) font.
+ * (+mj-lt) or body (+mn-lt) font. `link` is { id } for a web link (a
+ * hyperlink relationship) or { id, slide: true } to jump to another slide.
  */
-function run(text, { size = 18, bold = false, italic = false, color = 'scheme:tx1', font = '+mn-lt', lang = 'en-US' } = {}) {
+function run(text, { size = 18, bold = false, italic = false, strike = false, underline = false, color = 'scheme:tx1', font = '+mn-lt', lang = 'en-US', link = null } = {}) {
   const t = String(text ?? '');
-  return `<a:r><a:rPr lang="${lang}" sz="${int(size * 100)}" b="${bold ? 1 : 0}"${italic ? ' i="1"' : ''} dirty="0">${solidFill(color)}`
-    + `<a:latin typeface="${escapeXml(font)}"/></a:rPr>`
+  const attrs = `${italic ? ' i="1"' : ''}${underline || link ? ' u="sng"' : ''}${strike ? ' strike="sngStrike"' : ''}`;
+  const click = link ? `<a:hlinkClick r:id="${link.id}"${link.slide ? ' action="ppaction://hlinksldjump"' : ''}/>` : '';
+  return `<a:r><a:rPr lang="${lang}" sz="${int(size * 100)}" b="${bold ? 1 : 0}"${attrs} dirty="0">${solidFill(color)}`
+    + `<a:latin typeface="${escapeXml(font)}"/>${click}</a:rPr>`
     + `<a:t>${escapeXml(t)}</a:t></a:r>`;
 }
 
-/** A paragraph of runs; `spaceAfter` and `spaceBefore` in points. */
-function paragraph(runs, { align = 'l', spaceAfter = 0, spaceBefore = 0, endSize = 0 } = {}) {
+/**
+ * A paragraph of runs; `spaceAfter` and `spaceBefore` in points. `marL`
+ * (EMU) indents it; a `bullet` ({ char } or { number: startAt }) hangs in
+ * that margin.
+ */
+function paragraph(runs, { align = 'l', spaceAfter = 0, spaceBefore = 0, endSize = 0, marL = 0, bullet = null } = {}) {
   const spacing = (spaceBefore ? `<a:spcBef><a:spcPts val="${int(spaceBefore * 100)}"/></a:spcBef>` : '')
     + (spaceAfter ? `<a:spcAft><a:spcPts val="${int(spaceAfter * 100)}"/></a:spcAft>` : '');
-  const pPr = `<a:pPr algn="${align}"><a:lnSpc><a:spcPct val="100000"/></a:lnSpc>${spacing}<a:buNone/></a:pPr>`;
+  const indent = marL ? ` marL="${int(marL)}" indent="${bullet ? -int(Math.min(marL, 285750)) : 0}"` : '';
+  let bu = '<a:buNone/>';
+  if (bullet?.char) bu = `<a:buFont typeface="Arial"/><a:buChar char="${escapeXml(bullet.char)}"/>`;
+  else if (bullet?.number) bu = `<a:buFont typeface="+mj-lt"/><a:buAutoNum type="arabicPeriod"${bullet.number > 1 ? ` startAt="${int(bullet.number)}"` : ''}/>`;
+  const pPr = `<a:pPr${indent} algn="${align}"><a:lnSpc><a:spcPct val="100000"/></a:lnSpc>${spacing}${bu}</a:pPr>`;
   const end = endSize ? `<a:endParaRPr lang="en-US" sz="${int(endSize * 100)}" dirty="0"/>` : '';
   return `<a:p>${pPr}${Array.isArray(runs) ? runs.join('') : runs}${end}</a:p>`;
 }

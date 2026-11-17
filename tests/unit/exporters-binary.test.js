@@ -432,8 +432,10 @@ test('DOCX export: valid OPC package, well-formed XML, resolvable image rels', (
 
   // Every relationship target exists in the package, every embed has a rel.
   const relsXml = entries.get('word/_rels/document.xml.rels').toString('utf8');
-  const relTargets = [...relsXml.matchAll(/Target="([^"]+)"/g)].map((m) => m[1]);
+  const relTargets = [...relsXml.matchAll(/Target="([^"]+)"(?! TargetMode="External")/g)].map((m) => m[1]);
   assert.equal(relTargets.length, 4);
+  // The description's web link is a hyperlink relationship, outside the package.
+  assert.match(relsXml, /Type="[^"]+\/hyperlink" Target="https:\/\/docs\.example\.com" TargetMode="External"/);
   assert.ok(relTargets.includes('settings.xml'));
   assert.ok(relTargets.includes('styles.xml'));
 

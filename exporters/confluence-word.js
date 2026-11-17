@@ -3,7 +3,7 @@
 const { zipSync } = require('../core/zip');
 const { escapeXml } = require('../core/util');
 const { encodePng } = require('../core/png');
-const { htmlToBlocks } = require('../core/htmlblocks');
+const { WordRichText, runXml, paragraph } = require('./word-rich');
 const { levelLabel, stepContentGroups, codeBlockText, wordCodeRuns, wordCodeShading, flowchartImageKey, flowchartAlt, chartLinksHtml } = require('./common');
 const { highlightCode } = require('../core/code-highlight');
 const { guideMetaLines, stepCount } = require('./document-layout');
@@ -35,29 +35,15 @@ const CALLOUT = {
   error: { fill: 'FFEBE6', border: 'DE350B' },
 };
 
-function runXml(text, { bold, italic, strike, code, link } = {}) {
-  const rpr = [
-    link ? '<w:rStyle w:val="Hyperlink"/>' : '',
-    code ? '<w:rFonts w:ascii="Courier New" w:hAnsi="Courier New" w:cs="Courier New"/>' : '',
-    bold ? '<w:b/>' : '',
-    italic ? '<w:i/>' : '',
-    strike ? '<w:strike/>' : '',
-  ].join('');
-  return String(text).split('\n').map((line, i) => (
-    `${i ? '<w:r><w:br/></w:r>' : ''}<w:r>${rpr ? `<w:rPr>${rpr}</w:rPr>` : ''}<w:t xml:space="preserve">${escapeXml(line)}</w:t></w:r>`
-  )).join('');
-}
-
-function paragraph(content, props = '') {
-  return `<w:p>${props ? `<w:pPr>${props}</w:pPr>` : ''}${content}</w:p>`;
-}
-
 class WordDocument {
   constructor(ast) {
     this.ast = ast;
     this.rels = [];
     this.media = [];
-    this.nums = []; // numbering instances: { id, abstractId }
+    // Descriptions and callouts: real lists, links, quotes (exporters/word-rich.js).
+    this.rich = new WordRichText({
+      ast, rel: (...args) => this.rel(...args), anchorFor: (step) => this.anchorFor(step), table: (rows) => this.table(rows),
+    });
     this.nextRel = 3; // rId1 styles, rId2 numbering
     this.nextBookmark = 1;
   }
@@ -68,67 +54,13 @@ class WordDocument {
     return id;
   }
 
-  newList(ordered) {
-    const id = this.nums.length + 1;
-    this.nums.push({ id, abstractId: ordered ? 1 : 0 });
-    return id;
-  }
-
   anchorFor(step) {
     return `step_${String(step.number).replace(/\./g, '_')}`;
   }
 
-  runs(runs) {
-    return runs.map((r) => {
-      if (r.href && r.href.startsWith('step:')) {
-        const target = this.ast.steps.find((s) => s.stepId === r.href.slice(5));
-        if (!target) return runXml(r.text, r);
-        return `<w:hyperlink w:anchor="${this.anchorFor(target)}">${runXml(r.text, { ...r, link: true })}</w:hyperlink>`;
-      }
-      if (r.href && /^(https?:|mailto:)/i.test(r.href)) {
-        return `<w:hyperlink r:id="${this.rel('hyperlink', r.href, true)}">${runXml(r.text, { ...r, link: true })}</w:hyperlink>`;
-      }
-      return runXml(r.text, r);
-    }).join('');
-  }
-
   /** Rich description HTML -> Word paragraphs, with real lists. */
   richText(html) {
-    const out = [];
-    let list = null; // { ordered, id }
-    let rows = []; // consecutive table rows, written as one Word table
-    const endTable = () => { if (rows.length) out.push(this.table(rows)); rows = []; };
-    for (const block of htmlToBlocks(html || '')) {
-      if (block.type === 'tr') { list = null; rows.push(block.cells); continue; }
-      endTable();
-      const isList = block.type === 'li' || block.type === 'oli';
-      const ordered = block.type === 'oli';
-      if (!isList) list = null;
-      if (block.type === 'hr') {
-        out.push(paragraph('', '<w:pBdr><w:bottom w:val="single" w:sz="6" w:space="1" w:color="C1C7D0"/></w:pBdr>'));
-        continue;
-      }
-      if (isList) {
-        if (!list || list.ordered !== ordered || (ordered && block.n === 1 && block.indent <= 1 && !block.cont)) {
-          list = { ordered, id: this.newList(ordered) };
-        }
-        const lvl = Math.min(2, Math.max(0, block.indent - 1));
-        // A line after a break in the item continues it: same indent, no new number.
-        out.push(block.cont
-          ? paragraph(this.runs(block.runs), `<w:pStyle w:val="ListParagraph"/><w:ind w:left="${720 * (lvl + 1)}"/>`)
-          : paragraph(this.runs(block.runs), `<w:pStyle w:val="ListParagraph"/><w:numPr><w:ilvl w:val="${lvl}"/><w:numId w:val="${list.id}"/></w:numPr>`));
-        continue;
-      }
-      if (/^h[1-4]$/.test(block.type)) {
-        out.push(paragraph(this.runs(block.runs), '<w:pStyle w:val="Heading4"/>'));
-      } else if (block.type === 'blockquote') {
-        out.push(paragraph(this.runs(block.runs), '<w:pStyle w:val="Quote"/>'));
-      } else {
-        out.push(paragraph(this.runs(block.runs)));
-      }
-    }
-    endTable();
-    return out.join('');
+    return this.rich.richText(html);
   }
 
   callout(tb) {
@@ -254,7 +186,7 @@ class WordDocument {
       { name: 'docProps/core.xml', data: coreProps(ast.guide.title || t('Untitled guide')) },
       { name: 'word/document.xml', data: documentXml },
       { name: 'word/styles.xml', data: STYLES },
-      { name: 'word/numbering.xml', data: numberingXml(this.nums) },
+      { name: 'word/numbering.xml', data: this.rich.numberingXml() },
       {
         name: 'word/_rels/document.xml.rels',
         data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -313,20 +245,6 @@ ${style('Quote', 'Quote', { ppr: '<w:ind w:left="720"/>', rpr: '<w:i/><w:color w
 ${style('Code', 'Code', { ppr: '<w:shd w:val="clear" w:color="auto" w:fill="F4F5F7"/>', rpr: '<w:rFonts w:ascii="Courier New" w:hAnsi="Courier New" w:cs="Courier New"/><w:sz w:val="20"/>' })}
 ${style('Hyperlink', 'Hyperlink', { type: 'character', basedOn: null, rpr: '<w:color w:val="0052CC"/><w:u w:val="single"/>' })}
 </w:styles>`;
-
-function numberingXml(nums) {
-  const level = (ilvl, fmt, text) => `<w:lvl w:ilvl="${ilvl}"><w:start w:val="1"/><w:numFmt w:val="${fmt}"/>`
-    + `<w:lvlText w:val="${text}"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="${720 * (ilvl + 1)}" w:hanging="360"/></w:pPr>`
-    + `${fmt === 'bullet' ? '<w:rPr><w:rFonts w:ascii="Symbol" w:hAnsi="Symbol" w:hint="default"/></w:rPr>' : ''}</w:lvl>`;
-  const bullet = [0, 1, 2].map((l) => level(l, 'bullet', '')).join('');
-  const decimal = [0, 1, 2].map((l) => level(l, ['decimal', 'lowerLetter', 'lowerRoman'][l], `%${l + 1}.`)).join('');
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:numbering xmlns:w="${W_NS}">
-<w:abstractNum w:abstractNumId="0"><w:multiLevelType w:val="hybridMultilevel"/>${bullet}</w:abstractNum>
-<w:abstractNum w:abstractNumId="1"><w:multiLevelType w:val="hybridMultilevel"/>${decimal}</w:abstractNum>
-${nums.map((n) => `<w:num w:numId="${n.id}"><w:abstractNumId w:val="${n.abstractId}"/>${n.abstractId === 1 ? '<w:lvlOverride w:ilvl="0"><w:startOverride w:val="1"/></w:lvlOverride>' : ''}</w:num>`).join('\n')}
-</w:numbering>`;
-}
 
 /** Build the .docx bytes for a guide. */
 function buildConfluenceWord(ast, images, tpl = { includeImages: true }) {

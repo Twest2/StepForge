@@ -10,7 +10,7 @@ const { exportText, languageTag } = require('../core/export-text');
 const { guideSlug, renderAllImages, calloutLabel, stepContentGroups, flowchartImageKey, flowchartAlt, codeBlockText } = require('./common');
 const { tocEntries, guideMetaLines, guideSummary } = require('./document-layout');
 const { SLIDE_SCREENSHOT_POSITIONS } = require('../core/branding');
-const { withBrand, fitSize, textOn, brandRaster, hexToRgb } = require('./branding');
+const { withBrand, fitSize, textOn, brandRaster, hexToRgb, luminance, contrast, logoNeedsCard, logoCardColor } = require('./branding');
 const metrics = require('./text-metrics');
 const { richParagraphs, sliceRuns, joinRuns, markedText } = require('./pptx-text');
 const X = require('./pptx-xml');
@@ -716,17 +716,6 @@ const LAYOUT_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>
 </p:sldLayout>`;
 
-/** Relative luminance (0..1) of an sRGB color. */
-function luminance([r, g, b]) {
-  const lin = (c) => { const s = c / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; };
-  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
-}
-
-function contrast(a, b) {
-  const [hi, lo] = a > b ? [a, b] : [b, a];
-  return (hi + 0.05) / (lo + 0.05);
-}
-
 /**
  * The average luminance of an image's visible pixels, in the part of it
  * between fractions x0..x1 and y0..y1 (null for an empty or unreadable one).
@@ -763,27 +752,6 @@ function imageTone(img, [x0, y0, x1, y1] = [0, 0, 1, 1]) {
   if (!weight) return null;
   const mean = sum / weight;
   return { mean, spread: Math.sqrt(Math.max(0, squares / weight - mean * mean)) };
-}
-
-/**
- * Whether a logo needs a white card to show on a background of luminance
- * `behind`: when more than a quarter of its visible pixels barely stand out
- * from it (a dark wordmark on a dark band, say).
- */
-function logoNeedsCard(img, behind) {
-  if (!img || behind == null) return false;
-  const step = Math.max(1, Math.floor(Math.sqrt((img.width * img.height) / 20000)));
-  let visible = 0;
-  let faint = 0;
-  for (let y = 0; y < img.height; y += step) {
-    for (let x = 0; x < img.width; x += step) {
-      const i = (y * img.width + x) * 4;
-      if (img.data[i + 3] < 128) continue;
-      visible += 1;
-      if (contrast(luminance([img.data[i], img.data[i + 1], img.data[i + 2]]), behind) < 2) faint += 1;
-    }
-  }
-  return visible > 0 && faint / visible > 0.25;
 }
 
 /**
@@ -849,9 +817,10 @@ function titleSlide(ctx) {
     const x = centered ? Math.round((SLIDE_W - box.w) / 2) : MARGIN_X;
     rels.push({ id: 3, name: 'brand-logo.png' });
     const under = picture ? imageTone(brandRaster(picture.asset), [0, 0, centered ? 1 : 0.4, 0.3]) : { mean: behind, spread: 0 };
-    if (under && (under.spread > BUSY_SPREAD || logoNeedsCard(brandRaster(brand.logo), under.mean))) {
+    const logoImg = brandRaster(brand.logo);
+    if (under && (under.spread > BUSY_SPREAD || logoNeedsCard(logoImg, under.mean))) {
       const pad = Math.round(0.14 * IN);
-      xml += X.shape(nextId, { name: 'Logo card', box: { x: x - pad, y: y - pad, w: box.w + pad * 2, h: box.h + pad * 2 }, geom: 'roundRect', radius: Math.round(0.1 * IN), fill: 'FFFFFF' });
+      xml += X.shape(nextId, { name: 'Logo card', box: { x: x - pad, y: y - pad, w: box.w + pad * 2, h: box.h + pad * 2 }, geom: 'roundRect', radius: Math.round(0.1 * IN), fill: (logoImg ? logoCardColor(logoImg) : '#FFFFFF').slice(1) });
     }
     xml += X.picture(nextId, { relId: 3, box: { x, y, w: box.w, h: box.h }, alt: t('Logo'), name: 'Logo' });
     top = y + box.h + Math.round(0.2 * IN);

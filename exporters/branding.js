@@ -87,6 +87,78 @@ function textOn(hex) {
   return luminance > 0.36 ? '#111111' : '#FFFFFF';
 }
 
+/** Relative luminance (0..1) of an sRGB color given as [r, g, b]. */
+function luminance([r, g, b]) {
+  const lin = (c) => { const s = c / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; };
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+}
+
+/** The WCAG contrast ratio of two luminances. */
+function contrast(a, b) {
+  const [hi, lo] = a > b ? [a, b] : [b, a];
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+/**
+ * The share (0..1) of a logo's visible pixels that stand out from a
+ * background of luminance `behind` by less than 3:1, the WCAG minimum for
+ * graphics.
+ */
+function faintShare(img, behind) {
+  const step = Math.max(1, Math.floor(Math.sqrt((img.width * img.height) / 20000)));
+  let visible = 0;
+  let faint = 0;
+  for (let y = 0; y < img.height; y += step) {
+    for (let x = 0; x < img.width; x += step) {
+      const i = (y * img.width + x) * 4;
+      if (img.data[i + 3] < 128) continue;
+      visible += 1;
+      if (contrast(luminance([img.data[i], img.data[i + 1], img.data[i + 2]]), behind) < 3) faint += 1;
+    }
+  }
+  return visible ? faint / visible : 0;
+}
+
+/**
+ * Whether a logo needs a card to show up on a background of luminance
+ * `behind`: when more than a quarter of its visible pixels are faint on it
+ * (a dark wordmark on a dark band, say).
+ */
+function logoNeedsCard(img, behind) {
+  if (!img || behind == null) return false;
+  return faintShare(img, behind) > 0.25;
+}
+
+/** Card colors for a logo: white, or dark slate for a light logo that white would hide. */
+const CARD_COLORS = ['#FFFFFF', '#1F2937'];
+
+/** The card color the logo stands out on best (white when they tie). */
+function logoCardColor(img) {
+  const faint = CARD_COLORS.map((hex) => faintShare(img, luminance(hexToRgb(hex))));
+  return CARD_COLORS[faint.indexOf(Math.min(...faint))];
+}
+
+/**
+ * The brand's logo for a cover on `background` (hex): the logo itself, or,
+ * when it wouldn't show up there, the logo on a rounded card it stands out
+ * on (white, or dark for a light logo). Returns { img, carded, color } with
+ * an RGBA image, or null without a logo raster.
+ */
+function coverLogo(brand, background) {
+  const img = brand ? brandRaster(brand.logo) : null;
+  if (!img) return null;
+  const behind = background ? luminance(hexToRgb(background)) : null;
+  if (!logoNeedsCard(img, behind)) return { img, carded: false };
+  const color = logoCardColor(img);
+  // A card that leaves the logo no clearer than the background is no help.
+  if (faintShare(img, luminance(hexToRgb(color))) >= faintShare(img, behind)) return { img, carded: false };
+  const pad = Math.max(8, Math.round(Math.min(img.width, img.height) * 0.18));
+  const card = raster.createImage(img.width + pad * 2, img.height + pad * 2, [0, 0, 0, 0]);
+  raster.fillRoundRect(card, 0, 0, card.width, card.height, Math.round(pad * 0.9), [...hexToRgb(color), 255]);
+  raster.drawImage(card, img, pad, pad);
+  return { img: card, carded: true, color };
+}
+
 /**
  * Lay a logo over an image as a watermark: at most a fifth of the image's
  * width (and half its height), in a corner, at `opacity`. Changes `img` in place.
@@ -132,4 +204,9 @@ module.exports = {
   textOn,
   overlayWatermark,
   hexToRgb,
+  luminance,
+  contrast,
+  logoNeedsCard,
+  logoCardColor,
+  coverLogo,
 };

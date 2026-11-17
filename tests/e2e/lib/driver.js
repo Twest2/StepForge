@@ -8,7 +8,6 @@
 // fine; performing an action by calling DOM click() or app functions is not.
 
 const fs = require('node:fs');
-const net = require('node:net');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { CdpClient, withTimeout } = require('./cdp');
@@ -49,16 +48,19 @@ function dialogStubSource(answers) {
   })()`;
 }
 
-function freePort() {
-  return new Promise((resolve, reject) => {
-    const server = net.createServer();
-    server.unref();
-    server.on('error', reject);
-    server.listen(0, '127.0.0.1', () => {
-      const { port } = server.address();
-      server.close(() => resolve(port));
-    });
-  });
+/** Reads the DevTools port Chromium wrote after binding, so no port is reserved up front. */
+function readDevToolsPort(userDataDir) {
+  const file = path.join(userDataDir, 'DevToolsActivePort');
+  const text = fs.readFileSync(file, 'utf8');
+  const port = Number(text.split('\n')[0].trim());
+  if (!Number.isInteger(port) || port <= 0) throw new Error(`DevToolsActivePort holds no port: ${text.trim()}`);
+  return port;
+}
+
+/** Reads the inspector port out of the "Debugger listening on ws://host:port/..." line Node prints. */
+function readInspectPort(log) {
+  const match = /Debugger listening on ws:\/\/[^:]+:(\d+)\//.exec(log);
+  return match ? Number(match[1]) : null;
 }
 
 async function poll(fn, { timeout = DEFAULT_TIMEOUT_MS, interval = 50, label = 'condition' } = {}) {
@@ -306,15 +308,17 @@ function keyInfo(name) {
  *   env           extra environment variables for the app
  */
 async function launchApp({ dataDir, userDataDir, artifactDir, env = {}, withInspector = true }) {
-  const cdpPort = await freePort();
-  const inspectPort = withInspector ? await freePort() : null;
+  // Ports are chosen by the operating system at bind time, not reserved here
+  // first: a port that looks free can be taken by another process before
+  // Electron binds it, which used to make a launch fail with "Address already
+  // in use". The real ports are read back after the app has bound them.
   const args = [
     '--disable-dev-shm-usage',
     `--user-data-dir=${userDataDir}`,
-    `--remote-debugging-port=${cdpPort}`,
+    '--remote-debugging-port=0',
   ];
   if (process.env.STEPFORGE_ALLOW_NO_SANDBOX === '1') args.unshift('--no-sandbox');
-  if (inspectPort) args.push(`--inspect=${inspectPort}`);
+  if (withInspector) args.push('--inspect=0');
   args.push(REPO_ROOT);
 
   const childEnv = { ...process.env, ...env, STEPFORGE_DATA_DIR: dataDir };
@@ -330,8 +334,8 @@ async function launchApp({ dataDir, userDataDir, artifactDir, env = {}, withInsp
 
   const app = {
     child,
-    cdpPort,
-    inspectPort,
+    cdpPort: null,
+    inspectPort: null,
     log: () => Buffer.concat(logChunks).toString('utf8'),
     page: null,
     main: null,
@@ -349,9 +353,13 @@ async function launchApp({ dataDir, userDataDir, artifactDir, env = {}, withInsp
   app.close = cleanup;
 
   try {
+    app.cdpPort = await poll(() => {
+      if (exited) throw launchError || new Error(`StepForge exited: ${app.log().slice(-2000)}`);
+      return readDevToolsPort(userDataDir);
+    }, { timeout: 30000, label: 'StepForge DevTools port' });
     const target = await poll(async () => {
       if (exited) throw launchError || new Error(`StepForge exited: ${app.log().slice(-2000)}`);
-      const list = await (await fetch(`http://127.0.0.1:${cdpPort}/json/list`)).json();
+      const list = await (await fetch(`http://127.0.0.1:${app.cdpPort}/json/list`)).json();
       return list.find((t) => t.type === 'page' && t.url.includes('renderer/index.html'));
     }, { timeout: 30000, label: 'StepForge window' });
     const cdp = new CdpClient(target.webSocketDebuggerUrl);
@@ -368,7 +376,11 @@ async function launchApp({ dataDir, userDataDir, artifactDir, env = {}, withInsp
       label: 'renderer to finish loading',
     });
     if (withInspector) {
-      app.main = await connectMainProcess(inspectPort);
+      app.inspectPort = await poll(() => readInspectPort(app.log()), {
+        timeout: 15000,
+        label: 'main process inspector port',
+      });
+      app.main = await connectMainProcess(app.inspectPort);
       await app.main.evaluate(SHELL_STUB);
       await app.main.stubDialogs({});
     }
@@ -431,4 +443,4 @@ async function connectMainProcess(inspectPort) {
   };
 }
 
-module.exports = { launchApp, poll, freePort, REPO_ROOT, DEFAULT_TIMEOUT_MS };
+module.exports = { launchApp, poll, REPO_ROOT, DEFAULT_TIMEOUT_MS };

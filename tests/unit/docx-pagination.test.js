@@ -50,10 +50,11 @@ test('DOCX pagination: process headings attach to their first child, not all sib
 
 test('DOCX pagination: a short caption ends its own picture chain', t => {
   const { paragraphs: p } = exported(t, fixtures.caption);
-  assert.equal(p.length, 4);
+  // Heading, instructions, screenshot, then the caption callout's label and text.
+  assert.equal(p.length, 5);
   p.slice(0, -1).forEach(xml => assert.ok(kept(xml)));
-  assert.ok(ended(p[3]) && linesKept(p[3]));
-  assert.match(p[3], /This example is illustrative; your setup may differ/);
+  assert.ok(ended(p[4]) && linesKept(p[4]));
+  assert.match(p[4], /This example is illustrative; your setup may differ/);
 });
 
 test('DOCX pagination: intervening callouts remain attached to the picture', t => {
@@ -64,7 +65,8 @@ test('DOCX pagination: intervening callouts remain attached to the picture', t =
   // after the cover's explicit page break, including that leading callout.
   const body = r.xml.split('<w:br w:type="page"/>')[1];
   const p = body.match(/<w:p>[\s\S]*?<\/w:p>/g);
-  assert.equal(p.length, 8);
+  // Five callouts of two paragraphs (label, text), the heading, instructions and screenshot.
+  assert.equal(p.length, 13);
   p.slice(0, -1).forEach(xml => assert.ok(kept(xml) && linesKept(xml)));
   assert.ok(ended(p.at(-1)));
 });
@@ -80,7 +82,8 @@ test('DOCX pagination: oversized instructions can split before a fitting image/c
   assert.ok(kept(p[0]));
   assert.ok(ended(p[1]));
   assert.match(props(p[1]), /<w:keepLines w:val="0"\/>/);
-  assert.ok(kept(p[2]) && ended(p[3]));
+  // The screenshot keeps with the callout after it: its label, then its text.
+  assert.ok(kept(p[2]) && kept(p[3]) && ended(p[4]));
 });
 
 test('DOCX pagination: long trailing commentary is not made into a picture caption', t => {
@@ -109,8 +112,8 @@ test('DOCX pagination: a forced-page step starts with its before-title callout',
   const p = body.match(/<w:p>[\s\S]*?<\/w:p>/g);
   assert.match(props(p[0]), /<w:pageBreakBefore\/>/);
   assert.doesNotMatch(props(p[1]), /<w:pageBreakBefore\/>/);
-  // CT_PPr order: keepLines, pageBreakBefore, then the callout's border/shading.
-  assert.match(props(p[0]), /<w:keepLines w:val="1"\/><w:pageBreakBefore\/><w:shd\b/);
+  // CT_PPr order: keepLines, pageBreakBefore, then the callout's border and shading.
+  assert.match(props(p[0]), /<w:keepLines w:val="1"\/><w:pageBreakBefore\/><w:pBdr>[\s\S]*<\/w:pBdr><w:shd\b/);
 });
 
 test('DOCX pagination: fitting side-by-side rows stay atomic, oversized rows can split', t => {

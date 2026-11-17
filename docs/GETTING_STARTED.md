@@ -142,8 +142,11 @@ exports and accepts Markdown: `**bold**`, `*italic*`, `` `code` ``,
 `[links](https://example.com)`, lists that start with `-` or `1.` (indent an
 item by two spaces to nest it), `~~strikethrough~~`, `#` headings (`#` to
 `####`), `>` quotes, `---` dividers, and tables (`| A | B |` with a
-`| --- | --- |` line under the header). Word, PowerPoint and GIF exports show
-the description as plain text.
+`| --- | --- |` line under the header). GIF and PowerPoint exports leave it
+off their title card and title slide. Step descriptions and
+callouts keep their formatting in PDF, Word, PowerPoint, HTML, Markdown and
+wiki exports: bold, italics, code, links (a link to another step jumps to
+it), lists and quotes.
 
 **Working with many steps at once:** choose **Select**, click one step, then
 **Shift-click** another to select everything in between, including substeps.

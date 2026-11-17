@@ -12,6 +12,7 @@ const { tocEntries, guideMetaLines, guideSummary } = require('./document-layout'
 const { SLIDE_SCREENSHOT_POSITIONS } = require('../core/branding');
 const { withBrand, fitSize, textOn, brandRaster, hexToRgb } = require('./branding');
 const metrics = require('./text-metrics');
+const { richParagraphs, sliceRuns, joinRuns, markedText } = require('./pptx-text');
 const X = require('./pptx-xml');
 
 /**
@@ -74,6 +75,9 @@ const ACCENT_BAR_H = Math.round(0.07 * IN);
 const HEADER_GAP = Math.round(0.24 * IN); // header → body
 const GAP = Math.round(0.16 * IN); // between blocks
 const PARA_GAP = Math.round(0.09 * IN); // between description paragraphs
+const LIST_GAP = Math.round(0.04 * IN); // between list items
+const LIST_INDENT = Math.round(0.3 * IN); // per list level; the bullet hangs in it
+const QUOTE_INDENT = Math.round(0.25 * IN);
 const COLUMN_GAP = Math.round(0.4 * IN);
 const BADGE = Math.round(0.5 * IN);
 const BADGE_GAP = Math.round(0.18 * IN);
@@ -139,9 +143,21 @@ function stepItems(step) {
   const groups = Object.fromEntries(Object.entries(stepContentGroups(step))
     // A flowchart block sits beside the screenshot on its slide, wherever it goes elsewhere.
     .map(([group, list]) => [group, list.filter((block) => block.kind !== 'flowchart')]));
-  const callouts = (list, after = false) => list.map((tb) => ({ kind: 'callout', tb, label: null, body: tb.descriptionText || '', after }));
-  const description = String(step.descriptionText || '').split('\n').map((s) => s.trim()).filter(Boolean)
-    .map((text) => ({ kind: 'para', text, after: false }));
+  const callouts = (list, after = false) => list.map((tb) => {
+    // A callout's text keeps its formatting; its lists and tables become lines.
+    const paras = tb.descriptionHtml ? richParagraphs(tb.descriptionHtml).flatMap((p) => (p.rows
+      ? p.rows.map((row) => ({ runs: [{ text: row.join(' | ') }], text: row.join(' | '), list: null }))
+      : [p])) : null;
+    const body = paras ? paras.map(markedText).join('\n') : (tb.descriptionText || '');
+    return { kind: 'callout', tb, label: null, body, paras, after };
+  });
+  // The description keeps its formatting: bold, italic, code, links, lists, quotes, tables.
+  const description = step.descriptionHtml
+    ? richParagraphs(step.descriptionHtml).map((p) => (p.rows
+      ? { kind: 'table', rows: p.rows, after: false }
+      : { kind: 'para', ...p, after: false }))
+    : String(step.descriptionText || '').split('\n').map((s) => s.trim()).filter(Boolean)
+      .map((text) => ({ kind: 'para', text, runs: [{ text }], list: null, after: false }));
   const rest = groups.rest.map((block) => {
     if (block.kind === 'code') return { kind: 'code', code: codeBlockText(block), language: block.language, after: true };
     if (block.kind === 'table' && block.rows?.length) return { kind: 'table', rows: block.rows.map((r) => r.map((c) => String(c ?? ''))), header: true, after: true };
@@ -188,7 +204,7 @@ function tableRowHeights(ctx, rows, colWidths, scale) {
 function itemHeight(ctx, item, width, scale) {
   switch (item.kind) {
     case 'para':
-      return metrics.textHeight(item.text, width, measure(ctx, 'body', SIZE.body * scale));
+      return metrics.textHeight(item.text, width - paraIndent(item), measure(ctx, 'body', SIZE.body * scale, paraBold(item)));
     case 'callout': {
       const { label, body } = calloutParts(ctx, item);
       const inner = width - CALLOUT_BAR - CALLOUT_PAD_X * 2;
@@ -208,7 +224,21 @@ function itemHeight(ctx, item, width, scale) {
 }
 
 function gapBetween(prev, next) {
-  return prev.kind === 'para' && next.kind === 'para' ? PARA_GAP : GAP;
+  if (prev.kind === 'para' && next.kind === 'para') return prev.list && next.list ? LIST_GAP : PARA_GAP;
+  return GAP;
+}
+
+/** How far a paragraph is indented: list items by level, quotes a little. */
+function paraIndent(item) {
+  if (item.list) return LIST_INDENT * (item.list.level + 1);
+  return item.quote ? QUOTE_INDENT : 0;
+}
+
+/** Whether to measure a paragraph as bold: a heading, or mostly bold text. */
+function paraBold(item) {
+  if (item.heading) return true;
+  const bold = (item.runs || []).reduce((n, r) => n + (r.bold ? r.text.length : 0), 0);
+  return bold > item.text.length * 0.3;
 }
 
 function stackHeight(ctx, items, width, scale) {
@@ -216,17 +246,32 @@ function stackHeight(ctx, items, width, scale) {
 }
 
 /**
+ * Where `text` ends after its first `count` wrapped `lines`. Lines are the
+ * text with whitespace collapsed and a long word broken between characters,
+ * so walk both together rather than rejoining the lines.
+ */
+function offsetAfterLines(text, lines, count) {
+  let at = 0;
+  for (const line of lines.slice(0, count)) {
+    for (const ch of line) {
+      if (/\s/.test(ch)) continue;
+      while (at < text.length && /\s/.test(text[at])) at += 1;
+      at += ch.length;
+    }
+  }
+  return at;
+}
+
+/**
  * Split wrapped text after its first `fit` lines, at the end of a sentence
- * when one ends in the second half of them. Null when fewer than two lines
- * fit or everything does.
+ * when one ends in the second half of them. Returns the character offset in
+ * `text` to cut at, or null when fewer than two lines fit or everything does.
  */
 function splitText(text, lines, fit) {
   if (fit < 2 || fit >= lines.length) return null;
-  const head = lines.slice(0, fit).join(' ');
+  const head = text.slice(0, offsetAfterLines(text, lines, fit));
   const sentence = [...head.matchAll(/[.!?。！？](?=\s|$)/g)].map((m) => m.index + 1).filter((i) => i > head.length / 2).pop();
-  const cut = sentence || head.length;
-  const flat = lines.join(' ');
-  return [flat.slice(0, cut).trim(), flat.slice(cut).trim()];
+  return sentence || head.length;
 }
 
 /**
@@ -236,9 +281,16 @@ function splitText(text, lines, fit) {
  */
 function splitItem(ctx, item, width, scale, maxH) {
   if (item.kind === 'para') {
-    const m = measure(ctx, 'body', SIZE.body * scale);
-    const parts = splitText(item.text, metrics.wrapText(item.text, width, m).flat(), Math.floor(maxH / pt(m.lineHeight)));
-    return parts && [{ ...item, text: parts[0] }, { ...item, text: parts[1] }];
+    const m = measure(ctx, 'body', SIZE.body * scale, paraBold(item));
+    const cut = splitText(item.text, metrics.wrapText(item.text, width - paraIndent(item), m).flat(), Math.floor(maxH / pt(m.lineHeight)));
+    if (cut == null) return null;
+    // Both halves keep their formatting; the second continues a list item without a new bullet.
+    const head = sliceRuns(item.runs, 0, cut);
+    const tail = sliceRuns(item.runs, cut);
+    return [
+      { ...item, runs: head, text: joinRuns(head) },
+      { ...item, runs: tail, text: joinRuns(tail), list: item.list && { ...item.list, continued: true } },
+    ];
   }
   if (item.kind === 'code') {
     const lines = item.code.split('\n');
@@ -253,8 +305,8 @@ function splitItem(ctx, item, width, scale, maxH) {
     const labelH = label ? metrics.textHeight(label, inner, measure(ctx, 'body', SIZE.callout * scale, true)) : 0;
     const m = measure(ctx, 'body', SIZE.callout * scale);
     const fit = Math.floor((maxH - labelH - pt(3) - CALLOUT_PAD_Y * 2) / pt(m.lineHeight));
-    const parts = splitText(body, metrics.wrapText(body, inner, m).flat(), fit);
-    return parts && [{ ...item, label, body: parts[0] }, { ...item, label, body: parts[1] }];
+    const cut = splitText(body, metrics.wrapText(body, inner, m).flat(), fit);
+    return cut == null ? null : [{ ...item, label, body: body.slice(0, cut).trim(), paras: null }, { ...item, label, body: body.slice(cut).trim(), paras: null }];
   }
   if (item.kind === 'table') {
     const cols = tableColumns(ctx, item.rows, width, scale);
@@ -446,19 +498,29 @@ function itemXml(ctx, nextId, item, box, scale) {
   const ink = 'scheme:tx1';
   const lang = ctx.lang;
   switch (item.kind) {
-    case 'para':
+    case 'para': {
+      const size = SIZE.body * scale;
+      const list = item.list;
+      const marL = paraIndent(item);
+      const bullet = list && !list.continued ? (list.ordered ? { number: list.n } : { char: '\u2022' }) : null;
+      const style = { size, color: item.quote ? '475569' : ink, lang, bold: item.heading, italic: item.quote };
       return X.shape(nextId, {
         name: 'Text',
         box,
-        paras: X.paragraphs(item.text, { size: SIZE.body * scale, color: ink, lang }),
+        paras: [X.paragraph(richRuns(ctx, item.runs, style), { marL, bullet })],
         text: { inset: 0 },
       });
+    }
     case 'callout': {
       const style = CALLOUT_STYLE[item.tb.level] || CALLOUT_STYLE.info;
       const { label, body } = calloutParts(ctx, item);
       const paras = [
         ...(label ? X.paragraphs(label, { size: SIZE.callout * scale, bold: true, color: style.color, lang }) : []),
-        ...(body ? X.paragraphs(body, { size: SIZE.callout * scale, color: '1F2937', lang }, { spaceBefore: label ? 3 : 0 }) : []),
+        ...(item.paras
+          // Formatted text; list items start with their marker.
+          ? item.paras.map((p, i) => X.paragraph(richRuns(ctx, p.list ? [{ text: markedText({ ...p, text: '' }) }, ...p.runs] : p.runs,
+            { size: SIZE.callout * scale, color: '1F2937', lang }), { spaceBefore: i === 0 && label ? 3 : 0 }))
+          : (body ? X.paragraphs(body, { size: SIZE.callout * scale, color: '1F2937', lang }, { spaceBefore: label ? 3 : 0 }) : [])),
       ];
       return X.shape(nextId, { name: 'Callout', box, fill: style.fill })
         + X.shape(nextId, { name: 'Callout bar', box: { x: box.x, y: box.y, w: CALLOUT_BAR, h: box.h }, fill: style.accent })
@@ -503,6 +565,28 @@ function itemXml(ctx, nextId, item, box, scale) {
     default:
       return '';
   }
+}
+
+/**
+ * Formatted runs as slide runs: bold, italic, strikethrough, inline code in
+ * the code font, and links. A web link goes to its page; a link to another
+ * step jumps to that step's slide (resolved when the deck is put together).
+ */
+function richRuns(ctx, runs, base) {
+  return runs.map((r) => {
+    let link = null;
+    if (r.href && /^(https?:|mailto:)/i.test(r.href)) link = ctx.addLink({ href: r.href });
+    else if (r.href && r.href.startsWith('step:') && ctx.ast.steps.some((s) => s.stepId === r.href.slice(5))) link = ctx.addLink({ stepId: r.href.slice(5) });
+    return X.run(r.text, {
+      ...base,
+      bold: base.bold || r.bold,
+      italic: base.italic || r.italic,
+      strike: r.strike,
+      font: r.code ? CODE_FONT : (base.font || '+mn-lt'),
+      color: link ? 'scheme:hlink' : base.color,
+      link,
+    });
+  }).join('');
 }
 
 /** Draw items stacked down a column from `y`; returns the xml and the bottom. */
@@ -552,7 +636,7 @@ function accentBar(ctx, nextId) {
 function notesText(ctx, step, items) {
   const lines = [`${step.number}. ${step.title || ctx.t('Untitled step')}`];
   for (const item of items) {
-    if (item.kind === 'para') lines.push(item.text);
+    if (item.kind === 'para') lines.push(markedText(item));
     else if (item.kind === 'callout') {
       const { label, body } = calloutParts(ctx, item);
       lines.push([label, body].filter(Boolean).join(' — '));
@@ -895,6 +979,7 @@ function stepSlides(ctx, step, tpl) {
   const notes = tpl.speakerNotes || plan.first.mode === 'full' ? notesText(ctx, step, items) : '';
   // The first slide.
   {
+    ctx.slideLinks = [];
     const nextId = X.ids();
     const p = plan.first;
     let xml = accentBar(ctx, nextId) + headerXml(ctx, nextId, header);
@@ -927,7 +1012,7 @@ function stepSlides(ctx, step, tpl) {
         xml += columnXml(ctx, nextId, p.below, { x: area.x, y: picTop + p.fit.h + GAP, w: area.w }, p.scale).xml;
       }
     }
-    slides.push({ xml: X.slideXml(xml), rels, media, notes });
+    slides.push({ xml: X.slideXml(xml), rels, media, notes, links: ctx.slideLinks });
   }
   // The rest of the text, on as many slides as it needs.
   const queue = plan.rest.slice();
@@ -937,10 +1022,11 @@ function stepSlides(ctx, step, tpl) {
   let guard = 0;
   while (queue.length && guard++ < 200) {
     const scale = SCALES[0];
+    ctx.slideLinks = [];
     const taken = takeFitting(ctx, queue, contArea.w, scale, contArea.h, { force: true });
     const nextId = X.ids();
     const xml = accentBar(ctx, nextId) + headerXml(ctx, nextId, contHeader) + columnXml(ctx, nextId, taken, contArea, scale).xml;
-    slides.push({ xml: X.slideXml(xml), rels: [], media: [], notes: '' });
+    slides.push({ xml: X.slideXml(xml), rels: [], media: [], notes: '', links: ctx.slideLinks });
   }
   return slides;
 }
@@ -1004,13 +1090,26 @@ function exportPptx(ast, outDir, template = {}) {
     titleRight: logoAt && logoPosition === 'top-right' ? logoAt.x - Math.round(0.25 * IN) : SLIDE_W - MARGIN_X,
     bottomLimit,
     nextMedia: () => ++mediaCounter,
+    // Links on the slide being drawn: { id, href } or { id, stepId }, as rId100 and up.
+    slideLinks: [],
+    addLink(target) {
+      const same = this.slideLinks.find((l) => (target.href ? l.href === target.href : l.stepId === target.stepId));
+      const link = same || { id: `rId${100 + this.slideLinks.length}`, ...target };
+      if (!same) this.slideLinks.push(link);
+      return { id: link.id, slide: Boolean(link.stepId) };
+    },
   };
 
   const slides = []; // { xml, rels: [{ id, name }], media: [{ name, data }], notes }
   if (tpl.titleSlide) slides.push(titleSlide(ctx));
   const toc = tpl.includeToc && ast.steps.length > 1 ? tocEntries(ast) : [];
   if (toc.length) slides.push(...tocSlides(ctx, toc));
-  for (const step of ast.steps) slides.push(...stepSlides(ctx, step, tpl));
+  // Each step's first slide (1-based), for links that jump to it.
+  const stepSlide = new Map();
+  for (const step of ast.steps) {
+    stepSlide.set(step.stepId, slides.length + 1);
+    slides.push(...stepSlides(ctx, step, tpl));
+  }
 
   const withNotes = slides.some((s) => s.notes);
   const entries = [];
@@ -1026,10 +1125,13 @@ function exportPptx(ast, outDir, template = {}) {
     const slideRels = [
       `<Relationship Id="rId1" Type="${REL}/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>`,
       ...slide.rels.map((r) => `<Relationship Id="rId${r.id}" Type="${REL}/image" Target="../media/${r.name}"/>`),
+      ...(slide.links || []).map((l) => (l.href
+        ? `<Relationship Id="${l.id}" Type="${REL}/hyperlink" Target="${escapeXml(l.href)}" TargetMode="External"/>`
+        : `<Relationship Id="${l.id}" Type="${REL}/slide" Target="slide${stepSlide.get(l.stepId)}.xml"/>`)),
     ];
     if (slide.notes) {
       notesCount += 1;
-      const notesId = Math.max(1, ...slide.rels.map((r) => r.id)) + 1;
+      const notesId = Math.max(1, ...slide.rels.map((r) => r.id), ...(slide.links || []).map((l) => Number(l.id.slice(3)))) + 1;
       slideRels.push(`<Relationship Id="rId${notesId}" Type="${REL}/notesSlide" Target="../notesSlides/notesSlide${notesCount}.xml"/>`);
       entries.push(
         { name: `ppt/notesSlides/notesSlide${notesCount}.xml`, data: X.notesXml(slide.notes) },

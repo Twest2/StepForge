@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { isDeepStrictEqual } = require('node:util');
 const { DEFAULT_SETTINGS, SHARED_SETTING_PATHS } = require('./settings');
-const { normalizeProfile, profileAssetIds, prepareAsset } = require('./branding');
+const { normalizeProfile, profileAssetIds, mapProfileAssets, prepareAsset } = require('./branding');
 const { contentHash } = require('./cloud-parts');
 const { t } = require('./ui-text');
 
@@ -410,10 +410,7 @@ class SharedSettings {
       changes.push('placeholders');
     }
     const rename = (id) => (id ? renamed.get(id) || id : id);
-    const profiles = Object.values(next.profiles).map((profile) => ({
-      ...profile, logo: rename(profile.logo), banner: rename(profile.banner),
-      fonts: { heading: { ...profile.fonts.heading, asset: rename(profile.fonts.heading.asset) }, body: { ...profile.fonts.body, asset: rename(profile.fonts.body.asset) } },
-    }));
+    const profiles = Object.values(next.profiles).map((profile) => mapProfileAssets(profile, rename));
     if (!same(next.profiles, now.profiles) || renamed.size || Object.keys(next.assets).some((id) => !now.assets[id])) {
       this.branding.replaceProfiles(profiles);
       changes.push('branding');

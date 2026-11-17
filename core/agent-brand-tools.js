@@ -3,7 +3,8 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const {
-  BrandingStore, normalizeProfile, checkFileSize, COVER_STYLES, WATERMARK_POSITIONS, COLOR_SCHEMES, IMAGE_ALIGNMENTS, STEP_LAYOUTS, MAX_CSS_CHARS,
+  BrandingStore, normalizeProfile, checkFileSize, COVER_STYLES, WATERMARK_POSITIONS, COLOR_SCHEMES, IMAGE_ALIGNMENTS, STEP_LAYOUTS,
+  SLIDE_LOGO_POSITIONS, SLIDE_SCREENSHOT_POSITIONS, MAX_CSS_CHARS,
 } = require('./branding');
 const { STYLE_REFERENCE } = require('./ai-brand-css');
 const { Settings } = require('./settings');
@@ -14,20 +15,27 @@ const { resize } = require('./raster');
 /**
  * Brand profile tools for AI agents (core/agent-tools.js), behind their own
  * switch: Settings → AI → Let AI agents edit brand profiles, off by default.
- * Agents read, create and change profiles, add a logo, banner or font file
- * from this computer, and choose the active profile. They can't delete one.
+ * Agents read, create and change profiles, add a logo, banner, slide
+ * background or font file from this computer, and choose the active profile.
+ * They can't delete one.
  */
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
 // The logo get_brand_profile shows is at most this many pixels on its long side.
 const LOGO_PREVIEW_EDGE = 512;
 // set_brand_file slots and the kind of file each takes.
-const FILE_SLOTS = { logo: 'image', banner: 'image', heading_font: 'font', body_font: 'font' };
+const FILE_SLOTS = {
+  logo: 'image', banner: 'image', title_slide_background: 'image', slide_background: 'image', heading_font: 'font', body_font: 'font',
+};
+// Where each image slot lives in a profile.
+const IMAGE_SLOT_PATHS = {
+  logo: ['logo'], banner: ['banner'], title_slide_background: ['pptx', 'titleBackground'], slide_background: ['pptx', 'slideBackground'],
+};
 const IMAGE_FORMATS = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/svg+xml': 'svg' };
 
 const BRAND_INSTRUCTIONS = [
-  'If the user allows it (Settings → AI → Let AI agents edit brand profiles), you can also manage brand profiles: the logo, banner, colors, fonts, cover style, header, footer and CSS that exported guides use.',
-  'Use list_brand_profiles and get_brand_profile to read them, create_brand_profile and update_brand_profile to change them, set_brand_file to add a logo, banner or font file from this computer, and set_active_brand_profile to choose the one exports use. You can\'t delete brand profiles.',
+  'If the user allows it (Settings → AI → Let AI agents edit brand profiles), you can also manage brand profiles: the logo, banner, colors, fonts, cover style, header, footer, PowerPoint slide backgrounds and CSS that exported guides use.',
+  'Use list_brand_profiles and get_brand_profile to read them, create_brand_profile and update_brand_profile to change them, set_brand_file to add a logo, banner, slide background or font file from this computer, and set_active_brand_profile to choose the one exports use. You can\'t delete brand profiles.',
 ];
 
 const colorSchema = { type: 'string', pattern: '^#[0-9A-Fa-f]{6}$' };
@@ -82,6 +90,18 @@ const PROFILE_FIELDS = {
       border: { type: 'boolean' },
       border_color: colorSchema,
       layout: { type: 'string', enum: STEP_LAYOUTS },
+    },
+    additionalProperties: false,
+  },
+  powerpoint: {
+    type: 'object',
+    description: 'PowerPoint slides. logo_position: where the logo sits on every slide after the title slide (none leaves it off). '
+      + 'screenshot_position: where step screenshots go by default: auto (beside long text, under short text), right or left of the text, '
+      + 'below it, or full (the whole slide, with the text in the speaker notes). Add background pictures with set_brand_file '
+      + '(title_slide_background, slide_background).',
+    properties: {
+      logo_position: { type: 'string', enum: SLIDE_LOGO_POSITIONS },
+      screenshot_position: { type: 'string', enum: SLIDE_SCREENSHOT_POSITIONS },
     },
     additionalProperties: false,
   },
@@ -144,6 +164,12 @@ function createBrandTools({ settingsDir, requireEnabled, agentSettings, onChange
       border: profile.screenshots.border,
       border_color: profile.screenshots.borderColor,
       layout: profile.screenshots.layout,
+    },
+    powerpoint: {
+      title_slide_background: imageInfo(profile.pptx.titleBackground),
+      slide_background: imageInfo(profile.pptx.slideBackground),
+      logo_position: profile.pptx.logoPosition,
+      screenshot_position: profile.pptx.screenshotPosition,
     },
     annotation_colors: profile.annotations,
     css: profile.html.css,
@@ -216,6 +242,11 @@ function createBrandTools({ settingsDir, requireEnabled, agentSettings, onChange
       for (const key of ['shapes', 'numbers', 'tooltips']) {
         if (has(annotations, key)) next.annotations[key] = color(annotations[key], `annotation_colors.${key}`);
       }
+    }
+    if (has(fields, 'powerpoint')) {
+      const pptx = object(fields.powerpoint, 'powerpoint', ['logo_position', 'screenshot_position']);
+      if (has(pptx, 'logo_position')) next.pptx.logoPosition = choice(pptx.logo_position, SLIDE_LOGO_POSITIONS, 'powerpoint.logo_position');
+      if (has(pptx, 'screenshot_position')) next.pptx.screenshotPosition = choice(pptx.screenshot_position, SLIDE_SCREENSHOT_POSITIONS, 'powerpoint.screenshot_position');
     }
     if (has(fields, 'css')) next.html.css = str(fields.css, MAX_CSS_CHARS, 'css');
     return next;
@@ -306,7 +337,7 @@ function createBrandTools({ settingsDir, requireEnabled, agentSettings, onChange
     },
     {
       name: 'update_brand_profile',
-      description: 'Change a brand profile. Leave a field out to keep it; in colors, fonts, header, footer, watermark, screenshots and annotation_colors, '
+      description: 'Change a brand profile. Leave a field out to keep it; in colors, fonts, header, footer, watermark, screenshots, powerpoint and annotation_colors, '
         + 'only the keys you send change.',
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
       inputSchema: {
@@ -327,8 +358,8 @@ function createBrandTools({ settingsDir, requireEnabled, agentSettings, onChange
     },
     {
       name: 'set_brand_file',
-      description: 'Add a logo or banner (PNG, JPG or SVG) or a heading or body font file (WOFF2, WOFF, TTF or OTF) to a brand profile from a file on this computer, '
-        + 'or remove one. Files up to 10 MB. SVGs are cleaned of scripts and outside links.',
+      description: 'Add a logo, banner or PowerPoint slide background (PNG, JPG or SVG) or a heading or body font file (WOFF2, WOFF, TTF or OTF) to a brand profile '
+        + 'from a file on this computer, or remove one. Slide backgrounds look best at 1920 × 1080. Files up to 10 MB. SVGs are cleaned of scripts and outside links.',
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
       inputSchema: {
         type: 'object',
@@ -349,7 +380,11 @@ function createBrandTools({ settingsDir, requireEnabled, agentSettings, onChange
         if (typeof remove !== 'boolean') fail('remove must be true or false.');
         const role = slot === 'heading_font' ? 'heading' : 'body';
         const next = JSON.parse(JSON.stringify(profile));
-        const put = (asset) => { if (kind === 'image') next[slot] = asset; else next.fonts[role].asset = asset; };
+        const put = (asset) => {
+          if (kind !== 'image') { next.fonts[role].asset = asset; return; }
+          const [key, sub] = IMAGE_SLOT_PATHS[slot];
+          if (sub) next[key][sub] = asset; else next[key] = asset;
+        };
         if (remove === true) {
           if (filePath !== undefined) fail('Give file_path or remove, not both.');
           put(null);

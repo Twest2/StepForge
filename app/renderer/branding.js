@@ -18,6 +18,8 @@ const BRAND_DEFAULT_COLORS = { primary: '#2563EB', accent: '#0EA5E9', text: '#18
 const BRAND_DEFAULT_ANNOTATION_COLORS = { shapes: '#E5484D', numbers: '#1F6FEB', tooltips: '#111827' };
 // Mirrors normalizeProfile's screenshots defaults in core/branding.js.
 const BRAND_DEFAULT_SCREENSHOTS = { align: 'left', border: false, borderColor: '#D0D5DD', layout: 'stacked' };
+// Mirrors the pptx defaults in core/branding.js normalizeProfile.
+const BRAND_DEFAULT_PPTX = { titleBackground: null, slideBackground: null, logoPosition: 'top-right', screenshotPosition: 'auto' };
 
 // Mirrors MAX_CSS_CHARS in core/branding.js (a unit test keeps the two in step).
 const BRAND_CSS_MAX_CHARS = 200000;
@@ -47,7 +49,7 @@ const BRAND_SUPPORT = [
   ['GitHub Pages', t('Everything the HTML exports get.')],
   ['PDF', t('Logo, banner, colors, the closest built-in fonts, cover style, page header and footer with page numbers, and screenshot alignment, border and layout.')],
   ['Word', t('Styles with your fonts and colors, logo and banner on the cover, page header and footer with page numbers, and screenshot alignment, border and layout.')],
-  ['PowerPoint', t('A theme with your colors and fonts, a title slide in your cover style, logo, footer and slide numbers on every slide.')],
+  ['PowerPoint', t('A theme with your colors and fonts, a title slide in your cover style with its own background, a slide background, the logo where you choose, and footer and slide numbers on every slide.')],
   ['Wiki.js', t('Logo, banner, header and footer text.')],
   ['Confluence', t('Logo, banner, header and footer text.')],
   ['Markdown', t('Logo, banner, header and footer text, and the accent bar color.')],
@@ -71,6 +73,23 @@ const BRAND_IMAGE_ALIGNMENTS = [
 const BRAND_STEP_LAYOUTS = [
   { value: 'stacked', label: t('Stacked') },
   { value: 'side-by-side', label: t('Side by side') },
+];
+
+// Mirrors SLIDE_LOGO_POSITIONS and SLIDE_SCREENSHOT_POSITIONS in core/branding.js (a unit test keeps them in step).
+const BRAND_SLIDE_LOGO_POSITIONS = [
+  { value: 'top-right', label: t('Top right') },
+  { value: 'top-left', label: t('Top left') },
+  { value: 'bottom-right', label: t('Bottom right') },
+  { value: 'bottom-left', label: t('Bottom left') },
+  { value: 'none', label: t('Title slide only') },
+];
+
+const BRAND_SLIDE_SCREENSHOT_POSITIONS = [
+  { value: 'auto', label: t('Automatic') },
+  { value: 'right', label: t('Right of the text') },
+  { value: 'left', label: t('Left of the text') },
+  { value: 'below', label: t('Below the text') },
+  { value: 'full', label: t('Whole slide, text in speaker notes') },
 ];
 
 const BRAND_WATERMARK_POSITIONS = [
@@ -163,8 +182,9 @@ function brandRowMessage() {
   };
 }
 
-function brandThumb(asset, label) {
-  return el('div.brand-thumb', {},
+/** A preview of an image asset; `slide` shows it filling a 16:9 slide. */
+function brandThumb(asset, label, { slide = false } = {}) {
+  return el(slide ? 'div.brand-thumb.brand-thumb-slide' : 'div.brand-thumb', {},
     asset?.dataUrl ? el('img', { src: asset.dataUrl, alt: label }) : el('span.brand-thumb-empty', { 'aria-hidden': 'true' }, '—'));
 }
 
@@ -218,6 +238,17 @@ function brandSummary(data) {
     el('dt', {}, t('Annotations')), el('dd', {}, profile.annotations?.custom
       ? t('Shapes {shapes} · Number badges {numbers} · Tooltips {tooltips}', profile.annotations)
       : t('StepForge’s colors')))));
+  const pptx = { ...BRAND_DEFAULT_PPTX, ...(profile.pptx || {}) };
+  const slideRow = (title, desc, id) => el('div.brand-asset-row', {},
+    brandThumb(asset(id), title, { slide: true }),
+    el('div.setting-text', {}, el('div.setting-title', {}, title), el('div.setting-desc', {}, desc)),
+    el('span.setting-desc', {}, asset(id)?.name || t('None')));
+  sections.push(section('PowerPoint',
+    slideRow(t('Title slide background'), t('Behind the first slide'), pptx.titleBackground),
+    slideRow(t('Slide background'), t('Behind every other slide'), pptx.slideBackground),
+    el('dl.brand-facts', {},
+      el('dt', {}, t('Logo on slides')), el('dd', {}, BRAND_SLIDE_LOGO_POSITIONS.find((p) => p.value === pptx.logoPosition)?.label || t('Top right')),
+      el('dt', {}, t('Screenshot position')), el('dd', {}, BRAND_SLIDE_SCREENSHOT_POSITIONS.find((p) => p.value === pptx.screenshotPosition)?.label || t('Automatic')))));
   sections.push(section(t('Advanced CSS'),
     el('p.setting-desc', {}, t('Used for HTML and GitHub Pages outputs only.')),
     profile.html.css.trim() ? el('pre.brand-css', {}, profile.html.css) : el('p.setting-desc', {}, t('None.'))));
@@ -429,6 +460,7 @@ function showBrandProfileEditor(api, data = null) {
       watermark: { enabled: false, position: 'bottom-right', opacity: 0.6, ...(base?.watermark || {}) },
       annotations: { custom: false, ...BRAND_DEFAULT_ANNOTATION_COLORS, ...(base?.annotations || {}) },
       screenshots: { ...BRAND_DEFAULT_SCREENSHOTS, ...(base?.screenshots || {}) },
+      pptx: { ...BRAND_DEFAULT_PPTX, ...(base?.pptx || {}) },
     };
     // Errors from Preview and Save show in the footer beside those buttons.
     const footerStatus = el('span.brand-footer-status.error', { role: 'alert' });
@@ -439,18 +471,18 @@ function showBrandProfileEditor(api, data = null) {
     const nameMessage = brandRowMessage();
     name.addEventListener('input', () => { draft.name = name.value; name.classList.remove('invalid'); nameMessage.clear(); });
 
-    // Images
+    // Images: target[key] holds the asset id (the profile itself, or its pptx section).
     const imageMessages = {};
-    const imageRow = (key, title, desc, onChange = () => {}) => {
+    const imageRow = (key, title, desc, { onChange = () => {}, target = draft, slide = false } = {}) => {
       const thumb = el('div');
       const fileName = el('span.setting-desc');
       const message = brandRowMessage();
       imageMessages[key] = message;
-      const remove = el('button', { type: 'button', onClick: () => { draft[key] = null; message.clear(); show(); onChange(); } }, t('Remove'));
-      const choose = el('button', { type: 'button' }, t('Choose…'));
+      const remove = el('button', { type: 'button', 'aria-label': t('Remove {name}', { name: title }), onClick: () => { target[key] = null; message.clear(); show(); onChange(); } }, t('Remove'));
+      const choose = el('button', { type: 'button', 'aria-label': t('Choose {name}', { name: title }) }, t('Choose…'));
       const show = () => {
-        const asset = draft[key] ? assets[draft[key]] : null;
-        thumb.replaceChildren(brandThumb(asset, title));
+        const asset = target[key] ? assets[target[key]] : null;
+        thumb.replaceChildren(brandThumb(asset, title, { slide }));
         fileName.textContent = asset?.name || t('None');
         remove.disabled = !asset;
       };
@@ -462,7 +494,7 @@ function showBrandProfileEditor(api, data = null) {
           message.clear();
           const asset = await ensureBrandRaster(api, picked);
           assets[asset.id] = asset;
-          draft[key] = asset.id;
+          target[key] = asset.id;
           show();
           onChange();
         } catch (err) { message.show(err); } finally { setButtonLoading(choose, false); }
@@ -617,6 +649,12 @@ function showBrandProfileEditor(api, data = null) {
     borderColorRow.hidden = !draft.screenshots.border;
     borderOn.addEventListener('change', () => { draft.screenshots.border = borderOn.checked; borderColorRow.hidden = !borderOn.checked; });
 
+    // PowerPoint: where the logo goes on slides, and where screenshots go by default.
+    const slideLogo = brandSelect(draft.pptx.logoPosition, BRAND_SLIDE_LOGO_POSITIONS, { 'aria-label': t('Logo on slides') });
+    slideLogo.addEventListener('change', () => { draft.pptx.logoPosition = slideLogo.value; });
+    const slideShot = brandSelect(draft.pptx.screenshotPosition, BRAND_SLIDE_SCREENSHOT_POSITIONS, { 'aria-label': t('Screenshot position') });
+    slideShot.addEventListener('change', () => { draft.pptx.screenshotPosition = slideShot.value; });
+
     // Advanced CSS
     const css = el('textarea.brand-css-input', { rows: 7, spellcheck: false, placeholder: '.doc-header { padding: 2rem; }\n.step-head h2 { color: var(--brand-primary); }', 'aria-label': t('Advanced CSS') });
     css.value = draft.html.css;
@@ -753,7 +791,7 @@ function showBrandProfileEditor(api, data = null) {
     const body = el('div.brand-editor', {},
       settingsCard(null, settingRow(t('Profile name'), t('Shown in the Active brand profile list.'), name), nameMessage.node),
       settingsCard(t('Brand assets'),
-        imageRow('logo', t('Company logo'), t('PNG, JPG, or SVG (scripts and outside links are removed). On covers, page headers and slides.'), syncLogoTools),
+        imageRow('logo', t('Company logo'), t('PNG, JPG, or SVG (scripts and outside links are removed). On covers, page headers and slides.'), { onChange: syncLogoTools }),
         imageRow('banner', t('Banner'), t('Optional. A wide image across the top of covers, web pages and wiki pages.'))),
       settingsCard(t('Brand colors'),
         colorRow(draft.colors, 'primary', t('Primary'), t('Title bars, step numbers, headings and accent lines.'), { setters: colorSetters, onInput: forgetPick }),
@@ -777,6 +815,11 @@ function showBrandProfileEditor(api, data = null) {
         settingRow(t('Border around screenshots'), t('Sets screenshots apart from the page in PDF, Word and HTML.'), makeSwitch(borderOn, t('Border around screenshots'))),
         borderColorRow,
         settingRow(t('Step layout'), t('Side by side puts each screenshot on the left and its description on the right in PDF, Word and HTML. Steps without a description stay stacked.'), stepLayout)),
+      settingsCard('PowerPoint',
+        imageRow('titleBackground', t('Title slide background'), t('Optional. A picture behind the first slide; 1920 × 1080 fits best. The title turns white or dark to stand out, on a panel if the picture is busy.'), { target: draft.pptx, slide: true }),
+        imageRow('slideBackground', t('Slide background'), t('Optional. A picture behind every other slide, such as a letterhead. Keep it light so text and screenshots stand out.'), { target: draft.pptx, slide: true }),
+        settingRow(t('Logo on slides'), t('Where the logo sits on every slide after the title slide. At the bottom, it shares the row with the footer.'), slideLogo),
+        settingRow(t('Screenshot position'), t('Where step screenshots go. Automatic puts them beside long text and under short text. The Export dialog can change it for one export.'), slideShot)),
       settingsCard(t('Header and footer'),
         settingRow(t('Header text'), t('Top of every PDF and Word page; under the logo in HTML and wiki pages.'), textInput(draft.header, 'text', t('Acme Corp · IT Service Desk'), 160)),
         settingRow(t('Logo in page header'), t('PDF and Word pages after the cover.'), toggle(draft.header, 'logo', t('Logo in page header'))),
@@ -838,8 +881,8 @@ function showBrandProfileEditor(api, data = null) {
       onClose: () => { stopAi(); resolve(null); },
     });
     // A profile imported before its images were drawn as PNG gets them now.
-    for (const key of ['logo', 'banner']) {
-      const id = draft[key];
+    for (const [target, key] of [[draft, 'logo'], [draft, 'banner'], [draft.pptx, 'titleBackground'], [draft.pptx, 'slideBackground']]) {
+      const id = target[key];
       if (id && assets[id]?.needsRaster) {
         ensureBrandRaster(api, assets[id]).then((asset) => { assets[id] = asset; }).catch((err) => imageMessages[key].show(err));
       }

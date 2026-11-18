@@ -140,6 +140,7 @@ function finalizeImport(store, newGuide, idMap, stepJsons, stepFiles) {
   for (const [stepId, { raw }] of stepJsons) {
     const step = normalizeStep({ ...raw, stepId });
     step.parentStepId = raw.parentStepId ? idMap.get(raw.parentStepId) || null : null;
+    store.stepDir(newGuide.guideId, stepId); // a linked import keeps the file's ids; throws on one the store can't use
     validateStep(step); // throws before anything is written on a bad step
     normalizedSteps.push([stepId, step]);
   }

@@ -60,8 +60,11 @@ function sanitizeHtml(html) {
   text = text.replace(/<(script|style|iframe|object|embed|template)\b[^>]*>/gi, '');
 
   return text.replace(
-    /<\s*(\/?)\s*([a-zA-Z][a-zA-Z0-9]*)((?:"[^"]*"|'[^']*'|[^>"'])*)>/g,
+    /<\s*(\/?)\s*([a-zA-Z][a-zA-Z0-9]*)((?:"[^"]*"|'[^']*'|[^>"'])*)>|</g,
     (whole, slash, rawTag, rawAttrs) => {
+      // A "<" that starts no complete tag, such as an unclosed `<img onerror=…`, would
+      // become a real tag once later markup supplies the ">", so it stays text.
+      if (rawTag === undefined) return '&lt;';
       const tag = rawTag.toLowerCase();
       if (!ALLOWED_TAGS.has(tag)) return '';
       if (slash) return VOID_TAGS.has(tag) ? '' : `</${tag}>`;

@@ -328,6 +328,13 @@ test('stored HTML is sanitized: scripts and handlers cannot round-trip', (t) => 
     descriptionHtml: '<div><iframe src="https://evil"></iframe><b>bold</b></div>',
   });
   assert.equal(store.getStep(guide.guideId, step.stepId).descriptionHtml, '<div><b>bold</b></div>');
+
+  // An unclosed tag stays text: exports wrap descriptions in more markup, whose ">" would close it.
+  const unclosed = store.addStep(guide.guideId, {
+    kind: 'content',
+    descriptionHtml: '<p>hi</p><img src=x onerror=alert(1)//',
+  });
+  assert.equal(store.getStep(guide.guideId, unclosed.stepId).descriptionHtml, '<p>hi</p>&lt;img src=x onerror=alert(1)//');
 });
 
 test('guide ids are validated against path traversal', (t) => {

@@ -325,6 +325,10 @@ test('a two-step session renewed every half hour is backed up at most once a wee
   const kept = new Map();
   const vault = { read: async (key) => kept.get(key) || null, clear: async (key) => { kept.delete(key); },
     write: async (key, secret, check) => { if (writes.at(-1) === check && kept.has(key)) return; writes.push(check); kept.set(key, secret); } };
+  // Sign in as a backup week starts, so the day of renewals below stays in that week whatever day the test runs.
+  const week = 7 * 24 * 60 * 60 * 1000;
+  let now = Math.floor(Date.now() / week) * week;
+  t.mock.method(Date, 'now', () => now);
   const { wikijs, directory } = setup(t, server, { vault });
   await wikijs.connect({ address: 'wiki.example.com', method: 'password', username: 'casey@example.com', password: 'hunter2', code: '123456' });
   await new Promise((resolve) => setTimeout(resolve, 10));
@@ -333,8 +337,6 @@ test('a two-step session renewed every half hour is backed up at most once a wee
   assert.ok(JSON.parse(kept.get('wikijs')).session?.token, 'the backup keeps the session, so a reinstall needs no code');
 
   // Renewals, as Wiki.js sends them back, are saved but not backed up again.
-  let now = Date.now();
-  t.mock.method(Date, 'now', () => now);
   for (let i = 0; i < 48; i += 1) {
     now += 30 * 60 * 1000;
     wikijs.session = { token: server.issue('Casey Jones'), expires: now + 30 * 60 * 1000 };
@@ -343,7 +345,7 @@ test('a two-step session renewed every half hour is backed up at most once a wee
   await new Promise((resolve) => setTimeout(resolve, 10));
   assert.equal(writes.length, afterSignIn);
 
-  now += 7 * 24 * 60 * 60 * 1000;
+  now += week;
   wikijs.session = { token: server.issue('Casey Jones'), expires: now + 30 * 60 * 1000 };
   wikijs.save();
   await new Promise((resolve) => setTimeout(resolve, 10));

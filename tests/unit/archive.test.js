@@ -167,6 +167,26 @@ test('linked import keeps identity; explicit save writes back to the archive', a
   assert.equal(readLock(shared), null);
 });
 
+test('a linked import refuses a step id the library could not use, and adds nothing', (t) => {
+  const dir = makeTmpDir('linked-bad-id');
+  t.after(() => rmrf(dir));
+  const storeA = new GuideStore(path.join(dir, 'userA'));
+  const { guide, s1 } = makeGuide(storeA);
+  const shared = path.join(dir, 'shared.sfgz');
+  exportGuideArchive(storeA, guide.guideId, shared);
+  // A hand-made archive whose first step is called "step 1".
+  const rename = (text) => text.split(s1.stepId).join('step 1');
+  fs.writeFileSync(shared, zipSync(unzipSync(fs.readFileSync(shared)).map((entry) => ({
+    name: rename(entry.name),
+    data: entry.name.endsWith('.json') ? rename(entry.data.toString('utf8')) : entry.data,
+  }))));
+
+  const storeB = new GuideStore(path.join(dir, 'userB'));
+  assert.throws(() => importGuideArchive(storeB, shared, { mode: 'linked' }), /bad step id: step 1/);
+  assert.equal(storeB.guideExists(guide.guideId), false);
+  assert.deepEqual(fs.readdirSync(storeB.guidesDir), []);
+});
+
 test('lock conflicts block linked save until forced', async (t) => {
   const dir = makeTmpDir('locks');
   t.after(() => rmrf(dir));

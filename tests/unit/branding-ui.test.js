@@ -171,7 +171,7 @@ test('editor: CSS over the limit is flagged under the box and stops Save and Pre
   css.value = 'a { color: red; }';
   css.listeners.input();
   assert.deepEqual(t.errors(), []);
-  t.click(t.button(t.root, 'Load .css file…'));
+  t.click(t.button(t.root, 'Load .css file'));
   await settle();
   assert.deepEqual(t.errors(), [{ text: 'This CSS file is longer than 200,000 characters, the most a profile can hold.', part: 'Advanced CSS' }]);
   assert.equal(css.value, 'a { color: red; }', 'what was there is kept');
@@ -282,13 +282,13 @@ function openEditor({ ai = {}, data = null, chooseAsset = async () => null } = {
 test('editor: Write with AI is offered only when local AI is on and its model is installed', async () => {
   const off = openEditor();
   await settle();
-  assert.deepEqual(off.shown('Write with AI…'), [], 'AI off or not installed: no button at all');
+  assert.deepEqual(off.shown('Write with AI'), [], 'AI off or not installed: no button at all');
   assert.equal(off.visible(off.panel), false);
 
   const on = openEditor({ ai: { status: async () => ({ ready: true, model: 'gemma3:4b' }) } });
-  assert.deepEqual(on.shown('Write with AI…'), [], 'not before the check answers');
+  assert.deepEqual(on.shown('Write with AI'), [], 'not before the check answers');
   await settle();
-  assert.equal(on.shown('Write with AI…').length, 1);
+  assert.equal(on.shown('Write with AI').length, 1);
   assert.ok(on.t.all(on.t.root).some((n) => n.classList.contains('brand-ai-model') && n.textContent === 'Written by gemma3:4b through Ollama.'));
 });
 
@@ -303,9 +303,9 @@ test('editor: Write with AI shows the model’s CSS for review, and Add to CSS a
   await settle();
   e.css.value = 'body { font-size: 15px; }';
   e.css.listeners.input();
-  e.t.click(e.shown('Write with AI…')[0]);
+  e.t.click(e.shown('Write with AI')[0]);
   assert.equal(e.visible(e.panel), true);
-  assert.deepEqual(e.shown('Write with AI…'), [], 'the button gives way to the panel');
+  assert.deepEqual(e.shown('Write with AI'), [], 'the button gives way to the panel');
   assert.equal(e.shown('Write CSS')[0].disabled, true, 'nothing to write yet');
 
   e.type('Square step numbers');
@@ -333,7 +333,7 @@ test('editor: Write with AI says what went wrong in its panel, and Discard keeps
   let reply = { ok: false, reason: 'AI request timed out.' };
   const e = openEditor({ ai: { status: async () => ({ ready: true, model: 'llama3.2:1b' }), brandCss: async () => reply } });
   await settle();
-  e.t.click(e.shown('Write with AI…')[0]);
+  e.t.click(e.shown('Write with AI')[0]);
   e.type('Navy step titles');
   e.t.click(e.shown('Write CSS')[0]);
   await settle();
@@ -349,7 +349,7 @@ test('editor: Write with AI says what went wrong in its panel, and Discard keeps
   assert.equal(e.css.value, '');
   e.t.click(e.shown('Cancel')[0]);
   assert.equal(e.visible(e.panel), false);
-  assert.equal(e.shown('Write with AI…').length, 1);
+  assert.equal(e.shown('Write with AI').length, 1);
 });
 
 test('editor: Stop, or closing the editor, cancels the model’s request and drops its answer', async () => {
@@ -361,7 +361,7 @@ test('editor: Stop, or closing the editor, cancels the model’s request and dro
     },
   });
   await settle();
-  e.t.click(e.shown('Write with AI…')[0]);
+  e.t.click(e.shown('Write with AI')[0]);
   e.type('Bigger logo');
   e.t.click(e.shown('Write CSS')[0]);
   assert.equal(e.request.disabled, true);

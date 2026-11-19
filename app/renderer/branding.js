@@ -676,12 +676,12 @@ function showBrandProfileEditor(api, data = null) {
         cssNote.hidden = true;
         cssFits();
       } catch (err) { cssMessage.show(err); }
-    } }, t('Load .css file…'));
+    } }, t('Load .css file'));
 
     // Write with AI: the local model (Settings → AI) writes CSS from a
     // description, shown for review before it's added. Offered only when AI
     // is on and Ollama has the chosen model.
-    const aiBtn = el('button', { type: 'button', hidden: true }, t('Write with AI…'));
+    const aiBtn = el('button', { type: 'button', hidden: true }, t('Write with AI'));
     const aiRequest = el('textarea#brand-ai-request.brand-ai-request', {
       rows: 2, maxLength: BRAND_AI_REQUEST_MAX_CHARS, spellcheck: true,
       placeholder: t('For example: square step numbers, and step titles in the primary color'),

@@ -93,8 +93,8 @@ Requests take a few seconds per step, longer on slower hardware. Closing the
 guide stops any request that's still running.
 
 **Brand CSS.** With AI on, **Settings → Branding → Manage → Advanced CSS** also
-has **Write with AI…**: describe a change to how your HTML exports look, and
-the model writes the CSS for you to review. See
+has a **Write with AI** button. Describe a change to how your HTML exports
+look, and the model writes the CSS for you to review. See
 [Write CSS with AI](BRANDING.md#write-css-with-ai).
 
 ## Use your own AI server

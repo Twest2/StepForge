@@ -131,17 +131,17 @@ the same thing. The **Custom CSS** option in the Export dialog (or a saved
 HTML template) is added after the profile's CSS, which makes it handy for a
 one-off change to a single export.
 
-Type CSS in the box or choose **Load .css file…**. Use **Preview** in the
+Type CSS in the box or choose **Load .css file**. Use **Preview** in the
 profile editor to check it before saving.
 
 ### Write CSS with AI
 
 If you use AI on your own computer through Ollama
 ([setup](getting_started_with_ai.md)), the Advanced CSS card also has
-**Write with AI…**. It's there only when **Settings → AI → Enable AI** is on
+**Write with AI**. It's there only when **Settings → AI → Enable AI** is on
 and Ollama has the model you chose.
 
-1. Choose **Write with AI…** and describe the change, for example "square
+1. Choose **Write with AI** and describe the change, for example "square
    step numbers, and step titles in the primary color".
 2. Choose **Write CSS** (or press Ctrl+Enter). The model is given your brand
    colors and fonts, the CSS you already have, and the

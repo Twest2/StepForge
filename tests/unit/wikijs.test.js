@@ -5,7 +5,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const {
-  WikiJs, normalizeSite, normalizePagePath, normalizeLocale, pageSlug, folderOf, pageFromExport, uploadBody, friendlyNetworkError,
+  WikiJs, normalizeSite, normalizePagePath, normalizeLocale, normalizePublishOptions, pageSlug, folderOf, pageFromExport, uploadBody, friendlyNetworkError,
   validConnectArgs, validCodeArgs, validPublishArgs,
 } = require('../../app/wikijs');
 const { makeTmpDir, rmrf, TINY_PNG } = require('./helpers');
@@ -128,7 +128,7 @@ function wiki({ base = 'https://wiki.example.com', apiKey = jwt({ api: 1, grp: 1
       return json({ data: { pages: { singleByPath: { ...page, tags: page.tags.map((tag) => ({ tag })) } } } });
     }
     if (/list\(locale/.test(query)) {
-      return json({ data: { pages: { list: [...server.pages.values()].filter((p) => p.locale === v.locale).map(({ content, scriptCss, scriptJs, editor, authorName, ...p }) => p) } } });
+      return json({ data: { pages: { list: [...server.pages.values()].filter((p) => p.locale === v.locale).map(({ content, scriptCss, scriptJs, editor, authorName, publishStartDate, publishEndDate, ...p }) => p) } } });
     }
     if (/folders\(/.test(query)) return json({ data: { assets: { folders: server.folders.filter((f) => f.parentId === v.id).map(({ id, slug }) => ({ id, slug })) } } });
     if (/createFolder/.test(query)) {
@@ -144,8 +144,10 @@ function wiki({ base = 'https://wiki.example.com', apiKey = jwt({ api: 1, grp: 1
       if ([...server.pages.values()].some((p) => p.path === v.path && p.locale === v.locale)) {
         return json({ data: { pages: { create: { responseResult: fail(6002, 'PageDuplicateCreate', 'exists'), page: null } } } });
       }
-      assert.deepEqual([v.editor, v.isPublished, v.isPrivate], ['markdown', true, false]);
+      assert.deepEqual([v.editor, typeof v.isPublished, v.isPrivate], ['markdown', 'boolean', false]);
+      // Like Wiki.js, a missing date is stored as ''.
       const page = { id: server.nextId++, path: v.path, locale: v.locale, title: v.title, description: v.description, content: v.content, editor: v.editor,
+        isPublished: v.isPublished, publishStartDate: v.publishStartDate || '', publishEndDate: v.publishEndDate || '',
         tags: v.tags, scriptCss: '', scriptJs: '', authorName: 'Administrator', updatedAt: now() };
       server.pages.set(page.id, page);
       return json({ data: { pages: { create: { responseResult: ok(), page: { id: page.id, updatedAt: page.updatedAt } } } } });
@@ -153,7 +155,9 @@ function wiki({ base = 'https://wiki.example.com', apiKey = jwt({ api: 1, grp: 1
     if (/update\(/.test(query)) {
       const page = server.pages.get(v.id);
       assert.ok(Array.isArray(v.tags), 'Wiki.js needs the tags on every update');
-      Object.assign(page, { title: v.title, content: v.content, tags: v.tags, scriptCss: v.scriptCss, authorName: 'Administrator', updatedAt: now(), updates: (page.updates || 0) + 1 });
+      // Like Wiki.js, an update without the dates clears them.
+      Object.assign(page, { title: v.title, content: v.content, tags: v.tags, scriptCss: v.scriptCss, isPublished: v.isPublished === true,
+        publishStartDate: v.publishStartDate || '', publishEndDate: v.publishEndDate || '', authorName: 'Administrator', updatedAt: now(), updates: (page.updates || 0) + 1 });
       return json({ data: { pages: { update: { responseResult: ok(), page: { id: page.id, updatedAt: page.updatedAt } } } } });
     }
     throw new Error(`unexpected ${query}`);
@@ -531,6 +535,75 @@ test('publishing uploads screenshots to a folder matching the path, creates the 
   assert.equal(wikijs.defaultsFor('guide-5', 'Next one').path, 'next-one');
 });
 
+test('a page can be saved unpublished, with tags; republishing keeps its publishing period, which Wiki.js would otherwise clear', async (t) => {
+  const server = wiki();
+  const { wikijs } = setup(t, server);
+  await wikijs.connect({ address: 'wiki.example.com', method: 'apikey', apiKey: server.apiKey });
+  // A new guide starts from the Wiki.js settings.
+  const prefs = { published: false, tags: ['How-To', ' it ', 'how-to'], locale: 'de' };
+  const defaults = wikijs.defaultsFor('g', 'VPN', prefs);
+  assert.deepEqual([defaults.locale, defaults.options], ['de', { published: false, startDate: '', endDate: '', tags: ['how-to', 'it'] }]);
+
+  const draft = await wikijs.publish({ guideId: 'g', path: 'guides/vpn', title: 'VPN', page: page('/guides/vpn'), ...defaults.options });
+  const created = server.pages.get(draft.id);
+  assert.deepEqual([created.isPublished, created.tags, created.publishStartDate, created.publishEndDate], [false, ['how-to', 'it'], '', '']);
+  assert.equal(draft.isPublished, false, 'the dialog says the page isn’t published');
+  // The guide's page keeps how it was published, whatever the settings say now.
+  assert.deepEqual(wikijs.defaultsFor('g', 'VPN', { published: true, tags: ['other'] }).options, { published: false, startDate: '', endDate: '', tags: ['how-to', 'it'] });
+
+  // Published for a period, with a tag added on the wiki in between.
+  created.tags = [...created.tags, 'network'];
+  await wikijs.publish({ guideId: 'g', path: 'guides/vpn', title: 'VPN', page: page('/guides/vpn'), replace: true,
+    published: true, startDate: '2026-12-01', endDate: '2027-06-30', tags: ['how-to', 'remote'] });
+  assert.deepEqual([created.isPublished, created.publishStartDate, created.publishEndDate], [true, '2026-12-01', '2027-06-30']);
+  assert.deepEqual(created.tags, ['how-to', 'it', 'network', 'remote'], 'tags are added; ones on the wiki stay');
+  const next = wikijs.defaultsFor('g', 'VPN', prefs).options;
+  assert.deepEqual(next, { published: true, startDate: '2026-12-01', endDate: '2027-06-30', tags: ['how-to', 'remote'] });
+  await wikijs.publish({ guideId: 'g', path: 'guides/vpn', title: 'VPN', page: page('/guides/vpn'), ...next });
+  assert.deepEqual([created.publishStartDate, created.publishEndDate, created.updates], ['2026-12-01', '2027-06-30', 2], 'the period survives an update');
+
+  // Unpublishing drops the period, as Wiki.js's own editor does.
+  await wikijs.publish({ guideId: 'g', path: 'guides/vpn', title: 'VPN', page: page('/guides/vpn'), ...next, published: false });
+  assert.deepEqual([created.isPublished, created.publishStartDate, created.publishEndDate], [false, '', '']);
+  // A page with many tags on the wiki keeps every one.
+  const many = Array.from({ length: 40 }, (_, i) => `tag-${i}`);
+  created.tags = many;
+  wikijs.rememberPage('g', { ...wikijs.publishedFor('g'), updatedAt: created.updatedAt });
+  await wikijs.publish({ guideId: 'g', path: 'guides/vpn', title: 'VPN', page: page('/guides/vpn'), published: true, tags: ['how-to'] });
+  assert.deepEqual(created.tags, [...many, 'how-to']);
+});
+
+test('pages published before there were publishing options stay published', async (t) => {
+  const server = wiki();
+  const { wikijs } = setup(t, server);
+  await wikijs.connect({ address: 'wiki.example.com', method: 'apikey', apiKey: server.apiKey });
+  const first = await wikijs.publish({ guideId: 'g', path: 'guides/vpn', title: 'VPN', page: page('/guides/vpn') });
+  assert.equal(server.pages.get(first.id).isPublished, true, 'callers that don’t say publish, as before');
+  // What StepForge remembered for a page before this version.
+  const { isPublished, startDate, endDate, tags, ...old } = wikijs.publishedFor('g');
+  wikijs.rememberPage('g', old);
+  assert.deepEqual(wikijs.defaultsFor('g', 'VPN', { published: false, tags: ['draft'] }).options, { published: true, startDate: '', endDate: '', tags: [] });
+});
+
+test('publishing dates are checked before anything is sent', async (t) => {
+  assert.deepEqual(normalizePublishOptions({ published: true, startDate: ' 2026-12-01 ', endDate: '', tags: 'a, B ,a' }),
+    { published: true, startDate: '2026-12-01', endDate: '', tags: ['a', 'b'] });
+  assert.deepEqual(normalizePublishOptions({ published: false, startDate: '2026-12-01', endDate: '2027-01-01' }),
+    { published: false, startDate: '', endDate: '', tags: [] }, 'dates only apply to a published page');
+  assert.throws(() => normalizePublishOptions({ startDate: '2026-02-30' }), /YYYY-MM-DD/);
+  assert.throws(() => normalizePublishOptions({ endDate: '12/01/2026' }), /YYYY-MM-DD/);
+  assert.throws(() => normalizePublishOptions({ startDate: '2027-01-02', endDate: '2027-01-01' }), /after/);
+  assert.throws(() => normalizePublishOptions({ startDate: '2027-01-01', endDate: '2027-01-01' }), /after/, 'Wiki.js would never show it');
+  assert.doesNotThrow(() => normalizePublishOptions({ startDate: '2027-01-01', endDate: '2027-01-02' }));
+
+  const server = wiki();
+  const { wikijs } = setup(t, server);
+  await wikijs.connect({ address: 'wiki.example.com', method: 'apikey', apiKey: server.apiKey });
+  const before = server.requests.length;
+  await assert.rejects(wikijs.publish({ guideId: 'g', path: 'guides/vpn', title: 'VPN', page: page('/guides/vpn'), startDate: '2027-13-01' }), /YYYY-MM-DD/);
+  assert.equal(server.requests.length, before, 'nothing reached the wiki');
+});
+
 test('a page edited on the wiki since the last publish is only replaced when the user says so', async (t) => {
   const server = wiki();
   const { wikijs } = setup(t, server);
@@ -635,6 +708,20 @@ test('the exported page names screenshots by step number and points its images a
   assert.doesNotMatch(exported.content, /^# Send the report/m, 'Wiki.js shows the title itself');
 });
 
+test('Wiki.js settings default to unpublished pages, and a damaged settings file loads as the defaults', (t) => {
+  const { Settings } = require('../../core/settings');
+  const dir = makeTmpDir('wikijs-settings');
+  t.after(() => rmrf(dir));
+  assert.deepEqual(new Settings(dir).get('wikijs'), { published: false, tags: [], locale: 'en' });
+  const settings = new Settings(dir);
+  settings.set('wikijs', { published: true, tags: ['How-To', 'how-to', ' IT '], locale: 'PT-BR' });
+  assert.deepEqual(new Settings(dir).get('wikijs'), { published: true, tags: ['how-to', 'it'], locale: 'pt-br' });
+  fs.writeFileSync(path.join(dir, 'app-settings.json'), JSON.stringify({ wikijs: { published: 'yes', tags: 'a,b', locale: 'english' } }));
+  assert.deepEqual(new Settings(dir).get('wikijs'), { published: false, tags: ['a', 'b'], locale: 'en' });
+  fs.writeFileSync(path.join(dir, 'app-settings.json'), JSON.stringify({ wikijs: null }));
+  assert.deepEqual(new Settings(dir).get('wikijs'), { published: false, tags: [], locale: 'en' });
+});
+
 test('IPC arguments are checked before anything runs', () => {
   assert.equal(validConnectArgs({ address: 'wiki.example.com', method: 'apikey', apiKey: 'k' }), true);
   assert.equal(validConnectArgs({ address: 'wiki.example.com', method: 'password', username: 'u', password: 'p', strategy: 'local' }), true);
@@ -655,6 +742,12 @@ test('IPC arguments are checked before anything runs', () => {
   assert.equal(validPublishArgs({ guideId: 'g', path: 'guides/x', title: 'X', replace: 'yes' }), false);
   assert.equal(validPublishArgs({ guideId: 'g', path: 'x'.repeat(501), title: 'X' }), false);
   assert.equal(validPublishArgs({ guideId: 'g', path: ['guides'], title: 'X' }), false);
+  assert.equal(validPublishArgs({ guideId: 'g', path: 'guides/x', title: 'X', published: false, startDate: '2026-12-01', endDate: '', tags: ['how-to'] }), true);
+  assert.equal(validPublishArgs({ guideId: 'g', path: 'guides/x', title: 'X', published: 'no' }), false);
+  assert.equal(validPublishArgs({ guideId: 'g', path: 'guides/x', title: 'X', startDate: 'x'.repeat(11) }), false);
+  assert.equal(validPublishArgs({ guideId: 'g', path: 'guides/x', title: 'X', tags: 'how-to' }), false, 'tags are a list');
+  assert.equal(validPublishArgs({ guideId: 'g', path: 'guides/x', title: 'X', tags: [7] }), false);
+  assert.equal(validPublishArgs({ guideId: 'g', path: 'guides/x', title: 'X', tags: Array(101).fill('a') }), false);
 
   // main.js uses these for its Wiki.js channels.
   const main = fs.readFileSync(path.join(__dirname, '../../app/main.js'), 'utf8');

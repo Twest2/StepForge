@@ -1927,6 +1927,14 @@ fieldset legend {
 .wikijs-publish .gh-field > span { flex: none; width: 84px; }
 .wikijs-publish .gh-field input { flex: 1; min-width: 0; }
 .wikijs-publish .gh-field input.wikijs-locale { flex: none; width: 90px; }
+.wikijs-publish .gh-field select { flex: 1; min-width: 0; }
+.wikijs-publish .wikijs-note { margin: -4px 0 0 96px; font-size: 12px; }
+.wikijs-schedule > summary { cursor: pointer; font-weight: 550; margin-left: 96px; }
+/* <details> doesn't lay out its content as flex, so the rows sit in a box of their own. */
+.wikijs-schedule-body { display: flex; flex-direction: column; gap: 12px; margin-top: 10px; }
+.wikijs-publish .wikijs-schedule-body .wikijs-note { margin: 0 0 0 96px; }
+.wikijs-prefs .cloud-setting > select, .wikijs-prefs .cloud-setting > input { flex: none; width: 200px; }
+.wikijs-prefs .cloud-setting > input.wikijs-locale { width: 90px; }
 /* Private details review (privacy.js) */
 .privacy-dialog { display: flex; flex-direction: column; gap: 10px; min-width: min(560px, 80vw); }
 .privacy-dialog p { margin: 0; }

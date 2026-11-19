@@ -97,6 +97,11 @@ function fakeApi(github = {}) {
     calls,
     progress: (update) => { for (const fn of progressListeners) fn(update); },
     shell: { openExternal: async ({ url }) => { calls.push(['open', url]); return { ok: true }; } },
+    settings: {
+      saved: { wikijs: { published: false, tags: [], locale: 'en' } },
+      async all() { return JSON.parse(JSON.stringify(this.saved)); },
+      async set({ keyPath, value }) { calls.push(['settings:set', keyPath, value]); this.saved[keyPath] = value; return JSON.parse(JSON.stringify(this.saved)); },
+    },
     confluence: {
       status: async () => ({ connected: false }),
       onStatus: () => () => {},
@@ -965,7 +970,7 @@ test('Publish to Wiki.js prefills the path, warns before replacing a page edited
   assert.match(confirm.textContent, /This page was edited on the wiki by Jane Doe on Oct 20 since you last published\. Publishing will replace those edits\./);
   assert.match(confirm.textContent, /Wiki\.js keeps the edited version in the page history\./);
   assert.deepEqual(JSON.parse(JSON.stringify(api.calls.filter(([name]) => name === 'publish').map(([, args]) => args))),
-    [{ guideId: 'guide-1', path: 'guides/it/reset', title: 'Reset a password', locale: 'en', replace: false }]);
+    [{ guideId: 'guide-1', path: 'guides/it/reset', title: 'Reset a password', locale: 'en', published: true, startDate: '', endDate: '', tags: [], replace: false }]);
   // Open page shows the edits and leaves the question open.
   u.click(u.find(confirm, 'Open page'));
   assert.deepEqual(api.calls.at(-1), ['open', 'https://wiki.example.com/en/guides/it/reset']);
@@ -993,6 +998,82 @@ test('Publish to Wiki.js prefills the path, warns before replacing a page edited
   await settle();
   assert.equal(api.calls.filter(([name]) => name === 'publish').at(-1)[1].replace, false);
   assert.equal(u.visible(u.find(second, 'Publish')), true);
+});
+
+test('Wiki.js settings choose whether new pages are published, their tags and language', async () => {
+  const u = ui();
+  const api = wikiApi({ status: async () => ({ connected: true, host: 'wiki.example.com', user: 'Casey Jones', method: 'password' }) });
+  api.settings.saved.wikijs = { published: false, tags: ['how-to'], locale: 'en' };
+  const panel = u.context.makeWikiJsSettings(api);
+  await settle();
+  const field = (label) => u.all(panel.node).find((n) => (n.tag === 'input' || n.tag === 'select') && n['aria-label'] === label);
+  assert.deepEqual([field('New pages').value, field('Tags for new pages').value, field('Language for new pages').value], ['unpublished', 'how-to', 'en']);
+  assert.match(panel.node.textContent, /Only people who can edit pages on the wiki can open the page/);
+
+  field('New pages').value = 'published';
+  field('New pages').listeners.change();
+  await settle();
+  assert.deepEqual(JSON.parse(JSON.stringify(api.calls.at(-1))), ['settings:set', 'wikijs', { published: true, tags: ['how-to'], locale: 'en' }]);
+  assert.match(panel.node.textContent, /Anyone who can read the wiki can open the page/);
+  field('Tags for new pages').value = 'How-To, IT,, it ';
+  field('Tags for new pages').listeners.change();
+  await settle();
+  assert.deepEqual(JSON.parse(JSON.stringify(api.calls.at(-1)[2].tags)), ['how-to', 'it']);
+  assert.equal(field('Tags for new pages').value, 'how-to, it');
+
+  // A language Wiki.js wouldn't accept isn't saved.
+  const saves = api.calls.length;
+  field('Language for new pages').value = 'english';
+  field('Language for new pages').listeners.change();
+  await settle();
+  assert.equal(api.calls.length, saves);
+  assert.equal(field('Language for new pages').value, 'en');
+  assert.match(panel.node.textContent, /Enter a language code such as en, de or pt-br\./);
+  field('Language for new pages').value = 'PT-BR';
+  field('Language for new pages').listeners.change();
+  await settle();
+  assert.deepEqual(JSON.parse(JSON.stringify(api.calls.at(-1)[2])), { published: true, tags: ['how-to', 'it'], locale: 'pt-br' });
+  panel.dispose();
+});
+
+test('Publish to Wiki.js starts unpublished from the settings, sends the period and tags, and says when a page isn’t published', async () => {
+  const u = ui();
+  const api = wikiApi({
+    status: async () => ({ connected: true, host: 'wiki.example.com', method: 'apikey' }),
+    defaults: async () => ({ path: 'guides/vpn', title: 'VPN', locale: 'en', published: null, options: { published: false, startDate: '', endDate: '', tags: ['how-to'] } }),
+    publish: async (args) => { api.calls.push(['publish', args]); return { id: 4, url: 'https://wiki.example.com/en/guides/vpn', title: args.title, updated: false, isPublished: args.published }; },
+  });
+  u.context.showPublishToWikiJsDialog({ api, guideId: 'guide-1', guideTitle: 'VPN' });
+  await settle(); await settle();
+  const modal = u.root.children.at(-1);
+  const field = (label) => u.all(modal).find((n) => (n.tag === 'input' || n.tag === 'select') && n['aria-label'] === label);
+  const schedule = u.all(modal).find((n) => n.classList?.contains('wikijs-schedule'));
+  assert.deepEqual([field('Visibility').value, field('Tags').value], ['unpublished', 'how-to']);
+  assert.equal(u.visible(schedule), false, 'no publishing period for a page that isn’t published');
+  assert.match(modal.textContent, /Only people who can edit pages on the wiki can open the page/);
+  field('Visible from').value = '2026-12-01';
+  field('Tags').value = 'how-to, VPN';
+  await u.find(modal, 'Publish').listeners.click();
+  await settle(); await settle();
+  assert.deepEqual(JSON.parse(JSON.stringify(api.calls.filter(([name]) => name === 'publish').at(-1)[1])),
+    { guideId: 'guide-1', path: 'guides/vpn', title: 'VPN', locale: 'en', published: false, startDate: '', endDate: '', tags: ['how-to', 'vpn'], replace: false });
+  assert.match(modal.textContent, /Saved “VPN” on Wiki\.js, not published\./);
+
+  // Published, with a period: the dates go along, and it reads as published.
+  u.context.showPublishToWikiJsDialog({ api, guideId: 'guide-1', guideTitle: 'VPN' });
+  await settle(); await settle();
+  const second = u.root.children.at(-1);
+  const field2 = (label) => u.all(second).find((n) => (n.tag === 'input' || n.tag === 'select') && n['aria-label'] === label);
+  field2('Visibility').value = 'published';
+  field2('Visibility').listeners.change();
+  assert.equal(u.visible(u.all(second).find((n) => n.classList?.contains('wikijs-schedule'))), true);
+  field2('Visible from').value = '2026-12-01';
+  field2('Visible until').value = '2027-06-30';
+  await u.find(second, 'Publish').listeners.click();
+  await settle(); await settle();
+  const sent = api.calls.filter(([name]) => name === 'publish').at(-1)[1];
+  assert.deepEqual([sent.published, sent.startDate, sent.endDate], [true, '2026-12-01', '2027-06-30']);
+  assert.match(second.textContent, /Published “VPN” to Wiki\.js\./);
 });
 
 function confluenceApi(overrides = {}) {

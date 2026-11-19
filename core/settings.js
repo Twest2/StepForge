@@ -166,7 +166,31 @@ const DEFAULT_SETTINGS = {
   },
   // Settings → About: ask GitHub for a newer release each time StepForge starts.
   updates: { checkOnStart: true },
+  // Settings → Accounts → Wiki.js: what the Publish dialog starts with for a
+  // page StepForge hasn't published before. `published` false saves the page
+  // unpublished, so only people who can edit it on the wiki can open it.
+  // `tags` are added to the page; `locale` is the page's language.
+  wikijs: { published: false, tags: [], locale: 'en' },
 };
+
+/** Wiki.js tags as Wiki.js keeps them: trimmed, lowercase, no repeats, at most 30. */
+function normalizeWikiJsTags(value) {
+  const list = Array.isArray(value) ? value : String(value ?? '').split(',');
+  const tags = list.filter((tag) => typeof tag === 'string').map((tag) => tag.trim().toLowerCase().slice(0, 100)).filter(Boolean);
+  return [...new Set(tags)].slice(0, 30);
+}
+
+/** The Wiki.js publishing defaults with anything missing or malformed set back to the default. */
+function normalizeWikiJsDefaults(value) {
+  const v = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const locale = typeof v.locale === 'string' ? v.locale.trim().toLowerCase() : '';
+  return {
+    published: v.published === true,
+    tags: normalizeWikiJsTags(v.tags || []),
+    // Wiki.js 2's own rule for languages in page addresses (app/wikijs.js).
+    locale: /^[a-z]{2}(-[a-z]{2})?$/.test(locale) ? locale : DEFAULT_SETTINGS.wikijs.locale,
+  };
+}
 
 // Values that sync independently; changing a whole capture/branding object
 // still records clocks only for the shared fields that actually changed.
@@ -237,6 +261,7 @@ class Settings {
     const quality = Number(data.images.webpQuality);
     data.images.webpQuality = Number.isFinite(quality) ? Math.min(1, Math.max(0.95, quality)) : DEFAULT_SETTINGS.images.webpQuality;
     data.images.lossless = data.images.lossless !== false;
+    data.wikijs = normalizeWikiJsDefaults(data.wikijs);
     const position = data.capture.recordingBarPosition;
     if (!position || !Number.isFinite(position.x) || !Number.isFinite(position.y)) data.capture.recordingBarPosition = null;
     return data;
@@ -308,4 +333,4 @@ function mergeDeep(base, extra) {
   return base;
 }
 
-module.exports = { Settings, DEFAULT_SETTINGS, SHARED_SETTING_PATHS, normalizeAiTemperature };
+module.exports = { Settings, DEFAULT_SETTINGS, SHARED_SETTING_PATHS, normalizeAiTemperature, normalizeWikiJsDefaults, normalizeWikiJsTags };

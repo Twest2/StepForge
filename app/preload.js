@@ -51,6 +51,7 @@ const api = {
     delete: invoke('step:delete'),
     restore: invoke('step:restore'),
     reorder: invoke('steps:reorder'),
+    copy: invoke('steps:copy'),
     imagePath: invoke('step:imagePath'),
     imageData: invoke('step:imageData'),
     setWorkingImage: invoke('step:setWorkingImage'),

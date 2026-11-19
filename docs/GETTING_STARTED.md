@@ -151,6 +151,11 @@ it), lists and quotes.
 **Working with many steps at once:** choose **Select**, click one step, then
 **Shift-click** another to select everything in between, including substeps.
 A normal click toggles a single step.
+Right-click a selected step for what to do with all of them: **Copy** (then
+**Paste after this step** on any step, in this guide or another), **Copy to
+clipboard**, **Copy to another guide**, **Duplicate**, **Move up**, **Move
+down**, **Move to…**, **Hide**, **Skip** and **Delete**. Substeps move with
+their steps.
 
 **Deleting steps:** StepForge asks before it deletes a step or a selection
 of steps, and **Ctrl+Z** brings them back. To delete without being asked,

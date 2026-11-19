@@ -12,6 +12,22 @@ function wikiJsOpen(api, url) {
   if (url) void api.shell.openExternal({ url }).catch(() => {});
 }
 
+/** Tags as typed, separated by commas: trimmed and lowercase like Wiki.js keeps them, without repeats. */
+function wikiJsTags(text) {
+  return [...new Set(String(text || '').split(',').map((tag) => tag.trim().toLowerCase()).filter(Boolean))];
+}
+
+/** A language code Wiki.js 2 accepts in page addresses, such as en, de or pt-br. */
+function wikiJsLocaleValid(locale) {
+  return /^[a-z]{2}(-[a-z]{2})?$/i.test(String(locale || '').trim());
+}
+
+/** What “Published” or “Not published” means for who can open the page. */
+function wikiJsVisibilityNote(published) {
+  return published ? t('Anyone who can read the wiki can open the page.')
+    : t('Only people who can edit pages on the wiki can open the page until it’s published from StepForge or on the wiki.');
+}
+
 /** The code field for two-step sign-in: digits only, filled in by password managers that know one-time codes. */
 function wikiJsCodeInput() {
   return el('input', { type: 'text', inputMode: 'numeric', autocomplete: 'one-time-code', maxLength: 7, spellcheck: false,
@@ -177,9 +193,55 @@ function makeWikiJsSettings(api) {
     update(status);
   }));
   againCode.addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); againBtn.click(); } });
-  const usage = el('section.cloud-card', {},
+  // What the Publish dialog starts with for a page StepForge hasn't published
+  // before (DEFAULT_SETTINGS.wikijs). Pages published before keep their own.
+  let prefs = { published: false, tags: [], locale: 'en' };
+  const publishDefault = el('select', { 'aria-label': t('New pages') },
+    el('option', { value: 'unpublished' }, t('Not published')),
+    el('option', { value: 'published' }, t('Published')));
+  const publishNote = el('p.muted', {}, '');
+  const defaultTags = el('input', { type: 'text', spellcheck: false, 'aria-label': t('Tags for new pages'), placeholder: 'how-to, it' });
+  const defaultLocale = el('input.wikijs-locale', { type: 'text', spellcheck: false, maxLength: 5, 'aria-label': t('Language for new pages') });
+  const showPrefs = () => {
+    publishDefault.value = prefs.published ? 'published' : 'unpublished';
+    publishNote.textContent = wikiJsVisibilityNote(prefs.published);
+    defaultTags.value = prefs.tags.join(', ');
+    defaultLocale.value = prefs.locale;
+  };
+  // prefs changes before the save, so a second change made while the first is saving keeps both.
+  const savePrefs = (next) => {
+    prefs = next;
+    showPrefs();
+    api.settings.set({ keyPath: 'wikijs', value: next }).catch((err) => { if (!disposed) say(err.message, 'error'); });
+  };
+  publishDefault.addEventListener('change', () => savePrefs({ ...prefs, published: publishDefault.value === 'published' }));
+  defaultTags.addEventListener('change', () => savePrefs({ ...prefs, tags: wikiJsTags(defaultTags.value) }));
+  defaultLocale.addEventListener('change', () => {
+    const locale = defaultLocale.value.trim().toLowerCase() || 'en';
+    if (!wikiJsLocaleValid(locale)) { say(t('Enter a language code such as en, de or pt-br.'), 'error'); defaultLocale.value = prefs.locale; return; }
+    say('');
+    savePrefs({ ...prefs, locale });
+  });
+  const usage = el('section.cloud-card.wikijs-prefs', {},
     el('header.cloud-card-head', {}, el('h4', {}, t('Publishing'))),
-    el('p.muted', {}, t('Choose Share → Publish to Wiki.js… in a guide. You pick the page’s path when you publish; publishing the guide again updates the same page.')));
+    el('p.muted', {}, t('Choose Share → Publish to Wiki.js… in a guide. You pick the page’s path when you publish; publishing the guide again updates the same page.')),
+    el('div.cloud-setting', {},
+      el('div', {}, el('strong', {}, t('New pages')), publishNote),
+      publishDefault),
+    el('div.cloud-setting', {},
+      el('div', {}, el('strong', {}, t('Tags for new pages')),
+        el('p.muted', {}, t('Separate tags with commas. You can change them when you publish.'))),
+      defaultTags),
+    el('div.cloud-setting', {},
+      el('div', {}, el('strong', {}, t('Language for new pages')),
+        el('p.muted', {}, t('The language part of the page’s address, such as en or pt-br.'))),
+      defaultLocale));
+  showPrefs();
+  api.settings.all().then((all) => {
+    if (disposed || !all?.wikijs) return;
+    prefs = { ...prefs, ...all.wikijs };
+    showPrefs();
+  }).catch(() => {});
   const signedIn = el('div.cloud-stack.hidden', {}, account, again, usage);
 
   function update(status) {
@@ -334,6 +396,27 @@ async function showPublishToWikiJsDialog({ api, guideId, guideTitle, onOpenAccou
     const titleInput = el('input', { type: 'text', 'aria-label': t('Page title'), value: guideTitle });
     const localeInput = el('input.wikijs-locale', { type: 'text', spellcheck: false, 'aria-label': t('Language'), value: 'en' });
     const addressNote = el('p.muted.wikijs-address', {}, '');
+    // How the page is published: the guide's last choice, or Settings → Accounts → Wiki.js.
+    const visibility = el('select', { 'aria-label': t('Visibility') },
+      el('option', { value: 'published' }, t('Published')),
+      el('option', { value: 'unpublished' }, t('Not published')));
+    const visibilityNote = el('p.muted.wikijs-note', {}, '');
+    const startInput = el('input', { type: 'date', 'aria-label': t('Visible from') });
+    const endInput = el('input', { type: 'date', 'aria-label': t('Visible until') });
+    const schedule = el('details.wikijs-schedule', {},
+      el('summary', {}, t('Publishing period')),
+      el('div.wikijs-schedule-body', {},
+        el('label.gh-field', {}, el('span', {}, t('Visible from')), startInput),
+        el('label.gh-field', {}, el('span', {}, t('Visible until')), endInput)));
+    const tagsInput = el('input', { type: 'text', spellcheck: false, 'aria-label': t('Tags'), placeholder: 'how-to, it' });
+    const tagsNote = el('p.muted.wikijs-note', {}, t('Separate tags with commas. They’re added to the page’s tags.'));
+    const isPublished = () => visibility.value === 'published';
+    const refreshVisibility = () => {
+      visibilityNote.textContent = wikiJsVisibilityNote(isPublished());
+      schedule.classList.toggle('hidden', !isPublished());
+    };
+    visibility.addEventListener('change', refreshVisibility);
+    refreshVisibility();
     const previous = el('div.cloud-banner.hidden', {});
     const error = el('p.gh-note.error.hidden', { role: 'alert' }, '');
     const showError = (message) => { error.textContent = message; error.classList.remove('hidden'); };
@@ -386,6 +469,11 @@ async function showPublishToWikiJsDialog({ api, guideId, guideTitle, onOpenAccou
       el('label.gh-field', {}, el('span', {}, t('Title')), titleInput),
       el('label.gh-field', {}, el('span', {}, t('Language')), localeInput),
       addressNote,
+      el('label.gh-field', {}, el('span', {}, t('Visibility')), visibility),
+      visibilityNote,
+      schedule,
+      el('label.gh-field', {}, el('span', {}, t('Tags')), tagsInput),
+      tagsNote,
       privacyBox,
       error);
     body.replaceChildren(form);
@@ -397,6 +485,13 @@ async function showPublishToWikiJsDialog({ api, guideId, guideTitle, onOpenAccou
       // The guide's title with its placeholders filled in, unless already edited.
       if (titleInput.value === guideTitle) titleInput.value = defaults.title;
       localeInput.value = defaults.locale || 'en';
+      const options = defaults.options || {};
+      visibility.value = options.published === false ? 'unpublished' : 'published';
+      startInput.value = options.startDate || '';
+      endInput.value = options.endDate || '';
+      schedule.open = Boolean(startInput.value || endInput.value);
+      tagsInput.value = (options.tags || []).join(', ');
+      refreshVisibility();
       ready = true;
       refresh();
       const page = defaults.published;
@@ -424,7 +519,9 @@ async function showPublishToWikiJsDialog({ api, guideId, guideTitle, onOpenAccou
       cancelBtn.textContent = t('Close');
       const stop = api.wikijs.onProgress((update) => { if (update?.guideId === guideId) progress.set(update); });
       try {
-        const result = await api.wikijs.publish({ guideId, path: pathInput.value.trim(), title: titleInput.value.trim(), locale: localeInput.value.trim() || 'en', replace });
+        const published = isPublished();
+        const result = await api.wikijs.publish({ guideId, path: pathInput.value.trim(), title: titleInput.value.trim(), locale: localeInput.value.trim() || 'en',
+          published, startDate: published ? startInput.value : '', endDate: published ? endInput.value : '', tags: wikiJsTags(tagsInput.value), replace });
         changed = true;
         if (result.needsCode) {
           publishing = false;
@@ -447,13 +544,16 @@ async function showPublishToWikiJsDialog({ api, guideId, guideTitle, onOpenAccou
           return;
         }
         if (!open) { toast(t('“{title}” is on Wiki.js.', { title: guideTitle })); return; }
+        const draft = result.isPublished === false;
         const copy = el('button.primary', { type: 'button', onClick: async () => {
           try { await navigator.clipboard.writeText(result.url); toast(t('Link copied.')); }
           catch { toast(t('Couldn’t copy the link.'), { error: true }); }
         } }, t('Copy link'));
         body.replaceChildren(
           el('p.gh-published-title', {}, el('span.gh-published-icon', { 'aria-hidden': 'true' }, '✓'),
-            el('strong', {}, result.updated ? t('Updated “{title}” on Wiki.js.', { title: result.title }) : t('Published “{title}” to Wiki.js.', { title: result.title }))),
+            el('strong', {}, draft ? t('Saved “{title}” on Wiki.js, not published.', { title: result.title })
+              : result.updated ? t('Updated “{title}” on Wiki.js.', { title: result.title }) : t('Published “{title}” to Wiki.js.', { title: result.title }))),
+          ...(draft ? [el('p.muted', {}, wikiJsVisibilityNote(false))] : []),
           el('code.settings-path.gh-url', { title: result.url }, result.url),
           el('div.row', {}, copy, el('button', { type: 'button', onClick: () => wikiJsOpen(api, result.url) }, t('Open in browser'))));
         cancelBtn.textContent = t('Done');

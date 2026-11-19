@@ -85,16 +85,28 @@ Wiki.js…** from a guide's menu in the library. Then check:
   or a language code like `en`.
 - **Title**: the page title. It starts as the guide's title, with its
   [placeholders](GETTING_STARTED.md) filled in.
-- **Language**: the page's language code, `en` unless your wiki uses others.
+- **Language**: the page's language code. It starts as the one in
+  [Settings](#publishing-settings), `en` unless you changed it.
+- **Visibility**: **Published** or **Not published**. A page that isn't
+  published is saved on the wiki, but only people who can edit pages there can
+  open it. Readers see Wiki.js's "unauthorized" page until it's published,
+  from StepForge or with the **Published** switch in the page's properties on
+  the wiki.
+- **Publishing period** (optional, for a published page): **Visible from** and
+  **Visible until** dates. Outside them the page behaves as if it isn't
+  published; Wiki.js hides it from the start of the **Visible until** day, and
+  checks the dates each time someone opens the page.
+- **Tags**: separated by commas, such as `how-to, vpn`. They're added to the
+  page's tags; tags added on the wiki stay.
 
-Choose **Publish**. When it's done, StepForge shows the page's link.
+Choose **Publish**. When it's done, StepForge shows the page's link, and says
+when the page isn't published.
 
 Before anything is sent, StepForge checks the guide's screenshots for private
 details and blurs what it finds ([how](GETTING_STARTED.md#find-private-details)).
 Choose **Review** to check the blurs.
 
-The page is written in Markdown, published, and visible to everyone who can
-read that part of the wiki. Its screenshots go in the wiki's assets, in a
+The page is written in Markdown. Its screenshots go in the wiki's assets, in a
 folder with the same path as the page (for example
 `guides/reset-a-password/step-001.png`), so step titles never end up in file
 names.
@@ -117,6 +129,26 @@ those edits."
 
 StepForge also asks before replacing a page it didn't publish from this
 guide. Tags added to the page on the wiki are kept when it's updated.
+
+Publishing again starts with the visibility, publishing period and tags the
+guide was last published with, not the settings for new pages. Change them in
+the dialog to publish a page that wasn't published, or to take one down
+without deleting it. Pages published with StepForge before these choices
+existed start as **Published**.
+
+## Publishing settings
+
+**Settings → Accounts → Wiki.js → Publishing** sets what **Publish to
+Wiki.js** starts with for a guide that hasn't been published yet:
+
+- **New pages**: **Not published** (the default) or **Published**. With
+  **Not published**, nothing you publish is readable on the wiki until you
+  decide it is.
+- **Tags for new pages**: tags to add to every new page, separated by commas.
+- **Language for new pages**: the language code new pages start with, such as
+  `en` or `pt-br`.
+
+You can still change all of these in the dialog each time you publish.
 
 ## Permissions
 

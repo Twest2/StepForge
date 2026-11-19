@@ -284,9 +284,12 @@ Wiki.js publishing is **off until you connect a wiki** ([how it works](WIKIJS.md
   stores the codes or your authenticator's secret.
 - When you publish, the guide's text and its screenshots (with private details
   blurred, see above) are sent to the page path you choose. Nothing is sent
-  until you choose **Publish**.
+  until you choose **Publish**. New pages are saved **not published** unless
+  you change that in the dialog or in **Settings → Accounts → Wiki.js**, so
+  only people who can edit pages on the wiki can open them.
 - To notice edits made on the wiki, StepForge saves each published page's
-  address and the time Wiki.js last saved it on this computer. When you
+  address, how it was published (visibility, publishing period and tags) and
+  the time Wiki.js last saved it on this computer. When you
   publish again, it asks the wiki who last edited the page; the name is
   shown, not saved.
 - **Sign out** removes the saved password or API key. Pages you published stay

@@ -23,7 +23,7 @@ const { RedactionService, bitmapToPpm } = require('./redaction');
 const { forgetScreenshotChecks } = require('../core/redaction');
 const { Confluence, pageFromExport } = require('./confluence');
 const { createConfluenceSession } = require('./confluence-session');
-const { WikiJs, pageFromExport: wikiPageFromExport, normalizePagePath, normalizeLocale,
+const { WikiJs, pageFromExport: wikiPageFromExport, normalizePagePath, normalizeLocale, normalizePublishOptions: normalizeWikiPublishOptions,
   validConnectArgs: validWikiConnectArgs, validCodeArgs: validWikiCodeArgs, validPublishArgs: validWikiPublishArgs } = require('./wikijs');
 const { GitHubPages } = require('./github-pages');
 const { EXPIRY_DAYS, titleFromHtml } = require('../core/pages-site');
@@ -1366,13 +1366,14 @@ function setupIpc() {
     if (!store.guideExists(guideId)) throw new Error(t('Guide not found.'));
     // The title as exported, with placeholders filled in, names the page.
     const title = await runExportInWorker({ language: uiLanguage(), dataDir: store.root, guideId, task: 'title', globals: settings.getGlobalPlaceholders() });
-    return wikijs.defaultsFor(guideId, title);
+    return wikijs.defaultsFor(guideId, title, settings.get('wikijs'));
   }, { validate: (a) => c.id(a.guideId) });
-  h('wikijs:publish', async ({ guideId, path: pagePath, title, locale = 'en', replace = false }) => {
+  h('wikijs:publish', async ({ guideId, path: pagePath, title, locale = 'en', replace = false, published = true, startDate = '', endDate = '', tags = [] }) => {
     if (!store.guideExists(guideId)) throw new Error(t('Guide not found.'));
-    // A path or language Wiki.js would refuse is reported before any work starts.
+    // A path, language or date Wiki.js would refuse is reported before any work starts.
     const target = normalizePagePath(pagePath);
     const language = normalizeLocale(locale);
+    const options = normalizeWikiPublishOptions({ published, startDate, endDate, tags });
     wikijs.requireSite();
     // Signed out on the wiki: ask for the code before checking and exporting.
     if (await wikijs.needsCodeNow()) return { needsCode: true };
@@ -1389,7 +1390,7 @@ function setupIpc() {
         options: { includeImages: true, toc: false, frontMatter: false, assetFolder }, outDir, globals: settings.getGlobalPlaceholders(), reviewDays: exportReviewDays(),
         branding: exportBranding() });
       return await wikijs.publish({ guideId, path: target, title, locale: language, description: result.description, replace, onProgress: progress,
-        page: wikiPageFromExport(result.file, assetFolder) });
+        ...options, page: wikiPageFromExport(result.file, assetFolder) });
     } finally {
       fs.rmSync(outDir, { recursive: true, force: true });
     }

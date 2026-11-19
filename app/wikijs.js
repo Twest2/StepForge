@@ -9,6 +9,7 @@ const { check: c, isPlainArgs } = require('./security');
 const { publishedImageName } = require('../exporters/common');
 const { t } = require('../core/ui-text');
 const { weeklyCheck } = require('./credential-vault');
+const { normalizeWikiJsDefaults, normalizeWikiJsTags } = require('../core/settings');
 
 /*
  * Publishing guides as Wiki.js 2 pages, through the wiki's GraphQL API.
@@ -106,6 +107,31 @@ function normalizeLocale(input) {
   const locale = String(input || '').trim().toLowerCase() || 'en';
   if (!LOCALE_SEGMENT.test(locale)) throw new Error(t('Enter a language code such as en, de or pt-br.'));
   return locale;
+}
+
+/** A date for the page's publishing period as Wiki.js's own editor sends it: YYYY-MM-DD, or '' for none. */
+function normalizePublishDate(input) {
+  const text = String(input ?? '').trim();
+  if (!text) return '';
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+  const date = match && new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  if (!date || date.toISOString().slice(0, 10) !== text) throw new Error(t('Enter dates as YYYY-MM-DD.'));
+  return text;
+}
+
+/**
+ * How the page is published. An unpublished page opens only for people who
+ * can edit it on the wiki; a published one opens for every reader, within
+ * startDate and endDate when they're set (Wiki.js checks them on each visit).
+ * The dates only apply to a published page. `tags` are added to the page.
+ */
+function normalizePublishOptions({ published = true, startDate = '', endDate = '', tags = [] } = {}) {
+  const isPublished = published !== false;
+  const start = isPublished ? normalizePublishDate(startDate) : '';
+  const end = isPublished ? normalizePublishDate(endDate) : '';
+  // Wiki.js hides the page from the start of endDate, so the same day would never show it.
+  if (start && end && end <= start) throw new Error(t('Choose a “Visible until” date after the “Visible from” date.'));
+  return { published: isPublished, startDate: start, endDate: end, tags: normalizeWikiJsTags(tags) };
 }
 
 /** The folder part of a page path ("" for a page at the top). */
@@ -564,7 +590,10 @@ class WikiJs {
   // ---- pages --------------------------------------------------------------------
 
   // Pages published for each guide, by site:
-  // { [baseUrl]: { lastFolder, pages: { [guideId]: { id, path, locale, title, url, updatedAt, publishedAt } } } }
+  // { [baseUrl]: { lastFolder, pages: { [guideId]: { id, path, locale, title, url, updatedAt, publishedAt,
+  //   isPublished, startDate, endDate, tags } } } }
+  // Pages published before StepForge had publishing options have no
+  // isPublished: they were always published.
   publishedSites() { return readJsonIfExists(this.pagesFile, {}); }
 
   publishedFor(guideId) {
@@ -578,17 +607,27 @@ class WikiJs {
     writeJsonSync(this.pagesFile, all);
   }
 
-  /** What the publish dialog starts with: the guide's page if it has one, else <last folder>/<guide slug>. */
-  defaultsFor(guideId, title) {
+  /**
+   * What the publish dialog starts with: the guide's page if it has one, else
+   * <last folder>/<guide slug>. A page published before keeps how it was
+   * published; a new one starts from `prefs`, the Wiki.js settings
+   * (DEFAULT_SETTINGS.wikijs).
+   */
+  defaultsFor(guideId, title, prefs = {}) {
     this.requireSite();
     const known = this.publishedFor(guideId);
     const site = this.publishedSites()[this.credentials.baseUrl] || {};
     const folder = typeof site.lastFolder === 'string' ? site.lastFolder : 'guides';
+    const settings = normalizeWikiJsDefaults(prefs);
+    const options = known
+      ? { published: known.isPublished !== false, startDate: known.startDate || '', endDate: known.endDate || '', tags: normalizeWikiJsTags(known.tags || []) }
+      : { published: settings.published, startDate: '', endDate: '', tags: settings.tags };
     return {
       path: known?.path || [folder, pageSlug(title)].filter(Boolean).join('/'),
       title: String(title || t('Untitled guide')),
-      locale: known?.locale || 'en',
+      locale: known?.locale || settings.locale,
       published: known,
+      options,
       site: this.credentials.baseUrl,
     };
   }
@@ -658,10 +697,13 @@ class WikiJs {
     throw new Error(t('Wiki.js couldn’t upload {fileName} ({status}).', { fileName, status: `${response.status}${message ? `: ${String(message).slice(0, 200)}` : ''}` }));
   }
 
-  async savePage({ existing, path: pagePath, locale, title, description, content }) {
+  async savePage({ existing, path: pagePath, locale, title, description, content, options = normalizePublishOptions() }) {
     // The page Wiki.js sends back has no locale (and fails if asked for one).
     const fields = 'responseResult { succeeded errorCode slug message } page { id updatedAt }';
-    const common = { content, description, editor: 'markdown', isPublished: true, isPrivate: false, locale, path: pagePath, title };
+    // isPrivate is unused in Wiki.js 2. Updating without the dates would clear
+    // them, so they're always sent ('' for none, as Wiki.js's editor does).
+    const common = { content, description, editor: 'markdown', isPublished: options.published, isPrivate: false, locale, path: pagePath, title,
+      publishStartDate: options.startDate, publishEndDate: options.endDate };
     if (existing) {
       // Updating keeps a page's editor, so one switched to another editor on the wiki is switched back first.
       if (existing.editor && existing.editor !== 'markdown') {
@@ -669,18 +711,22 @@ class WikiJs {
         WikiJs.check(converted?.pages?.convert, (r) => t('Wiki.js couldn’t switch the page back to Markdown ({message}).', { message: r.message }));
       }
       const data = await this.call(`mutation ($id: Int!, $content: String!, $description: String!, $editor: String!, $isPublished: Boolean!, $isPrivate: Boolean!,
-        $locale: String!, $path: String!, $tags: [String]!, $title: String!, $scriptCss: String, $scriptJs: String) {
+        $locale: String!, $path: String!, $publishStartDate: Date, $publishEndDate: Date, $tags: [String]!, $title: String!, $scriptCss: String, $scriptJs: String) {
         pages { update(id: $id, content: $content, description: $description, editor: $editor, isPublished: $isPublished, isPrivate: $isPrivate,
-          locale: $locale, path: $path, tags: $tags, title: $title, scriptCss: $scriptCss, scriptJs: $scriptJs) { ${fields} } } }`,
+          locale: $locale, path: $path, publishStartDate: $publishStartDate, publishEndDate: $publishEndDate, tags: $tags, title: $title,
+          scriptCss: $scriptCss, scriptJs: $scriptJs) { ${fields} } } }`,
       // Tags and page scripts are kept: updating without them would clear them.
-      { ...common, id: existing.id, tags: existing.tags || [], scriptCss: existing.scriptCss ?? null, scriptJs: existing.scriptJs ?? null });
+      // StepForge's tags are added to the page's; tags added on the wiki stay.
+      { ...common, id: existing.id, tags: [...new Set([...(existing.tags || []), ...options.tags])],
+        scriptCss: existing.scriptCss ?? null, scriptJs: existing.scriptJs ?? null });
       return WikiJs.check(data?.pages?.update, (r) => ([CODES.updateForbidden, CODES.deleteForbidden].includes(r.errorCode)
         ? t('You don’t have permission to change the page at {pagePath}.', { pagePath }) : t('Wiki.js couldn’t update the page ({message}).', { message: r.message }))).page;
     }
     const data = await this.call(`mutation ($content: String!, $description: String!, $editor: String!, $isPublished: Boolean!, $isPrivate: Boolean!,
-      $locale: String!, $path: String!, $tags: [String]!, $title: String!) {
+      $locale: String!, $path: String!, $publishStartDate: Date, $publishEndDate: Date, $tags: [String]!, $title: String!) {
       pages { create(content: $content, description: $description, editor: $editor, isPublished: $isPublished, isPrivate: $isPrivate,
-        locale: $locale, path: $path, tags: $tags, title: $title) { ${fields} } } }`, { ...common, tags: [] });
+        locale: $locale, path: $path, publishStartDate: $publishStartDate, publishEndDate: $publishEndDate, tags: $tags, title: $title) { ${fields} } } }`,
+    { ...common, tags: options.tags });
     // Wiki.js reports a missing write permission on create as "not authorized to delete".
     return WikiJs.check(data?.pages?.create, (r) => ([CODES.createForbidden, CODES.deleteForbidden].includes(r.errorCode)
       ? t('You don’t have permission to create pages at {pagePath}.', { pagePath })
@@ -709,10 +755,12 @@ class WikiJs {
     }
   }
 
-  async publishPage({ guideId, path: rawPath, locale: rawLocale = 'en', title, description = '', page, replace = false, onProgress = () => {} }) {
+  async publishPage({ guideId, path: rawPath, locale: rawLocale = 'en', title, description = '', page, replace = false, onProgress = () => {},
+    published = true, startDate = '', endDate = '', tags = [] }) {
     this.requireSite();
     const pagePath = normalizePagePath(rawPath);
     const locale = normalizeLocale(rawLocale);
+    const options = normalizePublishOptions({ published, startDate, endDate, tags });
     const pageTitle = String(title || '').trim();
     if (!pageTitle) throw new Error(t('Enter a title for the page.'));
     // A password sign-in whose token is missing or about to run out signs
@@ -746,7 +794,7 @@ class WikiJs {
     onProgress({ stage: 'page' });
     let saved;
     try {
-      saved = await this.savePage({ existing, path: pagePath, locale, title: pageTitle, description: String(description).slice(0, 255), content: page.content });
+      saved = await this.savePage({ existing, path: pagePath, locale, title: pageTitle, description: String(description).slice(0, 255), content: page.content, options });
     } catch (err) {
       // Made by someone else while this guide was being published.
       if (err.code === CODES.duplicate) return { conflict: { path: pagePath, title: pagePath } };
@@ -754,7 +802,8 @@ class WikiJs {
     }
     const updatedAt = saved?.updatedAt || (await this.findPage(pagePath, locale))?.updatedAt || '';
     const result = { id: saved?.id ?? existing?.id, path: pagePath, locale, title: pageTitle, url: this.pageUrl(pagePath, locale),
-      updatedAt, publishedAt: new Date().toISOString(), updated: Boolean(existing) };
+      updatedAt, publishedAt: new Date().toISOString(), isPublished: options.published, startDate: options.startDate, endDate: options.endDate,
+      tags: options.tags, updated: Boolean(existing) };
     const { updated, ...remembered } = result;
     this.rememberPage(guideId, remembered);
     return result;
@@ -777,14 +826,16 @@ function validCodeArgs(a) {
   return onlyKeys(a, ['code']) && c.string(a.code, 20);
 }
 
-/** wikijs:publish: the guide, where its page goes, and whether to replace what's there. */
+/** wikijs:publish: the guide, where its page goes, how it's published, and whether to replace what's there. */
 function validPublishArgs(a) {
-  return onlyKeys(a, ['guideId', 'path', 'title', 'locale', 'replace']) && c.id(a.guideId) && c.string(a.path, 500)
+  return onlyKeys(a, ['guideId', 'path', 'title', 'locale', 'replace', 'published', 'startDate', 'endDate', 'tags']) && c.id(a.guideId) && c.string(a.path, 500)
     && c.string(a.title, 500) && a.title.trim().length > 0 && c.optionalString(a.locale, 10)
-    && (a.replace === undefined || c.bool(a.replace));
+    && (a.replace === undefined || c.bool(a.replace)) && (a.published === undefined || c.bool(a.published))
+    && c.optionalString(a.startDate, 10) && c.optionalString(a.endDate, 10)
+    && (a.tags === undefined || (Array.isArray(a.tags) && a.tags.length <= 100 && a.tags.every((tag) => c.string(tag, 200))));
 }
 
 module.exports = {
-  WikiJs, normalizeSite, normalizePagePath, normalizeLocale, pageSlug, folderOf, pageFromExport, uploadBody, friendlyNetworkError,
+  WikiJs, normalizeSite, normalizePagePath, normalizeLocale, normalizePublishOptions, pageSlug, folderOf, pageFromExport, uploadBody, friendlyNetworkError,
   validConnectArgs, validCodeArgs, validPublishArgs,
 };

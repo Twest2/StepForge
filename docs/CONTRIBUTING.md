@@ -28,9 +28,9 @@ CI runs the full test suite on every pull request.
 
 ### Offline first
 
-- Core features must work offline. No telemetry, automatic update checks,
-  license checks, or remote fonts. The only update check is the one the user
-  starts from **Settings → About**.
+- Core features must work offline. No telemetry, license checks, or remote
+  fonts. The only update check is app/update-check.js, at startup (unless
+  turned off in **Settings → About**) and from **Check for updates**.
 - Optional integrations (AI, cloud sync, sharing and publishing) stay **off by
   default**, require explicit opt-in, and follow the
   [privacy policy](PRIVACY.md). Discuss any new network feature with the

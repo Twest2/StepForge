@@ -247,6 +247,12 @@ kbd {
   cursor: pointer;
   user-select: none;
 }
+/* "Update available" next to StepForge (app.js checkForUpdatesOnStart) and its dialog. */
+#update-available { padding: 4px 6px; font-size: 13px; color: var(--text); background: none; border: 0; }
+#update-available:hover { text-decoration: underline; background: none; }
+.update-notes { margin-top: 12px; max-height: 55vh; overflow: auto; line-height: 1.5; }
+.update-notes h2 { font-size: 15px; margin: 14px 0 6px; }
+.update-notes h3 { font-size: 13px; margin: 12px 0 4px; }
 #topbar-context { display: flex; align-items: center; gap: 8px; min-width: 0; }
 #topbar-context .muted { max-width: 44vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #global-search { width: min(360px, 32vw); margin-left: auto; }

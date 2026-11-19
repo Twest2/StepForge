@@ -2003,10 +2003,14 @@ function setupIpc() {
     platform: process.platform,
     captureDesktop: require('./platform/linux/desktop').waylandCaptureDesktop(),
     license: PACKAGE_JSON.license || 'Apache-2.0',
+    // "Update available" in the top bar. Source checkouts don't check, and
+    // the Microsoft Store updates StepForge itself.
+    checkUpdatesOnStart: !devBuild && settings.get('updates.checkOnStart') !== false && !windowsStore.isStoreInstall(),
   }));
-  // Settings → About "Check for updates". Runs only when the user presses the
-  // button: one request to GitHub's latest-release endpoint, nothing else.
-  // The result is kept so Update now installs the version this check found.
+  // Settings → About "Check for updates", and the check at startup
+  // (checkUpdatesOnStart above): one request to GitHub's latest-release endpoint,
+  // nothing else. The result is kept so Update now installs the version this
+  // check found.
   let lastUpdateCheck = null;
   h('app:checkForUpdates', async () => {
     const store = windowsStore.isStoreInstall();

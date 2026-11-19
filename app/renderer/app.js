@@ -229,7 +229,32 @@ class StepForgeApp {
     }
     // Images an agent added while StepForge was closed.
     void ensurePendingBrandRasters(api);
+    void this.checkForUpdatesOnStart();
   }
+
+  /**
+   * "Update available" next to StepForge in the top bar, when the startup
+   * check finds a newer release. It opens that release's notes and the
+   * buttons to install it. Failures stay quiet here; Settings → About shows
+   * them when asked.
+   */
+  async checkForUpdatesOnStart() {
+    const button = document.getElementById('update-available');
+    if (!button || !this.state.info?.checkUpdatesOnStart) return;
+    let result;
+    try {
+      result = await api.app.checkForUpdates();
+    } catch {
+      return;
+    }
+    if (result?.status !== 'update-available') return;
+    button.textContent = t('Update available');
+    button.title = t('Version {version} is available', { version: result.latestVersion });
+    button.onclick = () => dialogs.showUpdateDialog(api, result, { flushEdits: () => this.flushEditorBeforeNavigation() });
+    button.classList.remove('hidden');
+  }
+
+
 
   async refreshData() {
     const [info, settings, library, trash] = await Promise.all([
@@ -1342,6 +1367,7 @@ class StepForgeApp {
         await api.settings.set({ keyPath: 'images', value: next.images });
         await api.settings.set({ keyPath: 'branding', value: next.branding });
         await api.settings.set({ keyPath: 'backups', value: next.backups });
+        await api.settings.set({ keyPath: 'updates', value: next.updates });
         await api.settings.set({ keyPath: 'library', value: next.library });
         await api.settings.setGlobalPlaceholders(next.placeholders || {});
         this.state.settings = await api.settings.all();

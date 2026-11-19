@@ -175,3 +175,17 @@ test('a build without a usable version never contacts GitHub', async () => {
   assert.equal(result.status, 'error');
   assert.equal(calls.length, 0);
 });
+
+test('an available update carries the release text as its notes', async () => {
+  const { fetchImpl } = githubReturns({ ...release('v1.1'), body: '## What\'s new\n- Faster exports' });
+  const result = await checkForUpdates({ currentVersion: '1.0', fetchImpl });
+  assert.equal(result.status, 'update-available');
+  assert.equal(result.notes, '## What\'s new\n- Faster exports');
+  const { fetchImpl: noBody } = githubReturns({ ...release('v1.1'), body: null });
+  assert.equal((await checkForUpdates({ currentVersion: '1.0', fetchImpl: noBody })).notes, '');
+});
+
+test('main.js checks at startup only for installs that should', () => {
+  const main = require('node:fs').readFileSync(require('node:path').join(__dirname, '../../app/main.js'), 'utf8');
+  assert.match(main, /checkUpdatesOnStart: !devBuild && settings\.get\('updates\.checkOnStart'\) !== false && !windowsStore\.isStoreInstall\(\)/);
+});

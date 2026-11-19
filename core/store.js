@@ -316,6 +316,40 @@ class GuideStore {
     return this.saveGuide(copy);
   }
 
+  /**
+   * Copy steps, with their screenshots, into a guide (this one or another) as
+   * new steps placed together at `position` (default: the end). A copy whose
+   * parent was copied too stays its substep; the others get `parentId`
+   * (default: top level). The caller picks a position and parent that keep
+   * the outline valid. `rename(title)`, if given, names the copies.
+   * Returns the new steps in order.
+   */
+  copySteps(fromGuideId, stepIds, toGuideId, { position, parentId = null, rename = null } = {}) {
+    const steps = this.listSteps(fromGuideId);
+    const wanted = new Set(stepIds);
+    const ids = this.getGuide(fromGuideId).stepsOrder.filter((id) => wanted.has(id) && steps.has(id));
+    const idMap = new Map(ids.map((id) => [id, newId('step')]));
+    const copies = ids.map((oldId) => {
+      const copy = deepClone(steps.get(oldId));
+      copy.stepId = idMap.get(oldId);
+      copy.parentStepId = idMap.get(copy.parentStepId) || parentId || null;
+      if (rename) copy.title = rename(copy.title || '');
+      const dir = this.stepDir(toGuideId, copy.stepId);
+      fs.mkdirSync(dir, { recursive: true });
+      const oldDir = this.stepDir(fromGuideId, oldId);
+      for (const file of fs.readdirSync(oldDir)) {
+        if (file !== 'step.json') fs.copyFileSync(path.join(oldDir, file), path.join(dir, file));
+      }
+      writeJsonSync(path.join(dir, 'step.json'), copy);
+      return copy;
+    });
+    const guide = this.getGuide(toGuideId);
+    const at = Number.isInteger(position) ? Math.min(position, guide.stepsOrder.length) : guide.stepsOrder.length;
+    guide.stepsOrder.splice(at, 0, ...copies.map((step) => step.stepId));
+    this.saveGuide(guide);
+    return copies;
+  }
+
   // ---- steps --------------------------------------------------------------
 
   /**

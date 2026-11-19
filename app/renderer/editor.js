@@ -1723,7 +1723,10 @@ class GuideEditor {
         },
         onContextMenu: async (e) => {
           e.preventDefault();
-          if (this.stepSelectMode) return;
+          if (this.stepSelectMode) {
+            await this.openStepSelectionMenu(e, step.stepId);
+            return;
+          }
           const kind = e.currentTarget?.classList?.contains('step-select') ? 'select' : 'actions';
           const guideId = this.guideId;
           await this.selectStep(step.stepId);
@@ -1744,6 +1747,8 @@ class GuideEditor {
               },
             },
             { label: t('Duplicate step'), action: () => this.duplicateSelectedStep() },
+            { label: t('Copy'), action: () => this.copySteps([step.stepId]) },
+            this.pasteItem(step.stepId),
             { label: t('Choose image…'), action: () => this.chooseScreenshot(step.stepId) },
             {
               label: t('Retake screenshot'),
@@ -2040,6 +2045,229 @@ class GuideEditor {
   async confirmDelete(message, title) {
     if (this.settings?.editor?.dangerousDeletes === true) return true;
     return confirmDialog(message, { title, danger: true, okLabel: t('Delete') });
+  }
+
+  /** The steps ticked in Select mode, in guide order. */
+  selectedStepIdsInOrder() {
+    return this.steps.map((s) => s.stepId).filter((id) => this.selectedSteps.has(id));
+  }
+
+  /**
+   * Select → right-click: what to do with all the ticked steps. Right-clicking
+   * a step that isn't ticked ticks it first.
+   */
+  async openStepSelectionMenu(e, stepId) {
+    if (!this.selectedSteps.has(stepId)) {
+      this.selectedSteps.add(stepId);
+      this.stepSelectionAnchor = stepId;
+      this.renderStepList();
+    }
+    const ids = this.selectedStepIdsInOrder();
+    if (!ids.length) return;
+    let guides = [];
+    try {
+      guides = (await api.library.list()).guides.filter((g) => g.guideId !== this.guideId);
+    } catch { /* the submenu then says there's nothing to choose */ }
+    guides.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+    const allHidden = ids.every((id) => this.stepMap.get(id)?.hidden);
+    const allSkipped = ids.every((id) => this.stepMap.get(id)?.skipped);
+    const trigger = [...this.dom.stepsList.querySelectorAll('[data-step-focus]')].find((node) => node.dataset.stepFocus === `check:${stepId}`);
+    contextMenu(e.clientX, e.clientY, [
+      {
+        label: t('Copy'),
+        submenu: [
+          { label: t('Copy'), action: () => this.copySteps(ids) },
+          { label: t('Copy to clipboard'), action: () => this.copyToClipboard(ids) },
+          {
+            label: t('Copy to another guide'),
+            submenu: guides.map((g) => ({ label: g.title || t('Untitled guide'), action: () => this.copySelectedStepsToGuide(g) })),
+          },
+        ],
+      },
+      this.pasteItem(stepId),
+      { label: t('Duplicate'), action: () => this.duplicateSelectedSteps() },
+      'sep',
+      { label: t('Move up'), action: () => this.moveSelectedSteps(-1) },
+      { label: t('Move down'), action: () => this.moveSelectedSteps(1) },
+      { label: t('Move to…'), action: () => this.moveSelectedStepsTo() },
+      'sep',
+      { label: allHidden ? t('Unhide') : t('Hide'), action: () => this.setSelectedStepsFlag('hidden', !allHidden) },
+      { label: allSkipped ? t('Unskip') : t('Skip'), action: () => this.setSelectedStepsFlag('skipped', !allSkipped) },
+      'sep',
+      { label: t('Delete'), danger: true, action: () => this.deleteSelectedSteps() },
+    ], { trigger, label: tn(ids.length, '{count} step selected', '{count} steps selected') });
+  }
+
+  /** Select → Copy to guide: copies of the ticked steps go on the end of `target`. */
+  async copySelectedStepsToGuide(target) {
+    const ids = this.selectedStepIdsInOrder();
+    if (!ids.length || !(await this.settlePendingSave())) return;
+    try {
+      await api.step.copy({ guideId: this.guideId, stepIds: ids, toGuideId: target.guideId });
+    } catch (err) {
+      this.onToast(t('Could not copy the steps: {error}', { error: err.message || err }), { error: true });
+      return;
+    }
+    this.onToast(tn(ids.length, 'Copied {count} step to “{guide}”.', 'Copied {count} steps to “{guide}”.', { guide: target.title || t('Untitled guide') }));
+  }
+
+  /**
+   * Copy (in a step's menu, or Select → Copy → Copy): remember steps to
+   * paste, in this guide or another, with Paste after this step.
+   */
+  copySteps(stepIds) {
+    this.stepClipboard = { guideId: this.guideId, stepIds: [...stepIds] };
+    this.onToast(tn(stepIds.length, '{count} step copied. Right-click a step and choose Paste after this step.', '{count} steps copied. Right-click a step and choose Paste after this step.'));
+  }
+
+  /** The menu's "Paste after this step", off until steps are copied. */
+  pasteItem(stepId) {
+    const clip = this.stepClipboard;
+    return {
+      label: clip ? tn(clip.stepIds.length, 'Paste {count} step after this step', 'Paste {count} steps after this step') : t('Paste after this step'),
+      disabled: !clip,
+      action: () => this.pasteStepsAfter(stepId),
+    };
+  }
+
+  async pasteStepsAfter(stepId) {
+    const clip = this.stepClipboard;
+    if (!clip) return;
+    const copies = await this.copyStepsAfter(clip.guideId, clip.stepIds, stepId);
+    if (copies) this.onToast(copies.length ? tn(copies.length, '{count} step pasted.', '{count} steps pasted.') : t('The copied steps were deleted, so there was nothing to paste.'), copies.length ? undefined : { error: true });
+  }
+
+  /** Select → Duplicate: copies of the ticked steps right after the last of them, named "… copy". */
+  async duplicateSelectedSteps() {
+    const ids = this.selectedStepIdsInOrder();
+    if (!ids.length) return;
+    const roots = outline.selectionRoots(this.steps.map((s) => s.stepId), outline.parentMap(this.steps), ids);
+    const copies = await this.copyStepsAfter(this.guideId, ids, roots[roots.length - 1], { asCopies: true });
+    if (copies) this.onToast(tn(copies.length, '{count} step duplicated.', '{count} steps duplicated.'));
+  }
+
+  /**
+   * Copies of steps from `fromGuideId` (this guide or another) placed right
+   * after `afterStepId` and its substeps, at its level, so the outline stays
+   * valid. In Select mode the copies are ticked afterwards. Returns the
+   * copies, or null when nothing was done.
+   */
+  async copyStepsAfter(fromGuideId, stepIds, afterStepId, { asCopies = false } = {}) {
+    if (!this.stepMap.has(afterStepId) || !(await this.settlePendingSave())) return null;
+    const order = this.steps.map((s) => s.stepId);
+    const parentOf = outline.parentMap(this.steps);
+    const position = order.indexOf(afterStepId) + outline.subtreeOf(order, parentOf, afterStepId).length;
+    let copies;
+    try {
+      copies = await api.step.copy({ guideId: fromGuideId, stepIds, toGuideId: this.guideId, position, parentId: parentOf.get(afterStepId) || null, asCopies });
+    } catch (err) {
+      this.onToast(t('Could not copy the steps: {error}', { error: err.message || err }), { error: true });
+      return null;
+    }
+    if (this.stepSelectMode) {
+      this.selectedSteps = new Set(copies.map((s) => s.stepId));
+      this.stepSelectionAnchor = null;
+    }
+    await this.reload(copies[0]?.stepId || this.selectedStepId);
+    return copies;
+  }
+
+  /** Select → Move up / Move down: the ticked steps, with their substeps, as one block. */
+  async moveSelectedSteps(delta) {
+    const moved = outline.moveStepsBy(this.steps.map((s) => s.stepId), outline.parentMap(this.steps), this.selectedStepIdsInOrder(), delta);
+    if (moved) await this.applyStepMove(this.selectedStepId, moved);
+  }
+
+  /** Select → Move to…: like a step's Move to…, for all the ticked steps and their substeps. */
+  async moveSelectedStepsTo() {
+    const ids = this.selectedStepIdsInOrder();
+    if (!ids.length) return;
+    // The steps that stay put: the places to choose from are between them.
+    const remaining = (order, parentOf, stepIds) => {
+      const moving = new Set(outline.selectionRoots(order, parentOf, stepIds).flatMap((id) => outline.subtreeOf(order, parentOf, id)));
+      return order.filter((id) => !moving.has(id));
+    };
+    const order = this.steps.map((s) => s.stepId);
+    const parentOf = outline.parentMap(this.steps);
+    const rest = remaining(order, parentOf, ids);
+    const firstRoot = outline.selectionRoots(order, parentOf, ids)[0];
+    const numbers = stepNumberMap(this.steps);
+    const nameOf = (id) => `${numbers.get(id)}  ${this.stepMap.get(id).title || t('Untitled step')}`;
+    const positions = [];
+    for (let gap = 0; gap <= rest.length; gap++) {
+      const levels = new Map();
+      const deepest = gap > 0 ? outline.depthOf(parentOf, rest[gap - 1]) + 1 : 0;
+      for (let depth = 0; depth <= deepest; depth++) {
+        const result = outline.moveSteps(order, parentOf, ids, gap, depth);
+        const parentId = result && result.parentOf.get(firstRoot);
+        if (!result || levels.has(parentId || '')) continue;
+        levels.set(parentId || '', {
+          value: String(depth),
+          depth: parentId ? outline.depthOf(result.parentOf, parentId) + 1 : 0,
+          label: parentId ? t('Substep of {step}', { step: nameOf(parentId) }) : t('Top level'),
+        });
+      }
+      if (!levels.size) continue;
+      positions.push({
+        value: String(gap),
+        label: gap === 0 ? t('At the top') : t('After {step}', { step: nameOf(rest[gap - 1]) }),
+        levels: [...levels.values()].sort((a, b) => a.depth - b.depth),
+      });
+    }
+    const choice = await dialogs.showMoveStepDialog({
+      title: tn(ids.length, 'Move {count} step', 'Move {count} steps'),
+      hint: t('Substeps move with their steps.'),
+      positions,
+      currentDepth: outline.depthOf(parentOf, firstRoot),
+    });
+    if (!choice) return;
+    // Plan again on the outline as it is now, in case it changed while the dialog was open.
+    const anchor = Number(choice.gap) > 0 ? rest[Number(choice.gap) - 1] : null;
+    const nowOrder = this.steps.map((s) => s.stepId);
+    const nowParents = outline.parentMap(this.steps);
+    const nowIds = ids.filter((id) => this.stepMap.has(id));
+    const nowGap = anchor ? remaining(nowOrder, nowParents, nowIds).indexOf(anchor) + 1 : 0;
+    const moved = nowIds.length && (!anchor || nowGap > 0) ? outline.moveSteps(nowOrder, nowParents, nowIds, nowGap, Number(choice.depth)) : null;
+    if (!moved) {
+      this.onToast(t('The guide changed while you were choosing, so the steps were not moved. Try Move to… again.'), { error: true });
+      return;
+    }
+    await this.applyStepMove(this.selectedStepId, moved);
+  }
+
+  /**
+   * Select → Hide / Unhide and Skip / Unskip: the ticked steps' Hidden or
+   * Skipped setting (`flag`), as one undo step.
+   */
+  async setSelectedStepsFlag(flag, value) {
+    const ids = this.selectedStepIdsInOrder().filter((id) => Boolean(this.stepMap.get(id)?.[flag]) !== value);
+    if (!ids.length || !(await this.settlePendingSave())) return;
+    const before = [];
+    const after = [];
+    let failed = null;
+    for (const stepId of ids) {
+      const step = this.stepMap.get(stepId);
+      if (!step) continue;
+      const original = clone(step);
+      try {
+        const saved = await api.step.save({ guideId: this.guideId, step: { ...clone(step), [flag]: value } });
+        before.push(original);
+        after.push(this.commitBatchSave(saved));
+      } catch (err) {
+        failed = err;
+        break;
+      }
+    }
+    if (before.length) this.pushCanvasHistory(this.multiStepRecord(before, after));
+    await this.reload(this.selectedStepId);
+    const messages = {
+      hidden: [tn(before.length, '{count} step hidden.', '{count} steps hidden.'), tn(before.length, '{count} step unhidden.', '{count} steps unhidden.')],
+      skipped: [tn(before.length, '{count} step skipped.', '{count} steps skipped.'), tn(before.length, '{count} step unskipped.', '{count} steps unskipped.')],
+    };
+    let text = messages[flag][value ? 0 : 1];
+    if (before.length) text += ` ${t('Press Ctrl+Z to undo.')}`;
+    if (failed) text += ` ${t('Stopped early: {error}', { error: failed.message || failed })}`;
+    this.onToast(text, failed ? { error: true } : undefined);
   }
 
   async deleteSelectedSteps() {
@@ -4148,12 +4376,14 @@ class GuideEditor {
 
   /**
    * Share → Copy to clipboard: the whole guide with its screenshots, for
-   * mail, chat and documents. The main process checks for private details
+   * mail, chat and documents; `stepIds` (Select → right-click) copies only
+   * those steps. The main process checks for private details
    * first, as publishing does; blurs it adds are in the copy.
    */
-  async copyToClipboard() {
+  async copyToClipboard(stepIds = null) {
     if (!this.guideId || this.copyingToClipboard) return;
     const guideId = this.guideId;
+    const only = Array.isArray(stepIds) ? { stepIds } : {};
     this.copyingToClipboard = true;
     try {
       // A window shows each stage (checking, building, copying) and the result.
@@ -4163,7 +4393,7 @@ class GuideEditor {
           const stop = api.guide.onCopyProgress((update) => { if (update?.guideId === guideId) onProgress(update); });
           try {
             await this.saveAll();
-            return await api.guide.copyToClipboard({ guideId });
+            return await api.guide.copyToClipboard({ guideId, ...only });
           } finally {
             stop();
           }

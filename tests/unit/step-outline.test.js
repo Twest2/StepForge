@@ -171,3 +171,32 @@ test('moveSubtreeBy: the last substep moving down becomes the next step\'s first
   const deep = outline('A a1>A a11>a1 a2>A a21>a2');
   assert.equal(show(moveSubtreeBy(deep.order, deep.parentOf, 'a11', 1)), 'A a1>A a2>A a11>a2 a21>a2');
 });
+
+test('several selected steps move together as one block, with their substeps', () => {
+  const { moveSteps, moveStepsBy, selectionRoots } = require('../../core/step-outline');
+  const o = outline('A a1>A B C c1>C D');
+  // A selected substep whose parent is selected moves with the parent, not on its own.
+  assert.deepEqual(selectionRoots(o.order, o.parentOf, ['a1', 'A', 'C']), ['A', 'C']);
+  // Rest is B D: gap 2 = the end. A and C keep their substeps and stay top level.
+  assert.equal(show(moveSteps(o.order, o.parentOf, ['A', 'C'], 2)), 'B D A a1>A C c1>C');
+  assert.equal(show(moveSteps(o.order, o.parentOf, ['B', 'D'], 0)), 'B D A a1>A C c1>C');
+  // Into C as substeps (rest A a1 C c1: after c1, depth 1).
+  assert.equal(show(moveSteps(o.order, o.parentOf, ['B', 'D'], 4, 1)), 'A a1>A C c1>C B>C D>C');
+  // Substeps moved to the top keep the closest depth the gap allows.
+  assert.equal(show(moveSteps(o.order, o.parentOf, ['a1', 'c1'], 0)), 'a1 c1 A B C D');
+  assert.equal(moveSteps(o.order, o.parentOf, [], 0), null);
+  assert.equal(moveSteps(o.order, o.parentOf, ['A'], 99), null);
+
+  // Up and down gather the selection behind the first selected step.
+  assert.equal(show(moveStepsBy(o.order, o.parentOf, ['B', 'D'], -1)), 'B D A a1>A C c1>C');
+  assert.equal(show(moveStepsBy(o.order, o.parentOf, ['A', 'B'], 1)), 'C c1>C A a1>A B D');
+  assert.equal(moveStepsBy(o.order, o.parentOf, ['A', 'B'], -1), null);
+  assert.equal(moveStepsBy(o.order, o.parentOf, ['C', 'D'], 1), null);
+  // Every result reads top to bottom.
+  for (const ids of [['A'], ['a1', 'B'], ['B', 'c1'], ['c1', 'D'], ['a1', 'c1']]) {
+    for (const delta of [-1, 1]) {
+      const r = moveStepsBy(o.order, o.parentOf, ids, delta);
+      if (r) assert.ok(isValidOutline(r.order, r.parentOf), `${ids} ${delta}`);
+    }
+  }
+});

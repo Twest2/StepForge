@@ -181,6 +181,80 @@
     return moveSubtree(order, parentOf, stepId, gap, depth);
   }
 
+  /** The steps in `stepIds` with no parent also in it, in `order`: each one moves or copies with its substeps. */
+  function selectionRoots(order, parentOf, stepIds) {
+    const selected = new Set(stepIds);
+    return order.filter((id) => {
+      if (!selected.has(id)) return false;
+      for (let p = parentOf.get(id); p; p = parentOf.get(p)) if (selected.has(p)) return false;
+      return true;
+    });
+  }
+
+  /**
+   * Several steps (Select → right-click → Move to…), each with its substeps,
+   * moved together as one block to the gap before `rest[restGap]`, where
+   * `rest` is the order without the moved steps (0 = the top, rest.length =
+   * the end). The roots (selectionRoots) all get the same parent: of those
+   * the gap allows, the one whose depth is closest to `depthHint` (default:
+   * the first root's depth), then the shallower.
+   *
+   * Returns { order, parentOf }, or null when nothing is moved or the gap is unknown.
+   */
+  function moveSteps(order, parentOf, stepIds, restGap, depthHint = null) {
+    const base = repairOutline(order, parentOf);
+    const roots = selectionRoots(order, base, stepIds);
+    if (!roots.length) return null;
+    const blockSet = new Set(roots.flatMap((id) => subtreeOf(order, base, id)));
+    const rest = order.filter((id) => !blockSet.has(id));
+    if (!Number.isInteger(restGap) || restGap < 0 || restGap > rest.length) return null;
+    const moved = [...rest.slice(0, restGap), ...order.filter((id) => blockSet.has(id)), ...rest.slice(restGap)];
+    const target = Number.isFinite(depthHint) ? depthHint : depthOf(base, roots[0]);
+    const candidates = [null];
+    for (let p = restGap > 0 ? rest[restGap - 1] : null; p; p = base.get(p) || null) candidates.push(p);
+    let best = null;
+    for (const parentId of candidates) {
+      const next = new Map(base);
+      for (const id of roots) next.set(id, parentId);
+      if (!isValidOutline(moved, next)) continue;
+      const depth = parentId ? depthOf(base, parentId) + 1 : 0;
+      const score = Math.abs(depth - target) * 1e3 + depth;
+      if (!best || score < best.score) best = { order: moved, parentOf: next, score };
+    }
+    return best && { order: best.order, parentOf: best.parentOf };
+  }
+
+  /**
+   * Move up (delta -1) or down (+1) for several steps: like moveSubtreeBy,
+   * from where the first of them is, with the rest gathered behind it.
+   */
+  function moveStepsBy(order, parentOf, stepIds, delta) {
+    const base = repairOutline(order, parentOf);
+    const roots = selectionRoots(order, base, stepIds);
+    if (!roots.length) return null;
+    const blockSet = new Set(roots.flatMap((id) => subtreeOf(order, base, id)));
+    const rest = order.filter((id) => !blockSet.has(id));
+    const depth = depthOf(base, roots[0]);
+    // Where the block starts, counted in `rest`.
+    const k = order.slice(0, order.indexOf(roots[0])).filter((id) => !blockSet.has(id)).length;
+    let gap;
+    if (delta < 0) {
+      if (k === 0) return null;
+      const parent = base.get(roots[0]) || null;
+      let cur = rest[k - 1];
+      while (cur && cur !== parent && (base.get(cur) || null) !== parent) cur = base.get(cur) || null;
+      gap = cur ? rest.indexOf(cur) : 0;
+    } else {
+      if (k >= rest.length) return null;
+      const nextDepth = depthOf(base, rest[k]);
+      gap = k + 1;
+      if (nextDepth >= depth) {
+        while (gap < rest.length && depthOf(base, rest[gap]) > nextDepth) gap += 1;
+      }
+    }
+    return moveSteps(order, parentOf, stepIds, gap, depth);
+  }
+
   /**
    * The number the step list shows for each step ("2", "2.1"), by stepId.
    * Hidden and skipped steps are counted, unlike in exports.
@@ -221,5 +295,5 @@
     });
   }
 
-  return { isValidOutline, withParent, parentMap, planSubsteps, depthOf, repairOutline, subtreeOf, moveSubtree, moveSubtreeBy, stepNumberMap, visibleSteps };
+  return { isValidOutline, withParent, parentMap, planSubsteps, depthOf, repairOutline, subtreeOf, moveSubtree, moveSubtreeBy, selectionRoots, moveSteps, moveStepsBy, stepNumberMap, visibleSteps };
 });

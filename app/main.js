@@ -1022,6 +1022,20 @@ function setupIpc() {
       && c.optionalBase64(a.originalBase64) && c.optionalBase64(a.workingBase64)
       && c.optionalNumber(a.position, 0, 100000),
   });
+  // Steps' right-click menus: Duplicate and Paste after this step (copies
+  // placed after a step) and Copy → Copy to another guide (onto its end).
+  h('steps:copy', ({ guideId, stepIds, toGuideId, position, parentId = null, asCopies = false }) => {
+    if (!store.guideExists(guideId) || !store.guideExists(toGuideId)) throw new Error(t('Guide not found.'));
+    if (parentId && !store.getGuide(toGuideId).stepsOrder.includes(parentId)) throw new Error(t('Step not found.'));
+    // Duplicate names its copies like a step's Duplicate step does.
+    const rename = asCopies ? (title) => (title ? t('{title} copy', { title }) : t('Untitled step copy')) : null;
+    const copies = store.copySteps(guideId, stepIds, toGuideId, { position, parentId, rename });
+    reindex(toGuideId);
+    return copies;
+  }, {
+    validate: (a) => c.id(a.guideId) && c.id(a.toGuideId) && Array.isArray(a.stepIds) && a.stepIds.length <= 100000
+      && a.stepIds.every((id) => c.id(id)) && c.optionalNumber(a.position, 0, 100000) && (a.parentId == null || c.id(a.parentId)) && typeof (a.asCopies ?? false) === 'boolean',
+  });
   h('steps:reorder', ({ guideId, order, parents }) => store.reorderSteps(guideId, order, parents), {
     validate: (a) => c.id(a.guideId)
       && Array.isArray(a.order) && a.order.length <= 100000 && a.order.every((id) => c.id(id))
@@ -1395,7 +1409,8 @@ function setupIpc() {
 
   // Share → Copy to clipboard: the guide as HTML with its screenshots built
   // in, for mail, chat and documents, and as plain text.
-  h('guide:copyToClipboard', async ({ guideId }) => {
+  // `stepIds` (Select → right-click → Copy to clipboard) copies only those steps.
+  h('guide:copyToClipboard', async ({ guideId, stepIds = null }) => {
     if (!store.guideExists(guideId)) throw new Error(t('Guide not found.'));
     // Each stage is shown in the Copy to clipboard window (app/renderer/dialogs.js).
     const progress = (update) => sendToRenderer('clipboard:progress', { guideId, ...update });
@@ -1405,7 +1420,7 @@ function setupIpc() {
       onProgress: ({ done, total }) => progress({ stage: 'check', done, total }),
     });
     progress({ stage: 'build' });
-    const result = await runExportInWorker({ language: uiLanguage(), dataDir: store.root, guideId, format: 'clipboard', options: {},
+    const result = await runExportInWorker({ language: uiLanguage(), dataDir: store.root, guideId, format: 'clipboard', options: {}, onlyStepIds: stepIds,
       outDir: path.join(store.tempDir, `clipboard-${guideId}`), globals: settings.getGlobalPlaceholders(),
       codeStyle: exportCodeStyle(), reviewDays: exportReviewDays(), branding: exportBranding() });
     progress({ stage: 'copy' });
@@ -1413,7 +1428,7 @@ function setupIpc() {
     // One item with both kinds: apps take the HTML, or the text if that's all they read.
     await clipboard.write([new ClipboardItem({ 'text/html': html, 'text/plain': result.text })]);
     return { ok: true, imageCount: result.imageCount, bytes: Buffer.byteLength(html), review };
-  }, { validate: (a) => c.id(a.guideId) });
+  }, { validate: (a) => c.id(a.guideId) && (a.stepIds == null || (Array.isArray(a.stepIds) && a.stepIds.length <= 100000 && a.stepIds.every((id) => c.id(id)))) });
 
   h('github:publish', async ({ guideId, days, format = 'html-rich', options = {}, brandProfileId }) => {
     const guide = store.getGuide(guideId);

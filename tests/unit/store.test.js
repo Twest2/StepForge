@@ -425,3 +425,49 @@ test('reorderSteps checks the outline whenever parents is passed, even empty, un
   store.reorderSteps(id, [a1.stepId, b.stepId, a.stepId], {});
   assert.deepEqual(store.getGuide(id).stepsOrder, [a1.stepId, b.stepId, a.stepId]);
 });
+
+test('copySteps copies steps with their screenshots into this guide or another, keeping nesting among the copies', (t) => {
+  const root = makeTmpDir('copy-steps');
+  t.after(() => rmrf(root));
+  const store = new GuideStore(root);
+  const from = store.createGuide({ title: 'From' });
+  const a = store.addStep(from.guideId, { title: 'A' }, TINY_PNG, { width: 1, height: 1 });
+  const a1 = store.addStep(from.guideId, { kind: 'empty', title: 'A1', parentStepId: a.stepId });
+  const b = store.addStep(from.guideId, { kind: 'empty', title: 'B' });
+  const to = store.createGuide({ title: 'To' });
+  const x = store.addStep(to.guideId, { kind: 'empty', title: 'X' });
+
+  // Another guide: onto the end, in guide order whatever order the ids came in.
+  const copies = store.copySteps(from.guideId, [b.stepId, a1.stepId, a.stepId], to.guideId);
+  assert.deepEqual(copies.map((s) => s.title), ['A', 'A1', 'B']);
+  const target = store.getGuide(to.guideId);
+  assert.deepEqual(target.stepsOrder, [x.stepId, ...copies.map((s) => s.stepId)]);
+  const [ca, ca1, cb] = copies.map((s) => store.getStep(to.guideId, s.stepId));
+  assert.equal(ca1.parentStepId, ca.stepId, 'a copied substep stays under its copied parent');
+  assert.equal(ca.parentStepId, null);
+  assert.equal(cb.parentStepId, null);
+  assert.deepEqual(fs.readFileSync(store.stepImagePath(to.guideId, ca.stepId, 'original')), TINY_PNG);
+
+  // Same guide (Duplicate): at a position, a substep without its parent gets `parentId`.
+  const dup = store.copySteps(from.guideId, [a1.stepId], from.guideId, { position: 2, parentId: a.stepId });
+  assert.deepEqual(store.getGuide(from.guideId).stepsOrder, [a.stepId, a1.stepId, dup[0].stepId, b.stepId]);
+  assert.equal(store.getStep(from.guideId, dup[0].stepId).parentStepId, a.stepId);
+  assert.equal(store.getStep(from.guideId, a1.stepId).title, 'A1', 'the original is untouched');
+  // Duplicate names the copies.
+  const named = store.copySteps(from.guideId, [b.stepId], from.guideId, { rename: (title) => `${title} copy` });
+  assert.equal(store.getStep(from.guideId, named[0].stepId).title, 'B copy');
+});
+
+test('copying only some steps to the clipboard renders just those, numbered from 1', (t) => {
+  const { buildRenderAst } = require('../../core/renderast');
+  const root = makeTmpDir('only-steps');
+  t.after(() => rmrf(root));
+  const store = new GuideStore(root);
+  const guide = store.createGuide({ title: 'Guide' });
+  const a = store.addStep(guide.guideId, { kind: 'empty', title: 'A' });
+  const a1 = store.addStep(guide.guideId, { kind: 'empty', title: 'A1', parentStepId: a.stepId });
+  const b = store.addStep(guide.guideId, { kind: 'empty', title: 'B' });
+  const ast = buildRenderAst(store, guide.guideId, { onlyStepIds: [a1.stepId, b.stepId] });
+  assert.deepEqual(ast.steps.map((s) => [s.number, s.title]), [['1', 'A1'], ['2', 'B']]);
+  assert.equal(buildRenderAst(store, guide.guideId).steps.length, 3);
+});

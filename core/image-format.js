@@ -145,7 +145,7 @@ async function encodeWebpVerified(png, codec, webpQuality, lossless = true) {
  * every step's flowchart: Map of absolute file path (or flowchartImageKey) ->
  * PNG bytes, for the render AST to read.
  */
-async function prepareExportImages(store, guideId, { codec = activeCodec, maxSteps = 0 } = {}) {
+async function prepareExportImages(store, guideId, { codec = activeCodec, maxSteps = 0, onlyStepIds = null } = {}) {
   const images = new Map();
   const guide = store.getGuide(guideId);
   const steps = store.listSteps(guideId);
@@ -158,6 +158,7 @@ async function prepareExportImages(store, guideId, { codec = activeCodec, maxSte
     const step = steps.get(stepId);
     if (!step) continue;
     if (step.hidden || (step.skipped && guide.flags?.hideSkippedStepsInExports)) continue;
+    if (onlyStepIds && !onlyStepIds.includes(stepId)) continue;
     if (maxSteps > 0 && ++visible > maxSteps) break;
     if (flowchart.hasFlowchart(step)) {
       // The flowchart's SVG, drawn by the same codec (Sharp reads SVG input).

@@ -56,14 +56,16 @@ function flowchartAltText(number, title, language = 'en') {
  * `language` is the interface language (core/i18n.js) the text StepForge
  * adds to the export is written in (core/export-text.js).
  */
-function buildRenderAst(store, guideId, { globals = {}, now = new Date(), maxSteps = 0, codeStyle = DEFAULT_CODE_STYLE, reviewDays = DEFAULT_REVIEW_DAYS, branding = null, images = null, language = 'en' } = {}) {
+function buildRenderAst(store, guideId, { globals = {}, now = new Date(), maxSteps = 0, onlyStepIds = null, codeStyle = DEFAULT_CODE_STYLE, reviewDays = DEFAULT_REVIEW_DAYS, branding = null, images = null, language = 'en' } = {}) {
   language = exportTranslator(language).language;
   const guide = store.getGuide(guideId);
   const stepsMap = store.listSteps(guideId);
 
+  // `onlyStepIds`: copying just the selected steps (a substep without its parent is shown top level).
+  const only = onlyStepIds ? new Set(onlyStepIds) : null;
   const includedIds = guide.stepsOrder.filter((id) => {
     const s = stepsMap.get(id);
-    if (!s || s.hidden) return false;
+    if (!s || s.hidden || (only && !only.has(id))) return false;
     if (s.skipped && guide.flags.hideSkippedStepsInExports) return false;
     return true;
   });

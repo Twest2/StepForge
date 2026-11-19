@@ -13,7 +13,7 @@ const WORKER_PATH = path.join(__dirname, '..', 'core', 'export-worker.js');
  * large the guide is. `language` is the interface language the text
  * StepForge adds to the export is written in (core/export-text.js).
  */
-function runExportInWorker({ dataDir, guideId, format, options, outDir, globals, maxSteps, codeStyle, reviewDays, branding = null, language = 'en', task = 'export' }) {
+function runExportInWorker({ dataDir, guideId, format, options, outDir, globals, maxSteps, onlyStepIds = null, codeStyle, reviewDays, branding = null, language = 'en', task = 'export' }) {
   return new Promise((resolve, reject) => {
     const worker = fork(WORKER_PATH, [], {
       env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
@@ -37,7 +37,7 @@ function runExportInWorker({ dataDir, guideId, format, options, outDir, globals,
       finish(reject, new Error(t('Export worker exited unexpectedly (code {code}).', { code })));
     });
 
-    worker.send({ dataDir, guideId, format, options, outDir, globals, maxSteps, codeStyle, reviewDays, branding, language, task });
+    worker.send({ dataDir, guideId, format, options, outDir, globals, maxSteps, onlyStepIds, codeStyle, reviewDays, branding, language, task });
   });
 }
 

@@ -2433,5 +2433,4 @@
   "Choose a “Visible until” date after the “Visible from” date.": "「公開終了日」は「公開開始日」より後の日付にしてください。",
   "Accept": "承認",
   "Keep this blur.": "このぼかしを残します。",
-  "blurred, accepted": "ぼかし済み、承認済み",
 });

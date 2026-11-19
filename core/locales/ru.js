@@ -2433,5 +2433,4 @@
   "Choose a “Visible until” date after the “Visible from” date.": "Выберите дату «Видна до» позже даты «Видна с».",
   "Accept": "Принять",
   "Keep this blur.": "Оставить это размытие.",
-  "blurred, accepted": "размыто, принято",
 });

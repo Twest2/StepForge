@@ -2433,5 +2433,4 @@
   "Choose a “Visible until” date after the “Visible from” date.": "请选择晚于“可见开始日期”的“可见截止日期”。",
   "Accept": "接受",
   "Keep this blur.": "保留此模糊。",
-  "blurred, accepted": "已模糊，已接受",
 });

@@ -83,15 +83,15 @@ function privacyReviewList(api, guideId, review, { onShow = null, onChange = () 
     for (const item of current.blurs) {
       const keep = el('button', { type: 'button', title: t('Remove this blur. StepForge won’t blur it again.') }, t('Not private'));
       keep.addEventListener('click', act(keep, t('Removing…'), () => api.redact.keepVisible({ guideId, stepId: item.stepId, annotationId: item.annotationId })));
-      const accept = item.accepted ? null : el('button.primary', { type: 'button', title: t('Keep this blur.') }, t('Accept'));
-      accept?.addEventListener('click', act(accept, t('Saving…'), () => api.redact.accept({ guideId, stepId: item.stepId, annotationId: item.annotationId })));
+      const accept = el('button.primary', { type: 'button', title: t('Keep this blur.') }, t('Accept'));
+      accept.addEventListener('click', act(accept, t('Saving…'), () => api.redact.accept({ guideId, stepId: item.stepId, annotationId: item.annotationId })));
       // Before is the screenshot without this blur, after is with it, drawn like a snapshot comparison.
-      const images = !item.accepted && item.file ? window.StepForgeCompare.imageCompare({ label: '', status: 'changed',
+      const images = item.file ? window.StepForgeCompare.imageCompare({ label: '', status: 'changed',
         before: { file: item.file, annotations: (item.annotations || []).filter((a) => a.id !== item.annotationId) },
         after: { file: item.file, annotations: item.annotations || [] } }, loadImage, observer, { before: t('Before'), after: t('After') }) : null;
       node.append(el(`div.privacy-item${images ? '.with-images' : ''}`, {},
         el('span.privacy-kind', {}, t('Step {number}', { number: item.stepNumber })),
-        el('span.privacy-label', {}, privacyKindLabel(item), el('span.muted', {}, ` · ${item.accepted ? t('blurred, accepted') : t('blurred in the screenshot')}`)),
+        el('span.privacy-label', {}, privacyKindLabel(item), el('span.muted', {}, ` · ${t('blurred in the screenshot')}`)),
         el('div.privacy-actions', {},
           onShow ? el('button', { type: 'button', onClick: () => onShow(item.stepId, item.annotationId) }, t('Show')) : null,
           accept, keep),

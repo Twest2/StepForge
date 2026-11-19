@@ -2433,5 +2433,4 @@
   "Choose a “Visible until” date after the “Visible from” date.": "Elige una fecha «Visible hasta» posterior a la fecha «Visible desde».",
   "Accept": "Aceptar",
   "Keep this blur.": "Mantener este difuminado.",
-  "blurred, accepted": "difuminado, aceptado",
 });

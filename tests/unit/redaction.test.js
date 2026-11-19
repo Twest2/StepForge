@@ -116,15 +116,25 @@ test('checking a guide adds blurs once, reads screenshots at twice the size, and
   assert.equal(calls.reads, 1);
 
   const listed = redactor.review(guideId).blurs[0];
-  assert.deepEqual([listed.accepted, listed.file, listed.annotations.map((a) => a.id)],
-    [false, `steps/${stepId}/${store.getStep(guideId, stepId).image.workingPath}`, [blur.id]], 'the review can draw the screenshot without and with the blur');
-  redactor.accept({ guideId, stepId, annotationId: blur.id });
-  assert.equal(redactor.review(guideId).blurs[0].accepted, true, 'Accept is saved with the guide');
-  assert.equal((await redactor.checkGuide(guideId, { force: true })).added, 0, 'accepting doesn’t add the blur again');
+  assert.deepEqual([listed.file, listed.annotations.map((a) => a.id)],
+    [`steps/${stepId}/${store.getStep(guideId, stepId).image.workingPath}`, [blur.id]], 'the review can draw the screenshot without and with the blur');
 
   const review = redactor.keepVisible({ guideId, stepId, annotationId: blur.id });
   assert.equal(review.annotations.length, 0);
   assert.equal((await redactor.checkGuide(guideId, { force: true })).added, 0, '"not private" is remembered');
+});
+
+test('Accept keeps a blur as an ordinary one, as if drawn in the editor, and it leaves the review for good', async (t) => {
+  const { store, guideId, stepId } = guideWithScreenshot(t);
+  const { redactor } = service(store, [{ words: [{ text: 'casey@contoso.com', bbox: { x0: 200, y0: 40, x1: 600, y1: 70 } }] }]);
+  await redactor.checkGuide(guideId);
+  const [blur] = store.getStep(guideId, stepId).annotations;
+  redactor.accept({ guideId, stepId, annotationId: blur.id });
+  const [kept] = store.getStep(guideId, stepId).annotations;
+  assert.deepEqual([kept.id, kept.type, kept.x, kept.redact], [blur.id, 'blur', blur.x, undefined], 'the blur stays where it was, without StepForge’s mark');
+  assert.equal(redactor.review(guideId).blurs.length, 0);
+  assert.equal((await redactor.checkGuide(guideId, { force: true })).added, 0, 'a check doesn’t add it again');
+  assert.equal(redactor.review(guideId).blurs.length, 0);
 });
 
 test('new words to hide cause a fresh check, and step text can be reviewed and hidden', async (t) => {

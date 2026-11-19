@@ -13,10 +13,11 @@ updated is the best way to stay protected.
 ## Security at a glance
 
 - **Offline by default.** Capture, editing, OCR, and export make no network
-  connections. There's no telemetry, license check, or automatic update check.
+  connections. There's no telemetry or license check. The only automatic
+  connection is one update check to GitHub at startup, which Settings → About
+  turns off.
 - **Opt-in networking only.** AI, cloud sync, GitHub sharing, and Confluence
-  and Wiki.js publishing are off until you turn them on, and **Check for
-  updates** runs only when you press it. All are described in the
+  and Wiki.js publishing are off until you turn them on. All are described in the
   [privacy policy](PRIVACY.md).
 - **Sandboxed interface.** The app's window runs in Chromium's sandbox with no
   direct access to your files, the network, or credentials.

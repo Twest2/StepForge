@@ -164,6 +164,8 @@ const DEFAULT_SETTINGS = {
     keepLast: 10,
     everyNSaves: 25,
   },
+  // Settings → About: ask GitHub for a newer release each time StepForge starts.
+  updates: { checkOnStart: true },
 };
 
 // Values that sync independently; changing a whole capture/branding object

@@ -277,9 +277,9 @@ was recorded with StepForge.
 
 StepForge works entirely on your computer.
 
-- **No accounts, no telemetry, no analytics,** no license checks, and no
-  automatic update checks (you can check for updates yourself in
-  **Settings → About**).
+- **No accounts, no telemetry, no analytics,** and no license checks.
+  When it starts, StepForge asks GitHub whether a newer version is out
+  (turn this off in **Settings → About**).
 - Capture, editing, OCR and export all work offline.
 - Cloud sync, sharing, publishing and AI are **off by default** and only
   connect when you turn them on. AI talks to a model on your own machine

@@ -7,7 +7,8 @@ these optional features:
 - syncing with Google Drive, OneDrive, Dropbox or Nextcloud
 - sharing a guide on GitHub Pages, or publishing it to Confluence or Wiki.js
 - AI, if you point it at a server on another computer
-- **Check for updates**, when you press it
+- checking GitHub for a newer version when StepForge starts (turn it off in
+  **Settings → About**), or when you press **Check for updates**
 
 If you connect an AI agent such as Claude or Codex, that agent sends what it
 reads to its AI provider.
@@ -15,7 +16,7 @@ reads to its AI provider.
 ## What StepForge never does
 
 - No telemetry, analytics, or crash reporting.
-- No automatic update checks, license checks, or "phoning home".
+- No license checks or "phoning home" beyond the update check.
 - No uploads, except by the optional features listed above.
 - No downloading code or components while it runs.
 
@@ -57,9 +58,12 @@ settings on this computer.
 
 ## Checking for updates
 
-**Settings → About → Check for updates** asks GitHub whether a newer version
-of StepForge has been released. It only happens when you press the button,
-never automatically. StepForge sends a single request to GitHub containing
+When it starts, and when you press **Settings → About → Check for updates**,
+StepForge asks GitHub whether a newer version has been released. If one has,
+**Update available** appears next to StepForge at the top left. To stop the
+check at startup, turn off **Check for updates automatically** in
+**Settings → About**. Microsoft Store
+installs don't check at startup, since the Store updates them. StepForge sends a single request to GitHub containing
 only its version number (as the browser-style "User-Agent"); GitHub sees your
 IP address as with any website visit. See the
 [GitHub Privacy Statement](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement).

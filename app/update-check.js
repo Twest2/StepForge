@@ -2,13 +2,13 @@
 const { t } = require('../core/ui-text');
 
 /**
- * User-initiated update check for Settings → About.
+ * Update check for Settings → About and the bar under the top bar.
  *
- * This is the only place StepForge asks whether a newer version exists, and it
- * runs only when the user presses "Check for updates" — never at startup or in
- * the background. It makes one request to a fixed GitHub endpoint, refuses
- * redirects, has a deadline and a response-size cap, and sends nothing but a
- * User-Agent. The renderer never performs the request itself.
+ * This is the only place StepForge asks whether a newer version exists. It
+ * runs when StepForge starts (unless Settings → About turns that off) and when
+ * the user presses "Check for updates". It makes one request to a fixed GitHub
+ * endpoint, refuses redirects, has a deadline and a response-size cap, and
+ * sends nothing but a User-Agent. The renderer never performs the request itself.
  */
 
 const LATEST_RELEASE_API = 'https://api.github.com/repos/Twest2/StepForge/releases/latest';
@@ -139,6 +139,8 @@ async function checkForUpdates({
     latestVersion: formatVersion(release.tag_name),
     releaseUrl,
     publishedAt: typeof release.published_at === 'string' ? release.published_at : null,
+    // The release's text on GitHub (Markdown), shown as "What's new".
+    notes: typeof release.body === 'string' ? release.body.slice(0, 100000) : '',
   };
   if (compareVersions(latest, current) > 0) {
     const microsoftStore = platform === 'win32' && store === true;

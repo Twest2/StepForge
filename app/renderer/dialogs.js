@@ -505,18 +505,16 @@ function showFindReplace({ stepNumbers = {}, find, replace } = {}) {
 }
 
 /**
- * Settings → About "Check for updates", and on Windows installs registered
- * with Chocolatey, "Update now". The check only contacts GitHub when pressed
- * (app/update-check.js); Update now is decided and run by the main process
- * (app/windows-update.js). A Microsoft Store install is offered its Store page
- * instead of a download. `flushEdits` saves the open guide before StepForge
- * closes for the update and resolves false if that failed.
+ * What an available update offers: the version, how to install it on this
+ * computer, and its buttons. On Windows installs registered with Chocolatey
+ * that is "Update now" (decided and run by the main process,
+ * app/windows-update.js); a Microsoft Store install gets its Store page
+ * instead of a download. Settings → About and the "Update available" dialog
+ * both show it. `flushEdits` saves the open guide before StepForge closes for
+ * the update and resolves false if that failed.
  */
-function makeUpdateCheck(api, { openLink, flushEdits = null }) {
-  const updateStatus = el('div.update-status', { role: 'status', 'aria-live': 'polite' });
-  const checkUpdatesBtn = el('button', { type: 'button' }, t('Check for updates'));
-
-  const updateNowButton = (result) => {
+function updateAvailableContent(api, result, { openLink, flushEdits = null }) {
+  const updateNowButton = () => {
     const button = el('button.primary', { type: 'button' }, t('Update now'));
     const note = el('div.setting-desc.update-now-note', {});
     button.addEventListener('click', async () => {
@@ -569,6 +567,50 @@ function makeUpdateCheck(api, { openLink, flushEdits = null }) {
     return { button, note };
   };
 
+  const title = el('div.update-status-title', {}, t('Version {version} is available', { version: result.latestVersion }));
+  const desc = el('div.setting-desc', {}, `${t('You have {version}.', { version: result.currentVersion })} ${result.hint || ''}`);
+  if (result.store) {
+    const store = storeButton();
+    return [title, desc, el('div.settings-actions', {}, store.button), store.note];
+  }
+  // With Update now, downloading stays available as the secondary action.
+  const updateNow = result.updateNow ? updateNowButton() : null;
+  const download = el(updateNow ? 'button' : 'button.primary', { type: 'button', onClick: openLink(result.releaseUrl) }, t('View release and download'));
+  return [title, desc, el('div.settings-actions', {}, updateNow ? updateNow.button : null, download), ...(updateNow ? [updateNow.note] : [])];
+}
+
+/**
+ * "Update available" next to StepForge in the top bar: the new release's
+ * notes (its GitHub release text, Markdown) and the buttons to install it.
+ * The notes are sanitized like a description; links open in the browser.
+ */
+function showUpdateDialog(api, result, { flushEdits = null } = {}) {
+  const openLink = (url) => () => { void api.shell.openExternal({ url }).catch(() => {}); };
+  const [, desc, actions, note] = updateAvailableContent(api, result, { openLink, flushEdits });
+  const notes = el('div.update-notes', {});
+  notes.innerHTML = window.StepForgeSanitize.sanitizeHtml(window.StepForgeMarkdown.render(result.notes || ''));
+  notes.addEventListener('click', (e) => {
+    const link = e.target.closest('a[href]');
+    if (!link) return;
+    e.preventDefault();
+    if (/^https?:/i.test(link.href)) openLink(link.href)();
+  });
+  openModal({
+    title: t('Version {version} is available', { version: result.latestVersion }),
+    body: el('div', {}, desc, note, notes),
+    footer: [actions],
+    wide: true,
+  });
+}
+
+/**
+ * Settings → About "Check for updates". The check runs in the main process
+ * (app/update-check.js); what an update offers is updateAvailableContent.
+ */
+function makeUpdateCheck(api, { openLink, flushEdits = null }) {
+  const updateStatus = el('div.update-status', { role: 'status', 'aria-live': 'polite' });
+  const checkUpdatesBtn = el('button', { type: 'button' }, t('Check for updates'));
+
   checkUpdatesBtn.addEventListener('click', async () => {
     setButtonLoading(checkUpdatesBtn, true, t('Checking…'));
     clearNode(updateStatus);
@@ -583,23 +625,7 @@ function makeUpdateCheck(api, { openLink, flushEdits = null }) {
     }
     if (result.status === 'update-available') {
       updateStatus.classList.add('available');
-      if (result.store) {
-        const store = storeButton();
-        updateStatus.append(
-          el('div.update-status-title', {}, t('Version {version} is available', { version: result.latestVersion })),
-          el('div.setting-desc', {}, `${t('You have {version}.', { version: result.currentVersion })} ${result.hint || ''}`),
-          el('div.settings-actions', {}, store.button),
-          store.note);
-        return;
-      }
-      // With Update now, downloading stays available as the secondary action.
-      const updateNow = result.updateNow ? updateNowButton(result) : null;
-      const download = el(updateNow ? 'button' : 'button.primary', { type: 'button', onClick: openLink(result.releaseUrl) }, t('View release and download'));
-      updateStatus.append(
-        el('div.update-status-title', {}, t('Version {version} is available', { version: result.latestVersion })),
-        el('div.setting-desc', {}, `${t('You have {version}.', { version: result.currentVersion })} ${result.hint || ''}`),
-        el('div.settings-actions', {}, updateNow ? updateNow.button : null, download),
-        ...(updateNow ? [updateNow.note] : []));
+      updateStatus.append(...updateAvailableContent(api, result, { openLink, flushEdits }));
     } else if (result.status === 'up-to-date') {
       updateStatus.classList.add('current');
       updateStatus.append(el('div.update-status-title', {}, t('You’re up to date')),
@@ -714,6 +740,7 @@ function showSettingsDialog({
       { value: 'dark', label: t('Dark') },
     ]);
     const spellcheck = el('input', { type: 'checkbox', checked: Boolean(settings.spellcheck) });
+    const checkOnStart = el('input', { type: 'checkbox', checked: settings.updates?.checkOnStart !== false });
     const imageCompression = makeSelect(settings.images?.format === 'png' ? 'off' : settings.images?.lossless === false ? 'lossy' : 'lossless', [
       { value: 'lossless', label: t('Lossless WebP (recommended)') },
       { value: 'lossy', label: t('Lossy WebP (smaller files)') },
@@ -1229,8 +1256,10 @@ function showSettingsDialog({
           settingRow(t('License'), null, licenseLabel),
           settingRow(t('Data folder'), null, dataDirLabel)),
         settingsCard(null,
-          settingRow(t('Updates'), t('Checks GitHub for a newer release. StepForge only connects when you press the button.'), checkUpdatesBtn),
-          updateStatus),
+          settingRow(t('Updates'), t('Checks GitHub for a newer release.'), checkUpdatesBtn),
+          updateStatus,
+          settingRow(t('Check for updates automatically'), t('Checks GitHub each time StepForge starts, and shows “Update available” next to StepForge at the top.'),
+            makeSwitch(checkOnStart, t('Check for updates automatically')))),
         el('div.settings-actions', {},
           el('button', { type: 'button', onClick: openLink('https://github.com/Twest2/StepForge') }, t('Project on GitHub')),
           el('button', { type: 'button', onClick: openLink('https://github.com/Twest2/StepForge/releases') }, t('Release notes')),
@@ -1326,6 +1355,10 @@ function showSettingsDialog({
       backups: {
         ...settings.backups,
         keepLast: Number(keepLast.value || 0),
+      },
+      updates: {
+        ...settings.updates,
+        checkOnStart: checkOnStart.checked,
       },
       library: {
         ...settings.library,
@@ -2390,6 +2423,7 @@ window.StepForgeDialogs = {
   showFindReplace,
   showSettingsDialog,
   makeUpdateCheck,
+  showUpdateDialog,
   storageWarning,
   showExportDialog,
   showAddStepDialog,

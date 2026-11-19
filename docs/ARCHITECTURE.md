@@ -364,12 +364,14 @@ is told once per recording.
 ## Network Boundary
 
 Core capture, editing, and export have no network code paths: no telemetry,
-no license checks, no automatic update checks, and no remote fonts or CDN
-references in exports. The only network features are user-initiated or
-opt-in and off by default:
+no license checks, and no remote fonts or CDN references in exports. The
+only network features are the update check and features that are
+user-initiated or opt-in and off by default:
 
-- **Check for updates** (`app/update-check.js`) runs only when the user
-  presses the button in Settings → About: one GET to GitHub's latest-release
+- **Check for updates** (`app/update-check.js`) runs once at startup
+  (`checkUpdatesOnStart` in `app:info`; not in source checkouts or Microsoft Store installs,
+  and not when Settings → About → Check for updates automatically is off) and
+  when the user presses the button in Settings → About: one GET to GitHub's latest-release
   API with redirects refused, a 10-second deadline, and a 1 MB response cap.
   Only a release URL under the StepForge releases page is ever offered to the
   user. On Windows installs registered with Chocolatey, **Update now**

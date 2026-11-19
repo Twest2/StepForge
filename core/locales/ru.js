@@ -2431,4 +2431,6 @@
   "Saved “{title}” on Wiki.js, not published.": "«{title}» сохранено в Wiki.js без публикации.",
   "Enter dates as YYYY-MM-DD.": "Введите даты в формате ГГГГ-ММ-ДД.",
   "Choose a “Visible until” date after the “Visible from” date.": "Выберите дату «Видна до» позже даты «Видна с».",
+  "Accept": "Принять",
+  "Keep this blur.": "Оставить это размытие.",
 });

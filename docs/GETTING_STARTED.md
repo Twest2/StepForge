@@ -284,9 +284,11 @@ private:
 It also points out private details in step titles and descriptions. The
 reading happens on your computer; nothing is sent anywhere.
 
-Each blur StepForge adds has a dashed outline in the editor, and in the list
-you can **Show** it or mark it **Not private**. A blur you mark **Not
-private** isn't added again. To blur names or project codes too, add them
+Each blur StepForge adds has a dashed outline in the editor. The list shows
+each step's screenshot before and after the blur, side by side like a
+snapshot comparison. Choose **Accept** to keep the blur: it becomes an
+ordinary blur, as if you'd drawn it in the editor, and leaves the list.
+Choose **Not private** to remove it, or **Show** to open it in the editor. A blur you mark **Not private** isn't added again. To blur names or project codes too, add them
 under **Settings → Privacy → Always hide these words**. Turn on **Blur while
 recording** there to check each capture as soon as it's taken.
 

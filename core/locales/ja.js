@@ -2431,4 +2431,6 @@
   "Saved “{title}” on Wiki.js, not published.": "「{title}」を Wiki.js に保存しました（非公開）。",
   "Enter dates as YYYY-MM-DD.": "日付は YYYY-MM-DD の形式で入力してください。",
   "Choose a “Visible until” date after the “Visible from” date.": "「公開終了日」は「公開開始日」より後の日付にしてください。",
+  "Accept": "承認",
+  "Keep this blur.": "このぼかしを残します。",
 });

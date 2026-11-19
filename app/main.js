@@ -1403,6 +1403,8 @@ function setupIpc() {
   h('redact:review', ({ guideId }) => redactor.review(guideId), { validate: (a) => c.id(a.guideId) });
   h('redact:keepVisible', ({ guideId, stepId, annotationId }) => { redactor.keepVisible({ guideId, stepId, annotationId }); return redactor.review(guideId); },
     { validate: (a) => c.id(a.guideId) && c.id(a.stepId) && c.id(a.annotationId) });
+  h('redact:accept', ({ guideId, stepId, annotationId }) => { redactor.accept({ guideId, stepId, annotationId }); return redactor.review(guideId); },
+    { validate: (a) => c.id(a.guideId) && c.id(a.stepId) && c.id(a.annotationId) });
   h('redact:keepText', ({ guideId, stepId, key }) => { redactor.keepText({ guideId, stepId, key }); return redactor.review(guideId); },
     { validate: (a) => c.id(a.guideId) && c.id(a.stepId) && c.string(a.key, 100) });
   h('redact:hideText', ({ guideId, stepId }) => { redactor.hideText({ guideId, stepId }); reindex(guideId); return redactor.review(guideId); },

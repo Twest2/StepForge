@@ -1939,11 +1939,13 @@ fieldset legend {
 .privacy-dialog p { margin: 0; }
 .privacy-status { font-weight: 600; }
 .privacy-status.error { color: var(--danger, #d1242f); }
-.privacy-review { display: flex; flex-direction: column; gap: 6px; max-height: 50vh; overflow: auto; }
+.privacy-review { display: flex; flex-direction: column; gap: 6px; max-height: 65vh; overflow: auto; }
 .privacy-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; }
 .privacy-kind { flex: none; min-width: 56px; font-size: 12px; font-weight: 600; color: var(--muted); }
 .privacy-label { flex: 1; min-width: 0; font-size: 13px; }
 .privacy-actions { flex: none; display: flex; gap: 6px; }
+.privacy-item.with-images { flex-wrap: wrap; }
+.privacy-item > .cmp-images { flex: 1 0 100%; min-width: 0; }
 
 /* Guide quality checks before exporting or publishing (quality.js) */
 .quality-panel { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; padding: 10px 12px; border-radius: 8px;

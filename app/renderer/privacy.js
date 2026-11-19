@@ -54,7 +54,27 @@ async function runPrivacyCheck(api, guideId, onProgress = () => {}) {
  */
 function privacyReviewList(api, guideId, review, { onShow = null, onChange = () => {} } = {}) {
   const node = el('div.privacy-review');
+  // Screenshots draw as they scroll into view, like the snapshot comparison.
+  const io = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue;
+      io.unobserve(entry.target);
+      entry.target.cmpLoad?.();
+    }
+  }, { rootMargin: '200px 0px' });
+  const holders = new Set();
+  const observer = { observe: (holder) => { holders.add(holder); io.observe(holder); } };
+  // Each screenshot's canvas holds its image until destroyed, so they go with the list they're in.
+  const clear = () => {
+    io.disconnect();
+    for (const holder of holders) holder.cmpCanvas?.destroy();
+    holders.clear();
+  };
+  // Whoever shows the list calls this when its dialog closes.
+  node.dispose = clear;
+  const loadImage = (side, file) => api.snapshots.compareImage({ guideId, name: null, file });
   const render = (current) => {
+    clear();
     node.replaceChildren();
     if (!current.blurs.length && !current.text.length) {
       node.append(el('p.muted', {}, t('Nothing to review. If you spot something private, use the Blur tool on that step.')));
@@ -74,12 +94,19 @@ function privacyReviewList(api, guideId, review, { onShow = null, onChange = () 
     for (const item of current.blurs) {
       const keep = el('button', { type: 'button', title: t('Remove this blur. StepForge won’t blur it again.') }, t('Not private'));
       keep.addEventListener('click', act(keep, t('Removing…'), () => api.redact.keepVisible({ guideId, stepId: item.stepId, annotationId: item.annotationId })));
-      node.append(el('div.privacy-item', {},
+      const accept = el('button.primary', { type: 'button', title: t('Keep this blur.') }, t('Accept'));
+      accept.addEventListener('click', act(accept, t('Saving…'), () => api.redact.accept({ guideId, stepId: item.stepId, annotationId: item.annotationId })));
+      // Before is the screenshot without this blur, after is with it, drawn like a snapshot comparison.
+      const images = item.file ? window.StepForgeCompare.imageCompare({ label: '', status: 'changed',
+        before: { file: item.file, annotations: (item.annotations || []).filter((a) => a.id !== item.annotationId) },
+        after: { file: item.file, annotations: item.annotations || [] } }, loadImage, observer, { before: t('Before'), after: t('After') }) : null;
+      node.append(el(`div.privacy-item${images ? '.with-images' : ''}`, {},
         el('span.privacy-kind', {}, t('Step {number}', { number: item.stepNumber })),
         el('span.privacy-label', {}, privacyKindLabel(item), el('span.muted', {}, ` · ${t('blurred in the screenshot')}`)),
         el('div.privacy-actions', {},
           onShow ? el('button', { type: 'button', onClick: () => onShow(item.stepId, item.annotationId) }, t('Show')) : null,
-          keep)));
+          accept, keep),
+        images));
     }
     for (const item of current.text) {
       const hide = el('button.primary', { type: 'button', title: t('Replace it with [hidden] in the step’s text.') }, t('Hide it'));
@@ -98,6 +125,17 @@ function privacyReviewList(api, guideId, review, { onShow = null, onChange = () 
   return node;
 }
 
+/** The review in a dialog of its own, from a Publish dialog's Review button. `note` says where the blurs show. */
+function showPrivacyReview(api, guideId, review, note, onChange) {
+  const list = privacyReviewList(api, guideId, review, { onChange });
+  const { close } = openModal({
+    title: t('Private details'),
+    body: el('div.privacy-dialog', {}, el('p.muted', {}, note), list),
+    footer: [el('button.primary', { type: 'button', onClick: () => { close(); list.dispose(); } }, t('Done'))],
+    onClose: () => list.dispose(),
+  });
+}
+
 /**
  * Check a guide and review the results in a dialog. Resolves when it
  * closes with { changed, show }: whether the guide changed (so an open
@@ -109,7 +147,8 @@ function showPrivacyDialog({ api, guideId, canShow = false }) {
     let changed = false;
     const status = el('p.privacy-status', { role: 'status', 'aria-live': 'polite' }, t('Checking screenshots for private details…'));
     const body = el('div.privacy-dialog', {}, status);
-    const finish = (show = null) => resolve({ changed, show });
+    let list = null;
+    const finish = (show = null) => { list?.dispose(); resolve({ changed, show }); };
     const done = el('button.primary', { type: 'button', onClick: () => { close(); finish(); } }, t('Done'));
     const { close } = openModal({ title: t('Private details'), body, footer: [done], onClose: () => finish() });
     runPrivacyCheck(api, guideId, (text) => { status.textContent = text; })
@@ -118,7 +157,7 @@ function showPrivacyDialog({ api, guideId, canShow = false }) {
         status.textContent = review.checked ? privacySummary(review) : `${privacySummary(review)} ${t('Screenshots haven’t changed since they were last checked.')}`;
         body.append(
           el('p.muted', {}, t('Blurs are drawn into every export and published page. Check each one, and remove any that aren’t needed.')),
-          privacyReviewList(api, guideId, review, {
+          list = privacyReviewList(api, guideId, review, {
             onShow: canShow ? (stepId, annotationId) => { close(); finish({ stepId, annotationId }); } : null,
             onChange: (next) => { changed = true; status.textContent = privacySummary(next); },
           }));

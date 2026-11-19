@@ -180,13 +180,13 @@ function blockCard(block) {
  * view) by the editor's own canvas, so they look as readers see them.
  * Images load as they scroll into view.
  */
-function imageCompare(change, loadImage, observer) {
+function imageCompare(change, loadImage, observer, captions = null) {
   const pane = (side, ref) => {
     const holder = el('div.cmp-image-holder', {}, el('div.cmp-image-loading.muted', {}, t('Loading screenshot…')));
     const node = el(`div.cmp-image-pane.${side}`, {},
       el('div.cmp-caption', {},
         el(`span.cmp-key.${side === 'before' ? 'del' : 'add'}`, { 'aria-hidden': 'true' }, side === 'before' ? '−' : '+'),
-        side === 'before' ? t('Before (snapshot)') : t('After (now)')),
+        captions?.[side] || (side === 'before' ? t('Before (snapshot)') : t('After (now)'))),
       holder);
     if (!ref) {
       holder.replaceChildren(el('div.cmp-image-empty.muted', {}, side === 'before' ? t('No screenshot in the snapshot') : t('No screenshot now')));
@@ -200,9 +200,9 @@ function imageCompare(change, loadImage, observer) {
   if (change.status === 'added') reasons.push(t('added'));
   if (change.status === 'deleted') reasons.push(t('removed'));
   return el('div.cmp-images', {},
-    el('div.cmp-images-head', {},
+    change.label || reasons.length ? el('div.cmp-images-head', {},
       el('span.cmp-label', {}, changeLabel(change.label)),
-      reasons.length ? el('span.muted', {}, reasons.join(', ')) : null),
+      reasons.length ? el('span.muted', {}, reasons.join(', ')) : null) : null,
     el(`div.cmp-image-pair${change.before && change.after ? '' : '.single'}`, {},
       change.before || change.status === 'changed' ? pane('before', change.before) : null,
       change.after || change.status === 'changed' ? pane('after', change.after) : null));
@@ -535,5 +535,5 @@ function showSnapshotCompare({ label, diff, loadImage, onRestore, storageKey = '
   });
 }
 
-window.StepForgeCompare = { showSnapshotCompare };
+window.StepForgeCompare = { showSnapshotCompare, imageCompare };
 })();

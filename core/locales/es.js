@@ -2431,4 +2431,6 @@
   "Saved “{title}” on Wiki.js, not published.": "Se guardó «{title}» en Wiki.js, sin publicar.",
   "Enter dates as YYYY-MM-DD.": "Escribe las fechas como AAAA-MM-DD.",
   "Choose a “Visible until” date after the “Visible from” date.": "Elige una fecha «Visible hasta» posterior a la fecha «Visible desde».",
+  "Accept": "Aceptar",
+  "Keep this blur.": "Mantener este difuminado.",
 });

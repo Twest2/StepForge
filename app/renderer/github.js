@@ -809,13 +809,8 @@ async function showPublishToWebDialog({ api, guideId, guideTitle, onOpenAccounts
     };
     privacyReview.addEventListener('click', () => {
       if (!review) return;
-      const { close } = openModal({
-        title: t('Private details'),
-        body: el('div.privacy-dialog', {},
-          el('p.muted', {}, t('These are blurred on the published page. Remove any blur that isn’t needed, or open the guide in the editor to adjust one.')),
-          privacyReviewList(api, guideId, review, { onChange: showReview })),
-        footer: [el('button.primary', { type: 'button', onClick: () => close() }, t('Done'))],
-      });
+      showPrivacyReview(api, guideId, review,
+        t('These are blurred on the published page. Remove any blur that isn’t needed, or open the guide in the editor to adjust one.'), showReview);
     });
     privacyCheck = runPrivacyCheck(api, guideId, (text) => { privacyText.textContent = text; })
       .then(showReview)

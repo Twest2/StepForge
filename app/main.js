@@ -2021,9 +2021,9 @@ function setupIpc() {
     platform: process.platform,
     captureDesktop: require('./platform/linux/desktop').waylandCaptureDesktop(),
     license: PACKAGE_JSON.license || 'Apache-2.0',
-    // "Update available" in the top bar. Source checkouts don't check, and
-    // the Microsoft Store updates StepForge itself.
-    checkUpdatesOnStart: !devBuild && settings.get('updates.checkOnStart') !== false && !windowsStore.isStoreInstall(),
+    // "Update available" in the top bar, for every install. Source checkouts
+    // don't check. A Microsoft Store install's notice opens its Store page.
+    checkUpdatesOnStart: !devBuild && settings.get('updates.checkOnStart') !== false,
   }));
   // Settings → About "Check for updates", and the check at startup
   // (checkUpdatesOnStart above): one request to GitHub's latest-release endpoint,
@@ -2038,6 +2038,7 @@ function setupIpc() {
       hasCommand: (name) => ['/usr/bin', '/bin', '/usr/local/bin'].some((dir) => fs.existsSync(path.join(dir, name))),
       chocolatey: require('./windows-update').updateNowAvailable({ platform: process.platform, packaged: app.isPackaged, store }),
       store,
+      productId: PACKAGE_JSON.microsoftStore?.productId,
     });
     return lastUpdateCheck;
   });

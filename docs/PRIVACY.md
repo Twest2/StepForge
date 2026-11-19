@@ -62,10 +62,10 @@ When it starts, and when you press **Settings → About → Check for updates**,
 StepForge asks GitHub whether a newer version has been released. If one has,
 **Update available** appears next to StepForge at the top left. To stop the
 check at startup, turn off **Check for updates automatically** in
-**Settings → About**. Microsoft Store
-installs don't check at startup, since the Store updates them. StepForge sends a single request to GitHub containing
+**Settings → About**. StepForge sends a single request to GitHub containing
 only its version number (as the browser-style "User-Agent"); GitHub sees your
-IP address as with any website visit. See the
+IP address as with any website visit. Microsoft Store installs ask Microsoft
+instead (see below). See the
 [GitHub Privacy Statement](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement).
 
 On Windows, **Update now** (shown when StepForge is registered with
@@ -76,9 +76,13 @@ does when you run the command yourself.
 If you installed StepForge from the Microsoft Store, the Store downloads and
 installs updates, under the
 [Microsoft Privacy Statement](https://privacy.microsoft.com/privacystatement),
-as it does for every Store app. StepForge sends nothing to Microsoft itself:
-**Open Microsoft Store** in Settings → About only opens StepForge's page in the
-Store app.
+as it does for every Store app. To check for updates, StepForge asks the
+Store's public catalog (`displaycatalog.mp.microsoft.com`) which version of
+StepForge it has, so **Update available** only appears once the Store can
+install it. That request contains StepForge's Store ID and its version number
+(as the "User-Agent"); Microsoft sees your IP address. Only when the Store has
+a newer version does StepForge also ask GitHub for that version's release
+notes. **Open Microsoft Store** opens StepForge's page in the Store app.
 
 The Ubuntu `.deb` and Fedora `.rpm` add the StepForge APT or DNF repository
 (`packages.twestbrook.com`) to your system's software sources, as installing

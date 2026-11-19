@@ -2136,7 +2136,6 @@
   "The step changed while AI was generating; nothing was overwritten.": "El paso cambió mientras la IA generaba; no se sobrescribió nada.",
   "The guide changed while AI was writing; nothing was overwritten.": "La guía cambió mientras la IA escribía; no se sobrescribió nada.",
   "The guide changed while AI was organizing it; nothing was overwritten.": "La guía cambió mientras la IA la organizaba; no se sobrescribió nada.",
-  "The Microsoft Store installs updates automatically, usually within a day or two of a release. To get it sooner, open StepForge in the Store and choose Update.": "Microsoft Store instala las actualizaciones automáticamente, normalmente uno o dos días después de su publicación. Para tenerla antes, abre StepForge en Store y elige Actualizar.",
   "Update now installs it with Chocolatey. StepForge closes while it updates and opens again when it’s done.": "Actualizar ahora la instala con Chocolatey. StepForge se cierra mientras se actualiza y se vuelve a abrir al terminar.",
   "Download the new installer from the release page. Run the installer again and keep \"Keep StepForge updated with Chocolatey\" checked to get one-click updates.": "Descarga el nuevo instalador desde la página de la versión. Vuelve a ejecutarlo y deja marcada la opción «Keep StepForge updated with Chocolatey» para tener actualizaciones con un clic.",
   "Run \"sudo dnf upgrade stepforge\", or download the new .rpm.": "Ejecuta «sudo dnf upgrade stepforge» o descarga el nuevo .rpm.",
@@ -2433,4 +2432,9 @@
   "Choose a “Visible until” date after the “Visible from” date.": "Elige una fecha «Visible hasta» posterior a la fecha «Visible desde».",
   "Accept": "Aceptar",
   "Keep this blur.": "Mantener este difuminado.",
+  "It’s in the Microsoft Store now. The Store installs it by itself, or open StepForge in the Store and choose Update to get it now.": "Ya está en Microsoft Store. La Store la instala sola, o abre StepForge en la Store y elige Actualizar para obtenerla ahora.",
+  "The Microsoft Store returned an error ({status}). Try again later.": "Microsoft Store devolvió un error ({status}). Inténtalo más tarde.",
+  "The Microsoft Store took too long to answer. Check your connection and try again.": "Microsoft Store tardó demasiado en responder. Comprueba tu conexión e inténtalo de nuevo.",
+  "Couldn’t reach the Microsoft Store. Check your internet connection and try again.": "No se pudo conectar con Microsoft Store. Comprueba tu conexión a Internet e inténtalo de nuevo.",
+  "The Microsoft Store didn’t say which version it has.": "Microsoft Store no indicó qué versión tiene.",
 });

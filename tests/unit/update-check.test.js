@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 
 const {
   LATEST_RELEASE_API,
+  STORE_CATALOG_API,
   RELEASES_PAGE,
   parseVersion,
   compareVersions,
@@ -74,14 +75,68 @@ test('Windows: Update now is offered only for an install registered with Chocola
   assert.equal(current.updateNow, undefined, 'nothing to update');
 });
 
-test('a Microsoft Store install is sent to the Store, never to Update now or the installer', async () => {
-  const store = await checkForUpdates({ currentVersion: '0.7.0', platform: 'win32', chocolatey: true, store: true, fetchImpl: githubReturns(release('v1.0')).fetchImpl });
-  assert.equal(store.status, 'update-available');
-  assert.equal(store.store, true);
-  assert.equal(store.updateNow, false, 'the Store updates it, even beside a Chocolatey-registered copy');
-  assert.match(store.hint, /^The Microsoft Store installs updates automatically/);
-  assert.doesNotMatch(store.hint, /installer|Chocolatey/);
+// What the Store's public catalog answers, cut down to what the check reads.
+const catalog = (...versions) => ({ Products: [{ DisplaySkuAvailabilities: [{ Sku: { Properties: { Packages: versions.map((v) => ({
+  PackageFullName: `TylerWestbrook.StepForge_${v}_x64__g82bmjxgmp812`, PackageFormat: 'Msix' })) } } }] }] });
 
+/** A Store install's network: the catalog answers with `live`; GitHub with `releaseBody` for a tag. */
+function storeReturns(live, { catalogStatus = 200, releaseStatus = 200, releaseBody = 'Release notes' } = {}) {
+  const calls = [];
+  const fetchImpl = async (url, options) => {
+    calls.push({ url, options });
+    if (url.startsWith(STORE_CATALOG_API)) return new Response(JSON.stringify(live), { status: catalogStatus });
+    const tag = url.split('/').pop();
+    return new Response(JSON.stringify(release(tag, { body: releaseBody })), { status: releaseStatus });
+  };
+  return { fetchImpl, calls };
+}
+const storeCheck = (currentVersion, network) => checkForUpdates({ currentVersion, platform: 'win32', chocolatey: true, store: true, productId: '9NDH81CF1HGV', fetchImpl: network.fetchImpl });
+
+test('a Microsoft Store install asks the Store, and hears only about a version the Store has', async () => {
+  // GitHub may already have 1.6.9; the Store still has 1.6.8, so that's what's offered.
+  const network = storeReturns(catalog('1.6.800.0', '1.6.700.0'));
+  const store = await storeCheck('1.6.7', network);
+  assert.equal(store.status, 'update-available');
+  assert.deepEqual([store.latestVersion, store.store, store.updateNow], ['1.6.8', true, false], 'the Store updates it, even beside a Chocolatey-registered copy');
+  assert.equal(store.notes, 'Release notes', 'the notes come from that version’s GitHub release');
+  assert.equal(store.releaseUrl, 'https://github.com/Twest2/StepForge/releases/tag/v1.6.8');
+  assert.match(store.hint, /^It’s in the Microsoft Store now/);
+  assert.doesNotMatch(store.hint, /installer|Chocolatey/);
+  assert.deepEqual(network.calls.map((c) => c.url), [
+    `${STORE_CATALOG_API}?bigIds=9NDH81CF1HGV&market=US&languages=en-US`,
+    'https://api.github.com/repos/Twest2/StepForge/releases/tags/v1.6.8',
+  ]);
+  assert.ok(network.calls.every((c) => c.options.method === 'GET' && c.options.redirect === 'error' && !c.options.body), 'reads only, never follows redirects');
+
+  // Up to date with the Store: nothing to show, and GitHub isn't asked.
+  const current = storeReturns(catalog('1.6.800.0'));
+  assert.equal((await storeCheck('1.6.8', current)).status, 'up-to-date');
+  assert.equal(current.calls.length, 1);
+  // A fourth version part maps the same way the Store package numbers it.
+  assert.equal((await storeCheck('1.6.8', storeReturns(catalog('1.6.801.0')))).latestVersion, '1.6.8.1');
+
+  // Without the notes, the update is still offered.
+  const noNotes = await storeCheck('1.6.7', storeReturns(catalog('1.6.800.0'), { releaseStatus: 404 }));
+  assert.deepEqual([noNotes.status, noNotes.notes, noNotes.releaseUrl], ['update-available', '', RELEASES_PAGE]);
+});
+
+test('a Store check that can’t read the Store says so, and never offers an update', async () => {
+  for (const [network, message] of [
+    [storeReturns(catalog('1.6.800.0'), { catalogStatus: 503 }), /Microsoft Store returned an error \(503\)/],
+    [storeReturns({ Products: [] }), /didn’t say which version/],
+    [{ fetchImpl: async () => { throw new TypeError('fetch failed'); } }, /Couldn’t reach the Microsoft Store/],
+  ]) {
+    const result = await storeCheck('1.6.7', network);
+    assert.equal(result.status, 'error');
+    assert.match(result.message, message);
+  }
+  // A build without its Store ID or a usable version doesn't ask at all.
+  const quiet = storeReturns(catalog('1.6.800.0'));
+  assert.equal((await checkForUpdates({ currentVersion: '1.6.7', platform: 'win32', store: true, productId: '', fetchImpl: quiet.fetchImpl })).status, 'error');
+  assert.equal(quiet.calls.length, 0);
+});
+
+test('only a Windows Microsoft Store install asks the Store', async () => {
   const installer = await checkForUpdates({ currentVersion: '0.7.0', platform: 'win32', fetchImpl: githubReturns(release('v1.0')).fetchImpl });
   assert.equal(installer.store, false);
 
@@ -187,5 +242,6 @@ test('an available update carries the release text as its notes', async () => {
 
 test('main.js checks at startup only for installs that should', () => {
   const main = require('node:fs').readFileSync(require('node:path').join(__dirname, '../../app/main.js'), 'utf8');
-  assert.match(main, /checkUpdatesOnStart: !devBuild && settings\.get\('updates\.checkOnStart'\) !== false && !windowsStore\.isStoreInstall\(\)/);
+  // Every install checks, Microsoft Store ones included; only source checkouts and the setting turn it off.
+  assert.match(main, /checkUpdatesOnStart: !devBuild && settings\.get\('updates\.checkOnStart'\) !== false,/);
 });

@@ -2136,7 +2136,6 @@
   "The step changed while AI was generating; nothing was overwritten.": "AI の生成中にステップが変更されました。何も上書きされていません。",
   "The guide changed while AI was writing; nothing was overwritten.": "AI の作成中にガイドが変更されました。何も上書きされていません。",
   "The guide changed while AI was organizing it; nothing was overwritten.": "AI の整理中にガイドが変更されました。何も上書きされていません。",
-  "The Microsoft Store installs updates automatically, usually within a day or two of a release. To get it sooner, open StepForge in the Store and choose Update.": "Microsoft Store は、通常リリースから 1～2 日以内に更新を自動でインストールします。早く入手するには、Store で StepForge を開いて [更新] を選んでください。",
   "Update now installs it with Chocolatey. StepForge closes while it updates and opens again when it’s done.": "[今すぐ更新] を選ぶと Chocolatey でインストールします。更新中は StepForge が閉じ、完了すると再び開きます。",
   "Download the new installer from the release page. Run the installer again and keep \"Keep StepForge updated with Chocolatey\" checked to get one-click updates.": "リリース ページから新しいインストーラーをダウンロードしてください。インストーラーをもう一度実行し、「Keep StepForge updated with Chocolatey」をオンのままにすると、ワンクリックで更新できるようになります。",
   "Run \"sudo dnf upgrade stepforge\", or download the new .rpm.": "「sudo dnf upgrade stepforge」を実行するか、新しい .rpm をダウンロードしてください。",
@@ -2433,4 +2432,9 @@
   "Choose a “Visible until” date after the “Visible from” date.": "「公開終了日」は「公開開始日」より後の日付にしてください。",
   "Accept": "承認",
   "Keep this blur.": "このぼかしを残します。",
+  "It’s in the Microsoft Store now. The Store installs it by itself, or open StepForge in the Store and choose Update to get it now.": "Microsoft Store で利用できるようになりました。Store が自動でインストールします。今すぐ入手するには、Store で StepForge を開いて［更新］を選んでください。",
+  "The Microsoft Store returned an error ({status}). Try again later.": "Microsoft Store がエラーを返しました（{status}）。後でもう一度お試しください。",
+  "The Microsoft Store took too long to answer. Check your connection and try again.": "Microsoft Store の応答に時間がかかりすぎました。接続を確認して、もう一度お試しください。",
+  "Couldn’t reach the Microsoft Store. Check your internet connection and try again.": "Microsoft Store に接続できませんでした。インターネット接続を確認して、もう一度お試しください。",
+  "The Microsoft Store didn’t say which version it has.": "Microsoft Store から提供中のバージョンを取得できませんでした。",
 });

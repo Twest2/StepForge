@@ -2136,7 +2136,6 @@
   "The step changed while AI was generating; nothing was overwritten.": "Шаг изменился, пока ИИ генерировал текст; ничего не перезаписано.",
   "The guide changed while AI was writing; nothing was overwritten.": "Руководство изменилось, пока ИИ писал; ничего не перезаписано.",
   "The guide changed while AI was organizing it; nothing was overwritten.": "Руководство изменилось, пока ИИ его упорядочивал; ничего не перезаписано.",
-  "The Microsoft Store installs updates automatically, usually within a day or two of a release. To get it sooner, open StepForge in the Store and choose Update.": "Microsoft Store устанавливает обновления автоматически, обычно в течение одного-двух дней после выпуска. Чтобы получить обновление раньше, откройте StepForge в Store и выберите «Обновить».",
   "Update now installs it with Chocolatey. StepForge closes while it updates and opens again when it’s done.": "«Обновить сейчас» устанавливает обновление через Chocolatey. StepForge закроется на время обновления и снова откроется, когда оно завершится.",
   "Download the new installer from the release page. Run the installer again and keep \"Keep StepForge updated with Chocolatey\" checked to get one-click updates.": "Скачайте новый установщик со страницы выпуска. Запустите его снова и оставьте отмеченным «Keep StepForge updated with Chocolatey», чтобы обновляться одним щелчком.",
   "Run \"sudo dnf upgrade stepforge\", or download the new .rpm.": "Выполните «sudo dnf upgrade stepforge» или скачайте новый .rpm.",
@@ -2433,4 +2432,9 @@
   "Choose a “Visible until” date after the “Visible from” date.": "Выберите дату «Видна до» позже даты «Видна с».",
   "Accept": "Принять",
   "Keep this blur.": "Оставить это размытие.",
+  "It’s in the Microsoft Store now. The Store installs it by itself, or open StepForge in the Store and choose Update to get it now.": "Она уже есть в Microsoft Store. Store установит её сам, или откройте StepForge в Store и нажмите «Обновить», чтобы получить её сейчас.",
+  "The Microsoft Store returned an error ({status}). Try again later.": "Microsoft Store вернул ошибку ({status}). Повторите попытку позже.",
+  "The Microsoft Store took too long to answer. Check your connection and try again.": "Microsoft Store слишком долго не отвечал. Проверьте подключение и повторите попытку.",
+  "Couldn’t reach the Microsoft Store. Check your internet connection and try again.": "Не удалось подключиться к Microsoft Store. Проверьте подключение к Интернету и повторите попытку.",
+  "The Microsoft Store didn’t say which version it has.": "Microsoft Store не сообщил, какая версия в нём есть.",
 });

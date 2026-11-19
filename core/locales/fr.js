@@ -2136,7 +2136,6 @@
   "The step changed while AI was generating; nothing was overwritten.": "L’étape a changé pendant que l’IA générait ; rien n’a été écrasé.",
   "The guide changed while AI was writing; nothing was overwritten.": "Le guide a changé pendant que l’IA écrivait ; rien n’a été écrasé.",
   "The guide changed while AI was organizing it; nothing was overwritten.": "Le guide a changé pendant que l’IA l’organisait ; rien n’a été écrasé.",
-  "The Microsoft Store installs updates automatically, usually within a day or two of a release. To get it sooner, open StepForge in the Store and choose Update.": "Le Microsoft Store installe les mises à jour automatiquement, généralement un ou deux jours après leur sortie. Pour l’obtenir plus tôt, ouvrez StepForge dans le Store et choisissez Mettre à jour.",
   "Update now installs it with Chocolatey. StepForge closes while it updates and opens again when it’s done.": "Mettre à jour l’installe avec Chocolatey. StepForge se ferme pendant la mise à jour et se rouvre une fois terminée.",
   "Download the new installer from the release page. Run the installer again and keep \"Keep StepForge updated with Chocolatey\" checked to get one-click updates.": "Téléchargez le nouveau programme d’installation depuis la page de la version. Relancez-le en laissant cochée l’option « Keep StepForge updated with Chocolatey » pour profiter des mises à jour en un clic.",
   "Run \"sudo dnf upgrade stepforge\", or download the new .rpm.": "Exécutez « sudo dnf upgrade stepforge », ou téléchargez le nouveau .rpm.",
@@ -2433,4 +2432,9 @@
   "Choose a “Visible until” date after the “Visible from” date.": "Choisissez une date « Visible jusqu’au » postérieure à la date « Visible à partir du ».",
   "Accept": "Accepter",
   "Keep this blur.": "Garder ce flou.",
+  "It’s in the Microsoft Store now. The Store installs it by itself, or open StepForge in the Store and choose Update to get it now.": "Elle est disponible dans le Microsoft Store. Le Store l’installe tout seul, ou ouvrez StepForge dans le Store et choisissez Mettre à jour pour l’obtenir maintenant.",
+  "The Microsoft Store returned an error ({status}). Try again later.": "Le Microsoft Store a renvoyé une erreur ({status}). Réessayez plus tard.",
+  "The Microsoft Store took too long to answer. Check your connection and try again.": "Le Microsoft Store a mis trop de temps à répondre. Vérifiez votre connexion et réessayez.",
+  "Couldn’t reach the Microsoft Store. Check your internet connection and try again.": "Impossible de joindre le Microsoft Store. Vérifiez votre connexion Internet et réessayez.",
+  "The Microsoft Store didn’t say which version it has.": "Le Microsoft Store n’a pas indiqué la version qu’il propose.",
 });

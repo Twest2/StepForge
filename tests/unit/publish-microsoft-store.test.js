@@ -217,9 +217,9 @@ test('stable releases submit the Store package from its build artifact', () => {
   assert.match(job, /run: node scripts\/publish-microsoft-store\.js dist\/microsoft-store\n/);
   // The job doesn't install dependencies, so the script mustn't need them.
   assert.doesNotMatch(job, /npm ci/);
-  for (const file of ['scripts/publish-microsoft-store.js', 'scripts/store-version.js']) {
+  for (const file of ['scripts/publish-microsoft-store.js', 'core/store-version.js']) {
     for (const [, dep] of read(file).matchAll(/require\('([^']+)'\)/g)) {
-      assert.ok(dep.startsWith('node:') || dep.startsWith('./'), `${file} requires ${dep}`);
+      assert.ok(dep.startsWith('node:') || dep.startsWith('./') || dep === '../core/store-version', `${file} requires ${dep}`);
     }
   }
 });

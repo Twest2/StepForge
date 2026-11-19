@@ -97,7 +97,7 @@ test('the Export dialog’s format descriptions and option labels are translated
 
 test('Compare translates interface enums without translating author metadata or placeholders', () => {
   const source = fs.readFileSync(path.join(__dirname, '../../app/renderer/compare.js'), 'utf8')
-    .replace('window.StepForgeCompare = { showSnapshotCompare };', 'window.StepForgeCompare = { showSnapshotCompare, fieldRow };');
+    .replace('window.StepForgeCompare = { showSnapshotCompare, imageCompare };', 'window.StepForgeCompare = { showSnapshotCompare, imageCompare, fieldRow };');
   const context = load('ru', []);
   vm.runInContext(source, context);
   const row = (label, before, after) => context.StepForgeCompare.fieldRow({ label, before, after });

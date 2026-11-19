@@ -182,7 +182,7 @@ function normalizeAnnotation(a) {
   if (ann.type === 'blur') ann.radius = num(a.radius, 8);
   // A blur StepForge added for a private detail (see core/redaction.js).
   if (ann.type === 'blur' && a.redact && typeof a.redact.kind === 'string' && typeof a.redact.key === 'string') {
-    ann.redact = { kind: a.redact.kind.slice(0, 20), key: a.redact.key.slice(0, 80) };
+    ann.redact = { kind: a.redact.kind.slice(0, 20), key: a.redact.key.slice(0, 80), ...(a.redact.accepted === true ? { accepted: true } : {}) };
   }
   // A pen's points are fractions of its box; a curved arrow's bend is relative
   // to its start-to-end line (core/annotation-shapes.js).

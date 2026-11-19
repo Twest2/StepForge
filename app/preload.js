@@ -163,6 +163,7 @@ const api = {
     check: invoke('redact:check'),
     review: invoke('redact:review'),
     keepVisible: invoke('redact:keepVisible'),
+    accept: invoke('redact:accept'),
     keepText: invoke('redact:keepText'),
     hideText: invoke('redact:hideText'),
     onProgress: (fn) => { const listener = (e, payload) => fn(payload); ipcRenderer.on('redact:progress', listener); return () => ipcRenderer.removeListener('redact:progress', listener); },

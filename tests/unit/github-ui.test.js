@@ -59,6 +59,8 @@ function ui({ realLoading = false } = {}) {
       removeEventListener: (type, fn) => { windowListeners[type]?.delete(fn); },
     },
     setTimeout, clearTimeout, console,
+    // Screenshots in the private-details review load as they scroll into view; here they're only recorded.
+    IntersectionObserver: class { observe(node) { (context.observed ||= []).push(node); } unobserve() {} },
   };
   vm.createContext(context);
   const load = (file) => vm.runInContext(fs.readFileSync(path.join(__dirname, '../../app/renderer', file), 'utf8'), context);
@@ -69,6 +71,7 @@ function ui({ realLoading = false } = {}) {
   context.toast = (message, options) => { toasts.push([message, options?.error === true]); };
   load('cloud.js');
   load('privacy.js');
+  load('compare.js');
   load('quality.js');
   load('confluence.js');
   load('wikijs.js');
@@ -674,6 +677,31 @@ test('the publish dialog checks screenshots for private details first and lets y
   await settle();
   assert.deepEqual(JSON.parse(JSON.stringify(api.calls.at(-1))), ['keepVisible', { guideId: 'guide-1', stepId: 's1', annotationId: 'a1' }]);
   assert.doesNotMatch(review.textContent, /Step 1/);
+});
+
+test('reviewing a blur shows the screenshot before and after it, and Accept keeps it without asking again', async () => {
+  const u = ui();
+  const api = fakeApi();
+  const annotations = [{ id: 'a1', type: 'blur', redact: { kind: 'email' } }, { id: 'arrow', type: 'arrow' }];
+  const blur = { stepId: 's1', stepNumber: 1, annotationId: 'a1', kind: 'email', label: 'Email address', accepted: false, file: 'steps/s1/working.png', annotations };
+  const review = { blurs: [blur], text: [], steps: 1 };
+  api.redact.accept = async (args) => { api.calls.push(['accept', args]); return { ...review, blurs: [{ ...blur, accepted: true }] }; };
+  const changes = [];
+  const list = u.context.privacyReviewList(api, 'guide-1', review, { onChange: (next) => changes.push(next) });
+  const panes = u.all(list).filter((n) => n.classList?.contains('cmp-image-pane'));
+  assert.deepEqual(panes.map((p) => p.textContent), ['−BeforeLoading screenshot…', '+AfterLoading screenshot…']);
+  // Before is drawn without this blur, after with it; both from the step's screenshot.
+  assert.equal(u.context.observed.length, 2);
+  assert.match(list.textContent, /Step 1.*Email address · blurred in the screenshot/);
+
+  await u.find(list, 'Accept').listeners.click();
+  await settle();
+  assert.deepEqual(JSON.parse(JSON.stringify(api.calls.at(-1))), ['accept', { guideId: 'guide-1', stepId: 's1', annotationId: 'a1' }]);
+  assert.equal(changes.length, 1);
+  assert.match(list.textContent, /Email address · blurred, accepted/);
+  assert.equal(u.find(list, 'Accept'), undefined, 'accepted once');
+  assert.equal(u.all(list).some((n) => n.classList?.contains('cmp-images')), false, 'an accepted blur folds away');
+  assert.ok(u.find(list, 'Not private'), 'it can still be removed');
 });
 
 test('cancelling Publish while the private-detail check runs resolves only after the check has written its blurs', async () => {

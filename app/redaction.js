@@ -187,7 +187,9 @@ class RedactionService {
       const step = steps.get(stepId);
       if (!step) return;
       for (const ann of step.annotations || []) {
-        if (ann.type === 'blur' && ann.redact) blurs.push({ stepId, stepNumber: index + 1, annotationId: ann.id, kind: ann.redact.kind, label: redaction.KINDS[ann.redact.kind] || 'Private detail' });
+        // file and annotations let the review draw the screenshot without and with the blur.
+        if (ann.type === 'blur' && ann.redact) blurs.push({ stepId, stepNumber: index + 1, annotationId: ann.id, kind: ann.redact.kind, label: redaction.KINDS[ann.redact.kind] || 'Private detail',
+          accepted: ann.redact.accepted === true, file: step.image ? `steps/${stepId}/${step.image.workingPath}` : null, annotations: step.annotations });
       }
       for (const found of redaction.findInStepText(step, options)) {
         text.push({ stepId, stepNumber: index + 1, field: found.field, kind: found.kind, key: found.key,
@@ -210,6 +212,14 @@ class RedactionService {
       if (!ann) return;
       step.annotations = step.annotations.filter((a) => a !== ann);
       if (ann.redact?.key) step.redaction = { ...(step.redaction || {}), dismissed: [...new Set([...(step.redaction?.dismissed || []), ann.redact.key])] };
+    });
+  }
+
+  /** "Accept": keep a blur StepForge added; the review lists it as accepted. */
+  accept({ guideId, stepId, annotationId }) {
+    return this.update(guideId, stepId, (step) => {
+      const ann = (step.annotations || []).find((a) => a.id === annotationId && a.redact);
+      if (ann) ann.redact = { ...ann.redact, accepted: true };
     });
   }
 

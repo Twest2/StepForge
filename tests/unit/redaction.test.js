@@ -115,6 +115,13 @@ test('checking a guide adds blurs once, reads screenshots at twice the size, and
   assert.equal((await redactor.checkGuide(guideId)).checked, 0, 'nothing changed, nothing is read again');
   assert.equal(calls.reads, 1);
 
+  const listed = redactor.review(guideId).blurs[0];
+  assert.deepEqual([listed.accepted, listed.file, listed.annotations.map((a) => a.id)],
+    [false, `steps/${stepId}/${store.getStep(guideId, stepId).image.workingPath}`, [blur.id]], 'the review can draw the screenshot without and with the blur');
+  redactor.accept({ guideId, stepId, annotationId: blur.id });
+  assert.equal(redactor.review(guideId).blurs[0].accepted, true, 'Accept is saved with the guide');
+  assert.equal((await redactor.checkGuide(guideId, { force: true })).added, 0, 'accepting doesn’t add the blur again');
+
   const review = redactor.keepVisible({ guideId, stepId, annotationId: blur.id });
   assert.equal(review.annotations.length, 0);
   assert.equal((await redactor.checkGuide(guideId, { force: true })).added, 0, '"not private" is remembered');

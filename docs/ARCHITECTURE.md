@@ -90,7 +90,9 @@ own box; the editor thins them as you draw, and the stroke is drawn as a
 smooth curve through their midpoints. A `curvedArrow` runs from (x, y) to
 (x + w, y + h) like an arrow, with `bend` placing its curve's control point
 relative to that line, so moving or resizing either keeps its shape
-(`core/annotation-shapes.js`). The same geometry is rendered by the editor
+(`core/annotation-shapes.js`). A `blur` StepForge added for a private detail
+has `redact: { kind, key }`, plus `accepted: true` once the user accepts it in
+the review. The same geometry is rendered by the editor
 canvas (HTML5 canvas) and by the export rasterizer (`core/raster.js`), so what you see is what
 exports. `style.fill` is a `#RRGGBB` color or `transparent`. The editor's Fill
 picker offers Transparent for rectangles and ovals only. A tooltip with no

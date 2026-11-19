@@ -1932,7 +1932,6 @@ fieldset legend {
 .wikijs-schedule > summary { cursor: pointer; font-weight: 550; margin-left: 96px; }
 /* <details> doesn't lay out its content as flex, so the rows sit in a box of their own. */
 .wikijs-schedule-body { display: flex; flex-direction: column; gap: 12px; margin-top: 10px; }
-.wikijs-publish .wikijs-schedule-body .wikijs-note { margin: 0 0 0 96px; }
 .wikijs-prefs .cloud-setting > select, .wikijs-prefs .cloud-setting > input { flex: none; width: 200px; }
 .wikijs-prefs .cloud-setting > input.wikijs-locale { width: 90px; }
 /* Private details review (privacy.js) */

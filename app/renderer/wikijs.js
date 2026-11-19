@@ -25,7 +25,7 @@ function wikiJsLocaleValid(locale) {
 /** What “Published” or “Not published” means for who can open the page. */
 function wikiJsVisibilityNote(published) {
   return published ? t('Anyone who can read the wiki can open the page.')
-    : t('Only people who can edit pages on the wiki can open the page, until it’s published from StepForge or on the wiki.');
+    : t('Only people who can edit pages on the wiki can open the page until it’s published from StepForge or on the wiki.');
 }
 
 /** The code field for two-step sign-in: digits only, filled in by password managers that know one-time codes. */
@@ -208,22 +208,19 @@ function makeWikiJsSettings(api) {
     defaultTags.value = prefs.tags.join(', ');
     defaultLocale.value = prefs.locale;
   };
-  const savePrefs = async (next) => {
-    try {
-      const saved = await api.settings.set({ keyPath: 'wikijs', value: next });
-      prefs = { ...prefs, ...(saved?.wikijs || next) };
-    } catch (err) {
-      if (!disposed) say(err.message, 'error');
-    }
-    if (!disposed) showPrefs();
+  // prefs changes before the save, so a second change made while the first is saving keeps both.
+  const savePrefs = (next) => {
+    prefs = next;
+    showPrefs();
+    api.settings.set({ keyPath: 'wikijs', value: next }).catch((err) => { if (!disposed) say(err.message, 'error'); });
   };
-  publishDefault.addEventListener('change', () => { void savePrefs({ ...prefs, published: publishDefault.value === 'published' }); });
-  defaultTags.addEventListener('change', () => { void savePrefs({ ...prefs, tags: wikiJsTags(defaultTags.value) }); });
+  publishDefault.addEventListener('change', () => savePrefs({ ...prefs, published: publishDefault.value === 'published' }));
+  defaultTags.addEventListener('change', () => savePrefs({ ...prefs, tags: wikiJsTags(defaultTags.value) }));
   defaultLocale.addEventListener('change', () => {
     const locale = defaultLocale.value.trim().toLowerCase() || 'en';
     if (!wikiJsLocaleValid(locale)) { say(t('Enter a language code such as en, de or pt-br.'), 'error'); defaultLocale.value = prefs.locale; return; }
     say('');
-    void savePrefs({ ...prefs, locale });
+    savePrefs({ ...prefs, locale });
   });
   const usage = el('section.cloud-card.wikijs-prefs', {},
     el('header.cloud-card-head', {}, el('h4', {}, t('Publishing'))),
@@ -409,7 +406,6 @@ async function showPublishToWikiJsDialog({ api, guideId, guideTitle, onOpenAccou
     const schedule = el('details.wikijs-schedule', {},
       el('summary', {}, t('Publishing period')),
       el('div.wikijs-schedule-body', {},
-        el('p.muted.wikijs-note', {}, t('Optional. Outside these dates, only people who can edit the page can open it.')),
         el('label.gh-field', {}, el('span', {}, t('Visible from')), startInput),
         el('label.gh-field', {}, el('span', {}, t('Visible until')), endInput)));
     const tagsInput = el('input', { type: 'text', spellcheck: false, 'aria-label': t('Tags'), placeholder: 'how-to, it' });
@@ -557,7 +553,7 @@ async function showPublishToWikiJsDialog({ api, guideId, guideTitle, onOpenAccou
           el('p.gh-published-title', {}, el('span.gh-published-icon', { 'aria-hidden': 'true' }, '✓'),
             el('strong', {}, draft ? t('Saved “{title}” on Wiki.js, not published.', { title: result.title })
               : result.updated ? t('Updated “{title}” on Wiki.js.', { title: result.title }) : t('Published “{title}” to Wiki.js.', { title: result.title }))),
-          draft ? el('p.muted', {}, wikiJsVisibilityNote(false)) : null,
+          ...(draft ? [el('p.muted', {}, wikiJsVisibilityNote(false))] : []),
           el('code.settings-path.gh-url', { title: result.url }, result.url),
           el('div.row', {}, copy, el('button', { type: 'button', onClick: () => wikiJsOpen(api, result.url) }, t('Open in browser'))));
         cancelBtn.textContent = t('Done');

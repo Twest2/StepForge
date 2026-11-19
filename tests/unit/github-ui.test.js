@@ -1033,6 +1033,18 @@ test('Wiki.js settings choose whether new pages are published, their tags and la
   field('Language for new pages').listeners.change();
   await settle();
   assert.deepEqual(JSON.parse(JSON.stringify(api.calls.at(-1)[2])), { published: true, tags: ['how-to', 'it'], locale: 'pt-br' });
+
+  // A second change made while the first is still saving keeps both.
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const set = api.settings.set.bind(api.settings);
+  api.settings.set = async (args) => { await gate; return set(args); };
+  field('New pages').value = 'unpublished';
+  field('New pages').listeners.change();
+  field('Tags for new pages').value = 'vpn';
+  field('Tags for new pages').listeners.change();
+  release(); await settle();
+  assert.deepEqual(JSON.parse(JSON.stringify(api.calls.at(-1)[2])), { published: false, tags: ['vpn'], locale: 'pt-br' });
   panel.dispose();
 });
 
@@ -1074,6 +1086,7 @@ test('Publish to Wiki.js starts unpublished from the settings, sends the period 
   const sent = api.calls.filter(([name]) => name === 'publish').at(-1)[1];
   assert.deepEqual([sent.published, sent.startDate, sent.endDate], [true, '2026-12-01', '2027-06-30']);
   assert.match(second.textContent, /Published “VPN” to Wiki\.js\./);
+  assert.doesNotMatch(second.textContent, /null/, 'no stray text when there’s no draft note');
 });
 
 function confluenceApi(overrides = {}) {

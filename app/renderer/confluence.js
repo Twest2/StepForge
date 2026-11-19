@@ -348,13 +348,8 @@ async function showPublishToConfluenceDialog({ api, guideId, guideTitle, onOpenA
       if (next.added) changed = true;
     };
     privacyReview.addEventListener('click', () => {
-      const { close: closeReview } = openModal({
-        title: t('Private details'),
-        body: el('div.privacy-dialog', {},
-          el('p.muted', {}, t('These are blurred on the Confluence page. Remove any blur that isn’t needed.')),
-          privacyReviewList(api, guideId, review, { onChange: (next) => { changed = true; showReview(next); } })),
-        footer: [el('button.primary', { type: 'button', onClick: () => closeReview() }, t('Done'))],
-      });
+      showPrivacyReview(api, guideId, review, t('These are blurred on the Confluence page. Remove any blur that isn’t needed.'),
+        (next) => { changed = true; showReview(next); });
     });
     runPrivacyCheck(api, guideId, (text) => { privacyText.textContent = text; })
       .then(showReview)

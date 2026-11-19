@@ -60,7 +60,7 @@ function ui({ realLoading = false } = {}) {
     },
     setTimeout, clearTimeout, console,
     // Screenshots in the private-details review load as they scroll into view; here they're only recorded.
-    IntersectionObserver: class { observe(node) { (context.observed ||= []).push(node); } unobserve() {} },
+    IntersectionObserver: class { observe(node) { (context.observed ||= []).push(node); } unobserve() {} disconnect() {} },
   };
   vm.createContext(context);
   const load = (file) => vm.runInContext(fs.readFileSync(path.join(__dirname, '../../app/renderer', file), 'utf8'), context);
@@ -695,12 +695,25 @@ test('reviewing a blur shows the screenshot before and after it, and Accept take
   assert.equal(u.context.observed.length, 4);
   assert.match(list.textContent, /Step 1.*Email address · blurred in the screenshot/);
 
+  // Drawn screenshots hold their image until destroyed: redrawing the list lets go of them.
+  let destroyed = 0;
+  const drawn = () => { for (const holder of u.context.observed) holder.cmpCanvas ||= { destroy: () => { destroyed += 1; } }; };
+  drawn();
   await u.find(list, 'Accept').listeners.click();
   await settle();
+  assert.equal(destroyed, 4);
   assert.deepEqual(JSON.parse(JSON.stringify(api.calls.at(-1))), ['accept', { guideId: 'guide-1', stepId: 's1', annotationId: 'a1' }]);
   assert.equal(changes.length, 1);
   assert.doesNotMatch(list.textContent, /Email address/, 'an accepted blur leaves the list');
   assert.match(list.textContent, /IP address · blurred in the screenshot/);
+
+  // From a Publish dialog's Review button: Done lets go of them too.
+  u.context.observed = [];
+  destroyed = 0;
+  u.context.showPrivacyReview(api, 'guide-1', review, 'These are blurred on the published page.', () => {});
+  drawn();
+  u.click(u.find(u.root.children.at(-1), 'Done'));
+  assert.equal(destroyed, 4);
 });
 
 test('cancelling Publish while the private-detail check runs resolves only after the check has written its blurs', async () => {

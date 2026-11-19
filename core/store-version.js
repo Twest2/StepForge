@@ -1,7 +1,8 @@
 'use strict';
 
 // Dependency-free, so the release workflow's Store submission job can use it
-// without installing the packaging tools.
+// without installing the packaging tools. The app uses it too, to compare its
+// version with the one live in the Store (app/update-check.js).
 
 /**
  * The Store version for a StepForge build version. The Store reserves the
@@ -21,4 +22,13 @@ function storeVersion(buildVersion) {
   return `${major}.${minor}.${build}.0`;
 }
 
-module.exports = { storeVersion };
+/** The StepForge version a Store version stands for: 1.5.300.0 → 1.5.3, 1.5.301.0 → 1.5.3.1. Null if it isn't one. */
+function versionFromStore(storeVersionText) {
+  const match = /^(\d+)\.(\d+)\.(\d+)\.0$/.exec(String(storeVersionText || ''));
+  if (!match) return null;
+  const build = Number(match[3]);
+  const [patch, revision] = [Math.floor(build / 100), build % 100];
+  return [match[1], match[2], patch, ...(revision ? [revision] : [])].join('.');
+}
+
+module.exports = { storeVersion, versionFromStore };

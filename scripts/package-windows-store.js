@@ -20,7 +20,7 @@ const path = require('node:path');
 const { build, Platform, Arch } = require('electron-builder');
 const { APP_ID, BUILD_VERSION, createWindowsInstallerConfig } = require('./package-windows');
 const { LANGUAGES } = require('../core/i18n');
-const { storeVersion } = require('./store-version');
+const { storeVersion } = require('../core/store-version');
 
 const ROOT_DIR = path.resolve(__dirname, '..');
 const STORE_DIR = path.join(ROOT_DIR, 'packaging', 'windows', 'store');

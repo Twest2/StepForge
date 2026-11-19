@@ -19,7 +19,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
-const { storeVersion } = require('./store-version');
+const { storeVersion } = require('../core/store-version');
 
 const IDENTITY_FILE = path.join(__dirname, '..', 'packaging', 'windows', 'store', 'identity.json');
 

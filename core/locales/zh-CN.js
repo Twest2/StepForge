@@ -2136,7 +2136,6 @@
   "The step changed while AI was generating; nothing was overwritten.": "AI 生成期间步骤发生了变化；未覆盖任何内容。",
   "The guide changed while AI was writing; nothing was overwritten.": "AI 编写期间指南发生了变化；未覆盖任何内容。",
   "The guide changed while AI was organizing it; nothing was overwritten.": "AI 整理期间指南发生了变化；未覆盖任何内容。",
-  "The Microsoft Store installs updates automatically, usually within a day or two of a release. To get it sooner, open StepForge in the Store and choose Update.": "Microsoft Store 会自动安装更新，通常在发布后一两天内。若想更快获取，请在 Store 中打开 StepForge 并选择“更新”。",
   "Update now installs it with Chocolatey. StepForge closes while it updates and opens again when it’s done.": "“立即更新”会通过 Chocolatey 安装更新。更新期间 StepForge 会关闭，完成后会重新打开。",
   "Download the new installer from the release page. Run the installer again and keep \"Keep StepForge updated with Chocolatey\" checked to get one-click updates.": "请从发布页面下载新的安装程序。重新运行安装程序并保持勾选“Keep StepForge updated with Chocolatey”，即可一键更新。",
   "Run \"sudo dnf upgrade stepforge\", or download the new .rpm.": "运行“sudo dnf upgrade stepforge”，或下载新的 .rpm。",
@@ -2433,4 +2432,9 @@
   "Choose a “Visible until” date after the “Visible from” date.": "请选择晚于“可见开始日期”的“可见截止日期”。",
   "Accept": "接受",
   "Keep this blur.": "保留此模糊。",
+  "It’s in the Microsoft Store now. The Store installs it by itself, or open StepForge in the Store and choose Update to get it now.": "它已在 Microsoft Store 中提供。Store 会自动安装它；若要立即获取，请在 Store 中打开 StepForge 并选择“更新”。",
+  "The Microsoft Store returned an error ({status}). Try again later.": "Microsoft Store 返回了错误（{status}）。请稍后重试。",
+  "The Microsoft Store took too long to answer. Check your connection and try again.": "Microsoft Store 响应时间过长。请检查网络连接后重试。",
+  "Couldn’t reach the Microsoft Store. Check your internet connection and try again.": "无法连接到 Microsoft Store。请检查网络连接后重试。",
+  "The Microsoft Store didn’t say which version it has.": "Microsoft Store 未说明其提供的版本。",
 });

@@ -1,5 +1,6 @@
 'use strict';
 const { t } = require('../core/ui-text');
+const { storeVersion, versionFromStore } = require('../core/store-version');
 
 /**
  * Update check for Settings → About and the bar under the top bar.
@@ -9,9 +10,19 @@ const { t } = require('../core/ui-text');
  * the user presses "Check for updates". It makes one request to a fixed GitHub
  * endpoint, refuses redirects, has a deadline and a response-size cap, and
  * sends nothing but a User-Agent. The renderer never performs the request itself.
+ *
+ * A Microsoft Store install asks the Store instead, so it only hears about a
+ * version the Store can install: one request to the Store's public catalog
+ * for the version that's live, and only when that's newer, one more to
+ * GitHub for its release notes.
  */
 
 const LATEST_RELEASE_API = 'https://api.github.com/repos/Twest2/StepForge/releases/latest';
+const RELEASE_BY_TAG_API = 'https://api.github.com/repos/Twest2/StepForge/releases/tags/';
+// The catalog the Store app and winget read. Not a documented API: if it
+// changes, the check reports an error and shows no notice. Every market lists
+// the same package, so one is enough.
+const STORE_CATALOG_API = 'https://displaycatalog.mp.microsoft.com/v7.0/products';
 const RELEASES_PAGE = 'https://github.com/Twest2/StepForge/releases/latest';
 const RELEASE_URL_PREFIX = 'https://github.com/Twest2/StepForge/releases/';
 const DEFAULT_TIMEOUT_MS = 10000;
@@ -49,7 +60,7 @@ function formatVersion(value) {
 function installHint(platform, hasCommand = () => false, { chocolatey = false, store = false } = {}) {
   if (platform === 'win32') {
     if (store) {
-      return t('The Microsoft Store installs updates automatically, usually within a day or two of a release. To get it sooner, open StepForge in the Store and choose Update.');
+      return t('It’s in the Microsoft Store now. The Store installs it by itself, or open StepForge in the Store and choose Update to get it now.');
     }
     if (chocolatey) {
       return t('Update now installs it with Chocolatey. StepForge closes while it updates and opens again when it’s done.');
@@ -62,6 +73,71 @@ function installHint(platform, hasCommand = () => false, { chocolatey = false, s
     return t('Download the new version from the release page.');
   }
   return t('Download the new version from the release page.');
+}
+
+/**
+ * One GET for JSON with the checker's guarantees: no redirects, a deadline,
+ * a size cap. Resolves { status, ok, data } (data is null unless ok); throws
+ * on a network failure, AbortError at the deadline.
+ */
+async function getJson(url, { fetchImpl, timeoutMs, headers }) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetchImpl(url, { method: 'GET', redirect: 'error', signal: controller.signal, headers });
+    const data = response.ok ? JSON.parse(await readLimitedText(response, MAX_RESPONSE_BYTES)) : null;
+    return { status: response.status, ok: response.ok, data };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** The highest StepForge package version in a Store catalog answer, such as "1.6.800.0"; null if none. */
+function liveStoreVersion(catalog) {
+  const versions = (catalog?.Products || []).flatMap((product) => product?.DisplaySkuAvailabilities || [])
+    .flatMap((entry) => entry?.Sku?.Properties?.Packages || [])
+    .map((pkg) => /^[^_]+_(\d+\.\d+\.\d+\.\d+)_/.exec(String(pkg?.PackageFullName || ''))?.[1])
+    .filter(Boolean);
+  return versions.sort((a, b) => compareVersions(parseVersion(b), parseVersion(a)))[0] || null;
+}
+
+/** checkForUpdates for a Microsoft Store install: the Store says which version it has. */
+async function checkStore({ currentVersion, base, productId, fetchImpl, timeoutMs }) {
+  const headers = { Accept: 'application/json', 'User-Agent': `StepForge/${formatVersion(currentVersion)}` };
+  let mine;
+  try { mine = parseVersion(storeVersion(formatVersion(currentVersion))); } catch { mine = null; }
+  if (!mine || !/^[0-9A-Z]{12}$/.test(String(productId || ''))) {
+    return { ...base, status: 'error', message: t('This build has no version number to compare.') };
+  }
+  let live;
+  try {
+    const answer = await getJson(`${STORE_CATALOG_API}?bigIds=${productId}&market=US&languages=en-US`, { fetchImpl, timeoutMs, headers });
+    if (!answer.ok) return { ...base, status: 'error', message: t('The Microsoft Store returned an error ({status}). Try again later.', { status: answer.status }) };
+    live = liveStoreVersion(answer.data);
+  } catch (error) {
+    const message = error && error.name === 'AbortError'
+      ? t('The Microsoft Store took too long to answer. Check your connection and try again.')
+      : t('Couldn’t reach the Microsoft Store. Check your internet connection and try again.');
+    return { ...base, status: 'error', message };
+  }
+  const latestVersion = versionFromStore(live);
+  if (!latestVersion) return { ...base, status: 'error', message: t('The Microsoft Store didn’t say which version it has.') };
+  const result = { ...base, latestVersion, store: true, updateNow: false };
+  if (compareVersions(parseVersion(live), mine) <= 0) return { ...result, status: 'up-to-date' };
+  // The release notes are a bonus: without them the notice still shows.
+  let release = null;
+  try {
+    const answer = await getJson(`${RELEASE_BY_TAG_API}v${latestVersion}`, { fetchImpl, timeoutMs, headers: { ...headers, Accept: 'application/vnd.github+json' } });
+    release = answer.ok ? answer.data : null;
+  } catch { /* no notes */ }
+  return {
+    ...result,
+    status: 'update-available',
+    releaseUrl: typeof release?.html_url === 'string' && release.html_url.startsWith(RELEASE_URL_PREFIX) ? release.html_url : RELEASES_PAGE,
+    publishedAt: typeof release?.published_at === 'string' ? release.published_at : null,
+    notes: typeof release?.body === 'string' ? release.body.slice(0, 100000) : '',
+    hint: installHint('win32', () => false, { store: true }),
+  };
 }
 
 async function readLimitedText(response, maxBytes) {
@@ -86,6 +162,7 @@ async function checkForUpdates({
   hasCommand = () => false,
   chocolatey = false,
   store = false,
+  productId = '',
   fetchImpl = globalThis.fetch,
   timeoutMs = DEFAULT_TIMEOUT_MS,
 } = {}) {
@@ -94,6 +171,7 @@ async function checkForUpdates({
   if (!current) {
     return { ...base, status: 'error', message: t('This build has no version number to compare.') };
   }
+  if (platform === 'win32' && store === true) return checkStore({ currentVersion, base, productId, fetchImpl, timeoutMs });
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -158,6 +236,7 @@ async function checkForUpdates({
 
 module.exports = {
   LATEST_RELEASE_API,
+  STORE_CATALOG_API,
   RELEASES_PAGE,
   parseVersion,
   compareVersions,

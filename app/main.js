@@ -45,7 +45,7 @@ const { agentChangesSince, agentChangesStamp } = require('../core/agent-changes'
 const { runExport, EXPORTERS, FORMAT_INFO, FORMAT_ORDER } = require('../exporters');
 const { preferSmallerImages } = require('../exporters/clipboard');
 const { runExportInWorker } = require('./export-runner');
-const { exportGuideArchive, importGuideArchive, saveLinkedGuide } = require('../core/archive');
+const { exportGuideArchive, importGuideArchive, saveLinkedGuide, archiveArgument } = require('../core/archive');
 const {
   createSnapshot, listSnapshots, restoreSnapshot, autoSnapshotIfDue, convertZipSnapshots, compareSnapshot, snapshotFile,
 } = require('../core/snapshots');
@@ -223,10 +223,30 @@ function uiLanguage() {
 let mainText = i18n.createTranslator('en');
 
 /** Loads index.html in the interface language; the renderer reads it from ?lang=. */
-function loadMainPage() {
+function loadMainPage(query = {}) {
   mainText = i18n.createTranslator(uiLanguage(), LOCALES);
   setUiLanguage(mainText.language);
-  return mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'), { query: { lang: mainText.language } });
+  return mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'), { query: { lang: mainText.language, ...query } });
+}
+
+// The guide imported from the file StepForge was started with; the first page
+// load opens it in the editor (?open=) instead of the welcome screen.
+let launchGuideId = null;
+
+/**
+ * A guide file opened from outside StepForge (double-clicked, or passed on
+ * the command line) is imported as a copy, as Import ▾ → Import a copy of a
+ * guide does. Returns its guideId, or null after saying why it failed.
+ */
+function openGuideFile(file) {
+  try {
+    const guide = importGuideArchive(store, file, { mode: 'copy' });
+    reindex(guide.guideId);
+    return guide.guideId;
+  } catch (error) {
+    dialog.showErrorBox(t('Couldn’t open {file}', { file: path.basename(file) }), error.message);
+    return null;
+  }
 }
 
 /** Code block colors for an export, from Settings → Exports. */
@@ -619,7 +639,8 @@ function createWindow() {
       }, 1500);
     }
   });
-  loadMainPage();
+  loadMainPage(launchGuideId ? { open: launchGuideId } : {});
+  launchGuideId = null;
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 
@@ -871,11 +892,28 @@ function setupIpc() {
   const chosenOutputDirs = new Set();
 
   // library
+  // A library card's screenshot (core/store.js picks the step). The list
+  // carries only a version (step folder and file time) the renderer keys its
+  // scaled-down copies by; library:thumbnail sends the file's bytes.
+  const thumbnailFile = (guide) => {
+    try {
+      const file = store.thumbnailImagePath(guide);
+      const stat = file && fs.statSync(file, { throwIfNoEntry: false });
+      return stat?.isFile() ? { file, version: `${path.basename(path.dirname(file))}:${stat.mtimeMs}` } : null;
+    } catch {
+      return null; // A broken step file costs the card its picture, not the library.
+    }
+  };
+  h('library:thumbnail', ({ guideId }) => {
+    const thumbnail = store.guideExists(guideId) ? thumbnailFile(store.getGuide(guideId)) : null;
+    return thumbnail ? fs.readFileSync(thumbnail.file) : null;
+  }, { validate: (a) => c.id(a.guideId) });
   h('library:list', () => ({
     guides: store.listGuides().map((g) => ({
       ...g,
       stepCount: g.stepsOrder.length,
       locked: g.linkedSource ? Boolean(readLock(g.linkedSource.path)) : false,
+      thumbnail: thumbnailFile(g)?.version || null,
     })),
     folders: store.loadFolders(),
   }));
@@ -2101,7 +2139,7 @@ if (!gotLock) {
   console.error('[stepforge] already running — surfacing the existing window (check the tray).');
   app.quit();
 } else {
-  app.on('second-instance', () => {
+  app.on('second-instance', (event, argv, workingDirectory) => {
     if (!mainWindow) return;
     // The window may be tucked away by a recording session; opening the
     // app again is an explicit request to see it, so pause and show, the
@@ -2110,6 +2148,9 @@ if (!gotLock) {
     if (mainWindow.isMinimized()) mainWindow.restore();
     mainWindow.show();
     mainWindow.focus();
+    const file = archiveArgument(argv, workingDirectory);
+    const guideId = file && openGuideFile(file);
+    if (guideId) sendToRenderer('app:open-guide', guideId);
   });
 
   // Only the Confluence session is handled here; everything else keeps
@@ -2372,6 +2413,8 @@ if (!gotLock) {
 
     applyTheme();
     setupIpc();
+    const launchFile = archiveArgument(process.argv, process.cwd());
+    if (launchFile) launchGuideId = openGuideFile(launchFile);
     createWindow();
     registerHotkeys();
     // A restored sign-in (after an update or reinstall) resumes sync on its own.

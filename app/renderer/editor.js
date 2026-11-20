@@ -1758,6 +1758,9 @@ class GuideEditor {
                 { label: t('Region…'), action: () => this.retakeScreenshot(step.stepId, 'region') },
               ],
             },
+            ...(step.image ? [this.thumbnailStepId() === step.stepId
+              ? { label: t('Library thumbnail (current)'), disabled: true }
+              : { label: t('Use as library thumbnail'), action: () => this.setThumbnailStep(step.stepId) }] : []),
             'sep',
             { label: t('Move up'), action: () => this.moveSelectedStep(-1) },
             { label: t('Move down'), action: () => this.moveSelectedStep(1) },
@@ -3725,6 +3728,24 @@ class GuideEditor {
     const idx = this.steps.findIndex((s) => s.stepId === existing.stepId);
     if (idx >= 0) this.steps[idx] = existing;
     return existing;
+  }
+
+  /**
+   * The step whose screenshot the guide's library card shows: the chosen
+   * one, else the first shown step with a screenshot, else the first with
+   * one. GuideStore.thumbnailImagePath picks the same way.
+   */
+  thumbnailStepId() {
+    const withImage = this.steps.filter((step) => step.image);
+    return (withImage.find((step) => step.stepId === this.guide?.thumbnailStepId)
+      || withImage.find((step) => !step.hidden) || withImage[0])?.stepId || null;
+  }
+
+  async setThumbnailStep(stepId) {
+    if (!this.guide) return;
+    this.guide.thumbnailStepId = stepId;
+    this.pendingGuideSave = true;
+    await this.flushGuide();
   }
 
   async saveGuideEdits() {

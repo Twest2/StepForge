@@ -2437,4 +2437,7 @@
   "The Microsoft Store took too long to answer. Check your connection and try again.": "Microsoft Store の応答に時間がかかりすぎました。接続を確認して、もう一度お試しください。",
   "Couldn’t reach the Microsoft Store. Check your internet connection and try again.": "Microsoft Store に接続できませんでした。インターネット接続を確認して、もう一度お試しください。",
   "The Microsoft Store didn’t say which version it has.": "Microsoft Store から提供中のバージョンを取得できませんでした。",
+  "Use as library thumbnail": "ライブラリのサムネイルに使う",
+  "Library thumbnail (current)": "ライブラリのサムネイル（現在）",
+  "Couldn’t open {file}": "{file} を開けませんでした",
 });

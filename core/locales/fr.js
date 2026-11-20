@@ -2437,4 +2437,7 @@
   "The Microsoft Store took too long to answer. Check your connection and try again.": "Le Microsoft Store a mis trop de temps à répondre. Vérifiez votre connexion et réessayez.",
   "Couldn’t reach the Microsoft Store. Check your internet connection and try again.": "Impossible de joindre le Microsoft Store. Vérifiez votre connexion Internet et réessayez.",
   "The Microsoft Store didn’t say which version it has.": "Le Microsoft Store n’a pas indiqué la version qu’il propose.",
+  "Use as library thumbnail": "Utiliser comme miniature dans la bibliothèque",
+  "Library thumbnail (current)": "Miniature dans la bibliothèque (actuelle)",
+  "Couldn’t open {file}": "Impossible d’ouvrir {file}",
 });

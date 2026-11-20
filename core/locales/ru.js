@@ -2437,4 +2437,7 @@
   "The Microsoft Store took too long to answer. Check your connection and try again.": "Microsoft Store слишком долго не отвечал. Проверьте подключение и повторите попытку.",
   "Couldn’t reach the Microsoft Store. Check your internet connection and try again.": "Не удалось подключиться к Microsoft Store. Проверьте подключение к Интернету и повторите попытку.",
   "The Microsoft Store didn’t say which version it has.": "Microsoft Store не сообщил, какая версия в нём есть.",
+  "Use as library thumbnail": "Использовать как миниатюру в библиотеке",
+  "Library thumbnail (current)": "Миниатюра в библиотеке (текущая)",
+  "Couldn’t open {file}": "Не удалось открыть {file}",
 });

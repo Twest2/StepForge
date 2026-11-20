@@ -313,6 +313,7 @@ class GuideStore {
       }
     }
     copy.stepsOrder = src.stepsOrder.map((id) => idMap.get(id)).filter(Boolean);
+    if (copy.thumbnailStepId) copy.thumbnailStepId = idMap.get(copy.thumbnailStepId);
     return this.saveGuide(copy);
   }
 
@@ -527,6 +528,31 @@ class GuideStore {
     if (!step.image) return null;
     const rel = which === 'original' ? step.image.originalPath : step.image.workingPath;
     return path.join(this.stepDir(guideId, stepId), rel);
+  }
+
+  /**
+   * The working screenshot a library card shows for `guide`: the step chosen
+   * with Use as library thumbnail, else the first step with a screenshot that
+   * isn't hidden, else the first with one; null if none. Reads step files
+   * only until it knows. The editor's step menu picks the same way.
+   */
+  thumbnailImagePath(guide) {
+    const imageOf = (stepId) => {
+      const step = readJsonIfExists(path.join(this.stepDir(guide.guideId, stepId), 'step.json'), null);
+      return step?.image?.workingPath ? { file: path.join(this.stepDir(guide.guideId, stepId), step.image.workingPath), hidden: step.hidden } : null;
+    };
+    if (guide.thumbnailStepId && guide.stepsOrder.includes(guide.thumbnailStepId)) {
+      const chosen = imageOf(guide.thumbnailStepId);
+      if (chosen) return chosen.file;
+    }
+    let fallback = null;
+    for (const stepId of guide.stepsOrder) {
+      const image = imageOf(stepId);
+      if (!image) continue;
+      if (!image.hidden) return image.file;
+      fallback ||= image.file;
+    }
+    return fallback;
   }
 
   /**

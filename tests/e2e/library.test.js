@@ -80,3 +80,17 @@ test('deleting a guide sends it to Trash, restoring brings it back, emptying Tra
   await flows.eventually(() => listTrashGuides(env.dataDir).length === 0, 'trash emptied on disk');
   assert.equal(fs.existsSync(guideDir), false, 'the guide folder is gone for good');
 }));
+
+test('guide cards show a screenshot of the guide', () => withApp('library-thumbnails', {}, async (app) => {
+  await flows.openLibrary(app);
+  // The sample's first step, scaled down to 640 pixels wide.
+  await flows.eventually(() => app.evaluate("document.querySelector('.guide-card .card-thumb')?.naturalWidth === 640"), 'first step screenshot loaded');
+}));
+
+test('starting StepForge with a guide file opens it in the editor, not the welcome screen', () => withApp('library-open-file', {
+  args: (env) => [path.join(env.root, 'sample', 'sample-guide.sfgz')],
+}, async (app, env) => {
+  await app.waitForVisible('.step-select, .step-actions', { label: 'the guide editor' });
+  assert.equal(await app.evaluate("document.getElementById('welcome-host').childElementCount"), 0, 'the welcome screen was never drawn');
+  assert.equal(listLibraryGuides(env.dataDir).length, 2, 'imported as a copy beside the sample');
+}));

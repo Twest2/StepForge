@@ -2437,4 +2437,7 @@
   "The Microsoft Store took too long to answer. Check your connection and try again.": "Microsoft Store 响应时间过长。请检查网络连接后重试。",
   "Couldn’t reach the Microsoft Store. Check your internet connection and try again.": "无法连接到 Microsoft Store。请检查网络连接后重试。",
   "The Microsoft Store didn’t say which version it has.": "Microsoft Store 未说明其提供的版本。",
+  "Use as library thumbnail": "用作指南库缩略图",
+  "Library thumbnail (current)": "指南库缩略图（当前）",
+  "Couldn’t open {file}": "无法打开 {file}",
 });

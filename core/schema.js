@@ -115,6 +115,9 @@ function createGuide(fields = {}) {
     // Annotation type -> style that new annotations of that type start with,
     // set by Apply style to the entire guide.
     annotationStyles: normalizeAnnotationStyles(fields.annotationStyles),
+    // The step whose screenshot the library card shows (step menu → Use as
+    // library thumbnail). Absent means the first shown step with a screenshot.
+    ...(typeof fields.thumbnailStepId === 'string' && fields.thumbnailStepId ? { thumbnailStepId: fields.thumbnailStepId } : {}),
     // Monotonic revision for optimistic concurrency. Absent in v1 data (reads
     // as 0), bumped on every store write.
     revision: Number.isInteger(fields.revision) && fields.revision >= 0 ? fields.revision : 0,

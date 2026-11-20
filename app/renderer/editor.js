@@ -326,12 +326,13 @@ function zoomShortcutFromEvent(e) {
 }
 
 class GuideEditor {
-  constructor({ root, onMetaChange = () => {}, onToast = toast, onBack = () => {}, onPublish = null } = {}) {
+  constructor({ root, onMetaChange = () => {}, onToast = toast, onBack = () => {}, onPublish = null, onStartRecording = () => {} } = {}) {
     this.root = root;
     this.onMetaChange = onMetaChange;
     this.onToast = onToast;
     this.onBack = onBack;
-    this.onPublish = onPublish; // (format) => Share → Publish to Confluence/Wiki.js for this guide
+    this.onPublish = onPublish; // (format) => Share → Publish to the web ('web'), Confluence or Wiki.js for this guide
+    this.onStartRecording = onStartRecording;
 
     this.guideId = null;
     this.guide = null;
@@ -678,6 +679,7 @@ class GuideEditor {
     this.stepSelectionAnchor = null;
     this.selectedStepId = stepId;
     this.selectedAnnotationId = null;
+    this.propsPaneStepKey = null;
     this.canvasHistory = [];
     this.canvasFuture = [];
     this.pendingSave = false;
@@ -834,7 +836,13 @@ class GuideEditor {
         this.dom.canvasWrap = el('div.canvas-wrap', {},
           this.dom.canvas = el('canvas', { width: 1, height: 1, tabIndex: -1, role: 'group', 'aria-label': t('Screenshot editor'), 'aria-describedby': 'screenshot-keyboard-help' }, t('Select annotations in the list to edit their properties.')),
           el('span.sr-only', { id: 'screenshot-keyboard-help' }, t('Select an annotation from the list, then focus the screenshot. Use arrow keys to move it and Delete to remove it.')),
-          this.dom.canvasEmpty = el('div.canvas-empty', {}, t('Select an image step to edit annotations.')),
+          this.dom.canvasEmpty = el('div.canvas-empty', {}, el('div', {},
+            this.dom.canvasEmptyText = el('p', {}, t('Select an image step to edit annotations.')),
+            this.dom.canvasEmptyActions = el('div.canvas-empty-actions', { hidden: true },
+              el('button.primary', { type: 'button', onClick: () => this.onStartRecording() }, t('Start recording')),
+              el('button', { type: 'button', onClick: () => this.importImageSteps() }, t('Import images')),
+            ),
+          )),
         ),
         // The flowchart canvas and, beside it, its Mermaid text (Mermaid button, top right).
         this.dom.flowPane = el('div.flowchart-pane', { hidden: true },
@@ -1166,7 +1174,7 @@ class GuideEditor {
     this.dom.moveDownBtn.addEventListener('click', () => this.moveSelectedStep(1));
     this.dom.duplicateBtn.addEventListener('click', () => this.duplicateSelectedStep());
     this.dom.deleteBtn.addEventListener('click', () => this.deleteSelectedStep());
-    this.dom.saveNowBtn.addEventListener('click', () => this.saveAll());
+    this.dom.saveNowBtn.addEventListener('click', () => this.saveAll({ announce: true }));
     this.dom.snapshotBtn.addEventListener('click', () => this.createSnapshot());
     this.dom.zoomSelect.addEventListener('change', () => {
       const value = this.dom.zoomSelect.value;
@@ -1338,7 +1346,9 @@ class GuideEditor {
     this.dom.annotationList.addEventListener('click', (e) => {
       const item = e.target.closest('[data-ann-id]');
       if (!item) return;
+      this.selectingFromAnnotationList = true;
       this.canvas.select(item.dataset.annId);
+      this.selectingFromAnnotationList = false;
       [...this.dom.annotationList.querySelectorAll('[data-ann-id]')].find(button => button.dataset.annId === item.dataset.annId)?.focus();
     });
 
@@ -2313,6 +2323,12 @@ class GuideEditor {
   syncStepFields() {
     const step = this.currentStep;
     const guide = this.guide;
+    // A different step or a newly opened guide starts the pane at the top; autosave re-renders keep its place.
+    const paneKey = `${this.guideId}/${step?.stepId}`;
+    if (paneKey !== this.propsPaneStepKey) {
+      this.propsPaneStepKey = paneKey;
+      this.dom.propertiesPane.scrollTop = 0;
+    }
     if (!step) {
       this.dom.titleInput.value = '';
       this.dom.descEditor.innerHTML = '';
@@ -2337,12 +2353,13 @@ class GuideEditor {
       : '';
   }
 
-  // A guide with no steps needs a first capture or import; otherwise the
-  // canvas is waiting for a step to be selected or to have an image.
+  // A guide with no steps needs a first recording or import, with buttons
+  // for both; otherwise the canvas is waiting for a step to be selected or to have an image.
   showCanvasEmpty() {
-    this.dom.canvasEmpty.textContent = this.steps.length
+    this.dom.canvasEmptyText.textContent = this.steps.length
       ? t('Select an image step to edit annotations.')
       : t('Start recording or import images to begin.');
+    this.dom.canvasEmptyActions.hidden = this.steps.length > 0;
     this.dom.canvasEmpty.classList.remove('hidden');
   }
 
@@ -3849,20 +3866,25 @@ class GuideEditor {
     await calculate();
   }
 
-  async saveAll() {
+  /**
+   * Save everything now. `announce` is for an explicit Save (button, Ctrl+S):
+   * only then does a plain save say "Saved."; the flushes before dialogs,
+   * publishing and navigation stay quiet unless something needs telling.
+   */
+  async saveAll({ announce = false } = {}) {
     if (this.currentStep) await this.flushStep();
     if (this.guide) await this.flushGuide();
     if (this.guide && this.guide.linkedSource) {
       const result = await this.runLinkedSave({ force: false });
       if (result.saved) {
         if (this.guide.linkedSource) this.guide.linkedSource.lastSavedAt = new Date().toISOString();
-        this.toastLinkedSave(result, t('Saved and synced to linked archive.'));
+        if (announce || result.merged) this.toastLinkedSave(result, t('Saved and synced to linked archive.'));
       } else {
         this.onToast(t('Saved locally, but the linked archive is locked by another session.'), { error: true });
       }
       return;
     }
-    this.onToast(t('Saved.'));
+    if (announce) this.onToast(t('Saved.'));
   }
 
   /**
@@ -4360,23 +4382,18 @@ class GuideEditor {
     }
   }
 
-  /** Capture menu anchored at a toolbar button. */
-  async openCaptureMenu(event) {
+  /** Capture menu for individual screenshots and image imports. */
+  openCaptureMenu(event) {
     const trigger = event.currentTarget || event.target;
     const rect = trigger.getBoundingClientRect();
-    const session = (await api.capture.state())?.active;
-    const items = [
-      { label: t('Capture full screen'), action: () => this.captureStep('fullscreen') },
-      { label: t('Capture window'), action: () => this.captureStep('window') },
-      { label: t('Capture region'), action: () => this.captureStep('region') },
+    contextMenu(rect.left, rect.bottom + 4, [
+      { label: t('Full-screen screenshot'), action: () => this.captureStep('fullscreen') },
+      { label: t('Window screenshot'), action: () => this.captureStep('window') },
+      { label: t('Region screenshot'), action: () => this.captureStep('region') },
       'sep',
       { label: t('Paste image as step'), action: () => this.pasteClipboardStep() },
-      { label: t('Import images…'), action: () => this.importImageSteps() },
-    ];
-    if (!session) {
-      items.push('sep', { label: t('Start capture session (hotkey)'), action: () => this.startCaptureSession() });
-    }
-    contextMenu(rect.left, rect.bottom + 4, items, { trigger });
+      { label: t('Import images'), action: () => this.importImageSteps() },
+    ], { trigger });
   }
 
   async pasteClipboardStep() {
@@ -4623,11 +4640,6 @@ class GuideEditor {
     return ` ${t('Press Ctrl+Z to undo.')}`;
   }
 
-  async startCaptureSession() {
-    await api.capture.session({ action: 'start', guideId: this.guideId });
-    this.emitMeta();
-  }
-
   async pauseCaptureSession() {
     await api.capture.session({ action: 'pause', guideId: this.guideId });
     this.onToast(t('Capture paused.'));
@@ -4746,12 +4758,13 @@ class GuideEditor {
       branding: { profiles: brandProfiles, activeId: settings.branding?.activeProfileId || '' },
       defaultFormat: 'pdf',
       defaultOutDir: settings.exports?.lastOutputDirs?.[settings.exports?.dialog?.format || 'pdf']
-        || settings.exports?.lastOutputDirs?.pdf || '',
+        || settings.exports?.lastOutputDirs?.pdf || await api.export.defaultDir().catch(() => null) || '',
       // Opens with what was chosen last time, and keeps changes however it closes.
       remembered: settings.exports?.dialog || null,
       onRemember: (choices) => api.settings.set({ keyPath: 'exports.dialog', value: choices })
         .catch((err) => console.warn('[stepforge] could not save export choices:', err?.message || err)),
       onChooseDir: async (format) => api.export.chooseDir({ format }),
+      onCheckDir: async (outDir) => api.export.canUseDir({ outDir }),
       onChooseImage: async () => api.export.chooseImage(),
       onLoadDefaults: async (format, brandProfileId) => api.export.defaults({ format, brandProfileId }),
       onLoadTemplate: async (format, name) => api.templates.load({ format, name }),
@@ -4869,11 +4882,16 @@ class GuideEditor {
       { kind: 'cmd', label: t('New guide'), description: t('Create a blank guide'), action: () => this.onBack('new') },
       { kind: 'cmd', label: t('Export'), description: t('Export the current guide'), action: () => this.openExportDialog() },
       { kind: 'cmd', label: t('Copy to clipboard'), description: t('Copy the guide with its screenshots'), action: () => this.copyToClipboard() },
+      this.onPublish ? { kind: 'cmd', label: t('Publish to the web'), action: () => this.onPublish('web') } : null,
+      { kind: 'cmd', label: t('Guide information…'), action: () => this.openGuideInfo() },
+      { kind: 'cmd', label: t('Backups & snapshots…'), action: () => this.openBackupsDialog() },
+      { kind: 'cmd', label: t('Find private details…'), action: () => this.findPrivateDetails() },
       { kind: 'cmd', label: t('Optimize guide images'), action: () => this.optimizeImages() },
+      { kind: 'cmd', label: t('Keyboard shortcuts…'), action: () => this.openShortcutsHelp() },
       { kind: 'cmd', label: t('Settings'), description: t('Open application settings'), action: () => this.openSettings() },
       { kind: 'cmd', label: t('Linked guide'), description: t('Show linked archive details'), action: () => this.openLinkedGuide() },
-      { kind: 'cmd', label: t('Start capture session'), description: t('Enable hotkey capture for this guide'), action: () => this.startCaptureSession() },
-    ];
+      { kind: 'cmd', label: t('Start recording'), description: t('Each click becomes a step in this guide'), action: () => this.onStartRecording() },
+    ].filter(Boolean);
 
     await dialogs.showQuickActions({
       commands,
@@ -5131,6 +5149,8 @@ class GuideEditor {
   onCanvasSelect(ann) {
     this.selectedAnnotationId = ann ? ann.id : null;
     this.renderAnnotationPanel();
+    // Bring the style controls into view; a pick from the pane's own list is already visible.
+    if (ann && !this.selectingFromAnnotationList) this.dom.annotationEditor.scrollIntoView({ block: 'nearest' });
     this.emitMeta();
   }
 
@@ -5511,7 +5531,7 @@ class GuideEditor {
     }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
       e.preventDefault();
-      this.saveAll();
+      this.saveAll({ announce: true });
       return;
     }
     // While the flowchart is shown, plain keys are the flowchart's (and the

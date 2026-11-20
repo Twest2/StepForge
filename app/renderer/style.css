@@ -1043,6 +1043,9 @@ body.platform-linux #capture-status button {
   color: var(--muted);
   pointer-events: none;
 }
+.canvas-empty p { margin: 0; }
+.canvas-empty-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 12px; pointer-events: auto; }
+.canvas-empty-actions[hidden] { display: none; }
 
 .pane-props section {
   display: flex;
@@ -1070,11 +1073,11 @@ body.platform-linux #capture-status button {
   align-items: center;
   gap: 8px;
 }
+.pane-props .row { flex-wrap: wrap; }
 .pane-props .row > label {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  white-space: nowrap;
 }
 .form-row {
   gap: 10px;
@@ -1155,13 +1158,14 @@ body.platform-linux #capture-status button {
 }
 .block-card {
   border: 1px solid var(--border);
-  border-left: 4px solid var(--border);
   border-radius: 12px;
   padding: 10px;
   background: var(--panel-solid);
 }
 .block-card[draggable="true"] { cursor: grab; }
 .block-card[draggable="true"]:active { cursor: grabbing; }
+/* The stripe previews the callout type in export. */
+.block-card[data-level] { border-left-width: 4px; }
 .block-card[data-level="info"] { border-left-color: #3b82f6; }
 .block-card[data-level="success"] { border-left-color: #10b981; }
 .block-card[data-level="warn"] { border-left-color: #f59e0b; }
@@ -1350,7 +1354,6 @@ fieldset legend {
 }
 
 .quick-actions {
-  width: min(760px, 92vw);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1387,14 +1390,9 @@ fieldset legend {
 .fr-item mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: inherit; border-radius: 3px; }
 .qa-item .kind {
   flex: none;
-  margin-top: 2px;
-  padding: 2px 6px;
-  border-radius: 999px;
-  background: var(--panel-2);
+  margin-left: auto;
   color: var(--muted);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  font-size: 12px;
 }
 
 .export-dialog,
@@ -1413,18 +1411,6 @@ fieldset legend {
 .recording-notice {
   display: grid;
   gap: 10px;
-}
-.recording-notice__badge {
-  width: fit-content;
-  padding: 4px 10px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--panel-2);
-  color: var(--danger);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 .recording-notice__title {
   font-size: 18px;
@@ -1662,15 +1648,18 @@ fieldset legend {
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--panel-2);
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+  /* One grid for all rows: the label column is as wide as the longest translated label. */
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) 76px 12px;
+  align-items: center;
+  gap: 8px 6px;
 }
-.focused-controls .form-row label { width: 50px; flex: none; color: var(--muted); font-size: 12px; }
-.focused-controls input[type="range"] { flex: 1; min-width: 0; }
-.focused-controls input[type="number"] { width: 76px; flex: none; font-variant-numeric: tabular-nums; }
-.focused-controls .fv-unit { width: 12px; flex: none; color: var(--muted); font-size: 12px; }
-.focused-controls .form-row { gap: 6px; }
+.focused-controls .form-row { display: contents; }
+.focused-controls > .muted { grid-column: 1 / -1; }
+.focused-controls .form-row label { width: auto; color: var(--muted); font-size: 12px; }
+.focused-controls input[type="range"] { min-width: 0; }
+.focused-controls input[type="number"] { font-variant-numeric: tabular-nums; }
+.focused-controls .fv-unit { color: var(--muted); font-size: 12px; }
 .blocks-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
 .blocks-list .block-card textarea,
 .blocks-list .block-card input { width: 100%; }
@@ -2117,7 +2106,7 @@ fieldset legend {
 }
 .settings-chip.dev { color: var(--text); background: color-mix(in srgb, var(--caution) 25%, var(--panel-solid)); }
 /* The same chip beside new features elsewhere (betaBadge in util.js). */
-.beta-badge { display: inline-block; line-height: 1.5; vertical-align: 1px; white-space: nowrap; }
+.beta-badge { display: inline-block; font-size: 11px; line-height: 1.5; vertical-align: 1px; white-space: nowrap; }
 .account-text strong .beta-badge, .ctx-menu .mi .beta-badge { margin-left: 8px; }
 .settings-card .placeholder-rows { padding-top: 12px; }
 

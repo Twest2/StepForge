@@ -54,16 +54,32 @@ function trashCountdown(item, library = {}) {
  * restart reuses them. Showing the screenshot files themselves kept every
  * full-size decode in memory (about 700 MB more for 300 guides with 4K
  * screenshots). createImageBitmap decodes off the main thread and keeps only
- * the small copy; one at a time, as cards come near the screen.
+ * the small copy; a few at a time, as cards come near the screen.
  */
 const THUMBNAIL_WIDTH = 640;
 const smallThumbnails = new Map(); // guideId -> { version, job: Promise<data: URL> }
-let thumbnailQueue = Promise.resolve();
+// Cards are drawn in parallel, but only a few at once: each holds a full-size screenshot until it's scaled.
+const THUMBNAIL_JOBS = Math.max(2, Math.min(4, globalThis.navigator?.hardwareConcurrency || 4));
+let runningThumbnails = 0;
+const waitingThumbnails = [];
+function thumbnailSlot(task) {
+  return new Promise((resolve, reject) => {
+    const run = () => {
+      runningThumbnails += 1;
+      task().then(resolve, reject).finally(() => {
+        runningThumbnails -= 1;
+        waitingThumbnails.shift()?.();
+      });
+    };
+    if (runningThumbnails < THUMBNAIL_JOBS) run();
+    else waitingThumbnails.push(run);
+  });
+}
 
 function smallThumbnail(guideId, version) {
   const cached = smallThumbnails.get(guideId);
   if (cached?.version === version) return cached.job;
-  const job = thumbnailQueue.then(async () => {
+  const job = thumbnailSlot(async () => {
     const result = await api.library.thumbnail({ guideId, version });
     if (!result) throw new Error('no screenshot');
     if (result.dataUrl) return result.dataUrl; // drawn in an earlier session and saved
@@ -79,7 +95,7 @@ function smallThumbnail(guideId, version) {
     void api.library.saveThumbnail({ guideId, version, dataUrl }).catch(() => {});
     return dataUrl;
   });
-  thumbnailQueue = job.catch(() => {
+  job.catch(() => {
     if (smallThumbnails.get(guideId)?.job === job) smallThumbnails.delete(guideId);
   });
   smallThumbnails.set(guideId, { version, job });

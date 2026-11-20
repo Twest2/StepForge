@@ -167,3 +167,16 @@ test('Guide version sits under Review, above Software version, and saves trimmed
   await u.all(u.all(u.root).find(n => n.tag === 'footer')).find(n => n.textContent === 'Save').listeners.click();
   assert.equal(saved.guideVersion, '1.1');
 });
+
+test('Last verified repeats the chosen date in the app’s date format', async () => {
+  const u = ui();
+  u.context.window.StepForgeDialogs.showGuideInfoDialog({ values: { lastVerified: '2026-03-04' } });
+  const input = u.all(u.root).find(n => n.tag === 'input' && n.type === 'date');
+  const shown = input.parent.children.at(-1);
+  assert.equal(shown.textContent, '04-Mar-2026');
+  input.value = '';
+  input.listeners.input();
+  assert.equal(shown.textContent, '');
+  await u.all(input.parent).find(n => n.tag === 'button' && n.textContent === 'Today').listeners.click();
+  assert.match(shown.textContent, /^\d\d-[A-Z][a-z]{2}-\d{4}$/);
+});

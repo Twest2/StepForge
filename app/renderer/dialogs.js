@@ -2115,9 +2115,12 @@ function showGuideInfoDialog({ values = {}, reviewDefaultDays, cloudConnected = 
       { value: '0', label: t('Never') },
     ]);
     const reviewHint = el('div.muted', { style: { marginTop: '-4px', marginBottom: '12px' } });
+    // The date input shows the system's format (e.g. 11/20/2026); repeat the date the way the rest of the app writes it.
+    const verifiedShown = el('span.muted');
     const readReviewDays = () => (reviewSelect.value === '' ? null : Number(reviewSelect.value));
     // Saving restarts the clock, so the preview counts from now.
     const updateReviewHint = () => {
+      verifiedShown.textContent = verifiedInput.value ? formatGuideDate(`${verifiedInput.value}T00:00`) : '';
       const status = review.reviewStatus({
         updatedAt: new Date().toISOString(),
         metadata: { lastVerified: verifiedInput.value, reviewAfterDays: readReviewDays() },
@@ -2185,7 +2188,7 @@ function showGuideInfoDialog({ values = {}, reviewDefaultDays, cloudConnected = 
         el('h3', { style: { margin: '14px 0 6px' } }, t('Review')),
         labeledRow(t('Guide version'), guideVersionInput),
         labeledRow(t('Software version'), versionInput),
-        labeledRow(t('Last verified'), el('div.row', {}, verifiedInput, todayBtn)),
+        labeledRow(t('Last verified'), el('div.row', {}, verifiedInput, todayBtn, verifiedShown)),
         labeledRow(t('Review again'), reviewSelect),
         reviewHint,
         el('section.guide-info-cloud', { hidden: !cloudConnected, 'aria-label': t('Cloud sync') },

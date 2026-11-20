@@ -256,10 +256,9 @@ function brandSummary(data) {
 }
 
 /**
- * Settings → Branding. `value()` is the chosen profile id ('' for no
- * branding), saved with the rest of Settings.
+ * Settings → Branding. onChange receives the active profile id ('' for no branding).
  */
-function makeBrandingSettings(api, { activeProfileId = '' } = {}) {
+function makeBrandingSettings(api, { activeProfileId = '', onChange = () => {} } = {}) {
   let profiles = [];
   let active = activeProfileId || '';
   const select = el('select#brand-active', { 'aria-label': t('Active brand profile') });
@@ -292,7 +291,14 @@ function makeBrandingSettings(api, { activeProfileId = '' } = {}) {
     await showSummary();
   };
 
-  select.addEventListener('change', () => { active = select.value; fillSelect(); void showSummary(); });
+  const setActive = (id) => {
+    const previous = active;
+    active = id;
+    fillSelect();
+    if (active !== previous) onChange(active);
+    return showSummary();
+  };
+  select.addEventListener('change', () => { void setActive(select.value); });
   // A built-in theme can't change; Customize saves an editable copy and uses it.
   const customizeBtn = el('button', {
     type: 'button',
@@ -300,10 +306,8 @@ function makeBrandingSettings(api, { activeProfileId = '' } = {}) {
     onClick: async () => {
       const saved = await customizeBrandTheme(api, active);
       if (!saved) return;
-      active = saved.profile.id;
       profiles = await api.branding.list();
-      fillSelect();
-      await showSummary();
+      await setActive(saved.profile.id);
     },
   }, t('Customize…'));
   const manageBtn = el('button', {
@@ -312,9 +316,7 @@ function makeBrandingSettings(api, { activeProfileId = '' } = {}) {
       const { created } = await showBrandProfiles(api);
       profiles = await api.branding.list();
       // A first profile made from "No branding" is probably the one to use.
-      if (!active && created.length) active = created[created.length - 1];
-      fillSelect();
-      await showSummary();
+      await setActive(active || created.at(-1) || '');
     },
   }, t('Manage'));
   previewBtn.addEventListener('click', async () => {
@@ -344,8 +346,7 @@ function makeBrandingSettings(api, { activeProfileId = '' } = {}) {
       el('dl.brand-support', {}, ...BRAND_SUPPORT.flatMap(([format, what]) => [el('dt', {}, format), el('dd', {}, what)])),
       el('p.setting-desc', {}, t('The Export dialog can pick a different profile, or none, for one export.'))));
   void refresh();
-  // The choice, not the list: the list is empty until the profiles load.
-  return { node, value: () => active };
+  return { node };
 }
 
 /**

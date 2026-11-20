@@ -451,7 +451,8 @@ test('settings: built-in themes are their own group; Customize saves an editable
       return { profile: { ...profile, id: 'brand-new' }, assets: {} };
     },
   });
-  const panel = t.context.makeBrandingSettings(api, { activeProfileId: '' });
+  const activeChanges = [];
+  const panel = t.context.makeBrandingSettings(api, { onChange: (id) => activeChanges.push(id) });
   await settle(); await settle();
   const select = t.all(panel.node).find((n) => n.tag === 'select' && n['aria-label'] === 'Active brand profile');
   assert.deepEqual(select.children.map((c) => (c.tag === 'optgroup' ? [c.label, c.children.map((o) => o.textContent)] : c.textContent)),
@@ -463,7 +464,7 @@ test('settings: built-in themes are their own group; Customize saves an editable
   select.listeners.change();
   await settle();
   assert.equal(customize.hidden, false);
-  assert.equal(panel.value(), theme.id, 'a theme can be the active profile as it is');
+  assert.deepEqual(activeChanges, [theme.id], 'a theme can be the active profile as it is');
   assert.ok(t.all(panel.node).some((n) => n.classList.contains('brand-theme-note') && /Choose Customize to make your own copy/.test(n.textContent)));
 
   t.click(customize);
@@ -476,7 +477,7 @@ test('settings: built-in themes are their own group; Customize saves an editable
   assert.equal(copy.name, 'Ocean (custom)');
   assert.equal(copy.cover, 'band');
   assert.deepEqual(copy.screenshots, theme.screenshots);
-  assert.equal(panel.value(), 'brand-new', 'the copy becomes the active profile');
+  assert.deepEqual(activeChanges, [theme.id, 'brand-new'], 'the copy becomes the active profile');
   assert.equal(customize.hidden, true);
 });
 

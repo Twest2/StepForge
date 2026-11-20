@@ -49,6 +49,7 @@ const DEFAULT_SETTINGS = {
     hotkeyPauseResume: 'CommandOrControl+Shift+2',
     captureOutsideClicks: true,
     confirmSimpleCapture: false,
+    recordingReminder: true, // "Before recording starts" tip; its "Don’t show this again" turns it off.
     // Fallback trigger when click capture is unavailable: keep the old timer
     // fallback by default, but let users switch to hotkey-only recordings.
     fallbackTrigger: 'hotkey', // hotkey | interval

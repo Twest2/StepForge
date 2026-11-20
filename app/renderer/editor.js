@@ -317,12 +317,13 @@ function zoomShortcutFromEvent(e) {
 }
 
 class GuideEditor {
-  constructor({ root, onMetaChange = () => {}, onToast = toast, onBack = () => {}, onPublish = null } = {}) {
+  constructor({ root, onMetaChange = () => {}, onToast = toast, onBack = () => {}, onPublish = null, onStartRecording = () => {} } = {}) {
     this.root = root;
     this.onMetaChange = onMetaChange;
     this.onToast = onToast;
     this.onBack = onBack;
     this.onPublish = onPublish; // (format) => Share → Publish to the web ('web'), Confluence or Wiki.js for this guide
+    this.onStartRecording = onStartRecording;
 
     this.guideId = null;
     this.guide = null;
@@ -826,7 +827,13 @@ class GuideEditor {
         this.dom.canvasWrap = el('div.canvas-wrap', {},
           this.dom.canvas = el('canvas', { width: 1, height: 1, tabIndex: -1, role: 'group', 'aria-label': t('Screenshot editor'), 'aria-describedby': 'screenshot-keyboard-help' }, t('Select annotations in the list to edit their properties.')),
           el('span.sr-only', { id: 'screenshot-keyboard-help' }, t('Select an annotation from the list, then focus the screenshot. Use arrow keys to move it and Delete to remove it.')),
-          this.dom.canvasEmpty = el('div.canvas-empty', {}, t('Select an image step to edit annotations.')),
+          this.dom.canvasEmpty = el('div.canvas-empty', {}, el('div', {},
+            this.dom.canvasEmptyText = el('p', {}, t('Select an image step to edit annotations.')),
+            this.dom.canvasEmptyActions = el('div.canvas-empty-actions', { hidden: true },
+              el('button.primary', { type: 'button', onClick: () => this.onStartRecording() }, t('Start recording')),
+              el('button', { type: 'button', onClick: () => this.importImageSteps() }, t('Import images')),
+            ),
+          )),
         ),
         // The flowchart canvas and, beside it, its Mermaid text (Mermaid button, top right).
         this.dom.flowPane = el('div.flowchart-pane', { hidden: true },
@@ -2331,12 +2338,13 @@ class GuideEditor {
       : '';
   }
 
-  // A guide with no steps needs a first capture or import; otherwise the
-  // canvas is waiting for a step to be selected or to have an image.
+  // A guide with no steps needs a first recording or import, with buttons
+  // for both; otherwise the canvas is waiting for a step to be selected or to have an image.
   showCanvasEmpty() {
-    this.dom.canvasEmpty.textContent = this.steps.length
+    this.dom.canvasEmptyText.textContent = this.steps.length
       ? t('Select an image step to edit annotations.')
       : t('Start recording or import images to begin.');
+    this.dom.canvasEmptyActions.hidden = this.steps.length > 0;
     this.dom.canvasEmpty.classList.remove('hidden');
   }
 
@@ -4359,23 +4367,18 @@ class GuideEditor {
     }
   }
 
-  /** Capture menu anchored at a toolbar button. */
-  async openCaptureMenu(event) {
+  /** Capture menu for individual screenshots and image imports. */
+  openCaptureMenu(event) {
     const trigger = event.currentTarget || event.target;
     const rect = trigger.getBoundingClientRect();
-    const session = (await api.capture.state())?.active;
-    const items = [
-      { label: t('Capture full screen'), action: () => this.captureStep('fullscreen') },
-      { label: t('Capture window'), action: () => this.captureStep('window') },
-      { label: t('Capture region'), action: () => this.captureStep('region') },
+    contextMenu(rect.left, rect.bottom + 4, [
+      { label: t('Full-screen screenshot'), action: () => this.captureStep('fullscreen') },
+      { label: t('Window screenshot'), action: () => this.captureStep('window') },
+      { label: t('Region screenshot'), action: () => this.captureStep('region') },
       'sep',
       { label: t('Paste image as step'), action: () => this.pasteClipboardStep() },
-      { label: t('Import images…'), action: () => this.importImageSteps() },
-    ];
-    if (!session) {
-      items.push('sep', { label: t('Start capture session (hotkey)'), action: () => this.startCaptureSession() });
-    }
-    contextMenu(rect.left, rect.bottom + 4, items, { trigger });
+      { label: t('Import images'), action: () => this.importImageSteps() },
+    ], { trigger });
   }
 
   async pasteClipboardStep() {
@@ -4620,11 +4623,6 @@ class GuideEditor {
     if (annotationStyles !== undefined) record.annotationStyles = annotationStyles;
     this.pushCanvasHistory(record);
     return ` ${t('Press Ctrl+Z to undo.')}`;
-  }
-
-  async startCaptureSession() {
-    await api.capture.session({ action: 'start', guideId: this.guideId });
-    this.emitMeta();
   }
 
   async pauseCaptureSession() {
@@ -4877,7 +4875,7 @@ class GuideEditor {
       { kind: 'cmd', label: t('Keyboard shortcuts…'), action: () => this.openShortcutsHelp() },
       { kind: 'cmd', label: t('Settings'), description: t('Open application settings'), action: () => this.openSettings() },
       { kind: 'cmd', label: t('Linked guide'), description: t('Show linked archive details'), action: () => this.openLinkedGuide() },
-      { kind: 'cmd', label: t('Start capture session'), description: t('Enable hotkey capture for this guide'), action: () => this.startCaptureSession() },
+      { kind: 'cmd', label: t('Start recording'), description: t('Each click becomes a step in this guide'), action: () => this.onStartRecording() },
     ].filter(Boolean);
 
     await dialogs.showQuickActions({

@@ -5,10 +5,10 @@
 
 const { poll } = require('./driver');
 
-/** From the welcome screen, open the library ("Existing Workspace"). */
+/** From the welcome screen, open the library ("Library"). */
 async function openLibrary(app) {
   await app.waitForVisible('.welcome-btn', { label: 'welcome screen' });
-  await app.clickWhere('.welcome-btn', "(el) => el.textContent.includes('Existing Workspace')");
+  await app.clickWhere('.welcome-btn', "(el) => el.querySelector('.welcome-btn-label')?.textContent === 'Library'");
   await app.waitForVisible('.card-open', { label: 'guide cards in the library' });
 }
 

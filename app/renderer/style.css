@@ -1043,6 +1043,9 @@ body.platform-linux #capture-status button {
   color: var(--muted);
   pointer-events: none;
 }
+.canvas-empty p { margin: 0; }
+.canvas-empty-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 12px; pointer-events: auto; }
+.canvas-empty-actions[hidden] { display: none; }
 
 .pane-props section {
   display: flex;
@@ -1396,18 +1399,6 @@ fieldset legend {
 .recording-notice {
   display: grid;
   gap: 10px;
-}
-.recording-notice__badge {
-  width: fit-content;
-  padding: 4px 10px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--panel-2);
-  color: var(--danger);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 .recording-notice__title {
   font-size: 18px;

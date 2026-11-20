@@ -1198,7 +1198,7 @@ function showSettingsDialog({
       { id: 'capture', label: t('Capture'), description: t('How StepForge records steps.'), content: [
         settingsCard(t('Recording'),
           recordingControlsRow,
-          settingRow(t('Default mode'), t('Record the whole screen or the active window. For a region, use Capture → Capture region.'), captureMode),
+          settingRow(t('Default mode'), t('Record the whole screen or the active window. For one region screenshot, use Capture → Region screenshot.'), captureMode),
           settingRow(t('Delay'), t('Milliseconds to wait before each screenshot.'), delayMs),
           settingRow(t('Click marker'), t('Draw a marker where you clicked.'), makeSwitch(clickMarker, t('Click marker'))),
           settingRow(t('Capture outside clicks'), t('Record clicks in other apps while a capture session is running.'), makeSwitch(captureOutside, t('Capture outside clicks')))),
@@ -2312,15 +2312,22 @@ function showInfoDialog(title, bodyText) {
   });
 }
 
+/**
+ * "Before recording starts": how to stop on this desktop. Resolves false on
+ * Cancel, else { dontShowAgain } with the checkbox's state.
+ */
 function showRecordingReminder({
   actionLabel = t('Continue'),
   headline = t('StepForge will hide after you continue.'),
 } = {}) {
   return new Promise((resolve) => {
+    const dontShowAgain = el('input', { type: 'checkbox' });
+    const continueButton = el('button.primary', {
+      onClick: () => { close(); resolve({ dontShowAgain: dontShowAgain.checked }); },
+    }, actionLabel);
     const { close } = openModal({
       title: t('Before recording starts'),
       body: el('div.recording-notice', {},
-        el('div.recording-notice__badge', {}, t('Recording tip')),
         el('div.recording-notice__title', {}, headline),
         el('div.recording-notice__text', {},
           document.body.classList.contains('desktop-plasma')
@@ -2329,12 +2336,13 @@ function showRecordingReminder({
             ? t('To stop, use StepForge REC in the GNOME top panel, or restore StepForge from the dock.')
             : t('Use the floating bar to pause or finish. If you use the tray icon, look for the red dot beside the clock.'),
         ),
+        el('label', {}, dontShowAgain, ' ', t('Don’t show this again')),
       ),
       footer: [
-        el('button.primary', {
-          onClick: () => { close(); resolve(true); },
-        }, actionLabel),
+        el('button', { onClick: () => { close(); resolve(false); } }, t('Cancel')),
+        continueButton,
       ],
+      initialFocus: continueButton,
       onClose: () => resolve(false),
     });
   });

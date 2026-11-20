@@ -1165,10 +1165,11 @@ class StepForgeApp {
 
   async createGuide() {
     const title = await dialogs.promptText({
-      title: t('New Guide'),
+      title: t('New guide'),
       label: t('Title'),
       value: t('Untitled guide'),
       placeholder: t('Untitled guide'),
+      confirmLabel: t('Create'),
     });
     if (title == null) return;
     const guide = await api.library.create({ title: title.trim() || t('Untitled guide'), captureDraft: !title.trim() || title.trim() === t('Untitled guide') });

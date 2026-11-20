@@ -238,6 +238,7 @@ async function promptText({
   placeholder = '',
   multiline = false,
   onInput = null,
+  confirmLabel = t('OK'),
 } = {}) {
   return new Promise((resolve) => {
     const field = multiline
@@ -249,7 +250,7 @@ async function promptText({
       body: labeledRow(label, field, { stacked: multiline }),
       footer: [
         el('button', { onClick: () => requestDismiss() }, t('Cancel')),
-        el('button.primary', { onClick: () => { close(); resolve(field.value); } }, t('OK')),
+        el('button.primary', { onClick: () => { close(); resolve(field.value); } }, confirmLabel),
       ],
       isDirty: unsavedChanges(() => field.value),
       onClose: () => resolve(null),
@@ -271,7 +272,8 @@ async function promptText({
       if (typeof onInput === 'function') onInput(field.value);
     });
 
-    setTimeout(() => field.focus(), 0);
+    // Select the prefilled value so typing replaces it.
+    setTimeout(() => { field.focus(); field.select(); }, 0);
   });
 }
 

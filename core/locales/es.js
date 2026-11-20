@@ -164,7 +164,7 @@
   'Record that these guides still match the software today': 'Indicar que estas guías siguen coincidiendo con el software actual',
   'Delete': 'Eliminar',
   'No folder': 'Sin carpeta',
-  'New Guide': 'Nueva guía',
+  'Create': 'Crear',
   'Title': 'Título',
   'Folder name': 'Nombre de la carpeta',
   'Delete the folder “{folder}”? Guides stay in the library.': '¿Eliminar la carpeta «{folder}»? Las guías se quedan en la biblioteca.',

@@ -164,7 +164,7 @@
   'Record that these guides still match the software today': 'これらのガイドが現在のソフトウェアと一致していることを記録します',
   'Delete': '削除',
   'No folder': 'フォルダーなし',
-  'New Guide': '新しいガイド',
+  'Create': '作成',
   'Title': 'タイトル',
   'Folder name': 'フォルダー名',
   'Delete the folder “{folder}”? Guides stay in the library.': 'フォルダー「{folder}」を削除しますか？ガイドはライブラリに残ります。',

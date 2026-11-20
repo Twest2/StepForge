@@ -164,7 +164,7 @@
   'Record that these guides still match the software today': '记录这些指南仍与当前软件一致',
   'Delete': '删除',
   'No folder': '不放入文件夹',
-  'New Guide': '新建指南',
+  'Create': '创建',
   'Title': '标题',
   'Folder name': '文件夹名称',
   'Delete the folder “{folder}”? Guides stay in the library.': '删除文件夹“{folder}”？指南会保留在指南库中。',

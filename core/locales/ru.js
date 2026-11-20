@@ -164,7 +164,7 @@
   'Record that these guides still match the software today': 'Отметить, что эти руководства по-прежнему соответствуют программе',
   'Delete': 'Удалить',
   'No folder': 'Без папки',
-  'New Guide': 'Новое руководство',
+  'Create': 'Создать',
   'Title': 'Название',
   'Folder name': 'Название папки',
   'Delete the folder “{folder}”? Guides stay in the library.': 'Удалить папку «{folder}»? Руководства останутся в библиотеке.',

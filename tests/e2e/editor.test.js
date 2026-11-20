@@ -190,3 +190,29 @@ test('clicking, deleting and redoing a delete keep the step list where it is', (
   view = await stepListView(app);
   assert.equal(view.scrollTop, scrolled, 'redo does not scroll the list');
 }));
+
+test('the details pane shows a selected shape\'s style, keeps its place on autosave and starts a new step at the top', () => withApp('editor-details-scroll', {}, async (app, env) => {
+  await openSample(app);
+  const paneScroll = () => app.evaluate(`document.querySelector('.pane-props').scrollTop`);
+  const styleInView = () => app.evaluate(`(() => {
+    const pane = document.querySelector('.pane-props').getBoundingClientRect();
+    const type = document.querySelector('.annotation-editor select')?.getBoundingClientRect();
+    return Boolean(type) && type.top >= pane.top && type.bottom <= pane.bottom;
+  })()`);
+  assert.equal(await styleInView(), false, 'the style controls start below the visible part of the pane');
+  const canvas = await app.waitForVisible('canvas[aria-label="Screenshot editor"]');
+  await app.click('[data-tool="rect"]');
+  await app.drag({ x: canvas.x + 120, y: canvas.y + 60 }, { x: canvas.x + 220, y: canvas.y + 140 });
+  await eventually(styleInView, 'the new rectangle\'s style controls scrolled into view');
+  assert.equal(await app.evaluate('document.activeElement?.tagName'), 'CANVAS', 'the canvas keeps keyboard focus');
+
+  const scrolled = await paneScroll();
+  assert.ok(scrolled > 0);
+  const strokeWidth = () => readSteps(guideDir(env))[0].step.annotations.at(-1).style.strokeWidth;
+  await app.setValue('.annotation-editor-inner input[type="number"]', '9');
+  await eventually(() => strokeWidth() === 9, 'stroke width saved');
+  assert.equal(await paneScroll(), scrolled, 'saving does not move the pane');
+
+  await selectStepByNumber(app, 3);
+  await eventually(async () => (await paneScroll()) === 0, 'a newly selected step starts at the top of the pane');
+}));

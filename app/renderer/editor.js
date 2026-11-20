@@ -669,6 +669,7 @@ class GuideEditor {
     this.stepSelectionAnchor = null;
     this.selectedStepId = stepId;
     this.selectedAnnotationId = null;
+    this.propsPaneStepKey = null;
     this.canvasHistory = [];
     this.canvasFuture = [];
     this.pendingSave = false;
@@ -1345,7 +1346,9 @@ class GuideEditor {
     this.dom.annotationList.addEventListener('click', (e) => {
       const item = e.target.closest('[data-ann-id]');
       if (!item) return;
+      this.selectingFromAnnotationList = true;
       this.canvas.select(item.dataset.annId);
+      this.selectingFromAnnotationList = false;
       [...this.dom.annotationList.querySelectorAll('[data-ann-id]')].find(button => button.dataset.annId === item.dataset.annId)?.focus();
     });
 
@@ -2296,6 +2299,12 @@ class GuideEditor {
   syncStepFields() {
     const step = this.currentStep;
     const guide = this.guide;
+    // A different step or a newly opened guide starts the pane at the top; autosave re-renders keep its place.
+    const paneKey = `${this.guideId}/${step?.stepId}`;
+    if (paneKey !== this.propsPaneStepKey) {
+      this.propsPaneStepKey = paneKey;
+      this.dom.propertiesPane.scrollTop = 0;
+    }
     if (!step) {
       this.dom.titleInput.value = '';
       this.dom.descEditor.innerHTML = '';
@@ -5116,6 +5125,8 @@ class GuideEditor {
   onCanvasSelect(ann) {
     this.selectedAnnotationId = ann ? ann.id : null;
     this.renderAnnotationPanel();
+    // Bring the style controls into view; a pick from the pane's own list is already visible.
+    if (ann && !this.selectingFromAnnotationList) this.dom.annotationEditor.scrollIntoView({ block: 'nearest' });
     this.emitMeta();
   }
 

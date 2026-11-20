@@ -49,6 +49,7 @@ const DEFAULT_SETTINGS = {
     hotkeyPauseResume: 'CommandOrControl+Shift+2',
     captureOutsideClicks: true,
     confirmSimpleCapture: false,
+    recordingReminder: true, // "Before recording starts" tip; its "Don’t show this again" turns it off.
     // Fallback trigger when click capture is unavailable: keep the old timer
     // fallback by default, but let users switch to hotkey-only recordings.
     fallbackTrigger: 'hotkey', // hotkey | interval
@@ -93,10 +94,6 @@ const DEFAULT_SETTINGS = {
     // After drawing one annotation (or cropping), switch back to the Select
     // tool. Off keeps the drawing tool picked until another is chosen.
     returnToSelect: true,
-    // Dangerous deletes: delete steps in the editor without asking first.
-    // Off by default; turned on in Settings → Editor.
-    // Guide, library and other deletes still ask.
-    dangerousDeletes: false,
     autoTitleTemplate: '[[Mode]] capture [[Time]]',
   },
   ai: {

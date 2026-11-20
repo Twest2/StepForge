@@ -639,7 +639,7 @@ test('a double flag cannot leak onto a click after the session restarts', async 
   assert.equal(service.lastClickMetaByButton.size, 0);
 });
 
-test('a double-clicked step is titled "Double-click" because titling waits for the second press', async () => {
+test('a double-clicked step is titled "Double-click" because titling waits for the second press', async (t) => {
   const { buildCaptureTitle, clickKindOf } = require('../../core/text-intel');
   const service = makeService({ settings: { 'capture.clickDebounceMs': 60, 'capture.clickMarker': false } });
   service.session = { guideId: 'g-dbl', paused: false, count: 0, intervalSec: 0 };
@@ -654,13 +654,22 @@ test('a double-clicked step is titled "Double-click" because titling waits for t
   };
   const stored = [];
   service.store.addStep = (guideId, fields) => { stored.push(fields); return { stepId: `s${stored.length}` }; };
-  const at = Date.now();
-  service.onOsClick(at, { x: 10, y: 20 }, 'left');
-  // The second press lands after the first click's frame is ready but inside
-  // the window; the step must not have been titled yet.
-  await settle(30);
+  // Signal when the frame is ready and the real titling delay is scheduled.
+  const delayStarted = Promise.withResolvers();
+  const settleClickKind = service.settleClickKind.bind(service);
+  service.settleClickKind = (clickMeta) => {
+    const settled = settleClickKind(clickMeta);
+    delayStarted.resolve();
+    return settled;
+  };
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 1000 });
+  service.onOsClick(Date.now(), { x: 10, y: 20 }, 'left');
+  await delayStarted.promise;
+  t.mock.timers.tick(30);
+  await new Promise(setImmediate);
   assert.equal(stored.length, 0, 'titling is held until the window closes');
-  service.onOsClick(at + 30, { x: 10, y: 20 }, 'left');
+  service.onOsClick(Date.now(), { x: 10, y: 20 }, 'left');
+  t.mock.timers.tick(30);
   await service.clickQueue;
   assert.equal(stored.length, 1);
   assert.equal(stored[0].title, 'Double-click Report.xlsx');

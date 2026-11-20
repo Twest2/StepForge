@@ -2,6 +2,7 @@
 
 const path = require('node:path');
 const fs = require('node:fs');
+const { createHash } = require('node:crypto');
 const { pathToFileURL } = require('node:url');
 const {
   app, BrowserWindow, ipcMain, dialog, shell, nativeTheme, globalShortcut,
@@ -39,13 +40,15 @@ const { MAX_REQUEST_CHARS: MAX_BRAND_CSS_REQUEST_CHARS } = require('../core/ai-b
 const { buildSampleAst } = require('../core/branding-sample');
 const { setImageCodec, rasterToPng, sniffImageFormat, readImageSize, optimizeScreenshot, imagePreviewUrl } = require('../core/image-format');
 const { optimizeGuideImages } = require('../core/image-optimize');
+const { decodePng, encodePng } = require('../core/png');
+const { renderAnnotations } = require('../core/raster');
 const { createImageCodec } = require('../core/image-codec');
 const { AI_TARGETS } = require('../core/text-intel');
 const { agentChangesSince, agentChangesStamp } = require('../core/agent-changes');
 const { runExport, EXPORTERS, FORMAT_INFO, FORMAT_ORDER } = require('../exporters');
 const { preferSmallerImages } = require('../exporters/clipboard');
 const { runExportInWorker } = require('./export-runner');
-const { exportGuideArchive, importGuideArchive, saveLinkedGuide } = require('../core/archive');
+const { exportGuideArchive, importGuideArchive, saveLinkedGuide, archiveArgument } = require('../core/archive');
 const {
   createSnapshot, listSnapshots, restoreSnapshot, autoSnapshotIfDue, convertZipSnapshots, compareSnapshot, snapshotFile,
 } = require('../core/snapshots');
@@ -223,10 +226,30 @@ function uiLanguage() {
 let mainText = i18n.createTranslator('en');
 
 /** Loads index.html in the interface language; the renderer reads it from ?lang=. */
-function loadMainPage() {
+function loadMainPage(query = {}) {
   mainText = i18n.createTranslator(uiLanguage(), LOCALES);
   setUiLanguage(mainText.language);
-  return mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'), { query: { lang: mainText.language } });
+  return mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'), { query: { lang: mainText.language, ...query } });
+}
+
+// The guide imported from the file StepForge was started with; the first page
+// load opens it in the editor (?open=) instead of the welcome screen.
+let launchGuideId = null;
+
+/**
+ * A guide file opened from outside StepForge (double-clicked, or passed on
+ * the command line) is imported as a copy, as Import ▾ → Import a copy of a
+ * guide does. Returns its guideId, or null after saying why it failed.
+ */
+function openGuideFile(file) {
+  try {
+    const guide = importGuideArchive(store, file, { mode: 'copy' });
+    reindex(guide.guideId);
+    return guide.guideId;
+  } catch (error) {
+    dialog.showErrorBox(t('Couldn’t open {file}', { file: path.basename(file) }), error.message);
+    return null;
+  }
 }
 
 /** Code block colors for an export, from Settings → Exports. */
@@ -619,7 +642,8 @@ function createWindow() {
       }, 1500);
     }
   });
-  loadMainPage();
+  loadMainPage(launchGuideId ? { open: launchGuideId } : {});
+  launchGuideId = null;
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 
@@ -871,11 +895,45 @@ function setupIpc() {
   const chosenOutputDirs = new Set();
 
   // library
+  // The renderer caches the scaled thumbnail under this version. Hash the
+  // blur geometry so editing a blur invalidates it even if the image didn't change.
+  const thumbnailFile = (guide) => {
+    try {
+      const source = store.thumbnailSource(guide);
+      if (!source) return null;
+      const { file, step } = source;
+      const stat = fs.statSync(file, { throwIfNoEntry: false });
+      if (!stat?.isFile()) return null;
+      const blurs = (step.annotations || []).filter((annotation) => annotation.type === 'blur');
+      const blurHash = createHash('sha256').update(JSON.stringify(blurs.map(({ x, y, w, h, radius }) => [x, y, w, h, radius]))).digest('hex');
+      return { file, blurs, version: `${step.stepId}:${path.basename(file)}:${stat.mtimeMs}:${stat.size}:${blurHash}` };
+    } catch {
+      return null; // A broken step file costs the card its picture.
+    }
+  };
+  const currentThumbnail = (guideId) => store.guideExists(guideId) ? thumbnailFile(store.getGuide(guideId)) : null;
+  h('library:thumbnail', async ({ guideId, version }) => {
+    const thumbnail = currentThumbnail(guideId);
+    if (!thumbnail || thumbnail.version !== version) return null;
+    try {
+      const bytes = fs.readFileSync(thumbnail.file);
+      // Fill privacy regions at full resolution before the renderer can crop or scale.
+      const safeBytes = thumbnail.blurs.length
+        ? encodePng(renderAnnotations(decodePng(await rasterToPng(bytes)), thumbnail.blurs))
+        : bytes;
+      // A codec request may have yielded while the screenshot or its blurs changed.
+      return currentThumbnail(guideId)?.version === version ? safeBytes : null;
+    } catch {
+      return null;
+    }
+  }, { validate: (a) => c.id(a.guideId) && c.string(a.version, 256) });
   h('library:list', () => ({
     guides: store.listGuides().map((g) => ({
       ...g,
       stepCount: g.stepsOrder.length,
       locked: g.linkedSource ? Boolean(readLock(g.linkedSource.path)) : false,
+      // A chosen image is already small; a screenshot is fetched per card by version.
+      thumbnail: g.thumbnailImage ? null : thumbnailFile(g)?.version || null,
     })),
     folders: store.loadFolders(),
   }));
@@ -1088,7 +1146,8 @@ function setupIpc() {
   // Pick a draft with the import decoder; no step or library file is created.
   h('step:pickImage', async ({ purpose } = {}) => {
     const res = await dialog.showOpenDialog(mainWindow, {
-      title: purpose === 'shape' ? t('Choose an image for the shape') : t('Choose an image for the new step'),
+      title: purpose === 'shape' ? t('Choose an image for the shape')
+        : purpose === 'thumbnail' ? t('Choose an image for the library') : t('Choose an image for the new step'),
       filters: [{ name: t('Images'), extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'] }],
       properties: ['openFile'],
     });
@@ -1127,7 +1186,7 @@ function setupIpc() {
     reindex(guideId);
     return { ok: true, step: saved, removedBlurs };
   };
-  // Right-click a step → Choose image…: swap in an image file, keeping
+  // Right-click a step → Choose image: swap in an image file, keeping
   // the step's title, description and annotations.
   h('step:chooseImage', async ({ guideId, stepId }) => {
     store.getStep(guideId, stepId); // throws for a step that does not exist, before any dialog
@@ -1143,7 +1202,7 @@ function setupIpc() {
     return swapStepImage(guideId, stepId, picked.bytes, picked.size);
   }, { validate: (a) => c.id(a.guideId) && c.id(a.stepId) });
   // Right-click a step → Retake screenshot: hide StepForge, count down, grab a
-  // new frame and swap it in, the same way Choose image… does.
+  // new frame and swap it in, the same way Choose image does.
   h('step:retake', async ({ guideId, stepId, mode, delayMs }) => {
     store.getStep(guideId, stepId); // throws for a step that does not exist, before the countdown
     const frame = await capture.retakeFrame({ mode, delayMs });
@@ -1154,7 +1213,7 @@ function setupIpc() {
       && (a.mode === undefined || c.oneOf(a.mode, ['fullscreen', 'window', 'region']))
       && c.optionalNumber(a.delayMs, 0, 60000),
   });
-  // Undo and redo of Choose image… put both images back.
+  // Undo and redo of Choose image put both images back.
   h('step:setImages', ({ guideId, step, originalBase64, workingBase64, size }) => {
     const saved = store.replaceImages(guideId, step.stepId, {
       original: originalBase64 ? Buffer.from(originalBase64, 'base64') : null,
@@ -1808,15 +1867,23 @@ function setupIpc() {
     if (!mod) return {};
     return { ...require(mod).DEFAULT_TEMPLATE, ...brandTemplateDefaults(format, exportBranding(brandProfileId)?.profile) };
   }, { validate: (a) => c.string(a.format, 40) && validBrandChoice(a.brandProfileId) });
+  // The first-time default output folder: the user's Documents folder, if it exists.
+  const defaultOutputDir = () => {
+    try {
+      const dir = app.getPath('documents');
+      return fs.existsSync(dir) ? dir : null;
+    } catch { return null; }
+  };
+  // The renderer may only nominate directories that came from this main
+  // process: a dialog pick from this session, a remembered last-output
+  // directory, or the Documents default. Anything else is ignored.
+  const acceptedOutputDir = (outDir) => Boolean(outDir) && (chosenOutputDirs.has(outDir)
+    || Object.values(settings.get('exports.lastOutputDirs') || {}).includes(outDir)
+    || outDir === defaultOutputDir());
+  h('export:defaultDir', async () => defaultOutputDir());
+  h('export:canUseDir', async ({ outDir }) => acceptedOutputDir(outDir), { validate: (a) => c.optionalString(a.outDir, 1000) });
   h('export:run', async ({ guideId, format, options, outDir, brandProfileId }) => {
-    // The renderer may only nominate directories that came from this main
-    // process: a dialog pick from this session or a remembered last-output
-    // directory. Anything else is ignored and re-asked via the dialog.
-    const rememberedDirs = Object.values(settings.get('exports.lastOutputDirs') || {});
-    let dir = null;
-    if (outDir && (chosenOutputDirs.has(outDir) || rememberedDirs.includes(outDir))) {
-      dir = outDir;
-    }
+    let dir = acceptedOutputDir(outDir) ? outDir : null;
     if (!dir) dir = settings.get(`exports.lastOutputDirs.${format}`);
     if (!dir) {
       const res = await dialog.showOpenDialog(mainWindow, {
@@ -2101,7 +2168,7 @@ if (!gotLock) {
   console.error('[stepforge] already running — surfacing the existing window (check the tray).');
   app.quit();
 } else {
-  app.on('second-instance', () => {
+  app.on('second-instance', (event, argv, workingDirectory) => {
     if (!mainWindow) return;
     // The window may be tucked away by a recording session; opening the
     // app again is an explicit request to see it, so pause and show, the
@@ -2110,6 +2177,9 @@ if (!gotLock) {
     if (mainWindow.isMinimized()) mainWindow.restore();
     mainWindow.show();
     mainWindow.focus();
+    const file = archiveArgument(argv, workingDirectory);
+    const guideId = file && openGuideFile(file);
+    if (guideId) sendToRenderer('app:open-guide', guideId);
   });
 
   // Only the Confluence session is handled here; everything else keeps
@@ -2372,6 +2442,8 @@ if (!gotLock) {
 
     applyTheme();
     setupIpc();
+    const launchFile = archiveArgument(process.argv, process.cwd());
+    if (launchFile) launchGuideId = openGuideFile(launchFile);
     createWindow();
     registerHotkeys();
     // A restored sign-in (after an update or reinstall) resumes sync on its own.

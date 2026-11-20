@@ -8,7 +8,7 @@ const { isValidOutline } = require('../../core/step-outline');
 const { rendererI18n } = require('./helpers');
 
 /**
- * Moving steps in the editor (Alt+Up/Down, drag and drop, Move to…) always
+ * Moving steps in the editor (Alt+Up/Down, drag and drop, Move to) always
  * carries a step's substeps and keeps the outline valid.
  */
 function setup({ steps, pick = async () => null }) {
@@ -188,7 +188,7 @@ test('dragover near the list edges scrolls the list', () => {
   assert.equal(editor.dom.stepsList.scrollTop, 0);
 });
 
-test('Move to… offers only places and levels that keep the outline valid, and applies the choice', async () => {
+test('Move to offers only places and levels that keep the outline valid, and applies the choice', async () => {
   const { editor, db, dialogOptions } = setup({
     steps: nested(),
     pick: async ({ positions }) => {
@@ -207,7 +207,7 @@ test('Move to… offers only places and levels that keep the outline valid, and 
   assert.deepEqual(outline(db), ['B', 'b1<B', 'C', 'A', 'a1<A', 'a2<A']);
 });
 
-test('Move to… with Cancel changes nothing', async () => {
+test('Move to with Cancel changes nothing', async () => {
   const { editor, db } = setup({ steps: nested() });
   await editor.reload('A');
   await editor.moveStepTo('A');
@@ -251,7 +251,7 @@ test('undoing a move keeps a substep added since under its parent', async () => 
   assert.equal(toasts.filter((t) => /Could not/.test(t)).length, 0);
 });
 
-test('Move to… plans again on the outline as it is when the dialog closes', async () => {
+test('Move to plans again on the outline as it is when the dialog closes', async () => {
   const steps = ['A', 'B', 'C', 'D'].map((id) => ({ stepId: id, title: id }));
   let agent;
   const { editor, db } = setup({
@@ -271,7 +271,7 @@ test('Move to… plans again on the outline as it is when the dialog closes', as
   assert.deepEqual(outline(db), ['D', 'A', 'B<A', 'C'], "the agent's nesting survives the move");
 });
 
-test('Move to… does nothing when the place it was going to is gone', async () => {
+test('Move to does nothing when the place it was going to is gone', async () => {
   const steps = ['A', 'B', 'C'].map((id) => ({ stepId: id, title: id }));
   const { editor, db, toasts } = setup({
     steps,

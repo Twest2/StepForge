@@ -9,7 +9,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const fs = require('node:fs');
 const { withApp, readSteps, readJson, writeTestPng, decodeStoredImage, pixelAt } = require('./lib/fixtures');
-const { openGuideCard, openLibrary, eventually, confirmDialog } = require('./lib/flows');
+const { openGuideCard, openLibrary, eventually } = require('./lib/flows');
 const { GuideStore } = require('../../core/store');
 
 const SAMPLE_ID = 'guide-sample-reset-password';
@@ -46,7 +46,7 @@ test('adding a step with a picked image writes the image and the title to disk',
 
   await app.clickText('Add');
   await app.waitForVisible('#modal-root input', { label: 'add step dialog' });
-  await app.clickText('Choose image…', { scope: '#modal-root' });
+  await app.clickText('Choose image', { scope: '#modal-root' });
   await app.waitForVisible('#modal-root .primary', { label: 'add button' });
   await app.setValue('#modal-root input', 'Picked from disk');
   await app.clickText('Add', { scope: '#modal-root' });
@@ -121,7 +121,7 @@ test('dragging a step in the list reorders it on disk', () => withApp('editor-dr
   assert.deepEqual(ids().slice().sort(), before.slice().sort(), 'no step was lost or copied');
 }));
 
-test('Duplicate adds a copy; Delete then Ctrl+Z brings the step back', () => withApp('editor-undo', {}, async (app, env) => {
+test('Duplicate adds a copy; Delete asks nothing, and the toast’s Undo brings the step back', () => withApp('editor-undo', {}, async (app, env) => {
   await openSample(app);
   const before = titlesOnDisk(env);
 
@@ -132,11 +132,11 @@ test('Duplicate adds a copy; Delete then Ctrl+Z brings the step back', () => wit
 
   await selectStepByNumber(app, 2);
   await app.clickText('Delete');
-  if (await app.isVisible('#modal-root .primary')) await confirmDialog(app, 'Delete');
+  assert.equal(await app.isVisible('#modal-root .primary'), false, 'deleting a step does not ask');
   await eventually(() => readSteps(guideDir(env)).length === 6, 'step deleted on disk');
 
-  await app.key('z', { ctrl: true });
-  await eventually(() => readSteps(guideDir(env)).length === 7, 'Ctrl+Z restored the step on disk');
+  await app.click('.toast-action');
+  await eventually(() => readSteps(guideDir(env)).length === 7, 'Undo on the toast restored the step on disk');
   assert.equal(titlesOnDisk(env).filter((t) => t === `${before[0]} copy`).length, 1, 'the copy is still there');
 }));
 
@@ -177,7 +177,7 @@ test('clicking, deleting and redoing a delete keep the step list where it is', (
 
   // Focus is on the deleted step's button, which is what used to send the list back to the top.
   await app.key('Delete', { ctrl: true });
-  if (await app.isVisible('#modal-root .primary')) await confirmDialog(app, 'Delete');
+  assert.equal(await app.isVisible('#modal-root .primary'), false, 'Ctrl+Delete does not ask');
   await eventually(async () => (await stepListView(app)).selected === `Extra ${n + 1}`, 'next step selected');
   let view = await stepListView(app);
   assert.equal(view.scrollTop, scrolled, 'deleting a step does not scroll the list');
@@ -189,4 +189,54 @@ test('clicking, deleting and redoing a delete keep the step list where it is', (
   await eventually(async () => (await stepListView(app)).selected === `Extra ${n + 1}`, 'redo selects the step after the deleted one');
   view = await stepListView(app);
   assert.equal(view.scrollTop, scrolled, 'redo does not scroll the list');
+}));
+
+test('a step\'s status is set from its right-click menu, for one step or several selected steps', () => withApp('editor-step-status', {}, async (app, env) => {
+  await openSample(app);
+  const statuses = () => readSteps(guideDir(env)).map((s) => s.step.status || 'todo');
+  const pickStatus = async (label) => {
+    await app.clickWhere('.ctx-menu .mi', `(el) => el.textContent.startsWith('Status')`);
+    await app.clickWhere('.ctx-submenu .mi', `(el) => el.textContent.endsWith(${JSON.stringify(label)})`);
+  };
+  await app.click('.step-item:nth-child(2) .step-select', { button: 'right' });
+  await pickStatus('Done');
+  await eventually(() => statuses()[1] === 'done', 'step 2 saved as Done');
+  await app.click('.step-item:nth-child(2) .step-select', { button: 'right' });
+  await app.clickWhere('.ctx-menu .mi', `(el) => el.textContent.startsWith('Status')`);
+  assert.equal(await app.evaluate(`[...document.querySelectorAll('.ctx-submenu [aria-checked="true"]')].map((el) => el.textContent).join()`), '✓Done');
+  await app.key('Escape');
+  await app.key('Escape');
+
+  await app.clickText('Select');
+  await app.click('.step-item:nth-child(1) input.step-control');
+  await app.click('.step-item:nth-child(3) input.step-control');
+  await app.click('.step-item:nth-child(3) .num', { button: 'right' });
+  await pickStatus('In progress');
+  await eventually(() => statuses().slice(0, 3).join() === 'in-progress,done,in-progress', 'the two selected steps saved as In progress');
+}));
+
+test('the details pane shows a selected shape\'s style, keeps its place on autosave and starts a new step at the top', () => withApp('editor-details-scroll', {}, async (app, env) => {
+  await openSample(app);
+  const paneScroll = () => app.evaluate(`document.querySelector('.pane-props').scrollTop`);
+  const styleInView = () => app.evaluate(`(() => {
+    const pane = document.querySelector('.pane-props').getBoundingClientRect();
+    const type = document.querySelector('.annotation-editor select')?.getBoundingClientRect();
+    return Boolean(type) && type.top >= pane.top && type.bottom <= pane.bottom;
+  })()`);
+  assert.equal(await styleInView(), false, 'the style controls start below the visible part of the pane');
+  const canvas = await app.waitForVisible('canvas[aria-label="Screenshot editor"]');
+  await app.click('[data-tool="rect"]');
+  await app.drag({ x: canvas.x + 120, y: canvas.y + 60 }, { x: canvas.x + 220, y: canvas.y + 140 });
+  await eventually(styleInView, 'the new rectangle\'s style controls scrolled into view');
+  assert.equal(await app.evaluate('document.activeElement?.tagName'), 'CANVAS', 'the canvas keeps keyboard focus');
+
+  const scrolled = await paneScroll();
+  assert.ok(scrolled > 0);
+  const strokeWidth = () => readSteps(guideDir(env))[0].step.annotations.at(-1).style.strokeWidth;
+  await app.setValue('.annotation-editor-inner input[type="number"]', '9');
+  await eventually(() => strokeWidth() === 9, 'stroke width saved');
+  assert.equal(await paneScroll(), scrolled, 'saving does not move the pane');
+
+  await selectStepByNumber(app, 3);
+  await eventually(async () => (await paneScroll()) === 0, 'a newly selected step starts at the top of the pane');
 }));

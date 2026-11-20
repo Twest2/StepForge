@@ -83,7 +83,7 @@ uploading (↑) or downloading (↓), it shows a live counter such as
   uploads a guide.
 
 To keep one guide on this computer only, open it, choose
-**More → Guide information…**, and turn off **Include this guide in cloud
+**More → Guide information**, and turn off **Include this guide in cloud
 sync**.
 
 ## How changes are handled
@@ -97,7 +97,7 @@ sync**.
 - **When both computers changed the same thing**, such as the same step
   title, the most recent change is kept. If this computer had edits that
   hadn't synced yet, its earlier version is saved as a *before-sync-merge*
-  snapshot under **More → Backups & snapshots…**, so nothing is lost.
+  snapshot under **More → Backups & snapshots**, so nothing is lost.
 - **Your work isn't interrupted.** Updates from another computer wait until
   you close the guide and stop recording.
 - **Downloads are checked** before they replace anything, and the replaced

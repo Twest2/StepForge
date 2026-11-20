@@ -306,8 +306,9 @@ function keyInfo(name) {
  *   userDataDir   Electron userData folder (settings bookkeeping); isolated per run
  *   artifactDir   where failure screenshots are written
  *   env           extra environment variables for the app
+ *   args          extra command-line arguments after the app folder
  */
-async function launchApp({ dataDir, userDataDir, artifactDir, env = {}, withInspector = true }) {
+async function launchApp({ dataDir, userDataDir, artifactDir, env = {}, args: extraArgs = [], withInspector = true }) {
   // Ports are chosen by the operating system at bind time, not reserved here
   // first: a port that looks free can be taken by another process before
   // Electron binds it, which used to make a launch fail with "Address already
@@ -319,7 +320,7 @@ async function launchApp({ dataDir, userDataDir, artifactDir, env = {}, withInsp
   ];
   if (process.env.STEPFORGE_ALLOW_NO_SANDBOX === '1') args.unshift('--no-sandbox');
   if (withInspector) args.push('--inspect=0');
-  args.push(REPO_ROOT);
+  args.push(REPO_ROOT, ...extraArgs);
 
   const childEnv = { ...process.env, ...env, STEPFORGE_DATA_DIR: dataDir };
   delete childEnv.ELECTRON_RUN_AS_NODE;

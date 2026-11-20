@@ -17,6 +17,7 @@ const invoke = (channel) => (args) => ipcInvoke(channel, args);
 const api = {
   library: {
     list: invoke('library:list'),
+    thumbnail: invoke('library:thumbnail'),
     create: invoke('library:create'),
     duplicate: invoke('library:duplicate'),
     delete: invoke('library:delete'),
@@ -243,6 +244,8 @@ const api = {
     defaults: invoke('export:defaults'),
     run: invoke('export:run'),
     chooseDir: invoke('export:chooseDir'),
+    defaultDir: invoke('export:defaultDir'),
+    canUseDir: invoke('export:canUseDir'),
     chooseImage: invoke('export:chooseImage'),
     preview: invoke('export:preview'),
     cleanupPreviews: invoke('preview:cleanup'),
@@ -261,6 +264,7 @@ const api = {
     openStore: invoke('app:openStore'),
     setLanguage: invoke('app:setLanguage'),
     platformCapabilities: invoke('platform:capabilities'),
+    onOpenGuide: (fn) => ipcRenderer.on('app:open-guide', (e, guideId) => fn(guideId)),
   },
 };
 

@@ -280,7 +280,7 @@ test('replacing a cropped screenshot drops the old crop', (t) => {
   assert.deepEqual(fs.readdirSync(dir).filter((f) => f.endsWith('.png')), ['original.png']);
   assert.deepEqual(fs.readFileSync(store.stepImagePath(guideId, stepId, 'working')), fresh);
 
-  // Undo of Choose image… sends both images; a different working one is kept.
+  // Undo of Choose image sends both images; a different working one is kept.
   const crop = Buffer.concat([TINY_PNG, Buffer.from('crop')]);
   store.replaceImages(guideId, stepId, { original: TINY_PNG, working: crop }, { width: 1, height: 1 });
   assert.deepEqual(fs.readFileSync(store.stepImagePath(guideId, stepId, 'working')), crop);

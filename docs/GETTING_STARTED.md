@@ -16,10 +16,11 @@ For Linux, see the [installation options in the README](../README.md#install).
 
 ## 1. Record a guide
 
-1. Open StepForge and choose **New recording**.
-2. Choose **Continue** in the reminder. StepForge explains how to stop and
-   then hides itself. In an open guide, use **Start recording** in the red
-   recording control at the top right.
+1. Open StepForge and choose **New recording**. A new, empty guide opens in the
+   editor. Nothing is recorded yet.
+2. Choose **Start recording** in the recording control at the top right, then
+   **Continue** in the reminder. StepForge explains how to stop and then hides
+   itself. You can start recording the same way in any open guide.
 3. Work through the task you want to document. **Each click creates a step**
    with a screenshot taken at the moment of the click and a marker on the
    spot you clicked.

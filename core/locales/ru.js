@@ -2285,7 +2285,7 @@
   "Built-in themes can’t be deleted.": "Встроенные темы нельзя удалить.",
   "Welcome to StepForge": "Добро пожаловать в StepForge",
   "A sample guide to show you around.": "Пример инструкции, чтобы познакомиться с программой.",
-  "Click {button}, then do your task as usual. Every click becomes a step: a screenshot, a marker where you clicked, and a title read from what you clicked.": "Нажмите {button} и выполняйте задачу как обычно. Каждый щелчок становится шагом: снимок экрана, отметка в месте щелчка и заголовок по тому, на что вы нажали.",
+  "Click {button}, then {start} at the top right, and do your task as usual. Every click becomes a step: a screenshot, a marker where you clicked, and a title read from what you clicked.": "Нажмите {button}, затем {start} в правом верхнем углу и выполняйте задачу как обычно. Каждый щелчок становится шагом: снимок экрана, отметка в месте щелчка и заголовок по тому, на что вы нажали.",
   "When you’re done, click {button} at the top right.": "Когда закончите, нажмите {button} в правом верхнем углу.",
   "Tidy up your steps": "Наведите порядок в шагах",
   "Pick a step on the left, then change its title and description on the right. Move steps up or down, or hide the ones readers don’t need.": "Выберите шаг слева и измените его заголовок и описание справа. Перемещайте шаги вверх и вниз или скрывайте те, что читателям не нужны.",

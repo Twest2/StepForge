@@ -2285,7 +2285,7 @@
   "Built-in themes can’t be deleted.": "Los temas integrados no se pueden eliminar.",
   "Welcome to StepForge": "Bienvenido a StepForge",
   "A sample guide to show you around.": "Una guía de ejemplo para enseñarte cómo funciona.",
-  "Click {button}, then do your task as usual. Every click becomes a step: a screenshot, a marker where you clicked, and a title read from what you clicked.": "Haz clic en {button} y luego realiza tu tarea como siempre. Cada clic se convierte en un paso: una captura de pantalla, una marca donde hiciste clic y un título tomado de lo que pulsaste.",
+  "Click {button}, then {start} at the top right, and do your task as usual. Every click becomes a step: a screenshot, a marker where you clicked, and a title read from what you clicked.": "Haz clic en {button}, luego en {start} arriba a la derecha, y realiza tu tarea como siempre. Cada clic se convierte en un paso: una captura de pantalla, una marca donde hiciste clic y un título tomado de lo que pulsaste.",
   "When you’re done, click {button} at the top right.": "Cuando termines, haz clic en {button}, arriba a la derecha.",
   "Tidy up your steps": "Ordena tus pasos",
   "Pick a step on the left, then change its title and description on the right. Move steps up or down, or hide the ones readers don’t need.": "Elige un paso a la izquierda y cambia su título y su descripción a la derecha. Sube o baja pasos, u oculta los que los lectores no necesitan.",

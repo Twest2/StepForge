@@ -452,14 +452,14 @@ class StepForgeApp {
     );
   }
 
-  // Welcome → New recording: a new guide, then the start-recording flow.
+  // Welcome → New recording: a new guide in the editor, ready to record. Recording
+  // starts only from Start recording (top right), so nothing is captured unexpectedly.
   // Cancelling the reminder leaves the user in the empty editor.
   async startNewRecording() {
     const guide = await api.library.create({ title: t('Untitled capture'), captureDraft: true });
     await this.refreshData();
     await this.openGuide(guide.guideId);
     await this.armCaptureSession(guide.guideId);
-    await this.startRecording();
   }
 
   async openExistingWorkspace() {

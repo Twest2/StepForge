@@ -227,7 +227,7 @@ test('the app applies an agent’s brand changes and draws the images they need'
   assert.match(app, /api\.branding\.onChangedByAgent\(/);
   assert.equal((app.match(/ensurePendingBrandRasters\(api\)/g) || []).length, 3, 'on start, when an agent changes a profile, and when profiles sync');
   const dialogs = fs.readFileSync(path.join(ROOT, 'app/renderer/dialogs.js'), 'utf8');
-  assert.match(dialogs, /branding: agentsBranding\.checked/);
+  assert.match(dialogs, /\[agentsBranding, 'ai\.agents\.branding', checked\]/);
 });
 
 

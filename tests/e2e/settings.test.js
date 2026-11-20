@@ -62,3 +62,14 @@ test('a language change waits until the open guide is safe to reload', () => wit
   await eventually(async () => (await app.evaluate('new URL(location.href).searchParams.get("lang")')) === 'fr', 'French renderer loaded');
   assert.equal(readAppSettings(env.dataDir).language, 'fr');
 }));
+
+test('MCP access is granted and revoked from the switch while Settings is open', () => withApp('settings-mcp', { sample: false }, async (app, env) => {
+  await app.clickWhere('.welcome-btn', "el => el.querySelector('.welcome-btn-label')?.textContent === 'Settings'");
+  await app.clickText('AI', { scope: '.settings-nav' });
+  const toggle = () => app.clickText('Let AI agents edit your guides', { scope: '#modal-root' });
+  await toggle();
+  await eventually(() => readAppSettings(env.dataDir).ai?.agents?.enabled === true, 'access enabled');
+  await toggle();
+  await eventually(() => readAppSettings(env.dataDir).ai?.agents?.enabled === false, 'access revoked');
+  await app.waitForVisible('.settings-nav');
+}));

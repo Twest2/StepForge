@@ -1,7 +1,6 @@
 # Publish guides to Wiki.js
 
-> **Beta.** Publishing to Wiki.js is new. It works with **Wiki.js 2.x**
-> sites; Wiki.js 3 isn't supported yet.
+> Works with **Wiki.js 2.x** sites; Wiki.js 3 isn't supported yet.
 
 StepForge can publish a guide as a Wiki.js page, with its screenshots uploaded
 to the wiki. Publishing the same guide again updates that page, so its address

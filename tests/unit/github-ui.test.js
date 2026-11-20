@@ -148,9 +148,9 @@ test('Accounts lists every sync service, then GitHub, Confluence and Wiki.js, an
   const names = rows.map((row) => row.children[1].children[0]);
   assert.deepEqual(names.map((name) => name.children[0]),
     ['Google Drive', 'OneDrive', 'Dropbox', 'Nextcloud or WebDAV', 'GitHub', 'Confluence', 'Wiki.js']);
-  // The publishing services are new, and say so.
+  // Confluence publishing is still new, and says so; Wiki.js is not Beta any more.
   assert.deepEqual(names.map((name) => name.children.find((c) => c.classList?.contains('beta-badge'))?.textContent || ''),
-    ['', '', '', '', '', 'Beta', 'Beta']);
+    ['', '', '', '', '', 'Beta', '']);
   const logos = rows.map((row) => row.children[0].children[0].src);
   assert.deepEqual(logos, ['google-drive', 'onedrive', 'dropbox', 'nextcloud', 'github', 'confluence', 'wikijs'].map((name) => `../assets/icons/${name}.svg`));
   for (const logo of logos) {
@@ -972,7 +972,8 @@ test('Accounts shows who is signed in to Wiki.js', async () => {
   const accounts = u.context.makeAccountsSettings(api);
   await settle();
   const row = u.all(accounts.node).filter((n) => n.tag === 'button' && n.classList.contains('account-row')).at(-1);
-  assert.match(row.textContent, /Wiki\.js.*Beta.*Casey Jones/);
+  assert.match(row.textContent, /Wiki\.js.*Casey Jones/);
+  assert.doesNotMatch(row.textContent, /Beta/, 'Wiki.js is no longer Beta');
   accounts.dispose();
   const keyed = u.context.makeAccountsSettings(wikiApi({ status: async () => ({ connected: true, host: 'wiki.example.com', user: '', method: 'apikey' }) }));
   await settle();
@@ -1318,28 +1319,28 @@ test('Publish to Wiki.js before signing in points to Settings → Accounts', asy
   assert.equal(await done, false);
 });
 
-test('Export marks the Confluence and Wiki.js formats as Beta', async () => {
+test('Export marks the Confluence format as Beta', async () => {
   const u = ui();
   u.context.window.StepForgeDialogs.showExportDialog({
-    formats: [{ id: 'pdf', label: 'PDF', description: 'A document.' }, { id: 'wikijs', label: 'Wiki.js', description: 'A Wiki.js page.', badge: 'Beta' }],
+    formats: [{ id: 'pdf', label: 'PDF', description: 'A document.' }, { id: 'confluence', label: 'Confluence', description: 'A Confluence page.', badge: 'Beta' }],
     defaultFormat: 'pdf',
     onLoadDefaults: async () => ({}),
   });
   const modal = u.root.children.at(-1);
   const format = u.all(modal).find((n) => n.tag === 'select');
-  assert.deepEqual(format.children.map((o) => o.textContent), ['PDF', 'Wiki.js (Beta)']);
+  assert.deepEqual(format.children.map((o) => o.textContent), ['PDF', 'Confluence (Beta)']);
   const desc = u.all(modal).find((n) => n.classList?.contains('export-format-desc'));
   assert.equal(u.all(desc).some((n) => n.classList?.contains('beta-badge')), false);
-  format.value = 'wikijs';
+  format.value = 'confluence';
   format.listeners.change();
   assert.equal(u.all(desc).find((n) => n.classList?.contains('beta-badge'))?.textContent, 'Beta');
-  assert.match(desc.textContent, /A Wiki\.js page\./);
+  assert.match(desc.textContent, /A Confluence page\./);
 
   const { FORMAT_INFO } = require('../../exporters');
-  assert.deepEqual(Object.keys(FORMAT_INFO).filter((id) => FORMAT_INFO[id].badge === 'Beta'), ['confluence', 'wikijs']);
+  assert.deepEqual(Object.keys(FORMAT_INFO).filter((id) => FORMAT_INFO[id].badge === 'Beta'), ['confluence']);
 });
 
-test('the guide menus offer Publish to Wiki.js beside Confluence, both marked Beta', async () => {
+test('the guide menus offer Publish to Wiki.js beside Confluence, with only Confluence marked Beta', async () => {
   const context = vm.createContext({ ...rendererI18n(), window: {}, document: { addEventListener() {} } });
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/util.js'), 'utf8'), context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/app.js'), 'utf8').replace('\nboot();', '\n'), context);
@@ -1352,12 +1353,12 @@ test('the guide menus offer Publish to Wiki.js beside Confluence, both marked Be
   app.editor = { guideId: null };
   app.guideContextMenu({ clientX: 0, clientY: 0 }, { guideId: 'g1', title: 'Guide' });
   const publishing = items.filter((item) => /^Publish to (Confluence|Wiki\.js)/.test(item.label));
-  assert.deepEqual(JSON.parse(JSON.stringify(publishing.map((item) => [item.label, item.badge]))), [['Publish to Confluence…', 'Beta'], ['Publish to Wiki.js…', 'Beta']]);
+  assert.deepEqual(JSON.parse(JSON.stringify(publishing.map((item) => [item.label, item.badge ?? null]))), [['Publish to Confluence…', 'Beta'], ['Publish to Wiki.js…', null]]);
   await publishing[1].action();
   assert.deepEqual(opened, ['g1']);
   // The editor's Share menu has the same two items.
   const src = fs.readFileSync(path.join(__dirname, '../../app/renderer/app.js'), 'utf8');
-  assert.equal((src.match(/label: t\('Publish to Wiki\.js…'\), badge: 'Beta'/g) || []).length, 2);
+  assert.equal((src.match(/label: t\('Publish to Wiki\.js…'\), action/g) || []).length, 2);
   assert.equal((src.match(/label: t\('Publish to Confluence…'\), badge: 'Beta'/g) || []).length, 2);
 
   // The menu draws the badge as the same chip Settings uses.
@@ -1366,7 +1367,7 @@ test('the guide menus offer Publish to Wiki.js beside Confluence, both marked Be
   ui2.context.document.querySelectorAll = () => [];
   ui2.context.document.body = { append: (node) => appended.push(node) };
   ui2.context.innerWidth = 1000; ui2.context.innerHeight = 800;
-  ui2.context.contextMenu(0, 0, [{ label: 'Publish to Wiki.js…', badge: 'Beta', action() {} }]);
+  ui2.context.contextMenu(0, 0, [{ label: 'Publish to Confluence…', badge: 'Beta', action() {} }]);
   const chip = ui2.all(appended[0]).find((n) => n.classList?.contains('beta-badge'));
   assert.ok(chip && chip.classList.contains('settings-chip'));
 });

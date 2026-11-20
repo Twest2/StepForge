@@ -537,7 +537,7 @@ function makeAccountsSettings(api, { view = null, onPublishToWeb = null } = {}) 
     }),
     row('github', 'github.svg', 'GitHub', t('Share guides on the web for a limited time with GitHub Pages.'), githubState),
     row('confluence', 'confluence.svg', 'Confluence', t('Publish guides as pages on your Confluence site.'), confluenceState, 'Beta'),
-    row('wikijs', 'wikijs.svg', 'Wiki.js', t('Publish guides as pages on your Wiki.js 2 site.'), wikijsState, 'Beta'));
+    row('wikijs', 'wikijs.svg', 'Wiki.js', t('Publish guides as pages on your Wiki.js 2 site.'), wikijsState));
 
   const back = el('button.account-back', { type: 'button', onClick: () => show(null) }, t('‹ All accounts'));
   const detail = el('div.account-detail.hidden', {}, back, ...clouds.map(({ panel }) => panel.node), github.node, confluence.node, wikijs.node);

@@ -153,7 +153,7 @@ function passed(name, details = {}) { report.push({ name, ...details }); console
     await send({action:'key',code:108}); // down
     await send({action:'key',code:28});
     // Settings apply as soon as they change; Close only dismisses the dialog.
-    await until(() => read(path.join(data,'settings/app-settings.json')).capture.mode==='window','window mode saved');
+    await until(() => read(path.join(data,'settings/app-settings.json')).capture?.mode==='window','window mode saved');
     await click('Close');
     await click('Start recording');await share();
     await send({action:'mirror',enabled:true});

@@ -1164,7 +1164,7 @@ class GuideEditor {
     this.dom.moveDownBtn.addEventListener('click', () => this.moveSelectedStep(1));
     this.dom.duplicateBtn.addEventListener('click', () => this.duplicateSelectedStep());
     this.dom.deleteBtn.addEventListener('click', () => this.deleteSelectedStep());
-    this.dom.saveNowBtn.addEventListener('click', () => this.saveAll());
+    this.dom.saveNowBtn.addEventListener('click', () => this.saveAll({ announce: true }));
     this.dom.snapshotBtn.addEventListener('click', () => this.createSnapshot());
     this.dom.zoomSelect.addEventListener('change', () => {
       const value = this.dom.zoomSelect.value;
@@ -3834,20 +3834,25 @@ class GuideEditor {
     await calculate();
   }
 
-  async saveAll() {
+  /**
+   * Save everything now. `announce` is for an explicit Save (button, Ctrl+S):
+   * only then does a plain save say "Saved."; the flushes before dialogs,
+   * publishing and navigation stay quiet unless something needs telling.
+   */
+  async saveAll({ announce = false } = {}) {
     if (this.currentStep) await this.flushStep();
     if (this.guide) await this.flushGuide();
     if (this.guide && this.guide.linkedSource) {
       const result = await this.runLinkedSave({ force: false });
       if (result.saved) {
         if (this.guide.linkedSource) this.guide.linkedSource.lastSavedAt = new Date().toISOString();
-        this.toastLinkedSave(result, t('Saved and synced to linked archive.'));
+        if (announce || result.merged) this.toastLinkedSave(result, t('Saved and synced to linked archive.'));
       } else {
         this.onToast(t('Saved locally, but the linked archive is locked by another session.'), { error: true });
       }
       return;
     }
-    this.onToast(t('Saved.'));
+    if (announce) this.onToast(t('Saved.'));
   }
 
   /**
@@ -5501,7 +5506,7 @@ class GuideEditor {
     }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
       e.preventDefault();
-      this.saveAll();
+      this.saveAll({ announce: true });
       return;
     }
     // While the flowchart is shown, plain keys are the flowchart's (and the

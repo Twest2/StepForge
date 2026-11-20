@@ -133,6 +133,7 @@ class StepForgeApp {
       root: this.editorHost,
       onMetaChange: (meta) => this.onEditorMeta(meta),
       onToast: (msg, opts) => toast(msg, opts),
+      onOpenSettings: (section) => this.openSettings(section),
       onStartRecording: () => this.startRecording(),
       onBack: async (reason) => {
         if (reason === 'new') {
@@ -1430,43 +1431,19 @@ class StepForgeApp {
   async openSettings(section) {
     const settings = await api.settings.all();
     const placeholders = await api.settings.globalPlaceholders();
-    let newLanguage = null;
     await dialogs.showSettingsDialog({
       api,
       settings,
       placeholders,
       section,
-      // Shared guides → "Edited since you shared it" publishes like the toolbar does.
       onPublishToWeb: (guideId, title) => this.publishToWeb(guideId, title),
-      // Update now closes StepForge; save the open guide first.
+      // Language and updates can reload or close StepForge. Flush the open guide first.
       flushEdits: () => this.flushEditorBeforeNavigation(),
-      onSave: async (next) => {
-        if (next.language !== settings.language && !await this.flushEditorBeforeNavigation()) {
-          toast(t('Your guide could not be saved. Your language choice is still selected; try Save again.'), { error: true });
-          return false;
-        }
-        await api.settings.set({ keyPath: 'appearance', value: next.appearance });
-        await api.settings.set({ keyPath: 'spellcheck', value: next.spellcheck });
-        await api.settings.set({ keyPath: 'capture', value: next.capture });
-        await api.settings.set({ keyPath: 'editor', value: next.editor });
-        await api.settings.set({ keyPath: 'ai', value: next.ai });
-        await api.settings.set({ keyPath: 'redaction', value: next.redaction });
-        await api.settings.set({ keyPath: 'exports', value: next.exports });
-        await api.settings.set({ keyPath: 'images', value: next.images });
-        await api.settings.set({ keyPath: 'branding', value: next.branding });
-        await api.settings.set({ keyPath: 'backups', value: next.backups });
-        await api.settings.set({ keyPath: 'updates', value: next.updates });
-        await api.settings.set({ keyPath: 'library', value: next.library });
-        await api.settings.setGlobalPlaceholders(next.placeholders || {});
-        this.state.settings = await api.settings.all();
-        if (next.language !== settings.language) newLanguage = next.language;
+      onSettingsChanged: (next) => {
+        this.state.settings = next;
+        this.editor.setSettings(next);
       },
     });
-    // A new language reloads the window in it, so open edits are saved first.
-    if (newLanguage && await this.flushEditorBeforeNavigation()) {
-      const result = await api.app.setLanguage({ language: newLanguage });
-      if (result.reloaded) return;
-    }
     await this.refreshData();
     this.renderTopbar();
     if (this.state.view === 'library') this.renderLibrary();

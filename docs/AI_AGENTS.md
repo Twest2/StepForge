@@ -18,7 +18,6 @@ window opens, and nothing runs when no agent is connected.
 1. Open **Settings → AI**.
 2. Under **MCP**, turn on **Let AI agents edit your
    guides**.
-3. **Save.**
 
 Leave **Agents can see screenshots** on so the agent can see what you clicked.
 Turn it off to share step text only.
@@ -130,8 +129,8 @@ The [privacy policy](PRIVACY.md#optional-ai-agents) has the full details.
 
 | Problem | Fix |
 | --- | --- |
-| The agent says StepForge has agent access turned off | Turn on **Settings → AI → Let AI agents edit your guides** and save. |
-| The agent says it can't edit brand profiles | Turn on **Settings → AI → Let AI agents edit brand profiles** and save. |
+| The agent says StepForge has agent access turned off | Turn on **Settings → AI → Let AI agents edit your guides**. |
+| The agent says it can't edit brand profiles | Turn on **Settings → AI → Let AI agents edit brand profiles**. |
 | The agent can't find StepForge's tools | Run the setup command again, then restart the agent. In Claude Code, `claude mcp list` shows whether `stepforge` is connected. |
 | The agent can't see screenshots | Turn on **Agents can see screenshots**, and use a model that can read images. |
 | The guide on screen didn't change | Close and reopen the guide. Changes appear within a couple of seconds when the guide is open. |

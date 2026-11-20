@@ -7,8 +7,8 @@ const vm = require('node:vm');
 const { Settings } = require('../../core/settings');
 const { makeTmpDir, rmrf, rendererI18n } = require('./helpers');
 
-function editorContext({ api = {}, dialogs = {} } = {}) {
-  const context = { ...rendererI18n(), window: { stepforge: api, StepForgeDialogs: dialogs } };
+function editorContext({ api = {}, onOpenSettings = () => {} } = {}) {
+  const context = { ...rendererI18n(), window: { stepforge: api } };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/editor.js'), 'utf8'), context);
   const editor = Object.create(context.window.GuideEditor.prototype);
   const step = { stepId: 's1', title: 'Click Save' };
@@ -17,6 +17,7 @@ function editorContext({ api = {}, dialogs = {} } = {}) {
   editor.selectedStepId = 's1';
   editor.onToast = () => {};
   editor.onMetaChange = () => {};
+  editor.openSettings = onOpenSettings;
   return { editor };
 }
 
@@ -52,11 +53,10 @@ test('step actions are unavailable without a selected step; a running write offe
 });
 
 test('Turn on AI in Settings opens the AI section and the menu follows the saved choice', async () => {
-  let settings = { ai: { enabled: false } };
+  const settings = { ai: { enabled: false } };
   let openedSection = null;
   const { editor } = editorContext({
-    api: { settings: { all: async () => settings, globalPlaceholders: async () => ({}) } },
-    dialogs: { showSettingsDialog: async ({ section }) => { openedSection = section; settings = { ai: { enabled: true } }; } },
+    onOpenSettings: async (section) => { openedSection = section; editor.setSettings({ ai: { enabled: true } }); },
   });
   editor.setSettings(settings);
   await editor.aiMenuItems().find((item) => item.label === 'Turn on AI in Settings').action();
@@ -134,77 +134,27 @@ test('successful AI edits report success for every target and retain undo', asyn
   }
 });
 
-test('Settings opened from the editor saves a language choice after flushing edits', async () => {
-  for (const saveFails of [false, true]) {
-    const events = [];
-    const settings = { language: 'en', ai: { enabled: true } };
-    const { editor } = editorContext({
-      api: {
-        settings: { all: async () => settings, globalPlaceholders: async () => ({}), set: async () => {}, setGlobalPlaceholders: async () => {} },
-        app: { setLanguage: async ({ language }) => { events.push(language); return { reloaded: true }; } },
-      },
-      dialogs: { showSettingsDialog: async ({ onSave }) => onSave({ ...settings, language: 'fr' }) },
-    });
-    editor.pendingSave = true;
-    editor.saveAll = async () => { events.push('save'); editor.pendingSave = saveFails; };
-    await editor.openSettings();
-    assert.deepEqual(events, saveFails ? ['save'] : ['save', 'fr']);
-  }
-});
-
-test('a failed guide save keeps the editor Settings language choice available for retry', async () => {
-  const notices = [];
-  const languages = [];
-  let fail = true, writes = 0;
-  const settings = { language: 'en', ai: { enabled: true } };
-  const { editor } = editorContext({
-    api: {
-      settings: { all: async () => settings, globalPlaceholders: async () => ({}),
-        set: async () => { writes++; }, setGlobalPlaceholders: async () => {} },
-      app: { setLanguage: async ({ language }) => { languages.push(language); return { reloaded: true }; } },
-    },
-    dialogs: { showSettingsDialog: async ({ onSave }) => {
-      const choice = { ...settings, language: 'fr' };
-      assert.equal(await onSave(choice), false, 'the form must stay open');
-      assert.equal(writes, 0, 'do not partly apply Settings before saving the guide');
-      assert.deepEqual(languages, []);
-      assert.match(notices[0], /language choice is still selected/);
-      fail = false;
-      await onSave(choice);
-    } },
-  });
-  editor.onToast = (message) => notices.push(message);
-  editor.pendingSave = true;
-  editor.saveAll = async () => { if (fail) throw new Error('disk busy'); editor.pendingSave = false; };
-  await editor.openSettings();
-  assert.deepEqual(languages, ['fr']);
-  assert.ok(writes > 0);
-});
-
-test('app Settings refuses to close on a failed language-save preflight and accepts retry', async () => {
-  const settings = { language: 'en' };
-  const notices = [], languages = [];
-  let canSave = false, writes = 0;
-  const api = {
-    settings: { all: async () => settings, globalPlaceholders: async () => ({}),
-      set: async () => { writes++; }, setGlobalPlaceholders: async () => {} },
-    app: { setLanguage: async ({ language }) => { languages.push(language); return { reloaded: true }; } },
-  };
-  const context = { ...rendererI18n(), window: { stepforge: api }, document: { addEventListener() {} },
-    toast: (message) => notices.push(message) };
-  context.window.StepForgeDialogs = { showSettingsDialog: async ({ onSave }) => {
-    const next = { language: 'ja' };
-    assert.equal(await onSave(next), false);
-    assert.equal(writes, 0);
-    assert.match(notices[0], /language choice is still selected/);
-    canSave = true;
-    await onSave(next);
+test('Settings uses the live app settings and sends its changes to the editor', async () => {
+  const settings = { language: 'en', appearance: 'system' };
+  const updated = { ...settings, appearance: 'dark' };
+  const api = { settings: { all: async () => settings, globalPlaceholders: async () => ({}) } };
+  const context = { ...rendererI18n(), window: { stepforge: api }, document: { addEventListener() {} } };
+  const updates = [];
+  context.window.StepForgeDialogs = { showSettingsDialog: async (options) => {
+    assert.equal(options.settings, settings);
+    assert.equal(options.section, 'ai');
+    assert.equal(await options.flushEdits(), false);
+    options.onSettingsChanged(updated);
+    assert.deepEqual(updates, [updated]);
   } };
   const source = fs.readFileSync(path.join(__dirname, '../../app/renderer/app.js'), 'utf8');
   vm.runInNewContext(source.replace('\nboot();', '\n'), context);
   const app = Object.create(context.window.StepForgeApp.prototype);
   app.state = {};
-  app.flushEditorBeforeNavigation = async () => canSave;
-  await app.openSettings();
-  assert.deepEqual(languages, ['ja']);
+  app.editor = { setSettings: (next) => updates.push(next) };
+  app.flushEditorBeforeNavigation = async () => false;
+  app.refreshData = async () => {};
+  app.renderTopbar = () => {};
+  await app.openSettings('ai');
+  assert.equal(app.state.settings, updated);
 });

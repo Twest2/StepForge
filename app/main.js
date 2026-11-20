@@ -1582,6 +1582,7 @@ function setupIpc() {
       settings.set('library.trashEmptyingSince', Date.now());
     }
     if (keyPath === 'appearance') applyTheme();
+    if (keyPath === 'spellcheck') mainWindow?.webContents.session.setSpellCheckerEnabled(Boolean(value));
     if (keyPath === 'capture' || keyPath.startsWith('capture.hotkey')) registerHotkeys();
     return settings.data;
   }, { validate: (a) => c.settingsKeyPath(a.keyPath) });
@@ -1593,8 +1594,7 @@ function setupIpc() {
   }, { validate: (a) => typeof a.baseUrl === 'string' && a.baseUrl.length <= 4096 && typeof a.apiKey === 'string' && a.apiKey.length <= 16384 });
   h('ai:keyStatus', ({ baseUrl }) => ({ saved: textIntel.aiKeys.has(baseUrl), canSave: textIntel.aiKeys.available() }),
     { validate: (a) => typeof a.baseUrl === 'string' && a.baseUrl.length <= 4096 });
-  // `temperature` is the unsaved choice in Settings: a number from 0 to 2, or
-  // null for the model's default. Left out, the saved one is used.
+  // Test the temperature shown in Settings. If omitted, use the saved value.
   h('ai:test', async ({ enabled = null, ollama = null, provider = null, openai = null, temperature } = {}) => {
     return textIntel.testAiConnection({
       enabled,

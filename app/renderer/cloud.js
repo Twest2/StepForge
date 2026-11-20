@@ -181,7 +181,7 @@ function makeCloudSettings(api, { provider = 'google' } = {}) {
       } catch (err) { say(err.message, 'error'); }
     } }, t('copy the sign-in link')),
   }));
-  const unavailable = el('p.muted.hidden', {}, t('{service} sign-in is unavailable in this build of StepForge.', { service: S.name }));
+  const unavailable = el('p.muted.hidden', {}, t('This build has no valid app credentials for {service}.', { service: S.name }));
   const switching = el('p.cloud-note.hidden', {}, '');
   const signedOut = el('div.cloud-hero', {},
     el('div.cloud-hero-icon', { 'aria-hidden': 'true' }, el('img', { src: `../assets/icons/${S.icon}`, alt: '' })),

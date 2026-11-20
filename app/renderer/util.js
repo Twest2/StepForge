@@ -311,11 +311,12 @@ function unsavedChanges(read) {
  * Modal helper. Returns { close, node }. Esc and × close it; with `isDirty`
  * (a function) they ask "Discard your changes?" first when it returns true.
  * Clicking the backdrop does nothing, so an edit can't be lost by a stray
- * click. Focus moves into the dialog, Tab is trapped there, and focus goes
+ * click. `beforeDismiss` can await work before Close, × or Esc dismisses.
+ * Focus moves into the dialog, Tab is trapped there, and focus goes
  * back to what opened it when it closes. `initialFocus` picks the element
  * to focus on open (default: the first field, else the primary button).
  */
-function openModal({ title, body, footer, wide = false, compact = false, onClose, isDirty = null, initialFocus = null }) {
+function openModal({ title, body, footer, wide = false, compact = false, onClose, beforeDismiss = null, isDirty = null, initialFocus = null }) {
   activeContextMenu?.close();
   const root = document.getElementById('modal-root');
   const parent = modalStack.at(-1);
@@ -348,10 +349,13 @@ function openModal({ title, body, footer, wide = false, compact = false, onClose
     if (onClose) onClose();
   };
   // Esc and × with unsaved changes: ask first. "Keep editing" is the default.
+  let dismissing = false;
   const requestDismiss = () => {
-    if (closed) return;
+    if (closed || dismissing) return;
     if (isDirty && !discardPrompt && isDirty()) { askDiscard(); return; }
-    dismiss();
+    if (!beforeDismiss) { dismiss(); return; }
+    dismissing = true;
+    void beforeDismiss().then((ready) => { if (ready) dismiss(); }).finally(() => { dismissing = false; });
   };
   function askDiscard() {
     let closePrompt = () => {};

@@ -326,11 +326,12 @@ function zoomShortcutFromEvent(e) {
 }
 
 class GuideEditor {
-  constructor({ root, onMetaChange = () => {}, onToast = toast, onBack = () => {}, onPublish = null, onStartRecording = () => {} } = {}) {
+  constructor({ root, onMetaChange = () => {}, onToast = toast, onBack = () => {}, onOpenSettings = () => {}, onPublish = null, onStartRecording = () => {} } = {}) {
     this.root = root;
     this.onMetaChange = onMetaChange;
     this.onToast = onToast;
     this.onBack = onBack;
+    this.openSettings = onOpenSettings;
     this.onPublish = onPublish; // (format) => Share → Publish to the web ('web'), Confluence or Wiki.js for this guide
     this.onStartRecording = onStartRecording;
 
@@ -4714,64 +4715,6 @@ class GuideEditor {
     await api.capture.session({ action: 'resume', guideId: this.guideId });
     this.onToast(t('Capture resumed.'));
     this.emitMeta();
-  }
-
-  async openSettings(section) {
-    const settings = await api.settings.all();
-    const placeholders = await api.settings.globalPlaceholders();
-    let newLanguage = null;
-    await dialogs.showSettingsDialog({
-      api,
-      settings,
-      placeholders,
-      section,
-      // Update now closes StepForge; save this guide first.
-      flushEdits: async () => {
-        try {
-          if (this.pendingSave || this.pendingGuideSave) await this.saveAll();
-        } catch {
-          return false;
-        }
-        return !this.pendingSave && !this.pendingGuideSave;
-      },
-      onSave: async (next) => {
-        if (next.language !== settings.language) {
-          let saved = false;
-          try {
-            if (this.pendingSave || this.pendingGuideSave) await this.saveAll();
-            saved = !this.pendingSave && !this.pendingGuideSave;
-          } catch { /* Keep the form and its language selection for a retry. */ }
-          if (!saved) {
-            this.onToast(t('Your guide could not be saved. Your language choice is still selected; try Save again.'), { error: true });
-            return false;
-          }
-        }
-        await api.settings.set({ keyPath: 'appearance', value: next.appearance });
-        await api.settings.set({ keyPath: 'spellcheck', value: next.spellcheck });
-        await api.settings.set({ keyPath: 'capture', value: next.capture });
-        await api.settings.set({ keyPath: 'editor', value: next.editor });
-        await api.settings.set({ keyPath: 'ai', value: next.ai });
-        await api.settings.set({ keyPath: 'redaction', value: next.redaction });
-        await api.settings.set({ keyPath: 'exports', value: next.exports });
-        await api.settings.set({ keyPath: 'branding', value: next.branding });
-        await api.settings.set({ keyPath: 'backups', value: next.backups });
-        await api.settings.setGlobalPlaceholders(next.placeholders || {});
-        if (next.language !== settings.language) newLanguage = next.language;
-      },
-    });
-    // The quick-actions and AI menus open Settings here too. A language
-    // reload must wait for the guide to be saved, just as in the app toolbar.
-    if (newLanguage) {
-      try {
-        if (this.pendingSave || this.pendingGuideSave) await this.saveAll();
-      } catch {
-        return;
-      }
-      if (this.pendingSave || this.pendingGuideSave) return;
-      const result = await api.app.setLanguage({ language: newLanguage });
-      if (result.reloaded) return;
-    }
-    this.setSettings(await api.settings.all());
   }
 
   // Export opens a dialog after loading its formats, templates and settings.

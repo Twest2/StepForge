@@ -63,7 +63,7 @@ profile you can edit, share and delete, and it becomes the active one.
 3. Choose **Preview** at the bottom to see a sample guide with your changes,
    then **Save**.
 4. Back in **Settings → Branding**, pick the profile under **Active brand
-   profile** and choose **Save**.
+   profile**.
 
 **Design preview** in Settings → Branding exports a short sample guide with the
 chosen profile, in the format you pick, and opens it.
@@ -318,7 +318,7 @@ JPG pictures go into the deck as JPG, so photos stay small.
 AI agents such as Claude Code and Codex ([setup](AI_AGENTS.md)) can make and
 change brand profiles too. This is **off by default**, separately from guide
 access. To allow it, turn on **Settings → AI → Let AI agents edit your
-guides** and **Let AI agents edit brand profiles**, then **Save**.
+guides** and **Let AI agents edit brand profiles**.
 
 Then ask your agent, for example:
 

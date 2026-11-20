@@ -151,8 +151,9 @@ function passed(name, details = {}) { report.push({ name, ...details }); console
     await cdp.send('Input.dispatchMouseEvent',{type:'mouseReleased',button:'left',buttons:0,clickCount:1,...mode});
     await send({action:'key',code:108}); // down
     await send({action:'key',code:28});
-    await click('Save');
-    await until(() => read(path.join(data,'settings/app-settings.json')).capture.mode==='window','window mode saved');
+    // Settings apply as soon as they change; Close only dismisses the dialog.
+    await until(() => read(path.join(data,'settings/app-settings.json')).capture?.mode==='window','window mode saved');
+    await click('Close');
     await click('Start recording');await share();
     await send({action:'mirror',enabled:true});
     await send({action:'click',x:520,y:410});

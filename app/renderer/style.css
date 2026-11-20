@@ -2152,6 +2152,7 @@ fieldset legend {
 /* The same chip beside new features elsewhere (betaBadge in util.js). */
 .beta-badge { display: inline-block; font-size: 11px; line-height: 1.5; vertical-align: 1px; white-space: nowrap; }
 .account-text strong .beta-badge, .ctx-menu .mi .beta-badge { margin-left: 8px; }
+.settings-save-error { margin-right: auto; }
 .settings-card .placeholder-rows { padding-top: 12px; }
 
 .settings-pane .cloud-panel { border: 0; padding: 0; margin: 0; background: none; }

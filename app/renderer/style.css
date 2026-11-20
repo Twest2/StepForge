@@ -394,8 +394,8 @@ body.platform-linux #capture-status button {
   border-bottom: 1px solid var(--border);
   border-radius: calc(var(--radius) - 1px) calc(var(--radius) - 1px) 0 0;
   background: var(--panel-2);
-  /* Muted at rest; full color on hover, keyboard focus or selection. */
-  filter: grayscale(0.4) brightness(0.94);
+  /* 30% darker at rest (like a 30% black overlay; colors unchanged); full brightness on hover, focus or selection. */
+  filter: brightness(0.7);
   transition: filter 150ms ease;
 }
 .guide-card:hover .card-thumb,

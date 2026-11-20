@@ -81,7 +81,7 @@ repository instead.
 
 ## Publish a guide
 
-1. Open the guide and choose **Share → Publish to the web…** (or right-click
+1. Open the guide and choose **Share → Publish to the web** (or right-click
    the guide in the library).
 2. Choose how long to keep it online: **1 day**, **7 days**, or **30 days**.
 3. Read the warning, tick **I understand this guide will be public on the

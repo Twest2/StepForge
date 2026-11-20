@@ -14,7 +14,7 @@ test('the editor shows exactly Capture, Add and the bottom-right Save as primary
   const app = read('app.js');
   const topbar = app.slice(app.indexOf("t('Library')),"), app.indexOf("t('More ▾')"));
   assert.match(topbar, /el\('button\.primary', \{\s*type: 'button',\s*title: t\('Capture a screenshot step'\)/);
-  assert.match(topbar, /el\('button', \{ type: 'button', onClick: \(\) => this\.editor\.saveAll\(\) \}, t\('Save'\)\)/);
+  assert.match(topbar, /el\('button', \{ type: 'button', onClick: \(\) => this\.editor\.saveAll\(\{ announce: true \}\) \}, t\('Save'\)\)/);
   assert.equal((topbar.match(/button\.primary/g) || []).length, 1, 'only Capture is primary in the top bar');
 
   const editor = read('editor.js');

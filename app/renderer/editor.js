@@ -322,7 +322,7 @@ class GuideEditor {
     this.onMetaChange = onMetaChange;
     this.onToast = onToast;
     this.onBack = onBack;
-    this.onPublish = onPublish; // (format) => Share → Publish to Confluence/Wiki.js for this guide
+    this.onPublish = onPublish; // (format) => Share → Publish to the web ('web'), Confluence or Wiki.js for this guide
 
     this.guideId = null;
     this.guide = null;
@@ -1165,7 +1165,7 @@ class GuideEditor {
     this.dom.moveDownBtn.addEventListener('click', () => this.moveSelectedStep(1));
     this.dom.duplicateBtn.addEventListener('click', () => this.duplicateSelectedStep());
     this.dom.deleteBtn.addEventListener('click', () => this.deleteSelectedStep());
-    this.dom.saveNowBtn.addEventListener('click', () => this.saveAll());
+    this.dom.saveNowBtn.addEventListener('click', () => this.saveAll({ announce: true }));
     this.dom.snapshotBtn.addEventListener('click', () => this.createSnapshot());
     this.dom.zoomSelect.addEventListener('change', () => {
       const value = this.dom.zoomSelect.value;
@@ -3843,20 +3843,25 @@ class GuideEditor {
     await calculate();
   }
 
-  async saveAll() {
+  /**
+   * Save everything now. `announce` is for an explicit Save (button, Ctrl+S):
+   * only then does a plain save say "Saved."; the flushes before dialogs,
+   * publishing and navigation stay quiet unless something needs telling.
+   */
+  async saveAll({ announce = false } = {}) {
     if (this.currentStep) await this.flushStep();
     if (this.guide) await this.flushGuide();
     if (this.guide && this.guide.linkedSource) {
       const result = await this.runLinkedSave({ force: false });
       if (result.saved) {
         if (this.guide.linkedSource) this.guide.linkedSource.lastSavedAt = new Date().toISOString();
-        this.toastLinkedSave(result, t('Saved and synced to linked archive.'));
+        if (announce || result.merged) this.toastLinkedSave(result, t('Saved and synced to linked archive.'));
       } else {
         this.onToast(t('Saved locally, but the linked archive is locked by another session.'), { error: true });
       }
       return;
     }
-    this.onToast(t('Saved.'));
+    if (announce) this.onToast(t('Saved.'));
   }
 
   /**
@@ -4740,12 +4745,13 @@ class GuideEditor {
       branding: { profiles: brandProfiles, activeId: settings.branding?.activeProfileId || '' },
       defaultFormat: 'pdf',
       defaultOutDir: settings.exports?.lastOutputDirs?.[settings.exports?.dialog?.format || 'pdf']
-        || settings.exports?.lastOutputDirs?.pdf || '',
+        || settings.exports?.lastOutputDirs?.pdf || await api.export.defaultDir().catch(() => null) || '',
       // Opens with what was chosen last time, and keeps changes however it closes.
       remembered: settings.exports?.dialog || null,
       onRemember: (choices) => api.settings.set({ keyPath: 'exports.dialog', value: choices })
         .catch((err) => console.warn('[stepforge] could not save export choices:', err?.message || err)),
       onChooseDir: async (format) => api.export.chooseDir({ format }),
+      onCheckDir: async (outDir) => api.export.canUseDir({ outDir }),
       onChooseImage: async () => api.export.chooseImage(),
       onLoadDefaults: async (format, brandProfileId) => api.export.defaults({ format, brandProfileId }),
       onLoadTemplate: async (format, name) => api.templates.load({ format, name }),
@@ -4863,11 +4869,16 @@ class GuideEditor {
       { kind: 'cmd', label: t('New guide'), description: t('Create a blank guide'), action: () => this.onBack('new') },
       { kind: 'cmd', label: t('Export'), description: t('Export the current guide'), action: () => this.openExportDialog() },
       { kind: 'cmd', label: t('Copy to clipboard'), description: t('Copy the guide with its screenshots'), action: () => this.copyToClipboard() },
+      this.onPublish ? { kind: 'cmd', label: t('Publish to the web'), action: () => this.onPublish('web') } : null,
+      { kind: 'cmd', label: t('Guide information…'), action: () => this.openGuideInfo() },
+      { kind: 'cmd', label: t('Backups & snapshots…'), action: () => this.openBackupsDialog() },
+      { kind: 'cmd', label: t('Find private details…'), action: () => this.findPrivateDetails() },
       { kind: 'cmd', label: t('Optimize guide images'), action: () => this.optimizeImages() },
+      { kind: 'cmd', label: t('Keyboard shortcuts…'), action: () => this.openShortcutsHelp() },
       { kind: 'cmd', label: t('Settings'), description: t('Open application settings'), action: () => this.openSettings() },
       { kind: 'cmd', label: t('Linked guide'), description: t('Show linked archive details'), action: () => this.openLinkedGuide() },
       { kind: 'cmd', label: t('Start capture session'), description: t('Enable hotkey capture for this guide'), action: () => this.startCaptureSession() },
-    ];
+    ].filter(Boolean);
 
     await dialogs.showQuickActions({
       commands,
@@ -5507,7 +5518,7 @@ class GuideEditor {
     }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
       e.preventDefault();
-      this.saveAll();
+      this.saveAll({ announce: true });
       return;
     }
     // While the flowchart is shown, plain keys are the flowchart's (and the

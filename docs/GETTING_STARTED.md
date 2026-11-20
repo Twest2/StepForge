@@ -157,10 +157,9 @@ clipboard**, **Copy to another guide**, **Duplicate**, **Move up**, **Move
 down**, **Move to…**, **Hide**, **Skip** and **Delete**. Substeps move with
 their steps.
 
-**Deleting steps:** StepForge asks before it deletes a step or a selection
-of steps, and **Ctrl+Z** brings them back. To delete without being asked,
-turn on **Settings → Editor → Dangerous deletes**. Deleting a guide always
-asks.
+**Deleting steps:** deleting a step or a selection of steps doesn't ask first.
+A notice with an **Undo** button appears, and **Undo** or **Ctrl+Z** brings the
+steps back. Deleting a guide always asks first.
 
 ### Flowcharts
 

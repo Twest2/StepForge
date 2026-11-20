@@ -34,14 +34,15 @@ function makeTestRoot(name, { sample = true } = {}) {
 /**
  * Starts the app for one test and always cleans up. On failure a screenshot
  * and the app output are kept in the artifact folder (uploaded by CI).
- * `options.setup(env)` can prepare the data folder before the app starts.
+ * `options.setup(env)` can prepare the data folder before the app starts;
+ * `options.args(env)` lists extra command-line arguments (a guide file).
  */
 async function withApp(name, options, body) {
   const env = makeTestRoot(name, options);
   let app;
   try {
     if (options.setup) await options.setup(env);
-    app = await launchApp({ dataDir: env.dataDir, userDataDir: env.userDataDir, artifactDir: ARTIFACT_DIR, env: options.env });
+    app = await launchApp({ dataDir: env.dataDir, userDataDir: env.userDataDir, artifactDir: ARTIFACT_DIR, env: options.env, args: options.args?.(env) });
     return await body(app, env);
   } catch (error) {
     const shot = app ? await app.page.screenshot(`${name}-failure.png`).catch(() => null) : null;

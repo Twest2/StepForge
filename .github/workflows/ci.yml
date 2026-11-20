@@ -114,6 +114,10 @@ jobs:
           cache: npm
       - name: Install display and document tools
         run: sudo apt-get update && sudo apt-get install -y xvfb xauth dbus-x11 libnss3 libatk-bridge2.0-0 libgtk-3-0 libasound2t64 poppler-utils
+      # On Linux the app decodes images with /usr/bin/node (core/image-codec.js), which the .deb and .rpm
+      # get from their nodejs dependency. The runner's Node is elsewhere, so point that path at it.
+      - name: Provide /usr/bin/node as the installed packages do
+        run: sudo ln -sf "$(command -v node)" /usr/bin/node
       - run: npm ci
       - name: Click through the real app
         env:

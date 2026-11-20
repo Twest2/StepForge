@@ -48,6 +48,48 @@ function trashCountdown(item, library = {}) {
   return tn(left, 'Deleted for good in {count} day', 'Deleted for good in {count} days');
 }
 
+/**
+ * Library card screenshots, scaled down to the 16:9 top-left crop a card
+ * shows, once per session. Showing the screenshot files themselves kept every
+ * full-size decode in memory (about 700 MB more for 300 guides with 4K
+ * screenshots). createImageBitmap decodes off the main thread and keeps only
+ * the small copy; one at a time, as cards come near the screen.
+ */
+const THUMBNAIL_WIDTH = 640;
+const smallThumbnails = new Map(); // guideId -> { version, job: Promise<data: URL> }
+let thumbnailQueue = Promise.resolve();
+
+function smallThumbnail(guideId, version) {
+  const cached = smallThumbnails.get(guideId);
+  if (cached?.version === version) return cached.job;
+  const job = thumbnailQueue.then(async () => {
+    const bytes = await api.library.thumbnail({ guideId, version });
+    if (!bytes) throw new Error('no screenshot');
+    const bitmap = await createImageBitmap(new Blob([bytes]), { resizeWidth: THUMBNAIL_WIDTH * 2, resizeQuality: 'medium' });
+    const cropWidth = Math.min(bitmap.width, bitmap.height * 16 / 9);
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.min(THUMBNAIL_WIDTH, Math.round(cropWidth));
+    canvas.height = Math.round(canvas.width * 9 / 16);
+    canvas.getContext('2d').drawImage(bitmap, 0, 0, cropWidth, cropWidth * 9 / 16, 0, 0, canvas.width, canvas.height);
+    bitmap.close();
+    return canvas.toDataURL('image/webp', 0.85);
+  });
+  thumbnailQueue = job.catch(() => {
+    if (smallThumbnails.get(guideId)?.job === job) smallThumbnails.delete(guideId);
+  });
+  smallThumbnails.set(guideId, { version, job });
+  return job;
+}
+
+const thumbnailObserver = typeof IntersectionObserver === 'function' ? new IntersectionObserver((entries) => {
+  for (const { target, isIntersecting } of entries) {
+    if (!target.isConnected) thumbnailObserver.unobserve(target); // a card the library redrew
+    if (!isIntersecting || !target.isConnected) continue;
+    thumbnailObserver.unobserve(target);
+    smallThumbnail(target.dataset.guideId, target.dataset.version).then((src) => { target.src = src; }, () => target.remove());
+  }
+}, { rootMargin: '600px' }) : null;
+
 class StepForgeApp {
   constructor() {
     this.view = document.getElementById('view');
@@ -121,6 +163,14 @@ class StepForgeApp {
         this.state.query = '';
         if (this.state.view === 'library') this.renderLibrary();
       }
+    });
+
+    // A guide file opened while StepForge is running (app/main.js imported it).
+    api.app.onOpenGuide(async (guideId) => {
+      if (!await this.flushEditorBeforeNavigation()) return;
+      await this.refreshData();
+      // Like a library card: recording now targets this guide, not a session left on another one.
+      await this.openGuideAndArmCapture(guideId);
     });
 
     this.homeBtn.addEventListener('click', () => {
@@ -222,12 +272,24 @@ class StepForgeApp {
   }
 
   async init() {
-    this.renderWelcome();
+    // Started by opening a guide file: app/main.js imported it and passes its
+    // id, so the editor comes up without the welcome screen showing first.
+    const params = new URLSearchParams(location.search);
+    const launchGuideId = params.get('open');
+    if (launchGuideId) {
+      params.delete('open');
+      history.replaceState(null, '', `?${params}`); // A reload doesn't open it again.
+      this.setView('editor');
+    } else {
+      this.renderWelcome();
+    }
     try {
       await this.refreshData();
+      if (launchGuideId) await this.openGuide(launchGuideId);
       this.updateCaptureState(await api.capture.state());
     } catch (err) {
       console.error(err);
+      if (launchGuideId && !this.editor.guide) this.renderWelcome();
     }
     // Images an agent added while StepForge was closed.
     void ensurePendingBrandRasters(api);
@@ -410,13 +472,11 @@ class StepForgeApp {
   async showLibrary(reason = null) {
     if (!await this.flushEditorBeforeNavigation()) return;
     this.editor.setActive(false);
-    this.setView('library');
-    if (reason === 'new') {
-      await this.createGuide();
-      return;
-    }
+    // Refresh before revealing the library so an older thumbnail never flashes
+    // after a privacy blur was added in the editor.
     await this.refreshData();
-    this.renderLibrary();
+    await this.renderLibrary();
+    if (reason === 'new') await this.createGuide();
   }
 
   async openGuide(guideId, stepId = null) {
@@ -624,6 +684,7 @@ class StepForgeApp {
             { label: t('Backups & snapshots'), action: () => this.editor.openBackupsDialog() },
             { label: t('Find private details'), action: () => this.editor.findPrivateDetails() },
             { label: t('Optimize guide images'), action: () => this.editor.optimizeImages() },
+            { label: t('Library thumbnail'), submenu: () => this.editor.thumbnailMenuItems() },
             { label: guide && guide.linkedSource ? t('Linked guide') : t('Linked guide (not linked)'), action: () => this.editor.openLinkedGuide() },
             'sep',
             { label: t('Keyboard shortcuts'), action: () => this.editor.openShortcutsHelp() },
@@ -639,9 +700,9 @@ class StepForgeApp {
 
   async renderLibrary() {
     const focusKey = document.activeElement?.dataset?.libraryFocus;
+    clearNode(this.libraryHost);
     this.setView('library');
     this.editor.setActive(false);
-    clearNode(this.libraryHost);
     const q = this.state.query.trim();
     const trash = this.state.folderFilter === 'trash';
     // Selecting only makes sense for the guide grid and the trash — drop out
@@ -877,7 +938,7 @@ class StepForgeApp {
         e.stopPropagation();
         this.toggleTrashSelection(item.name);
       }, { title: item.title, focusKey: `trash-select:${item.name}` }) : null,
-      el('h4', {}, item.title),
+      el('h3', {}, item.title),
       countdown ? el('div.trash-countdown', {}, countdown) : null,
       el('div.card-footer', {},
         el('span', {}, tn(item.stepCount, '{count} step', '{count} steps')),
@@ -947,6 +1008,9 @@ class StepForgeApp {
       },
       onKeyDown: e => { if (!selectMode) this.libraryContextKey(e, event => this.guideContextMenu(event, guide)); },
     },
+    // The title already names the card, so the screenshot is decorative (empty alt).
+    guide.thumbnailImage ? el('img.card-thumb', { alt: '', draggable: false, src: guide.thumbnailImage })
+      : guide.thumbnail ? this.cardThumbnail(guide.guideId, guide.thumbnail) : null,
     selectMode ? this.selectionCheck(selected, (e) => {
       e.stopPropagation();
       this.selectGuideFromClick(guide.guideId, e, { toggle: true });
@@ -970,7 +1034,7 @@ class StepForgeApp {
       title: t('Actions'), 'aria-label': t('Actions for “{title}”', { title: guide.title || t('Untitled guide') }), dataset: { libraryFocus: `actions:${guide.guideId}` },
       onClick: (e) => { e.stopPropagation(); const rect = e.currentTarget.getBoundingClientRect(); this.guideContextMenu({ clientX: rect.left, clientY: rect.bottom, currentTarget: e.currentTarget }, guide); },
     }, '⋯'),
-    el('h4', {}, selectMode ? guide.title || t('Untitled guide') : el('button.card-open', {
+    el('h3', {}, selectMode ? guide.title || t('Untitled guide') : el('button.card-open', {
       type: 'button', dataset: { libraryFocus: `open:${guide.guideId}` },
       'aria-label': t('Open “{title}”', { title: guide.title || t('Untitled guide') }),
       onClick: e => { e.stopPropagation(); activate(e); },
@@ -986,12 +1050,18 @@ class StepForgeApp {
       el('span.card-updated', { title: savedAtTitle(guide.updatedAt) }, formatGuideDate(guide.updatedAt))));
   }
 
+  cardThumbnail(guideId, version) {
+    const img = el('img.card-thumb', { alt: '', draggable: false, dataset: { guideId, version } });
+    thumbnailObserver?.observe(img);
+    return img;
+  }
+
   resultCard(result, guide, isStep) {
     return el('article.guide-card', {
       onClick: () => this.openGuideAndArmCapture(result.guideId, result.stepId || null),
     },
     isStep ? el('div.card-eyebrow', {}, guide.title) : null,
-    el('h4', {}, el('button.card-open', { type: 'button', onClick: e => { e.stopPropagation(); this.openGuideAndArmCapture(result.guideId, result.stepId || null); } }, result.title || guide.title)),
+    el('h3', {}, el('button.card-open', { type: 'button', onClick: e => { e.stopPropagation(); this.openGuideAndArmCapture(result.guideId, result.stepId || null); } }, result.title || guide.title)),
     result.snippet ? el('div.snippet', {}, result.snippet) : null,
     el('div.card-footer', {}, el('span.badge', {}, isStep ? t('Step') : t('Guide'))));
   }

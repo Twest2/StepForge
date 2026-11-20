@@ -17,6 +17,7 @@ const invoke = (channel) => (args) => ipcInvoke(channel, args);
 const api = {
   library: {
     list: invoke('library:list'),
+    thumbnail: invoke('library:thumbnail'),
     create: invoke('library:create'),
     duplicate: invoke('library:duplicate'),
     delete: invoke('library:delete'),
@@ -263,6 +264,7 @@ const api = {
     openStore: invoke('app:openStore'),
     setLanguage: invoke('app:setLanguage'),
     platformCapabilities: invoke('platform:capabilities'),
+    onOpenGuide: (fn) => ipcRenderer.on('app:open-guide', (e, guideId) => fn(guideId)),
   },
 };
 

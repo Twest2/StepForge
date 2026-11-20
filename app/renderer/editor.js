@@ -1070,9 +1070,11 @@ class GuideEditor {
    * The pane minimums, with the steps pane wide enough for its header and
    * its ↑ ↓ Duplicate Delete row on one line in the current language and
    * font. Kept at the widest seen, since the footer hides in Select mode.
+   * In compact windows the header and footer can wrap to leave room for the image.
    */
   paneMinimums() {
-    const mins = window.StepForgePaneLayout.MIN_WIDTHS;
+    const { MIN_WIDTHS: mins, COMPACT_EDITOR_WIDTH } = window.StepForgePaneLayout;
+    if (this.dom.root?.clientWidth < COMPACT_EDITOR_WIDTH) return mins;
     const rowWidth = (row) => {
       const items = [...row.children].filter((child) => child.offsetWidth);
       if (!items.length) return 0;

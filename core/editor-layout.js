@@ -7,6 +7,7 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, () => {
   const DEFAULT_WIDTHS = Object.freeze({ steps: 320, properties: 330 });
   const MIN_WIDTHS = Object.freeze({ steps: 220, properties: 280 });
+  const COMPACT_EDITOR_WIDTH = 1100;
   const DIVIDER_WIDTH = 6;
   const MIN_CANVAS_WIDTH = 320;
   const MIN_EDITOR_WIDTH = MIN_WIDTHS.steps + MIN_WIDTHS.properties + 2 * DIVIDER_WIDTH + MIN_CANVAS_WIDTH;
@@ -24,7 +25,10 @@
   function layoutPanes(width, preferred, mins = MIN_WIDTHS) {
     const available = Math.max(mins.steps + mins.properties + 2 * DIVIDER_WIDTH + MIN_CANVAS_WIDTH, Math.round(Number(width) || 0));
     const panes = normalizeWidths(preferred, mins);
-    const budget = available - 2 * DIVIDER_WIDTH - MIN_CANVAS_WIDTH;
+    const sideSpace = available - 2 * DIVIDER_WIDTH;
+    const largestCanvas = sideSpace - mins.steps - mins.properties;
+    const canvasTarget = Math.min(largestCanvas, Math.max(MIN_CANVAS_WIDTH, Math.round(available * 0.45)));
+    const budget = sideSpace - canvasTarget;
     if (panes.steps + panes.properties > budget) {
       const extra = budget - mins.steps - mins.properties;
       const desiredSteps = panes.steps - mins.steps;
@@ -45,6 +49,6 @@
     return Math.max(min, Math.min(max, Math.round(requested)));
   }
 
-  return { DEFAULT_WIDTHS, MIN_WIDTHS, DIVIDER_WIDTH, MIN_CANVAS_WIDTH, MIN_EDITOR_WIDTH,
+  return { DEFAULT_WIDTHS, MIN_WIDTHS, COMPACT_EDITOR_WIDTH, DIVIDER_WIDTH, MIN_CANVAS_WIDTH, MIN_EDITOR_WIDTH,
     normalizeWidths, layoutPanes, paneBounds, clampPaneWidth };
 });

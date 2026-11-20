@@ -164,6 +164,15 @@ const TOOL_ICON_PATHS = {
   'flow-delete': '<path d="M4 7h16M10 7V4h4v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/>',
   'zoom-in': '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m20 20-4.9-4.9M10.5 7.5v6M7.5 10.5h6"/>',
   'zoom-out': '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m20 20-4.9-4.9M7.5 10.5h6"/>',
+  // Description formatting toolbar.
+  'format-bold': '<path d="M7 4.5h5.5a3.75 3.75 0 0 1 0 7.5H7zM7 12h6.5a3.75 3.75 0 0 1 0 7.5H7z"/>',
+  'format-italic': '<path d="M18.5 4.5h-8M13.5 19.5h-8M14.5 4.5l-5 15"/>',
+  'format-insertUnorderedList': '<path d="M9.5 6h10.5M9.5 12h10.5M9.5 18h10.5"/><circle cx="4.75" cy="6" r="1.25"/><circle cx="4.75" cy="12" r="1.25"/><circle cx="4.75" cy="18" r="1.25"/>',
+  'format-insertOrderedList': '<path d="M10.5 6H20M10.5 12H20M10.5 18H20M4 4.5 5.5 3.5V9M3.5 14.25a1.5 1.5 0 1 1 2.5 1.1L3.5 18.5h3"/>',
+  'format-formatBlock': '<path d="M4.5 4.5v15M9 7h10.5M9 12h10.5M9 17h7"/>',
+  'format-createLink': '<path d="M10 14a4.25 4.25 0 0 0 6 0l3-3a4.25 4.25 0 0 0-6-6l-1 1"/><path d="M14 10a4.25 4.25 0 0 0-6 0l-3 3a4.25 4.25 0 0 0 6 6l1-1"/>',
+  'format-removeFormat': '<path d="M6 5.5h12M12 5.5v5M10 19.5h4M12 14.5v5M4 4l16 16"/>',
+  'format-insertStep': '<circle cx="8" cy="12" r="6"/><path d="M6.75 10.25 8.5 9v6M16 12h6M19 9l3 3-3 3"/>',
   undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
   redo: '<path d="M15 14l5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/>',
 };
@@ -859,16 +868,9 @@ class GuideEditor {
           el('div.row', {},
             this.dom.titleInput = el('input', { type: 'text', placeholder: t('Step title'), 'aria-label': t('Step title'), style: { flex: 1 } }),
           ),
-          this.dom.statusSelect = makeSelect('todo', [
-            { value: 'todo', label: t('Todo') },
-            { value: 'in-progress', label: t('In progress') },
-            { value: 'done', label: t('Done') },
-          ]),
-          el('div.row', {},
+          el('div.row.step-flags', {},
             this.dom.hiddenToggle = el('label', {}, el('input', { type: 'checkbox' }), ' ', t('Hidden')),
             this.dom.skippedToggle = el('label', {}, el('input', { type: 'checkbox' }), ' ', t('Skipped')),
-          ),
-          el('div.row', {},
             this.dom.forceNewPageToggle = el('label', {}, el('input', { type: 'checkbox' }), ' ', t('New page')),
             this.dom.focusedViewToggle = el('label.focused-toggle', {}, el('input', { type: 'checkbox' }), ' ', t('Focused')),
           ),
@@ -899,14 +901,14 @@ class GuideEditor {
             this.dom.descPreviewBtn = el('button.description-preview-toggle', { type: 'button', hidden: true, 'aria-pressed': 'false' }, t('Preview')),
           ),
           this.dom.richToolbar = el('div.rich-toolbar', {},
-            this.toolbarBtn('bold', t('Bold')),
-            this.toolbarBtn('italic', t('Italic')),
-            this.toolbarBtn('insertUnorderedList', t('Bullet')),
-            this.toolbarBtn('insertOrderedList', t('Number')),
-            this.toolbarBtn('formatBlock', t('Quote'), 'blockquote'),
-            this.toolbarBtn('createLink', t('Link')),
-            this.toolbarBtn('removeFormat', t('Clear')),
-            this.toolbarBtn('insertStep', t('Step')),
+            this.toolbarBtn('bold'),
+            this.toolbarBtn('italic'),
+            this.toolbarBtn('insertUnorderedList'),
+            this.toolbarBtn('insertOrderedList'),
+            this.toolbarBtn('formatBlock', 'blockquote'),
+            this.toolbarBtn('createLink'),
+            this.toolbarBtn('removeFormat'),
+            this.toolbarBtn('insertStep'),
           ),
           this.dom.descEditor = el('div.rich-editor', { contentEditable: 'true', spellcheck: true, role: 'textbox', 'aria-label': t('Description'), 'aria-multiline': 'true' }),
           // Description → Markdown: the source, and its preview.
@@ -944,7 +946,6 @@ class GuideEditor {
       ),
     );
     this.root.append(this.dom.root);
-    this.dom.statusSelect.setAttribute?.('aria-label', t('Status'));
     for (const row of this.dom.focusedControls.querySelectorAll?.('.form-row') || []) labelControl(row.querySelector('label'), [...row.querySelectorAll('input')]);
 
     // canvas interactions need to snapshot the current step before the drag
@@ -1118,15 +1119,16 @@ class GuideEditor {
     return this.paneSavePromise;
   }
 
-  toolbarBtn(action, label, block = null) {
+  toolbarBtn(action, block = null) {
     const labels = { bold: t('Bold'), italic: t('Italic'), insertUnorderedList: t('Bulleted list'), insertOrderedList: t('Numbered list'), formatBlock: t('Quote'), createLink: t('Link'), removeFormat: t('Clear'), insertStep: t('Link to a step') };
-    const btn = el('button', {
+    const btn = el('button.tool.tool-icon', {
       type: 'button',
-      'aria-label': labels[action] || label,
+      'aria-label': labels[action],
+      title: action === 'insertStep' ? t('Link to a step. Ctrl+click the link to open that step.') : labels[action],
       ...(!['createLink', 'removeFormat', 'insertStep'].includes(action) ? { 'aria-pressed': 'false' } : {}),
-      ...(action === 'insertStep' ? { title: t('Link to a step. Ctrl+click the link to open that step.') } : {}),
+      innerHTML: toolIconSvg(`format-${action}`),
       onClick: () => this.formatDescription(action, block),
-    }, action === 'insertStep' ? label : labels[action] || label);
+    });
     btn.dataset.action = action;
     if (block) btn.dataset.block = block;
     return btn;
@@ -1189,15 +1191,6 @@ class GuideEditor {
       this.saveStepDebounced();
       const row = [...this.dom.stepsList.children].find((node) => node.dataset.stepId === this.selectedStepId);
       if (row) row.querySelector('.t').textContent = this.currentStep.title || t('Untitled step');
-      this.emitMeta();
-    });
-
-    this.dom.statusSelect.addEventListener('change', () => {
-      if (!this.currentStep) return;
-      this.currentStep.status = this.dom.statusSelect.value;
-      this.pendingSave = true;
-      this.saveStepDebounced();
-      this.renderStepList();
       this.emitMeta();
     });
 
@@ -1763,6 +1756,8 @@ class GuideEditor {
             { label: t('Move down'), action: () => this.moveSelectedStep(1) },
             { label: t('Move to…'), action: () => this.moveStepTo(step.stepId) },
             'sep',
+            this.statusMenu(step.status || 'todo', (status) => this.setStepStatus(status)),
+            'sep',
             { label: t('Delete step'), danger: true, action: () => this.deleteSelectedStep() },
             ...(threads?.parents.has(step.stepId) ? ['sep', {
               label: threads.collapsed.has(step.stepId) ? t('Expand step') : t('Collapse step'),
@@ -2071,6 +2066,7 @@ class GuideEditor {
     guides.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
     const allHidden = ids.every((id) => this.stepMap.get(id)?.hidden);
     const allSkipped = ids.every((id) => this.stepMap.get(id)?.skipped);
+    const statuses = new Set(ids.map((id) => this.stepMap.get(id)?.status || 'todo'));
     const trigger = [...this.dom.stepsList.querySelectorAll('[data-step-focus]')].find((node) => node.dataset.stepFocus === `check:${stepId}`);
     contextMenu(e.clientX, e.clientY, [
       {
@@ -2093,6 +2089,7 @@ class GuideEditor {
       'sep',
       { label: allHidden ? t('Unhide') : t('Hide'), action: () => this.setSelectedStepsFlag('hidden', !allHidden) },
       { label: allSkipped ? t('Unskip') : t('Skip'), action: () => this.setSelectedStepsFlag('skipped', !allSkipped) },
+      this.statusMenu(statuses.size === 1 ? [...statuses][0] : null, (status) => this.setSelectedStepsFlag('status', status)),
       'sep',
       { label: t('Delete'), danger: true, action: () => this.deleteSelectedSteps() },
     ], { trigger, label: tn(ids.length, '{count} step selected', '{count} steps selected') });
@@ -2239,8 +2236,27 @@ class GuideEditor {
    * Select → Hide / Unhide and Skip / Unskip: the ticked steps' Hidden or
    * Skipped setting (`flag`), as one undo step.
    */
+  /** Step menu → Status: Todo, In progress or Done, with a check on `current`. */
+  statusMenu(current, apply) {
+    return {
+      label: t('Status'),
+      submenu: [['todo', t('Todo')], ['in-progress', t('In progress')], ['done', t('Done')]]
+        .map(([value, label]) => ({ label, checked: value === current, action: () => apply(value) })),
+    };
+  }
+
+  setStepStatus(status) {
+    if (!this.currentStep) return;
+    this.currentStep.status = status;
+    this.pendingSave = true;
+    this.saveStepDebounced();
+    this.renderStepList();
+    this.emitMeta();
+  }
+
   async setSelectedStepsFlag(flag, value) {
-    const ids = this.selectedStepIdsInOrder().filter((id) => Boolean(this.stepMap.get(id)?.[flag]) !== value);
+    const valueOf = (step) => (flag === 'status' ? step?.status || 'todo' : Boolean(step?.[flag]));
+    const ids = this.selectedStepIdsInOrder().filter((id) => valueOf(this.stepMap.get(id)) !== value);
     if (!ids.length || !(await this.settlePendingSave())) return;
     const before = [];
     const after = [];
@@ -2263,6 +2279,7 @@ class GuideEditor {
     const messages = {
       hidden: [tn(before.length, '{count} step hidden.', '{count} steps hidden.'), tn(before.length, '{count} step unhidden.', '{count} steps unhidden.')],
       skipped: [tn(before.length, '{count} step skipped.', '{count} steps skipped.'), tn(before.length, '{count} step unskipped.', '{count} steps unskipped.')],
+      status: [tn(before.length, 'Status changed for {count} step.', 'Status changed for {count} steps.')],
     };
     let text = messages[flag][value ? 0 : 1];
     if (before.length) text += ` ${t('Press Ctrl+Z to undo.')}`;
@@ -2300,7 +2317,6 @@ class GuideEditor {
       this.dom.titleInput.value = '';
       this.dom.descEditor.innerHTML = '';
       this.syncDescriptionMode();
-      this.dom.statusSelect.value = 'todo';
       this.dom.hiddenToggle.querySelector('input').checked = false;
       this.dom.skippedToggle.querySelector('input').checked = false;
       this.dom.forceNewPageToggle.querySelector('input').checked = false;
@@ -2312,7 +2328,6 @@ class GuideEditor {
     if (document.activeElement !== this.dom.descEditor) this.dom.descEditor.innerHTML = step.descriptionHtml || '';
     this.syncDescriptionMode();
     this.refreshStepLinks();
-    this.dom.statusSelect.value = step.status || 'todo';
     this.dom.hiddenToggle.querySelector('input').checked = Boolean(step.hidden);
     this.dom.skippedToggle.querySelector('input').checked = Boolean(step.skipped);
     this.dom.forceNewPageToggle.querySelector('input').checked = Boolean(step.forceNewPage);

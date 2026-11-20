@@ -485,6 +485,15 @@ test('menus use buttons, identify unavailable actions, wrap arrow navigation and
   u.press('Escape');assert.equal(node.isConnected, false);assert.equal(u.doc.activeElement, trigger);assert.equal(trigger.getAttribute('aria-expanded'), 'false');
 });
 
+test('menu choices with a checked state are radio items, and only the checked one shows the check', () => {
+  const u = loadUtil(), trigger = u.el('button', {}, 'Status');u.app.append(trigger);trigger.focus();let picked = null;
+  const { node } = u.contextMenu(20, 30, [{ label: 'Todo', checked: false, action() { picked = 'todo'; } }, { label: 'Done', checked: true, action() {} }, { label: 'Plain', action() {} }]);
+  const buttons = u.walk(node).filter(n => n.localName === 'button');
+  assert.deepEqual(buttons.map(b => [b.role, b.getAttribute('aria-checked')]), [['menuitemradio', 'false'], ['menuitemradio', 'true'], ['menuitem', null]]);
+  assert.deepEqual(buttons.map(b => b.textContent), ['Todo', '✓Done', 'Plain']);
+  buttons[0].click();assert.equal(picked, 'todo');assert.equal(node.isConnected, false);
+});
+
 test('submenus support Right/Left and Escape without activating unrelated commands', () => {
   const u = loadUtil(), trigger = u.el('button', {}, 'Capture');u.app.append(trigger);trigger.focus();let used = 0;
   const { node } = u.contextMenu(20, 30, [{ label: 'Retake', submenu: [{ label: 'Window', action() { used++; } }] }]);

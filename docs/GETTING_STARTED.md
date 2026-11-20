@@ -335,8 +335,8 @@ it beside long text and under short text. A step with more text than fits
 carries on to a "(continued)" slide instead of being cut, and **Add speaker
 notes** copies each step's full text into its slide's notes.
 
-For Confluence and Wiki.js, **Share → Publish to Confluence…** or **Publish to
-Wiki.js…** is usually the better choice: it creates the page for you, uploads
+For Confluence and Wiki.js, **Share → Publish to Confluence** or **Publish to
+Wiki.js** is usually the better choice: it creates the page for you, uploads
 the screenshots, and updates the same page when you publish again. The Export
 dialog points you there when you pick either format. See
 [Publish to Confluence](CONFLUENCE.md) and [Publish to Wiki.js](WIKIJS.md).

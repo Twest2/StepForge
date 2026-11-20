@@ -1717,10 +1717,10 @@ function showExportDialog({
       const site = publishTargets[formatSelect.value];
       publishInsteadNote.hidden = !site || typeof onPublishInstead !== 'function';
       if (publishInsteadNote.hidden) return;
-      publishInsteadBtn.textContent = t('Publish to {site}…', { site });
+      publishInsteadBtn.textContent = t('Publish to {site}', { site });
       publishInsteadNote.replaceChildren(
         el('span', {}, el('strong', {}, t('Publishing to {site} is easier.', { site })), ' ',
-          t('Share → Publish to {site}… creates the page for you, uploads its screenshots and updates the same page when you publish again. Export only if you’d rather upload the files yourself.', { site })),
+          t('Share → Publish to {site} creates the page for you, uploads its screenshots and updates the same page when you publish again. Export only if you’d rather upload the files yourself.', { site })),
         publishInsteadBtn);
     }
     publishInsteadBtn.addEventListener('click', () => {

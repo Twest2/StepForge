@@ -580,10 +580,10 @@ class StepForgeApp {
           const rect = e.currentTarget.getBoundingClientRect();
           contextMenu(rect.left, rect.bottom + 4, [
             { label: t('Copy to clipboard'), action: () => this.editor.copyToClipboard() },
-            { label: t('Save as a .sfgz file…'), action: () => this.editor.shareAsFile() },
-            { label: t('Publish to the web…'), action: () => this.publishToWeb(guide?.guideId || this.editor.guideId, guide?.title) },
-            { label: t('Publish to Confluence…'), badge: 'Beta', action: () => this.publishToConfluence(guide?.guideId || this.editor.guideId, guide?.title) },
-            { label: t('Publish to Wiki.js…'), badge: 'Beta', action: () => this.publishToWikiJs(guide?.guideId || this.editor.guideId, guide?.title) },
+            { label: t('Save as a .sfgz file'), action: () => this.editor.shareAsFile() },
+            { label: t('Publish to the web'), action: () => this.publishToWeb(guide?.guideId || this.editor.guideId, guide?.title) },
+            { label: t('Publish to Confluence'), badge: 'Beta', action: () => this.publishToConfluence(guide?.guideId || this.editor.guideId, guide?.title) },
+            { label: t('Publish to Wiki.js'), badge: 'Beta', action: () => this.publishToWikiJs(guide?.guideId || this.editor.guideId, guide?.title) },
           ]);
         },
       }, t('Share ▾')),
@@ -998,9 +998,9 @@ class StepForgeApp {
       { label: t('Mark as verified'), action: () => this.markVerified([guide.guideId]) },
       { label: t('Duplicate guide'), action: () => this.duplicateGuide(guide.guideId) },
       { label: t('Export'), action: () => this.openGuideExport(guide.guideId) },
-      { label: t('Publish to the web…'), action: () => this.publishToWeb(guide.guideId, guide.title) },
-      { label: t('Publish to Confluence…'), badge: 'Beta', action: () => this.publishToConfluence(guide.guideId, guide.title) },
-      { label: t('Publish to Wiki.js…'), badge: 'Beta', action: () => this.publishToWikiJs(guide.guideId, guide.title) },
+      { label: t('Publish to the web'), action: () => this.publishToWeb(guide.guideId, guide.title) },
+      { label: t('Publish to Confluence'), badge: 'Beta', action: () => this.publishToConfluence(guide.guideId, guide.title) },
+      { label: t('Publish to Wiki.js'), badge: 'Beta', action: () => this.publishToWikiJs(guide.guideId, guide.title) },
       ...moveItems,
       'sep',
       { label: t('Delete guide'), danger: true, action: () => this.deleteGuide(guide.guideId) },

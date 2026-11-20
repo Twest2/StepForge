@@ -243,7 +243,7 @@ async function promptText({
   return new Promise((resolve) => {
     const field = multiline
       ? el('textarea', { rows: 6, placeholder }, value)
-      : el('input', { type: 'text', value, placeholder });
+      : el('input', { type: 'text', value, placeholder, style: { flex: 1, minWidth: 0 } });
 
     const { close, requestDismiss } = openModal({
       title,

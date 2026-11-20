@@ -167,7 +167,8 @@ class StepForgeApp {
     api.app.onOpenGuide(async (guideId) => {
       if (!await this.flushEditorBeforeNavigation()) return;
       await this.refreshData();
-      await this.openGuide(guideId);
+      // Like a library card: recording now targets this guide, not a session left on another one.
+      await this.openGuideAndArmCapture(guideId);
     });
 
     this.homeBtn.addEventListener('click', () => {

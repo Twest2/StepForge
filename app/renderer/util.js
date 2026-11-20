@@ -550,9 +550,11 @@ function contextMenu(x, y, items, { trigger = document.activeElement, label = ''
     };
     for (const item of entries) {
       if (item === 'sep') { node.append(el('hr', { role: 'separator' })); continue; }
-      const button = el('button.mi', { type: 'button', role: 'menuitem', tabIndex: -1,
+      const checkable = 'checked' in item;
+      const button = el('button.mi', { type: 'button', role: checkable ? 'menuitemradio' : 'menuitem', tabIndex: -1,
         className: `mi${item.danger ? ' danger' : ''}${item.disabled ? ' disabled' : ''}${item.submenu ? ' has-submenu' : ''}`,
         ...(item.disabled ? { 'aria-disabled': 'true' } : {}),
+        ...(checkable ? { 'aria-checked': String(Boolean(item.checked)) } : {}),
         ...(item.submenu ? { 'aria-haspopup': 'menu', 'aria-expanded': 'false' } : {}),
         onMouseEnter: () => { if (item.submenu && !item.disabled) openSubmenu(item, button); else removeAfter(depth); },
         onClick: () => {
@@ -560,7 +562,8 @@ function contextMenu(x, y, items, { trigger = document.activeElement, label = ''
           if (item.submenu) { openSubmenu(item, button, true); return; }
           close(); item.action?.();
         },
-      }, el('span', {}, item.label), item.badge ? betaBadge(item.badge) : null,
+      }, checkable ? el('span.mi-check', { 'aria-hidden': 'true' }, item.checked ? '✓' : '') : null,
+      el('span', {}, item.label), item.badge ? betaBadge(item.badge) : null,
       item.submenu ? el('span.submenu-arrow', { 'aria-hidden': 'true' }, '›') : null);
       node.append(button); panel.buttons.push(button); panel.entries.push(item);
     }

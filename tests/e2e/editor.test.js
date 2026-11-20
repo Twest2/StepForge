@@ -191,6 +191,30 @@ test('clicking, deleting and redoing a delete keep the step list where it is', (
   assert.equal(view.scrollTop, scrolled, 'redo does not scroll the list');
 }));
 
+test('a step\'s status is set from its right-click menu, for one step or several selected steps', () => withApp('editor-step-status', {}, async (app, env) => {
+  await openSample(app);
+  const statuses = () => readSteps(guideDir(env)).map((s) => s.step.status || 'todo');
+  const pickStatus = async (label) => {
+    await app.clickWhere('.ctx-menu .mi', `(el) => el.textContent.startsWith('Status')`);
+    await app.clickWhere('.ctx-submenu .mi', `(el) => el.textContent.endsWith(${JSON.stringify(label)})`);
+  };
+  await app.click('.step-item:nth-child(2) .step-select', { button: 'right' });
+  await pickStatus('Done');
+  await eventually(() => statuses()[1] === 'done', 'step 2 saved as Done');
+  await app.click('.step-item:nth-child(2) .step-select', { button: 'right' });
+  await app.clickWhere('.ctx-menu .mi', `(el) => el.textContent.startsWith('Status')`);
+  assert.equal(await app.evaluate(`[...document.querySelectorAll('.ctx-submenu [aria-checked="true"]')].map((el) => el.textContent).join()`), '✓Done');
+  await app.key('Escape');
+  await app.key('Escape');
+
+  await app.clickText('Select');
+  await app.click('.step-item:nth-child(1) input.step-control');
+  await app.click('.step-item:nth-child(3) input.step-control');
+  await app.click('.step-item:nth-child(3) .num', { button: 'right' });
+  await pickStatus('In progress');
+  await eventually(() => statuses().slice(0, 3).join() === 'in-progress,done,in-progress', 'the two selected steps saved as In progress');
+}));
+
 test('the details pane shows a selected shape\'s style, keeps its place on autosave and starts a new step at the top', () => withApp('editor-details-scroll', {}, async (app, env) => {
   await openSample(app);
   const paneScroll = () => app.evaluate(`document.querySelector('.pane-props').scrollTop`);

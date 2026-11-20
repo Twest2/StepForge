@@ -121,10 +121,13 @@ For each step you can:
   such as `<kbd>`, `<details>` and `<mark>` (scripts, styles and pictures are
   left out: an image becomes a link to it). **Preview** (blue while on) shows
   how it looks. Markdown exports keep your Markdown as written.
-  In rich text, **Step** links to another step: pick it from the list and the description
+  In rich text, **Link to a step** (the last button above the description)
+  links to another step: pick it from the list and the description
   shows "Step 3". The number follows the step when you move it, and exports
   use the step's number in that export. **Ctrl+click** the link to open the step.
-- **Set a status** of *Todo*, *In progress*, or *Done* to track your review.
+- **Set a status** of *Todo*, *In progress*, or *Done* to track your review:
+  right-click the step and choose **Status**. In **Select** mode it sets the
+  status of every selected step.
 - **Add blocks** for anything that isn't a screenshot:
   - **Text block** as a Note, Tip, Important, or Warning callout
   - **Code** with a language label, for commands and snippets

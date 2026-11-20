@@ -1002,7 +1002,7 @@
   'Search guides, steps, and commands': 'ガイド、ステップ、コマンドを検索',
   'Type to search, arrows to move, Enter to open.': '入力して検索、矢印キーで移動、Enter で開きます。',
   'No matches.': '一致するものはありません。',
-  'Quick Actions': 'クイックアクション',
+  'Quick actions': 'クイックアクション',
   'Close': '閉じる',
   'Find': '検索',
   'Replace with': '置換後',

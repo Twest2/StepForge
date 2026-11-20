@@ -98,10 +98,11 @@ class StepForgeApp {
         }
         await this.showLibrary();
       },
-      // Export → Confluence/Wiki.js recommends publishing instead.
-      onPublish: (format) => (format === 'confluence'
-        ? this.publishToConfluence(this.editor.guideId, this.editor.guide?.title)
-        : this.publishToWikiJs(this.editor.guideId, this.editor.guide?.title)),
+      // Export → Confluence/Wiki.js recommends publishing instead; quick actions publish to the web.
+      onPublish: (format) => (format === 'web' ? this.publishToWeb(this.editor.guideId, this.editor.guide?.title)
+        : format === 'confluence'
+          ? this.publishToConfluence(this.editor.guideId, this.editor.guide?.title)
+          : this.publishToWikiJs(this.editor.guideId, this.editor.guide?.title)),
     });
 
     this.searchInput.addEventListener('input', debounce(() => {

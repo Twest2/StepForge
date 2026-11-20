@@ -1002,7 +1002,7 @@
   'Search guides, steps, and commands': '搜索指南、步骤和命令',
   'Type to search, arrows to move, Enter to open.': '输入以搜索，方向键移动，Enter 打开。',
   'No matches.': '没有匹配项。',
-  'Quick Actions': '快速操作',
+  'Quick actions': '快速操作',
   'Close': '关闭',
   'Find': '查找',
   'Replace with': '替换为',

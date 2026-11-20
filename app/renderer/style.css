@@ -1338,7 +1338,6 @@ fieldset legend {
 }
 
 .quick-actions {
-  width: min(760px, 92vw);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1375,14 +1374,9 @@ fieldset legend {
 .fr-item mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: inherit; border-radius: 3px; }
 .qa-item .kind {
   flex: none;
-  margin-top: 2px;
-  padding: 2px 6px;
-  border-radius: 999px;
-  background: var(--panel-2);
+  margin-left: auto;
   color: var(--muted);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  font-size: 12px;
 }
 
 .export-dialog,

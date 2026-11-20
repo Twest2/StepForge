@@ -1002,7 +1002,7 @@
   'Search guides, steps, and commands': 'Поиск руководств, шагов и команд',
   'Type to search, arrows to move, Enter to open.': 'Начните вводить для поиска, стрелки — для перехода, Enter — чтобы открыть.',
   'No matches.': 'Совпадений нет.',
-  'Quick Actions': 'Быстрые действия',
+  'Quick actions': 'Быстрые действия',
   'Close': 'Закрыть',
   'Find': 'Найти',
   'Replace with': 'Заменить на',

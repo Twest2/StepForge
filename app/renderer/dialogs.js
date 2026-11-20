@@ -307,11 +307,12 @@ function showQuickActions({ query = '', commands = [], searchFn, onOpenItem, onC
           onMouseenter: () => { active = idx; updateActiveItem(); },
           onClick: () => choose(idx),
         },
-        el('span.kind', {}, item.kind || 'cmd'),
         el('div', {},
           el('div', { style: { fontWeight: 600 } }, item.label),
           item.description ? el('div.snippet', {}, item.description) : null,
-        )));
+        ),
+        // Search results say what they are; commands need no label.
+        item.kind === 'guide' || item.kind === 'step' ? el('span.kind', {}, item.kind === 'guide' ? t('Guide') : t('Step')) : null));
       });
     }
 
@@ -338,7 +339,7 @@ function showQuickActions({ query = '', commands = [], searchFn, onOpenItem, onC
     }
 
     const { close } = openModal({
-      title: t('Quick Actions'),
+      title: t('Quick actions'),
       body: el('div.quick-actions', {},
         input,
         hint,

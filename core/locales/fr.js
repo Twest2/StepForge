@@ -1002,7 +1002,7 @@
   'Search guides, steps, and commands': 'Rechercher des guides, des étapes et des commandes',
   'Type to search, arrows to move, Enter to open.': 'Tapez pour rechercher, flèches pour naviguer, Entrée pour ouvrir.',
   'No matches.': 'Aucune correspondance.',
-  'Quick Actions': 'Actions rapides',
+  'Quick actions': 'Actions rapides',
   'Close': 'Fermer',
   'Find': 'Rechercher',
   'Replace with': 'Remplacer par',

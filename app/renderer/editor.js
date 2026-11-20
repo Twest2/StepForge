@@ -322,7 +322,7 @@ class GuideEditor {
     this.onMetaChange = onMetaChange;
     this.onToast = onToast;
     this.onBack = onBack;
-    this.onPublish = onPublish; // (format) => Share → Publish to Confluence/Wiki.js for this guide
+    this.onPublish = onPublish; // (format) => Share → Publish to the web ('web'), Confluence or Wiki.js for this guide
 
     this.guideId = null;
     this.guide = null;
@@ -4854,11 +4854,16 @@ class GuideEditor {
       { kind: 'cmd', label: t('New guide'), description: t('Create a blank guide'), action: () => this.onBack('new') },
       { kind: 'cmd', label: t('Export'), description: t('Export the current guide'), action: () => this.openExportDialog() },
       { kind: 'cmd', label: t('Copy to clipboard'), description: t('Copy the guide with its screenshots'), action: () => this.copyToClipboard() },
+      this.onPublish ? { kind: 'cmd', label: t('Publish to the web…'), action: () => this.onPublish('web') } : null,
+      { kind: 'cmd', label: t('Guide information…'), action: () => this.openGuideInfo() },
+      { kind: 'cmd', label: t('Backups & snapshots…'), action: () => this.openBackupsDialog() },
+      { kind: 'cmd', label: t('Find private details…'), action: () => this.findPrivateDetails() },
       { kind: 'cmd', label: t('Optimize guide images'), action: () => this.optimizeImages() },
+      { kind: 'cmd', label: t('Keyboard shortcuts…'), action: () => this.openShortcutsHelp() },
       { kind: 'cmd', label: t('Settings'), description: t('Open application settings'), action: () => this.openSettings() },
       { kind: 'cmd', label: t('Linked guide'), description: t('Show linked archive details'), action: () => this.openLinkedGuide() },
       { kind: 'cmd', label: t('Start capture session'), description: t('Enable hotkey capture for this guide'), action: () => this.startCaptureSession() },
-    ];
+    ].filter(Boolean);
 
     await dialogs.showQuickActions({
       commands,

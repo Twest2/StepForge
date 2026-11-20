@@ -2274,18 +2274,17 @@ const SHORTCUTS = [
 
 function showShortcutsDialog() {
   return new Promise((resolve) => {
-    const sections = SHORTCUTS.map(([heading, items]) => el('div', {},
-      el('h3', { style: { margin: '8px 0 6px' } }, heading),
-      el('table', { style: { width: '100%', borderCollapse: 'collapse' } },
-        ...items.map(([keys, what]) => el('tr', {},
-          el('td', { style: { padding: '3px 14px 3px 0', whiteSpace: 'nowrap' } }, el('kbd', {}, keys)),
-          el('td', { style: { padding: '3px 0' } }, what),
-        )),
-      ),
-    ));
+    // One table for every section, so the descriptions line up in one column.
+    const rows = SHORTCUTS.flatMap(([heading, items]) => [
+      el('tr', {}, el('th', { colSpan: 2, style: { textAlign: 'left', fontWeight: 'normal' } }, el('h3', { style: { margin: '8px 0 6px' } }, heading))),
+      ...items.map(([keys, what]) => el('tr', {},
+        el('td', { style: { padding: '3px 14px 3px 0', whiteSpace: 'nowrap' } }, el('kbd', {}, keys)),
+        el('td', { style: { padding: '3px 0' } }, what),
+      )),
+    ]);
     const { close } = openModal({
       title: t('Keyboard shortcuts'),
-      body: el('div', {}, ...sections),
+      body: el('table', { style: { width: '100%', borderCollapse: 'collapse' } }, el('tbody', {}, ...rows)),
       footer: [el('button.primary', { onClick: () => { close(); resolve(true); } }, t('Close'))],
       onClose: () => resolve(true),
     });

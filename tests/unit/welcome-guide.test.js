@@ -42,7 +42,7 @@ test('the welcome guide: five steps with screenshots, code and a table', (t) => 
     for (const a of step.annotations) assert.ok(a.x >= 0 && a.y >= 0 && a.x + a.w <= 1 && a.y + a.h <= 1, `${step.title}: annotation inside the picture`);
   }
   // Button names are bold.
-  assert.match(steps[0].descriptionHtml, /Click <strong>New recording<\/strong>, then/);
+  assert.match(steps[0].descriptionHtml, /Click <strong>New recording<\/strong>, then <strong>Start recording<\/strong> at the top right/);
   assert.match(steps[2].textBlocks[0].descriptionHtml, /<strong>More → Find private details<\/strong>/);
   assert.equal(steps[3].codeBlocks[0].language, 'bash');
   assert.deepEqual(steps[3].textBlocks.map((b) => [b.level, b.position]), [['info', 'after-description']]);

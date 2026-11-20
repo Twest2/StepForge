@@ -35,7 +35,7 @@ function setup({ session } = {}) {
   const context = vm.createContext({
     ...rendererI18n(),
     window: {
-      stepforge: { capture: { session: invoke }, settings: { set: async (change) => { settingsSet.push({ ...change }); return { capture: { recordingReminder: change.value } }; } } },
+      stepforge: { capture: { session: invoke }, library: { create: async () => ({ guideId: 'new-guide' }) }, settings: { set: async (change) => { settingsSet.push({ ...change }); return { capture: { recordingReminder: change.value } }; } } },
       StepForgeDialogs: { showRecordingReminder: async () => { reminders += 1; return reminderAnswer; } },
     },
     document: { addEventListener() {} },
@@ -153,6 +153,23 @@ test('Start recording does not resume a paused session that belongs to another g
   await f.ui.startRecording();
   assert.equal(f.ui.captureState.guideId, 'existing-guide');
   assert.equal(f.ui.captureState.paused, false);
+});
+
+test('Welcome → New recording opens the new guide ready to record, and only Start recording starts it', async (t) => {
+  const f = setup();
+  t.after(() => f.capture.finishSession());
+  f.ui.refreshData = async () => {};
+  f.ui.openGuide = async (guideId) => { f.ui.editor.guideId = guideId; };
+  await f.ui.startNewRecording();
+  assert.equal(f.ui.editor.guideId, 'new-guide', 'the new guide is open in the editor');
+  assert.equal(f.ui.captureState.guideId, 'new-guide');
+  assert.equal(f.ui.captureState.paused, true, 'nothing is recorded yet');
+  assert.equal(f.reminders(), 0, 'the reminder waits for Start recording');
+  assert.equal(f.win.visible, true, 'StepForge stays on screen');
+  assert.equal(f.button().children[0], 'Start recording');
+  await f.button().onClick();
+  assert.equal(f.reminders(), 1);
+  assert.equal(f.ui.captureState.paused, false, 'Start recording starts it');
 });
 
 test('Cancel in the reminder leaves the session paused; Don’t show this again is saved and skips it next time', async (t) => {

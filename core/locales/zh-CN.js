@@ -2285,7 +2285,7 @@
   "Built-in themes can’t be deleted.": "内置主题无法删除。",
   "Welcome to StepForge": "欢迎使用 StepForge",
   "A sample guide to show you around.": "这是一份带你熟悉 StepForge 的示例指南。",
-  "Click {button}, then do your task as usual. Every click becomes a step: a screenshot, a marker where you clicked, and a title read from what you clicked.": "点击 {button}，然后照常完成你的任务。每次点击都会成为一个步骤：一张截图、一个点击位置标记，以及根据你点击的内容生成的标题。",
+  "Click {button}, then {start} at the top right, and do your task as usual. Every click becomes a step: a screenshot, a marker where you clicked, and a title read from what you clicked.": "点击 {button}，再点击右上角的 {start}，然后照常完成你的任务。每次点击都会成为一个步骤：一张截图、一个点击位置标记，以及根据你点击的内容生成的标题。",
   "When you’re done, click {button} at the top right.": "完成后，点击右上角的 {button}。",
   "Tidy up your steps": "整理你的步骤",
   "Pick a step on the left, then change its title and description on the right. Move steps up or down, or hide the ones readers don’t need.": "在左侧选择一个步骤，然后在右侧修改它的标题和描述。你可以上下移动步骤，或隐藏读者不需要的步骤。",

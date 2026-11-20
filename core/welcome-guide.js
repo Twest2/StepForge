@@ -60,7 +60,7 @@ function addWelcomeGuide(store, { t, hotkeys = {} } = {}) {
   const steps = [
     {
       title: t('Start a new recording'),
-      descriptionHtml: paragraph(t('Click {button}, then do your task as usual. Every click becomes a step: a screenshot, a marker where you clicked, and a title read from what you clicked.'), { button: t('New recording') }),
+      descriptionHtml: paragraph(t('Click {button}, then {start} at the top right, and do your task as usual. Every click becomes a step: a screenshot, a marker where you clicked, and a title read from what you clicked.'), { button: t('New recording'), start: t('Start recording') }),
       textBlocks: [{
         position: 'after-description', level: 'success',
         descriptionHtml: paragraph(t('When you’re done, click {button} at the top right.'), { button: t('Stop recording') }),

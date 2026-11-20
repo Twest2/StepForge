@@ -2285,7 +2285,7 @@
   "Built-in themes can’t be deleted.": "組み込みテーマは削除できません。",
   "Welcome to StepForge": "StepForge へようこそ",
   "A sample guide to show you around.": "StepForge の使い方を紹介するサンプル ガイドです。",
-  "Click {button}, then do your task as usual. Every click becomes a step: a screenshot, a marker where you clicked, and a title read from what you clicked.": "{button} をクリックし、いつもどおりに作業します。クリックするたびにステップが作成されます。スクリーンショット、クリックした位置のマーカー、クリックした項目から読み取ったタイトルが含まれます。",
+  "Click {button}, then {start} at the top right, and do your task as usual. Every click becomes a step: a screenshot, a marker where you clicked, and a title read from what you clicked.": "{button} をクリックし、右上の {start} をクリックしてから、いつもどおりに作業します。クリックするたびにステップが作成されます。スクリーンショット、クリックした位置のマーカー、クリックした項目から読み取ったタイトルが含まれます。",
   "When you’re done, click {button} at the top right.": "終わったら、右上の {button} をクリックします。",
   "Tidy up your steps": "ステップを整える",
   "Pick a step on the left, then change its title and description on the right. Move steps up or down, or hide the ones readers don’t need.": "左側でステップを選び、右側でタイトルと説明を変更します。ステップを上下に移動したり、読み手に不要なステップを非表示にしたりできます。",

@@ -102,6 +102,7 @@ function passed(name, details = {}) { report.push({ name, ...details }); console
     // Approve the real KDE shortcut dialog, then use only app/desktop input.
     await answerDialog('Global Shortcuts Requested', [{x:744,y:686}]);
     await click('New recording');
+    await click('Start recording'); // New recording only opens the guide; recording starts here.
     await until(async () => (await text()).includes('StepForge tray icon beside the clock'), 'Plasma recording reminder');
     await click('Continue');
     await share();

@@ -1525,7 +1525,7 @@
   'Captured.': 'キャプチャしました。',
   'Capture region…': '範囲をキャプチャ…',
   'Paste image as step': '画像をステップとして貼り付け',
-  'Import images…': '画像を読み込む…',
+  'Import images': '画像を読み込む',
   'Image pasted as a new step.': '画像を新しいステップとして貼り付けました。',
   'Clipboard has no image.': 'クリップボードに画像がありません。',
   'Shared to {path}': '{path} に共有しました',

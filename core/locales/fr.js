@@ -1525,7 +1525,7 @@
   'Captured.': 'Capturé.',
   'Capture region…': 'Capturer une zone…',
   'Paste image as step': 'Coller l’image comme étape',
-  'Import images…': 'Importer des images…',
+  'Import images': 'Importer des images',
   'Image pasted as a new step.': 'Image collée comme nouvelle étape.',
   'Clipboard has no image.': 'Le presse-papiers ne contient pas d’image.',
   'Shared to {path}': 'Partagé vers {path}',

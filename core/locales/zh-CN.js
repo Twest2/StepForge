@@ -1525,7 +1525,7 @@
   'Captured.': '已捕获。',
   'Capture region…': '捕获区域…',
   'Paste image as step': '将图片粘贴为步骤',
-  'Import images…': '导入图片…',
+  'Import images': '导入图片',
   'Image pasted as a new step.': '已将图片粘贴为新步骤。',
   'Clipboard has no image.': '剪贴板中没有图片。',
   'Shared to {path}': '已分享到 {path}',

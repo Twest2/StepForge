@@ -82,7 +82,7 @@ recording**) in the red recording control at the top right.
 | Take a single screenshot | **Capture → Full-screen screenshot**, **Window screenshot**, or **Region screenshot** |
 | Capture with the keyboard | Press **Ctrl+Shift+1** (change it in **Settings → Capture → Hotkeys**) |
 | Pause and resume a session | Press **Ctrl+Shift+2**. StepForge stays hidden while paused |
-| Use an image you already have | Paste it with **Ctrl+V**, or use **Capture → Import images…** |
+| Use an image you already have | Paste it with **Ctrl+V**, or use **Capture → Import images** |
 | Add a step by hand | Choose **Add** in the steps list, type a title, and optionally pick an image |
 
 ## 2. Edit your steps

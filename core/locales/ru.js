@@ -1525,7 +1525,7 @@
   'Captured.': 'Записано.',
   'Capture region…': 'Записать область…',
   'Paste image as step': 'Вставить изображение как шаг',
-  'Import images…': 'Импортировать изображения…',
+  'Import images': 'Импортировать изображения',
   'Image pasted as a new step.': 'Изображение вставлено как новый шаг.',
   'Clipboard has no image.': 'В буфере обмена нет изображения.',
   'Shared to {path}': 'Сохранено в {path}',

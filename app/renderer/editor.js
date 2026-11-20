@@ -830,7 +830,7 @@ class GuideEditor {
             this.dom.canvasEmptyText = el('p', {}, t('Select an image step to edit annotations.')),
             this.dom.canvasEmptyActions = el('div.canvas-empty-actions', { hidden: true },
               el('button.primary', { type: 'button', onClick: () => this.onStartRecording() }, t('Start recording')),
-              el('button', { type: 'button', onClick: () => this.importImageSteps() }, t('Import images…')),
+              el('button', { type: 'button', onClick: () => this.importImageSteps() }, t('Import images')),
             ),
           )),
         ),
@@ -4363,7 +4363,7 @@ class GuideEditor {
       { label: t('Region screenshot'), action: () => this.captureStep('region') },
       'sep',
       { label: t('Paste image as step'), action: () => this.pasteClipboardStep() },
-      { label: t('Import images…'), action: () => this.importImageSteps() },
+      { label: t('Import images'), action: () => this.importImageSteps() },
     ], { trigger });
   }
 

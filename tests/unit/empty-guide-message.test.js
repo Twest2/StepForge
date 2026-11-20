@@ -32,7 +32,7 @@ function makeEditor(language = 'en', api = {}) {
   const GuideEditor = loadEditorClass(language, api);
   const editor = Object.create(GuideEditor.prototype);
   const node = { hidden: true, text: OLD_HINT }; // as mountShell() creates it
-  const actions = { hidden: true }; // Start recording and Import images…
+  const actions = { hidden: true }; // Start recording and Import images
   editor.dom = {
     canvas: { tabIndex: -1 }, // the screenshot, focusable once an image is drawn
     canvasEmpty: {

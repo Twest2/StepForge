@@ -123,7 +123,7 @@ test('folding away the selected step selects the step it is under; opening a fol
   await click(start(row(list, 'A')));
   assert.equal(e.selectedStepId, 'A');
   assert.deepEqual(rows(list), ['A', 'B', 'C', 'c1']);
-  // The real selectStep (Page Down, search, Move to…) unfolds the steps above the one it opens.
+  // The real selectStep (Page Down, search, Move to) unfolds the steps above the one it opens.
   const real = Object.getPrototypeOf(e).selectStep;
   Object.assign(e, { pendingSave: false, canvas: { select() {} }, syncStepFields() {}, syncFocusedControls() {},
     renderCanvas: async () => {}, renderAnnotationPanel() {}, renderBlocksPanel() {}, emitMeta() {} });

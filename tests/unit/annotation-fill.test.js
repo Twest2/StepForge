@@ -11,7 +11,7 @@ const { rendererI18n } = require('./helpers');
 /**
  * The Fill picker in the annotation style panel (app/renderer/editor.js) in a
  * small DOM stand-in: a filled rectangle or oval can go back to Transparent,
- * presets and Custom color… apply with undo, the popover works from the
+ * presets and Custom color apply with undo, the popover works from the
  * keyboard, and an empty fill survives Apply to all, a save and an export.
  */
 
@@ -166,7 +166,7 @@ test('Stroke shares the grouped picker, preserves Fill, records undo and remembe
   assert.deepEqual(Array.from(ui.editor.settings.editor.recentColors), ['#1F6FEB']);
 });
 
-test('the popover lists Transparent first, then presets with the current color, then Custom color…', () => {
+test('the popover lists Transparent first, then presets with the current color, then Custom color', () => {
   const ui = setup([rect('#ffd60a')]);
   ui.picker().swatch.click();
   const { swatch, popover } = ui.picker();
@@ -174,7 +174,7 @@ test('the popover lists Transparent first, then presets with the current color, 
   assert.equal(swatch.getAttribute('aria-expanded'), 'true');
   assert.equal(popover.getAttribute('role'), 'menu');
   const labels = ui.entries().map((n) => n.getAttribute('aria-label') || n.textContent);
-  assert.deepEqual(labels, ['Transparent', '#FFE066', '#E5484D', '#1F6FEB', '#10B981', '#111827', '#FFFFFF', '#FFD60A', 'Custom color…']);
+  assert.deepEqual(labels, ['Transparent', '#FFE066', '#E5484D', '#1F6FEB', '#10B981', '#111827', '#FFFFFF', '#FFD60A', 'Custom color']);
   // The current fill is the checked entry, and it gets the focus.
   assert.equal(ui.entry('#FFD60A').getAttribute('aria-checked'), 'true');
   assert.equal(ui.entry('Transparent').getAttribute('aria-checked'), 'false');
@@ -205,7 +205,7 @@ test('brand colors supplement the default palette without duplicates', () => {
   const ui = setup([rect('transparent')], { brandColors: ['#0A2540', '#635BFF', '#0a2540'] });
   ui.picker().swatch.click();
   assert.deepEqual(ui.entries().map((n) => n.getAttribute('aria-label') || n.textContent),
-    ['Transparent', '#FFE066', '#E5484D', '#1F6FEB', '#10B981', '#111827', '#FFFFFF', '#0A2540', '#635BFF', 'Custom color…']);
+    ['Transparent', '#FFE066', '#E5484D', '#1F6FEB', '#10B981', '#111827', '#FFFFFF', '#0A2540', '#635BFF', 'Custom color']);
   ui.entry('#635BFF').click();
   assert.equal(ui.fill(), '#635BFF');
 });
@@ -228,10 +228,10 @@ test('the brand colors come from the active profile, and its annotation colors w
   assert.equal(await load([profile(true)], null), null, 'no active profile: StepForge’s own presets');
 });
 
-test('Custom color… opens the system picker; its live changes make one undo step', () => {
+test('Custom color opens the system picker; its live changes make one undo step', () => {
   const ui = setup([rect('#ffd60a')]);
   ui.picker().swatch.click();
-  ui.entry('Custom color…').click();
+  ui.entry('Custom color').click();
   const { custom, popover, swatch } = ui.picker();
   assert.equal(popover.hidden, true);
   assert.equal(custom.clicked, 1);
@@ -247,7 +247,7 @@ test('Custom color… opens the system picker; its live changes make one undo st
   assert.deepEqual(ui.history, [{ label: 'annotation-fill', fill: '#ffd60a' }]);
   // A picker that only reports the final color still applies it.
   ui.picker().swatch.click();
-  ui.entry('Custom color…').click();
+  ui.entry('Custom color').click();
   custom.value = '#abcdef';
   custom.dispatch('change');
   assert.equal(ui.fill(), '#abcdef');
@@ -263,7 +263,7 @@ test('the popover works from the keyboard and closes on Esc, Tab or a click else
   popover.dispatch('keydown', { key: 'ArrowRight' });
   assert.equal(ui.document.activeElement, ui.entries()[1]);
   popover.dispatch('keydown', { key: 'End' });
-  assert.equal(ui.document.activeElement, ui.entry('Custom color…'));
+  assert.equal(ui.document.activeElement, ui.entry('Custom color'));
   popover.dispatch('keydown', { key: 'ArrowDown' });
   assert.equal(ui.document.activeElement, ui.entry('Transparent'));
   popover.dispatch('keydown', { key: 'Escape' });

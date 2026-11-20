@@ -92,7 +92,7 @@ The editor has three panes:
 - **Steps (left).** Every step in order. Drag a step to move it with its
   substeps; the line shows where it lands, and its indent shows the level
   (drag sideways to change it). Or use **Alt+↑ / Alt+↓**, or right-click and
-  choose **Move to…**. Use **Make substep of…** to nest a step under another
+  choose **Move to**. Use **Make substep of** to nest a step under another
   one; substeps are numbered 1.1, 1.2, and so on.
 
   A thin line runs from a step past its substeps. Click it (or right-click
@@ -140,7 +140,7 @@ For each step you can:
   to frame every screenshot the same way (pan 0% is the left or top edge).
 - Start a **New page** at this step in paged formats such as PDF.
 
-**Guide details:** choose **More → Guide information…** to add an author,
+**Guide details:** choose **More → Guide information** to add an author,
 a guide version (such as `1.1`) and a short description. The description appears at the top of
 exports and accepts Markdown: `**bold**`, `*italic*`, `` `code` ``,
 `[links](https://example.com)`, lists that start with `-` or `1.` (indent an
@@ -158,7 +158,7 @@ A normal click toggles a single step.
 Right-click a selected step for what to do with all of them: **Copy** (then
 **Paste after this step** on any step, in this guide or another), **Copy to
 clipboard**, **Copy to another guide**, **Duplicate**, **Move up**, **Move
-down**, **Move to…**, **Hide**, **Skip** and **Delete**. Substeps move with
+down**, **Move to**, **Hide**, **Skip** and **Delete**. Substeps move with
 their steps.
 
 **Deleting steps:** deleting a step or a selection of steps doesn't ask first.
@@ -191,7 +191,7 @@ tools:
 
 In the details pane you can change a shape's fill, border and text colors (the
 same color menus as annotations), or link it to a step of the guide; the shape
-then shows "→ Step 3". **Fill → Image…** puts a picture inside the shape:
+then shows "→ Step 3". **Fill → Image** puts a picture inside the shape:
 **Fit inside** shows the whole picture, **Fill shape** fills the shape and
 crops the edges. Pictures are never stretched. For a selected arrow you can
 pick its style: arrow, double arrow, line, dashed or dotted.
@@ -224,9 +224,9 @@ guide on the selected step for you to adjust.
 When the software you documented changes, right-click the step:
 
 - **Retake screenshot** captures a new one (**Full screen**, **Window** or
-  **Region…**). StepForge hides for 3 seconds so you can get the app ready,
+  **Region**). StepForge hides for 3 seconds so you can get the app ready,
   then takes the shot and comes back.
-- **Choose image…** uses an image file instead. This also adds a screenshot
+- **Choose image** uses an image file instead. This also adds a screenshot
   to a step that doesn't have one.
 
 The step keeps its title, description and annotations, so check that arrows
@@ -276,7 +276,7 @@ it can't be recovered from them.
 
 ### Find private details
 
-**More → Find private details…** reads every screenshot and blurs what looks
+**More → Find private details** reads every screenshot and blurs what looks
 private:
 
 - email addresses, and phone and card numbers;
@@ -357,7 +357,7 @@ footer on every export. Set one up in **Settings → Branding → Manage**. See
 `Product` → `Admin Portal`) and type `[[Product]]` in any title, description
 or table cell. It's replaced when you export or publish (code blocks are left
 as written). A single guide can have its own placeholders under
-**More → Guide placeholders…**.
+**More → Guide placeholders**.
 
 **Other languages.** Guides in any language export to PDF: Chinese,
 Japanese, Korean, Russian, Greek and the rest use fonts already on your
@@ -403,12 +403,12 @@ and verifies your library before switching to the new location.
   before publishing.
 - **Share → Share this guide as a .sfgz file** packages a guide and all of its
   images into one file. Anyone with StepForge can open it with
-  **Import → Import a copy of a guide (.sfgz)…**.
+  **Import → Import a copy of a guide (.sfgz)**.
 - **Linked guides** let several people work from one `.sfgz` on a shared
   folder. StepForge saves back to the file, and if someone else saved it in
   the meantime, it merges their changes with yours.
 - **Snapshots** are automatic backups of each guide. Open
-  **More → Backups & snapshots…** to create one by hand or roll back.
+  **More → Backups & snapshots** to create one by hand or roll back.
   **Settings → Editor → Snapshots to keep** controls how many are kept.
 - **Cloud sync** keeps your library the same on all your computers, with
   Google Drive, OneDrive, Dropbox or Nextcloud. See
@@ -422,7 +422,7 @@ Menu key) for a step's or guide's right-click menu, and **Esc** to close. To
 move a selected annotation with the arrow keys, Tab to the screenshot.
 
 Press **Ctrl+/** for the quick-actions palette, or open
-**More → Keyboard shortcuts…** for the full list.
+**More → Keyboard shortcuts** for the full list.
 
 | Shortcut | Action |
 | --- | --- |

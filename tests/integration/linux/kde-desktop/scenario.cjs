@@ -145,7 +145,7 @@ function passed(name, details = {}) { report.push({ name, ...details }); console
     await send({action:'click',x:1112,y:872,button:273});
     await send({action:'click',x:1100,y:840});
     await until(async () => (await status()).includes('stopped'),'tray finish');
-    await click('More ▾');await click('Settings…');await click('Capture');
+    await click('More ▾');await click('Settings');await click('Capture');
     const mode = await evaluate(`(() => { const e=Array.from(document.querySelectorAll('#modal-root select')).find(e=>Array.from(e.options).some(o=>o.value==='fullscreen')); const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}; })()`);
     await cdp.send('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',buttons:1,clickCount:1,...mode});
     await cdp.send('Input.dispatchMouseEvent',{type:'mouseReleased',button:'left',buttons:0,clickCount:1,...mode});

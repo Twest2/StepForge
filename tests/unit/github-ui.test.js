@@ -1426,3 +1426,17 @@ test('Export shows quality findings above the options, and a clicked one closes 
   assert.deepEqual(JSON.parse(JSON.stringify(shown)), [{ kind: 'placeholder', stepId: null, stepNumber: null, names: ['Team'] }]);
   assert.equal(await done, false);
 });
+
+test('Find private details with nothing found does not ask to check blurs', async () => {
+  for (const blurs of [[], [{ stepId: 's1', annotationId: 'a1', kind: 'email', stepNumber: 1 }]]) {
+    const u = ui();
+    const api = fakeApi();
+    api.redact.check = async () => ({ checked: 1, added: blurs.length, blurs, text: [], steps: blurs.length });
+    u.context.showPrivacyDialog({ api, guideId: 'guide-1' });
+    await settle(); await settle();
+    const modal = u.root.children.at(-1);
+    const note = u.all(modal).find((n) => n.tag === 'p' && /Blurs are drawn into every export/.test(n.textContent));
+    assert.equal(u.visible(note), blurs.length > 0, `${blurs.length} blurs`);
+    if (!blurs.length) assert.match(modal.textContent, /No private details found\..*Nothing to review\./);
+  }
+});

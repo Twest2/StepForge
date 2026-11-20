@@ -119,18 +119,18 @@ test('editor: a refused logo is reported under the logo, and choosing again clea
   await settle();
   assert.deepEqual(t.errors(), []);
 
-  t.click(t.buttons(t.root, 'Choose…')[0]);
+  t.click(t.buttons(t.root, 'Choose')[0]);
   await settle();
   assert.deepEqual(t.errors(), [{ text: 'This image is larger than 10 MB. Choose a smaller one.', part: 'Company logo' }]);
   assert.equal(t.footerStatus(), '', 'not in the footer, and not at the bottom of the editor');
 
   // A cancelled picker leaves the message; a good file replaces it.
   next = Promise.resolve(null);
-  t.click(t.buttons(t.root, 'Choose…')[0]);
+  t.click(t.buttons(t.root, 'Choose')[0]);
   await settle();
   assert.equal(t.errors().length, 1);
   next = Promise.resolve({ id: 'a'.repeat(32), kind: 'image', name: 'logo.png', needsRaster: false, dataUrl: 'data:image/png;base64,AA==' });
-  t.click(t.buttons(t.root, 'Choose…')[0]);
+  t.click(t.buttons(t.root, 'Choose')[0]);
   await settle();
   assert.deepEqual(t.errors(), []);
 });
@@ -139,8 +139,8 @@ test('editor: a refused banner or font file is reported in its own row', async (
   const t = ui();
   const api = fakeApi(({ kind }) => Promise.reject(new Error(kind === 'font' ? 'This font file is larger than 10 MB.' : 'Choose a PNG, JPG or SVG image.')));
   void t.context.showBrandProfileEditor(api);
-  t.click(t.buttons(t.root, 'Choose…')[1]);
-  t.click(t.buttons(t.root, 'Upload font…')[1]);
+  t.click(t.buttons(t.root, 'Choose')[1]);
+  t.click(t.buttons(t.root, 'Upload font')[1]);
   await settle();
   assert.deepEqual(t.errors(), [
     { text: 'Choose a PNG, JPG or SVG image.', part: 'Banner' },
@@ -390,7 +390,7 @@ test('editor: Pick from logo appears with a logo, sets the three colors, and Und
   const hex = (key) => e.t.all(e.t.root).find((n) => n['aria-label'] === `${key} color code`);
   assert.deepEqual(e.shown('Pick from logo'), [], 'no logo, nothing to pick from');
 
-  e.t.click(e.t.buttons(e.t.root, 'Choose…')[0]);
+  e.t.click(e.t.buttons(e.t.root, 'Choose')[0]);
   await settle();
   assert.equal(e.shown('Pick from logo').length, 1);
   await e.t.click(e.shown('Pick from logo')[0]);
@@ -411,7 +411,7 @@ test('editor: Pick from logo appears with a logo, sets the three colors, and Und
   // A white logo has nothing to pick; removing the logo takes the row away.
   const white = openEditor({ chooseAsset: async () => logo });
   white.t.context.brandColorsFromLogo = async () => null;
-  white.t.click(white.t.buttons(white.t.root, 'Choose…')[0]);
+  white.t.click(white.t.buttons(white.t.root, 'Choose')[0]);
   await settle();
   await white.t.click(white.shown('Pick from logo')[0]);
   assert.deepEqual(white.t.errors(), [{ text: 'This logo is white or light gray, so there are no colors to pick. Set them above.', part: 'Brand colors' }]);
@@ -456,7 +456,7 @@ test('settings: built-in themes are their own group; Customize saves an editable
   const select = t.all(panel.node).find((n) => n.tag === 'select' && n['aria-label'] === 'Active brand profile');
   assert.deepEqual(select.children.map((c) => (c.tag === 'optgroup' ? [c.label, c.children.map((o) => o.textContent)] : c.textContent)),
     ['No branding', ['Your profiles', ['Acme']], ['Built-in themes', ['Ocean']]]);
-  const customize = t.button(panel.node, 'Customize…');
+  const customize = t.button(panel.node, 'Customize');
   assert.equal(customize.hidden, true, 'nothing to customize without a theme');
 
   select.value = theme.id;

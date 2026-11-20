@@ -192,7 +192,7 @@ function makeHotkeyInput(value = '') {
 }
 
 /**
- * "Move to…" for a step: pick the place (after which step) and the level
+ * "Move to" for a step: pick the place (after which step) and the level
  * there. `positions` is [{ value, label, current?, levels: [{ value, label }] }];
  * resolves { gap, depth } (the chosen values) or null.
  */
@@ -679,7 +679,7 @@ function showSettingsDialog({
     const storagePath = el('code.settings-path', {}, t('Checking guide storage location…'));
     const storageNote = el('div.setting-desc', {}, '');
     const showStorageError = (message) => { storageNote.textContent = message; storageNote.classList.add('error'); };
-    const chooseStorageBtn = el('button', { type: 'button' }, t('Choose folder…'));
+    const chooseStorageBtn = el('button', { type: 'button' }, t('Choose folder'));
     const resetStorageBtn = el('button', { type: 'button' }, t('Use default'));
     const cancelStorageBtn = el('button', { type: 'button', hidden: true }, t('Cancel pending move'));
     const storageWarningNote = el('div.storage-warning', { role: 'note', hidden: true });
@@ -1462,7 +1462,7 @@ function showAddStepDialog({ onChooseImage } = {}) {
         error.textContent = t('Could not choose an image: {error}', { error: cause.message });
         error.hidden = false;
       } finally { choosing = false; choose.disabled = false; add.disabled = false; }
-    } }, t('Choose image…'));
+    } }, t('Choose image'));
     const accept = () => {
       if (closed || choosing) return;
       const draft = { title: title.value.trim(), image };
@@ -1473,7 +1473,7 @@ function showAddStepDialog({ onChooseImage } = {}) {
       el('label', {}, t('Step title'), title),
       el('div.add-step-image', {}, el('div', {}, t('Image (optional)')), imageStatus, el('div.row', {}, choose, remove)), error);
     const { close, requestDismiss, node } = openModal({
-      title: t('Add Step'), body: form, initialFocus: title,
+      title: t('Add step'), body: form, initialFocus: title,
       isDirty: () => Boolean(title.value || image),
       footer: [el('button', { type: 'button', onClick: () => requestDismiss() }, t('Cancel')), add],
       onClose: () => { closed = true; resolve(null); },
@@ -1604,7 +1604,7 @@ function showExportDialog({
           onClick: async () => {
             const picked = await onChooseImage?.();
             if (picked) { input.value = picked; clear.disabled = false; set(picked); }
-          } }, t('Choose…'));
+          } }, t('Choose'));
         return el('div.row', {}, input, choose, clear);
       }
       const input = makeInput(value, 'text', { placeholder: info.placeholder || '' });
@@ -1777,7 +1777,7 @@ function showExportDialog({
         refreshTemplates(list || []);
         templateSelect.value = name.trim();
       },
-    }, t('Save as template…'));
+    }, t('Save as template'));
 
     const manageBtn = el('button', {
       type: 'button',
@@ -1786,7 +1786,7 @@ function showExportDialog({
         refreshTemplates(list || []);
         refreshOptions();
       },
-    }, t('Manage…'));
+    }, t('Manage'));
 
     /** Choose… : resolves true once a folder is in the field. */
     const chooseOutDir = async () => {
@@ -1805,7 +1805,7 @@ function showExportDialog({
         type: 'button',
         disabled: typeof onChooseDir !== 'function',
         onClick: chooseOutDir,
-      }, t('Choose…')))),
+      }, t('Choose')))),
       el('fieldset', {}, el('legend', {}, t('Options')), optionsHost),
       publishBox,
     );
@@ -1823,7 +1823,7 @@ function showExportDialog({
     const previewBtn = el('button', {
       onClick: async () => {
         if (typeof onPreview !== 'function' || !validOptions()) return;
-        setButtonLoading(previewBtn, true, t('Preview…'));
+        setButtonLoading(previewBtn, true, t('Preview'));
         try {
           await onPreview(payload()); // keep dialog open so settings can be tweaked
         } finally {
@@ -1896,7 +1896,7 @@ function showTemplateManager({ format, names = [], onRename, onDuplicate, onDele
               },
             }, t('Rename')),
             el('button', { type: 'button', onClick: async () => { list = await onDuplicate(name); renderRows(); } }, t('Duplicate')),
-            el('button', { type: 'button', onClick: async () => { await onExport(name); } }, t('Share…')),
+            el('button', { type: 'button', onClick: async () => { await onExport(name); } }, t('Share')),
             el('button.danger', { type: 'button', onClick: async () => { list = await onDelete(name); renderRows(); } }, t('Delete')),
           ),
         ));
@@ -1907,7 +1907,7 @@ function showTemplateManager({ format, names = [], onRename, onDuplicate, onDele
       title: t('Templates — {format}', { format }),
       body: el('div', {},
         el('div.row', { style: { marginBottom: '10px' } },
-          el('button', { type: 'button', onClick: async () => { list = await onImport(); renderRows(); } }, t('Import .sfglt…')),
+          el('button', { type: 'button', onClick: async () => { list = await onImport(); renderRows(); } }, t('Import .sfglt')),
           el('span.muted', {}, t('Templates are shareable as .sfglt files.')),
         ),
         rows,
@@ -1940,7 +1940,7 @@ function showLinkedGuideDialog({ guide, lock, onSave, onForceSave, onOpenArchive
     );
 
     const { close } = openModal({
-      title: t('Linked Guide'),
+      title: t('Linked guide'),
       body,
       footer: [
         el('button', { onClick: () => { close(); resolve(false); } }, t('Close')),
@@ -2119,9 +2119,12 @@ function showGuideInfoDialog({ values = {}, reviewDefaultDays, cloudConnected = 
       { value: '0', label: t('Never') },
     ]);
     const reviewHint = el('div.muted', { style: { marginTop: '-4px', marginBottom: '12px' } });
+    // The date input shows the system's format (e.g. 11/20/2026); repeat the date the way the rest of the app writes it.
+    const verifiedShown = el('span.muted');
     const readReviewDays = () => (reviewSelect.value === '' ? null : Number(reviewSelect.value));
     // Saving restarts the clock, so the preview counts from now.
     const updateReviewHint = () => {
+      verifiedShown.textContent = verifiedInput.value ? formatGuideDate(`${verifiedInput.value}T00:00`) : '';
       const status = review.reviewStatus({
         updatedAt: new Date().toISOString(),
         metadata: { lastVerified: verifiedInput.value, reviewAfterDays: readReviewDays() },
@@ -2189,7 +2192,7 @@ function showGuideInfoDialog({ values = {}, reviewDefaultDays, cloudConnected = 
         el('h3', { style: { margin: '14px 0 6px' } }, t('Review')),
         labeledRow(t('Guide version'), guideVersionInput),
         labeledRow(t('Software version'), versionInput),
-        labeledRow(t('Last verified'), el('div.row', {}, verifiedInput, todayBtn)),
+        labeledRow(t('Last verified'), el('div.row', {}, verifiedInput, todayBtn, verifiedShown)),
         labeledRow(t('Review again'), reviewSelect),
         reviewHint,
         el('section.guide-info-cloud', { hidden: !cloudConnected, 'aria-label': t('Cloud sync') },
@@ -2278,18 +2281,17 @@ const SHORTCUTS = [
 
 function showShortcutsDialog() {
   return new Promise((resolve) => {
-    const sections = SHORTCUTS.map(([heading, items]) => el('div', {},
-      el('h3', { style: { margin: '8px 0 6px' } }, heading),
-      el('table', { style: { width: '100%', borderCollapse: 'collapse' } },
-        ...items.map(([keys, what]) => el('tr', {},
-          el('td', { style: { padding: '3px 14px 3px 0', whiteSpace: 'nowrap' } }, el('kbd', {}, keys)),
-          el('td', { style: { padding: '3px 0' } }, what),
-        )),
-      ),
-    ));
+    // One table for every section, so the descriptions line up in one column.
+    const rows = SHORTCUTS.flatMap(([heading, items]) => [
+      el('tr', {}, el('th', { colSpan: 2, style: { textAlign: 'left', fontWeight: 'normal' } }, el('h3', { style: { margin: '8px 0 6px' } }, heading))),
+      ...items.map(([keys, what]) => el('tr', {},
+        el('td', { style: { padding: '3px 14px 3px 0', whiteSpace: 'nowrap' } }, el('kbd', {}, keys)),
+        el('td', { style: { padding: '3px 0' } }, what),
+      )),
+    ]);
     const { close } = openModal({
       title: t('Keyboard shortcuts'),
-      body: el('div', {}, ...sections),
+      body: el('table', { style: { width: '100%', borderCollapse: 'collapse' } }, el('tbody', {}, ...rows)),
       footer: [el('button.primary', { onClick: () => { close(); resolve(true); } }, t('Close'))],
       onClose: () => resolve(true),
     });

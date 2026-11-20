@@ -84,7 +84,7 @@ function addWelcomeGuide(store, { t, hotkeys = {} } = {}) {
       textBlocks: [{
         position: 'after-image', level: 'warn', title: t('Before you share'),
         descriptionHtml: paragraph(t('Choose {menu} to find email addresses, passwords and keys in your screenshots and blur them.'),
-          { menu: `${menu(t('More ▾'))} → ${t('Find private details…')}` }),
+          { menu: `${menu(t('More ▾'))} → ${t('Find private details')}` }),
       }],
       annotations: [rect(0.26, 0.068, 0.455, 0.055)],
       file: 'annotate.webp',

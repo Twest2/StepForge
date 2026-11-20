@@ -618,17 +618,17 @@ class StepForgeApp {
         onClick: (e) => {
           const rect = e.target.getBoundingClientRect();
           contextMenu(rect.left, rect.bottom + 4, [
-            { label: t('Rename guide…'), action: () => this.renameGuide() },
-            { label: t('Guide information…'), action: () => this.editor.openGuideInfo() },
-            { label: t('Guide placeholders…'), action: () => this.editor.openGuidePlaceholders() },
-            { label: t('Backups & snapshots…'), action: () => this.editor.openBackupsDialog() },
-            { label: t('Find private details…'), action: () => this.editor.findPrivateDetails() },
+            { label: t('Rename guide'), action: () => this.renameGuide() },
+            { label: t('Guide information'), action: () => this.editor.openGuideInfo() },
+            { label: t('Guide placeholders'), action: () => this.editor.openGuidePlaceholders() },
+            { label: t('Backups & snapshots'), action: () => this.editor.openBackupsDialog() },
+            { label: t('Find private details'), action: () => this.editor.findPrivateDetails() },
             { label: t('Optimize guide images'), action: () => this.editor.optimizeImages() },
-            { label: guide && guide.linkedSource ? t('Linked guide…') : t('Linked guide (not linked)'), action: () => this.editor.openLinkedGuide() },
+            { label: guide && guide.linkedSource ? t('Linked guide') : t('Linked guide (not linked)'), action: () => this.editor.openLinkedGuide() },
             'sep',
-            { label: t('Keyboard shortcuts…'), action: () => this.editor.openShortcutsHelp() },
+            { label: t('Keyboard shortcuts'), action: () => this.editor.openShortcutsHelp() },
             { label: t('Quick actions  (Ctrl+/)'), action: () => this.editor.openQuickActions() },
-            { label: t('Settings…'), action: () => this.openSettings() },
+            { label: t('Settings'), action: () => this.openSettings() },
           ]);
         },
         'aria-haspopup': 'menu', 'aria-expanded': 'false',
@@ -709,8 +709,8 @@ class StepForgeApp {
   openImportMenu(event) {
     const rect = event.currentTarget.getBoundingClientRect();
     contextMenu(rect.left, rect.bottom + 4, [
-      { label: t('Import a copy of a guide (.sfgz)…'), action: () => this.importArchive('copy') },
-      { label: t('Open a linked guide (.sfgz)…'), action: () => this.importArchive('linked') },
+      { label: t('Import a copy of a guide (.sfgz)'), action: () => this.importArchive('copy') },
+      { label: t('Open a linked guide (.sfgz)'), action: () => this.importArchive('linked') },
     ]);
   }
 
@@ -1009,7 +1009,7 @@ class StepForgeApp {
     const moveItems = folderItems.length ? ['sep', ...folderItems] : [];
     contextMenu(event.clientX, event.clientY, [
       { label: t('Open guide'), action: () => this.openGuideAndArmCapture(guide.guideId) },
-      { label: t('Rename guide…'), action: () => this.renameGuide(guide) },
+      { label: t('Rename guide'), action: () => this.renameGuide(guide) },
       { label: guide.favorite ? t('Unfavorite') : t('Favorite'), action: () => this.toggleFavorite(guide) },
       { label: t('Mark as verified'), action: () => this.markVerified([guide.guideId]) },
       { label: t('Duplicate guide'), action: () => this.duplicateGuide(guide.guideId) },

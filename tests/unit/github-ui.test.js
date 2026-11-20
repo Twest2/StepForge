@@ -1357,7 +1357,7 @@ test('the guide menus offer Publish to Wiki.js beside Confluence, both marked Be
   assert.deepEqual(opened, ['g1']);
   // The editor's Share menu has the same two items.
   const src = fs.readFileSync(path.join(__dirname, '../../app/renderer/app.js'), 'utf8');
-  assert.equal((src.match(/label: t\('Publish to Wiki\.js…'\), badge: 'Beta'/g) || []).length, 2);
+  assert.equal((src.match(/label: t\('Publish to Wiki\.js'\), badge: 'Beta'/g) || []).length, 2);
   assert.equal((src.match(/label: t\('Publish to Confluence'\), badge: 'Beta'/g) || []).length, 2);
 
   // The menu draws the badge as the same chip Settings uses.

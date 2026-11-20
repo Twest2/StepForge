@@ -1149,6 +1149,12 @@ body.platform-linux #capture-status button {
 }
 .block-card[draggable="true"] { cursor: grab; }
 .block-card[draggable="true"]:active { cursor: grabbing; }
+/* The stripe previews the callout type in export. */
+.block-card[data-level] { border-left-width: 4px; }
+.block-card[data-level="info"] { border-left-color: #3b82f6; }
+.block-card[data-level="success"] { border-left-color: #10b981; }
+.block-card[data-level="warn"] { border-left-color: #f59e0b; }
+.block-card[data-level="error"] { border-left-color: #ef4444; }
 .annotation-list {
   display: flex;
   flex-direction: column;

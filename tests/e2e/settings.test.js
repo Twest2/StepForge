@@ -73,3 +73,23 @@ test('MCP access is granted and revoked from the switch while Settings is open',
   await eventually(() => readAppSettings(env.dataDir).ai?.agents?.enabled === false, 'access revoked');
   await app.waitForVisible('.settings-nav');
 }));
+
+test('a setting that fails to save keeps Settings open until the change is discarded', () => withApp('settings-write-fails', { sample: false }, async (app, env) => {
+  // The settings folder can become read-only or full; make the main process refuse the write.
+  await app.main.evaluate(`(() => {
+    const { ipcMain } = process.mainModule.require('electron');
+    ipcMain.removeHandler('settings:set');
+    ipcMain.handle('settings:set', () => { throw new Error('disk full'); });
+  })()`);
+  await app.clickWhere('.welcome-btn', "el => el.querySelector('.welcome-btn-label')?.textContent === 'Settings'");
+  await app.waitForVisible('.settings-nav');
+  await app.selectOption('#modal-root select', 'Dark');
+  await eventually(async () => /disk full/.test(await app.evaluate("document.querySelector('.settings-save-error')?.textContent")), 'save error shown');
+  await app.clickText('Close', { scope: '#modal-root footer' });
+  await app.clickText('Keep editing', { scope: '#modal-root' });
+  await app.waitForVisible('.settings-nav');
+  assert.notEqual(readAppSettings(env.dataDir).appearance, 'dark');
+  await app.clickText('Close', { scope: '#modal-root footer' });
+  await app.clickText('Discard', { scope: '#modal-root' });
+  await app.waitForGone('.settings-nav');
+}));

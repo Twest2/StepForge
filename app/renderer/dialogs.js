@@ -678,11 +678,14 @@ function showSettingsDialog({
     };
     let currentSettings = settings;
     let pendingChanges = Promise.resolve();
+    // A failed write keeps Settings open; closing then asks before discarding it.
+    let changeFailed = false;
     const enqueueChange = (apply) => {
       pendingChanges = pendingChanges.then(() => {
         showSaveError('');
         return apply();
-      }).catch((error) => {
+      }).then(() => { changeFailed = false; }, (error) => {
+        changeFailed = true;
         showSaveError(t('Could not apply the setting: {error}', { error: error.message || error }));
       });
       return pendingChanges;
@@ -1439,12 +1442,14 @@ function showSettingsDialog({
         saveError,
         el('button', { type: 'button', onClick: () => requestDismiss() }, t('Close')),
       ],
+      isDirty: () => changeFailed,
       beforeDismiss: async () => {
         // Escape can dismiss while an edit still has focus. Blur commits it
         // in exactly the same way as clicking Close or moving to another row.
         const focused = document.activeElement;
         if (form.contains(focused)) focused.blur();
         await pendingChanges;
+        if (changeFailed) return false;
         if (await saveKey()) return true;
         showSection('ai');
         openaiKey.focus();

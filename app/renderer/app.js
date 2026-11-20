@@ -441,7 +441,8 @@ class StepForgeApp {
   // the "Before recording starts" tip first, unless the user turned it off.
   async startRecording() {
     const s = this.captureState || {};
-    if (!s.active) return this.startCaptureSession(this.editor.guideId);
+    // A session left on another guide (an import or a file opened meanwhile) must not record into it.
+    if (!s.active || (this.editor.guideId && s.guideId !== this.editor.guideId)) return this.startCaptureSession(this.editor.guideId);
     if (!s.paused) return s;
     if (!s.count && !await this.confirmRecordingReminder()) return s;
     return this.sendCaptureSession({ action: 'resume' });

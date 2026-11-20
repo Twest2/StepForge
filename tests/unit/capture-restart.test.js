@@ -143,6 +143,18 @@ test('the recording pill offers Start, Stop or Resume recording and does that', 
   assert.equal(f.reminders(), 1, 'resuming does not show the reminder again');
 });
 
+test('Start recording does not resume a paused session that belongs to another guide', async (t) => {
+  const f = setup();
+  t.after(() => f.capture.finishSession());
+  await f.ui.armCaptureSession('other-guide');
+  f.capture.session.count = 3; // guide A already recorded; guide B is now open (ui.editor.guideId)
+  f.capture.togglePause(true);
+  f.ui.updateCaptureState(f.capture.state());
+  await f.ui.startRecording();
+  assert.equal(f.ui.captureState.guideId, 'existing-guide');
+  assert.equal(f.ui.captureState.paused, false);
+});
+
 test('Cancel in the reminder leaves the session paused; Don’t show this again is saved and skips it next time', async (t) => {
   const f = setup();
   t.after(() => f.capture.finishSession());

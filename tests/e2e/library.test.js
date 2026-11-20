@@ -24,7 +24,7 @@ test('creating a guide from the library writes it to disk', () => withApp('libra
 
 test('renaming a guide from its card menu updates guide.json', () => withApp('library-rename', {}, async (app, env) => {
   await flows.openLibrary(app);
-  await flows.libraryAction(app, SAMPLE_TITLE, 'Rename guide…');
+  await flows.libraryAction(app, SAMPLE_TITLE, 'Rename guide');
   await flows.answerPrompt(app, 'Renamed by e2e');
   const guide = await flows.eventually(() => {
     const entry = listLibraryGuides(env.dataDir).find((g) => g.guide.guideId === SAMPLE_ID);

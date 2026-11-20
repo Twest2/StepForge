@@ -444,10 +444,10 @@ test('Add step keeps the title when the picker is cancelled, allows removing a s
   const done = u.window.StepForgeDialogs.showAddStepDialog({ onChooseImage: async () => result });
   const field = u.doc.activeElement;
   field.value = 'Keep this title';
-  u.button(u.modalRoot, 'Choose image…').click(); await settle();
+  u.button(u.modalRoot, 'Choose image').click(); await settle();
   assert.equal(field.value, 'Keep this title');
   result = { name: 'Example.webp', size: { width: 320, height: 200 }, imageBase64: 'bytes' };
-  u.button(u.modalRoot, 'Choose image…').click(); await settle();
+  u.button(u.modalRoot, 'Choose image').click(); await settle();
   assert.ok(u.text(u.modalRoot).includes('Example.webp'));
   u.button(u.modalRoot, 'Cancel').click();
   assert.equal(u.modalRoot.children.length, 2);
@@ -463,10 +463,10 @@ test('Add step returns the selected draft image and reports picker failures with
   const image = { name: 'Screenshot.png', size: { width: 160, height: 90 }, imageBase64: 'bytes' };
   const done = u.window.StepForgeDialogs.showAddStepDialog({ onChooseImage: async () => { if (fail) throw Error('Cannot read'); return image; } });
   u.doc.activeElement.value = 'Imported screenshot';
-  u.button(u.modalRoot, 'Choose image…').click(); await settle();
+  u.button(u.modalRoot, 'Choose image').click(); await settle();
   assert.ok(u.text(u.modalRoot).includes('Could not choose an image: Cannot read'));
   fail = false;
-  u.button(u.modalRoot, 'Choose image…').click(); await settle();
+  u.button(u.modalRoot, 'Choose image').click(); await settle();
   u.button(u.modalRoot, 'Add').click();
   const draft = await done;
   assert.equal(draft.image, image); assert.equal(draft.title, 'Imported screenshot');

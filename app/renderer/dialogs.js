@@ -192,7 +192,7 @@ function makeHotkeyInput(value = '') {
 }
 
 /**
- * "Move to…" for a step: pick the place (after which step) and the level
+ * "Move to" for a step: pick the place (after which step) and the level
  * there. `positions` is [{ value, label, current?, levels: [{ value, label }] }];
  * resolves { gap, depth } (the chosen values) or null.
  */
@@ -679,7 +679,7 @@ function showSettingsDialog({
     const storagePath = el('code.settings-path', {}, t('Checking guide storage location…'));
     const storageNote = el('div.setting-desc', {}, '');
     const showStorageError = (message) => { storageNote.textContent = message; storageNote.classList.add('error'); };
-    const chooseStorageBtn = el('button', { type: 'button' }, t('Choose folder…'));
+    const chooseStorageBtn = el('button', { type: 'button' }, t('Choose folder'));
     const resetStorageBtn = el('button', { type: 'button' }, t('Use default'));
     const cancelStorageBtn = el('button', { type: 'button', hidden: true }, t('Cancel pending move'));
     const storageWarningNote = el('div.storage-warning', { role: 'note', hidden: true });
@@ -1467,7 +1467,7 @@ function showAddStepDialog({ onChooseImage } = {}) {
         error.textContent = t('Could not choose an image: {error}', { error: cause.message });
         error.hidden = false;
       } finally { choosing = false; choose.disabled = false; add.disabled = false; }
-    } }, t('Choose image…'));
+    } }, t('Choose image'));
     const accept = () => {
       if (closed || choosing) return;
       const draft = { title: title.value.trim(), image };
@@ -1608,7 +1608,7 @@ function showExportDialog({
           onClick: async () => {
             const picked = await onChooseImage?.();
             if (picked) { input.value = picked; clear.disabled = false; set(picked); }
-          } }, t('Choose…'));
+          } }, t('Choose'));
         return el('div.row', {}, input, choose, clear);
       }
       const input = makeInput(value, 'text', { placeholder: info.placeholder || '' });
@@ -1716,10 +1716,10 @@ function showExportDialog({
       const site = publishTargets[formatSelect.value];
       publishInsteadNote.hidden = !site || typeof onPublishInstead !== 'function';
       if (publishInsteadNote.hidden) return;
-      publishInsteadBtn.textContent = t('Publish to {site}…', { site });
+      publishInsteadBtn.textContent = t('Publish to {site}', { site });
       publishInsteadNote.replaceChildren(
         el('span', {}, el('strong', {}, t('Publishing to {site} is easier.', { site })), ' ',
-          t('Share → Publish to {site}… creates the page for you, uploads its screenshots and updates the same page when you publish again. Export only if you’d rather upload the files yourself.', { site })),
+          t('Share → Publish to {site} creates the page for you, uploads its screenshots and updates the same page when you publish again. Export only if you’d rather upload the files yourself.', { site })),
         publishInsteadBtn);
     }
     publishInsteadBtn.addEventListener('click', () => {
@@ -1781,7 +1781,7 @@ function showExportDialog({
         refreshTemplates(list || []);
         templateSelect.value = name.trim();
       },
-    }, t('Save as template…'));
+    }, t('Save as template'));
 
     const manageBtn = el('button', {
       type: 'button',
@@ -1790,7 +1790,7 @@ function showExportDialog({
         refreshTemplates(list || []);
         refreshOptions();
       },
-    }, t('Manage…'));
+    }, t('Manage'));
 
     const body = el('div.export-dialog', {},
       qualityPanel(quality, (finding) => { finish(false); onShowFinding?.(finding); }),
@@ -1805,7 +1805,7 @@ function showExportDialog({
           const chosen = await onChooseDir(formatSelect.value);
           if (chosen) { outDirInput.value = chosen; refreshOutDir(); }
         },
-      }, t('Choose…')))),
+      }, t('Choose')))),
       el('fieldset', {}, el('legend', {}, t('Options')), optionsHost),
       publishBox,
     );
@@ -1823,7 +1823,7 @@ function showExportDialog({
     const previewBtn = el('button', {
       onClick: async () => {
         if (typeof onPreview !== 'function' || !validOptions()) return;
-        setButtonLoading(previewBtn, true, t('Preview…'));
+        setButtonLoading(previewBtn, true, t('Preview'));
         try {
           await onPreview(payload()); // keep dialog open so settings can be tweaked
         } finally {
@@ -1892,7 +1892,7 @@ function showTemplateManager({ format, names = [], onRename, onDuplicate, onDele
               },
             }, t('Rename')),
             el('button', { type: 'button', onClick: async () => { list = await onDuplicate(name); renderRows(); } }, t('Duplicate')),
-            el('button', { type: 'button', onClick: async () => { await onExport(name); } }, t('Share…')),
+            el('button', { type: 'button', onClick: async () => { await onExport(name); } }, t('Share')),
             el('button.danger', { type: 'button', onClick: async () => { list = await onDelete(name); renderRows(); } }, t('Delete')),
           ),
         ));
@@ -1903,7 +1903,7 @@ function showTemplateManager({ format, names = [], onRename, onDuplicate, onDele
       title: t('Templates — {format}', { format }),
       body: el('div', {},
         el('div.row', { style: { marginBottom: '10px' } },
-          el('button', { type: 'button', onClick: async () => { list = await onImport(); renderRows(); } }, t('Import .sfglt…')),
+          el('button', { type: 'button', onClick: async () => { list = await onImport(); renderRows(); } }, t('Import .sfglt')),
           el('span.muted', {}, t('Templates are shareable as .sfglt files.')),
         ),
         rows,

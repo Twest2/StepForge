@@ -189,7 +189,7 @@ function mermaidTokenStyles(theme) {
   return theme.mermaidStyles;
 }
 
-// A picture icon (the Fill menu's Image… item).
+// A picture icon (the Fill menu's Image item).
 const IMAGE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 17-5-5-9 8"/></svg>';
 
 // The flowchart tools (app/renderer/flowchart-editor.js), as [tool, label].
@@ -439,7 +439,7 @@ class GuideEditor {
     const hasStep = Boolean(this.currentStep);
     const unavailable = (available) => !enabled || !available;
     return [
-      ...(enabled ? [] : [{ label: t('Turn on AI in Settings…'), action: () => this.openSettings('ai') }, 'sep']),
+      ...(enabled ? [] : [{ label: t('Turn on AI in Settings'), action: () => this.openSettings('ai') }, 'sep']),
       { label: t('Write the whole guide'), disabled: unavailable(this.steps.length > 0), action: () => this.writeGuideWithAi() },
       { label: t('Write the whole step'), disabled: unavailable(hasStep), action: () => this.writeStepWithAi('step') },
       'sep',
@@ -1739,7 +1739,7 @@ class GuideEditor {
           contextMenu(e.clientX, e.clientY, [
             { label: t('Add substep'), action: () => this.addSubstep(step.stepId) },
             {
-              label: t('Make substep of…'),
+              label: t('Make substep of'),
               submenu: () => {
                 const subtreeIds = new Set([step.stepId, ...this.getStepDescendantIds(step.stepId)]);
                 return this.steps
@@ -1753,19 +1753,19 @@ class GuideEditor {
             { label: t('Duplicate step'), action: () => this.duplicateSelectedStep() },
             { label: t('Copy'), action: () => this.copySteps([step.stepId]) },
             this.pasteItem(step.stepId),
-            { label: t('Choose image…'), action: () => this.chooseScreenshot(step.stepId) },
+            { label: t('Choose image'), action: () => this.chooseScreenshot(step.stepId) },
             {
               label: t('Retake screenshot'),
               submenu: [
                 { label: t('Full screen'), action: () => this.retakeScreenshot(step.stepId, 'fullscreen') },
                 { label: t('Window'), action: () => this.retakeScreenshot(step.stepId, 'window') },
-                { label: t('Region…'), action: () => this.retakeScreenshot(step.stepId, 'region') },
+                { label: t('Region'), action: () => this.retakeScreenshot(step.stepId, 'region') },
               ],
             },
             'sep',
             { label: t('Move up'), action: () => this.moveSelectedStep(-1) },
             { label: t('Move down'), action: () => this.moveSelectedStep(1) },
-            { label: t('Move to…'), action: () => this.moveStepTo(step.stepId) },
+            { label: t('Move to'), action: () => this.moveStepTo(step.stepId) },
             'sep',
             { label: t('Delete step'), danger: true, action: () => this.deleteSelectedStep() },
             ...(threads?.parents.has(step.stepId) ? ['sep', {
@@ -2093,7 +2093,7 @@ class GuideEditor {
       'sep',
       { label: t('Move up'), action: () => this.moveSelectedSteps(-1) },
       { label: t('Move down'), action: () => this.moveSelectedSteps(1) },
-      { label: t('Move to…'), action: () => this.moveSelectedStepsTo() },
+      { label: t('Move to'), action: () => this.moveSelectedStepsTo() },
       'sep',
       { label: allHidden ? t('Unhide') : t('Hide'), action: () => this.setSelectedStepsFlag('hidden', !allHidden) },
       { label: allSkipped ? t('Unskip') : t('Skip'), action: () => this.setSelectedStepsFlag('skipped', !allSkipped) },
@@ -2182,7 +2182,7 @@ class GuideEditor {
     if (moved) await this.applyStepMove(this.selectedStepId, moved);
   }
 
-  /** Select → Move to…: like a step's Move to…, for all the ticked steps and their substeps. */
+  /** Select → Move to: like a step's Move to, for all the ticked steps and their substeps. */
   async moveSelectedStepsTo() {
     const ids = this.selectedStepIdsInOrder();
     if (!ids.length) return;
@@ -2233,7 +2233,7 @@ class GuideEditor {
     const nowGap = anchor ? remaining(nowOrder, nowParents, nowIds).indexOf(anchor) + 1 : 0;
     const moved = nowIds.length && (!anchor || nowGap > 0) ? outline.moveSteps(nowOrder, nowParents, nowIds, nowGap, Number(choice.depth)) : null;
     if (!moved) {
-      this.onToast(t('The guide changed while you were choosing, so the steps were not moved. Try Move to… again.'), { error: true });
+      this.onToast(t('The guide changed while you were choosing, so the steps were not moved. Try Move to again.'), { error: true });
       return;
     }
     await this.applyStepMove(this.selectedStepId, moved);
@@ -2745,7 +2745,7 @@ class GuideEditor {
       // Fill and border may be transparent (the picker offers that for a 'fill').
       const pickerField = field === 'textColor' ? 'textColor' : 'fill';
       const proxy = { id: `flow-${field}-${item.id}`, type: 'rect', style: { [pickerField]: value } };
-      // Fill also offers Image…; picking a color takes the picture out.
+      // Fill also offers Image; picking a color takes the picture out.
       const fill = field === 'fill';
       box.append(labeledRow(name, this.colorPicker(proxy, (picked, { record = true } = {}) => {
         if (record) this.pushCanvasHistory();
@@ -2758,7 +2758,7 @@ class GuideEditor {
       }, { field: pickerField, label: name, ...(fill ? { onImage: () => this.chooseFlowchartImage(sel.id), image: Boolean(item.image) } : {}) })));
     }
 
-    // A picture inside the shape (Fill → Image…), clipped to it and never stretched.
+    // A picture inside the shape (Fill → Image), clipped to it and never stretched.
     if (item.image) {
       const fit = makeSelect(item.image.fit || 'contain', [
         { value: 'contain', label: t('Fit inside') },
@@ -2781,7 +2781,7 @@ class GuideEditor {
   }
 
   /**
-   * Shape → Image → Choose image…: an image file, scaled down to at most
+   * Shape → Image → Choose image: an image file, scaled down to at most
    * 800px and stored in the flowchart as a data URL.
    */
   async chooseFlowchartImage(nodeId) {
@@ -3128,7 +3128,7 @@ class GuideEditor {
   /**
    * The Fill control: a swatch that opens a short list of fills under it. A
    * native color input can't offer "none", so this lists Transparent (for
-   * types that may be empty), preset colors, and Custom color…, which opens
+   * types that may be empty), preset colors, and Custom color, which opens
    * the system color picker. onPick(fill, { record }) applies a choice;
    * record is false for the live updates while the custom picker is open.
    */
@@ -3150,7 +3150,7 @@ class GuideEditor {
   }
 
   /**
-   * …and, for a flowchart shape's fill, `onImage` adds Image… to the menu
+   * …and, for a flowchart shape's fill, `onImage` adds Image to the menu
    * (`image` is true while the shape shows a picture).
    */
   colorPicker(ann, onPick, { field = 'fill', label = t('Fill'), onImage = null, image = false } = {}) {
@@ -3174,7 +3174,7 @@ class GuideEditor {
     };
     showCurrent();
 
-    // The system picker behind Custom color…, kept out of sight under the swatch.
+    // The system picker behind Custom color, kept out of sight under the swatch.
     const custom = el('input', { type: 'color', className: 'fill-custom-input', tabIndex: -1, 'aria-hidden': 'true' });
     let customStarted = false;
     const pickCustom = () => {
@@ -3232,12 +3232,12 @@ class GuideEditor {
           customStarted = false;
           custom.click();
         },
-      }, t('Custom color…')));
+      }, t('Custom color')));
       if (onImage) {
         popover.append(el('button.fill-item', {
           type: 'button', role: 'menuitem', tabIndex: -1,
           onClick: () => { close({ focus: true }); onImage(); },
-        }, el('span.fill-chip.image', { innerHTML: IMAGE_ICON }), image ? t('Change image…') : t('Image…')));
+        }, el('span.fill-chip.image', { innerHTML: IMAGE_ICON }), image ? t('Change image') : t('Image')));
       }
       popover.hidden = false;
       swatch.setAttribute('aria-expanded', 'true');
@@ -3533,7 +3533,7 @@ class GuideEditor {
     if (includeImage && target.image) {
       const image = await this.currentStepImageToBase64(target);
       if (image) record.image = image;
-      // Choose image… replaces the original too, so undo needs it.
+      // Choose image replaces the original too, so undo needs it.
       const original = await this.stepImageToBase64(target, 'original');
       if (original) record.original = original;
     }
@@ -3757,7 +3757,7 @@ class GuideEditor {
     this.emitMeta();
   }
 
-  /** More → Find private details…: check the screenshots, then review what was blurred. */
+  /** More → Find private details: check the screenshots, then review what was blurred. */
   async findPrivateDetails() {
     if (!this.guideId) return;
     await this.saveAll();
@@ -3945,7 +3945,7 @@ class GuideEditor {
 
   async selectStep(stepId) {
     if (!this.stepMap.has(stepId)) return;
-    // Page Down, search or Move to… can reach a substep that is folded away: unfold the steps above it.
+    // Page Down, search or Move to can reach a substep that is folded away: unfold the steps above it.
     const collapsed = this.collapsedSteps();
     for (let parent = this.stepMap.get(stepId).parentStepId, seen = 0; parent && seen < this.steps.length; parent = this.stepMap.get(parent)?.parentStepId, seen++) {
       collapsed.delete(parent);
@@ -4077,7 +4077,7 @@ class GuideEditor {
   }
 
   /**
-   * Step menu → Choose image…: use an image file as the step's
+   * Step menu → Choose image: use an image file as the step's
    * screenshot. Its title, description and annotations stay; Ctrl+Z puts
    * the old screenshot back.
    */
@@ -4087,7 +4087,7 @@ class GuideEditor {
 
   /**
    * Step menu → Retake screenshot: StepForge hides itself, counts down and
-   * grabs a new screenshot for this step. Like Choose image…, the text
+   * grabs a new screenshot for this step. Like Choose image, the text
    * and annotations stay and Ctrl+Z puts the old screenshot back.
    */
   async retakeScreenshot(stepId, mode = 'fullscreen', delayMs = RETAKE_DELAY_MS) {
@@ -4100,7 +4100,7 @@ class GuideEditor {
   }
 
   /**
-   * Shared by Choose image… and Retake screenshot: `pick(step)` swaps the
+   * Shared by Choose image and Retake screenshot: `pick(step)` swaps the
    * image in the main process; this records the old images for undo.
    */
   async replaceStepScreenshot(stepId, pick, verb = 'replaced') {
@@ -4188,7 +4188,7 @@ class GuideEditor {
     return true;
   }
 
-  /** "Move to…": pick a place and a level for a step and its substeps in a dialog. */
+  /** "Move to": pick a place and a level for a step and its substeps in a dialog. */
   async moveStepTo(stepId) {
     const step = this.stepMap.get(stepId);
     if (!step) return;
@@ -4238,7 +4238,7 @@ class GuideEditor {
       ? outline.moveSubtree(nowOrder, outline.parentMap(this.steps), stepId, nowGap, Number(choice.depth))
       : null;
     if (!moved) {
-      this.onToast(t('The guide changed while you were choosing, so the step was not moved. Try Move to… again.'), { error: true });
+      this.onToast(t('The guide changed while you were choosing, so the step was not moved. Try Move to again.'), { error: true });
       return;
     }
     if (await this.applyStepMove(stepId, moved)) this.onToast(t('Step moved. Press Ctrl+Z to undo.'));
@@ -4360,7 +4360,7 @@ class GuideEditor {
       { label: t('Capture region'), action: () => this.captureStep('region') },
       'sep',
       { label: t('Paste image as step'), action: () => this.pasteClipboardStep() },
-      { label: t('Import images…'), action: () => this.importImageSteps() },
+      { label: t('Import images'), action: () => this.importImageSteps() },
     ];
     if (!session) {
       items.push('sep', { label: t('Start capture session (hotkey)'), action: () => this.startCaptureSession() });

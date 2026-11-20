@@ -46,7 +46,7 @@ test('adding a step with a picked image writes the image and the title to disk',
 
   await app.clickText('Add');
   await app.waitForVisible('#modal-root input', { label: 'add step dialog' });
-  await app.clickText('Choose image…', { scope: '#modal-root' });
+  await app.clickText('Choose image', { scope: '#modal-root' });
   await app.waitForVisible('#modal-root .primary', { label: 'add button' });
   await app.setValue('#modal-root input', 'Picked from disk');
   await app.clickText('Add', { scope: '#modal-root' });

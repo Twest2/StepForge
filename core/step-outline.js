@@ -192,7 +192,7 @@
   }
 
   /**
-   * Several steps (Select → right-click → Move to…), each with its substeps,
+   * Several steps (Select → right-click → Move to), each with its substeps,
    * moved together as one block to the gap before `rest[restGap]`, where
    * `rest` is the order without the moved steps (0 = the top, rest.length =
    * the end). The roots (selectionRoots) all get the same parent: of those

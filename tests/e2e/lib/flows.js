@@ -44,7 +44,7 @@ function eventually(fn, label) {
 module.exports = { openLibrary, openGuideCard, libraryAction, answerPrompt, confirmDialog, eventually };
 
 /**
- * Adds a step from an image file through Add → Choose image… → Add, as a person
+ * Adds a step from an image file through Add → Choose image → Add, as a person
  * would. Returns the new step's id once it is on disk.
  */
 async function addPictureStep(app, { picture, title, guideDir }) {
@@ -52,7 +52,7 @@ async function addPictureStep(app, { picture, title, guideDir }) {
   await app.main.stubDialogs({ open: [{ filePaths: [picture] }] });
   await app.clickText('Add');
   await app.waitForVisible('#modal-root input', { label: 'add step dialog' });
-  await app.clickText('Choose image…', { scope: '#modal-root' });
+  await app.clickText('Choose image', { scope: '#modal-root' });
   await app.waitForVisible('#modal-root .primary', { label: 'add button' });
   await app.setValue('#modal-root input', title);
   await app.clickText('Add', { scope: '#modal-root' });
@@ -87,7 +87,7 @@ async function exportThroughUi(app, env, format, extension) {
   const label = await app.evaluate(`Array.from(document.querySelector('.export-format select').options).find(o => o.value === ${JSON.stringify(format)}).textContent`);
   await app.selectOption('.export-format select', label);
   await app.main.stubDialogs({ open: [{ filePaths: [outDir] }] });
-  await app.clickText('Choose…', { scope: '.export-output-folder' });
+  await app.clickText('Choose', { scope: '.export-output-folder' });
   await eventually(() => app.evaluate(`document.querySelector('input[aria-label="Output folder"]').value === ${JSON.stringify(outDir)}`), 'output folder chosen');
   await app.clickText('Export', { scope: '#modal-root' });
   await app.waitForGone('.export-dialog', { timeout: 60000 });

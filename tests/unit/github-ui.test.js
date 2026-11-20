@@ -1352,13 +1352,13 @@ test('the guide menus offer Publish to Wiki.js beside Confluence, both marked Be
   app.editor = { guideId: null };
   app.guideContextMenu({ clientX: 0, clientY: 0 }, { guideId: 'g1', title: 'Guide' });
   const publishing = items.filter((item) => /^Publish to (Confluence|Wiki\.js)/.test(item.label));
-  assert.deepEqual(JSON.parse(JSON.stringify(publishing.map((item) => [item.label, item.badge]))), [['Publish to Confluence…', 'Beta'], ['Publish to Wiki.js…', 'Beta']]);
+  assert.deepEqual(JSON.parse(JSON.stringify(publishing.map((item) => [item.label, item.badge]))), [['Publish to Confluence', 'Beta'], ['Publish to Wiki.js', 'Beta']]);
   await publishing[1].action();
   assert.deepEqual(opened, ['g1']);
   // The editor's Share menu has the same two items.
   const src = fs.readFileSync(path.join(__dirname, '../../app/renderer/app.js'), 'utf8');
   assert.equal((src.match(/label: t\('Publish to Wiki\.js…'\), badge: 'Beta'/g) || []).length, 2);
-  assert.equal((src.match(/label: t\('Publish to Confluence…'\), badge: 'Beta'/g) || []).length, 2);
+  assert.equal((src.match(/label: t\('Publish to Confluence'\), badge: 'Beta'/g) || []).length, 2);
 
   // The menu draws the badge as the same chip Settings uses.
   const appended = [];
@@ -1366,7 +1366,7 @@ test('the guide menus offer Publish to Wiki.js beside Confluence, both marked Be
   ui2.context.document.querySelectorAll = () => [];
   ui2.context.document.body = { append: (node) => appended.push(node) };
   ui2.context.innerWidth = 1000; ui2.context.innerHeight = 800;
-  ui2.context.contextMenu(0, 0, [{ label: 'Publish to Wiki.js…', badge: 'Beta', action() {} }]);
+  ui2.context.contextMenu(0, 0, [{ label: 'Publish to Wiki.js', badge: 'Beta', action() {} }]);
   const chip = ui2.all(appended[0]).find((n) => n.classList?.contains('beta-badge'));
   assert.ok(chip && chip.classList.contains('settings-chip'));
 });

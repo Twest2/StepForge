@@ -91,13 +91,13 @@ test('Export recommends publishing for Confluence and Wiki.js only', async () =>
   choose('confluence');
   assert.equal(u.visible(note), true);
   assert.equal(note.role, 'note');
-  assert.match(note.textContent, /^Publishing to Confluence is easier\. Share → Publish to Confluence… creates the page for you/);
-  assert.ok(button('Publish to Confluence…'));
+  assert.match(note.textContent, /^Publishing to Confluence is easier\. Share → Publish to Confluence creates the page for you/);
+  assert.ok(button('Publish to Confluence'));
 
   choose('wikijs');
   assert.match(note.textContent, /^Publishing to Wiki\.js is easier\./);
-  assert.ok(button('Publish to Wiki.js…'));
-  assert.equal(button('Publish to Confluence…'), undefined);
+  assert.ok(button('Publish to Wiki.js'));
+  assert.equal(button('Publish to Confluence'), undefined);
 
   choose('pdf');
   assert.equal(u.visible(note), false);
@@ -107,7 +107,7 @@ test('Publish to … closes Export without exporting and hands over the format',
   const u = ui();
   const { done, choose, button, published, exported } = openExport(u);
   choose('wikijs');
-  button('Publish to Wiki.js…').listeners.click();
+  button('Publish to Wiki.js').listeners.click();
   assert.equal(await done, false);
   assert.deepEqual(published, ['wikijs']);
   assert.deepEqual(exported, []);

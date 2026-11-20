@@ -170,14 +170,21 @@ function debounce(fn, ms) {
   return wrapped;
 }
 
-function toast(message, { error = false, ms = 2600 } = {}) {
+/**
+ * A short message in the corner. `action` ({ label, onClick }) adds a button
+ * that closes the toast. The toast is hidden from screen readers (they hear
+ * `announce` instead), so its button is for the mouse only.
+ */
+function toast(message, { error = false, ms = 2600, action = null, announce = message } = {}) {
   const root = document.getElementById('toast-root');
-  const node = el('div.toast', { className: `toast${error ? ' error' : ''}` }, message);
+  const node = el('div.toast', { className: `toast${error ? ' error' : ''}${action ? ' has-action' : ''}` },
+    el('span', {}, message),
+    action ? el('button.toast-action', { type: 'button', tabIndex: -1, onClick: () => { node.remove(); action.onClick(); } }, action.label) : null);
   root.append(node);
   const announcer = document.getElementById(error ? 'toast-alert' : 'toast-status');
   if (announcer) {
     announcer.textContent = '';
-    setTimeout(() => { announcer.textContent = String(message); }, 20);
+    setTimeout(() => { announcer.textContent = String(announce); }, 20);
   }
   setTimeout(() => node.remove(), ms);
 }

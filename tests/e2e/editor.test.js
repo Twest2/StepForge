@@ -9,7 +9,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const fs = require('node:fs');
 const { withApp, readSteps, readJson, writeTestPng, decodeStoredImage, pixelAt } = require('./lib/fixtures');
-const { openGuideCard, openLibrary, eventually, confirmDialog } = require('./lib/flows');
+const { openGuideCard, openLibrary, eventually } = require('./lib/flows');
 const { GuideStore } = require('../../core/store');
 
 const SAMPLE_ID = 'guide-sample-reset-password';
@@ -121,7 +121,7 @@ test('dragging a step in the list reorders it on disk', () => withApp('editor-dr
   assert.deepEqual(ids().slice().sort(), before.slice().sort(), 'no step was lost or copied');
 }));
 
-test('Duplicate adds a copy; Delete then Ctrl+Z brings the step back', () => withApp('editor-undo', {}, async (app, env) => {
+test('Duplicate adds a copy; Delete asks nothing, and the toast’s Undo brings the step back', () => withApp('editor-undo', {}, async (app, env) => {
   await openSample(app);
   const before = titlesOnDisk(env);
 
@@ -132,11 +132,11 @@ test('Duplicate adds a copy; Delete then Ctrl+Z brings the step back', () => wit
 
   await selectStepByNumber(app, 2);
   await app.clickText('Delete');
-  if (await app.isVisible('#modal-root .primary')) await confirmDialog(app, 'Delete');
+  assert.equal(await app.isVisible('#modal-root .primary'), false, 'deleting a step does not ask');
   await eventually(() => readSteps(guideDir(env)).length === 6, 'step deleted on disk');
 
-  await app.key('z', { ctrl: true });
-  await eventually(() => readSteps(guideDir(env)).length === 7, 'Ctrl+Z restored the step on disk');
+  await app.click('.toast-action');
+  await eventually(() => readSteps(guideDir(env)).length === 7, 'Undo on the toast restored the step on disk');
   assert.equal(titlesOnDisk(env).filter((t) => t === `${before[0]} copy`).length, 1, 'the copy is still there');
 }));
 
@@ -177,7 +177,7 @@ test('clicking, deleting and redoing a delete keep the step list where it is', (
 
   // Focus is on the deleted step's button, which is what used to send the list back to the top.
   await app.key('Delete', { ctrl: true });
-  if (await app.isVisible('#modal-root .primary')) await confirmDialog(app, 'Delete');
+  assert.equal(await app.isVisible('#modal-root .primary'), false, 'Ctrl+Delete does not ask');
   await eventually(async () => (await stepListView(app)).selected === `Extra ${n + 1}`, 'next step selected');
   let view = await stepListView(app);
   assert.equal(view.scrollTop, scrolled, 'deleting a step does not scroll the list');

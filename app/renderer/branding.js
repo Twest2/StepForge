@@ -256,10 +256,9 @@ function brandSummary(data) {
 }
 
 /**
- * Settings → Branding. `value()` is the chosen profile id ('' for no
- * branding), saved with the rest of Settings.
+ * Settings → Branding. onChange receives the active profile id ('' for no branding).
  */
-function makeBrandingSettings(api, { activeProfileId = '' } = {}) {
+function makeBrandingSettings(api, { activeProfileId = '', onChange = () => {} } = {}) {
   let profiles = [];
   let active = activeProfileId || '';
   const select = el('select#brand-active', { 'aria-label': t('Active brand profile') });
@@ -292,7 +291,14 @@ function makeBrandingSettings(api, { activeProfileId = '' } = {}) {
     await showSummary();
   };
 
-  select.addEventListener('change', () => { active = select.value; fillSelect(); void showSummary(); });
+  const setActive = (id) => {
+    const previous = active;
+    active = id;
+    fillSelect();
+    if (active !== previous) onChange(active);
+    return showSummary();
+  };
+  select.addEventListener('change', () => { void setActive(select.value); });
   // A built-in theme can't change; Customize saves an editable copy and uses it.
   const customizeBtn = el('button', {
     type: 'button',
@@ -300,21 +306,17 @@ function makeBrandingSettings(api, { activeProfileId = '' } = {}) {
     onClick: async () => {
       const saved = await customizeBrandTheme(api, active);
       if (!saved) return;
-      active = saved.profile.id;
       profiles = await api.branding.list();
-      fillSelect();
-      await showSummary();
+      await setActive(saved.profile.id);
     },
-  }, t('Customize…'));
+  }, t('Customize'));
   const manageBtn = el('button', {
     type: 'button',
     onClick: async () => {
       const { created } = await showBrandProfiles(api);
       profiles = await api.branding.list();
       // A first profile made from "No branding" is probably the one to use.
-      if (!active && created.length) active = created[created.length - 1];
-      fillSelect();
-      await showSummary();
+      await setActive(active || created.at(-1) || '');
     },
   }, t('Manage'));
   previewBtn.addEventListener('click', async () => {
@@ -344,8 +346,7 @@ function makeBrandingSettings(api, { activeProfileId = '' } = {}) {
       el('dl.brand-support', {}, ...BRAND_SUPPORT.flatMap(([format, what]) => [el('dt', {}, format), el('dd', {}, what)])),
       el('p.setting-desc', {}, t('The Export dialog can pick a different profile, or none, for one export.'))));
   void refresh();
-  // The choice, not the list: the list is empty until the profiles load.
-  return { node, value: () => active };
+  return { node };
 }
 
 /**
@@ -387,7 +388,7 @@ function showBrandProfiles(api) {
           } }, t('Duplicate')),
           el('button', { type: 'button', onClick: async () => {
             try { const res = await api.branding.export({ id: p.id }); if (res?.ok) toast(t('“{name}” saved as a .sfbrand file.', { name: p.name })); } catch (err) { fail(err); }
-          } }, t('Share…')),
+          } }, t('Share')),
           el('button.danger', { type: 'button', onClick: async () => {
             if (!await confirmDialog(t('Delete the brand profile “{name}”? Exports that use it go back to no branding.', { name: p.name }), { danger: true, okLabel: t('Delete') })) return;
             try { list = await api.branding.delete({ id: p.id }); render(); } catch (err) { fail(err); }
@@ -408,14 +409,14 @@ function showBrandProfiles(api) {
             const saved = await customizeBrandTheme(api, p.id);
             if (saved) { created.push(saved.profile.id); await reload(); }
           } catch (err) { fail(err); }
-        } }, t('Customize…')))));
+        } }, t('Customize')))));
     }
 
     const { close } = openModal({
       title: t('Brand profiles'),
       body: el('div.brand-profiles', {},
         el('div.row', { style: { marginBottom: '10px' } },
-          el('button.primary', { type: 'button', onClick: () => edit(null).catch(fail) }, t('New profile…')),
+          el('button.primary', { type: 'button', onClick: () => edit(null).catch(fail) }, t('New profile')),
           el('button', { type: 'button', onClick: async () => {
             try {
               const res = await api.branding.import();
@@ -424,7 +425,7 @@ function showBrandProfiles(api) {
               toast(t('Imported “{name}”.', { name: res.profile.name }));
               await reload();
             } catch (err) { fail(err); }
-          } }, t('Import .sfbrand…')),
+          } }, t('Import .sfbrand')),
           el('span.muted', {}, t('Profiles are shareable as .sfbrand files.'))),
         rows,
         el('h4.brand-themes-heading', {}, t('Built-in themes')),
@@ -479,7 +480,7 @@ function showBrandProfileEditor(api, data = null) {
       const message = brandRowMessage();
       imageMessages[key] = message;
       const remove = el('button', { type: 'button', 'aria-label': t('Remove {name}', { name: title }), onClick: () => { target[key] = null; message.clear(); show(); onChange(); } }, t('Remove'));
-      const choose = el('button', { type: 'button', 'aria-label': t('Choose {name}', { name: title }) }, t('Choose…'));
+      const choose = el('button', { type: 'button', 'aria-label': t('Choose {name}', { name: title }) }, t('Choose'));
       const show = () => {
         const asset = target[key] ? assets[target[key]] : null;
         thumb.replaceChildren(brandThumb(asset, title, { slide }));
@@ -585,7 +586,7 @@ function showBrandProfileEditor(api, data = null) {
       const file = el('span.setting-desc');
       const message = brandRowMessage();
       const remove = el('button', { type: 'button', onClick: () => { f.asset = null; message.clear(); show(); } }, t('Remove file'));
-      const upload = el('button', { type: 'button' }, t('Upload font…'));
+      const upload = el('button', { type: 'button' }, t('Upload font'));
       const show = () => {
         const asset = f.asset ? assets[f.asset] : null;
         file.textContent = asset ? t('Font file: {name} (embedded in HTML exports)', { name: asset.name || asset.family }) : t('No font file: readers need the font installed.');

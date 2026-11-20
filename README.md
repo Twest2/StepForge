@@ -88,7 +88,7 @@ readers get: Step-by-step documentation that's easy to understand and follow.
 
 ## Share a guide with a web link
 
-Nobody wants a 40-page PDF attachment. Choose **Share → Publish to the web…**,
+Nobody wants a 40-page PDF attachment. Choose **Share → Publish to the web**,
 pick how long it should stay up, and StepForge turns the guide into a live web
 page and hands you a link to send. It's usually online in under a minute.
 
@@ -204,8 +204,8 @@ Windows, the Microsoft Store is the better choice.
 
 ## Your first guide in one minute
 
-1. Open StepForge and choose **New guide**.
-2. Choose **Capture → Start capture session**. StepForge steps out of the way.
+1. Open StepForge and choose **New recording**.
+2. Choose **Continue** in the recording reminder. StepForge steps out of the way.
 3. Do the task you want to document, clicking as you normally would.
 4. To stop on **Windows**, click **Finish** on the floating recording bar.
    You can choose **Tray icon (red dot)** in **Settings → Capture → Recording

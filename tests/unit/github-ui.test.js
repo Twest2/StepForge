@@ -1353,13 +1353,13 @@ test('the guide menus offer Publish to Wiki.js beside Confluence, with only Conf
   app.editor = { guideId: null };
   app.guideContextMenu({ clientX: 0, clientY: 0 }, { guideId: 'g1', title: 'Guide' });
   const publishing = items.filter((item) => /^Publish to (Confluence|Wiki\.js)/.test(item.label));
-  assert.deepEqual(JSON.parse(JSON.stringify(publishing.map((item) => [item.label, item.badge ?? null]))), [['Publish to Confluence…', 'Beta'], ['Publish to Wiki.js…', null]]);
+  assert.deepEqual(JSON.parse(JSON.stringify(publishing.map((item) => [item.label, item.badge ?? null]))), [['Publish to Confluence', 'Beta'], ['Publish to Wiki.js', null]]);
   await publishing[1].action();
   assert.deepEqual(opened, ['g1']);
   // The editor's Share menu has the same two items.
   const src = fs.readFileSync(path.join(__dirname, '../../app/renderer/app.js'), 'utf8');
-  assert.equal((src.match(/label: t\('Publish to Wiki\.js…'\), action/g) || []).length, 2);
-  assert.equal((src.match(/label: t\('Publish to Confluence…'\), badge: 'Beta'/g) || []).length, 2);
+  assert.equal((src.match(/label: t\('Publish to Wiki\.js'\), action/g) || []).length, 2);
+  assert.equal((src.match(/label: t\('Publish to Confluence'\), badge: 'Beta'/g) || []).length, 2);
 
   // The menu draws the badge as the same chip Settings uses.
   const appended = [];
@@ -1367,7 +1367,7 @@ test('the guide menus offer Publish to Wiki.js beside Confluence, with only Conf
   ui2.context.document.querySelectorAll = () => [];
   ui2.context.document.body = { append: (node) => appended.push(node) };
   ui2.context.innerWidth = 1000; ui2.context.innerHeight = 800;
-  ui2.context.contextMenu(0, 0, [{ label: 'Publish to Confluence…', badge: 'Beta', action() {} }]);
+  ui2.context.contextMenu(0, 0, [{ label: 'Publish to Confluence', badge: 'Beta', action() {} }]);
   const chip = ui2.all(appended[0]).find((n) => n.classList?.contains('beta-badge'));
   assert.ok(chip && chip.classList.contains('settings-chip'));
 });
@@ -1426,4 +1426,18 @@ test('Export shows quality findings above the options, and a clicked one closes 
   u.click(u.find(modal, '[[Team]] has no value'));
   assert.deepEqual(JSON.parse(JSON.stringify(shown)), [{ kind: 'placeholder', stepId: null, stepNumber: null, names: ['Team'] }]);
   assert.equal(await done, false);
+});
+
+test('Find private details with nothing found does not ask to check blurs', async () => {
+  for (const blurs of [[], [{ stepId: 's1', annotationId: 'a1', kind: 'email', stepNumber: 1 }]]) {
+    const u = ui();
+    const api = fakeApi();
+    api.redact.check = async () => ({ checked: 1, added: blurs.length, blurs, text: [], steps: blurs.length });
+    u.context.showPrivacyDialog({ api, guideId: 'guide-1' });
+    await settle(); await settle();
+    const modal = u.root.children.at(-1);
+    const note = u.all(modal).find((n) => n.tag === 'p' && /Blurs are drawn into every export/.test(n.textContent));
+    assert.equal(u.visible(note), blurs.length > 0, `${blurs.length} blurs`);
+    if (!blurs.length) assert.match(modal.textContent, /No private details found\..*Nothing to review\./);
+  }
 });

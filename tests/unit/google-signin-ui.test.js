@@ -158,7 +158,7 @@ test(
 
     assert.ok(
       nodes.some((n) =>
-        n.children.some((child) => typeof child === 'string' && child.includes('unavailable in this build'))
+        n.children.some((child) => typeof child === 'string' && child.includes('This build has no valid app credentials for Google Drive.'))
       )
     );
 

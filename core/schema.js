@@ -72,6 +72,10 @@ function normalizeAnnotationStyles(value) {
   return styles;
 }
 
+// guide.json comes from archives and sync too: only a bounded WebP data URL is kept.
+const isThumbnailImage = (value) => typeof value === 'string' && value.length <= 400000
+  && /^data:image\/webp;base64,[A-Za-z0-9+/]+=*$/.test(value);
+
 function createGuide(fields = {}) {
   const now = nowIso();
   return {
@@ -115,6 +119,11 @@ function createGuide(fields = {}) {
     // Annotation type -> style that new annotations of that type start with,
     // set by Apply style to the entire guide.
     annotationStyles: normalizeAnnotationStyles(fields.annotationStyles),
+    // The library card picture (More → Library thumbnail): an image the user
+    // chose, already scaled to a small WebP, or else a step's screenshot.
+    // Neither means the first shown step with a screenshot.
+    ...(isThumbnailImage(fields.thumbnailImage) ? { thumbnailImage: fields.thumbnailImage } : {}),
+    ...(typeof fields.thumbnailStepId === 'string' && fields.thumbnailStepId ? { thumbnailStepId: fields.thumbnailStepId } : {}),
     // Monotonic revision for optimistic concurrency. Absent in v1 data (reads
     // as 0), bumped on every store write.
     revision: Number.isInteger(fields.revision) && fields.revision >= 0 ? fields.revision : 0,

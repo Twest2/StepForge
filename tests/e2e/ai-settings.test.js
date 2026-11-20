@@ -1,7 +1,7 @@
 'use strict';
 
 // Settings → AI with an OpenAI-compatible server: Test connection says what
-// is wrong, offers a fix for it, and the fix is what Save keeps. The server
+// is wrong, offers a fix for it, and applies the fix immediately. The server
 // is a local stand-in that answers the way an organization's LiteLLM gateway
 // does: model names carry a prefix, an unknown model is refused with 403, and
 // a reasoning model refuses any temperature but its default.
@@ -81,12 +81,10 @@ test('Test connection names a wrong model and a refused temperature, and its fix
   await scrollTo(app, '#modal-root .ai-status-actions');
   await app.clickText('Use model default', { scope: '#modal-root' });
 
-  await eventually(async () => (await statusText(app)) === `Connected to ${server.url} with protected.gpt-5.6-terra. Choose Save to keep the change.`, 'connected');
+  await eventually(async () => (await statusText(app)) === `Connected to ${server.url} with protected.gpt-5.6-terra.`, 'connected');
   assert.equal('temperature' in server.chats.at(-1), false, 'the last test sent no temperature');
   assert.equal(await app.evaluate(`document.querySelector('#modal-root .ai-temperature input').hidden`), true, 'no value box for Model default');
 
-  await app.clickText('Save', { scope: '#modal-root' });
-  await app.waitForGone('.settings-nav');
   const ai = await eventually(() => {
     const saved = readAppSettings(env.dataDir).ai;
     return saved?.provider === 'openai' && saved;
@@ -94,9 +92,11 @@ test('Test connection names a wrong model and a refused temperature, and its fix
   assert.equal(ai.temperature, null);
   assert.equal(ai.openai.model, 'protected.gpt-5.6-terra');
   assert.equal(ai.openai.baseUrl, server.url);
+  await app.clickText('Close', { scope: '#modal-root footer' });
+  await app.waitForGone('.settings-nav');
 }));
 
-test('a custom temperature is saved and kept within 0 to 2', () => withApp('ai-settings-temperature', { sample: false }, async (app, env) => {
+test('an invalid temperature is ignored, and Escape applies a valid focused edit', () => withApp('ai-settings-temperature', { sample: false }, async (app, env) => {
   await app.clickWhere('.welcome-btn', "el => el.querySelector('.welcome-btn-label')?.textContent === 'Settings'");
   await app.waitForVisible('.settings-nav');
   await app.clickText('AI', { scope: '.settings-nav' });
@@ -106,9 +106,9 @@ test('a custom temperature is saved and kept within 0 to 2', () => withApp('ai-s
   assert.equal(await app.evaluate(`document.querySelector('#modal-root .ai-temperature input').value`), '0.2');
   await app.setValue('#modal-root .ai-temperature input', '5');
   await app.key('Tab');
-  await eventually(async () => (await app.evaluate(`document.querySelector('#modal-root .ai-temperature input').value`)) === '2', 'clamped to 2');
+  assert.equal(readAppSettings(env.dataDir).ai?.temperature, 0.2, 'the invalid value was not saved');
   await app.setValue('#modal-root .ai-temperature input', '0.7');
-  await app.clickText('Save', { scope: '#modal-root' });
+  await app.key('Escape');
   await app.waitForGone('.settings-nav');
   await eventually(() => readAppSettings(env.dataDir).ai?.temperature === 0.7, 'temperature 0.7 saved');
 

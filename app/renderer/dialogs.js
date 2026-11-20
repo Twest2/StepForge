@@ -116,6 +116,7 @@ function makeHotkeyInput(value = '') {
       e.stopPropagation();
       current = '';
       render();
+      wrap.dispatchEvent(new Event('change'));
     },
   }, '×');
 
@@ -165,6 +166,7 @@ function makeHotkeyInput(value = '') {
       if (key) {
         current = [...modifiers, key].join('+');
         wrap.blur();
+        wrap.dispatchEvent(new Event('change'));
       } else if (modifiers.length) {
         renderKeys([...modifiers, '…']);
       } else {
@@ -192,7 +194,7 @@ function makeHotkeyInput(value = '') {
 }
 
 /**
- * "Move to…" for a step: pick the place (after which step) and the level
+ * "Move to" for a step: pick the place (after which step) and the level
  * there. `positions` is [{ value, label, current?, levels: [{ value, label }] }];
  * resolves { gap, depth } (the chosen values) or null.
  */
@@ -238,18 +240,19 @@ async function promptText({
   placeholder = '',
   multiline = false,
   onInput = null,
+  confirmLabel = t('OK'),
 } = {}) {
   return new Promise((resolve) => {
     const field = multiline
       ? el('textarea', { rows: 6, placeholder }, value)
-      : el('input', { type: 'text', value, placeholder });
+      : el('input', { type: 'text', value, placeholder, style: { flex: 1, minWidth: 0 } });
 
     const { close, requestDismiss } = openModal({
       title,
       body: labeledRow(label, field, { stacked: multiline }),
       footer: [
         el('button', { onClick: () => requestDismiss() }, t('Cancel')),
-        el('button.primary', { onClick: () => { close(); resolve(field.value); } }, t('OK')),
+        el('button.primary', { onClick: () => { close(); resolve(field.value); } }, confirmLabel),
       ],
       isDirty: unsavedChanges(() => field.value),
       onClose: () => resolve(null),
@@ -271,7 +274,8 @@ async function promptText({
       if (typeof onInput === 'function') onInput(field.value);
     });
 
-    setTimeout(() => field.focus(), 0);
+    // Select the prefilled value so typing replaces it.
+    setTimeout(() => { field.focus(); field.select(); }, 0);
   });
 }
 
@@ -305,11 +309,12 @@ function showQuickActions({ query = '', commands = [], searchFn, onOpenItem, onC
           onMouseenter: () => { active = idx; updateActiveItem(); },
           onClick: () => choose(idx),
         },
-        el('span.kind', {}, item.kind || 'cmd'),
         el('div', {},
           el('div', { style: { fontWeight: 600 } }, item.label),
           item.description ? el('div.snippet', {}, item.description) : null,
-        )));
+        ),
+        // Search results say what they are; commands need no label.
+        item.kind === 'guide' || item.kind === 'step' ? el('span.kind', {}, item.kind === 'guide' ? t('Guide') : t('Step')) : null));
       });
     }
 
@@ -336,16 +341,13 @@ function showQuickActions({ query = '', commands = [], searchFn, onOpenItem, onC
     }
 
     const { close } = openModal({
-      title: t('Quick Actions'),
+      title: t('Quick actions'),
       body: el('div.quick-actions', {},
         input,
         hint,
         results,
       ),
-      wide: true,
-      footer: [
-        el('button', { onClick: () => { close(); resolve(null); } }, t('Close')),
-      ],
+      wide: true, // no footer: × and Escape close it
       onClose: () => {
         if (onClose) onClose();
         resolve(null);
@@ -660,26 +662,52 @@ function showSettingsDialog({
   api,
   settings,
   placeholders = {},
-  onSave,
+  onSettingsChanged = null,
   onPublishToWeb = null,
   flushEdits = null,
   section: initialSection = 'general',
 } = {}) {
   return new Promise((done) => {
-    // Synced settings wait while this is open, so Save can't undo them.
+    // Keep remote updates out of the open placeholder list while it is being edited.
     api.cloud?.setSettingsOpen?.(true);
-    const resolve = (saved) => { api.cloud?.setSettingsOpen?.(false); done(saved); };
-    const form = el('form', { className: 'settings-form' });
+    const form = el('form', { className: 'settings-form', noValidate: true });
+    const saveError = el('span.settings-save-error.setting-desc.error', { role: 'alert', hidden: true });
+    const showSaveError = (message) => {
+      saveError.hidden = !message;
+      saveError.textContent = message;
+    };
+    let currentSettings = settings;
+    let pendingChanges = Promise.resolve();
+    // A failed write keeps Settings open; closing then asks before discarding it.
+    let changeFailed = false;
+    const enqueueChange = (apply) => {
+      pendingChanges = pendingChanges.then(() => {
+        showSaveError('');
+        return apply();
+      }).then(() => { changeFailed = false; }, (error) => {
+        changeFailed = true;
+        showSaveError(t('Could not apply the setting: {error}', { error: error.message || error }));
+      });
+      return pendingChanges;
+    };
+    const writeSetting = async (keyPath, value) => {
+      currentSettings = await api.settings.set({ keyPath, value });
+      onSettingsChanged?.(currentSettings);
+    };
+    const persist = (keyPath, value) => enqueueChange(() => writeSetting(keyPath, value));
     // A service's id ("drive", "onedrive", "dropbox", "webdav", "github")
     // opens Accounts with that service's panel showing.
     const accountView = ['drive', 'onedrive', 'dropbox', 'webdav', 'github', 'confluence', 'wikijs'].includes(initialSection) ? initialSection : null;
     if (accountView) initialSection = 'accounts';
     const accountsPanel = makeAccountsSettings(api, { view: accountView, onPublishToWeb });
-    const brandingPanel = makeBrandingSettings(api, { activeProfileId: settings.branding?.activeProfileId || '' });
+    const brandingPanel = makeBrandingSettings(api, {
+      activeProfileId: settings.branding?.activeProfileId || '',
+      onChange: (id) => persist('branding.activeProfileId', id),
+    });
     const storagePath = el('code.settings-path', {}, t('Checking guide storage location…'));
     const storageNote = el('div.setting-desc', {}, '');
     const showStorageError = (message) => { storageNote.textContent = message; storageNote.classList.add('error'); };
-    const chooseStorageBtn = el('button', { type: 'button' }, t('Choose folder…'));
+    const chooseStorageBtn = el('button', { type: 'button' }, t('Choose folder'));
     const resetStorageBtn = el('button', { type: 'button' }, t('Use default'));
     const cancelStorageBtn = el('button', { type: 'button', hidden: true }, t('Cancel pending move'));
     const storageWarningNote = el('div.storage-warning', { role: 'note', hidden: true });
@@ -791,13 +819,13 @@ function showSettingsDialog({
     focusAmount.addEventListener('input', () => { focusLabel.textContent = `${Number(focusAmount.value).toFixed(2)}×`; });
     const focusControl = el('div.row.settings-range', {}, focusAmount, focusLabel, el('button', { type: 'button', onClick: () => {
       focusAmount.value = '1.25'; focusLabel.textContent = '1.25×';
+      focusAmount.dispatchEvent(new Event('change'));
     } }, t('Reset')));
     const clickMarker = el('input', { type: 'checkbox', checked: Boolean(settings.capture?.clickMarker) });
     const captureHotkey = makeHotkeyInput(settings.capture?.hotkeyCapture || '');
     const pauseHotkey = makeHotkeyInput(settings.capture?.hotkeyPauseResume || '');
     const focusedDefault = el('input', { type: 'checkbox', checked: settings.editor?.focusedViewDefaultForNewSteps !== false });
     const returnToSelect = el('input', { type: 'checkbox', checked: settings.editor?.returnToSelect !== false });
-    const dangerousDeletes = el('input', { type: 'checkbox', checked: settings.editor?.dangerousDeletes === true });
     const previewCount = makeInput(settings.exports?.previewStepCount ?? 3, 'number', { min: 1, step: 1 });
     const openFolder = el('input', { type: 'checkbox', checked: Boolean(settings.exports?.openFolderAfterExport) });
     const codeTheme = makeSelect(CODE_THEME_CHOICES.some((t) => t.value === settings.exports?.codeTheme) ? settings.exports.codeTheme : 'atom-one-dark',
@@ -853,22 +881,20 @@ function showSettingsDialog({
       { value: 'custom', label: t('Custom') },
     ]);
     const temperatureValue = makeInput(String(savedTemperature ?? 0.2), 'number',
-      { min: '0', max: '2', step: '0.1', inputMode: 'decimal', 'aria-label': t('Temperature value') });
+      { min: '0', max: '2', step: '0.01', inputMode: 'decimal', 'aria-label': t('Temperature value') });
     const temperatureChoice = () => {
       if (temperatureMode.value === 'default') return null;
-      const value = Number(temperatureValue.value);
-      return temperatureValue.value.trim() && Number.isFinite(value) ? Math.round(Math.min(2, Math.max(0, value)) * 100) / 100 : 0.2;
+      return temperatureValue.value && temperatureValue.validity.valid
+        ? Number(temperatureValue.value)
+        : currentSettings.ai?.temperature ?? 0.2;
     };
     const syncTemperature = () => { temperatureValue.hidden = temperatureMode.value === 'default'; };
     temperatureMode.addEventListener('change', syncTemperature);
-    // Show the value that will be saved: out-of-range numbers are clamped to 0–2.
-    temperatureValue.addEventListener('change', () => { temperatureValue.value = String(temperatureChoice() ?? 0.2); });
     syncTemperature();
     let keySaved = false;
     let keySave = null;
     const aiScreenshots = el('input', { type: 'checkbox', checked: settings.ai?.attachScreenshots !== false });
     const agentsEnabled = el('input', { type: 'checkbox', checked: Boolean(settings.ai?.agents?.enabled) });
-    const agentAccessStatus = el('div.setting-desc', { role: 'status', 'aria-live': 'polite', hidden: true });
     const agentsScreenshots = el('input', { type: 'checkbox', checked: settings.ai?.agents?.screenshots !== false });
     const agentsBranding = el('input', { type: 'checkbox', checked: Boolean(settings.ai?.agents?.branding) });
     // How Claude Code, Codex, or any MCP app starts StepForge for agents.
@@ -903,11 +929,6 @@ function showSettingsDialog({
     const aiStatusDetails = el('details.ai-status-details', { hidden: true });
     const aiStatus = el('div', { className: 'ai-status', role: 'status', 'aria-live': 'polite' }, aiStatusText, aiStatusActions, aiStatusDetails);
     const testAiBtn = el('button', { type: 'button' }, t('Test connection'));
-    const persistOllamaModel = debounce(() => {
-      const model = ollamaModel.value.trim();
-      // Keep the last model choice even if the dialog is dismissed without a full save.
-      void api.settings.set({ keyPath: 'ai.ollama.model', value: model }).catch(() => {});
-    }, 250);
 
     const syncFallbackUi = () => {
       // The timer only matters for timed captures, so hide it otherwise.
@@ -935,13 +956,12 @@ function showSettingsDialog({
       aiStatusDetails.open = false;
       aiStatusDetails.hidden = !details.length;
     };
-    // Set by a fix button, so the result after it reminds the user to save.
-    let aiFixApplied = false;
-    const fixButton = (label, apply) => el('button', {
+    const fixButton = (label, control, value) => el('button', {
       type: 'button',
-      onClick: () => {
-        apply();
-        aiFixApplied = true;
+      onClick: async () => {
+        control.value = value;
+        control.dispatchEvent(new Event('change'));
+        await pendingChanges;
         void testAiConnection();
       },
     }, label);
@@ -959,8 +979,6 @@ function showSettingsDialog({
           },
           temperature: temperatureChoice(),
         });
-        const fixed = aiFixApplied;
-        aiFixApplied = false;
         const listed = result.models || result.diagnosis?.models;
         if (aiProvider.value === 'openai' && listed?.length) {
           openaiModels.replaceChildren(...listed.map((model) => el('option', { value: model })));
@@ -969,15 +987,10 @@ function showSettingsDialog({
           const diagnosis = result.diagnosis || null;
           const actions = [];
           if (diagnosis?.kind === 'temperature' && temperatureMode.value !== 'default') {
-            actions.push(fixButton(t('Use model default'), () => {
-              temperatureMode.value = 'default';
-              syncTemperature();
-            }));
+            actions.push(fixButton(t('Use model default'), temperatureMode, 'default'));
           }
           if (diagnosis?.suggestion) {
-            actions.push(fixButton(t('Use “{model}”', { model: diagnosis.suggestion }), () => {
-              openaiModel.value = diagnosis.suggestion;
-            }));
+            actions.push(fixButton(t('Use “{model}”', { model: diagnosis.suggestion }), openaiModel, diagnosis.suggestion));
           }
           // The fix to make next is the primary (blue) button: the model fix
           // when there are two, since a refused temperature only shows once
@@ -988,7 +1001,7 @@ function showSettingsDialog({
         }
         if (result.provider === 'openai') {
           const connected = t('Connected to {host} with {model}.', { host: result.host, model: result.model });
-          updateAiStatus(fixed ? `${connected} ${t('Choose Save to keep the change.')}` : connected, { ok: true });
+          updateAiStatus(connected, { ok: true });
           return;
         }
         ollamaModels.replaceChildren(...(result.models || []).map((model) => el('option', { value: model })));
@@ -1008,8 +1021,7 @@ function showSettingsDialog({
         setButtonLoading(testAiBtn, false);
       }
     };
-    // The API key saves as soon as it is entered (Enter, or leaving the field), and
-    // Remove key deletes it at once: neither waits for Settings' Save.
+    // Save an entered key on Enter or blur. Removing it still asks for confirmation.
     const showKeyState = (message = '', { error = false } = {}) => {
       keyDesc.textContent = message || (keySaved
         ? t('A key is saved for this server. Entering a new one replaces it.')
@@ -1038,7 +1050,7 @@ function showSettingsDialog({
     openaiKey.addEventListener('change', () => { void saveKey(); });
     openaiKey.addEventListener('keydown', (event) => {
       if (event.key !== 'Enter') return;
-      event.preventDefault(); // saves the key, not all of Settings
+      event.preventDefault();
       void saveKey();
     });
     openaiUrl.addEventListener('change', () => { void refreshKeyState(); });
@@ -1058,8 +1070,6 @@ function showSettingsDialog({
     });
     showKeyState();
     void refreshKeyState();
-    ollamaModel.addEventListener('input', () => persistOllamaModel());
-    ollamaModel.addEventListener('blur', () => persistOllamaModel.flush());
 
     const placeholderHeader = el('div.global-placeholder-header.hidden', {},
       el('span', {}, t('Placeholder name')), el('span', {}, t('Content')));
@@ -1079,6 +1089,7 @@ function showSettingsDialog({
           row.remove();
           rows.splice(rows.indexOf(row), 1);
           placeholderHeader.classList.toggle('hidden', rows.length === 0);
+          savePlaceholders();
         },
       }, '−');
       const row = el('div.placeholder-row', {},
@@ -1086,7 +1097,9 @@ function showSettingsDialog({
         valueCell,
         removeBtn,
       );
-      // Keep unchanged legacy plain-text values intact when saving Settings.
+      keyInput.addEventListener('change', () => savePlaceholders());
+      valueInput.addEventListener('change', () => savePlaceholders());
+      // Keep unchanged legacy plain-text values intact.
       row.placeholderValue = value;
       row.placeholderOriginalText = valueInput.value;
       rows.push(row);
@@ -1098,10 +1111,10 @@ function showSettingsDialog({
 
     const addPlaceholderBtn = el('button', {
       type: 'button',
-      onClick: () => addPlaceholderRow(),
+      onClick: () => addPlaceholderRow().querySelector('.global-placeholder-name').focus(),
     }, t('Add placeholder'));
 
-    // Keep controls mounted so hiding them never resets their saved/draft values.
+    // Keep controls mounted when switching providers or turning AI off.
     const aiOptions = el('div', { dataset: { aiDependent: 'local' } },
       settingRow(t('Auto-document captures'), t('Write a title and description for each new capture as you record. Turn off to use AI only when you ask.'), makeSwitch(aiAutoDoc, t('Auto-document captures'))),
       settingRow(t('Let the model see screenshots'), t('Models that can read images see each step’s screenshot, with blurred areas already hidden. Turn off to send text only.'), makeSwitch(aiScreenshots, t('Let the model see screenshots'))));
@@ -1150,27 +1163,7 @@ function showSettingsDialog({
       agentOptions.hidden = !agentsEnabled.checked;
     };
     updateAiVisibility();
-    agentsEnabled.addEventListener('change', async () => {
-      updateAiVisibility();
-      if (agentsEnabled.checked) return;
-      const restoreFocus = document.activeElement === agentsEnabled;
-      agentsEnabled.disabled = true;
-      try {
-        // Revocation is immediate; enabling remains an explicit Settings Save.
-        await api.settings.set({ keyPath: 'ai.agents.enabled', value: false });
-        settingsBaseline.ai.agents.enabled = false;
-        agentAccessStatus.textContent = t('AI agents are cut off now. To let them back in, turn this on and save.');
-        agentAccessStatus.hidden = false;
-      } catch (error) {
-        agentsEnabled.checked = true;
-        updateAiVisibility();
-        agentAccessStatus.textContent = t('Could not turn off AI agent access: {error}', { error: error.message });
-        agentAccessStatus.hidden = false;
-      } finally {
-        agentsEnabled.disabled = false;
-        if (restoreFocus && agentsEnabled.isConnected) agentsEnabled.focus();
-      }
-    });
+    agentsEnabled.addEventListener('change', updateAiVisibility);
 
     const sections = [
       { id: 'general', label: t('General'), description: t('Appearance, exports, where your guides and deleted guides are kept, and when guides are due for review.'), content: [
@@ -1198,7 +1191,7 @@ function showSettingsDialog({
       { id: 'capture', label: t('Capture'), description: t('How StepForge records steps.'), content: [
         settingsCard(t('Recording'),
           recordingControlsRow,
-          settingRow(t('Default mode'), t('Record the whole screen or the active window. For a region, use Capture → Capture region.'), captureMode),
+          settingRow(t('Default mode'), t('Record the whole screen or the active window. For one region screenshot, use Capture → Region screenshot.'), captureMode),
           settingRow(t('Delay'), t('Milliseconds to wait before each screenshot.'), delayMs),
           settingRow(t('Click marker'), t('Draw a marker where you clicked.'), makeSwitch(clickMarker, t('Click marker'))),
           settingRow(t('Capture outside clicks'), t('Record clicks in other apps while a capture session is running.'), makeSwitch(captureOutside, t('Capture outside clicks')))),
@@ -1220,9 +1213,6 @@ function showSettingsDialog({
         settingsCard(t('Annotation tools'),
           settingRow(t('Go back to Select after each use'), t('After you draw a blur, shape, arrow or other annotation, or crop, the Select tool is picked again. Turn off to keep using the same tool.'),
             makeSwitch(returnToSelect, t('Go back to Select after each use')))),
-        settingsCard(t('Deleting'),
-          settingRow(t('Dangerous deletes'), t('Delete steps without asking for confirmation.'),
-            makeSwitch(dangerousDeletes, t('Dangerous deletes')))),
         settingsCard(t('Backups'),
           settingRow(t('Snapshots to keep'), t('Older backup snapshots of each guide are removed. 0 keeps all of them.'), keepLast)),
       ] },
@@ -1239,12 +1229,13 @@ function showSettingsDialog({
         ollamaCard,
         settingsCard(t('MCP'),
           el('div.setting-desc', {}, t('AI apps such as Claude and Codex can connect to StepForge and edit your guides. They can create and delete guides and steps, reorder steps, replace or remove screenshots, edit text, add placeholders, and add or delete annotations except blurs. StepForge saves snapshots before step creation, moves, deletions and screenshot changes; restore them from More → Backups & snapshots. Deleted guides go to the Trash.')),
-          settingRow(t('Let AI agents edit your guides'), t('Turning off takes effect immediately, even if Settings is canceled. Turning on requires Save.'), makeSwitch(agentsEnabled, t('Let AI agents edit your guides'))),
-          agentAccessStatus, agentOptions),
+          settingRow(t('Let AI agents edit your guides'), null, makeSwitch(agentsEnabled, t('Let AI agents edit your guides'))),
+          agentOptions),
       ] },
       { id: 'accounts', label: t('Accounts'), description: t('Sync guides with Google Drive, OneDrive, Dropbox or Nextcloud, share them on the web with GitHub, or publish them to Confluence or Wiki.js.'), content: [accountsPanel.node] },
-      { id: 'placeholders', label: t('Placeholders'), description: t('Reusable text for every guide. Type [[name]] in a guide to insert it.'), content: [
-        settingsCard(null, placeholderRows, el('div.settings-actions', {}, addPlaceholderBtn)),
+      { id: 'placeholders', label: t('Placeholders'), content: [
+        settingsCard(null, el('p.setting-desc', {}, t('Reusable text for every guide. Type [[name]] in a guide to insert it.')),
+          placeholderRows, el('div.settings-actions', {}, addPlaceholderBtn)),
       ] },
       { id: 'about', label: t('About'), description: '', content: [
         el('div.settings-about', {},
@@ -1312,128 +1303,167 @@ function showSettingsDialog({
     form.append(el('div.settings-layout', {}, nav, content));
     showSection(navButtons.has(initialSection) ? initialSection : 'general');
 
-    // Everything the form holds, as Save stores it. Also what unsaved-change checks compare.
-    const collect = () => ({
-      images: {
-        format: imageCompression.value === 'off' ? 'png' : 'webp',
-        lossless: imageCompression.value === 'off' ? settings.images?.lossless !== false : imageCompression.value !== 'lossy',
-        webpQuality: Math.min(100, Math.max(95, Number(imageQuality.value) || 95)) / 100,
-      },
-      appearance: appearance.value,
-      language: language.value,
-      spellcheck: spellcheck.checked,
-      capture: {
-        ...settings.capture,
-        delayMs: Number(delayMs.value || 0),
-        mode: captureMode.value,
-        recordingControls: recordingControls.value,
-        clickMarker: clickMarker.checked,
-        smartCropping: smartCropping.checked,
-        focusAmount: Number(focusAmount.value),
-        fallbackTrigger: fallbackTrigger.value === 'interval' ? 'interval' : 'hotkey',
-        autoIntervalSec: Math.max(1, Number(autoIntervalSec.value || 5)),
-        hotkeyCapture: captureHotkey.value.trim(),
-        hotkeyPauseResume: pauseHotkey.value.trim(),
-        captureOutsideClicks: captureOutside.checked,
-      },
-      editor: {
-        ...settings.editor,
-        focusedViewDefaultForNewSteps: focusedDefault.checked,
-        returnToSelect: returnToSelect.checked,
-        dangerousDeletes: dangerousDeletes.checked,
-      },
-      branding: {
-        ...settings.branding,
-        activeProfileId: brandingPanel.value(),
-      },
-      exports: {
-        ...settings.exports,
-        previewStepCount: Number(previewCount.value || 3),
-        openFolderAfterExport: openFolder.checked,
-        codeTheme: codeTheme.value,
-      },
-      backups: {
-        ...settings.backups,
-        keepLast: Number(keepLast.value || 0),
-      },
-      updates: {
-        ...settings.updates,
-        checkOnStart: checkOnStart.checked,
-      },
-      library: {
-        ...settings.library,
-        trashDays: Number(trashDays.value),
-        reviewAfterDays: Number(reviewDefault.value),
-      },
-      redaction: {
-        ...settings.redaction,
-        onCapture: redactOnCapture.checked,
-        terms: [...new Set(redactTerms.value.split('\n').map((t) => t.trim()).filter(Boolean))].slice(0, 200),
-      },
-      ai: {
-        ...settings.ai,
-        provider: aiProvider.value,
-        openai: { baseUrl: openaiUrl.value.trim(), model: openaiModel.value.trim(), vision: openaiVision.checked },
-        temperature: temperatureChoice(),
-        enabled: aiEnabled.checked,
-        autoDoc: aiAutoDoc.checked,
-        attachScreenshots: aiScreenshots.checked,
-        agents: {
-          ...(settings.ai?.agents || {}),
-          enabled: agentsEnabled.checked,
-          screenshots: agentsScreenshots.checked,
-          branding: agentsBranding.checked,
-        },
-        ollama: {
-          ...(settings.ai?.ollama || {}),
-          host: ollamaHost.value.trim(),
-          model: ollamaModel.value.trim(),
-        },
-      },
-      placeholders: rows.reduce((acc, row) => {
+    // Persist only the changed field, so another surface's edits to related
+    // settings (for example, a recording or a cloud account) survive.
+    const bind = (input, keyPath, read) => {
+      const editable = ['number', 'url', 'text'].includes(input.type);
+      if (input.type === 'number') input.required = true;
+      if (editable) input.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' || event.isComposing) return;
+        event.preventDefault();
+        input.blur();
+      });
+      input.addEventListener('change', () => {
+        if (input.type === 'number' || input.type === 'url') {
+          const invalid = !input.validity.valid;
+          input.setAttribute('aria-invalid', String(invalid));
+          if (invalid) {
+            input.reportValidity();
+            return;
+          }
+        }
+        void persist(keyPath, read(input));
+      });
+    };
+    const value = (input) => input.value;
+    const trimmed = (input) => input.value.trim();
+    const checked = (input) => input.checked;
+    const number = (input) => Number(input.value);
+    for (const [input, keyPath, read] of [
+      [appearance, 'appearance', value],
+      [spellcheck, 'spellcheck', checked],
+      [checkOnStart, 'updates.checkOnStart', checked],
+      [delayMs, 'capture.delayMs', number],
+      [captureMode, 'capture.mode', value],
+      [recordingControls, 'capture.recordingControls', value],
+      [clickMarker, 'capture.clickMarker', checked],
+      [smartCropping, 'capture.smartCropping', checked],
+      [focusAmount, 'capture.focusAmount', number],
+      [fallbackTrigger, 'capture.fallbackTrigger', value],
+      [autoIntervalSec, 'capture.autoIntervalSec', number],
+      [captureHotkey, 'capture.hotkeyCapture', trimmed],
+      [pauseHotkey, 'capture.hotkeyPauseResume', trimmed],
+      [captureOutside, 'capture.captureOutsideClicks', checked],
+      [focusedDefault, 'editor.focusedViewDefaultForNewSteps', checked],
+      [returnToSelect, 'editor.returnToSelect', checked],
+      [previewCount, 'exports.previewStepCount', number],
+      [openFolder, 'exports.openFolderAfterExport', checked],
+      [codeTheme, 'exports.codeTheme', value],
+      [imageQuality, 'images.webpQuality', (input) => number(input) / 100],
+      [keepLast, 'backups.keepLast', number],
+      [trashDays, 'library.trashDays', number],
+      [reviewDefault, 'library.reviewAfterDays', number],
+      [redactOnCapture, 'redaction.onCapture', checked],
+      [redactTerms, 'redaction.terms', (input) => [...new Set(input.value.split('\n').map((term) => term.trim()).filter(Boolean))].slice(0, 200)],
+      [aiEnabled, 'ai.enabled', checked],
+      [aiAutoDoc, 'ai.autoDoc', checked],
+      [aiScreenshots, 'ai.attachScreenshots', checked],
+      [aiProvider, 'ai.provider', value],
+      [ollamaHost, 'ai.ollama.host', trimmed],
+      [ollamaModel, 'ai.ollama.model', trimmed],
+      [openaiUrl, 'ai.openai.baseUrl', trimmed],
+      [openaiModel, 'ai.openai.model', trimmed],
+      [openaiVision, 'ai.openai.vision', checked],
+      [temperatureMode, 'ai.temperature', temperatureChoice],
+      [temperatureValue, 'ai.temperature', temperatureChoice],
+      [agentsScreenshots, 'ai.agents.screenshots', checked],
+      [agentsBranding, 'ai.agents.branding', checked],
+    ]) bind(input, keyPath, read);
+
+    imageCompression.addEventListener('change', () => {
+      const choice = imageCompression.value;
+      void enqueueChange(() => writeSetting('images', {
+        ...currentSettings.images,
+        format: choice === 'off' ? 'png' : 'webp',
+        lossless: choice === 'off' ? currentSettings.images?.lossless !== false : choice !== 'lossy',
+      }));
+    });
+
+    agentsEnabled.addEventListener('change', () => {
+      const enabled = agentsEnabled.checked;
+      void enqueueChange(async () => {
+        try {
+          await writeSetting('ai.agents.enabled', enabled);
+        } catch (error) {
+          if (agentsEnabled.checked === enabled) {
+            agentsEnabled.checked = Boolean(currentSettings.ai?.agents?.enabled);
+            updateAiVisibility();
+          }
+          throw error;
+        }
+      });
+    });
+
+    const savePlaceholders = () => {
+      const entries = rows.flatMap((row) => {
         const key = row.querySelector('.global-placeholder-name').value.trim().replace(/^\[\[(.*?)\]\]$/, '$1').trim();
         const text = row.querySelector('.global-placeholder-value').value;
-        if (key) acc[key] = typeof row.placeholderValue === 'string' && row.placeholderValue && text === row.placeholderOriginalText
+        if (!key) return [];
+        const value = typeof row.placeholderValue === 'string' && row.placeholderValue && text === row.placeholderOriginalText
           ? row.placeholderValue : { format: 'markdown', text };
-        return acc;
-      }, {}),
-    });
-    // A typed API key isn't a setting, but leaving with it set still loses an edit.
-    const draftState = () => ({ ...collect(), apiKeyDraft: openaiKey.value });
-    const settingsBaseline = JSON.parse(JSON.stringify(draftState()));
-    const savedState = () => JSON.stringify(draftState()) !== JSON.stringify(settingsBaseline);
+        return [[key, value]];
+      });
+      if (new Set(entries.map(([key]) => key)).size !== entries.length) {
+        showSaveError(t('Each placeholder needs a different name.'));
+        return;
+      }
+      void enqueueChange(() => api.settings.setGlobalPlaceholders(Object.fromEntries(entries)));
+    };
 
-    const { close, requestDismiss } = openModal({
+    language.addEventListener('change', () => {
+      const next = language.value;
+      void enqueueChange(async () => {
+        try {
+          if (flushEdits && !await flushEdits()) throw new Error(t('Save your guide before changing the language.'));
+          if (!await saveKey()) { language.value = currentSettings.language || 'system'; syncLanguageBeta(); return; }
+          await api.app.setLanguage({ language: next });
+          currentSettings = { ...currentSettings, language: next };
+          onSettingsChanged?.(currentSettings);
+        } catch (error) {
+          if (language.value === next) {
+            language.value = currentSettings.language || 'system';
+            syncLanguageBeta();
+          }
+          throw error;
+        }
+      });
+    });
+
+    const { requestDismiss } = openModal({
       title: t('Settings'),
       body: form,
       wide: true,
-      isDirty: savedState,
       footer: [
-        el('button', { type: 'button', onClick: () => requestDismiss() }, t('Cancel')),
-        el('button.primary', {
-          type: 'submit',
-          onClick: async (e) => {
-            e.preventDefault();
-            const next = collect();
-            // A key typed just before Save is saved too; if that fails, stay on AI to say why.
-            if (!await saveKey()) { showSection('ai'); return; }
-            if (await onSave(next) === false) return;
-            disposeSettings();
-            close();
-            resolve(true);
-          },
-        }, t('Save')),
+        saveError,
+        el('button', { type: 'button', onClick: () => requestDismiss() }, t('Close')),
       ],
-      onClose: () => { disposeSettings(); resolve(false); },
+      isDirty: () => changeFailed,
+      beforeDismiss: async () => {
+        // Escape can dismiss while an edit still has focus. Blur commits it
+        // in exactly the same way as clicking Close or moving to another row.
+        const focused = document.activeElement;
+        if (form.contains(focused)) focused.blur();
+        await pendingChanges;
+        if (changeFailed) return false;
+        if (await saveKey()) return true;
+        showSection('ai');
+        openaiKey.focus();
+        return false;
+      },
+      onClose: () => {
+        disposeSettings();
+        api.cloud?.setSettingsOpen?.(false);
+        done();
+      },
     });
 
-    form.addEventListener('submit', (e) => e.preventDefault());
+    form.addEventListener('submit', (event) => event.preventDefault());
     testAiBtn.addEventListener('click', testAiConnection);
     aiEnabled.addEventListener('change', () => {
       updateAiVisibility();
       updateAiStatus(
         aiEnabled.checked
-          ? t('Save, then use the AI ▾ menu in a guide. Test connection checks that the model is ready.')
+          ? t('Use the AI ▾ menu in a guide. Test connection checks that the model is ready.')
           : t('AI is off. These settings are kept for later.'),
       );
     });
@@ -1467,7 +1497,7 @@ function showAddStepDialog({ onChooseImage } = {}) {
         error.textContent = t('Could not choose an image: {error}', { error: cause.message });
         error.hidden = false;
       } finally { choosing = false; choose.disabled = false; add.disabled = false; }
-    } }, t('Choose image…'));
+    } }, t('Choose image'));
     const accept = () => {
       if (closed || choosing) return;
       const draft = { title: title.value.trim(), image };
@@ -1478,7 +1508,7 @@ function showAddStepDialog({ onChooseImage } = {}) {
       el('label', {}, t('Step title'), title),
       el('div.add-step-image', {}, el('div', {}, t('Image (optional)')), imageStatus, el('div.row', {}, choose, remove)), error);
     const { close, requestDismiss, node } = openModal({
-      title: t('Add Step'), body: form, initialFocus: title,
+      title: t('Add step'), body: form, initialFocus: title,
       isDirty: () => Boolean(title.value || image),
       footer: [el('button', { type: 'button', onClick: () => requestDismiss() }, t('Cancel')), add],
       onClose: () => { closed = true; resolve(null); },
@@ -1493,6 +1523,7 @@ function showExportDialog({
   defaultFormat = 'pdf',
   defaultOutDir = '',
   onChooseDir,
+  onCheckDir,
   onExport,
   onPreview,
   onLoadDefaults,      // async (format) => exporter DEFAULT_TEMPLATE
@@ -1608,7 +1639,7 @@ function showExportDialog({
           onClick: async () => {
             const picked = await onChooseImage?.();
             if (picked) { input.value = picked; clear.disabled = false; set(picked); }
-          } }, t('Choose…'));
+          } }, t('Choose'));
         return el('div.row', {}, input, choose, clear);
       }
       const input = makeInput(value, 'text', { placeholder: info.placeholder || '' });
@@ -1716,10 +1747,10 @@ function showExportDialog({
       const site = publishTargets[formatSelect.value];
       publishInsteadNote.hidden = !site || typeof onPublishInstead !== 'function';
       if (publishInsteadNote.hidden) return;
-      publishInsteadBtn.textContent = t('Publish to {site}…', { site });
+      publishInsteadBtn.textContent = t('Publish to {site}', { site });
       publishInsteadNote.replaceChildren(
         el('span', {}, el('strong', {}, t('Publishing to {site} is easier.', { site })), ' ',
-          t('Share → Publish to {site}… creates the page for you, uploads its screenshots and updates the same page when you publish again. Export only if you’d rather upload the files yourself.', { site })),
+          t('Share → Publish to {site} creates the page for you, uploads its screenshots and updates the same page when you publish again. Export only if you’d rather upload the files yourself.', { site })),
         publishInsteadBtn);
     }
     publishInsteadBtn.addEventListener('click', () => {
@@ -1781,7 +1812,7 @@ function showExportDialog({
         refreshTemplates(list || []);
         templateSelect.value = name.trim();
       },
-    }, t('Save as template…'));
+    }, t('Save as template'));
 
     const manageBtn = el('button', {
       type: 'button',
@@ -1790,7 +1821,15 @@ function showExportDialog({
         refreshTemplates(list || []);
         refreshOptions();
       },
-    }, t('Manage…'));
+    }, t('Manage'));
+
+    /** Choose… : resolves true once a folder is in the field. */
+    const chooseOutDir = async () => {
+      if (typeof onChooseDir !== 'function') return false;
+      const chosen = await onChooseDir(formatSelect.value);
+      if (chosen) { outDirInput.value = chosen; refreshOutDir(); }
+      return Boolean(chosen);
+    };
 
     const body = el('div.export-dialog', {},
       qualityPanel(quality, (finding) => { finish(false); onShowFinding?.(finding); }),
@@ -1800,12 +1839,8 @@ function showExportDialog({
       labeledRow(t('Output folder'), el('div.row.export-output-folder', {}, outDirInput, el('button', {
         type: 'button',
         disabled: typeof onChooseDir !== 'function',
-        onClick: async () => {
-          if (typeof onChooseDir !== 'function') return;
-          const chosen = await onChooseDir(formatSelect.value);
-          if (chosen) { outDirInput.value = chosen; refreshOutDir(); }
-        },
-      }, t('Choose…')))),
+        onClick: chooseOutDir,
+      }, t('Choose')))),
       el('fieldset', {}, el('legend', {}, t('Options')), optionsHost),
       publishBox,
     );
@@ -1823,7 +1858,7 @@ function showExportDialog({
     const previewBtn = el('button', {
       onClick: async () => {
         if (typeof onPreview !== 'function' || !validOptions()) return;
-        setButtonLoading(previewBtn, true, t('Preview…'));
+        setButtonLoading(previewBtn, true, t('Preview'));
         try {
           await onPreview(payload()); // keep dialog open so settings can be tweaked
         } finally {
@@ -1834,6 +1869,10 @@ function showExportDialog({
     const exportBtn = el('button.primary', {
       onClick: async () => {
         if (typeof onExport !== 'function' || !validOptions()) return;
+        // No usable folder: ask for one before showing "Exporting…"; cancelling leaves the dialog as it was.
+        const outDir = outDirInput.value.trim();
+        const usable = outDir && (typeof onCheckDir !== 'function' || await onCheckDir(outDir).catch(() => false));
+        if (!usable && typeof onChooseDir === 'function' && !(await chooseOutDir())) return;
         cancelBtn.disabled = true;
         previewBtn.disabled = true;
         setButtonLoading(exportBtn, true, t('Exporting…'));
@@ -1892,7 +1931,7 @@ function showTemplateManager({ format, names = [], onRename, onDuplicate, onDele
               },
             }, t('Rename')),
             el('button', { type: 'button', onClick: async () => { list = await onDuplicate(name); renderRows(); } }, t('Duplicate')),
-            el('button', { type: 'button', onClick: async () => { await onExport(name); } }, t('Share…')),
+            el('button', { type: 'button', onClick: async () => { await onExport(name); } }, t('Share')),
             el('button.danger', { type: 'button', onClick: async () => { list = await onDelete(name); renderRows(); } }, t('Delete')),
           ),
         ));
@@ -1903,7 +1942,7 @@ function showTemplateManager({ format, names = [], onRename, onDuplicate, onDele
       title: t('Templates — {format}', { format }),
       body: el('div', {},
         el('div.row', { style: { marginBottom: '10px' } },
-          el('button', { type: 'button', onClick: async () => { list = await onImport(); renderRows(); } }, t('Import .sfglt…')),
+          el('button', { type: 'button', onClick: async () => { list = await onImport(); renderRows(); } }, t('Import .sfglt')),
           el('span.muted', {}, t('Templates are shareable as .sfglt files.')),
         ),
         rows,
@@ -1936,7 +1975,7 @@ function showLinkedGuideDialog({ guide, lock, onSave, onForceSave, onOpenArchive
     );
 
     const { close } = openModal({
-      title: t('Linked Guide'),
+      title: t('Linked guide'),
       body,
       footer: [
         el('button', { onClick: () => { close(); resolve(false); } }, t('Close')),
@@ -2115,9 +2154,12 @@ function showGuideInfoDialog({ values = {}, reviewDefaultDays, cloudConnected = 
       { value: '0', label: t('Never') },
     ]);
     const reviewHint = el('div.muted', { style: { marginTop: '-4px', marginBottom: '12px' } });
+    // The date input shows the system's format (e.g. 11/20/2026); repeat the date the way the rest of the app writes it.
+    const verifiedShown = el('span.muted');
     const readReviewDays = () => (reviewSelect.value === '' ? null : Number(reviewSelect.value));
     // Saving restarts the clock, so the preview counts from now.
     const updateReviewHint = () => {
+      verifiedShown.textContent = verifiedInput.value ? formatGuideDate(`${verifiedInput.value}T00:00`) : '';
       const status = review.reviewStatus({
         updatedAt: new Date().toISOString(),
         metadata: { lastVerified: verifiedInput.value, reviewAfterDays: readReviewDays() },
@@ -2185,7 +2227,7 @@ function showGuideInfoDialog({ values = {}, reviewDefaultDays, cloudConnected = 
         el('h3', { style: { margin: '14px 0 6px' } }, t('Review')),
         labeledRow(t('Guide version'), guideVersionInput),
         labeledRow(t('Software version'), versionInput),
-        labeledRow(t('Last verified'), el('div.row', {}, verifiedInput, todayBtn)),
+        labeledRow(t('Last verified'), el('div.row', {}, verifiedInput, todayBtn, verifiedShown)),
         labeledRow(t('Review again'), reviewSelect),
         reviewHint,
         el('section.guide-info-cloud', { hidden: !cloudConnected, 'aria-label': t('Cloud sync') },
@@ -2274,18 +2316,17 @@ const SHORTCUTS = [
 
 function showShortcutsDialog() {
   return new Promise((resolve) => {
-    const sections = SHORTCUTS.map(([heading, items]) => el('div', {},
-      el('h3', { style: { margin: '8px 0 6px' } }, heading),
-      el('table', { style: { width: '100%', borderCollapse: 'collapse' } },
-        ...items.map(([keys, what]) => el('tr', {},
-          el('td', { style: { padding: '3px 14px 3px 0', whiteSpace: 'nowrap' } }, el('kbd', {}, keys)),
-          el('td', { style: { padding: '3px 0' } }, what),
-        )),
-      ),
-    ));
+    // One table for every section, so the descriptions line up in one column.
+    const rows = SHORTCUTS.flatMap(([heading, items]) => [
+      el('tr', {}, el('th', { colSpan: 2, style: { textAlign: 'left', fontWeight: 'normal' } }, el('h3', { style: { margin: '8px 0 6px' } }, heading))),
+      ...items.map(([keys, what]) => el('tr', {},
+        el('td', { style: { padding: '3px 14px 3px 0', whiteSpace: 'nowrap' } }, el('kbd', {}, keys)),
+        el('td', { style: { padding: '3px 0' } }, what),
+      )),
+    ]);
     const { close } = openModal({
       title: t('Keyboard shortcuts'),
-      body: el('div', {}, ...sections),
+      body: el('table', { style: { width: '100%', borderCollapse: 'collapse' } }, el('tbody', {}, ...rows)),
       footer: [el('button.primary', { onClick: () => { close(); resolve(true); } }, t('Close'))],
       onClose: () => resolve(true),
     });
@@ -2303,15 +2344,22 @@ function showInfoDialog(title, bodyText) {
   });
 }
 
+/**
+ * "Before recording starts": how to stop on this desktop. Resolves false on
+ * Cancel, else { dontShowAgain } with the checkbox's state.
+ */
 function showRecordingReminder({
   actionLabel = t('Continue'),
   headline = t('StepForge will hide after you continue.'),
 } = {}) {
   return new Promise((resolve) => {
+    const dontShowAgain = el('input', { type: 'checkbox' });
+    const continueButton = el('button.primary', {
+      onClick: () => { close(); resolve({ dontShowAgain: dontShowAgain.checked }); },
+    }, actionLabel);
     const { close } = openModal({
       title: t('Before recording starts'),
       body: el('div.recording-notice', {},
-        el('div.recording-notice__badge', {}, t('Recording tip')),
         el('div.recording-notice__title', {}, headline),
         el('div.recording-notice__text', {},
           document.body.classList.contains('desktop-plasma')
@@ -2320,12 +2368,13 @@ function showRecordingReminder({
             ? t('To stop, use StepForge REC in the GNOME top panel, or restore StepForge from the dock.')
             : t('Use the floating bar to pause or finish. If you use the tray icon, look for the red dot beside the clock.'),
         ),
+        el('label', {}, dontShowAgain, ' ', t('Don’t show this again')),
       ),
       footer: [
-        el('button.primary', {
-          onClick: () => { close(); resolve(true); },
-        }, actionLabel),
+        el('button', { onClick: () => { close(); resolve(false); } }, t('Cancel')),
+        continueButton,
       ],
+      initialFocus: continueButton,
       onClose: () => resolve(false),
     });
   });

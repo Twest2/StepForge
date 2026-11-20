@@ -313,6 +313,7 @@ class GuideStore {
       }
     }
     copy.stepsOrder = src.stepsOrder.map((id) => idMap.get(id)).filter(Boolean);
+    if (copy.thumbnailStepId) copy.thumbnailStepId = idMap.get(copy.thumbnailStepId);
     return this.saveGuide(copy);
   }
 
@@ -530,6 +531,31 @@ class GuideStore {
   }
 
   /**
+   * The step and working screenshot for a library card: the step chosen
+   * with Use as library thumbnail, else the first step with a screenshot that
+   * isn't hidden, else the first with one; null if none. Reads step files
+   * only until it knows. The editor's step menu picks the same way.
+   */
+  thumbnailSource(guide) {
+    const imageOf = (stepId) => {
+      const step = readJsonIfExists(path.join(this.stepDir(guide.guideId, stepId), 'step.json'), null);
+      return step?.image?.workingPath ? { file: path.join(this.stepDir(guide.guideId, stepId), step.image.workingPath), step } : null;
+    };
+    if (guide.thumbnailStepId && guide.stepsOrder.includes(guide.thumbnailStepId)) {
+      const chosen = imageOf(guide.thumbnailStepId);
+      if (chosen) return chosen;
+    }
+    let fallback = null;
+    for (const stepId of guide.stepsOrder) {
+      const image = imageOf(stepId);
+      if (!image) continue;
+      if (!image.step.hidden) return image;
+      fallback ||= image;
+    }
+    return fallback;
+  }
+
+  /**
    * Make `buffer` the step's working image. One with the original's
    * bytes (an undone crop) uses the original's file; anything else is
    * written to working.png. Returns the working file that is no longer used, to delete
@@ -576,7 +602,7 @@ class GuideStore {
   }
 
   /**
-   * Replace a step's screenshot (Choose image…, and undoing it).
+   * Replace a step's screenshot (Choose image, and undoing it).
    * `images.original` becomes original.<ext>; `images.working`, when it
    * differs, becomes working.<ext>. A step without a screenshot gets one.
    * `stepPatch` is saved with it, so text and annotations go in one write.

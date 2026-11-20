@@ -515,7 +515,8 @@ function makeAccountsSettings(api, { view = null, onPublishToWeb = null } = {}) 
   const rowId = (provider) => (provider === 'google' ? 'drive' : provider);
   const services = Object.keys(CLOUD_SERVICES);
   const clouds = services.map((provider) => ({ provider, id: rowId(provider), panel: makeCloudSettings(api, { provider }),
-    state: el('span.account-state', {}, t('Checking…')) }));
+    state: el('span.account-state', {}, t('Checking…')),
+    description: el('span.muted', {}, CLOUD_SERVICES[provider].description) }));
   const github = makeGitHubSettings(api, { onPublishToWeb });
   const confluence = makeConfluenceSettings(api);
   const wikijs = makeWikiJsSettings(api);
@@ -527,13 +528,14 @@ function makeAccountsSettings(api, { view = null, onPublishToWeb = null } = {}) 
   // Service logos ship with the app (app/assets/icons); nothing is fetched.
   const row = (id, icon, name, description, state, badge = '') => el('button.account-row', { type: 'button', onClick: () => show(id) },
     el(`span.account-icon.${id}`, { 'aria-hidden': 'true' }, el('img', { src: `../assets/icons/${icon}`, alt: '' })),
-    el('span.account-text', {}, el('strong', {}, name, badge ? betaBadge(badge) : null), el('span.muted', {}, description)),
+    el('span.account-text', {}, el('strong', {}, name, badge ? betaBadge(badge) : null),
+      typeof description === 'string' ? el('span.muted', {}, description) : description),
     state,
     el('span.account-chevron', { 'aria-hidden': 'true' }, '›'));
   const list = el('div.account-list', {},
-    ...clouds.map(({ provider, id, state }) => {
+    ...clouds.map(({ provider, id, state, description }) => {
       const service = CLOUD_SERVICES[provider];
-      return row(id, service.icon, provider === 'webdav' ? t('Nextcloud or WebDAV') : service.name, service.description, state);
+      return row(id, service.icon, provider === 'webdav' ? t('Nextcloud or WebDAV') : service.name, description, state);
     }),
     row('github', 'github.svg', 'GitHub', t('Share guides on the web for a limited time with GitHub Pages.'), githubState),
     row('confluence', 'confluence.svg', 'Confluence', t('Publish guides as pages on your Confluence site.'), confluenceState, 'Beta'),
@@ -555,11 +557,14 @@ function makeAccountsSettings(api, { view = null, onPublishToWeb = null } = {}) 
   const setCloud = (status) => {
     if (disposed || !status) return;
     const active = status.provider || 'google';
-    for (const { provider, state } of clouds) {
+    for (const { provider, state, description } of clouds) {
       const connected = provider === active && Boolean(status.connected);
       const available = status.providers?.[provider]?.available ?? (provider === active ? status.available !== false : true);
       state.textContent = connected ? status.email || t('Connected') : available ? t('Not connected') : t('Unavailable');
       state.classList.toggle('on', connected);
+      const service = CLOUD_SERVICES[provider];
+      description.textContent = available || connected ? service.description
+        : t('This build has no valid app credentials for {service}.', { service: service.name });
     }
   };
   const setGitHub = (status) => {

@@ -51,7 +51,6 @@ You can switch models at any time.
 5. Choose **Test connection**. StepForge confirms it can reach Ollama and that
    the model is installed. If it isn't, StepForge lists the models you do
    have, and the **Model** box suggests them as you type.
-6. **Save.**
 
 ## 4. Let AI write your guide
 
@@ -208,5 +207,5 @@ The [privacy policy](PRIVACY.md#optional-ai) has the full details.
 | "The server refused the request (403)" or "didn't accept the API key (401)" | Check the API key. A 403 can also mean the key has no access to that model: Test connection says so when the server doesn't list the model. |
 | "Nothing at … answers chat requests (404)" | Check the **Server URL**: it's the address before `/chat/completions`, with `/v1` only if your server uses it. |
 | "This model doesn't accept a temperature of …" | Set **Temperature** to **Model default**, or choose **Use model default** after Test connection. |
-| The AI ▾ menu items are greyed out | Turn on **Settings → AI → Enable AI** and save, then select a step for the step actions. |
+| The AI ▾ menu items are greyed out | Turn on **Settings → AI → Enable AI**, then select a step for the step actions. |
 | Descriptions are vague | Try a model that reads screenshots from [Recommended models](#recommended-models), or a larger one if your computer can handle it. |

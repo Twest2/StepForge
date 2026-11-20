@@ -78,36 +78,26 @@ test('the step panel’s checkboxes and description toolbar are translated', () 
   const ja = mountedEditor('ja');
   assert.deepEqual([ja.dom.hiddenToggle, ja.dom.skippedToggle, ja.dom.forceNewPageToggle, ja.dom.focusedViewToggle].map((n) => n.text.trim()),
     ['非表示', 'スキップ', '改ページ', 'フォーカス表示']);
-  assert.deepEqual(ja.dom.richToolbar.children.map((n) => n.text), ['太字', '斜体', '箇条書き', '番号付きリスト', '引用', 'リンク', 'クリア', 'ステップ']);
+  // The description toolbar is icons: each button's name and tooltip are in the language.
+  assert.deepEqual(ja.dom.richToolbar.children.map((n) => n.props['aria-label']), ['太字', '斜体', '箇条書き', '番号付きリスト', '引用', 'リンク', 'クリア', 'ステップへのリンク']);
+  assert.ok(ja.dom.richToolbar.children.every((n) => n.props.title && /<svg/.test(n.props.innerHTML)));
 });
 
-test('deleting a step asks in the interface language, with the step’s name', async () => {
-  const asked = [];
-  const confirmDialog = async (message) => { asked.push(message); return false; };
-  for (const [language, expected] of [['zh-CN', '删除“node”？'], ['fr', 'Supprimer « node » ?'], ['en', 'Delete “node”?']]) {
-    const editor = Object.create(loadEditor(language, { confirmDialog }).prototype);
-    editor.stepMap = new Map([['s1', { stepId: 's1', title: 'node' }]]);
-    editor.selectedStepId = 's1';
-    asked.length = 0;
-    await editor.deleteSelectedStep();
-    assert.deepEqual(asked, [expected]);
+test('the delete toast is translated, with plural forms and its Undo button', () => {
+  const cases = [
+    ['zh-CN', 1, '已删除 1 个步骤。', '撤消'],
+    ['fr', 1, '1 étape supprimée.', 'Annuler'],
+    ['ru', 1, 'Удалён 1 шаг.', 'Отменить'],
+    ['ru', 3, 'Удалено 3 шага.', 'Отменить'],
+    ['ru', 5, 'Удалено 5 шагов.', 'Отменить'],
+    ['en', 2, '2 steps deleted.', 'Undo'],
+  ];
+  for (const [language, count, expected, undo] of cases) {
+    const toasts = [];
+    const editor = Object.create(loadEditor(language).prototype);
+    editor.onToast = (message, options) => toasts.push({ message, options });
+    editor.toastStepsDeleted(count, { type: 'delete-step' });
+    assert.equal(toasts[0].message, expected, `${language} ${count}`);
+    assert.equal(toasts[0].options.action.label, undo, `${language} Undo label`);
   }
-  // A step without a title is named in the language too.
-  const editor = Object.create(loadEditor('zh-CN', { confirmDialog }).prototype);
-  editor.stepMap = new Map([['s1', { stepId: 's1', title: '' }]]);
-  editor.selectedStepId = 's1';
-  asked.length = 0;
-  await editor.deleteSelectedStep();
-  assert.deepEqual(asked, ['删除“未命名步骤”？']);
-});
-
-test('deleting several steps counts them with the language’s plural forms', async () => {
-  const asked = [];
-  const GuideEditor = loadEditor('ru', { confirmDialog: async (message) => { asked.push(message); return false; } });
-  for (const n of [1, 3, 5]) {
-    const editor = Object.create(GuideEditor.prototype);
-    editor.selectedSteps = new Set(Array.from({ length: n }, (_, i) => `s${i}`));
-    await editor.deleteSelectedSteps();
-  }
-  assert.deepEqual(asked, ['Удалить 1 шаг?', 'Удалить 3 шага?', 'Удалить 5 шагов?']);
 });

@@ -222,3 +222,33 @@ test('library thumbnails show the step’s annotations and update when one is ad
   }, 'thumbnail redrawn after adding a rectangle');
   assert.ok(after.inBox[1] > 120, 'the first rectangle is still there');
 }));
+
+test('library thumbnails show the step’s focused view', () => withApp('library-thumbnail-focused', {
+  sample: false,
+  setup: async (env) => {
+    // Only the top-left quarter is green; a 2× focused view on that corner fills the thumbnail with it.
+    const screenshot = createImage(640, 360, [240, 240, 240, 255]);
+    fillRect(screenshot, 0, 0, 320, 180, [0, 160, 0, 255]);
+    const bytes = await sharp(encodePng(screenshot)).webp({ lossless: true }).toBuffer();
+    const store = new GuideStore(env.dataDir);
+    const guide = store.createGuide({ title: 'Thumbnail focused view test' });
+    env.guideId = guide.guideId;
+    store.addStep(guide.guideId, {
+      title: 'Focused screenshot',
+      focusedView: { enabled: true, zoom: 2, panX: 0, panY: 1 },
+    }, bytes, { width: 640, height: 360 });
+  },
+}, async (app, env) => {
+  await flows.openLibrary(app);
+  const corner = await flows.eventually(() => app.evaluate(`(() => {
+    const img = document.querySelector('.card-thumb[data-guide-id="${env.guideId}"]');
+    if (!img?.offsetParent || img.naturalWidth !== 640) return null;
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0);
+    return [...ctx.getImageData(560, 320, 1, 1).data];
+  })()`), 'thumbnail loaded');
+  assert.ok(corner[1] > 120 && corner[0] < 60, `the bottom-right of the card shows the zoomed-in green corner (${corner})`);
+}));

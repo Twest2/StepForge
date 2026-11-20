@@ -41,7 +41,7 @@ const { buildSampleAst } = require('../core/branding-sample');
 const { setImageCodec, rasterToPng, sniffImageFormat, readImageSize, optimizeScreenshot, imagePreviewUrl } = require('../core/image-format');
 const { optimizeGuideImages } = require('../core/image-optimize');
 const { decodePng, encodePng } = require('../core/png');
-const { renderAnnotations } = require('../core/raster');
+const { renderAnnotations, applyFocusedView } = require('../core/raster');
 const { createImageCodec } = require('../core/image-codec');
 const { AI_TARGETS } = require('../core/text-intel');
 const { agentChangesSince, agentChangesStamp } = require('../core/agent-changes');
@@ -895,8 +895,9 @@ function setupIpc() {
   const chosenOutputDirs = new Set();
 
   // library
-  // The renderer caches the scaled thumbnail under this version. Hash the
-  // annotations so editing any of them invalidates it even if the image didn't change.
+  // The renderer caches the scaled thumbnail under this version. Hash the annotations
+  // and the focused view so editing either invalidates it even if the image didn't change.
+  // (A crop rewrites the working image itself, so its file stamp already changes.)
   const thumbnailFile = (guide) => {
     try {
       const source = store.thumbnailSource(guide);
@@ -905,8 +906,9 @@ function setupIpc() {
       const stat = fs.statSync(file, { throwIfNoEntry: false });
       if (!stat?.isFile()) return null;
       const annotations = step.annotations || [];
-      const annotationHash = createHash('sha256').update(JSON.stringify(annotations)).digest('hex');
-      return { file, annotations, version: `${step.stepId}:${path.basename(file)}:${stat.mtimeMs}:${stat.size}:${annotationHash}` };
+      const focusedView = step.focusedView?.enabled && step.focusedView.zoom > 1 ? step.focusedView : null;
+      const drawHash = createHash('sha256').update(JSON.stringify([annotations, focusedView])).digest('hex');
+      return { file, annotations, focusedView, version: `${step.stepId}:${path.basename(file)}:${stat.mtimeMs}:${stat.size}:${drawHash}` };
     } catch {
       return null; // A broken step file costs the card its picture.
     }
@@ -917,10 +919,11 @@ function setupIpc() {
     if (!thumbnail || thumbnail.version !== version) return null;
     try {
       const bytes = fs.readFileSync(thumbnail.file);
-      // Draw the annotations, as the editor shows them, at full resolution before the
-      // renderer crops and scales. This also fills privacy blurs before any pixel leaves.
-      const annotated = thumbnail.annotations.length
-        ? encodePng(renderAnnotations(decodePng(await rasterToPng(bytes)), thumbnail.annotations))
+      // Draw the annotations, as the editor shows them, and zoom to the focused view (as
+      // exports do) at full resolution before the renderer crops and scales. Blurs are
+      // filled before the zoom, so no private pixel leaves.
+      const annotated = thumbnail.annotations.length || thumbnail.focusedView
+        ? encodePng(applyFocusedView(renderAnnotations(decodePng(await rasterToPng(bytes)), thumbnail.annotations), thumbnail.focusedView))
         : bytes;
       // A codec request may have yielded while the screenshot or its annotations changed.
       return currentThumbnail(guideId)?.version === version ? annotated : null;

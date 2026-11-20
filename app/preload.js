@@ -18,6 +18,7 @@ const api = {
   library: {
     list: invoke('library:list'),
     thumbnail: invoke('library:thumbnail'),
+    saveThumbnail: invoke('library:saveThumbnail'),
     create: invoke('library:create'),
     duplicate: invoke('library:duplicate'),
     delete: invoke('library:delete'),

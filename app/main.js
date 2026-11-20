@@ -42,6 +42,7 @@ const { setImageCodec, rasterToPng, sniffImageFormat, readImageSize, optimizeScr
 const { optimizeGuideImages } = require('../core/image-optimize');
 const { decodePng, encodePng } = require('../core/png');
 const { renderAnnotations, applyFocusedView } = require('../core/raster');
+const { atomicWriteFileSync } = require('../core/util');
 const { createImageCodec } = require('../core/image-codec');
 const { AI_TARGETS } = require('../core/text-intel');
 const { agentChangesSince, agentChangesStamp } = require('../core/agent-changes');
@@ -914,9 +915,35 @@ function setupIpc() {
     }
   };
   const currentThumbnail = (guideId) => store.guideExists(guideId) ? thumbnailFile(store.getGuide(guideId)) : null;
+  // Finished card images (640px WebP, drawn by the renderer) are kept across restarts,
+  // one per guide, named after the version they show. Outside library/, so never synced.
+  const thumbnailCacheDir = path.join(store.root, 'cache', 'thumbnails');
+  const thumbnailCacheName = (guideId, version) => `${guideId}-${createHash('sha256').update(version).digest('hex').slice(0, 16)}.webp`;
+  const savedThumbnails = (guideId) => {
+    try { return fs.readdirSync(thumbnailCacheDir).filter((name) => name.startsWith(`${guideId}-`)); } catch { return []; }
+  };
+  // Older versions (say, from before a blur was added) and deleted guides don't linger.
+  const forgetSavedThumbnails = (guideId, keep = null) => {
+    for (const name of savedThumbnails(guideId)) if (name !== keep) fs.rmSync(path.join(thumbnailCacheDir, name), { force: true });
+  };
+  let savedThumbnailsPruned = false;
+  const pruneSavedThumbnails = (guideIds) => {
+    if (savedThumbnailsPruned) return;
+    savedThumbnailsPruned = true;
+    try {
+      for (const name of fs.readdirSync(thumbnailCacheDir)) {
+        if (!guideIds.has(name.replace(/-[0-9a-f]{16}\.webp$/, ''))) fs.rmSync(path.join(thumbnailCacheDir, name), { force: true });
+      }
+    } catch { /* no cache yet */ }
+  };
   h('library:thumbnail', async ({ guideId, version }) => {
     const thumbnail = currentThumbnail(guideId);
     if (!thumbnail || thumbnail.version !== version) return null;
+    const savedName = thumbnailCacheName(guideId, version);
+    forgetSavedThumbnails(guideId, savedName);
+    try {
+      return { dataUrl: `data:image/webp;base64,${fs.readFileSync(path.join(thumbnailCacheDir, savedName)).toString('base64')}` };
+    } catch { /* not drawn yet: send the screenshot to draw */ }
     try {
       const bytes = fs.readFileSync(thumbnail.file);
       // Draw the annotations, as the editor shows them, and zoom to the focused view (as
@@ -926,21 +953,40 @@ function setupIpc() {
         ? encodePng(applyFocusedView(renderAnnotations(decodePng(await rasterToPng(bytes)), thumbnail.annotations), thumbnail.focusedView))
         : bytes;
       // A codec request may have yielded while the screenshot or its annotations changed.
-      return currentThumbnail(guideId)?.version === version ? annotated : null;
+      return currentThumbnail(guideId)?.version === version ? { bytes: annotated } : null;
     } catch {
       return null;
     }
   }, { validate: (a) => c.id(a.guideId) && c.string(a.version, 256) });
-  h('library:list', () => ({
-    guides: store.listGuides().map((g) => ({
-      ...g,
-      stepCount: g.stepsOrder.length,
-      locked: g.linkedSource ? Boolean(readLock(g.linkedSource.path)) : false,
-      // A chosen image is already small; a screenshot is fetched per card by version.
-      thumbnail: g.thumbnailImage ? null : thumbnailFile(g)?.version || null,
-    })),
-    folders: store.loadFolders(),
-  }));
+  // The renderer hands back the card image it drew so the next start can reuse it.
+  h('library:saveThumbnail', ({ guideId, version, dataUrl }) => {
+    if (currentThumbnail(guideId)?.version !== version) return false; // the step changed meanwhile
+    const bytes = Buffer.from(dataUrl.slice('data:image/webp;base64,'.length), 'base64');
+    if (sniffImageFormat(bytes) !== 'webp') return false;
+    try {
+      fs.mkdirSync(thumbnailCacheDir, { recursive: true });
+      const name = thumbnailCacheName(guideId, version);
+      atomicWriteFileSync(path.join(thumbnailCacheDir, name), bytes);
+      forgetSavedThumbnails(guideId, name);
+      return true;
+    } catch {
+      return false; // only costs a redraw next time
+    }
+  }, { validate: (a) => c.id(a.guideId) && c.string(a.version, 256) && c.string(a.dataUrl, 2000000) && a.dataUrl.startsWith('data:image/webp;base64,') });
+  h('library:list', () => {
+    const guides = store.listGuides();
+    pruneSavedThumbnails(new Set(guides.map((g) => g.guideId)));
+    return {
+      guides: guides.map((g) => ({
+        ...g,
+        stepCount: g.stepsOrder.length,
+        locked: g.linkedSource ? Boolean(readLock(g.linkedSource.path)) : false,
+        // A chosen image is already small; a screenshot is fetched per card by version.
+        thumbnail: g.thumbnailImage ? null : thumbnailFile(g)?.version || null,
+      })),
+      folders: store.loadFolders(),
+    };
+  });
   h('library:create', ({ title, captureDraft }) => {
     const guide = store.createGuide({
       title: title || t('Untitled guide'),

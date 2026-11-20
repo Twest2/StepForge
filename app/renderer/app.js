@@ -50,7 +50,8 @@ function trashCountdown(item, library = {}) {
 
 /**
  * Library card screenshots, scaled down to the 16:9 top-left crop a card
- * shows, once per session. Showing the screenshot files themselves kept every
+ * shows, drawn once and saved (app/main.js keeps them in cache/thumbnails), so a
+ * restart reuses them. Showing the screenshot files themselves kept every
  * full-size decode in memory (about 700 MB more for 300 guides with 4K
  * screenshots). createImageBitmap decodes off the main thread and keeps only
  * the small copy; one at a time, as cards come near the screen.
@@ -63,16 +64,20 @@ function smallThumbnail(guideId, version) {
   const cached = smallThumbnails.get(guideId);
   if (cached?.version === version) return cached.job;
   const job = thumbnailQueue.then(async () => {
-    const bytes = await api.library.thumbnail({ guideId, version });
-    if (!bytes) throw new Error('no screenshot');
-    const bitmap = await createImageBitmap(new Blob([bytes]), { resizeWidth: THUMBNAIL_WIDTH * 2, resizeQuality: 'medium' });
+    const result = await api.library.thumbnail({ guideId, version });
+    if (!result) throw new Error('no screenshot');
+    if (result.dataUrl) return result.dataUrl; // drawn in an earlier session and saved
+    const bitmap = await createImageBitmap(new Blob([result.bytes]), { resizeWidth: THUMBNAIL_WIDTH * 2, resizeQuality: 'medium' });
     const cropWidth = Math.min(bitmap.width, bitmap.height * 16 / 9);
     const canvas = document.createElement('canvas');
     canvas.width = Math.min(THUMBNAIL_WIDTH, Math.round(cropWidth));
     canvas.height = Math.round(canvas.width * 9 / 16);
     canvas.getContext('2d').drawImage(bitmap, 0, 0, cropWidth, cropWidth * 9 / 16, 0, 0, canvas.width, canvas.height);
     bitmap.close();
-    return canvas.toDataURL('image/webp', 0.85);
+    const dataUrl = canvas.toDataURL('image/webp', 0.85);
+    // Saved for the next start, so the screenshot isn't decoded and redrawn again.
+    void api.library.saveThumbnail({ guideId, version, dataUrl }).catch(() => {});
+    return dataUrl;
   });
   thumbnailQueue = job.catch(() => {
     if (smallThumbnails.get(guideId)?.job === job) smallThumbnails.delete(guideId);

@@ -252,3 +252,30 @@ test('library thumbnails show the step’s focused view', () => withApp('library
   })()`), 'thumbnail loaded');
   assert.ok(corner[1] > 120 && corner[0] < 60, `the bottom-right of the card shows the zoomed-in green corner (${corner})`);
 }));
+
+test('a drawn library thumbnail is saved, reused, and replaced when the step changes', () => withApp('library-thumbnail-saved', {}, async (app, env) => {
+  const cacheDir = path.join(env.dataDir, 'cache', 'thumbnails');
+  const saved = () => (fs.existsSync(cacheDir) ? fs.readdirSync(cacheDir) : []);
+  await flows.openLibrary(app);
+  const card = await flows.eventually(() => app.evaluate(`(() => {
+    const img = document.querySelector('.guide-card .card-thumb');
+    return img?.naturalWidth === 640 ? { guideId: img.dataset.guideId, version: img.dataset.version } : null;
+  })()`), 'thumbnail drawn');
+  const [first] = await flows.eventually(() => (saved().length === 1 ? saved() : null), 'thumbnail saved to disk');
+  assert.ok(first.startsWith(`${card.guideId}-`) && first.endsWith('.webp'));
+  // What the next start gets: the saved 640px image, without redrawing the screenshot.
+  const reused = await app.evaluate(`window.stepforge.library.thumbnail(${JSON.stringify(card)})`);
+  assert.match(reused?.dataUrl || '', /^data:image\/webp;base64,/);
+
+  // Editing the step changes the version: the old image is replaced, not kept.
+  const guide = findGuideByTitle(env.dataDir, SAMPLE_TITLE);
+  const stepFile = path.join(guide.dir, 'steps', guide.guide.stepsOrder[0], 'step.json');
+  const step = readJson(stepFile);
+  fs.writeFileSync(stepFile, JSON.stringify({ ...step, annotations: [...step.annotations, { id: 'extra', type: 'rect', x: 0.6, y: 0.6, w: 0.2, h: 0.2 }] }));
+  await app.evaluate('location.reload()'); // like a restart
+  await flows.openLibrary(app);
+  await flows.eventually(async () => {
+    const files = saved();
+    return files.length === 1 && files[0] !== first;
+  }, 'the new version replaced the saved thumbnail');
+}));

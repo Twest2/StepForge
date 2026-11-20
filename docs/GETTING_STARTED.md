@@ -165,9 +165,9 @@ asks.
 ### Flowcharts
 
 A step can have a flowchart, for procedures that branch ("Already have an
-account?"). Choose **+ Flowchart** under **Blocks** to add one. The canvas
-toolbar switches to flowchart tools, and its menu lets you switch between
-**Image** and **Flowchart**:
+account?"). Pick **Flowchart** in the menu at the right end of the canvas
+toolbar (or **+ Flowchart** under Blocks). The toolbar switches to flowchart
+tools:
 
 - **Step box**, **Decision** and **Start or end**: pick one, then click the
   canvas. Type the text and press **Enter**. Double-click empty space to add a

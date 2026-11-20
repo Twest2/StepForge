@@ -70,7 +70,7 @@ function el(spec, props = {}, ...children) {
   return node;
 }
 
-/** The "Beta" chip beside features that are new and may still change (AI, Confluence, Wiki.js). */
+/** The "Beta" chip beside features that are new and may still change (AI, Confluence). */
 function betaBadge(text = 'Beta') {
   return el('span.settings-chip.beta-badge', {}, t(text));
 }

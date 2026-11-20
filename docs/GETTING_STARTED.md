@@ -319,7 +319,7 @@ an item to go to that step, or export anyway.
 | **Markdown** | Git repositories, READMEs, and docs sites |
 | **HTML** (simple or rich) | A single web page; *rich* adds a sidebar and done-checkboxes |
 | **Confluence** (beta) | Importing into Confluence |
-| **Wiki.js** (beta) | Uploading to a Wiki.js site by hand |
+| **Wiki.js** | Uploading to a Wiki.js site by hand |
 | **GIF** | A short animated walkthrough |
 | **Image bundle** | Numbered, annotated PNGs for use anywhere |
 | **JSON** | Feeding guides into your own tools |

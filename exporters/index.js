@@ -48,7 +48,7 @@ const FORMAT_INFO = {
   gif: { description: 'An animated slideshow of the screenshots for chat, tickets and READMEs.', options: require('./gif').OPTION_INFO },
   'image-bundle': { description: 'A folder of numbered, annotated screenshots with an index.json.', options: require('./image-bundle').OPTION_INFO },
   confluence: { description: 'A Word document ready for Confluence\'s built-in import, so you can create the page from the website.', options: require('./confluence').OPTION_INFO, badge: 'Beta' },
-  wikijs: { description: 'A Wiki.js 2 markdown page with Wiki.js callouts, plus a folder of screenshots.', options: require('./wikijs').OPTION_INFO, badge: 'Beta' },
+  wikijs: { description: 'A Wiki.js 2 markdown page with Wiki.js callouts, plus a folder of screenshots.', options: require('./wikijs').OPTION_INFO },
   json: { description: 'The raw guide data and screenshots, for scripts and integrations.', options: require('./json').OPTION_INFO },
 };
 

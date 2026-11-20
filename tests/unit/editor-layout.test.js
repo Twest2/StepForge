@@ -10,8 +10,8 @@ const { makeTmpDir, rmrf, rendererI18n } = require('./helpers');
 
 test('normal window growth changes the canvas width while both side panes remain fixed', () => {
   const preferred = { steps: 380, properties: 360 };
-  const before = layout.layoutPanes(1100, preferred);
-  const after = layout.layoutPanes(1400, preferred);
+  const before = layout.layoutPanes(1400, preferred);
+  const after = layout.layoutPanes(1700, preferred);
   assert.equal(after.steps, before.steps);
   assert.equal(after.properties, before.properties);
   assert.equal(after.canvas - before.canvas, 300);
@@ -24,11 +24,20 @@ test('narrow windows retain sensible side-pane minimums and restore at most the 
   assert.ok(narrow.properties >= layout.MIN_WIDTHS.properties);
   assert.ok(narrow.canvas >= layout.MIN_CANVAS_WIDTH);
   assert.equal(narrow.steps + narrow.properties + narrow.canvas + 2 * layout.DIVIDER_WIDTH, 864);
-  assert.equal(narrow.canvas, 320, 'the canvas must retain a usable minimum at the supported 880 px window width');
+  assert.equal(narrow.canvas, 352, 'the canvas takes the space left at both side-pane minimums');
   assert.equal(layout.layoutPanes(584, preferred).canvas, 320, 'an unsupported container size must not shrink the canvas');
   const restored = layout.layoutPanes(1500, preferred);
   assert.equal(restored.steps, 420);
   assert.equal(restored.properties, 380);
+});
+
+test('compact windows reserve 45 percent for the canvas wherever the side panes can fit', () => {
+  for (const width of [960, 1093]) {
+    const panes = layout.layoutPanes(width, layout.DEFAULT_WIDTHS);
+    assert.equal(panes.canvas, Math.round(width * 0.45));
+    assert.ok(panes.steps >= layout.MIN_WIDTHS.steps);
+    assert.ok(panes.properties >= layout.MIN_WIDTHS.properties);
+  }
 });
 
 test('manually resizing either pane leaves the other pane unchanged and respects its available bounds', () => {
@@ -87,6 +96,10 @@ test('the steps pane minimum fits its header and its ↑ ↓ Duplicate Delete ro
   assert.equal(editor.paneMinimums().properties, layout.MIN_WIDTHS.properties);
   // Select mode hides the row; the minimum stays where it was.
   foot.children = [];
+  assert.equal(editor.paneMinimums().steps, 317);
+  editor.dom.root = { clientWidth: 960 };
+  assert.equal(editor.paneMinimums().steps, layout.MIN_WIDTHS.steps);
+  editor.dom.root.clientWidth = 1280;
   assert.equal(editor.paneMinimums().steps, 317);
   // Short labels (Japanese) keep the usual minimum.
   const short = Object.create(context.window.GuideEditor.prototype);

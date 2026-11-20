@@ -817,7 +817,7 @@ class GuideEditor {
             el('option', { value: 'visual' }, t('Main visual')),
             el('option', { value: 'block' }, t('Block')),
           ),
-          this.dom.visualSelect = el('select.visual-select', { title: t('Edit the image or the flowchart'), 'aria-label': t('Edit the image or the flowchart') },
+          this.dom.visualSelect = el('select.visual-select', { hidden: true, title: t('Edit the image or the flowchart'), 'aria-label': t('Edit the image or the flowchart') },
             el('option', { value: 'image' }, t('Image')),
             el('option', { value: 'flowchart' }, t('Flowchart')),
           ),
@@ -1061,9 +1061,11 @@ class GuideEditor {
    * The pane minimums, with the steps pane wide enough for its header and
    * its ↑ ↓ Duplicate Delete row on one line in the current language and
    * font. Kept at the widest seen, since the footer hides in Select mode.
+   * In compact windows the header and footer can wrap to leave room for the image.
    */
   paneMinimums() {
-    const mins = window.StepForgePaneLayout.MIN_WIDTHS;
+    const { MIN_WIDTHS: mins, COMPACT_EDITOR_WIDTH } = window.StepForgePaneLayout;
+    if (this.dom.root?.clientWidth < COMPACT_EDITOR_WIDTH) return mins;
     const rowWidth = (row) => {
       const items = [...row.children].filter((child) => child.offsetWidth);
       if (!items.length) return 0;
@@ -2389,15 +2391,15 @@ class GuideEditor {
   syncCanvasMode() {
     if (!this.dom.visualSelect) return false;
     const step = this.currentStep;
+    const chart = Boolean(step?.flowchart);
     if (step && this.canvasModeStepId !== step.stepId) {
       this.canvasModeStepId = step.stepId;
-      const chart = window.StepForgeFlowchart?.hasFlowchart(step);
       this.canvasMode = chart && (step.flowchartPlacement !== 'block' || !step.image) ? 'flowchart' : 'image';
       this.flowEditor?.select(null);
     }
-    const flowchart = Boolean(step) && this.canvasMode === 'flowchart';
+    const flowchart = chart && this.canvasMode === 'flowchart';
     this.dom.visualSelect.value = flowchart ? 'flowchart' : 'image';
-    this.dom.visualSelect.disabled = !step;
+    this.dom.visualSelect.hidden = !chart;
     this.dom.imageTools.hidden = flowchart;
     this.dom.flowTools.hidden = !flowchart;
     this.dom.flowPlacementSelect.hidden = !flowchart;
@@ -2646,7 +2648,7 @@ class GuideEditor {
     step.flowchart = null;
     this.pendingSave = true;
     this.saveStepDebounced();
-    this.canvasMode = step.image ? 'image' : 'flowchart';
+    this.canvasMode = 'image';
     this.renderCanvas();
     this.renderBlocksPanel();
     this.onToast(`${t('Flowchart removed.')} ${t('Press Ctrl+Z to undo.')}`);

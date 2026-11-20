@@ -30,7 +30,7 @@ test('the AI menu lists every writing action, usable only while AI is on', () =>
     const items = editor.aiMenuItems();
     assert.deepEqual([...actionItems(items).map((item) => item.label)], WRITE_ACTIONS);
     assert.ok(actionItems(items).every((item) => item.disabled === !enabled));
-    assert.equal(items.some((item) => item.label === 'Turn on AI in Settings…'), !enabled);
+    assert.equal(items.some((item) => item.label === 'Turn on AI in Settings'), !enabled);
   }
   // Whole guide and whole step come first, then a divider, then single fields.
   editor.setSettings({ ai: { enabled: true } });
@@ -59,7 +59,7 @@ test('Turn on AI in Settings opens the AI section and the menu follows the saved
     dialogs: { showSettingsDialog: async ({ section }) => { openedSection = section; settings = { ai: { enabled: true } }; } },
   });
   editor.setSettings(settings);
-  await editor.aiMenuItems().find((item) => item.label === 'Turn on AI in Settings…').action();
+  await editor.aiMenuItems().find((item) => item.label === 'Turn on AI in Settings').action();
   assert.equal(openedSection, 'ai');
   assert.ok(actionItems(editor.aiMenuItems()).every((item) => !item.disabled));
 });

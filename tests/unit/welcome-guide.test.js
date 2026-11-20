@@ -30,7 +30,7 @@ test('the welcome guide: five steps with screenshots, code and a table', (t) => 
   assert.equal(guide.descriptionHtml, '<p>A sample guide to show you around.</p>');
   const steps = guide.stepsOrder.map((id) => store.getStep(guideId, id));
   assert.deepEqual(steps.map((s) => s.title), [
-    'Start a new capture', 'Tidy up your steps', 'Draw on the screenshot', 'Add code and tables', 'Export or share it',
+    'Start a new recording', 'Tidy up your steps', 'Draw on the screenshot', 'Add code and tables', 'Export or share it',
   ]);
   assert.deepEqual(steps.map((s) => s.kind), ['image', 'image', 'image', 'image', 'image']);
   assert.equal(steps[3].annotations[0].type, 'arrow', 'Add code and tables points at Blocks');
@@ -42,8 +42,8 @@ test('the welcome guide: five steps with screenshots, code and a table', (t) => 
     for (const a of step.annotations) assert.ok(a.x >= 0 && a.y >= 0 && a.x + a.w <= 1 && a.y + a.h <= 1, `${step.title}: annotation inside the picture`);
   }
   // Button names are bold.
-  assert.match(steps[0].descriptionHtml, /Click <strong>New Capture<\/strong>, then/);
-  assert.match(steps[2].textBlocks[0].descriptionHtml, /<strong>More → Find private details…<\/strong>/);
+  assert.match(steps[0].descriptionHtml, /Click <strong>New recording<\/strong>, then/);
+  assert.match(steps[2].textBlocks[0].descriptionHtml, /<strong>More → Find private details<\/strong>/);
   assert.equal(steps[3].codeBlocks[0].language, 'bash');
   assert.deepEqual(steps[3].textBlocks.map((b) => [b.level, b.position]), [['info', 'after-description']]);
   assert.deepEqual(steps[3].tableBlocks[0].rows[1], ['Ctrl+Shift+1', 'Take a step without clicking']);
@@ -58,7 +58,7 @@ test('the welcome guide follows the interface language and this computer’s sho
   const guide = store.getGuide(guideId);
   assert.equal(guide.title, 'Bienvenue dans StepForge');
   const steps = guide.stepsOrder.map((id) => store.getStep(guideId, id));
-  assert.match(steps[0].descriptionHtml, /<strong>Nouvelle capture<\/strong>/);
+  assert.match(steps[0].descriptionHtml, /<strong>Nouvel enregistrement<\/strong>/);
   assert.deepEqual(steps[3].tableBlocks[0].rows.slice(1).map((row) => row[0]), ['Meta+Alt+1', 'Ctrl+Alt+2']);
 });
 

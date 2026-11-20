@@ -133,6 +133,7 @@ class StepForgeApp {
       root: this.editorHost,
       onMetaChange: (meta) => this.onEditorMeta(meta),
       onToast: (msg, opts) => toast(msg, opts),
+      onStartRecording: () => this.startRecording(),
       onBack: async (reason) => {
         if (reason === 'new') {
           await this.createGuide();
@@ -140,10 +141,11 @@ class StepForgeApp {
         }
         await this.showLibrary();
       },
-      // Export → Confluence/Wiki.js recommends publishing instead.
-      onPublish: (format) => (format === 'confluence'
-        ? this.publishToConfluence(this.editor.guideId, this.editor.guide?.title)
-        : this.publishToWikiJs(this.editor.guideId, this.editor.guide?.title)),
+      // Export → Confluence/Wiki.js recommends publishing instead; quick actions publish to the web.
+      onPublish: (format) => (format === 'web' ? this.publishToWeb(this.editor.guideId, this.editor.guide?.title)
+        : format === 'confluence'
+          ? this.publishToConfluence(this.editor.guideId, this.editor.guide?.title)
+          : this.publishToWikiJs(this.editor.guideId, this.editor.guide?.title)),
     });
 
     this.searchInput.addEventListener('input', debounce(() => {
@@ -403,16 +405,16 @@ class StepForgeApp {
         el('div.welcome-actions', {},
           el('button.welcome-btn.primary', {
             type: 'button',
-            onClick: () => this.startNewCapture(),
+            onClick: () => this.startNewRecording(),
           },
-          el('span.welcome-btn-label', {}, t('New Capture')),
-          el('span.welcome-btn-hint', {}, t('Start a guide and capture your screen')),
+          el('span.welcome-btn-label', {}, t('New recording')),
+          el('span.welcome-btn-hint', {}, t('Start a guide and record your clicks as steps')),
           ),
           el('button.welcome-btn', {
             type: 'button',
             onClick: () => this.openExistingWorkspace(),
           },
-          el('span.welcome-btn-label', {}, t('Existing Workspace')),
+          el('span.welcome-btn-label', {}, t('Library')),
           el('span.welcome-btn-hint', {}, t('Browse your guide library')),
           ),
           el('button.welcome-btn', {
@@ -449,11 +451,14 @@ class StepForgeApp {
     );
   }
 
-  async startNewCapture() {
+  // Welcome → New recording: a new guide, then the start-recording flow.
+  // Cancelling the reminder leaves the user in the empty editor.
+  async startNewRecording() {
     const guide = await api.library.create({ title: t('Untitled capture'), captureDraft: true });
     await this.refreshData();
     await this.openGuide(guide.guideId);
     await this.armCaptureSession(guide.guideId);
+    await this.startRecording();
   }
 
   async openExistingWorkspace() {
@@ -481,17 +486,36 @@ class StepForgeApp {
     this.renderTopbar();
   }
 
-  // Start a paused session, optionally show a reminder, and continue once
-  // the user acknowledges it.
-  async armCaptureSession(guideId, reminder = null) {
+  // Start a paused session for the guide; recording begins on resume.
+  async armCaptureSession(guideId) {
     const state = await api.capture.session({ action: 'start', guideId });
     this.updateCaptureState(state);
-    if (!reminder) return state;
-    const acknowledged = await dialogs.showRecordingReminder(reminder);
-    if (!acknowledged) return state;
-    const next = await api.capture.session({ action: 'resume', guideId });
-    this.updateCaptureState(next);
-    return next;
+    return state;
+  }
+
+  sendCaptureSession(payload) {
+    return api.capture.session(payload).then((next) => { this.updateCaptureState(next); return next; });
+  }
+
+  // Start (or resume) recording the open guide from the red pill, the
+  // empty canvas and Quick actions. A session that has not recorded yet shows
+  // the "Before recording starts" tip first, unless the user turned it off.
+  async startRecording() {
+    const s = this.captureState || {};
+    // A session left on another guide (an import or a file opened meanwhile) must not record into it.
+    if (!s.active || (this.editor.guideId && s.guideId !== this.editor.guideId)) return this.startCaptureSession(this.editor.guideId);
+    if (!s.paused) return s;
+    if (!s.count && !await this.confirmRecordingReminder()) return s;
+    return this.sendCaptureSession({ action: 'resume' });
+  }
+
+  async confirmRecordingReminder() {
+    if (this.state.settings?.capture?.recordingReminder === false) return true;
+    const answer = await dialogs.showRecordingReminder();
+    if (answer?.dontShowAgain) {
+      this.state.settings = await api.settings.set({ keyPath: 'capture.recordingReminder', value: false }).catch(() => this.state.settings);
+    }
+    return Boolean(answer);
   }
 
   async startCaptureSession(guideId) {
@@ -511,8 +535,7 @@ class StepForgeApp {
     }
   }
 
-  // Opens a guide and arms (paused) capture for it, so the red REC bar pops
-  // up right away with a "Start recording" option to resume capturing steps.
+  // Opens a guide and arms a paused session for the red recording control.
   async openGuideAndArmCapture(guideId, stepId = null) {
     await this.openGuide(guideId, stepId);
     // Don't restart (and reset the count of) a session already running for this guide.
@@ -571,13 +594,11 @@ class StepForgeApp {
         el('button', {
           type: 'button',
           disabled: Boolean(this.startingCaptureSession),
-          onClick: () => this.startCaptureSession(this.editor.guideId),
+          onClick: () => this.startRecording(),
         }, this.startingCaptureSession ? t('Starting…') : t('Start recording')),
       );
       return;
     }
-
-    const send = (payload) => api.capture.session(payload).then((next) => this.updateCaptureState(next));
 
     // What is currently triggering captures, so the user knows what to do.
     const notStarted = s.paused && !s.count;
@@ -592,14 +613,10 @@ class StepForgeApp {
       type: 'button',
       disabled: Boolean(this.startingCaptureSession),
       title: notStarted ? t('StepForge tucks away and starts capturing') : '',
-      onClick: async () => {
-        if (notStarted) {
-          const acknowledged = await dialogs.showRecordingReminder();
-          if (!acknowledged) return;
-        }
-        send({ action: s.paused ? 'resume' : 'pause' });
-      },
-    }, this.startingCaptureSession ? t('Starting…') : s.paused ? t('Start recording') : t('Stop recording'));
+      onClick: () => s.paused ? this.startRecording() : this.sendCaptureSession({ action: 'pause' }),
+    }, this.startingCaptureSession ? t('Starting…')
+      : !s.paused ? t('Stop recording')
+        : s.count ? t('Resume recording') : t('Start recording'));
 
     this.captureStatus.append(
       el('span', { title: t('Capture session — {trigger}', { trigger }) }, t('Recording - {trigger}', { trigger })),
@@ -629,7 +646,7 @@ class StepForgeApp {
         'aria-haspopup': 'menu', 'aria-expanded': 'false',
         onClick: (e) => this.editor.openCaptureMenu(e),
       }, t('Capture ▾')),
-      el('button', { type: 'button', onClick: () => this.editor.saveAll() }, t('Save')),
+      el('button', { type: 'button', onClick: () => this.editor.saveAll({ announce: true }) }, t('Save')),
       el('button', { type: 'button', onClick: () => this.editor.openExportDialog() }, t('Export')),
       el('button', {
         type: 'button',
@@ -639,10 +656,10 @@ class StepForgeApp {
           const rect = e.currentTarget.getBoundingClientRect();
           contextMenu(rect.left, rect.bottom + 4, [
             { label: t('Copy to clipboard'), action: () => this.editor.copyToClipboard() },
-            { label: t('Save as a .sfgz file…'), action: () => this.editor.shareAsFile() },
-            { label: t('Publish to the web…'), action: () => this.publishToWeb(guide?.guideId || this.editor.guideId, guide?.title) },
-            { label: t('Publish to Confluence…'), badge: 'Beta', action: () => this.publishToConfluence(guide?.guideId || this.editor.guideId, guide?.title) },
-            { label: t('Publish to Wiki.js…'), badge: 'Beta', action: () => this.publishToWikiJs(guide?.guideId || this.editor.guideId, guide?.title) },
+            { label: t('Save as a .sfgz file'), action: () => this.editor.shareAsFile() },
+            { label: t('Publish to the web'), action: () => this.publishToWeb(guide?.guideId || this.editor.guideId, guide?.title) },
+            { label: t('Publish to Confluence'), badge: 'Beta', action: () => this.publishToConfluence(guide?.guideId || this.editor.guideId, guide?.title) },
+            { label: t('Publish to Wiki.js'), badge: 'Beta', action: () => this.publishToWikiJs(guide?.guideId || this.editor.guideId, guide?.title) },
           ]);
         },
       }, t('Share ▾')),
@@ -661,18 +678,18 @@ class StepForgeApp {
         onClick: (e) => {
           const rect = e.target.getBoundingClientRect();
           contextMenu(rect.left, rect.bottom + 4, [
-            { label: t('Rename guide…'), action: () => this.renameGuide() },
-            { label: t('Guide information…'), action: () => this.editor.openGuideInfo() },
-            { label: t('Guide placeholders…'), action: () => this.editor.openGuidePlaceholders() },
-            { label: t('Backups & snapshots…'), action: () => this.editor.openBackupsDialog() },
-            { label: t('Find private details…'), action: () => this.editor.findPrivateDetails() },
+            { label: t('Rename guide'), action: () => this.renameGuide() },
+            { label: t('Guide information'), action: () => this.editor.openGuideInfo() },
+            { label: t('Guide placeholders'), action: () => this.editor.openGuidePlaceholders() },
+            { label: t('Backups & snapshots'), action: () => this.editor.openBackupsDialog() },
+            { label: t('Find private details'), action: () => this.editor.findPrivateDetails() },
             { label: t('Optimize guide images'), action: () => this.editor.optimizeImages() },
             { label: t('Library thumbnail'), submenu: () => this.editor.thumbnailMenuItems() },
-            { label: guide && guide.linkedSource ? t('Linked guide…') : t('Linked guide (not linked)'), action: () => this.editor.openLinkedGuide() },
+            { label: guide && guide.linkedSource ? t('Linked guide') : t('Linked guide (not linked)'), action: () => this.editor.openLinkedGuide() },
             'sep',
-            { label: t('Keyboard shortcuts…'), action: () => this.editor.openShortcutsHelp() },
+            { label: t('Keyboard shortcuts'), action: () => this.editor.openShortcutsHelp() },
             { label: t('Quick actions  (Ctrl+/)'), action: () => this.editor.openQuickActions() },
-            { label: t('Settings…'), action: () => this.openSettings() },
+            { label: t('Settings'), action: () => this.openSettings() },
           ]);
         },
         'aria-haspopup': 'menu', 'aria-expanded': 'false',
@@ -753,8 +770,8 @@ class StepForgeApp {
   openImportMenu(event) {
     const rect = event.currentTarget.getBoundingClientRect();
     contextMenu(rect.left, rect.bottom + 4, [
-      { label: t('Import a copy of a guide (.sfgz)…'), action: () => this.importArchive('copy') },
-      { label: t('Open a linked guide (.sfgz)…'), action: () => this.importArchive('linked') },
+      { label: t('Import a copy of a guide (.sfgz)'), action: () => this.importArchive('copy') },
+      { label: t('Open a linked guide (.sfgz)'), action: () => this.importArchive('linked') },
     ]);
   }
 
@@ -1062,14 +1079,14 @@ class StepForgeApp {
     const moveItems = folderItems.length ? ['sep', ...folderItems] : [];
     contextMenu(event.clientX, event.clientY, [
       { label: t('Open guide'), action: () => this.openGuideAndArmCapture(guide.guideId) },
-      { label: t('Rename guide…'), action: () => this.renameGuide(guide) },
+      { label: t('Rename guide'), action: () => this.renameGuide(guide) },
       { label: guide.favorite ? t('Unfavorite') : t('Favorite'), action: () => this.toggleFavorite(guide) },
       { label: t('Mark as verified'), action: () => this.markVerified([guide.guideId]) },
       { label: t('Duplicate guide'), action: () => this.duplicateGuide(guide.guideId) },
       { label: t('Export'), action: () => this.openGuideExport(guide.guideId) },
-      { label: t('Publish to the web…'), action: () => this.publishToWeb(guide.guideId, guide.title) },
-      { label: t('Publish to Confluence…'), badge: 'Beta', action: () => this.publishToConfluence(guide.guideId, guide.title) },
-      { label: t('Publish to Wiki.js…'), badge: 'Beta', action: () => this.publishToWikiJs(guide.guideId, guide.title) },
+      { label: t('Publish to the web'), action: () => this.publishToWeb(guide.guideId, guide.title) },
+      { label: t('Publish to Confluence'), badge: 'Beta', action: () => this.publishToConfluence(guide.guideId, guide.title) },
+      { label: t('Publish to Wiki.js'), badge: 'Beta', action: () => this.publishToWikiJs(guide.guideId, guide.title) },
       ...moveItems,
       'sep',
       { label: t('Delete guide'), danger: true, action: () => this.deleteGuide(guide.guideId) },
@@ -1235,10 +1252,11 @@ class StepForgeApp {
 
   async createGuide() {
     const title = await dialogs.promptText({
-      title: t('New Guide'),
+      title: t('New guide'),
       label: t('Title'),
       value: t('Untitled guide'),
       placeholder: t('Untitled guide'),
+      confirmLabel: t('Create'),
     });
     if (title == null) return;
     const guide = await api.library.create({ title: title.trim() || t('Untitled guide'), captureDraft: !title.trim() || title.trim() === t('Untitled guide') });

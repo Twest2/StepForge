@@ -1186,7 +1186,7 @@ function setupIpc() {
     reindex(guideId);
     return { ok: true, step: saved, removedBlurs };
   };
-  // Right-click a step → Choose image…: swap in an image file, keeping
+  // Right-click a step → Choose image: swap in an image file, keeping
   // the step's title, description and annotations.
   h('step:chooseImage', async ({ guideId, stepId }) => {
     store.getStep(guideId, stepId); // throws for a step that does not exist, before any dialog
@@ -1202,7 +1202,7 @@ function setupIpc() {
     return swapStepImage(guideId, stepId, picked.bytes, picked.size);
   }, { validate: (a) => c.id(a.guideId) && c.id(a.stepId) });
   // Right-click a step → Retake screenshot: hide StepForge, count down, grab a
-  // new frame and swap it in, the same way Choose image… does.
+  // new frame and swap it in, the same way Choose image does.
   h('step:retake', async ({ guideId, stepId, mode, delayMs }) => {
     store.getStep(guideId, stepId); // throws for a step that does not exist, before the countdown
     const frame = await capture.retakeFrame({ mode, delayMs });
@@ -1213,7 +1213,7 @@ function setupIpc() {
       && (a.mode === undefined || c.oneOf(a.mode, ['fullscreen', 'window', 'region']))
       && c.optionalNumber(a.delayMs, 0, 60000),
   });
-  // Undo and redo of Choose image… put both images back.
+  // Undo and redo of Choose image put both images back.
   h('step:setImages', ({ guideId, step, originalBase64, workingBase64, size }) => {
     const saved = store.replaceImages(guideId, step.stepId, {
       original: originalBase64 ? Buffer.from(originalBase64, 'base64') : null,
@@ -1867,15 +1867,23 @@ function setupIpc() {
     if (!mod) return {};
     return { ...require(mod).DEFAULT_TEMPLATE, ...brandTemplateDefaults(format, exportBranding(brandProfileId)?.profile) };
   }, { validate: (a) => c.string(a.format, 40) && validBrandChoice(a.brandProfileId) });
+  // The first-time default output folder: the user's Documents folder, if it exists.
+  const defaultOutputDir = () => {
+    try {
+      const dir = app.getPath('documents');
+      return fs.existsSync(dir) ? dir : null;
+    } catch { return null; }
+  };
+  // The renderer may only nominate directories that came from this main
+  // process: a dialog pick from this session, a remembered last-output
+  // directory, or the Documents default. Anything else is ignored.
+  const acceptedOutputDir = (outDir) => Boolean(outDir) && (chosenOutputDirs.has(outDir)
+    || Object.values(settings.get('exports.lastOutputDirs') || {}).includes(outDir)
+    || outDir === defaultOutputDir());
+  h('export:defaultDir', async () => defaultOutputDir());
+  h('export:canUseDir', async ({ outDir }) => acceptedOutputDir(outDir), { validate: (a) => c.optionalString(a.outDir, 1000) });
   h('export:run', async ({ guideId, format, options, outDir, brandProfileId }) => {
-    // The renderer may only nominate directories that came from this main
-    // process: a dialog pick from this session or a remembered last-output
-    // directory. Anything else is ignored and re-asked via the dialog.
-    const rememberedDirs = Object.values(settings.get('exports.lastOutputDirs') || {});
-    let dir = null;
-    if (outDir && (chosenOutputDirs.has(outDir) || rememberedDirs.includes(outDir))) {
-      dir = outDir;
-    }
+    let dir = acceptedOutputDir(outDir) ? outDir : null;
     if (!dir) dir = settings.get(`exports.lastOutputDirs.${format}`);
     if (!dir) {
       const res = await dialog.showOpenDialog(mainWindow, {

@@ -244,6 +244,8 @@ const api = {
     defaults: invoke('export:defaults'),
     run: invoke('export:run'),
     chooseDir: invoke('export:chooseDir'),
+    defaultDir: invoke('export:defaultDir'),
+    canUseDir: invoke('export:canUseDir'),
     chooseImage: invoke('export:chooseImage'),
     preview: invoke('export:preview'),
     cleanupPreviews: invoke('preview:cleanup'),

@@ -155,11 +155,13 @@ function showPrivacyDialog({ api, guideId, canShow = false }) {
       .then((review) => {
         changed = review.added > 0;
         status.textContent = review.checked ? privacySummary(review) : `${privacySummary(review)} ${t('Screenshots haven’t changed since they were last checked.')}`;
+        // Only worth saying while there are blurs to check.
+        const note = el('p.muted', { hidden: !review.blurs.length }, t('Blurs are drawn into every export and published page. Check each one, and remove any that aren’t needed.'));
         body.append(
-          el('p.muted', {}, t('Blurs are drawn into every export and published page. Check each one, and remove any that aren’t needed.')),
+          note,
           list = privacyReviewList(api, guideId, review, {
             onShow: canShow ? (stepId, annotationId) => { close(); finish({ stepId, annotationId }); } : null,
-            onChange: (next) => { changed = true; status.textContent = privacySummary(next); },
+            onChange: (next) => { changed = true; status.textContent = privacySummary(next); note.hidden = !next.blurs.length; },
           }));
       })
       .catch((err) => { status.textContent = t('StepForge couldn’t check the screenshots: {error}', { error: err.message }); status.classList.add('error'); });

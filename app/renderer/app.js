@@ -91,6 +91,7 @@ class StepForgeApp {
       root: this.editorHost,
       onMetaChange: (meta) => this.onEditorMeta(meta),
       onToast: (msg, opts) => toast(msg, opts),
+      onStartRecording: () => this.startRecording(),
       onBack: async (reason) => {
         if (reason === 'new') {
           await this.createGuide();
@@ -341,16 +342,16 @@ class StepForgeApp {
         el('div.welcome-actions', {},
           el('button.welcome-btn.primary', {
             type: 'button',
-            onClick: () => this.startNewCapture(),
+            onClick: () => this.startNewRecording(),
           },
-          el('span.welcome-btn-label', {}, t('New Capture')),
-          el('span.welcome-btn-hint', {}, t('Start a guide and capture your screen')),
+          el('span.welcome-btn-label', {}, t('New recording')),
+          el('span.welcome-btn-hint', {}, t('Start a guide and record your clicks as steps')),
           ),
           el('button.welcome-btn', {
             type: 'button',
             onClick: () => this.openExistingWorkspace(),
           },
-          el('span.welcome-btn-label', {}, t('Existing Workspace')),
+          el('span.welcome-btn-label', {}, t('Library')),
           el('span.welcome-btn-hint', {}, t('Browse your guide library')),
           ),
           el('button.welcome-btn', {
@@ -387,11 +388,14 @@ class StepForgeApp {
     );
   }
 
-  async startNewCapture() {
+  // Welcome → New recording: a new guide, then the start-recording flow.
+  // Cancelling the reminder leaves the user in the empty editor.
+  async startNewRecording() {
     const guide = await api.library.create({ title: t('Untitled capture'), captureDraft: true });
     await this.refreshData();
     await this.openGuide(guide.guideId);
     await this.armCaptureSession(guide.guideId);
+    await this.startRecording();
   }
 
   async openExistingWorkspace() {
@@ -421,17 +425,52 @@ class StepForgeApp {
     this.renderTopbar();
   }
 
-  // Start a paused session, optionally show a reminder, and continue once
-  // the user acknowledges it.
-  async armCaptureSession(guideId, reminder = null) {
+  // Start a paused session for the guide; recording begins on resume.
+  async armCaptureSession(guideId) {
     const state = await api.capture.session({ action: 'start', guideId });
     this.updateCaptureState(state);
-    if (!reminder) return state;
-    const acknowledged = await dialogs.showRecordingReminder(reminder);
-    if (!acknowledged) return state;
-    const next = await api.capture.session({ action: 'resume', guideId });
-    this.updateCaptureState(next);
-    return next;
+    return state;
+  }
+
+  sendCaptureSession(payload) {
+    return api.capture.session(payload).then((next) => { this.updateCaptureState(next); return next; });
+  }
+
+  // Start (or resume) recording the open guide: the blue top-bar button, the
+  // empty canvas and Quick actions. A session that has not recorded yet shows
+  // the "Before recording starts" tip first, unless the user turned it off.
+  async startRecording() {
+    const s = this.captureState || {};
+    if (!s.active) return this.startCaptureSession(this.editor.guideId);
+    if (!s.paused) return s;
+    if (!s.count && !await this.confirmRecordingReminder()) return s;
+    return this.sendCaptureSession({ action: 'resume' });
+  }
+
+  async confirmRecordingReminder() {
+    if (this.state.settings?.capture?.recordingReminder === false) return true;
+    const answer = await dialogs.showRecordingReminder();
+    if (answer?.dontShowAgain) {
+      this.state.settings = await api.settings.set({ keyPath: 'capture.recordingReminder', value: false }).catch(() => this.state.settings);
+    }
+    return Boolean(answer);
+  }
+
+  // The blue top-bar button stops a running recording and starts or resumes otherwise.
+  onRecordButton() {
+    const s = this.captureState || {};
+    return s.active && !s.paused ? this.sendCaptureSession({ action: 'pause' }) : this.startRecording();
+  }
+
+  syncRecordButton() {
+    const button = this.recordButton;
+    if (!button) return;
+    const s = this.captureState || {};
+    button.disabled = Boolean(this.startingCaptureSession);
+    button.textContent = this.startingCaptureSession ? t('Starting…')
+      : s.active && !s.paused ? t('Stop recording')
+        : s.active && s.count ? t('Resume recording')
+          : t('Start recording');
   }
 
   async startCaptureSession(guideId) {
@@ -451,8 +490,8 @@ class StepForgeApp {
     }
   }
 
-  // Opens a guide and arms (paused) capture for it, so the red REC bar pops
-  // up right away with a "Start recording" option to resume capturing steps.
+  // Opens a guide and arms (paused) capture for it, so the top bar's
+  // Start recording button records into this guide.
   async openGuideAndArmCapture(guideId, stepId = null) {
     await this.openGuide(guideId, stepId);
     // Don't restart (and reset the count of) a session already running for this guide.
@@ -493,61 +532,37 @@ class StepForgeApp {
     }
   }
 
+  // The pill at the top right shows only real status: hidden before a
+  // session records anything, red while recording, neutral when paused or
+  // waiting for screen sharing. The window-mode note shows from the start.
   updateCaptureState(state) {
     this.captureState = state || { active: false };
+    this.syncRecordButton();
     clearNode(this.captureStatus);
+    const s = this.captureState;
+    const notStarted = !s.active || (s.paused && !s.count);
     // The capture bar is editor-only — hide it everywhere else (library, welcome).
-    if (this.state.view !== 'editor') {
+    if (this.state.view !== 'editor' || (notStarted && !s.modeNote)) {
       this.captureStatus.classList.add('hidden');
       return;
     }
     this.captureStatus.classList.remove('hidden');
-    const s = this.captureState;
-
-    // No active session: show a button to start a new one for the open guide.
-    if (!s.active) {
-      this.captureStatus.append(
-        el('span', {}, t('Recording - stopped')),
-        el('button', {
-          type: 'button',
-          disabled: Boolean(this.startingCaptureSession),
-          onClick: () => this.startCaptureSession(this.editor.guideId),
-        }, this.startingCaptureSession ? t('Starting…') : t('Start recording')),
-      );
-      return;
-    }
-
-    const send = (payload) => api.capture.session(payload).then((next) => this.updateCaptureState(next));
 
     // What is currently triggering captures, so the user knows what to do.
-    const notStarted = s.paused && !s.count;
-    const trigger = (s.gnomeRequired || s.plasmaRequired) && s.warmingUp ? t('waiting for screen sharing')
-      : notStarted ? t('ready')
+    const waiting = (s.gnomeRequired || s.plasmaRequired) && s.warmingUp;
+    this.captureStatus.classList.toggle('recording', !notStarted && !s.paused && !waiting);
+    const trigger = waiting ? t('waiting for screen sharing')
       : s.paused ? t('paused')
         : s.clickCapture ? t('on click')
           : s.intervalSec > 0 ? t('every {seconds}s', { seconds: s.intervalSec })
             : t('hotkey only');
 
-    const pauseBtn = el('button', {
-      type: 'button',
-      disabled: Boolean(this.startingCaptureSession),
-      title: notStarted ? t('StepForge tucks away and starts capturing') : '',
-      onClick: async () => {
-        if (notStarted) {
-          const acknowledged = await dialogs.showRecordingReminder();
-          if (!acknowledged) return;
-        }
-        send({ action: s.paused ? 'resume' : 'pause' });
-      },
-    }, this.startingCaptureSession ? t('Starting…') : s.paused ? t('Start recording') : t('Stop recording'));
-
     this.captureStatus.append(
-      el('span', { title: t('Capture session — {trigger}', { trigger }) }, t('Recording - {trigger}', { trigger })),
+      ...(notStarted ? [] : [el('span', {}, t('Recording - {trigger}', { trigger }))]),
       // Settings says Window but this desktop can only record the full screen:
       // say so before the first capture, since other windows will be in it.
       // Native append() prints null as "null", so leave the note out instead.
       ...(s.modeNote ? [el('span.capture-mode-note', { title: s.modeNote }, t('Full screen (window capture unavailable)'))] : []),
-      pauseBtn,
     );
   }
 
@@ -563,12 +578,16 @@ class StepForgeApp {
     const guide = this.editorMeta?.guide;
     this.topbarContext.append(
       el('button', { type: 'button', onClick: () => this.showLibrary() }, t('Library')),
-      el('button.primary', {
-        type: 'button',
-        title: t('Capture a screenshot step'),
-        'aria-haspopup': 'menu', 'aria-expanded': 'false',
-        onClick: (e) => this.editor.openCaptureMenu(e),
-      }, t('Capture ▾')),
+      el('span.split-button', {},
+        this.recordButton = el('button.primary', { type: 'button', onClick: () => this.onRecordButton() }),
+        el('button.primary', {
+          type: 'button',
+          title: t('Screenshots and images'),
+          'aria-label': t('Screenshots and images'),
+          'aria-haspopup': 'menu', 'aria-expanded': 'false',
+          onClick: (e) => this.editor.openCaptureMenu(e),
+        }, '▾'),
+      ),
       el('button', { type: 'button', onClick: () => this.editor.saveAll() }, t('Save')),
       el('button', { type: 'button', onClick: () => this.editor.openExportDialog() }, t('Export')),
       el('button', {
@@ -617,7 +636,7 @@ class StepForgeApp {
         'aria-haspopup': 'menu', 'aria-expanded': 'false',
       }, t('More ▾')),
       el('span.muted', { style: { marginLeft: '8px' } }, guide ? `${guide.title} · ${tn(this.editorMeta?.stepCount || 0, '{count} step', '{count} steps')}` : ''),
-    );
+    );    this.syncRecordButton();
   }
 
   async renderLibrary() {

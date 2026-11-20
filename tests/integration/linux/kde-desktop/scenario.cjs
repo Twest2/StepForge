@@ -57,6 +57,8 @@ function passed(name, details = {}) { report.push({ name, ...details }); console
     };
     const text = () => evaluate('document.body.innerText');
     const status = () => evaluate('document.querySelector("#capture-status")?.innerText || ""');
+    // The status pill hides once no session is running.
+    const stopped = () => evaluate('document.querySelector("#capture-status").classList.contains("hidden")');
     const click = async label => {
       const point = await until(() => evaluate(`(() => {
         const root = document.querySelector('#modal-root')?.children.length ? document.querySelector('#modal-root') : document;
@@ -101,8 +103,7 @@ function passed(name, details = {}) { report.push({ name, ...details }); console
     const count = (n, label) => until(() => steps().length === n, label);
     // Approve the real KDE shortcut dialog, then use only app/desktop input.
     await answerDialog('Global Shortcuts Requested', [{x:744,y:686}]);
-    await click('New Capture');
-    await click('Start recording');
+    await click('New recording');
     await until(async () => (await text()).includes('StepForge tray icon beside the clock'), 'Plasma recording reminder');
     await click('Continue');
     await share();
@@ -145,7 +146,7 @@ function passed(name, details = {}) { report.push({ name, ...details }); console
     passed('tray pause excludes its mouse click');
     await send({action:'click',x:1112,y:872,button:273});
     await send({action:'click',x:1100,y:840});
-    await until(async () => (await status()).includes('stopped'),'tray finish');
+    await until(stopped,'tray finish');
     await click('More ▾');await click('Settings…');await click('Capture');
     const mode = await evaluate(`(() => { const e=Array.from(document.querySelectorAll('#modal-root select')).find(e=>Array.from(e.options).some(o=>o.value==='fullscreen')); const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}; })()`);
     await cdp.send('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',buttons:1,clickCount:1,...mode});
@@ -166,11 +167,11 @@ function passed(name, details = {}) { report.push({ name, ...details }); console
     await send({action:'click',x:1112,y:872,button:273});
     await send({action:'click',x:1100,y:840});
     await send({action:'mirror',enabled:false});
-    await until(async () => (await status()).includes('stopped'),'finish active window recording');
+    await until(stopped,'finish active window recording');
     await sleep(600);
     assert.equal(steps().length,5);
     passed('window crop and Finish excludes both tray/menu clicks',win.image.size);
-    await click('Capture ▾');await click('Capture region');await sleep(2000);
+    await click('▾');await click('Region screenshot');await sleep(2000);
     await send({action:'press',x:300,y:300});await send({action:'move',x:500,y:420});await send({action:'move',x:700,y:550});await send({action:'release',x:700,y:550});await sleep(300);await send({action:'key',code:28});
     await count(6,'selected region');
     const region=steps().at(-1), regionImage=await image(region);
@@ -179,7 +180,7 @@ function passed(name, details = {}) { report.push({ name, ...details }); console
     assert.ok(regionImage.height>=250&&regionImage.height<=251);
     assert.deepEqual(pixel(regionImage,200,100),pixel(regionImage,300,150));
     passed('Spectacle region selection',region.image.size);
-    await click('Capture ▾');await click('Capture region');await sleep(2000);await send({action:'key',code:1});await sleep(400);
+    await click('▾');await click('Region screenshot');await sleep(2000);await send({action:'key',code:1});await sleep(400);
     assert.equal(steps().length,6);
     passed('region cancellation leaves guide unchanged');
     screenshot('verified-editor');

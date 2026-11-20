@@ -17,7 +17,7 @@ For Linux, see the [installation options in the README](../README.md#install).
 ## 1. Record a guide
 
 1. Open StepForge and choose **New guide**.
-2. Choose **Capture → Start capture session**. StepForge reminds you how to
+2. Choose **Start recording** in the top bar. StepForge reminds you how to
    stop, then hides itself.
 3. Work through the task you want to document. **Each click creates a step**
    with a screenshot taken at the moment of the click and a marker on the
@@ -71,17 +71,17 @@ screen.
 
 The click that stops recording never becomes a step, but other clicks you
 make while looking for it can, such as on the **^** arrow. Delete any extra
-steps in the editor. To record more, choose **Start recording** at the top
-right of the StepForge window.
+steps in the editor. To record more, choose **Start recording** (or **Resume
+recording**) in the top bar of the StepForge window.
 
 ### Other ways to add steps
 
 | To... | Do this |
 | --- | --- |
-| Take a single screenshot | **Capture → Capture full screen**, **Capture window**, or **Capture region** |
+| Take a single screenshot | The **▾** beside **Start recording** → **Full-screen screenshot**, **Window screenshot**, or **Region screenshot** |
 | Capture with the keyboard | Press **Ctrl+Shift+1** (change it in **Settings → Capture → Hotkeys**) |
 | Pause and resume a session | Press **Ctrl+Shift+2**. StepForge stays hidden while paused |
-| Use an image you already have | Paste it with **Ctrl+V**, or use **Capture → Import images…** |
+| Use an image you already have | Paste it with **Ctrl+V**, or use **▾ → Import images…** beside **Start recording** |
 | Add a step by hand | Choose **Add** in the steps list, type a title, and optionally pick an image |
 
 ## 2. Edit your steps

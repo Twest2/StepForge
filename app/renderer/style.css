@@ -25,6 +25,8 @@
   --ok-fg: #ffffff;
   --caution: #b45309;
   --caution-fg: #ffffff;
+  --recording: #b42318;
+  --recording-fg: #ffffff;
   --shadow: 0 14px 40px rgba(15, 23, 42, 0.08);
   --radius: 14px;
   /* Scrollbar thumb: 3:1 or better against the panels, never bright white. */
@@ -61,6 +63,8 @@
     --ok-fg: #08101a;
     --caution: #fbbf24;
     --caution-fg: #08101a;
+    --recording: #b42318;
+    --recording-fg: #ffffff;
     --shadow: 0 14px 40px rgba(0, 0, 0, 0.35);
     --scroll-thumb: #6b7889;
     --scroll-thumb-hover: #8a96a6;
@@ -256,21 +260,27 @@ kbd {
 #topbar-context { display: flex; align-items: center; gap: 8px; min-width: 0; }
 #topbar-context .muted { max-width: 44vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #global-search { width: min(360px, 32vw); margin-left: auto; }
+/* Recording status (app.js updateCaptureState): red only while recording. */
 #capture-status {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 6px 10px;
   border-radius: 999px;
-  background: #b42318;
-  color: #fff;
+  background: var(--panel-2);
+  color: var(--text);
   font-size: 12px;
 }
-#capture-status button {
-  padding: 3px 8px;
-  border: 0;
-  background: rgba(255, 255, 255, 0.14);
-  color: #fff;
+#capture-status.recording { background: var(--recording); color: var(--recording-fg); }
+/* The blue top-bar Start recording button with its ▾ menu of screenshots. */
+.split-button { display: inline-flex; }
+.split-button > button:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.split-button > button + button {
+  padding-left: 8px;
+  padding-right: 8px;
+  border-left-color: color-mix(in srgb, var(--accent-fg) 35%, var(--accent));
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
 }
 
 body.platform-linux #topbar {
@@ -282,10 +292,6 @@ body.platform-linux #topbar {
 body.platform-linux #capture-status {
   padding: 5px 9px;
   gap: 7px;
-}
-
-body.platform-linux #capture-status button {
-  padding: 2px 7px;
 }
 
 .library, .editor { flex: 1; min-height: 0; display: flex; }
@@ -1043,6 +1049,9 @@ body.platform-linux #capture-status button {
   color: var(--muted);
   pointer-events: none;
 }
+.canvas-empty p { margin: 0; }
+.canvas-empty-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 12px; pointer-events: auto; }
+.canvas-empty-actions[hidden] { display: none; }
 
 .pane-props section {
   display: flex;
@@ -1401,18 +1410,6 @@ fieldset legend {
 .recording-notice {
   display: grid;
   gap: 10px;
-}
-.recording-notice__badge {
-  width: fit-content;
-  padding: 4px 10px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--panel-2);
-  color: var(--danger);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 .recording-notice__title {
   font-size: 18px;
@@ -2206,7 +2203,7 @@ fieldset legend {
   .brand-asset-row > .row { grid-column: 1 / -1; }
   .brand-facts, .brand-support { grid-template-columns: 1fr; }
 }
-#capture-status .capture-mode-note { padding: 1px 7px; border-radius: 999px; background: rgba(255, 255, 255, 0.2); font-weight: 600; }
+#capture-status .capture-mode-note { font-weight: 600; }
 
 /* ---- Compare with a snapshot (compare.js) ----
    Kept deliberately plain, like a code review: square-ish boxes, colored

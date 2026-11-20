@@ -1496,6 +1496,16 @@ fieldset legend {
   background: var(--danger);
   color: var(--danger-fg);
 }
+.toast.has-action { display: flex; align-items: center; gap: 14px; }
+.toast-action {
+  flex: none;
+  padding: 3px 10px;
+  border: 1px solid currentColor;
+  background: transparent;
+  color: inherit;
+  font-weight: 600;
+}
+.toast-action:hover { background: color-mix(in srgb, currentColor 16%, transparent); }
 
 .ctx-menu {
   position: fixed;

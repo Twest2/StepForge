@@ -2038,13 +2038,13 @@ class GuideEditor {
     this.focusStepControl(focusKey);
   }
 
-  /**
-   * Asks before deleting steps, unless Settings → Editor → Dangerous deletes
-   * is on. Resolves true to delete.
-   */
-  async confirmDelete(message, title) {
-    if (this.settings?.editor?.dangerousDeletes === true) return true;
-    return confirmDialog(message, { title, danger: true, okLabel: t('Delete') });
+  /** Deleting steps doesn't ask first: its toast has Undo, which does what Ctrl+Z does while the delete is still the last change. */
+  toastStepsDeleted(count, record) {
+    this.onToast(tn(count, '{count} step deleted.', '{count} steps deleted.'), {
+      ms: 6000,
+      announce: `${tn(count, '{count} step deleted.', '{count} steps deleted.')} ${t('Press Ctrl+Z to undo.')}`,
+      action: { label: t('Undo'), onClick: () => { if (this.canvasHistory.at(-1) === record) void this.undo(); } },
+    });
   }
 
   /** The steps ticked in Select mode, in guide order. */
@@ -2273,8 +2273,6 @@ class GuideEditor {
   async deleteSelectedSteps() {
     const ids = [...this.selectedSteps];
     if (!ids.length) return;
-    const ok = await this.confirmDelete(tn(ids.length, 'Delete {count} step?', 'Delete {count} steps?'), t('Delete selected steps'));
-    if (!ok) return;
     if (this.pendingSave) await this.flushStep();
     const order = this.steps.map((s) => s.stepId);
     const entries = [];
@@ -2285,12 +2283,13 @@ class GuideEditor {
     for (const stepId of ids) {
       await api.step.delete({ guideId: this.guideId, stepId });
     }
-    if (entries.length) this.pushCanvasHistory({ type: 'delete-step', steps: entries, order });
+    const record = { type: 'delete-step', steps: entries, order };
+    if (entries.length) this.pushCanvasHistory(record);
     this.stepSelectMode = false;
     this.selectedSteps = new Set();
     this.stepSelectionAnchor = null;
     await this.reload(this.stepAfterDeleting(order, new Set(ids)));
-    this.onToast(tn(ids.length, '{count} step deleted. Press Ctrl+Z to undo.', '{count} steps deleted. Press Ctrl+Z to undo.'));
+    this.toastStepsDeleted(ids.length, record);
   }
 
   syncStepFields() {
@@ -4127,15 +4126,14 @@ class GuideEditor {
   async deleteSelectedStep() {
     const step = this.currentStep;
     if (!step) return;
-    const ok = await this.confirmDelete(t('Delete “{title}”?', { title: step.title || t('Untitled step') }), t('Delete step'));
-    if (!ok) return;
     if (this.pendingSave) await this.flushStep();
     const order = this.steps.map((s) => s.stepId);
     const entry = await this.snapshotStepForDeletion(step);
     await api.step.delete({ guideId: this.guideId, stepId: step.stepId });
-    this.pushCanvasHistory({ type: 'delete-step', steps: [entry], order });
+    const record = { type: 'delete-step', steps: [entry], order };
+    this.pushCanvasHistory(record);
     await this.reload(this.stepAfterDeleting(order, new Set([step.stepId]), step.stepId));
-    this.onToast(t('Step deleted. Press Ctrl+Z to undo.'));
+    this.toastStepsDeleted(1, record);
   }
 
   /**

@@ -179,3 +179,46 @@ test('More → Library thumbnail chooses a step screenshot or an image file for 
   await app.clickText('Library');
   await flows.eventually(() => app.evaluate(`document.querySelector('.guide-card .card-thumb')?.src.startsWith('data:image/webp')`), 'card shows the chosen image');
 }));
+
+test('library thumbnails show the step’s annotations and update when one is added', () => withApp('library-thumbnail-annotations', {
+  sample: false,
+  setup: async (env) => {
+    const bytes = await sharp(encodePng(createImage(640, 360, [240, 240, 240, 255]))).webp({ lossless: true }).toBuffer();
+    const store = new GuideStore(env.dataDir);
+    const guide = store.createGuide({ title: 'Thumbnail annotations test' });
+    env.guideId = guide.guideId;
+    store.addStep(guide.guideId, {
+      title: 'Annotated screenshot',
+      annotations: [{ id: 'green-box', type: 'rect', x: 0.1, y: 0.2, w: 0.2, h: 0.3, style: { stroke: '#00A000', fill: '#00A000', strokeWidth: 3 } }],
+    }, bytes, { width: 640, height: 360 });
+  },
+}, async (app, env) => {
+  const thumbnail = () => app.evaluate(`(() => {
+    const img = document.querySelector('.card-thumb[data-guide-id="${env.guideId}"]');
+    if (!img?.offsetParent || img.naturalWidth !== 640) return null;
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0);
+    return { version: img.dataset.version, inBox: [...ctx.getImageData(128, 126, 1, 1).data], outside: [...ctx.getImageData(480, 300, 1, 1).data] };
+  })()`);
+  await flows.openLibrary(app);
+  const before = await flows.eventually(thumbnail, 'thumbnail loaded');
+  assert.ok(before.inBox[1] > 120 && before.inBox[0] < 60 && before.inBox[2] < 60, `the green rectangle is drawn (${before.inBox})`);
+  assert.ok(before.outside.slice(0, 3).every((v) => v > 200), 'the rest of the screenshot is unchanged');
+
+  await flows.openGuideCard(app, 'Thumbnail annotations test');
+  await app.click('[data-tool="rect"]');
+  const bounds = await flows.eventually(() => app.evaluate(`(() => {
+    const r = document.querySelector('.canvas-wrap canvas')?.getBoundingClientRect();
+    return r?.width > 200 ? r.toJSON() : null;
+  })()`), 'screenshot visible on the canvas');
+  await app.drag({ x: bounds.x + bounds.width * 0.6, y: bounds.y + bounds.height * 0.6 }, { x: bounds.x + bounds.width * 0.8, y: bounds.y + bounds.height * 0.9 });
+  await app.clickText('Library');
+  const after = await flows.eventually(async () => {
+    const shot = await thumbnail();
+    return shot && shot.version !== before.version ? shot : null;
+  }, 'thumbnail redrawn after adding a rectangle');
+  assert.ok(after.inBox[1] > 120, 'the first rectangle is still there');
+}));

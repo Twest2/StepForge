@@ -896,7 +896,7 @@ function setupIpc() {
 
   // library
   // The renderer caches the scaled thumbnail under this version. Hash the
-  // blur geometry so editing a blur invalidates it even if the image didn't change.
+  // annotations so editing any of them invalidates it even if the image didn't change.
   const thumbnailFile = (guide) => {
     try {
       const source = store.thumbnailSource(guide);
@@ -904,9 +904,9 @@ function setupIpc() {
       const { file, step } = source;
       const stat = fs.statSync(file, { throwIfNoEntry: false });
       if (!stat?.isFile()) return null;
-      const blurs = (step.annotations || []).filter((annotation) => annotation.type === 'blur');
-      const blurHash = createHash('sha256').update(JSON.stringify(blurs.map(({ x, y, w, h, radius }) => [x, y, w, h, radius]))).digest('hex');
-      return { file, blurs, version: `${step.stepId}:${path.basename(file)}:${stat.mtimeMs}:${stat.size}:${blurHash}` };
+      const annotations = step.annotations || [];
+      const annotationHash = createHash('sha256').update(JSON.stringify(annotations)).digest('hex');
+      return { file, annotations, version: `${step.stepId}:${path.basename(file)}:${stat.mtimeMs}:${stat.size}:${annotationHash}` };
     } catch {
       return null; // A broken step file costs the card its picture.
     }
@@ -917,12 +917,13 @@ function setupIpc() {
     if (!thumbnail || thumbnail.version !== version) return null;
     try {
       const bytes = fs.readFileSync(thumbnail.file);
-      // Fill privacy regions at full resolution before the renderer can crop or scale.
-      const safeBytes = thumbnail.blurs.length
-        ? encodePng(renderAnnotations(decodePng(await rasterToPng(bytes)), thumbnail.blurs))
+      // Draw the annotations, as the editor shows them, at full resolution before the
+      // renderer crops and scales. This also fills privacy blurs before any pixel leaves.
+      const annotated = thumbnail.annotations.length
+        ? encodePng(renderAnnotations(decodePng(await rasterToPng(bytes)), thumbnail.annotations))
         : bytes;
-      // A codec request may have yielded while the screenshot or its blurs changed.
-      return currentThumbnail(guideId)?.version === version ? safeBytes : null;
+      // A codec request may have yielded while the screenshot or its annotations changed.
+      return currentThumbnail(guideId)?.version === version ? annotated : null;
     } catch {
       return null;
     }

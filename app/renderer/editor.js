@@ -1601,19 +1601,23 @@ class GuideEditor {
           { value: 'success', label: t('Tip') },
         ]);
         level.dataset.blockField = 'level';
-        level.setAttribute('aria-label', t('Message type'));
-        const title = el('input', { type: 'text', value: block.title || '', placeholder: t('Block title'), 'aria-label': t('Block title') });
+        // An empty title exports as the type's name, so that is the placeholder.
+        const title = el('input', { type: 'text', value: block.title || '', placeholder: level.selectedOptions[0]?.textContent || '' });
         title.dataset.blockField = 'title';
         const body = el('textarea', { rows: 2, placeholder: t('Block text'), 'aria-label': t('Block text') });
         body.dataset.blockField = 'body';
         body.value = (block.descriptionHtml || '').replace(/<[^>]+>/g, '');
         position.addEventListener('change', () => { block.position = position.value; save(); });
-        level.addEventListener('change', () => { block.level = level.value; card.dataset.level = level.value; save(); });
+        level.addEventListener('change', () => {
+          block.level = level.value; card.dataset.level = level.value;
+          title.placeholder = level.selectedOptions[0]?.textContent || '';
+          save();
+        });
         title.addEventListener('input', () => { block.title = title.value; save(); });
         body.addEventListener('input', () => { block.descriptionHtml = `<p>${escapeHtml(body.value)}</p>`; save(); });
         card.append(
-          el('div.row.block-text-options', {}, level, position),
-          title,
+          el('div.row.block-text-options', {}, el('label.block-field', {}, el('span', {}, t('Type')), level), position),
+          el('label.block-field', {}, el('span', {}, t('Title (optional)')), title),
           body,
         );
       } else if (kind === 'code') {
@@ -2318,7 +2322,7 @@ class GuideEditor {
     this.dom.forceNewPageToggle.querySelector('input').checked = Boolean(step.forceNewPage);
     this.dom.focusedViewToggle.querySelector('input').checked = Boolean(step.focusedView?.enabled);
     this.dom.guideSummary.textContent = guide
-      ? `${guide.title} · ${guide.linkedSource ? t('linked') : t('local')} · ${tn(this.steps.length, '{count} step', '{count} steps')}`
+      ? [guide.title, guide.linkedSource ? t('Linked guide') : null, tn(this.steps.length, '{count} step', '{count} steps')].filter(Boolean).join(' · ')
       : '';
   }
 
@@ -3217,8 +3221,8 @@ class GuideEditor {
         fills.length ? el('div.fill-presets', {}, fills.map((fill) => el('button.fill-preset', {
           type: 'button', ...entry(fill), title: fill, 'aria-label': fill, style: { background: fill }, onClick: () => choose(fill),
         }))) : el('div.fill-section-empty', {}, empty));
-      popover.append(section(t('Default Colors'), groups.defaults), el('hr'),
-        section(t('Recently Used Colors'), groups.recent, t('No other recent colors.')));
+      popover.append(section(t('Default colors'), groups.defaults), el('hr'),
+        section(t('Recently used colors'), groups.recent, t('No other recent colors.')));
       if (this.brandColors) popover.append(el('hr'), section(t('Branding'), groups.brand, t('Brand colors already appear above.')));
       popover.append(el('hr'), el('button.fill-item', {
         type: 'button', role: 'menuitem', tabIndex: -1,
@@ -3978,7 +3982,7 @@ class GuideEditor {
   async addSubstep(parentStepId = this.selectedStepId) {
     if (!parentStepId) return;
     const title = await dialogs.promptText({
-      title: t('Add Substep'),
+      title: t('Add substep'),
       label: t('Substep title'),
       value: '',
       placeholder: t('Untitled substep'),
@@ -4824,7 +4828,7 @@ class GuideEditor {
 
   async openLinkedGuide() {
     if (!this.guide || !this.guide.linkedSource) {
-      await dialogs.showInfoDialog(t('Linked Guide'), t('This guide is stored locally and is not linked to a shared archive.'));
+      await dialogs.showInfoDialog(t('Linked guide'), t('This guide is stored locally and is not linked to a shared archive.'));
       return;
     }
     const library = await api.library.list();

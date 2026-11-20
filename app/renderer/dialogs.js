@@ -1478,7 +1478,7 @@ function showAddStepDialog({ onChooseImage } = {}) {
       el('label', {}, t('Step title'), title),
       el('div.add-step-image', {}, el('div', {}, t('Image (optional)')), imageStatus, el('div.row', {}, choose, remove)), error);
     const { close, requestDismiss, node } = openModal({
-      title: t('Add Step'), body: form, initialFocus: title,
+      title: t('Add step'), body: form, initialFocus: title,
       isDirty: () => Boolean(title.value || image),
       footer: [el('button', { type: 'button', onClick: () => requestDismiss() }, t('Cancel')), add],
       onClose: () => { closed = true; resolve(null); },
@@ -1936,7 +1936,7 @@ function showLinkedGuideDialog({ guide, lock, onSave, onForceSave, onOpenArchive
     );
 
     const { close } = openModal({
-      title: t('Linked Guide'),
+      title: t('Linked guide'),
       body,
       footer: [
         el('button', { onClick: () => { close(); resolve(false); } }, t('Close')),

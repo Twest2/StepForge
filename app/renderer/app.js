@@ -99,10 +99,11 @@ class StepForgeApp {
         }
         await this.showLibrary();
       },
-      // Export → Confluence/Wiki.js recommends publishing instead.
-      onPublish: (format) => (format === 'confluence'
-        ? this.publishToConfluence(this.editor.guideId, this.editor.guide?.title)
-        : this.publishToWikiJs(this.editor.guideId, this.editor.guide?.title)),
+      // Export → Confluence/Wiki.js recommends publishing instead; quick actions publish to the web.
+      onPublish: (format) => (format === 'web' ? this.publishToWeb(this.editor.guideId, this.editor.guide?.title)
+        : format === 'confluence'
+          ? this.publishToConfluence(this.editor.guideId, this.editor.guide?.title)
+          : this.publishToWikiJs(this.editor.guideId, this.editor.guide?.title)),
     });
 
     this.searchInput.addEventListener('input', debounce(() => {
@@ -585,7 +586,7 @@ class StepForgeApp {
         'aria-haspopup': 'menu', 'aria-expanded': 'false',
         onClick: (e) => this.editor.openCaptureMenu(e),
       }, t('Capture ▾')),
-      el('button', { type: 'button', onClick: () => this.editor.saveAll() }, t('Save')),
+      el('button', { type: 'button', onClick: () => this.editor.saveAll({ announce: true }) }, t('Save')),
       el('button', { type: 'button', onClick: () => this.editor.openExportDialog() }, t('Export')),
       el('button', {
         type: 'button',
@@ -595,10 +596,10 @@ class StepForgeApp {
           const rect = e.currentTarget.getBoundingClientRect();
           contextMenu(rect.left, rect.bottom + 4, [
             { label: t('Copy to clipboard'), action: () => this.editor.copyToClipboard() },
-            { label: t('Save as a .sfgz file…'), action: () => this.editor.shareAsFile() },
-            { label: t('Publish to the web…'), action: () => this.publishToWeb(guide?.guideId || this.editor.guideId, guide?.title) },
-            { label: t('Publish to Confluence…'), badge: 'Beta', action: () => this.publishToConfluence(guide?.guideId || this.editor.guideId, guide?.title) },
-            { label: t('Publish to Wiki.js…'), badge: 'Beta', action: () => this.publishToWikiJs(guide?.guideId || this.editor.guideId, guide?.title) },
+            { label: t('Save as a .sfgz file'), action: () => this.editor.shareAsFile() },
+            { label: t('Publish to the web'), action: () => this.publishToWeb(guide?.guideId || this.editor.guideId, guide?.title) },
+            { label: t('Publish to Confluence'), badge: 'Beta', action: () => this.publishToConfluence(guide?.guideId || this.editor.guideId, guide?.title) },
+            { label: t('Publish to Wiki.js'), badge: 'Beta', action: () => this.publishToWikiJs(guide?.guideId || this.editor.guideId, guide?.title) },
           ]);
         },
       }, t('Share ▾')),
@@ -1013,9 +1014,9 @@ class StepForgeApp {
       { label: t('Mark as verified'), action: () => this.markVerified([guide.guideId]) },
       { label: t('Duplicate guide'), action: () => this.duplicateGuide(guide.guideId) },
       { label: t('Export'), action: () => this.openGuideExport(guide.guideId) },
-      { label: t('Publish to the web…'), action: () => this.publishToWeb(guide.guideId, guide.title) },
-      { label: t('Publish to Confluence…'), badge: 'Beta', action: () => this.publishToConfluence(guide.guideId, guide.title) },
-      { label: t('Publish to Wiki.js…'), badge: 'Beta', action: () => this.publishToWikiJs(guide.guideId, guide.title) },
+      { label: t('Publish to the web'), action: () => this.publishToWeb(guide.guideId, guide.title) },
+      { label: t('Publish to Confluence'), badge: 'Beta', action: () => this.publishToConfluence(guide.guideId, guide.title) },
+      { label: t('Publish to Wiki.js'), badge: 'Beta', action: () => this.publishToWikiJs(guide.guideId, guide.title) },
       ...moveItems,
       'sep',
       { label: t('Delete guide'), danger: true, action: () => this.deleteGuide(guide.guideId) },
@@ -1181,10 +1182,11 @@ class StepForgeApp {
 
   async createGuide() {
     const title = await dialogs.promptText({
-      title: t('New Guide'),
+      title: t('New guide'),
       label: t('Title'),
       value: t('Untitled guide'),
       placeholder: t('Untitled guide'),
+      confirmLabel: t('Create'),
     });
     if (title == null) return;
     const guide = await api.library.create({ title: title.trim() || t('Untitled guide'), captureDraft: !title.trim() || title.trim() === t('Untitled guide') });

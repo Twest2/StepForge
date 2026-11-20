@@ -345,10 +345,7 @@ function showQuickActions({ query = '', commands = [], searchFn, onOpenItem, onC
         hint,
         results,
       ),
-      wide: true,
-      footer: [
-        el('button', { onClick: () => { close(); resolve(null); } }, t('Close')),
-      ],
+      wide: true, // no footer: × and Escape close it
       onClose: () => {
         if (onClose) onClose();
         resolve(null);

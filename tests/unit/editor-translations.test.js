@@ -78,7 +78,9 @@ test('the step panel’s checkboxes and description toolbar are translated', () 
   const ja = mountedEditor('ja');
   assert.deepEqual([ja.dom.hiddenToggle, ja.dom.skippedToggle, ja.dom.forceNewPageToggle, ja.dom.focusedViewToggle].map((n) => n.text.trim()),
     ['非表示', 'スキップ', '改ページ', 'フォーカス表示']);
-  assert.deepEqual(ja.dom.richToolbar.children.map((n) => n.text), ['太字', '斜体', '箇条書き', '番号付きリスト', '引用', 'リンク', 'クリア', 'ステップ']);
+  // The description toolbar is icons: each button's name and tooltip are in the language.
+  assert.deepEqual(ja.dom.richToolbar.children.map((n) => n.props['aria-label']), ['太字', '斜体', '箇条書き', '番号付きリスト', '引用', 'リンク', 'クリア', 'ステップへのリンク']);
+  assert.ok(ja.dom.richToolbar.children.every((n) => n.props.title && /<svg/.test(n.props.innerHTML)));
 });
 
 test('the delete toast is translated, with plural forms and its Undo button', () => {

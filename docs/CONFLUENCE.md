@@ -70,7 +70,7 @@ the site, and the token tells Confluence who you are once you're there.
 
 ## Publish a guide
 
-Choose **Share → Publish to Confluence…** in the editor, or **Publish to
+Choose **Share → Publish to Confluence** in the editor, or **Publish to
 Confluence…** from a guide's menu in the library. Then check:
 
 - **Space**: the space the page goes in. It starts as the space from

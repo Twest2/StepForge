@@ -485,6 +485,15 @@ test('menus use buttons, identify unavailable actions, wrap arrow navigation and
   u.press('Escape');assert.equal(node.isConnected, false);assert.equal(u.doc.activeElement, trigger);assert.equal(trigger.getAttribute('aria-expanded'), 'false');
 });
 
+test('menu choices with a checked state are radio items, and only the checked one shows the check', () => {
+  const u = loadUtil(), trigger = u.el('button', {}, 'Status');u.app.append(trigger);trigger.focus();let picked = null;
+  const { node } = u.contextMenu(20, 30, [{ label: 'Todo', checked: false, action() { picked = 'todo'; } }, { label: 'Done', checked: true, action() {} }, { label: 'Plain', action() {} }]);
+  const buttons = u.walk(node).filter(n => n.localName === 'button');
+  assert.deepEqual(buttons.map(b => [b.role, b.getAttribute('aria-checked')]), [['menuitemradio', 'false'], ['menuitemradio', 'true'], ['menuitem', null]]);
+  assert.deepEqual(buttons.map(b => b.textContent), ['Todo', '✓Done', 'Plain']);
+  buttons[0].click();assert.equal(picked, 'todo');assert.equal(node.isConnected, false);
+});
+
 test('submenus support Right/Left and Escape without activating unrelated commands', () => {
   const u = loadUtil(), trigger = u.el('button', {}, 'Capture');u.app.append(trigger);trigger.focus();let used = 0;
   const { node } = u.contextMenu(20, 30, [{ label: 'Retake', submenu: [{ label: 'Window', action() { used++; } }] }]);
@@ -678,4 +687,63 @@ test('Export reopens with the last format and options, per format, and keeps the
   assert.equal(await done, true);
   assert.equal(exported(), 1);
   assert.deepEqual(saved, [{ format: 'docx', templates: { pdf: '', docx: '' }, options: { pdf: {}, docx: { includeToc: false } } }]);
+});
+
+test('Export with no output folder asks for one first, and cancelling the picker leaves the dialog as it was', async () => {
+  const picks = [null, '/tmp/out'];
+  const seen = [];
+  let exportedWith = null;
+  const { u, done } = openExportDialog({
+    onChooseDir: async () => {
+      const button = u.button(u.modalRoot.children[0], 'Export');
+      seen.push({ label: button.textContent, cancelDisabled: u.button(u.modalRoot.children[0], 'Cancel').disabled });
+      return picks.shift();
+    },
+    onExport: async (payload) => { exportedWith = payload; return true; },
+  });
+  await settle();
+  const dialog = u.modalRoot.children[0];
+  u.button(dialog, 'Export').click();
+  await settle();
+  assert.equal(exportedWith, null, 'nothing is exported when the picker is cancelled');
+  assert.equal(u.modalRoot.children.length, 1, 'the dialog stays open');
+  assert.equal(u.button(dialog, 'Export').textContent, 'Export');
+  assert.equal(u.button(dialog, 'Cancel').disabled, false);
+
+  u.button(dialog, 'Export').click();
+  assert.equal(await done, true);
+  assert.equal(exportedWith.outDir, '/tmp/out', 'exports to the chosen folder');
+  assert.deepEqual(seen, [{ label: 'Export', cancelDisabled: false }, { label: 'Export', cancelDisabled: false }], 'not "Exporting…" while the folder is chosen');
+});
+
+test('Export with a folder the app cannot use asks for one first too', async () => {
+  const checked = [];
+  let picked = 0;
+  let exportedWith = null;
+  const { u, done } = openExportDialog({
+    defaultOutDir: '/typed/by/hand',
+    onCheckDir: async (dir) => { checked.push(dir); return dir === '/picked'; },
+    onChooseDir: async () => { picked++; return '/picked'; },
+    onExport: async (payload) => { exportedWith = payload; return true; },
+  });
+  await settle();
+  u.button(u.modalRoot.children[0], 'Export').click();
+  assert.equal(await done, true);
+  assert.deepEqual(checked, ['/typed/by/hand']);
+  assert.equal(picked, 1, 'a folder main would not accept is picked again first');
+  assert.equal(exportedWith.outDir, '/picked');
+});
+
+test('Export with a usable folder exports straight away', async () => {
+  let picked = 0;
+  const { u, done, exported } = openExportDialog({
+    defaultOutDir: '/home/me/Documents',
+    onCheckDir: async () => true,
+    onChooseDir: async () => { picked++; return '/picked'; },
+  });
+  await settle();
+  u.button(u.modalRoot.children[0], 'Export').click();
+  assert.equal(await done, true);
+  assert.equal(picked, 0);
+  assert.equal(exported(), 1);
 });

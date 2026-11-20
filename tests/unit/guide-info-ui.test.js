@@ -65,9 +65,23 @@ test('Plasma recording reminder explains its tray controls and Continue complete
   const done = u.context.window.StepForgeDialogs.showRecordingReminder();
   assert.match(u.root.textContent, /StepForge tray icon beside the clock/);
   assert.doesNotMatch(u.root.textContent, /GNOME|floating bar/);
+  assert.doesNotMatch(u.root.textContent, /Recording tip/i);
   await u.all(u.root).find(n => n.tag === 'button' && n.textContent === 'Continue').listeners.click();
-  assert.equal(await done, true);
+  assert.ok(!(await done).dontShowAgain);
   assert.equal(u.root.children.length, 0);
+});
+
+test('the recording reminder can be cancelled or turned off', async () => {
+  const u = ui();
+  u.context.document.body = { classList: { contains: () => false } };
+  let done = u.context.window.StepForgeDialogs.showRecordingReminder();
+  await u.all(u.root).find(n => n.tag === 'button' && n.textContent === 'Cancel').listeners.click();
+  assert.equal(await done, false);
+  done = u.context.window.StepForgeDialogs.showRecordingReminder();
+  u.all(u.root).find(n => n.tag === 'input' && n.type === 'checkbox').checked = true;
+  assert.match(u.root.textContent, /Don’t show this again/);
+  await u.all(u.root).find(n => n.tag === 'button' && n.textContent === 'Continue').listeners.click();
+  assert.equal((await done).dontShowAgain, true);
 });
 
 test('offline Guide information hides cloud controls and preserves existing metadata and sharing', async () => {

@@ -1795,6 +1795,14 @@ function showExportDialog({
       },
     }, t('Manage…'));
 
+    /** Choose… : resolves true once a folder is in the field. */
+    const chooseOutDir = async () => {
+      if (typeof onChooseDir !== 'function') return false;
+      const chosen = await onChooseDir(formatSelect.value);
+      if (chosen) { outDirInput.value = chosen; refreshOutDir(); }
+      return Boolean(chosen);
+    };
+
     const body = el('div.export-dialog', {},
       qualityPanel(quality, (finding) => { finish(false); onShowFinding?.(finding); }),
       labeledRow(t('Format'), el('div.export-format', {}, formatSelect, formatDesc, publishInsteadNote)),
@@ -1803,11 +1811,7 @@ function showExportDialog({
       labeledRow(t('Output folder'), el('div.row.export-output-folder', {}, outDirInput, el('button', {
         type: 'button',
         disabled: typeof onChooseDir !== 'function',
-        onClick: async () => {
-          if (typeof onChooseDir !== 'function') return;
-          const chosen = await onChooseDir(formatSelect.value);
-          if (chosen) { outDirInput.value = chosen; refreshOutDir(); }
-        },
+        onClick: chooseOutDir,
       }, t('Choose…')))),
       el('fieldset', {}, el('legend', {}, t('Options')), optionsHost),
       publishBox,
@@ -1837,6 +1841,8 @@ function showExportDialog({
     const exportBtn = el('button.primary', {
       onClick: async () => {
         if (typeof onExport !== 'function' || !validOptions()) return;
+        // No folder yet: ask for one before showing "Exporting…"; cancelling leaves the dialog as it was.
+        if (!outDirInput.value.trim() && typeof onChooseDir === 'function' && !(await chooseOutDir())) return;
         cancelBtn.disabled = true;
         previewBtn.disabled = true;
         setButtonLoading(exportBtn, true, t('Exporting…'));

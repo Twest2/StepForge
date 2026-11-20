@@ -679,3 +679,30 @@ test('Export reopens with the last format and options, per format, and keeps the
   assert.equal(exported(), 1);
   assert.deepEqual(saved, [{ format: 'docx', templates: { pdf: '', docx: '' }, options: { pdf: {}, docx: { includeToc: false } } }]);
 });
+
+test('Export with no output folder asks for one first, and cancelling the picker leaves the dialog as it was', async () => {
+  const picks = [null, '/tmp/out'];
+  const seen = [];
+  let exportedWith = null;
+  const { u, done } = openExportDialog({
+    onChooseDir: async () => {
+      const button = u.button(u.modalRoot.children[0], 'Export');
+      seen.push({ label: button.textContent, cancelDisabled: u.button(u.modalRoot.children[0], 'Cancel').disabled });
+      return picks.shift();
+    },
+    onExport: async (payload) => { exportedWith = payload; return true; },
+  });
+  await settle();
+  const dialog = u.modalRoot.children[0];
+  u.button(dialog, 'Export').click();
+  await settle();
+  assert.equal(exportedWith, null, 'nothing is exported when the picker is cancelled');
+  assert.equal(u.modalRoot.children.length, 1, 'the dialog stays open');
+  assert.equal(u.button(dialog, 'Export').textContent, 'Export');
+  assert.equal(u.button(dialog, 'Cancel').disabled, false);
+
+  u.button(dialog, 'Export').click();
+  assert.equal(await done, true);
+  assert.equal(exportedWith.outDir, '/tmp/out', 'exports to the chosen folder');
+  assert.deepEqual(seen, [{ label: 'Export', cancelDisabled: false }, { label: 'Export', cancelDisabled: false }], 'not "Exporting…" while the folder is chosen');
+});

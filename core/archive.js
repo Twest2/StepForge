@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { zipSync, unzipSync } = require('./zip');
 const { isDeepStrictEqual } = require('node:util');
+const { fileURLToPath } = require('node:url');
 const { newId, nowIso, atomicWriteFileSync, writeJsonSync, readJsonIfExists, deepClone } = require('./util');
 const { normalizeGuide, normalizeStep, validateGuide, validateStep, SCHEMA_VERSION } = require('./schema');
 const { acquireLock, releaseLock } = require('./locks');
@@ -124,6 +125,7 @@ function importGuideArchive(store, file, { mode = 'copy' } = {}) {
     };
   }
   newGuide.stepsOrder = guide.stepsOrder.map((id) => idMap.get(id)).filter(Boolean);
+  if (newGuide.thumbnailStepId) newGuide.thumbnailStepId = idMap.get(newGuide.thumbnailStepId);
 
   const imported = finalizeImport(store, newGuide, idMap, stepJsons, stepFiles);
   if (mode === 'linked') rememberLinkedBase(store, imported.guideId, buildArchiveEntries(store, imported.guideId), contentHash(entries));
@@ -336,7 +338,26 @@ function saveLinkedGuide(store, guideId, options) {
   return job;
 }
 
+/**
+ * The guide file (.sfgz) in a command line StepForge was started with, as an
+ * absolute path; null if there is none. File managers may pass a file:// URI
+ * (the Linux .desktop file uses %U); a relative path is relative to `cwd`.
+ */
+function archiveArgument(argv, cwd) {
+  for (const arg of argv.slice(1)) {
+    let file = String(arg);
+    if (file.startsWith('file:')) {
+      try { file = fileURLToPath(file); } catch { continue; }
+    }
+    if (!/\.sfgz$/i.test(file)) continue;
+    file = path.resolve(cwd, file);
+    if (fs.statSync(file, { throwIfNoEntry: false })?.isFile()) return file;
+  }
+  return null;
+}
+
 module.exports = {
+  archiveArgument,
   ARCHIVE_FORMAT,
   buildArchiveEntries,
   exportGuideArchive,

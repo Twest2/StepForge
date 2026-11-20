@@ -65,9 +65,23 @@ test('Plasma recording reminder explains its tray controls and Continue complete
   const done = u.context.window.StepForgeDialogs.showRecordingReminder();
   assert.match(u.root.textContent, /StepForge tray icon beside the clock/);
   assert.doesNotMatch(u.root.textContent, /GNOME|floating bar/);
+  assert.doesNotMatch(u.root.textContent, /Recording tip/i);
   await u.all(u.root).find(n => n.tag === 'button' && n.textContent === 'Continue').listeners.click();
-  assert.equal(await done, true);
+  assert.ok(!(await done).dontShowAgain);
   assert.equal(u.root.children.length, 0);
+});
+
+test('the recording reminder can be cancelled or turned off', async () => {
+  const u = ui();
+  u.context.document.body = { classList: { contains: () => false } };
+  let done = u.context.window.StepForgeDialogs.showRecordingReminder();
+  await u.all(u.root).find(n => n.tag === 'button' && n.textContent === 'Cancel').listeners.click();
+  assert.equal(await done, false);
+  done = u.context.window.StepForgeDialogs.showRecordingReminder();
+  u.all(u.root).find(n => n.tag === 'input' && n.type === 'checkbox').checked = true;
+  assert.match(u.root.textContent, /Don’t show this again/);
+  await u.all(u.root).find(n => n.tag === 'button' && n.textContent === 'Continue').listeners.click();
+  assert.equal((await done).dontShowAgain, true);
 });
 
 test('offline Guide information hides cloud controls and preserves existing metadata and sharing', async () => {
@@ -166,4 +180,17 @@ test('Guide version sits under Review, above Software version, and saves trimmed
   input.value = ' 1.1 ';
   await u.all(u.all(u.root).find(n => n.tag === 'footer')).find(n => n.textContent === 'Save').listeners.click();
   assert.equal(saved.guideVersion, '1.1');
+});
+
+test('Last verified repeats the chosen date in the app’s date format', async () => {
+  const u = ui();
+  u.context.window.StepForgeDialogs.showGuideInfoDialog({ values: { lastVerified: '2026-03-04' } });
+  const input = u.all(u.root).find(n => n.tag === 'input' && n.type === 'date');
+  const shown = input.parent.children.at(-1);
+  assert.equal(shown.textContent, '04-Mar-2026');
+  input.value = '';
+  input.listeners.input();
+  assert.equal(shown.textContent, '');
+  await u.all(input.parent).find(n => n.tag === 'button' && n.textContent === 'Today').listeners.click();
+  assert.match(shown.textContent, /^\d\d-[A-Z][a-z]{2}-\d{4}$/);
 });

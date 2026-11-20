@@ -224,7 +224,7 @@ function makeWikiJsSettings(api) {
   });
   const usage = el('section.cloud-card.wikijs-prefs', {},
     el('header.cloud-card-head', {}, el('h4', {}, t('Publishing'))),
-    el('p.muted', {}, t('Choose Share → Publish to Wiki.js… in a guide. You pick the page’s path when you publish; publishing the guide again updates the same page.')),
+    el('p.muted', {}, t('Choose Share → Publish to Wiki.js in a guide. You pick the page’s path when you publish; publishing the guide again updates the same page.')),
     el('div.cloud-setting', {},
       el('div', {}, el('strong', {}, t('New pages')), publishNote),
       publishDefault),

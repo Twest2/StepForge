@@ -5,10 +5,10 @@
 
 const { poll } = require('./driver');
 
-/** From the welcome screen, open the library ("Existing Workspace"). */
+/** From the welcome screen, open the library ("Library"). */
 async function openLibrary(app) {
   await app.waitForVisible('.welcome-btn', { label: 'welcome screen' });
-  await app.clickWhere('.welcome-btn', "(el) => el.textContent.includes('Existing Workspace')");
+  await app.clickWhere('.welcome-btn', "(el) => el.querySelector('.welcome-btn-label')?.textContent === 'Library'");
   await app.waitForVisible('.card-open', { label: 'guide cards in the library' });
 }
 
@@ -24,11 +24,11 @@ async function libraryAction(app, title, entry) {
   await app.clickText(entry);
 }
 
-/** Answers the app's own confirm or prompt dialog: type a value, then press OK. */
-async function answerPrompt(app, value) {
+/** Answers the app's own confirm or prompt dialog: type a value, then press OK (or `okLabel`). */
+async function answerPrompt(app, value, okLabel = 'OK') {
   await app.waitForVisible('#modal-root input', { label: 'prompt dialog' });
   await app.setValue('#modal-root input', value);
-  await app.clickText('OK', { scope: '#modal-root' });
+  await app.clickText(okLabel, { scope: '#modal-root' });
 }
 
 async function confirmDialog(app, okLabel) {
@@ -44,7 +44,7 @@ function eventually(fn, label) {
 module.exports = { openLibrary, openGuideCard, libraryAction, answerPrompt, confirmDialog, eventually };
 
 /**
- * Adds a step from an image file through Add → Choose image… → Add, as a person
+ * Adds a step from an image file through Add → Choose image → Add, as a person
  * would. Returns the new step's id once it is on disk.
  */
 async function addPictureStep(app, { picture, title, guideDir }) {
@@ -52,7 +52,7 @@ async function addPictureStep(app, { picture, title, guideDir }) {
   await app.main.stubDialogs({ open: [{ filePaths: [picture] }] });
   await app.clickText('Add');
   await app.waitForVisible('#modal-root input', { label: 'add step dialog' });
-  await app.clickText('Choose image…', { scope: '#modal-root' });
+  await app.clickText('Choose image', { scope: '#modal-root' });
   await app.waitForVisible('#modal-root .primary', { label: 'add button' });
   await app.setValue('#modal-root input', title);
   await app.clickText('Add', { scope: '#modal-root' });
@@ -87,7 +87,7 @@ async function exportThroughUi(app, env, format, extension) {
   const label = await app.evaluate(`Array.from(document.querySelector('.export-format select').options).find(o => o.value === ${JSON.stringify(format)}).textContent`);
   await app.selectOption('.export-format select', label);
   await app.main.stubDialogs({ open: [{ filePaths: [outDir] }] });
-  await app.clickText('Choose…', { scope: '.export-output-folder' });
+  await app.clickText('Choose', { scope: '.export-output-folder' });
   await eventually(() => app.evaluate(`document.querySelector('input[aria-label="Output folder"]').value === ${JSON.stringify(outDir)}`), 'output folder chosen');
   await app.clickText('Export', { scope: '#modal-root' });
   await app.waitForGone('.export-dialog', { timeout: 60000 });

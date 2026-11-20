@@ -20,7 +20,7 @@ making a profile first. Open **Settings → Branding** and pick one under
 | **Midnight** | Purple accents; HTML pages follow the reader's dark mode |
 | **Classic** | Serif headings and a centered cover, made for printing |
 
-Themes can't be changed. To make one your own, choose **Customize…** next to
+Themes can't be changed. To make one your own, choose **Customize** next to
 the list (or in **Manage**). That opens the profile editor with the theme's
 settings; add your logo, change colors, and save. The copy is an ordinary
 profile you can edit, share and delete, and it becomes the active one.
@@ -28,7 +28,7 @@ profile you can edit, share and delete, and it becomes the active one.
 ## Make a brand profile
 
 1. Open **Settings → Branding** and choose **Manage**.
-2. Choose **New profile…** and fill in what you need. Everything except the
+2. Choose **New profile** and fill in what you need. Everything except the
    name is optional:
    - **Profile name**: what the **Active brand profile** list shows.
    - **Company logo** and **Banner**: PNG, JPG or SVG, up to 10 MB each. The
@@ -40,7 +40,7 @@ profile you can edit, share and delete, and it becomes the active one.
      main color. Accent and Text are darkened if needed so they're easy to
      read on white.
    - **Fonts**: one for headings and one for body text. Type any font name or
-     pick a suggestion. **Upload font…** adds a font file (WOFF2, WOFF, TTF or
+     pick a suggestion. **Upload font** adds a font file (WOFF2, WOFF, TTF or
      OTF) that HTML exports carry with them, so the page looks right on
      computers that don't have the font.
    - **Cover style**: **Standard**, **Centered**, or **Brand color band**
@@ -273,7 +273,7 @@ With **Follow light or dark mode**, change something only in dark mode:
 
 ### Good to know
 
-- **Fonts:** prefer **Upload font…** to `@import`ing a web font. An uploaded
+- **Fonts:** prefer **Upload font** to `@import`ing a web font. An uploaded
   font travels inside the page. `@import` and `url(https://…)` make the page
   download from that site every time someone opens it, which needs a
   connection and tells that site the page was viewed. StepForge's own exports
@@ -340,8 +340,8 @@ or JPG image, exports other than HTML pick it up once StepForge is next open.
 
 ## Share a profile
 
-In **Manage**, **Share…** saves a profile as a `.sfbrand` file with its logo,
-banner and font files. Teammates add it with **Import .sfbrand…**. Every image
+In **Manage**, **Share** saves a profile as a `.sfbrand` file with its logo,
+banner and font files. Teammates add it with **Import .sfbrand**. Every image
 and font in it is checked again as if it were uploaded, and SVG images are
 cleaned of scripts, links and anything else that isn't drawing.
 

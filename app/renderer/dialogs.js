@@ -192,7 +192,7 @@ function makeHotkeyInput(value = '') {
 }
 
 /**
- * "Move to…" for a step: pick the place (after which step) and the level
+ * "Move to" for a step: pick the place (after which step) and the level
  * there. `positions` is [{ value, label, current?, levels: [{ value, label }] }];
  * resolves { gap, depth } (the chosen values) or null.
  */
@@ -238,18 +238,19 @@ async function promptText({
   placeholder = '',
   multiline = false,
   onInput = null,
+  confirmLabel = t('OK'),
 } = {}) {
   return new Promise((resolve) => {
     const field = multiline
       ? el('textarea', { rows: 6, placeholder }, value)
-      : el('input', { type: 'text', value, placeholder });
+      : el('input', { type: 'text', value, placeholder, style: { flex: 1, minWidth: 0 } });
 
     const { close, requestDismiss } = openModal({
       title,
       body: labeledRow(label, field, { stacked: multiline }),
       footer: [
         el('button', { onClick: () => requestDismiss() }, t('Cancel')),
-        el('button.primary', { onClick: () => { close(); resolve(field.value); } }, t('OK')),
+        el('button.primary', { onClick: () => { close(); resolve(field.value); } }, confirmLabel),
       ],
       isDirty: unsavedChanges(() => field.value),
       onClose: () => resolve(null),
@@ -271,7 +272,8 @@ async function promptText({
       if (typeof onInput === 'function') onInput(field.value);
     });
 
-    setTimeout(() => field.focus(), 0);
+    // Select the prefilled value so typing replaces it.
+    setTimeout(() => { field.focus(); field.select(); }, 0);
   });
 }
 
@@ -305,11 +307,12 @@ function showQuickActions({ query = '', commands = [], searchFn, onOpenItem, onC
           onMouseenter: () => { active = idx; updateActiveItem(); },
           onClick: () => choose(idx),
         },
-        el('span.kind', {}, item.kind || 'cmd'),
         el('div', {},
           el('div', { style: { fontWeight: 600 } }, item.label),
           item.description ? el('div.snippet', {}, item.description) : null,
-        )));
+        ),
+        // Search results say what they are; commands need no label.
+        item.kind === 'guide' || item.kind === 'step' ? el('span.kind', {}, item.kind === 'guide' ? t('Guide') : t('Step')) : null));
       });
     }
 
@@ -336,16 +339,13 @@ function showQuickActions({ query = '', commands = [], searchFn, onOpenItem, onC
     }
 
     const { close } = openModal({
-      title: t('Quick Actions'),
+      title: t('Quick actions'),
       body: el('div.quick-actions', {},
         input,
         hint,
         results,
       ),
-      wide: true,
-      footer: [
-        el('button', { onClick: () => { close(); resolve(null); } }, t('Close')),
-      ],
+      wide: true, // no footer: × and Escape close it
       onClose: () => {
         if (onClose) onClose();
         resolve(null);
@@ -679,7 +679,7 @@ function showSettingsDialog({
     const storagePath = el('code.settings-path', {}, t('Checking guide storage location…'));
     const storageNote = el('div.setting-desc', {}, '');
     const showStorageError = (message) => { storageNote.textContent = message; storageNote.classList.add('error'); };
-    const chooseStorageBtn = el('button', { type: 'button' }, t('Choose folder…'));
+    const chooseStorageBtn = el('button', { type: 'button' }, t('Choose folder'));
     const resetStorageBtn = el('button', { type: 'button' }, t('Use default'));
     const cancelStorageBtn = el('button', { type: 'button', hidden: true }, t('Cancel pending move'));
     const storageWarningNote = el('div.storage-warning', { role: 'note', hidden: true });
@@ -797,7 +797,6 @@ function showSettingsDialog({
     const pauseHotkey = makeHotkeyInput(settings.capture?.hotkeyPauseResume || '');
     const focusedDefault = el('input', { type: 'checkbox', checked: settings.editor?.focusedViewDefaultForNewSteps !== false });
     const returnToSelect = el('input', { type: 'checkbox', checked: settings.editor?.returnToSelect !== false });
-    const dangerousDeletes = el('input', { type: 'checkbox', checked: settings.editor?.dangerousDeletes === true });
     const previewCount = makeInput(settings.exports?.previewStepCount ?? 3, 'number', { min: 1, step: 1 });
     const openFolder = el('input', { type: 'checkbox', checked: Boolean(settings.exports?.openFolderAfterExport) });
     const codeTheme = makeSelect(CODE_THEME_CHOICES.some((t) => t.value === settings.exports?.codeTheme) ? settings.exports.codeTheme : 'atom-one-dark',
@@ -1198,7 +1197,7 @@ function showSettingsDialog({
       { id: 'capture', label: t('Capture'), description: t('How StepForge records steps.'), content: [
         settingsCard(t('Recording'),
           recordingControlsRow,
-          settingRow(t('Default mode'), t('Record the whole screen or the active window. For a region, use Capture → Capture region.'), captureMode),
+          settingRow(t('Default mode'), t('Record the whole screen or the active window. For one region screenshot, use Capture → Region screenshot.'), captureMode),
           settingRow(t('Delay'), t('Milliseconds to wait before each screenshot.'), delayMs),
           settingRow(t('Click marker'), t('Draw a marker where you clicked.'), makeSwitch(clickMarker, t('Click marker'))),
           settingRow(t('Capture outside clicks'), t('Record clicks in other apps while a capture session is running.'), makeSwitch(captureOutside, t('Capture outside clicks')))),
@@ -1220,9 +1219,6 @@ function showSettingsDialog({
         settingsCard(t('Annotation tools'),
           settingRow(t('Go back to Select after each use'), t('After you draw a blur, shape, arrow or other annotation, or crop, the Select tool is picked again. Turn off to keep using the same tool.'),
             makeSwitch(returnToSelect, t('Go back to Select after each use')))),
-        settingsCard(t('Deleting'),
-          settingRow(t('Dangerous deletes'), t('Delete steps without asking for confirmation.'),
-            makeSwitch(dangerousDeletes, t('Dangerous deletes')))),
         settingsCard(t('Backups'),
           settingRow(t('Snapshots to keep'), t('Older backup snapshots of each guide are removed. 0 keeps all of them.'), keepLast)),
       ] },
@@ -1340,7 +1336,6 @@ function showSettingsDialog({
         ...settings.editor,
         focusedViewDefaultForNewSteps: focusedDefault.checked,
         returnToSelect: returnToSelect.checked,
-        dangerousDeletes: dangerousDeletes.checked,
       },
       branding: {
         ...settings.branding,
@@ -1467,7 +1462,7 @@ function showAddStepDialog({ onChooseImage } = {}) {
         error.textContent = t('Could not choose an image: {error}', { error: cause.message });
         error.hidden = false;
       } finally { choosing = false; choose.disabled = false; add.disabled = false; }
-    } }, t('Choose image…'));
+    } }, t('Choose image'));
     const accept = () => {
       if (closed || choosing) return;
       const draft = { title: title.value.trim(), image };
@@ -1478,7 +1473,7 @@ function showAddStepDialog({ onChooseImage } = {}) {
       el('label', {}, t('Step title'), title),
       el('div.add-step-image', {}, el('div', {}, t('Image (optional)')), imageStatus, el('div.row', {}, choose, remove)), error);
     const { close, requestDismiss, node } = openModal({
-      title: t('Add Step'), body: form, initialFocus: title,
+      title: t('Add step'), body: form, initialFocus: title,
       isDirty: () => Boolean(title.value || image),
       footer: [el('button', { type: 'button', onClick: () => requestDismiss() }, t('Cancel')), add],
       onClose: () => { closed = true; resolve(null); },
@@ -1493,6 +1488,7 @@ function showExportDialog({
   defaultFormat = 'pdf',
   defaultOutDir = '',
   onChooseDir,
+  onCheckDir,
   onExport,
   onPreview,
   onLoadDefaults,      // async (format) => exporter DEFAULT_TEMPLATE
@@ -1608,7 +1604,7 @@ function showExportDialog({
           onClick: async () => {
             const picked = await onChooseImage?.();
             if (picked) { input.value = picked; clear.disabled = false; set(picked); }
-          } }, t('Choose…'));
+          } }, t('Choose'));
         return el('div.row', {}, input, choose, clear);
       }
       const input = makeInput(value, 'text', { placeholder: info.placeholder || '' });
@@ -1716,10 +1712,10 @@ function showExportDialog({
       const site = publishTargets[formatSelect.value];
       publishInsteadNote.hidden = !site || typeof onPublishInstead !== 'function';
       if (publishInsteadNote.hidden) return;
-      publishInsteadBtn.textContent = t('Publish to {site}…', { site });
+      publishInsteadBtn.textContent = t('Publish to {site}', { site });
       publishInsteadNote.replaceChildren(
         el('span', {}, el('strong', {}, t('Publishing to {site} is easier.', { site })), ' ',
-          t('Share → Publish to {site}… creates the page for you, uploads its screenshots and updates the same page when you publish again. Export only if you’d rather upload the files yourself.', { site })),
+          t('Share → Publish to {site} creates the page for you, uploads its screenshots and updates the same page when you publish again. Export only if you’d rather upload the files yourself.', { site })),
         publishInsteadBtn);
     }
     publishInsteadBtn.addEventListener('click', () => {
@@ -1781,7 +1777,7 @@ function showExportDialog({
         refreshTemplates(list || []);
         templateSelect.value = name.trim();
       },
-    }, t('Save as template…'));
+    }, t('Save as template'));
 
     const manageBtn = el('button', {
       type: 'button',
@@ -1790,7 +1786,15 @@ function showExportDialog({
         refreshTemplates(list || []);
         refreshOptions();
       },
-    }, t('Manage…'));
+    }, t('Manage'));
+
+    /** Choose… : resolves true once a folder is in the field. */
+    const chooseOutDir = async () => {
+      if (typeof onChooseDir !== 'function') return false;
+      const chosen = await onChooseDir(formatSelect.value);
+      if (chosen) { outDirInput.value = chosen; refreshOutDir(); }
+      return Boolean(chosen);
+    };
 
     const body = el('div.export-dialog', {},
       qualityPanel(quality, (finding) => { finish(false); onShowFinding?.(finding); }),
@@ -1800,12 +1804,8 @@ function showExportDialog({
       labeledRow(t('Output folder'), el('div.row.export-output-folder', {}, outDirInput, el('button', {
         type: 'button',
         disabled: typeof onChooseDir !== 'function',
-        onClick: async () => {
-          if (typeof onChooseDir !== 'function') return;
-          const chosen = await onChooseDir(formatSelect.value);
-          if (chosen) { outDirInput.value = chosen; refreshOutDir(); }
-        },
-      }, t('Choose…')))),
+        onClick: chooseOutDir,
+      }, t('Choose')))),
       el('fieldset', {}, el('legend', {}, t('Options')), optionsHost),
       publishBox,
     );
@@ -1823,7 +1823,7 @@ function showExportDialog({
     const previewBtn = el('button', {
       onClick: async () => {
         if (typeof onPreview !== 'function' || !validOptions()) return;
-        setButtonLoading(previewBtn, true, t('Preview…'));
+        setButtonLoading(previewBtn, true, t('Preview'));
         try {
           await onPreview(payload()); // keep dialog open so settings can be tweaked
         } finally {
@@ -1834,6 +1834,10 @@ function showExportDialog({
     const exportBtn = el('button.primary', {
       onClick: async () => {
         if (typeof onExport !== 'function' || !validOptions()) return;
+        // No usable folder: ask for one before showing "Exporting…"; cancelling leaves the dialog as it was.
+        const outDir = outDirInput.value.trim();
+        const usable = outDir && (typeof onCheckDir !== 'function' || await onCheckDir(outDir).catch(() => false));
+        if (!usable && typeof onChooseDir === 'function' && !(await chooseOutDir())) return;
         cancelBtn.disabled = true;
         previewBtn.disabled = true;
         setButtonLoading(exportBtn, true, t('Exporting…'));
@@ -1892,7 +1896,7 @@ function showTemplateManager({ format, names = [], onRename, onDuplicate, onDele
               },
             }, t('Rename')),
             el('button', { type: 'button', onClick: async () => { list = await onDuplicate(name); renderRows(); } }, t('Duplicate')),
-            el('button', { type: 'button', onClick: async () => { await onExport(name); } }, t('Share…')),
+            el('button', { type: 'button', onClick: async () => { await onExport(name); } }, t('Share')),
             el('button.danger', { type: 'button', onClick: async () => { list = await onDelete(name); renderRows(); } }, t('Delete')),
           ),
         ));
@@ -1903,7 +1907,7 @@ function showTemplateManager({ format, names = [], onRename, onDuplicate, onDele
       title: t('Templates — {format}', { format }),
       body: el('div', {},
         el('div.row', { style: { marginBottom: '10px' } },
-          el('button', { type: 'button', onClick: async () => { list = await onImport(); renderRows(); } }, t('Import .sfglt…')),
+          el('button', { type: 'button', onClick: async () => { list = await onImport(); renderRows(); } }, t('Import .sfglt')),
           el('span.muted', {}, t('Templates are shareable as .sfglt files.')),
         ),
         rows,
@@ -1936,7 +1940,7 @@ function showLinkedGuideDialog({ guide, lock, onSave, onForceSave, onOpenArchive
     );
 
     const { close } = openModal({
-      title: t('Linked Guide'),
+      title: t('Linked guide'),
       body,
       footer: [
         el('button', { onClick: () => { close(); resolve(false); } }, t('Close')),
@@ -2115,9 +2119,12 @@ function showGuideInfoDialog({ values = {}, reviewDefaultDays, cloudConnected = 
       { value: '0', label: t('Never') },
     ]);
     const reviewHint = el('div.muted', { style: { marginTop: '-4px', marginBottom: '12px' } });
+    // The date input shows the system's format (e.g. 11/20/2026); repeat the date the way the rest of the app writes it.
+    const verifiedShown = el('span.muted');
     const readReviewDays = () => (reviewSelect.value === '' ? null : Number(reviewSelect.value));
     // Saving restarts the clock, so the preview counts from now.
     const updateReviewHint = () => {
+      verifiedShown.textContent = verifiedInput.value ? formatGuideDate(`${verifiedInput.value}T00:00`) : '';
       const status = review.reviewStatus({
         updatedAt: new Date().toISOString(),
         metadata: { lastVerified: verifiedInput.value, reviewAfterDays: readReviewDays() },
@@ -2185,7 +2192,7 @@ function showGuideInfoDialog({ values = {}, reviewDefaultDays, cloudConnected = 
         el('h3', { style: { margin: '14px 0 6px' } }, t('Review')),
         labeledRow(t('Guide version'), guideVersionInput),
         labeledRow(t('Software version'), versionInput),
-        labeledRow(t('Last verified'), el('div.row', {}, verifiedInput, todayBtn)),
+        labeledRow(t('Last verified'), el('div.row', {}, verifiedInput, todayBtn, verifiedShown)),
         labeledRow(t('Review again'), reviewSelect),
         reviewHint,
         el('section.guide-info-cloud', { hidden: !cloudConnected, 'aria-label': t('Cloud sync') },
@@ -2274,18 +2281,17 @@ const SHORTCUTS = [
 
 function showShortcutsDialog() {
   return new Promise((resolve) => {
-    const sections = SHORTCUTS.map(([heading, items]) => el('div', {},
-      el('h3', { style: { margin: '8px 0 6px' } }, heading),
-      el('table', { style: { width: '100%', borderCollapse: 'collapse' } },
-        ...items.map(([keys, what]) => el('tr', {},
-          el('td', { style: { padding: '3px 14px 3px 0', whiteSpace: 'nowrap' } }, el('kbd', {}, keys)),
-          el('td', { style: { padding: '3px 0' } }, what),
-        )),
-      ),
-    ));
+    // One table for every section, so the descriptions line up in one column.
+    const rows = SHORTCUTS.flatMap(([heading, items]) => [
+      el('tr', {}, el('th', { colSpan: 2, style: { textAlign: 'left', fontWeight: 'normal' } }, el('h3', { style: { margin: '8px 0 6px' } }, heading))),
+      ...items.map(([keys, what]) => el('tr', {},
+        el('td', { style: { padding: '3px 14px 3px 0', whiteSpace: 'nowrap' } }, el('kbd', {}, keys)),
+        el('td', { style: { padding: '3px 0' } }, what),
+      )),
+    ]);
     const { close } = openModal({
       title: t('Keyboard shortcuts'),
-      body: el('div', {}, ...sections),
+      body: el('table', { style: { width: '100%', borderCollapse: 'collapse' } }, el('tbody', {}, ...rows)),
       footer: [el('button.primary', { onClick: () => { close(); resolve(true); } }, t('Close'))],
       onClose: () => resolve(true),
     });
@@ -2303,15 +2309,22 @@ function showInfoDialog(title, bodyText) {
   });
 }
 
+/**
+ * "Before recording starts": how to stop on this desktop. Resolves false on
+ * Cancel, else { dontShowAgain } with the checkbox's state.
+ */
 function showRecordingReminder({
   actionLabel = t('Continue'),
   headline = t('StepForge will hide after you continue.'),
 } = {}) {
   return new Promise((resolve) => {
+    const dontShowAgain = el('input', { type: 'checkbox' });
+    const continueButton = el('button.primary', {
+      onClick: () => { close(); resolve({ dontShowAgain: dontShowAgain.checked }); },
+    }, actionLabel);
     const { close } = openModal({
       title: t('Before recording starts'),
       body: el('div.recording-notice', {},
-        el('div.recording-notice__badge', {}, t('Recording tip')),
         el('div.recording-notice__title', {}, headline),
         el('div.recording-notice__text', {},
           document.body.classList.contains('desktop-plasma')
@@ -2320,12 +2333,13 @@ function showRecordingReminder({
             ? t('To stop, use StepForge REC in the GNOME top panel, or restore StepForge from the dock.')
             : t('Use the floating bar to pause or finish. If you use the tray icon, look for the red dot beside the clock.'),
         ),
+        el('label', {}, dontShowAgain, ' ', t('Don’t show this again')),
       ),
       footer: [
-        el('button.primary', {
-          onClick: () => { close(); resolve(true); },
-        }, actionLabel),
+        el('button', { onClick: () => { close(); resolve(false); } }, t('Cancel')),
+        continueButton,
       ],
+      initialFocus: continueButton,
       onClose: () => resolve(false),
     });
   });

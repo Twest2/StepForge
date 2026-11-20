@@ -383,6 +383,29 @@ body.platform-linux #capture-status button {
   box-shadow: 0 0 0 1px var(--accent), var(--shadow);
 }
 .guide-card.selecting { transform: none; }
+/* A step's screenshot across the top, cropped from the top left so the window's title bar shows. */
+.guide-card .card-thumb {
+  display: block;
+  width: calc(100% + 32px);
+  aspect-ratio: 16 / 9;
+  margin: -16px -16px 12px;
+  object-fit: cover;
+  object-position: left top;
+  border-bottom: 1px solid var(--border);
+  border-radius: calc(var(--radius) - 1px) calc(var(--radius) - 1px) 0 0;
+  background: var(--panel-2);
+  /* Muted at rest; full color on hover, keyboard focus or selection. */
+  filter: grayscale(0.4) brightness(0.94);
+  transition: filter 150ms ease;
+}
+.guide-card:hover .card-thumb,
+.guide-card:focus-within .card-thumb,
+.guide-card.selected .card-thumb { filter: none; }
+@media (prefers-reduced-motion: reduce) { .guide-card .card-thumb { transition: none; } }
+@media (forced-colors: active) { .guide-card .card-thumb { filter: none; } }
+/* The star and actions sit beside the title, below the screenshot (16:9 of the card's padding box). */
+.guide-card:has(> .card-thumb) { container-type: inline-size; }
+.guide-card:has(> .card-thumb) > :is(.fav, .card-actions) { top: calc((100cqw + 32px) * 9 / 16 + 7px); }
 /* Keyboard focus anywhere in a card outlines the card; a mouse click doesn't. */
 .guide-card:has(:focus-visible) { border-color: var(--accent); }
 .guide-card .card-open {
@@ -403,7 +426,7 @@ body.platform-linux #capture-status button {
 .guide-card .card-actions:hover, .guide-card .card-actions:focus-visible, .guide-card .card-actions[aria-expanded="true"] { opacity: 1; background: var(--panel-2); }
 .trash-card .card-actions { position: static; opacity: 1; margin-left: auto; }
 .guide-card input.select-check { appearance: auto; display: block; width: 20px; height: 20px; margin: 0; padding: 0; border: 0; box-shadow: none; background: transparent; accent-color: var(--accent); }
-.guide-card h4 {
+.guide-card h3 {
   margin: 0 0 6px;
   font-size: 15px;
   line-height: 1.3;
@@ -1054,6 +1077,9 @@ body.platform-linux #capture-status button {
   color: var(--muted);
   pointer-events: none;
 }
+.canvas-empty p { margin: 0; }
+.canvas-empty-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 12px; pointer-events: auto; }
+.canvas-empty-actions[hidden] { display: none; }
 
 .pane-props section {
   display: flex;
@@ -1081,11 +1107,11 @@ body.platform-linux #capture-status button {
   align-items: center;
   gap: 8px;
 }
+.pane-props .row { flex-wrap: wrap; }
 .pane-props .row > label {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  white-space: nowrap;
 }
 .form-row {
   gap: 10px;
@@ -1107,11 +1133,23 @@ body.platform-linux #capture-status button {
 
 .rich-toolbar {
   display: flex;
-  gap: 4px;
+  gap: 2px;
   flex-wrap: wrap;
   margin-bottom: 8px;
 }
-.rich-toolbar button { padding: 4px 8px; font-size: 12px; }
+.rich-toolbar button.tool-icon {
+  box-sizing: border-box;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.rich-toolbar .tool-icon svg { width: 18px; height: 18px; flex: none; pointer-events: none; }
+/* Hidden, Skipped, New page and Focused share one row that wraps between, never inside, the checkboxes. */
+.step-flags { flex-wrap: wrap; column-gap: 14px; row-gap: 4px; }
+.step-flags label { white-space: nowrap; }
 .rich-toolbar button.active {
   background: var(--accent);
   border-color: var(--accent);
@@ -1154,13 +1192,14 @@ body.platform-linux #capture-status button {
 }
 .block-card {
   border: 1px solid var(--border);
-  border-left: 4px solid var(--border);
   border-radius: 12px;
   padding: 10px;
   background: var(--panel-solid);
 }
 .block-card[draggable="true"] { cursor: grab; }
 .block-card[draggable="true"]:active { cursor: grabbing; }
+/* The stripe previews the callout type in export. */
+.block-card[data-level] { border-left-width: 4px; }
 .block-card[data-level="info"] { border-left-color: #3b82f6; }
 .block-card[data-level="success"] { border-left-color: #10b981; }
 .block-card[data-level="warn"] { border-left-color: #f59e0b; }
@@ -1349,7 +1388,6 @@ fieldset legend {
 }
 
 .quick-actions {
-  width: min(760px, 92vw);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1386,14 +1424,9 @@ fieldset legend {
 .fr-item mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: inherit; border-radius: 3px; }
 .qa-item .kind {
   flex: none;
-  margin-top: 2px;
-  padding: 2px 6px;
-  border-radius: 999px;
-  background: var(--panel-2);
+  margin-left: auto;
   color: var(--muted);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  font-size: 12px;
 }
 
 .export-dialog,
@@ -1412,18 +1445,6 @@ fieldset legend {
 .recording-notice {
   display: grid;
   gap: 10px;
-}
-.recording-notice__badge {
-  width: fit-content;
-  padding: 4px 10px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--panel-2);
-  color: var(--danger);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 .recording-notice__title {
   font-size: 18px;
@@ -1507,6 +1528,16 @@ fieldset legend {
   background: var(--danger);
   color: var(--danger-fg);
 }
+.toast.has-action { display: flex; align-items: center; gap: 14px; }
+.toast-action {
+  flex: none;
+  padding: 3px 10px;
+  border: 1px solid currentColor;
+  background: transparent;
+  color: inherit;
+  font-weight: 600;
+}
+.toast-action:hover { background: color-mix(in srgb, currentColor 16%, transparent); }
 
 .ctx-menu {
   position: fixed;
@@ -1537,6 +1568,7 @@ fieldset legend {
 .ctx-menu .mi:hover { background: var(--panel-2); }
 .ctx-menu .mi:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; background: var(--panel-2); }
 .ctx-menu .mi.danger { color: var(--danger); }
+.ctx-menu .mi .mi-check { flex: none; width: 1.2em; color: var(--accent); }
 .ctx-menu .mi.disabled {
   color: var(--muted);
   cursor: default;
@@ -1660,15 +1692,18 @@ fieldset legend {
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--panel-2);
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+  /* One grid for all rows: the label column is as wide as the longest translated label. */
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) 76px 12px;
+  align-items: center;
+  gap: 8px 6px;
 }
-.focused-controls .form-row label { width: 50px; flex: none; color: var(--muted); font-size: 12px; }
-.focused-controls input[type="range"] { flex: 1; min-width: 0; }
-.focused-controls input[type="number"] { width: 76px; flex: none; font-variant-numeric: tabular-nums; }
-.focused-controls .fv-unit { width: 12px; flex: none; color: var(--muted); font-size: 12px; }
-.focused-controls .form-row { gap: 6px; }
+.focused-controls .form-row { display: contents; }
+.focused-controls > .muted { grid-column: 1 / -1; }
+.focused-controls .form-row label { width: auto; color: var(--muted); font-size: 12px; }
+.focused-controls input[type="range"] { min-width: 0; }
+.focused-controls input[type="number"] { font-variant-numeric: tabular-nums; }
+.focused-controls .fv-unit { color: var(--muted); font-size: 12px; }
 .blocks-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
 .blocks-list .block-card textarea,
 .blocks-list .block-card input { width: 100%; }
@@ -2115,7 +2150,7 @@ fieldset legend {
 }
 .settings-chip.dev { color: var(--text); background: color-mix(in srgb, var(--caution) 25%, var(--panel-solid)); }
 /* The same chip beside new features elsewhere (betaBadge in util.js). */
-.beta-badge { display: inline-block; line-height: 1.5; vertical-align: 1px; white-space: nowrap; }
+.beta-badge { display: inline-block; font-size: 11px; line-height: 1.5; vertical-align: 1px; white-space: nowrap; }
 .account-text strong .beta-badge, .ctx-menu .mi .beta-badge { margin-left: 8px; }
 .settings-card .placeholder-rows { padding-top: 12px; }
 
@@ -2304,6 +2339,8 @@ button.cmp-fold:hover { background: var(--border); color: var(--text); }
 /* Give localized values room instead of shrinking two full-width selects. */
 .blocks-list .block-text-options { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
 .blocks-list .block-text-options select { min-width: 0; width: 100%; }
+.blocks-list .block-card .block-field { display: flex; flex-direction: column; align-items: stretch; gap: 4px; }
+.blocks-list .block-field > span { color: var(--muted); font-size: 12px; }
 .export-output-folder { flex: 1; min-width: 0; }
 .export-dialog > .form-row > .export-output-folder { flex-wrap: nowrap; }
 .export-output-folder input { flex: 1; min-width: 0; width: 100%; }

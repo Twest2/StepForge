@@ -204,8 +204,8 @@ Windows, the Microsoft Store is the better choice.
 
 ## Your first guide in one minute
 
-1. Open StepForge and choose **New guide**.
-2. Choose **Start recording** in the top bar. StepForge steps out of the way.
+1. Open StepForge and choose **New recording**.
+2. Choose **Continue** in the recording reminder. StepForge steps out of the way.
 3. Do the task you want to document, clicking as you normally would.
 4. To stop on **Windows**, click **Finish** on the floating recording bar.
    You can choose **Tray icon (red dot)** in **Settings → Capture → Recording

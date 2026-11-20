@@ -25,8 +25,6 @@
   --ok-fg: #ffffff;
   --caution: #b45309;
   --caution-fg: #ffffff;
-  --recording: #b42318;
-  --recording-fg: #ffffff;
   --shadow: 0 14px 40px rgba(15, 23, 42, 0.08);
   --radius: 14px;
   /* Scrollbar thumb: 3:1 or better against the panels, never bright white. */
@@ -63,8 +61,6 @@
     --ok-fg: #08101a;
     --caution: #fbbf24;
     --caution-fg: #08101a;
-    --recording: #b42318;
-    --recording-fg: #ffffff;
     --shadow: 0 14px 40px rgba(0, 0, 0, 0.35);
     --scroll-thumb: #6b7889;
     --scroll-thumb-hover: #8a96a6;
@@ -260,27 +256,21 @@ kbd {
 #topbar-context { display: flex; align-items: center; gap: 8px; min-width: 0; }
 #topbar-context .muted { max-width: 44vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #global-search { width: min(360px, 32vw); margin-left: auto; }
-/* Recording status (app.js updateCaptureState): red only while recording. */
 #capture-status {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 6px 10px;
   border-radius: 999px;
-  background: var(--panel-2);
-  color: var(--text);
+  background: #b42318;
+  color: #fff;
   font-size: 12px;
 }
-#capture-status.recording { background: var(--recording); color: var(--recording-fg); }
-/* The blue top-bar Start recording button with its ▾ menu of screenshots. */
-.split-button { display: inline-flex; }
-.split-button > button:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
-.split-button > button + button {
-  padding-left: 8px;
-  padding-right: 8px;
-  border-left-color: color-mix(in srgb, var(--accent-fg) 35%, var(--accent));
-  border-top-left-radius: 0;
-  border-bottom-left-radius: 0;
+#capture-status button {
+  padding: 3px 8px;
+  border: 0;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
 }
 
 body.platform-linux #topbar {
@@ -292,6 +282,10 @@ body.platform-linux #topbar {
 body.platform-linux #capture-status {
   padding: 5px 9px;
   gap: 7px;
+}
+
+body.platform-linux #capture-status button {
+  padding: 2px 7px;
 }
 
 .library, .editor { flex: 1; min-height: 0; display: flex; }
@@ -2203,7 +2197,7 @@ fieldset legend {
   .brand-asset-row > .row { grid-column: 1 / -1; }
   .brand-facts, .brand-support { grid-template-columns: 1fr; }
 }
-#capture-status .capture-mode-note { font-weight: 600; }
+#capture-status .capture-mode-note { padding: 1px 7px; border-radius: 999px; background: rgba(255, 255, 255, 0.2); font-weight: 600; }
 
 /* ---- Compare with a snapshot (compare.js) ----
    Kept deliberately plain, like a code review: square-ish boxes, colored

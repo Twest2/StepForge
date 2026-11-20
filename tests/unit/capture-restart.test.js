@@ -49,9 +49,7 @@ function setup({ session } = {}) {
   ui.state = { view: 'editor', settings: {} };
   ui.editor = { guideId: 'existing-guide', dirty: true };
   ui.captureStatus = { children: [], classList: { add() {}, remove() {}, toggle() {} }, append(...children) { this.children.push(...children); } };
-  // The blue top-bar button (renderTopbar); click it with ui.onRecordButton().
-  ui.recordButton = {};
-  const button = () => ({ ...ui.recordButton, children: [ui.recordButton.textContent], onClick: () => ui.onRecordButton() });
+  const button = () => ui.captureStatus.children.find((node) => node.selector === 'button');
   return { ui, capture, win, calls, toasts, button, settingsSet, reminders: () => reminders, answerReminder: (answer) => { reminderAnswer = answer; } };
 }
 
@@ -127,7 +125,7 @@ test('failed start or resume requests clear the busy state and leave recording c
   }
 });
 
-test('the top-bar button reads Start, Stop or Resume recording and does that', async (t) => {
+test('the recording pill offers Start, Stop or Resume recording and does that', async (t) => {
   const f = setup();
   t.after(() => f.capture.finishSession());
   await f.ui.armCaptureSession('existing-guide');
@@ -166,23 +164,43 @@ test('Cancel in the reminder leaves the session paused; Don’t show this again 
   assert.equal(f.ui.captureState.paused, false);
 });
 
-test('the status pill is hidden until recording starts, red only while recording', () => {
+test('the red control remains available in the editor across recording states', () => {
   const f = setup();
   const classes = new Set(['hidden']);
-  f.ui.captureStatus.classList = { add: (c) => classes.add(c), remove: (c) => classes.delete(c), toggle: (c, on) => (on ? classes.add(c) : classes.delete(c)) };
-  const text = () => f.ui.captureStatus.children.map((node) => node.children.join('')).join(' ');
+  f.ui.captureStatus.classList = { add: (c) => classes.add(c), remove: (c) => classes.delete(c) };
+  const status = () => f.ui.captureStatus.children[0].children.join('');
+
+  f.ui.updateCaptureState({ active: false });
+  assert.ok(!classes.has('hidden'));
+  assert.equal(status(), 'Recording - stopped');
+  assert.equal(f.button().children[0], 'Start recording');
+  f.ui.updateCaptureState({ active: true, paused: true, count: 0 });
+  assert.ok(!classes.has('hidden'));
+  assert.equal(status(), 'Recording - ready');
+  f.ui.updateCaptureState({ active: true, paused: false, count: 0, clickCapture: true });
+  assert.ok(!classes.has('hidden'));
+  assert.equal(status(), 'Recording - on click');
+  f.ui.updateCaptureState({ active: true, paused: true, count: 3 });
+  assert.ok(!classes.has('hidden'));
+  assert.equal(status(), 'Recording - paused');
+  f.ui.updateCaptureState({ active: true, paused: false, count: 0, gnomeRequired: true, warmingUp: true });
+  assert.equal(status(), 'Recording - waiting for screen sharing');
+  f.ui.state.view = 'library';
   f.ui.updateCaptureState({ active: false });
   assert.ok(classes.has('hidden'));
-  f.ui.updateCaptureState({ active: true, paused: true, count: 0 });
-  assert.ok(classes.has('hidden'), 'an armed session that has not recorded is not shown');
-  f.ui.updateCaptureState({ active: true, paused: false, count: 0, clickCapture: true });
-  assert.ok(!classes.has('hidden') && classes.has('recording'));
-  assert.equal(text(), 'Recording - on click');
-  f.ui.updateCaptureState({ active: true, paused: true, count: 3 });
-  assert.ok(!classes.has('hidden') && !classes.has('recording'), 'paused is neutral');
-  assert.equal(text(), 'Recording - paused');
-  f.ui.updateCaptureState({ active: true, paused: false, count: 0, gnomeRequired: true, warmingUp: true });
-  assert.ok(!classes.has('recording'), 'waiting for screen sharing is neutral');
-  assert.equal(text(), 'Recording - waiting for screen sharing');
-  assert.equal(f.ui.captureStatus.children.some((node) => node.selector === 'button'), false, 'no buttons in the pill');
+});
+
+test('the blue Capture button opens the screenshot menu without starting a recording', () => {
+  const f = setup();
+  let menuEvent = null;
+  f.ui.editor.openCaptureMenu = (event) => { menuEvent = event; };
+  f.ui.topbarContext = { children: [], append(...children) { this.children.push(...children); } };
+  f.ui.renderTopbar();
+  const blue = f.ui.topbarContext.children.filter((node) => node.selector === 'button.primary');
+  assert.equal(blue.length, 1);
+  assert.equal(blue[0].children[0], 'Capture ▾');
+  const event = {};
+  blue[0].onClick(event);
+  assert.equal(menuEvent, event);
+  assert.deepEqual(f.calls, []);
 });

@@ -436,7 +436,7 @@ class StepForgeApp {
     return api.capture.session(payload).then((next) => { this.updateCaptureState(next); return next; });
   }
 
-  // Start (or resume) recording the open guide: the blue top-bar button, the
+  // Start (or resume) recording the open guide from the red pill, the
   // empty canvas and Quick actions. A session that has not recorded yet shows
   // the "Before recording starts" tip first, unless the user turned it off.
   async startRecording() {
@@ -456,23 +456,6 @@ class StepForgeApp {
     return Boolean(answer);
   }
 
-  // The blue top-bar button stops a running recording and starts or resumes otherwise.
-  onRecordButton() {
-    const s = this.captureState || {};
-    return s.active && !s.paused ? this.sendCaptureSession({ action: 'pause' }) : this.startRecording();
-  }
-
-  syncRecordButton() {
-    const button = this.recordButton;
-    if (!button) return;
-    const s = this.captureState || {};
-    button.disabled = Boolean(this.startingCaptureSession);
-    button.textContent = this.startingCaptureSession ? t('Starting…')
-      : s.active && !s.paused ? t('Stop recording')
-        : s.active && s.count ? t('Resume recording')
-          : t('Start recording');
-  }
-
   async startCaptureSession(guideId) {
     if (this.startingCaptureSession) return;
     this.startingCaptureSession = true;
@@ -490,8 +473,7 @@ class StepForgeApp {
     }
   }
 
-  // Opens a guide and arms (paused) capture for it, so the top bar's
-  // Start recording button records into this guide.
+  // Opens a guide and arms a paused session for the red recording control.
   async openGuideAndArmCapture(guideId, stepId = null) {
     await this.openGuide(guideId, stepId);
     // Don't restart (and reset the count of) a session already running for this guide.
@@ -532,37 +514,55 @@ class StepForgeApp {
     }
   }
 
-  // The pill at the top right shows only real status: hidden before a
-  // session records anything, red while recording, neutral when paused or
-  // waiting for screen sharing. The window-mode note shows from the start.
   updateCaptureState(state) {
     this.captureState = state || { active: false };
-    this.syncRecordButton();
     clearNode(this.captureStatus);
-    const s = this.captureState;
-    const notStarted = !s.active || (s.paused && !s.count);
     // The capture bar is editor-only — hide it everywhere else (library, welcome).
-    if (this.state.view !== 'editor' || (notStarted && !s.modeNote)) {
+    if (this.state.view !== 'editor') {
       this.captureStatus.classList.add('hidden');
       return;
     }
     this.captureStatus.classList.remove('hidden');
+    const s = this.captureState;
+
+    // No active session: show a button to start a new one for the open guide.
+    if (!s.active) {
+      this.captureStatus.append(
+        el('span', {}, t('Recording - stopped')),
+        el('button', {
+          type: 'button',
+          disabled: Boolean(this.startingCaptureSession),
+          onClick: () => this.startRecording(),
+        }, this.startingCaptureSession ? t('Starting…') : t('Start recording')),
+      );
+      return;
+    }
 
     // What is currently triggering captures, so the user knows what to do.
-    const waiting = (s.gnomeRequired || s.plasmaRequired) && s.warmingUp;
-    this.captureStatus.classList.toggle('recording', !notStarted && !s.paused && !waiting);
-    const trigger = waiting ? t('waiting for screen sharing')
+    const notStarted = s.paused && !s.count;
+    const trigger = (s.gnomeRequired || s.plasmaRequired) && s.warmingUp ? t('waiting for screen sharing')
+      : notStarted ? t('ready')
       : s.paused ? t('paused')
         : s.clickCapture ? t('on click')
           : s.intervalSec > 0 ? t('every {seconds}s', { seconds: s.intervalSec })
             : t('hotkey only');
 
+    const pauseBtn = el('button', {
+      type: 'button',
+      disabled: Boolean(this.startingCaptureSession),
+      title: notStarted ? t('StepForge tucks away and starts capturing') : '',
+      onClick: () => s.paused ? this.startRecording() : this.sendCaptureSession({ action: 'pause' }),
+    }, this.startingCaptureSession ? t('Starting…')
+      : !s.paused ? t('Stop recording')
+        : s.count ? t('Resume recording') : t('Start recording'));
+
     this.captureStatus.append(
-      ...(notStarted ? [] : [el('span', {}, t('Recording - {trigger}', { trigger }))]),
+      el('span', { title: t('Capture session — {trigger}', { trigger }) }, t('Recording - {trigger}', { trigger })),
       // Settings says Window but this desktop can only record the full screen:
       // say so before the first capture, since other windows will be in it.
       // Native append() prints null as "null", so leave the note out instead.
       ...(s.modeNote ? [el('span.capture-mode-note', { title: s.modeNote }, t('Full screen (window capture unavailable)'))] : []),
+      pauseBtn,
     );
   }
 
@@ -578,16 +578,12 @@ class StepForgeApp {
     const guide = this.editorMeta?.guide;
     this.topbarContext.append(
       el('button', { type: 'button', onClick: () => this.showLibrary() }, t('Library')),
-      el('span.split-button', {},
-        this.recordButton = el('button.primary', { type: 'button', onClick: () => this.onRecordButton() }),
-        el('button.primary', {
-          type: 'button',
-          title: t('Screenshots and images'),
-          'aria-label': t('Screenshots and images'),
-          'aria-haspopup': 'menu', 'aria-expanded': 'false',
-          onClick: (e) => this.editor.openCaptureMenu(e),
-        }, '▾'),
-      ),
+      el('button.primary', {
+        type: 'button',
+        title: t('Capture a screenshot step'),
+        'aria-haspopup': 'menu', 'aria-expanded': 'false',
+        onClick: (e) => this.editor.openCaptureMenu(e),
+      }, t('Capture ▾')),
       el('button', { type: 'button', onClick: () => this.editor.saveAll() }, t('Save')),
       el('button', { type: 'button', onClick: () => this.editor.openExportDialog() }, t('Export')),
       el('button', {
@@ -636,7 +632,7 @@ class StepForgeApp {
         'aria-haspopup': 'menu', 'aria-expanded': 'false',
       }, t('More ▾')),
       el('span.muted', { style: { marginLeft: '8px' } }, guide ? `${guide.title} · ${tn(this.editorMeta?.stepCount || 0, '{count} step', '{count} steps')}` : ''),
-    );    this.syncRecordButton();
+    );
   }
 
   async renderLibrary() {

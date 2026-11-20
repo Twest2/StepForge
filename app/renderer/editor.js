@@ -323,7 +323,7 @@ class GuideEditor {
     this.onToast = onToast;
     this.onBack = onBack;
     this.onPublish = onPublish; // (format) => Share → Publish to Confluence/Wiki.js for this guide
-    this.onStartRecording = onStartRecording; // the top bar's Start recording
+    this.onStartRecording = onStartRecording;
 
     this.guideId = null;
     this.guide = null;
@@ -4353,7 +4353,7 @@ class GuideEditor {
     }
   }
 
-  /** The ▾ beside Start recording: single screenshots and images. */
+  /** Capture menu for individual screenshots and image imports. */
   openCaptureMenu(event) {
     const trigger = event.currentTarget || event.target;
     const rect = trigger.getBoundingClientRect();

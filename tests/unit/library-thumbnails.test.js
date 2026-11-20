@@ -34,7 +34,7 @@ test('a card shows the chosen step, else the first shown step with a screenshot,
   const shown = store.addStep(guideId, { title: 'Shown' }, png);
   const later = store.addStep(guideId, { title: 'Later' }, png);
   const file = (step) => store.stepImagePath(guideId, step.stepId);
-  const pick = () => store.thumbnailImagePath(store.getGuide(guideId));
+  const pick = () => store.thumbnailSource(store.getGuide(guideId))?.file;
   const steps = () => store.getGuide(guideId).stepsOrder.map((id) => store.getStep(guideId, id));
 
   assert.equal(pick(), file(shown));
@@ -56,7 +56,7 @@ test('a card shows the chosen step, else the first shown step with a screenshot,
 
   store.saveStep(guideId, { ...store.getStep(guideId, shown.stepId), hidden: true });
   assert.equal(pick(), file(hidden), 'all hidden: the first screenshot');
-  assert.equal(store.thumbnailImagePath(store.createGuide({ title: 'Empty' })), null);
+  assert.equal(store.thumbnailSource(store.createGuide({ title: 'Empty' })), null);
 });
 
 test('the chosen thumbnail follows a duplicated or imported copy to its new step ids', (t) => {

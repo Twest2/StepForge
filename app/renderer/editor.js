@@ -3733,7 +3733,7 @@ class GuideEditor {
   /**
    * The step whose screenshot the guide's library card shows: the chosen
    * one, else the first shown step with a screenshot, else the first with
-   * one. GuideStore.thumbnailImagePath picks the same way.
+   * one. GuideStore.thumbnailSource picks the same way.
    */
   thumbnailStepId() {
     const withImage = this.steps.filter((step) => step.image);

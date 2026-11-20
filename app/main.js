@@ -2,6 +2,7 @@
 
 const path = require('node:path');
 const fs = require('node:fs');
+const { createHash } = require('node:crypto');
 const { pathToFileURL } = require('node:url');
 const {
   app, BrowserWindow, ipcMain, dialog, shell, nativeTheme, globalShortcut,
@@ -39,6 +40,8 @@ const { MAX_REQUEST_CHARS: MAX_BRAND_CSS_REQUEST_CHARS } = require('../core/ai-b
 const { buildSampleAst } = require('../core/branding-sample');
 const { setImageCodec, rasterToPng, sniffImageFormat, readImageSize, optimizeScreenshot, imagePreviewUrl } = require('../core/image-format');
 const { optimizeGuideImages } = require('../core/image-optimize');
+const { decodePng, encodePng } = require('../core/png');
+const { renderAnnotations } = require('../core/raster');
 const { createImageCodec } = require('../core/image-codec');
 const { AI_TARGETS } = require('../core/text-intel');
 const { agentChangesSince, agentChangesStamp } = require('../core/agent-changes');
@@ -892,22 +895,38 @@ function setupIpc() {
   const chosenOutputDirs = new Set();
 
   // library
-  // A library card's screenshot (core/store.js picks the step). The list
-  // carries only a version (step folder and file time) the renderer keys its
-  // scaled-down copies by; library:thumbnail sends the file's bytes.
+  // The renderer caches the scaled thumbnail under this version. Hash the
+  // blur geometry so editing a blur invalidates it even if the image didn't change.
   const thumbnailFile = (guide) => {
     try {
-      const file = store.thumbnailImagePath(guide);
-      const stat = file && fs.statSync(file, { throwIfNoEntry: false });
-      return stat?.isFile() ? { file, version: `${path.basename(path.dirname(file))}:${stat.mtimeMs}` } : null;
+      const source = store.thumbnailSource(guide);
+      if (!source) return null;
+      const { file, step } = source;
+      const stat = fs.statSync(file, { throwIfNoEntry: false });
+      if (!stat?.isFile()) return null;
+      const blurs = (step.annotations || []).filter((annotation) => annotation.type === 'blur');
+      const blurHash = createHash('sha256').update(JSON.stringify(blurs.map(({ x, y, w, h, radius }) => [x, y, w, h, radius]))).digest('hex');
+      return { file, blurs, version: `${step.stepId}:${path.basename(file)}:${stat.mtimeMs}:${stat.size}:${blurHash}` };
     } catch {
-      return null; // A broken step file costs the card its picture, not the library.
+      return null; // A broken step file costs the card its picture.
     }
   };
-  h('library:thumbnail', ({ guideId }) => {
-    const thumbnail = store.guideExists(guideId) ? thumbnailFile(store.getGuide(guideId)) : null;
-    return thumbnail ? fs.readFileSync(thumbnail.file) : null;
-  }, { validate: (a) => c.id(a.guideId) });
+  const currentThumbnail = (guideId) => store.guideExists(guideId) ? thumbnailFile(store.getGuide(guideId)) : null;
+  h('library:thumbnail', async ({ guideId, version }) => {
+    const thumbnail = currentThumbnail(guideId);
+    if (!thumbnail || thumbnail.version !== version) return null;
+    try {
+      const bytes = fs.readFileSync(thumbnail.file);
+      // Fill privacy regions at full resolution before the renderer can crop or scale.
+      const safeBytes = thumbnail.blurs.length
+        ? encodePng(renderAnnotations(decodePng(await rasterToPng(bytes)), thumbnail.blurs))
+        : bytes;
+      // A codec request may have yielded while the screenshot or its blurs changed.
+      return currentThumbnail(guideId)?.version === version ? safeBytes : null;
+    } catch {
+      return null;
+    }
+  }, { validate: (a) => c.id(a.guideId) && c.string(a.version, 256) });
   h('library:list', () => ({
     guides: store.listGuides().map((g) => ({
       ...g,

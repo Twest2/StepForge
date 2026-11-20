@@ -56,28 +56,29 @@ function trashCountdown(item, library = {}) {
  * the small copy; one at a time, as cards come near the screen.
  */
 const THUMBNAIL_WIDTH = 640;
-const smallThumbnails = new Map(); // "guideId version" -> Promise<data: URL>
+const smallThumbnails = new Map(); // guideId -> { version, job: Promise<data: URL> }
 let thumbnailQueue = Promise.resolve();
 
 function smallThumbnail(guideId, version) {
-  const key = `${guideId} ${version}`;
-  if (!smallThumbnails.has(key)) {
-    const job = thumbnailQueue.then(async () => {
-      const bytes = await api.library.thumbnail({ guideId });
-      if (!bytes) throw new Error('no screenshot');
-      const bitmap = await createImageBitmap(new Blob([bytes]), { resizeWidth: THUMBNAIL_WIDTH * 2, resizeQuality: 'medium' });
-      const cropWidth = Math.min(bitmap.width, bitmap.height * 16 / 9);
-      const canvas = document.createElement('canvas');
-      canvas.width = Math.min(THUMBNAIL_WIDTH, Math.round(cropWidth));
-      canvas.height = Math.round(canvas.width * 9 / 16);
-      canvas.getContext('2d').drawImage(bitmap, 0, 0, cropWidth, cropWidth * 9 / 16, 0, 0, canvas.width, canvas.height);
-      bitmap.close();
-      return canvas.toDataURL('image/webp', 0.85);
-    });
-    thumbnailQueue = job.catch(() => {});
-    smallThumbnails.set(key, job);
-  }
-  return smallThumbnails.get(key);
+  const cached = smallThumbnails.get(guideId);
+  if (cached?.version === version) return cached.job;
+  const job = thumbnailQueue.then(async () => {
+    const bytes = await api.library.thumbnail({ guideId, version });
+    if (!bytes) throw new Error('no screenshot');
+    const bitmap = await createImageBitmap(new Blob([bytes]), { resizeWidth: THUMBNAIL_WIDTH * 2, resizeQuality: 'medium' });
+    const cropWidth = Math.min(bitmap.width, bitmap.height * 16 / 9);
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.min(THUMBNAIL_WIDTH, Math.round(cropWidth));
+    canvas.height = Math.round(canvas.width * 9 / 16);
+    canvas.getContext('2d').drawImage(bitmap, 0, 0, cropWidth, cropWidth * 9 / 16, 0, 0, canvas.width, canvas.height);
+    bitmap.close();
+    return canvas.toDataURL('image/webp', 0.85);
+  });
+  thumbnailQueue = job.catch(() => {
+    if (smallThumbnails.get(guideId)?.job === job) smallThumbnails.delete(guideId);
+  });
+  smallThumbnails.set(guideId, { version, job });
+  return job;
 }
 
 const thumbnailObserver = typeof IntersectionObserver === 'function' ? new IntersectionObserver((entries) => {
@@ -465,13 +466,11 @@ class StepForgeApp {
   async showLibrary(reason = null) {
     if (!await this.flushEditorBeforeNavigation()) return;
     this.editor.setActive(false);
-    this.setView('library');
-    if (reason === 'new') {
-      await this.createGuide();
-      return;
-    }
+    // Refresh before revealing the library so an older thumbnail never flashes
+    // after a privacy blur was added in the editor.
     await this.refreshData();
-    this.renderLibrary();
+    await this.renderLibrary();
+    if (reason === 'new') await this.createGuide();
   }
 
   async openGuide(guideId, stepId = null) {
@@ -682,9 +681,9 @@ class StepForgeApp {
 
   async renderLibrary() {
     const focusKey = document.activeElement?.dataset?.libraryFocus;
+    clearNode(this.libraryHost);
     this.setView('library');
     this.editor.setActive(false);
-    clearNode(this.libraryHost);
     const q = this.state.query.trim();
     const trash = this.state.folderFilter === 'trash';
     // Selecting only makes sense for the guide grid and the trash — drop out

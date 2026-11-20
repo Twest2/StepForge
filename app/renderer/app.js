@@ -337,7 +337,6 @@ class StepForgeApp {
           el('h1', {}, 'StepForge'),
           el('p.muted', {}, t('Capture, annotate, and export step-by-step guides.')),
         ),
-        this.renderRecentGuides(),
         el('div.welcome-actions', {},
           el('button.welcome-btn.primary', {
             type: 'button',
@@ -361,6 +360,7 @@ class StepForgeApp {
           el('span.welcome-btn-hint', {}, t('Theme, capture, and export options')),
           ),
         ),
+        this.renderRecentGuides(),
       ),
     );
   }

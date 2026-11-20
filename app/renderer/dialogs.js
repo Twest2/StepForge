@@ -1493,6 +1493,7 @@ function showExportDialog({
   defaultFormat = 'pdf',
   defaultOutDir = '',
   onChooseDir,
+  onCheckDir,
   onExport,
   onPreview,
   onLoadDefaults,      // async (format) => exporter DEFAULT_TEMPLATE
@@ -1838,8 +1839,10 @@ function showExportDialog({
     const exportBtn = el('button.primary', {
       onClick: async () => {
         if (typeof onExport !== 'function' || !validOptions()) return;
-        // No folder yet: ask for one before showing "Exporting…"; cancelling leaves the dialog as it was.
-        if (!outDirInput.value.trim() && typeof onChooseDir === 'function' && !(await chooseOutDir())) return;
+        // No usable folder: ask for one before showing "Exporting…"; cancelling leaves the dialog as it was.
+        const outDir = outDirInput.value.trim();
+        const usable = outDir && (typeof onCheckDir !== 'function' || await onCheckDir(outDir).catch(() => false));
+        if (!usable && typeof onChooseDir === 'function' && !(await chooseOutDir())) return;
         cancelBtn.disabled = true;
         previewBtn.disabled = true;
         setButtonLoading(exportBtn, true, t('Exporting…'));

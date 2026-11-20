@@ -16,9 +16,10 @@ For Linux, see the [installation options in the README](../README.md#install).
 
 ## 1. Record a guide
 
-1. Open StepForge and choose **New guide**.
-2. Choose **Capture → Start capture session**. StepForge reminds you how to
-   stop, then hides itself.
+1. Open StepForge and choose **New recording**.
+2. Choose **Continue** in the reminder. StepForge explains how to stop and
+   then hides itself. In an open guide, use **Start recording** in the red
+   recording control at the top right.
 3. Work through the task you want to document. **Each click creates a step**
    with a screenshot taken at the moment of the click and a marker on the
    spot you clicked.
@@ -71,14 +72,14 @@ screen.
 
 The click that stops recording never becomes a step, but other clicks you
 make while looking for it can, such as on the **^** arrow. Delete any extra
-steps in the editor. To record more, choose **Start recording** at the top
-right of the StepForge window.
+steps in the editor. To record more, choose **Start recording** (or **Resume
+recording**) in the red recording control at the top right.
 
 ### Other ways to add steps
 
 | To... | Do this |
 | --- | --- |
-| Take a single screenshot | **Capture → Capture full screen**, **Capture window**, or **Capture region** |
+| Take a single screenshot | **Capture → Full-screen screenshot**, **Window screenshot**, or **Region screenshot** |
 | Capture with the keyboard | Press **Ctrl+Shift+1** (change it in **Settings → Capture → Hotkeys**) |
 | Pause and resume a session | Press **Ctrl+Shift+2**. StepForge stays hidden while paused |
 | Use an image you already have | Paste it with **Ctrl+V**, or use **Capture → Import images** |
@@ -120,10 +121,13 @@ For each step you can:
   such as `<kbd>`, `<details>` and `<mark>` (scripts, styles and pictures are
   left out: an image becomes a link to it). **Preview** (blue while on) shows
   how it looks. Markdown exports keep your Markdown as written.
-  In rich text, **Step** links to another step: pick it from the list and the description
+  In rich text, **Link to a step** (the last button above the description)
+  links to another step: pick it from the list and the description
   shows "Step 3". The number follows the step when you move it, and exports
   use the step's number in that export. **Ctrl+click** the link to open the step.
-- **Set a status** of *Todo*, *In progress*, or *Done* to track your review.
+- **Set a status** of *Todo*, *In progress*, or *Done* to track your review:
+  right-click the step and choose **Status**. In **Select** mode it sets the
+  status of every selected step.
 - **Add blocks** for anything that isn't a screenshot:
   - **Text block** as a Note, Tip, Important, or Warning callout
   - **Code** with a language label, for commands and snippets
@@ -157,10 +161,9 @@ clipboard**, **Copy to another guide**, **Duplicate**, **Move up**, **Move
 down**, **Move to**, **Hide**, **Skip** and **Delete**. Substeps move with
 their steps.
 
-**Deleting steps:** StepForge asks before it deletes a step or a selection
-of steps, and **Ctrl+Z** brings them back. To delete without being asked,
-turn on **Settings → Editor → Dangerous deletes**. Deleting a guide always
-asks.
+**Deleting steps:** deleting a step or a selection of steps doesn't ask first.
+A notice with an **Undo** button appears, and **Undo** or **Ctrl+Z** brings the
+steps back. Deleting a guide always asks first.
 
 ### Flowcharts
 
@@ -336,7 +339,7 @@ carries on to a "(continued)" slide instead of being cut, and **Add speaker
 notes** copies each step's full text into its slide's notes.
 
 For Confluence and Wiki.js, **Share → Publish to Confluence** or **Publish to
-Wiki.js…** is usually the better choice: it creates the page for you, uploads
+Wiki.js** is usually the better choice: it creates the page for you, uploads
 the screenshots, and updates the same page when you publish again. The Export
 dialog points you there when you pick either format. See
 [Publish to Confluence](CONFLUENCE.md) and [Publish to Wiki.js](WIKIJS.md).

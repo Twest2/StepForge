@@ -135,7 +135,7 @@ test('the editor opens the publish dialog after Export closes, and the app route
   const calls = [];
   let exportArgs = null;
   const api = {
-    export: { formats: async () => [{ id: 'confluence', label: 'Confluence' }] },
+    export: { formats: async () => [{ id: 'confluence', label: 'Confluence' }], defaultDir: async () => null },
     templates: { list: async () => [] },
     settings: { all: async () => ({}) },
     branding: { list: async () => [] },
@@ -164,7 +164,7 @@ test('the editor opens the publish dialog after Export closes, and the app route
 
   // The app hands the editor a handler that opens the matching publish dialog.
   const appSrc = fs.readFileSync(path.join(__dirname, '../../app/renderer/app.js'), 'utf8');
-  assert.match(appSrc, /onPublish: \(format\) => \(format === 'confluence'\s*\? this\.publishToConfluence\(this\.editor\.guideId, this\.editor\.guide\?\.title\)\s*: this\.publishToWikiJs\(this\.editor\.guideId, this\.editor\.guide\?\.title\)\)/);
+  assert.match(appSrc, /onPublish: \(format\) => \(format === 'web' \? this\.publishToWeb\(this\.editor\.guideId, this\.editor\.guide\?\.title\)\s*: format === 'confluence'\s*\? this\.publishToConfluence\(this\.editor\.guideId, this\.editor\.guide\?\.title\)\s*: this\.publishToWikiJs\(this\.editor\.guideId, this\.editor\.guide\?\.title\)\)/);
 });
 
 

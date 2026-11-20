@@ -164,6 +164,15 @@ const TOOL_ICON_PATHS = {
   'flow-delete': '<path d="M4 7h16M10 7V4h4v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/>',
   'zoom-in': '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m20 20-4.9-4.9M10.5 7.5v6M7.5 10.5h6"/>',
   'zoom-out': '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m20 20-4.9-4.9M7.5 10.5h6"/>',
+  // Description formatting toolbar.
+  'format-bold': '<path d="M7 4.5h5.5a3.75 3.75 0 0 1 0 7.5H7zM7 12h6.5a3.75 3.75 0 0 1 0 7.5H7z"/>',
+  'format-italic': '<path d="M18.5 4.5h-8M13.5 19.5h-8M14.5 4.5l-5 15"/>',
+  'format-insertUnorderedList': '<path d="M9.5 6h10.5M9.5 12h10.5M9.5 18h10.5"/><circle cx="4.75" cy="6" r="1.25"/><circle cx="4.75" cy="12" r="1.25"/><circle cx="4.75" cy="18" r="1.25"/>',
+  'format-insertOrderedList': '<path d="M10.5 6H20M10.5 12H20M10.5 18H20M4 4.5 5.5 3.5V9M3.5 14.25a1.5 1.5 0 1 1 2.5 1.1L3.5 18.5h3"/>',
+  'format-formatBlock': '<path d="M4.5 4.5v15M9 7h10.5M9 12h10.5M9 17h7"/>',
+  'format-createLink': '<path d="M10 14a4.25 4.25 0 0 0 6 0l3-3a4.25 4.25 0 0 0-6-6l-1 1"/><path d="M14 10a4.25 4.25 0 0 0-6 0l-3 3a4.25 4.25 0 0 0 6 6l1-1"/>',
+  'format-removeFormat': '<path d="M6 5.5h12M12 5.5v5M10 19.5h4M12 14.5v5M4 4l16 16"/>',
+  'format-insertStep': '<circle cx="8" cy="12" r="6"/><path d="M6.75 10.25 8.5 9v6M16 12h6M19 9l3 3-3 3"/>',
   undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
   redo: '<path d="M15 14l5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/>',
 };
@@ -317,12 +326,13 @@ function zoomShortcutFromEvent(e) {
 }
 
 class GuideEditor {
-  constructor({ root, onMetaChange = () => {}, onToast = toast, onBack = () => {}, onPublish = null } = {}) {
+  constructor({ root, onMetaChange = () => {}, onToast = toast, onBack = () => {}, onPublish = null, onStartRecording = () => {} } = {}) {
     this.root = root;
     this.onMetaChange = onMetaChange;
     this.onToast = onToast;
     this.onBack = onBack;
-    this.onPublish = onPublish; // (format) => Share → Publish to Confluence/Wiki.js for this guide
+    this.onPublish = onPublish; // (format) => Share → Publish to the web ('web'), Confluence or Wiki.js for this guide
+    this.onStartRecording = onStartRecording;
 
     this.guideId = null;
     this.guide = null;
@@ -669,6 +679,7 @@ class GuideEditor {
     this.stepSelectionAnchor = null;
     this.selectedStepId = stepId;
     this.selectedAnnotationId = null;
+    this.propsPaneStepKey = null;
     this.canvasHistory = [];
     this.canvasFuture = [];
     this.pendingSave = false;
@@ -825,7 +836,13 @@ class GuideEditor {
         this.dom.canvasWrap = el('div.canvas-wrap', {},
           this.dom.canvas = el('canvas', { width: 1, height: 1, tabIndex: -1, role: 'group', 'aria-label': t('Screenshot editor'), 'aria-describedby': 'screenshot-keyboard-help' }, t('Select annotations in the list to edit their properties.')),
           el('span.sr-only', { id: 'screenshot-keyboard-help' }, t('Select an annotation from the list, then focus the screenshot. Use arrow keys to move it and Delete to remove it.')),
-          this.dom.canvasEmpty = el('div.canvas-empty', {}, t('Select an image step to edit annotations.')),
+          this.dom.canvasEmpty = el('div.canvas-empty', {}, el('div', {},
+            this.dom.canvasEmptyText = el('p', {}, t('Select an image step to edit annotations.')),
+            this.dom.canvasEmptyActions = el('div.canvas-empty-actions', { hidden: true },
+              el('button.primary', { type: 'button', onClick: () => this.onStartRecording() }, t('Start recording')),
+              el('button', { type: 'button', onClick: () => this.importImageSteps() }, t('Import images')),
+            ),
+          )),
         ),
         // The flowchart canvas and, beside it, its Mermaid text (Mermaid button, top right).
         this.dom.flowPane = el('div.flowchart-pane', { hidden: true },
@@ -859,16 +876,9 @@ class GuideEditor {
           el('div.row', {},
             this.dom.titleInput = el('input', { type: 'text', placeholder: t('Step title'), 'aria-label': t('Step title'), style: { flex: 1 } }),
           ),
-          this.dom.statusSelect = makeSelect('todo', [
-            { value: 'todo', label: t('Todo') },
-            { value: 'in-progress', label: t('In progress') },
-            { value: 'done', label: t('Done') },
-          ]),
-          el('div.row', {},
+          el('div.row.step-flags', {},
             this.dom.hiddenToggle = el('label', {}, el('input', { type: 'checkbox' }), ' ', t('Hidden')),
             this.dom.skippedToggle = el('label', {}, el('input', { type: 'checkbox' }), ' ', t('Skipped')),
-          ),
-          el('div.row', {},
             this.dom.forceNewPageToggle = el('label', {}, el('input', { type: 'checkbox' }), ' ', t('New page')),
             this.dom.focusedViewToggle = el('label.focused-toggle', {}, el('input', { type: 'checkbox' }), ' ', t('Focused')),
           ),
@@ -899,14 +909,14 @@ class GuideEditor {
             this.dom.descPreviewBtn = el('button.description-preview-toggle', { type: 'button', hidden: true, 'aria-pressed': 'false' }, t('Preview')),
           ),
           this.dom.richToolbar = el('div.rich-toolbar', {},
-            this.toolbarBtn('bold', t('Bold')),
-            this.toolbarBtn('italic', t('Italic')),
-            this.toolbarBtn('insertUnorderedList', t('Bullet')),
-            this.toolbarBtn('insertOrderedList', t('Number')),
-            this.toolbarBtn('formatBlock', t('Quote'), 'blockquote'),
-            this.toolbarBtn('createLink', t('Link')),
-            this.toolbarBtn('removeFormat', t('Clear')),
-            this.toolbarBtn('insertStep', t('Step')),
+            this.toolbarBtn('bold'),
+            this.toolbarBtn('italic'),
+            this.toolbarBtn('insertUnorderedList'),
+            this.toolbarBtn('insertOrderedList'),
+            this.toolbarBtn('formatBlock', 'blockquote'),
+            this.toolbarBtn('createLink'),
+            this.toolbarBtn('removeFormat'),
+            this.toolbarBtn('insertStep'),
           ),
           this.dom.descEditor = el('div.rich-editor', { contentEditable: 'true', spellcheck: true, role: 'textbox', 'aria-label': t('Description'), 'aria-multiline': 'true' }),
           // Description → Markdown: the source, and its preview.
@@ -944,7 +954,6 @@ class GuideEditor {
       ),
     );
     this.root.append(this.dom.root);
-    this.dom.statusSelect.setAttribute?.('aria-label', t('Status'));
     for (const row of this.dom.focusedControls.querySelectorAll?.('.form-row') || []) labelControl(row.querySelector('label'), [...row.querySelectorAll('input')]);
 
     // canvas interactions need to snapshot the current step before the drag
@@ -1118,15 +1127,16 @@ class GuideEditor {
     return this.paneSavePromise;
   }
 
-  toolbarBtn(action, label, block = null) {
+  toolbarBtn(action, block = null) {
     const labels = { bold: t('Bold'), italic: t('Italic'), insertUnorderedList: t('Bulleted list'), insertOrderedList: t('Numbered list'), formatBlock: t('Quote'), createLink: t('Link'), removeFormat: t('Clear'), insertStep: t('Link to a step') };
-    const btn = el('button', {
+    const btn = el('button.tool.tool-icon', {
       type: 'button',
-      'aria-label': labels[action] || label,
+      'aria-label': labels[action],
+      title: action === 'insertStep' ? t('Link to a step. Ctrl+click the link to open that step.') : labels[action],
       ...(!['createLink', 'removeFormat', 'insertStep'].includes(action) ? { 'aria-pressed': 'false' } : {}),
-      ...(action === 'insertStep' ? { title: t('Link to a step. Ctrl+click the link to open that step.') } : {}),
+      innerHTML: toolIconSvg(`format-${action}`),
       onClick: () => this.formatDescription(action, block),
-    }, action === 'insertStep' ? label : labels[action] || label);
+    });
     btn.dataset.action = action;
     if (block) btn.dataset.block = block;
     return btn;
@@ -1164,7 +1174,7 @@ class GuideEditor {
     this.dom.moveDownBtn.addEventListener('click', () => this.moveSelectedStep(1));
     this.dom.duplicateBtn.addEventListener('click', () => this.duplicateSelectedStep());
     this.dom.deleteBtn.addEventListener('click', () => this.deleteSelectedStep());
-    this.dom.saveNowBtn.addEventListener('click', () => this.saveAll());
+    this.dom.saveNowBtn.addEventListener('click', () => this.saveAll({ announce: true }));
     this.dom.snapshotBtn.addEventListener('click', () => this.createSnapshot());
     this.dom.zoomSelect.addEventListener('change', () => {
       const value = this.dom.zoomSelect.value;
@@ -1189,15 +1199,6 @@ class GuideEditor {
       this.saveStepDebounced();
       const row = [...this.dom.stepsList.children].find((node) => node.dataset.stepId === this.selectedStepId);
       if (row) row.querySelector('.t').textContent = this.currentStep.title || t('Untitled step');
-      this.emitMeta();
-    });
-
-    this.dom.statusSelect.addEventListener('change', () => {
-      if (!this.currentStep) return;
-      this.currentStep.status = this.dom.statusSelect.value;
-      this.pendingSave = true;
-      this.saveStepDebounced();
-      this.renderStepList();
       this.emitMeta();
     });
 
@@ -1345,7 +1346,9 @@ class GuideEditor {
     this.dom.annotationList.addEventListener('click', (e) => {
       const item = e.target.closest('[data-ann-id]');
       if (!item) return;
+      this.selectingFromAnnotationList = true;
       this.canvas.select(item.dataset.annId);
+      this.selectingFromAnnotationList = false;
       [...this.dom.annotationList.querySelectorAll('[data-ann-id]')].find(button => button.dataset.annId === item.dataset.annId)?.focus();
     });
 
@@ -1767,6 +1770,8 @@ class GuideEditor {
             { label: t('Move down'), action: () => this.moveSelectedStep(1) },
             { label: t('Move to'), action: () => this.moveStepTo(step.stepId) },
             'sep',
+            this.statusMenu(step.status || 'todo', (status) => this.setStepStatus(status)),
+            'sep',
             { label: t('Delete step'), danger: true, action: () => this.deleteSelectedStep() },
             ...(threads?.parents.has(step.stepId) ? ['sep', {
               label: threads.collapsed.has(step.stepId) ? t('Expand step') : t('Collapse step'),
@@ -2042,13 +2047,13 @@ class GuideEditor {
     this.focusStepControl(focusKey);
   }
 
-  /**
-   * Asks before deleting steps, unless Settings → Editor → Dangerous deletes
-   * is on. Resolves true to delete.
-   */
-  async confirmDelete(message, title) {
-    if (this.settings?.editor?.dangerousDeletes === true) return true;
-    return confirmDialog(message, { title, danger: true, okLabel: t('Delete') });
+  /** Deleting steps doesn't ask first: its toast has Undo, which does what Ctrl+Z does while the delete is still the last change. */
+  toastStepsDeleted(count, record) {
+    this.onToast(tn(count, '{count} step deleted.', '{count} steps deleted.'), {
+      ms: 6000,
+      announce: `${tn(count, '{count} step deleted.', '{count} steps deleted.')} ${t('Press Ctrl+Z to undo.')}`,
+      action: { label: t('Undo'), onClick: () => { if (this.canvasHistory.at(-1) === record) void this.undo(); } },
+    });
   }
 
   /** The steps ticked in Select mode, in guide order. */
@@ -2075,6 +2080,7 @@ class GuideEditor {
     guides.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
     const allHidden = ids.every((id) => this.stepMap.get(id)?.hidden);
     const allSkipped = ids.every((id) => this.stepMap.get(id)?.skipped);
+    const statuses = new Set(ids.map((id) => this.stepMap.get(id)?.status || 'todo'));
     const trigger = [...this.dom.stepsList.querySelectorAll('[data-step-focus]')].find((node) => node.dataset.stepFocus === `check:${stepId}`);
     contextMenu(e.clientX, e.clientY, [
       {
@@ -2097,6 +2103,7 @@ class GuideEditor {
       'sep',
       { label: allHidden ? t('Unhide') : t('Hide'), action: () => this.setSelectedStepsFlag('hidden', !allHidden) },
       { label: allSkipped ? t('Unskip') : t('Skip'), action: () => this.setSelectedStepsFlag('skipped', !allSkipped) },
+      this.statusMenu(statuses.size === 1 ? [...statuses][0] : null, (status) => this.setSelectedStepsFlag('status', status)),
       'sep',
       { label: t('Delete'), danger: true, action: () => this.deleteSelectedSteps() },
     ], { trigger, label: tn(ids.length, '{count} step selected', '{count} steps selected') });
@@ -2243,8 +2250,27 @@ class GuideEditor {
    * Select → Hide / Unhide and Skip / Unskip: the ticked steps' Hidden or
    * Skipped setting (`flag`), as one undo step.
    */
+  /** Step menu → Status: Todo, In progress or Done, with a check on `current`. */
+  statusMenu(current, apply) {
+    return {
+      label: t('Status'),
+      submenu: [['todo', t('Todo')], ['in-progress', t('In progress')], ['done', t('Done')]]
+        .map(([value, label]) => ({ label, checked: value === current, action: () => apply(value) })),
+    };
+  }
+
+  setStepStatus(status) {
+    if (!this.currentStep) return;
+    this.currentStep.status = status;
+    this.pendingSave = true;
+    this.saveStepDebounced();
+    this.renderStepList();
+    this.emitMeta();
+  }
+
   async setSelectedStepsFlag(flag, value) {
-    const ids = this.selectedStepIdsInOrder().filter((id) => Boolean(this.stepMap.get(id)?.[flag]) !== value);
+    const valueOf = (step) => (flag === 'status' ? step?.status || 'todo' : Boolean(step?.[flag]));
+    const ids = this.selectedStepIdsInOrder().filter((id) => valueOf(this.stepMap.get(id)) !== value);
     if (!ids.length || !(await this.settlePendingSave())) return;
     const before = [];
     const after = [];
@@ -2267,6 +2293,7 @@ class GuideEditor {
     const messages = {
       hidden: [tn(before.length, '{count} step hidden.', '{count} steps hidden.'), tn(before.length, '{count} step unhidden.', '{count} steps unhidden.')],
       skipped: [tn(before.length, '{count} step skipped.', '{count} steps skipped.'), tn(before.length, '{count} step unskipped.', '{count} steps unskipped.')],
+      status: [tn(before.length, 'Status changed for {count} step.', 'Status changed for {count} steps.')],
     };
     let text = messages[flag][value ? 0 : 1];
     if (before.length) text += ` ${t('Press Ctrl+Z to undo.')}`;
@@ -2277,8 +2304,6 @@ class GuideEditor {
   async deleteSelectedSteps() {
     const ids = [...this.selectedSteps];
     if (!ids.length) return;
-    const ok = await this.confirmDelete(tn(ids.length, 'Delete {count} step?', 'Delete {count} steps?'), t('Delete selected steps'));
-    if (!ok) return;
     if (this.pendingSave) await this.flushStep();
     const order = this.steps.map((s) => s.stepId);
     const entries = [];
@@ -2289,22 +2314,28 @@ class GuideEditor {
     for (const stepId of ids) {
       await api.step.delete({ guideId: this.guideId, stepId });
     }
-    if (entries.length) this.pushCanvasHistory({ type: 'delete-step', steps: entries, order });
+    const record = { type: 'delete-step', steps: entries, order };
+    if (entries.length) this.pushCanvasHistory(record);
     this.stepSelectMode = false;
     this.selectedSteps = new Set();
     this.stepSelectionAnchor = null;
     await this.reload(this.stepAfterDeleting(order, new Set(ids)));
-    this.onToast(tn(ids.length, '{count} step deleted. Press Ctrl+Z to undo.', '{count} steps deleted. Press Ctrl+Z to undo.'));
+    this.toastStepsDeleted(ids.length, record);
   }
 
   syncStepFields() {
     const step = this.currentStep;
     const guide = this.guide;
+    // A different step or a newly opened guide starts the pane at the top; autosave re-renders keep its place.
+    const paneKey = `${this.guideId}/${step?.stepId}`;
+    if (paneKey !== this.propsPaneStepKey) {
+      this.propsPaneStepKey = paneKey;
+      this.dom.propertiesPane.scrollTop = 0;
+    }
     if (!step) {
       this.dom.titleInput.value = '';
       this.dom.descEditor.innerHTML = '';
       this.syncDescriptionMode();
-      this.dom.statusSelect.value = 'todo';
       this.dom.hiddenToggle.querySelector('input').checked = false;
       this.dom.skippedToggle.querySelector('input').checked = false;
       this.dom.forceNewPageToggle.querySelector('input').checked = false;
@@ -2316,7 +2347,6 @@ class GuideEditor {
     if (document.activeElement !== this.dom.descEditor) this.dom.descEditor.innerHTML = step.descriptionHtml || '';
     this.syncDescriptionMode();
     this.refreshStepLinks();
-    this.dom.statusSelect.value = step.status || 'todo';
     this.dom.hiddenToggle.querySelector('input').checked = Boolean(step.hidden);
     this.dom.skippedToggle.querySelector('input').checked = Boolean(step.skipped);
     this.dom.forceNewPageToggle.querySelector('input').checked = Boolean(step.forceNewPage);
@@ -2326,12 +2356,13 @@ class GuideEditor {
       : '';
   }
 
-  // A guide with no steps needs a first capture or import; otherwise the
-  // canvas is waiting for a step to be selected or to have an image.
+  // A guide with no steps needs a first recording or import, with buttons
+  // for both; otherwise the canvas is waiting for a step to be selected or to have an image.
   showCanvasEmpty() {
-    this.dom.canvasEmpty.textContent = this.steps.length
+    this.dom.canvasEmptyText.textContent = this.steps.length
       ? t('Select an image step to edit annotations.')
       : t('Start recording or import images to begin.');
+    this.dom.canvasEmptyActions.hidden = this.steps.length > 0;
     this.dom.canvasEmpty.classList.remove('hidden');
   }
 
@@ -3838,20 +3869,25 @@ class GuideEditor {
     await calculate();
   }
 
-  async saveAll() {
+  /**
+   * Save everything now. `announce` is for an explicit Save (button, Ctrl+S):
+   * only then does a plain save say "Saved."; the flushes before dialogs,
+   * publishing and navigation stay quiet unless something needs telling.
+   */
+  async saveAll({ announce = false } = {}) {
     if (this.currentStep) await this.flushStep();
     if (this.guide) await this.flushGuide();
     if (this.guide && this.guide.linkedSource) {
       const result = await this.runLinkedSave({ force: false });
       if (result.saved) {
         if (this.guide.linkedSource) this.guide.linkedSource.lastSavedAt = new Date().toISOString();
-        this.toastLinkedSave(result, t('Saved and synced to linked archive.'));
+        if (announce || result.merged) this.toastLinkedSave(result, t('Saved and synced to linked archive.'));
       } else {
         this.onToast(t('Saved locally, but the linked archive is locked by another session.'), { error: true });
       }
       return;
     }
-    this.onToast(t('Saved.'));
+    if (announce) this.onToast(t('Saved.'));
   }
 
   /**
@@ -4131,15 +4167,14 @@ class GuideEditor {
   async deleteSelectedStep() {
     const step = this.currentStep;
     if (!step) return;
-    const ok = await this.confirmDelete(t('Delete “{title}”?', { title: step.title || t('Untitled step') }), t('Delete step'));
-    if (!ok) return;
     if (this.pendingSave) await this.flushStep();
     const order = this.steps.map((s) => s.stepId);
     const entry = await this.snapshotStepForDeletion(step);
     await api.step.delete({ guideId: this.guideId, stepId: step.stepId });
-    this.pushCanvasHistory({ type: 'delete-step', steps: [entry], order });
+    const record = { type: 'delete-step', steps: [entry], order };
+    this.pushCanvasHistory(record);
     await this.reload(this.stepAfterDeleting(order, new Set([step.stepId]), step.stepId));
-    this.onToast(t('Step deleted. Press Ctrl+Z to undo.'));
+    this.toastStepsDeleted(1, record);
   }
 
   /**
@@ -4349,23 +4384,18 @@ class GuideEditor {
     }
   }
 
-  /** Capture menu anchored at a toolbar button. */
-  async openCaptureMenu(event) {
+  /** Capture menu for individual screenshots and image imports. */
+  openCaptureMenu(event) {
     const trigger = event.currentTarget || event.target;
     const rect = trigger.getBoundingClientRect();
-    const session = (await api.capture.state())?.active;
-    const items = [
-      { label: t('Capture full screen'), action: () => this.captureStep('fullscreen') },
-      { label: t('Capture window'), action: () => this.captureStep('window') },
-      { label: t('Capture region'), action: () => this.captureStep('region') },
+    contextMenu(rect.left, rect.bottom + 4, [
+      { label: t('Full-screen screenshot'), action: () => this.captureStep('fullscreen') },
+      { label: t('Window screenshot'), action: () => this.captureStep('window') },
+      { label: t('Region screenshot'), action: () => this.captureStep('region') },
       'sep',
       { label: t('Paste image as step'), action: () => this.pasteClipboardStep() },
       { label: t('Import images'), action: () => this.importImageSteps() },
-    ];
-    if (!session) {
-      items.push('sep', { label: t('Start capture session (hotkey)'), action: () => this.startCaptureSession() });
-    }
-    contextMenu(rect.left, rect.bottom + 4, items, { trigger });
+    ], { trigger });
   }
 
   async pasteClipboardStep() {
@@ -4612,11 +4642,6 @@ class GuideEditor {
     return ` ${t('Press Ctrl+Z to undo.')}`;
   }
 
-  async startCaptureSession() {
-    await api.capture.session({ action: 'start', guideId: this.guideId });
-    this.emitMeta();
-  }
-
   async pauseCaptureSession() {
     await api.capture.session({ action: 'pause', guideId: this.guideId });
     this.onToast(t('Capture paused.'));
@@ -4735,12 +4760,13 @@ class GuideEditor {
       branding: { profiles: brandProfiles, activeId: settings.branding?.activeProfileId || '' },
       defaultFormat: 'pdf',
       defaultOutDir: settings.exports?.lastOutputDirs?.[settings.exports?.dialog?.format || 'pdf']
-        || settings.exports?.lastOutputDirs?.pdf || '',
+        || settings.exports?.lastOutputDirs?.pdf || await api.export.defaultDir().catch(() => null) || '',
       // Opens with what was chosen last time, and keeps changes however it closes.
       remembered: settings.exports?.dialog || null,
       onRemember: (choices) => api.settings.set({ keyPath: 'exports.dialog', value: choices })
         .catch((err) => console.warn('[stepforge] could not save export choices:', err?.message || err)),
       onChooseDir: async (format) => api.export.chooseDir({ format }),
+      onCheckDir: async (outDir) => api.export.canUseDir({ outDir }),
       onChooseImage: async () => api.export.chooseImage(),
       onLoadDefaults: async (format, brandProfileId) => api.export.defaults({ format, brandProfileId }),
       onLoadTemplate: async (format, name) => api.templates.load({ format, name }),
@@ -4858,11 +4884,16 @@ class GuideEditor {
       { kind: 'cmd', label: t('New guide'), description: t('Create a blank guide'), action: () => this.onBack('new') },
       { kind: 'cmd', label: t('Export'), description: t('Export the current guide'), action: () => this.openExportDialog() },
       { kind: 'cmd', label: t('Copy to clipboard'), description: t('Copy the guide with its screenshots'), action: () => this.copyToClipboard() },
+      this.onPublish ? { kind: 'cmd', label: t('Publish to the web'), action: () => this.onPublish('web') } : null,
+      { kind: 'cmd', label: t('Guide information'), action: () => this.openGuideInfo() },
+      { kind: 'cmd', label: t('Backups & snapshots'), action: () => this.openBackupsDialog() },
+      { kind: 'cmd', label: t('Find private details'), action: () => this.findPrivateDetails() },
       { kind: 'cmd', label: t('Optimize guide images'), action: () => this.optimizeImages() },
+      { kind: 'cmd', label: t('Keyboard shortcuts'), action: () => this.openShortcutsHelp() },
       { kind: 'cmd', label: t('Settings'), description: t('Open application settings'), action: () => this.openSettings() },
       { kind: 'cmd', label: t('Linked guide'), description: t('Show linked archive details'), action: () => this.openLinkedGuide() },
-      { kind: 'cmd', label: t('Start capture session'), description: t('Enable hotkey capture for this guide'), action: () => this.startCaptureSession() },
-    ];
+      { kind: 'cmd', label: t('Start recording'), description: t('Each click becomes a step in this guide'), action: () => this.onStartRecording() },
+    ].filter(Boolean);
 
     await dialogs.showQuickActions({
       commands,
@@ -5120,6 +5151,8 @@ class GuideEditor {
   onCanvasSelect(ann) {
     this.selectedAnnotationId = ann ? ann.id : null;
     this.renderAnnotationPanel();
+    // Bring the style controls into view; a pick from the pane's own list is already visible.
+    if (ann && !this.selectingFromAnnotationList) this.dom.annotationEditor.scrollIntoView({ block: 'nearest' });
     this.emitMeta();
   }
 
@@ -5500,7 +5533,7 @@ class GuideEditor {
     }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
       e.preventDefault();
-      this.saveAll();
+      this.saveAll({ announce: true });
       return;
     }
     // While the flowchart is shown, plain keys are the flowchart's (and the

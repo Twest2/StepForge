@@ -16,7 +16,7 @@ const SAMPLE_TITLE = 'Reset a password in Admin Portal';
 test('creating a guide from the library writes it to disk', () => withApp('library-create', {}, async (app, env) => {
   await flows.openLibrary(app);
   await app.clickText('New guide');
-  await flows.answerPrompt(app, 'E2E created guide');
+  await flows.answerPrompt(app, 'E2E created guide', 'Create');
   const created = await flows.eventually(() => findGuideByTitle(env.dataDir, 'E2E created guide'), 'new guide on disk');
   assert.equal(listLibraryGuides(env.dataDir).length, 2, 'library now holds the sample and the new guide');
   assert.deepEqual(created.guide.stepsOrder, []);

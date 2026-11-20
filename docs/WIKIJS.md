@@ -76,7 +76,7 @@ make a new one, then **Sign out** and connect again with it.
 ## Publish a guide
 
 Choose **Share → Publish to Wiki.js** in the editor, or **Publish to
-Wiki.js…** from a guide's menu in the library. Then check:
+Wiki.js** from a guide's menu in the library. Then check:
 
 - **Path**: where the page goes, such as `guides/reset-a-password`. It
   starts as `guides/` (or the last folder you published to) followed by the

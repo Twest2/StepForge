@@ -170,14 +170,21 @@ function debounce(fn, ms) {
   return wrapped;
 }
 
-function toast(message, { error = false, ms = 2600 } = {}) {
+/**
+ * A short message in the corner. `action` ({ label, onClick }) adds a button
+ * that closes the toast. The toast is hidden from screen readers (they hear
+ * `announce` instead), so its button is for the mouse only.
+ */
+function toast(message, { error = false, ms = 2600, action = null, announce = message } = {}) {
   const root = document.getElementById('toast-root');
-  const node = el('div.toast', { className: `toast${error ? ' error' : ''}` }, message);
+  const node = el('div.toast', { className: `toast${error ? ' error' : ''}${action ? ' has-action' : ''}` },
+    el('span', {}, message),
+    action ? el('button.toast-action', { type: 'button', tabIndex: -1, onClick: () => { node.remove(); action.onClick(); } }, action.label) : null);
   root.append(node);
   const announcer = document.getElementById(error ? 'toast-alert' : 'toast-status');
   if (announcer) {
     announcer.textContent = '';
-    setTimeout(() => { announcer.textContent = String(message); }, 20);
+    setTimeout(() => { announcer.textContent = String(announce); }, 20);
   }
   setTimeout(() => node.remove(), ms);
 }
@@ -550,9 +557,11 @@ function contextMenu(x, y, items, { trigger = document.activeElement, label = ''
     };
     for (const item of entries) {
       if (item === 'sep') { node.append(el('hr', { role: 'separator' })); continue; }
-      const button = el('button.mi', { type: 'button', role: 'menuitem', tabIndex: -1,
+      const checkable = 'checked' in item;
+      const button = el('button.mi', { type: 'button', role: checkable ? 'menuitemradio' : 'menuitem', tabIndex: -1,
         className: `mi${item.danger ? ' danger' : ''}${item.disabled ? ' disabled' : ''}${item.submenu ? ' has-submenu' : ''}`,
         ...(item.disabled ? { 'aria-disabled': 'true' } : {}),
+        ...(checkable ? { 'aria-checked': String(Boolean(item.checked)) } : {}),
         ...(item.submenu ? { 'aria-haspopup': 'menu', 'aria-expanded': 'false' } : {}),
         onMouseEnter: () => { if (item.submenu && !item.disabled) openSubmenu(item, button); else removeAfter(depth); },
         onClick: () => {
@@ -560,7 +569,8 @@ function contextMenu(x, y, items, { trigger = document.activeElement, label = ''
           if (item.submenu) { openSubmenu(item, button, true); return; }
           close(); item.action?.();
         },
-      }, el('span', {}, item.label), item.badge ? betaBadge(item.badge) : null,
+      }, checkable ? el('span.mi-check', { 'aria-hidden': 'true' }, item.checked ? '✓' : '') : null,
+      el('span', {}, item.label), item.badge ? betaBadge(item.badge) : null,
       item.submenu ? el('span.submenu-arrow', { 'aria-hidden': 'true' }, '›') : null);
       node.append(button); panel.buttons.push(button); panel.entries.push(item);
     }

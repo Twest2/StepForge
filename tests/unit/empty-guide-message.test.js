@@ -32,16 +32,20 @@ function makeEditor(language = 'en', api = {}) {
   const GuideEditor = loadEditorClass(language, api);
   const editor = Object.create(GuideEditor.prototype);
   const node = { hidden: true, text: OLD_HINT }; // as mountShell() creates it
+  const actions = { hidden: true }; // Start recording and Import images
   editor.dom = {
     canvas: { tabIndex: -1 }, // the screenshot, focusable once an image is drawn
     canvasEmpty: {
-      get textContent() { return node.text; },
-      set textContent(value) { node.text = value; },
       classList: {
         add() { node.hidden = true; },
         remove() { node.hidden = false; },
       },
     },
+    canvasEmptyText: {
+      get textContent() { return node.text; },
+      set textContent(value) { node.text = value; },
+    },
+    canvasEmptyActions: actions,
   };
   editor.canvas = { setTool() {}, setZoom() {}, setImage() {}, setAnnotations() {}, setFocusedView() {} };
   editor.syncToolbar = () => {}; // the toolbar is tested in editor-toolbar.test.js
@@ -57,14 +61,17 @@ function makeEditor(language = 'en', api = {}) {
     await editor.renderCanvas();
     return node.hidden ? null : node.text;
   };
-  return { show };
+  return { show, actions };
 }
 
 const stepWithoutImage = { stepId: 's1', title: 'Open the page', image: null, annotations: [] };
 
-test('an empty guide says to start recording or import images, not to edit annotations', async () => {
-  const { show } = makeEditor();
+test('an empty guide says to start recording or import images, with buttons for both', async () => {
+  const { show, actions } = makeEditor();
   assert.equal(await show([], null), EMPTY_GUIDE);
+  assert.equal(actions.hidden, false);
+  assert.equal(await show([stepWithoutImage], null), OLD_HINT);
+  assert.equal(actions.hidden, true, 'a guide with steps has no buttons');
 });
 
 test('a guide with steps keeps the annotation hint when nothing is selected', async () => {

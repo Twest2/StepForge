@@ -59,13 +59,13 @@ function addWelcomeGuide(store, { t, hotkeys = {} } = {}) {
 
   const steps = [
     {
-      title: t('Start a new capture'),
-      descriptionHtml: paragraph(t('Click {button}, then do your task as usual. Every click becomes a step: a screenshot, a marker where you clicked, and a title read from what you clicked.'), { button: t('New Capture') }),
+      title: t('Start a new recording'),
+      descriptionHtml: paragraph(t('Click {button}, then do your task as usual. Every click becomes a step: a screenshot, a marker where you clicked, and a title read from what you clicked.'), { button: t('New recording') }),
       textBlocks: [{
         position: 'after-description', level: 'success',
         descriptionHtml: paragraph(t('When you’re done, click {button} at the top right.'), { button: t('Stop recording') }),
       }],
-      annotations: [rect(0.150, 0.848, 0.232, 0.088)],
+      annotations: [rect(0.150, 0.848, 0.240, 0.088)],
       file: 'start-capture.webp',
     },
     {

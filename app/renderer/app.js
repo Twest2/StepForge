@@ -666,6 +666,7 @@ class StepForgeApp {
             { label: t('Backups & snapshots…'), action: () => this.editor.openBackupsDialog() },
             { label: t('Find private details…'), action: () => this.editor.findPrivateDetails() },
             { label: t('Optimize guide images'), action: () => this.editor.optimizeImages() },
+            { label: t('Library thumbnail'), submenu: () => this.editor.thumbnailMenuItems() },
             { label: guide && guide.linkedSource ? t('Linked guide…') : t('Linked guide (not linked)'), action: () => this.editor.openLinkedGuide() },
             'sep',
             { label: t('Keyboard shortcuts…'), action: () => this.editor.openShortcutsHelp() },
@@ -990,7 +991,8 @@ class StepForgeApp {
       onKeyDown: e => { if (!selectMode) this.libraryContextKey(e, event => this.guideContextMenu(event, guide)); },
     },
     // The title already names the card, so the screenshot is decorative (empty alt).
-    guide.thumbnail ? this.cardThumbnail(guide.guideId, guide.thumbnail) : null,
+    guide.thumbnailImage ? el('img.card-thumb', { alt: '', draggable: false, src: guide.thumbnailImage })
+      : guide.thumbnail ? this.cardThumbnail(guide.guideId, guide.thumbnail) : null,
     selectMode ? this.selectionCheck(selected, (e) => {
       e.stopPropagation();
       this.selectGuideFromClick(guide.guideId, e, { toggle: true });

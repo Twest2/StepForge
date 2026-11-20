@@ -1758,9 +1758,6 @@ class GuideEditor {
                 { label: t('Region…'), action: () => this.retakeScreenshot(step.stepId, 'region') },
               ],
             },
-            ...(step.image ? [this.thumbnailStepId() === step.stepId
-              ? { label: t('Library thumbnail (current)'), disabled: true }
-              : { label: t('Use as library thumbnail'), action: () => this.setThumbnailStep(step.stepId) }] : []),
             'sep',
             { label: t('Move up'), action: () => this.moveSelectedStep(-1) },
             { label: t('Move down'), action: () => this.moveSelectedStep(1) },
@@ -3731,21 +3728,63 @@ class GuideEditor {
   }
 
   /**
-   * The step whose screenshot the guide's library card shows: the chosen
-   * one, else the first shown step with a screenshot, else the first with
-   * one. GuideStore.thumbnailSource picks the same way.
+   * The step whose screenshot the guide's library card shows: none when the
+   * user chose an image, else the chosen step, else the first shown step with
+   * a screenshot, else the first with one. GuideStore.thumbnailSource picks the same way.
    */
   thumbnailStepId() {
+    if (this.guide?.thumbnailImage) return null;
     const withImage = this.steps.filter((step) => step.image);
     return (withImage.find((step) => step.stepId === this.guide?.thumbnailStepId)
       || withImage.find((step) => !step.hidden) || withImage[0])?.stepId || null;
   }
 
-  async setThumbnailStep(stepId) {
+  /** More → Library thumbnail: an image file, or one of the steps' screenshots. */
+  thumbnailMenuItems() {
+    const numbers = stepNumberMap(this.steps);
+    const current = this.thumbnailStepId();
+    return [
+      { label: t('Choose an image'), action: () => this.chooseThumbnailImage() },
+      {
+        label: t('Choose a screenshot'),
+        submenu: () => this.steps.filter((step) => step.image).map((step) => ({
+          label: `${numbers.get(step.stepId)}  ${step.title || t('Untitled step')}${step.stepId === current ? ` ${t('(current)')}` : ''}`,
+          disabled: step.stepId === current,
+          action: () => this.setThumbnail({ thumbnailStepId: step.stepId }),
+        })),
+      },
+    ];
+  }
+
+  async chooseThumbnailImage() {
+    let picked;
+    try {
+      picked = await api.step.pickImage({ purpose: 'thumbnail' });
+    } catch (error) {
+      this.onToast(t('Could not choose an image: {error}', { error: error.message }), { error: true });
+      return;
+    }
+    if (!picked) return;
+    // Stored in guide.json, so scale it to what a card shows: a 640 × 360 centre crop.
+    const bitmap = await createImageBitmap(new Blob([Uint8Array.from(atob(picked.imageBase64), (c) => c.charCodeAt(0))]));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.min(640, bitmap.width, Math.round(bitmap.height * 16 / 9));
+    canvas.height = Math.round(canvas.width * 9 / 16);
+    const crop = Math.min(bitmap.width / canvas.width, bitmap.height / canvas.height);
+    canvas.getContext('2d').drawImage(bitmap, (bitmap.width - canvas.width * crop) / 2, (bitmap.height - canvas.height * crop) / 2,
+      canvas.width * crop, canvas.height * crop, 0, 0, canvas.width, canvas.height);
+    bitmap.close();
+    await this.setThumbnail({ thumbnailImage: canvas.toDataURL('image/webp', 0.85) });
+  }
+
+  async setThumbnail(choice) {
     if (!this.guide) return;
-    this.guide.thumbnailStepId = stepId;
+    delete this.guide.thumbnailImage;
+    delete this.guide.thumbnailStepId;
+    Object.assign(this.guide, choice);
     this.pendingGuideSave = true;
     await this.flushGuide();
+    this.onToast(t('Library thumbnail changed.'));
   }
 
   async saveGuideEdits() {

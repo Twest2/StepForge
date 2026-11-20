@@ -932,7 +932,8 @@ function setupIpc() {
       ...g,
       stepCount: g.stepsOrder.length,
       locked: g.linkedSource ? Boolean(readLock(g.linkedSource.path)) : false,
-      thumbnail: thumbnailFile(g)?.version || null,
+      // A chosen image is already small; a screenshot is fetched per card by version.
+      thumbnail: g.thumbnailImage ? null : thumbnailFile(g)?.version || null,
     })),
     folders: store.loadFolders(),
   }));
@@ -1145,7 +1146,8 @@ function setupIpc() {
   // Pick a draft with the import decoder; no step or library file is created.
   h('step:pickImage', async ({ purpose } = {}) => {
     const res = await dialog.showOpenDialog(mainWindow, {
-      title: purpose === 'shape' ? t('Choose an image for the shape') : t('Choose an image for the new step'),
+      title: purpose === 'shape' ? t('Choose an image for the shape')
+        : purpose === 'thumbnail' ? t('Choose an image for the library') : t('Choose an image for the new step'),
       filters: [{ name: t('Images'), extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'] }],
       properties: ['openFile'],
     });

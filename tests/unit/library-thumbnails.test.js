@@ -15,7 +15,7 @@ const { makeTmpDir, rmrf, TINY_PNG, rendererI18n } = require('./helpers');
 
 const png = Buffer.from(TINY_PNG, 'base64');
 
-/** The editor's pick (its step menu marks this step "current"). */
+/** The editor's pick (More → Library thumbnail → Choose a screenshot marks it "current"). */
 function editorPick(guide, steps) {
   const context = { ...rendererI18n(), window: {} };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/editor.js'), 'utf8'), context);
@@ -40,7 +40,7 @@ test('a card shows the chosen step, else the first shown step with a screenshot,
   assert.equal(pick(), file(shown));
   assert.equal(editorPick(store.getGuide(guideId), steps()), shown.stepId);
 
-  // Use as library thumbnail is kept in guide.json.
+  // Choose a screenshot is kept in guide.json.
   store.saveGuide({ ...store.getGuide(guideId), thumbnailStepId: later.stepId });
   assert.equal(store.getGuide(guideId).thumbnailStepId, later.stepId);
   assert.equal(pick(), file(later));
@@ -75,6 +75,29 @@ test('the chosen thumbnail follows a duplicated or imported copy to its new step
   const copy = importGuideArchive(store, file, { mode: 'copy' });
   assert.notEqual(copy.thumbnailStepId, two.stepId);
   assert.equal(chosenTitle(store.getGuide(copy.guideId)), 'Two');
+});
+
+test('a chosen image is kept, travels with copies, and replaces the screenshot', (t) => {
+  const root = makeTmpDir('thumbimage');
+  t.after(() => rmrf(root));
+  const store = new GuideStore(path.join(root, 'data'));
+  const { guideId } = store.createGuide({ title: 'Guide' });
+  const step = store.addStep(guideId, { title: 'One' }, png);
+  const image = `data:image/webp;base64,${Buffer.from('webp bytes').toString('base64')}`;
+  store.saveGuide({ ...store.getGuide(guideId), thumbnailImage: image });
+  assert.equal(store.getGuide(guideId).thumbnailImage, image);
+  assert.equal(editorPick(store.getGuide(guideId), [store.getStep(guideId, step.stepId)]), null, 'no screenshot is current');
+
+  assert.equal(store.duplicateGuide(guideId).thumbnailImage, image);
+  const file = path.join(root, 'guide.sfgz');
+  exportGuideArchive(store, guideId, file);
+  assert.equal(importGuideArchive(store, file, { mode: 'copy' }).thumbnailImage, image);
+
+  // guide.json also comes from archives and sync: anything but a small WebP data URL is dropped.
+  for (const bad of ['data:image/svg+xml;base64,PHN2Zz4=', 'file:///etc/passwd', `data:image/webp;base64,${'A'.repeat(400000)}`]) {
+    store.saveGuide({ ...store.getGuide(guideId), thumbnailImage: bad });
+    assert.equal(store.getGuide(guideId).thumbnailImage, undefined, bad.slice(0, 30));
+  }
 });
 
 test('a guide file on the command line is found as a path or a file:// URI', (t) => {

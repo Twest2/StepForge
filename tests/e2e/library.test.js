@@ -154,3 +154,28 @@ test('starting StepForge with a guide file opens it in the editor, not the welco
   assert.equal(await app.evaluate("document.getElementById('welcome-host').childElementCount"), 0, 'the welcome screen was never drawn');
   assert.equal(listLibraryGuides(env.dataDir).length, 2, 'imported as a copy beside the sample');
 }));
+
+test('More → Library thumbnail chooses a step screenshot or an image file for the card', () => withApp('library-thumbnail-choice', {}, async (app, env) => {
+  const { readSteps, writeTestPng } = require('./lib/fixtures');
+  const openSubmenu = (label) => app.clickWhere('[role=menuitem]', `(el) => el.textContent.startsWith(${JSON.stringify(label)})`);
+  const guideFile = () => readJson(path.join(findGuideByTitle(env.dataDir, SAMPLE_TITLE).dir, 'guide.json'));
+  await flows.openLibrary(app);
+  await flows.openGuideCard(app, SAMPLE_TITLE);
+  const second = readSteps(findGuideByTitle(env.dataDir, SAMPLE_TITLE).dir).filter((s) => s.step.image)[1].step;
+
+  await app.clickText('More ▾');
+  await openSubmenu('Library thumbnail');
+  await openSubmenu('Choose a screenshot');
+  await app.clickWhere('.ctx-submenu [role=menuitem]', `(el) => el.textContent.startsWith('2 ')`);
+  await flows.eventually(() => guideFile().thumbnailStepId === second.stepId, 'chosen step saved');
+
+  await app.main.stubDialogs({ open: [{ filePaths: [writeTestPng(path.join(env.root, 'pick', 'cover.png'))] }] });
+  await app.clickText('More ▾');
+  await openSubmenu('Library thumbnail');
+  await app.clickText('Choose an image');
+  const saved = await flows.eventually(() => guideFile().thumbnailImage?.startsWith('data:image/webp;base64,') && guideFile(), 'chosen image saved');
+  assert.equal(saved.thumbnailStepId, undefined, 'the image replaces the chosen screenshot');
+
+  await app.clickText('Library');
+  await flows.eventually(() => app.evaluate(`document.querySelector('.guide-card .card-thumb')?.src.startsWith('data:image/webp')`), 'card shows the chosen image');
+}));

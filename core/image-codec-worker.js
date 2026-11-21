@@ -3,7 +3,7 @@
 const { createImageCodec } = require('./image-codec');
 (async () => {
   const [operation, options] = process.argv.slice(2);
-  if (!['encode', 'decode', 'crop', 'bitmap'].includes(operation)) throw new Error('Unknown image operation.');
+  if (!['encode', 'decode', 'crop', 'bitmap', 'bitmap-webp'].includes(operation)) throw new Error('Unknown image operation.');
   const chunks = [];
   for await (const chunk of process.stdin) chunks.push(chunk);
   const codec = createImageCodec();
@@ -12,6 +12,7 @@ const { createImageCodec } = require('./image-codec');
   const result = operation === 'encode' ? await codec.encodeWebp(input, opts)
     : operation === 'crop' ? await codec.cropPng(input, opts)
       : operation === 'bitmap' ? await codec.bitmapToPng(input, opts.width, opts.height)
+        : operation === 'bitmap-webp' ? await codec.bitmapToWebp(input, opts.width, opts.height, opts)
         : await codec.decodeToPng(input);
   if (result) process.stdout.write(result);
 })().catch(error => { console.error(error.message); process.exitCode = 1; });

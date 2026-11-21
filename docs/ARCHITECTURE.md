@@ -302,8 +302,29 @@ click position. Three pieces make that hold:
    mode (`capture.strictClickFrames`, default on) a frame whose grab started
    after the click is never used — when nothing qualifies, the service takes
    an explicit fresh shot instead of passing a post-click frame off as the
-   click-time screen. Storing is serialized per click; pairing is not, so
-   slow encodes never skew later clicks.
+   click-time screen. Pairing happens at the click; so does preparing the
+   step (`prepareStep`: reading the text around the click for its title, and
+   encoding the screenshot), up to four clicks side by side. Only adding the
+   step to the guide waits for earlier clicks, so steps keep their click
+   order and slow encodes never skew later clicks. Click titles are read by
+   a pool of up to four text-recognition workers.
+
+   While recording, screenshots are saved as PNG even when the format
+   setting is WebP: lossless WebP takes ~1 s at 2880×1800, PNG ~50 ms. When
+   the recording ends and its queued clicks are stored, its PNG steps are
+   converted to WebP several at once (`convertStepsToWebp` in
+   `core/image-optimize.js`). Each swap goes through `rewriteStepImages`,
+   which only replaces a file that is unchanged since it was read; a step
+   edited meanwhile is read again, and a deleted one is skipped. The image
+   keeps the replaced file names as `reencodedFrom`, so an editor still
+   holding them saves its edits as edits to the same picture
+   (`saveStepFromEditor`), and a redaction check of the old file carries
+   over to the new one. The editor isn't reloaded: it shows screenshots by
+   step, and its next save of a step merges with the stored one, so the
+   conversion can't interrupt someone already editing. A capture outside a
+   recording is saved in its
+   final format at once, its lossless WebP encoded from the frame's pixels
+   alongside its PNG (`bitmapToWebp`).
 
 4. **The pointer is drawn on the click point.** A stream frame's pointer is
    wherever the mouse was when the frame was sampled, a little off the click

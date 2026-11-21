@@ -7,6 +7,7 @@ const crypto = require('node:crypto');
 const { createSnapshot } = require('./snapshots');
 const { optimizeScreenshot, sniffImageFormat, getImageCodec, DEFAULT_WEBP_QUALITY } = require('./image-format');
 const { t } = require('./ui-text');
+const { RevisionConflictError } = require('./store');
 
 const digest = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
 
@@ -148,4 +149,68 @@ async function optimizeGuideImages(store, guideId, {
   return report;
 }
 
-module.exports = { optimizeGuideImages, imageEstimateHash, defaultConcurrency, mapLimit };
+/**
+ * After a recording: the PNG screenshots it saved (PNG encodes ~20x faster,
+ * so quick clicking keeps up) become WebP, several at once. Only a step's
+ * PNG files are touched, each only if it's still the file that was read, and
+ * a PNG stays when its WebP isn't smaller. A step edited meanwhile is read
+ * again; a deleted one is skipped. Not an edit, so the guide doesn't look
+ * changed. `beforeRewrite(step)` and `afterRewrite(saved, token)` run
+ * around each swap, for state tied to the old file. Never throws.
+ */
+async function convertStepsToWebp(store, guideId, stepIds, {
+  lossless = true,
+  webpQuality = DEFAULT_WEBP_QUALITY,
+  codec = getImageCodec(),
+  concurrency = defaultConcurrency(),
+  beforeRewrite = () => undefined,
+  afterRewrite = () => {},
+} = {}) {
+  const report = { converted: 0, keptPng: 0, bytesBefore: 0, bytesAfter: 0, errors: [] };
+  if (!codec) return report;
+  await mapLimit([...new Set(stepIds)], concurrency, async (stepId) => {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      let step;
+      try {
+        if (!store.guideExists(guideId)) return;
+        step = store.getStep(guideId, stepId);
+      } catch { return; } // deleted since
+      if (!step.image) return;
+      const dir = store.stepDir(guideId, stepId);
+      const buffers = {};
+      const hashes = {};
+      let before = 0;
+      let after = 0;
+      try {
+        for (const rel of new Set([step.image.originalPath, step.image.workingPath].filter(Boolean))) {
+          let bytes;
+          try { bytes = await fs.promises.readFile(path.join(dir, rel)); } catch { continue; }
+          if (sniffImageFormat(bytes) !== 'png') continue;
+          const result = await optimizeScreenshot(bytes, { format: 'webp', lossless, webpQuality, codec });
+          if (result.format !== 'webp') continue;
+          buffers[rel] = result.buffer;
+          hashes[rel] = digest(bytes);
+          before += bytes.length;
+          after += result.buffer.length;
+        }
+        if (!Object.keys(buffers).length) { report.keptPng += 1; return; }
+        const token = beforeRewrite(step);
+        const saved = store.rewriteStepImages(guideId, stepId, buffers, { expectedRevision: step.revision, expectedHashes: hashes, touch: false });
+        report.converted += 1;
+        report.bytesBefore += before;
+        report.bytesAfter += after;
+        try { await afterRewrite(saved, token); } catch (error) { report.errors.push({ stepId, message: error.message }); }
+        return;
+      } catch (error) {
+        // Changed while it was encoding: read it again.
+        if (error instanceof RevisionConflictError) continue;
+        report.errors.push({ stepId, message: error.message });
+        return;
+      }
+    }
+    report.keptPng += 1;
+  });
+  return report;
+}
+
+module.exports = { optimizeGuideImages, convertStepsToWebp, imageEstimateHash, defaultConcurrency, mapLimit };

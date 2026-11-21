@@ -28,9 +28,13 @@ const { buildBrandCssPrompt, normalizeBrandCss } = require('../core/ai-brand-css
 const { buildFlowchartPrompt, parseFlowchart } = require('../core/ai-flowchart');
 const { parentMap, stepNumberMap } = require('../core/step-outline');
 const { systemPlaceholders } = require('../core/placeholders');
-const { OcrPool } = require('./ocr-pool');
+const { OcrPool, defaultSize: ocrPoolSize } = require('./ocr-pool');
 const { t } = require('../core/ui-text');
 const { normalizeAiTemperature } = require('../core/settings');
+
+// Workers reading the text around clicks, and how long they stay idle.
+const CLICK_READERS = Math.min(4, ocrPoolSize());
+const CLICK_READERS_IDLE_MS = 10 * 60 * 1000;
 
 // Brand CSS requests aren't for a guide; ai:cancel stops them by this id.
 const BRAND_CSS_REQUEST = 'branding-css';
@@ -92,15 +96,17 @@ class TextIntelService {
     // This code no longer branches on process.platform; the factory selects it.
     this.windowContext = windowContextProvider
       || require('./platform').createWindowContextProvider();
-    this.worker = null;
-    this.workerPromise = null;
-    this.workerQueue = Promise.resolve();
     // Workers start one at a time: the first ones unpack the language data
     // into the same cache file, and starting them together races on it.
     this.workerStarts = Promise.resolve();
     // Whole screenshots (checking for private details) are read by several
     // workers side by side.
     this.readers = new OcrPool({ start: () => this.startWorker({ tessedit_pageseg_mode: '3' }) });
+    // The text around each click, for its step title. Up to four workers, so
+    // quick clicks are read side by side instead of waiting for each other: a
+    // busy line can take a second to read. They stay running through pauses
+    // in a recording (each takes ~0.3 s to start).
+    this.clickReaders = new OcrPool({ start: () => this.startWorker(), size: CLICK_READERS, idleMs: CLICK_READERS_IDLE_MS });
     this.ocrDataDir = path.join(dataDir, 'ocr', 'eng');
     this.modelCapabilityCache = new Map();
     // In-flight AI request controllers, grouped by guide, so closing a guide
@@ -203,16 +209,7 @@ class TextIntelService {
 
   async shutdown() {
     this.cancelInflight();
-    await this.readers.stop();
-    if (this.worker) {
-      try {
-        await this.worker.terminate();
-      } catch {
-        // best effort
-      }
-      this.worker = null;
-      this.workerPromise = null;
-    }
+    await Promise.all([this.readers.stop(), this.clickReaders.stop()]);
   }
 
   ensureLangData() {
@@ -247,24 +244,10 @@ class TextIntelService {
     return started;
   }
 
-  async getWorker() {
-    if (this.workerPromise) return this.workerPromise;
-    this.workerPromise = (async () => {
-      const worker = await this.startWorker();
-      this.worker = worker;
-      return worker;
-    })();
-    this.workerPromise.catch(() => {
-      this.workerPromise = null;
-    });
-    return this.workerPromise;
-  }
-
   async recognizeCrop(image, rect = null) {
-    const worker = await this.getWorker();
     const cropped = rect ? image.crop(rect) : image;
     const buffer = cropped.toPNG();
-    const result = await worker.recognize(buffer);
+    const result = await this.clickReaders.run((worker) => worker.recognize(buffer));
     const text = String(result?.data?.text || '').trim();
     return {
       text,

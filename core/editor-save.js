@@ -5,6 +5,19 @@ const { mergeValue } = require('./guide-merge');
 const { t } = require('./ui-text');
 
 /**
+ * True when the editor's copy of a screenshot is the stored one, also when
+ * the stored one was only re-encoded since (PNG to WebP after a recording):
+ * then the editor still has the file names it replaced.
+ */
+function sameScreenshot(edited, current) {
+  if (isDeepStrictEqual(edited, current)) return true;
+  if (!edited || !current) return false;
+  const { reencodedFrom, ...now } = current;
+  const { reencodedFrom: ignored, ...mine } = edited;
+  return isDeepStrictEqual(mine, now) || Boolean(reencodedFrom && isDeepStrictEqual(mine, { ...now, ...reencodedFrom }));
+}
+
+/**
  * Renderer saves edit existing content. Step creation, deletion and ordering
  * have their own operations, and may have changed in the agent process since
  * the editor loaded its copy.
@@ -28,7 +41,7 @@ function saveStepFromEditor(store, guideId, step, baseStep = null) {
   // A dirty text edit must not undo an agent's move or the promotion of a
   // deleted parent's children. A fresh edit may still choose a new parent.
   const stale = step.revision !== current.revision;
-  const imageChanged = !isDeepStrictEqual(step.image, current.image);
+  const imageChanged = !sameScreenshot(step.image, current.image);
   if (stale && (!baseStep || baseStep.stepId !== step.stepId || baseStep.revision !== step.revision)) {
     throw new Error(t('This step changed outside the editor. Your unsaved edits are kept; reopen the guide after copying any text you want to keep.'));
   }
@@ -48,4 +61,4 @@ function saveStepFromEditor(store, guideId, step, baseStep = null) {
   return store.saveStep(guideId, { ...fields, revision: current.revision });
 }
 
-module.exports = { saveGuideFromEditor, saveStepFromEditor };
+module.exports = { saveGuideFromEditor, saveStepFromEditor, sameScreenshot };

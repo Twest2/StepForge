@@ -25,6 +25,10 @@ function bitmapSize(bgra, width, height) {
   return { width, height };
 }
 
+function webpOptions(lossless, quality) {
+  return { lossless, quality: Math.round(quality * 100), alphaQuality: 100, exact: true, effort: 4 };
+}
+
 function createImageCodec({ platform = process.platform, electron = process.versions.electron, nodePath = '/usr/bin/node' } = {}) {
   // Linux Electron leaks GLib symbols into native addons. A plain Node process
   // keeps libvips isolated in UI, export helpers and Electron-hosted MCP alike.
@@ -59,6 +63,11 @@ function createImageCodec({ platform = process.platform, electron = process.vers
       encodeWebp: (buffer, options) => run('encode', buffer, options),
       cropPng: async (png, rect) => { cropRect(rect); return run('crop', png, rect); },
       bitmapToPng: async (bgra, width, height) => { bitmapSize(bgra, width, height); return run('bitmap', bgra, { width, height }); },
+      bitmapToWebp: async (bgra, width, height, { quality = 0.95 } = {}) => {
+        bitmapSize(bgra, width, height);
+        const webp = await run('bitmap-webp', bgra, { width, height, quality });
+        return webp.length ? webp : null;
+      },
       close() {},
     };
   }
@@ -75,12 +84,23 @@ function createImageCodec({ platform = process.platform, electron = process.vers
       const size = bitmapSize(bgra, width, height);
       return sharp(bgra, { raw: { ...size, channels: 4, premultiplied: true } }).recomb(BGRA_TO_RGBA).png().toBuffer();
     },
+    /**
+     * A nativeImage.toBitmap() buffer as lossless WebP, straight from the
+     * pixels: the same image as bitmapToPng then encodeWebp, without
+     * encoding and decoding a PNG in between.
+     */
+    async bitmapToWebp(bgra, width, height, { quality = 0.95 } = {}) {
+      const size = bitmapSize(bgra, width, height);
+      if (width > 16383 || height > 16383) return null;
+      return sharp(bgra, { raw: { ...size, channels: 4, premultiplied: true } }).recomb(BGRA_TO_RGBA)
+        .webp(webpOptions(true, quality)).toBuffer();
+    },
     async encodeWebp(png, { lossless = true, quality = 0.95 } = {}) {
       const metadata = await sharp(png).metadata();
       // WebP is 8-bit and single-frame here. Keep inputs we cannot preserve.
       if (metadata.depth !== 'uchar' || metadata.bitsPerSample > 8 || metadata.pages > 1
         || metadata.orientation > 1 || metadata.width > 16383 || metadata.height > 16383) return null;
-      const options = { lossless, quality: Math.round(quality * 100), alphaQuality: 100, exact: true, effort: 4 };
+      const options = webpOptions(lossless, quality);
       const webp = await sharp(png).keepMetadata().webp(options).toBuffer();
       if (!lossless) {
         // Text and small colored UI edges are vulnerable to chroma artifacts.

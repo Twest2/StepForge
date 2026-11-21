@@ -427,6 +427,7 @@ test('the bar counts each click at once while slow saves catch up, and takes bac
   svc.userIsInApp = () => false;
   svc.frameForClick = async () => ({ mode: 'fullscreen', png: Buffer.alloc(0), size: { width: 10, height: 10 } });
   // Each save waits until the test lets it finish, like a slow image encode.
+  svc.prepareStep = async () => ({ fields: {}, stored: Buffer.alloc(0) });
   const saves = [];
   svc.storeFrameAsStep = () => new Promise((resolve) => saves.push(resolve));
   const settle = async () => { for (let i = 0; i < 5; i++) await new Promise(setImmediate); };

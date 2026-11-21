@@ -9,7 +9,7 @@ const { RecordingControls, recordingControlsMode } = require('./recording-contro
 const raster = require('../core/raster');
 const { smartCrop } = require('../core/smart-crop');
 const { encodePng } = require('../core/png');
-const { optimizeScreenshot, getImageCodec } = require('../core/image-format');
+const { optimizeScreenshot, getImageCodec, sniffImageFormat, readImageSize, clampWebpQuality } = require('../core/image-format');
 const {
   selectFrameForClick,
   frameUsableForClick,
@@ -66,6 +66,10 @@ function withinDoubleClickRadius(a, b) {
 // each register. Tunable via capture.clickDebounceMs; this is only the
 // default when the setting is absent.
 const DEFAULT_CLICK_DEBOUNCE_MS = 200;
+// Clicks whose steps are prepared (text read, image encoded) at the same
+// time. Each holds a full screenshot or two while it works; more side by
+// side would mostly add memory, since the encoder's threads are shared.
+const CLICK_PREPARE_SLOTS = 4;
 // A same-button press this soon after an accepted click is one press seen twice,
 // not a double-click (people cannot click twice in under ~20 ms).
 const MIN_DOUBLE_CLICK_GAP_MS = 20;
@@ -229,8 +233,15 @@ class CaptureService {
     powerPolicy = null,
     // The active brand profile's shape color, for click markers; null for none.
     markerColor = () => null,
+    // (guideId, stepIds) once a recording is over: its steps saved as PNG
+    // while recording, to convert to WebP (see prepareStep).
+    onRecordingSaved = null,
   }) {
     this.store = store;
+    this.onRecordingSaved = onRecordingSaved;
+    this.pngSteps = new Map(); // guideId -> step ids saved as PNG to convert after the recording
+    this.handOvers = new Map(); // guideId -> hand-over still waiting to collect its steps
+    this.recordingSaved = Promise.resolve(); // the latest hand-over, for tests
     this.settings = settings;
     this.markerColor = markerColor;
     this.getWindow = getWindow;
@@ -277,6 +288,8 @@ class CaptureService {
     this._pendingClickWindow = undefined; // WIN line from the Windows hook, consumed by its CLICK
     this.pendingClickWindow = undefined; // that window's DIP bounds (null: none), for enqueueClickCapture
     this.clickQueue = Promise.resolve();
+    this.preparing = 0;       // clicks being prepared now (CLICK_PREPARE_SLOTS)
+    this.prepareWaiting = []; // clicks waiting for a slot, oldest first
     this.frameLoopInFlight = false;
     this.frameLoopGrabStartedAt = null;
     this.recentFrames = [];
@@ -718,7 +731,9 @@ class CaptureService {
     this.stopClickFrameBackend();
     this.destroySessionTray();
     this.closeRecordingControls();
+    const guideId = this.session && this.session.guideId;
     this.session = null;
+    if (guideId) this.handOverRecording(guideId);
     // A finished session never records: release the power blocker here so it
     // can't outlive the recording (finish from any path — bar, tray, quit).
     this.syncPower();
@@ -727,6 +742,24 @@ class CaptureService {
       this.showWindow();
     }
     this.notify('capture:state', this.state());
+  }
+
+  /**
+   * Once the clicks still in the queue are stored, pass the recording's PNG
+   * steps on to be converted (onRecordingSaved).
+   */
+  handOverRecording(guideId) {
+    // One waiting hand-over per guide: steps added before it collects join it.
+    if (this.handOvers.has(guideId)) return this.handOvers.get(guideId);
+    const handOver = this.clickQueue.catch(() => {}).then(async () => {
+      this.handOvers.delete(guideId);
+      const stepIds = [...(this.pngSteps.get(guideId) || [])];
+      this.pngSteps.delete(guideId);
+      if (stepIds.length && this.onRecordingSaved) await this.onRecordingSaved(guideId, stepIds);
+    }).catch((error) => clog('converting the recording screenshots failed:', error.message));
+    this.handOvers.set(guideId, handOver);
+    this.recordingSaved = handOver;
+    return handOver;
   }
 
   /**
@@ -805,9 +838,9 @@ class CaptureService {
       if (frame) {
         clog('click@', clickAt, 'frame', frame.source || 'loop',
           'started', frame.startedAt - clickAt, 'ms, captured', frame.capturedAt - clickAt, 'ms rel. click');
-        // Window mode on Windows: the frame is the whole screen; keep the clicked window.
-        const shot = this.windowModeCrops() ? await this.windowFrame(frame, clickMeta ? clickMeta.windowBounds : null) : frame;
-        const result = await this.storeFrameAsStep(guideId, shot.mode, shot, clickPos, clickMeta);
+        const ready = clickMeta && clickMeta.preparedPromise ? await clickMeta.preparedPromise : null;
+        const shot = ready ? ready.shot : await this.clickShot(frame, clickMeta);
+        const result = await this.storeFrameAsStep(guideId, shot.mode, shot, clickPos, clickMeta, ready && ready.prepared);
         // Pending -> stored in one update, so the count never jumps by two.
         if (result.ok) {
           this.settlePendingClick(clickMeta, false);
@@ -901,6 +934,26 @@ class CaptureService {
       return finalResult;
     } finally {
       this.shooting = false;
+    }
+  }
+
+  /** The frame a click stores: in Window mode on Windows, the clicked window cut from the screen. */
+  async clickShot(frame, clickMeta) {
+    return this.windowModeCrops() ? this.windowFrame(frame, clickMeta ? clickMeta.windowBounds : null) : frame;
+  }
+
+  /** A click's frame and prepared step, once one of the CLICK_PREPARE_SLOTS is free. */
+  async prepareClickStep(frame, clickPos, clickMeta) {
+    // A finished click hands its slot straight to the oldest waiting one.
+    if (this.preparing >= CLICK_PREPARE_SLOTS) await new Promise((resolve) => this.prepareWaiting.push(resolve));
+    else this.preparing += 1;
+    try {
+      const shot = await this.clickShot(frame, clickMeta);
+      return { shot, prepared: await this.prepareStep(shot.mode, shot, clickPos, clickMeta) };
+    } finally {
+      const next = this.prepareWaiting.shift();
+      if (next) next();
+      else this.preparing -= 1;
     }
   }
 
@@ -2386,6 +2439,11 @@ ${WINDOW_BOUNDS_CS}
       clickMeta.guideId = this.session.guideId;
       clickMeta.framePromise = this.clickFrame(clickPos, clickMeta.at)
         .catch(() => null);
+      // Prepare the step as soon as its frame is here, alongside earlier
+      // clicks still preparing; the queue below only adds it in order.
+      clickMeta.preparedPromise = clickMeta.framePromise
+        .then((frame) => (frame ? this.prepareClickStep(frame, clickPos, clickMeta) : null))
+        .catch((error) => { clog('click@', clickMeta.at, 'preparing the step failed; retrying in order:', error.message); return null; });
       // Count it now: storing waits behind earlier clicks (image encode and
       // save, about a second each on a large screen), and a bar that only
       // counted stored steps fell further behind with every quick click.
@@ -2662,8 +2720,33 @@ ${WINDOW_BOUNDS_CS}
     return { title: this.autoTitle(mode), captureMetadata: null };
   }
 
-  async storeFrameAsStep(guideId, mode, frame, clickPos = null, clickMeta = null) {
+  /**
+   * Add `frame` to the guide as a step. `prepared` is the frame's
+   * prepareStep result when it was worked out ahead (see
+   * enqueueClickCapture); otherwise it is worked out here.
+   */
+  async storeFrameAsStep(guideId, mode, frame, clickPos = null, clickMeta = null, prepared = null) {
     if (!frame) return { ok: false, reason: 'no capture frame available' };
+    const { fields, stored, deferred } = prepared || await this.prepareStep(mode, frame, clickPos, clickMeta);
+    const step = this.store.addStep(guideId, fields, stored, frame.size);
+    if (deferred && step && step.stepId) {
+      if (!this.pngSteps.has(guideId)) this.pngSteps.set(guideId, new Set());
+      this.pngSteps.get(guideId).add(step.stepId);
+      // Its recording already ended: a timed, hotkey or manual capture still
+      // saving when it stopped isn't in the click queue the hand-over waits
+      // for, so it hands itself over (or joins the one still waiting).
+      if (!this.session || this.session.guideId !== guideId) this.handOverRecording(guideId);
+    }
+    return { ok: true, step };
+  }
+
+  /**
+   * Everything about a new step except adding it: its title (which reads
+   * the text around the click), marker, focus and the encoded screenshot.
+   * Nothing here depends on other steps, so quick clicks prepare side by
+   * side; only adding them to the guide goes in click order.
+   */
+  async prepareStep(mode, frame, clickPos = null, clickMeta = null) {
     const annotations = [];
     // The marker shows where the user clicked (DIP, read at event time). A
     // capture without a click (Capture full screen, the hotkey, timed
@@ -2695,19 +2778,54 @@ ${WINDOW_BOUNDS_CS}
     const cropBounds = frame.captureBounds || (mode === 'fullscreen' ? frame.display?.bounds : null);
     const automaticView = this.settings.get('capture.smartCropping') !== false
       ? smartCrop(frame.size, cropBounds, clickPos, this.settings.get('capture.focusAmount') ?? 1.25) : null;
-    await this.settleClickKind(clickMeta);
-    const { title, captureMetadata } = await this.buildStepMeta(mode, frame, clickPos, clickMeta);
-    const stored = await this.storeScreenshot(await this.framePng(frame));
-    const step = this.store.addStep(guideId, {
-      title,
-      captureMetadata,
-      annotations,
-      focusedView: automaticView || {
-        enabled: Boolean(this.settings.get('editor.focusedViewDefaultForNewSteps')),
-        zoom: 1, panX: 0.5, panY: 0.5,
+    // During a recording a screenshot is saved as PNG, ~20x faster to
+    // encode than lossless WebP, so quick clicks keep up; the recording's
+    // PNGs become WebP once it is over (handOverRecording). A click queued
+    // from a recording counts even if the recording has ended since.
+    const deferred = this.settings.get('images.format') === 'webp'
+      && Boolean((clickMeta && clickMeta.guideId) || this.session);
+    // The title waits out the double-click window and reads text; the image
+    // encodes meanwhile.
+    const [{ title, captureMetadata }, stored] = await Promise.all([
+      this.settleClickKind(clickMeta).then(() => this.buildStepMeta(mode, frame, clickPos, clickMeta)),
+      deferred ? this.framePng(frame) : this.storedImage(frame),
+    ]);
+    return {
+      fields: {
+        title,
+        captureMetadata,
+        annotations,
+        focusedView: automaticView || {
+          enabled: Boolean(this.settings.get('editor.focusedViewDefaultForNewSteps')),
+          zoom: 1, panX: 0.5, panY: 0.5,
+        },
       },
-    }, stored, frame.size);
-    return { ok: true, step };
+      stored,
+      deferred,
+    };
+  }
+
+  /**
+   * The frame as it is saved: WebP when the setting asks and it's smaller,
+   * otherwise PNG. A raw frame in lossless WebP is encoded to both formats
+   * at once from its pixels, rather than to PNG and then from that PNG to
+   * WebP; the result is the same image.
+   */
+  async storedImage(frame) {
+    const codec = getImageCodec();
+    const direct = !frame.png && frame.image && typeof frame.image.toBitmap === 'function'
+      && codec && typeof codec.bitmapToWebp === 'function'
+      && this.settings.get('images.format') === 'webp' && this.settings.get('images.lossless') !== false;
+    if (!direct) return this.storeScreenshot(await this.framePng(frame));
+    const { width, height } = frame.image.getSize();
+    const bitmap = frame.image.toBitmap();
+    const [png, webp] = await Promise.all([
+      this.framePng(frame),
+      codec.bitmapToWebp(bitmap, width, height, { quality: clampWebpQuality(this.settings.get('images.webpQuality')) })
+        .catch((error) => { clog('frame encode: direct WebP failed, keeping PNG:', error.message); return null; }),
+    ]);
+    const size = webp && sniffImageFormat(webp) === 'webp' ? readImageSize(webp) : null;
+    return size && size.width === width && size.height === height && webp.length < png.length ? webp : png;
   }
 
   /** A new capture in the stored form (WebP when the setting asks and it's smaller). */

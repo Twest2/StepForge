@@ -387,7 +387,7 @@ test('ocr failures fall back to empty text instead of crashing', async (t) => {
     dataDir: root,
     fetchImpl: global.fetch,
   });
-  service.getWorker = async () => {
+  service.clickReaders.run = async () => {
     throw new Error('tesseract missing');
   };
 

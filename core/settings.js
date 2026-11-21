@@ -40,7 +40,6 @@ const DEFAULT_SETTINGS = {
     recordingBarPosition: null, // DIP coordinates; local to this device.
     delayMs: 0,
     mode: 'fullscreen', // fullscreen | window ('region' in old files loads as fullscreen)
-    includeCursor: true,
     clickMarker: true,
     focusAmount: 1.25, // Zoom for new automatically focused captures: 1–2 in 0.05 increments.
     smartCropping: true, // Automatically focus recorded clicks; keep original pixels.

@@ -157,3 +157,18 @@ test('backend keeps selected frames alive while draining and converts monotonic 
   assert.equal(frame.png.toString(), 'png');
   assert.equal(destroyed, true);
 });
+
+test('a click frame asks for the pointer on the click; a region frame asks for none', async () => {
+  const { service, backend } = fixture();
+  const requests = [];
+  const frameForClick = backend.frameForClick;
+  backend.frameForClick = async (options) => { requests.push(options); return frameForClick(options); };
+  backend.request = async () => ({ rect: { x: -1500, y: 100, width: 200, height: 100 } });
+  service.withWindowHidden = (fn) => fn();
+  service.onGnomeClick({ x: -800, y: 450, at: 1000, button: 1 });
+  await service.clickQueue;
+  await service.regionCapture('first');
+  assert.deepEqual(requests[0].pointer, { x: -800, y: 450 });
+  assert.deepEqual(requests[1].clickPos, { x: -1500, y: 100 }, 'the region corner still picks the monitor');
+  assert.equal(requests[1].pointer ?? null, null, 'no pointer is drawn on a region');
+});

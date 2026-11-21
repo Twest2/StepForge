@@ -2,6 +2,7 @@
 import importlib.util
 import pathlib
 import sys
+import threading
 import types
 import unittest
 
@@ -113,6 +114,63 @@ class RequestTests(unittest.TestCase):
         result, state = self.run_request('timeout', returned_path='/request/legacy')
         self.assertEqual(result.code, 'timeout')
         self.assertEqual(state.closed, ['/request/legacy'])
+
+
+class PointerTests(unittest.TestCase):
+    """A requested frame is encoded with the arrow drawn on the requested point."""
+    WIDTH, HEIGHT = 80, 60  # a 40x30 logical monitor at 200%
+
+    def encode(self, point):
+        seen = {}
+
+        def new_from_bytes(data, *_):
+            seen['data'] = data
+            return types.SimpleNamespace(save_to_bufferv=lambda *_: (True, b'png'))
+
+        portal.GdkPixbuf = types.SimpleNamespace(Pixbuf=types.SimpleNamespace(new_from_bytes=new_from_bytes),
+                                                 Colorspace=types.SimpleNamespace(RGB=0))
+        portal.GLib.Bytes = types.SimpleNamespace(new=lambda data: data)
+        portal.emit = lambda value: seen.update(reply=value)
+        capture = portal.Capture.__new__(portal.Capture)
+        capture.slots = threading.BoundedSemaphore(1)
+        capture.slots.acquire()
+        frame = {'at': 0, 'data': bytes([128]) * (self.WIDTH * self.HEIGHT * 3),
+                 'width': self.WIDTH, 'height': self.HEIGHT, 'stride': self.WIDTH * 3}
+        stream = {'id': 1, 'bounds': {'x': 100, 'y': 0, 'width': 40, 'height': 30}}
+        capture.encode(7, frame, stream, point)
+        self.assertNotIn('error', seen['reply'])
+        return seen['data']
+
+    def pixel(self, data, x, y):
+        i = (y * self.WIDTH + x) * 3
+        return tuple(data[i:i + 3])
+
+    def test_the_arrow_tip_is_on_the_click(self):
+        data = self.encode({'x': 110, 'y': 5})  # pixel (20, 10)
+        self.assertTrue(all(v < 60 for v in self.pixel(data, 20, 10)), 'the tip pixel is the dark outline')
+        self.assertEqual(self.pixel(data, 26, 26), (255, 255, 255), 'the body is white')
+        self.assertEqual(self.pixel(data, 16, 6), (128, 128, 128), 'up and left of the tip is untouched')
+
+    def test_a_frame_without_a_point_is_unchanged(self):
+        self.assertEqual(set(self.encode(None)), {128})
+
+    def test_only_the_pointer_is_drawn_not_the_point_that_picks_the_monitor(self):
+        capture = portal.Capture.__new__(portal.Capture)
+        capture.slots = threading.BoundedSemaphore(4)
+        frame = {'at': 100, 'data': b'', 'width': 1, 'height': 1, 'stride': 3}
+        capture.streams = [{'id': 1, 'bounds': {'x': 0, 'y': 0, 'width': 10, 'height': 10},
+                            'lock': threading.Lock(), 'ring': [frame]}]
+        submitted = []
+        capture.pool = types.SimpleNamespace(submit=lambda _fn, *args: submitted.append(args))
+        corner = {'x': 2, 'y': 3}
+        capture.frame({'id': 1, 'point': corner, 'at': 150})
+        capture.frame({'id': 2, 'point': corner, 'pointer': corner, 'at': 150})
+        self.assertEqual([args[3] for args in submitted], [None, corner])
+
+    def test_an_arrow_at_the_corner_is_clipped(self):
+        data = self.encode({'x': 139.9, 'y': 29.9})
+        self.assertEqual(len(data), self.WIDTH * self.HEIGHT * 3)
+        self.assertTrue(all(v < 60 for v in self.pixel(data, 79, 59)))
 
 
 if __name__ == '__main__':

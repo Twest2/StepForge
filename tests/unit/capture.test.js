@@ -1738,3 +1738,62 @@ test('on Windows, clicks on scaled monitors beside the primary map to the monito
   assert.deepEqual(service.osPointToDip({ x: -1000, y: 600 }), { x: -800, y: 504 });
   assert.deepEqual(service.osPointToDip({ x: 1720, y: 700 }), { x: 1720, y: 700 });
 });
+
+// ---- Windows hook screenshots ------------------------------------------------
+
+function hookShotService(t) {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const { makeTmpDir, rmrf } = require('./helpers');
+  const { HookShots } = require('../../app/hook-shots');
+  const dir = makeTmpDir('hook-shots');
+  t.after(() => rmrf(dir));
+  const display = { id: 1, bounds: { x: 0, y: 0, width: 4, height: 2 }, scaleFactor: 1 };
+  const service = makeService({ screenApi: {
+    getCursorScreenPoint: () => ({ x: 0, y: 0 }), getAllDisplays: () => [display], getDisplayNearestPoint: () => display,
+  } });
+  service.hookShotDir = dir;
+  service.hookShots = new HookShots();
+  service.imageFromBitmap = (bitmap, size) => ({ bitmap, size });
+  service.streamBackend = { isActive: () => true, frameForClick: async () => streamFrame(1000), stop: () => {} };
+  const writeShot = (name) => fs.writeFileSync(path.join(dir, name), Buffer.alloc(32, 7)); // 8 pixels
+  return { service, dir, writeShot, exists: (name) => fs.existsSync(path.join(dir, name)) };
+}
+
+test('a Windows click uses the hook screenshot, with its pixels made opaque and the file removed', async (t) => {
+  const { service, writeShot, exists } = hookShotService(t);
+  writeShot('1000-1.bgra');
+  const frame = service.clickFrame({ x: 1, y: 0 }, 1000);
+  service.processClickWatcherData('SHOT 1000 0 0 4 2 1000-1.bgra\r\n', 'win32');
+  const shot = await frame;
+  assert.equal(shot.source, 'hook');
+  assert.deepEqual(shot.size, { width: 4, height: 2 });
+  assert.ok(shot.image.bitmap.every((v, i) => v === (i % 4 === 3 ? 255 : 7)), 'colors kept, alpha opaque');
+  assert.equal(shot.display.bounds.width, 4);
+  assert.equal(exists('1000-1.bgra'), false);
+});
+
+test('a Windows click falls back to the stream frame when the hook could not screenshot it, or shot another display', async (t) => {
+  const { service, writeShot, exists } = hookShotService(t);
+  const failed = service.clickFrame({ x: 1, y: 0 }, 1000);
+  service.processClickWatcherData('SHOT 1000 -\r\n', 'win32');
+  assert.equal((await failed).source, 'stream');
+
+  writeShot('2000-2.bgra');
+  service.processClickWatcherData('SHOT 2000 -1920 0 8 1 2000-2.bgra\r\n', 'win32');
+  assert.equal((await service.clickFrame({ x: 1, y: 0 }, 2000)).source, 'stream');
+  assert.equal(exists('2000-2.bgra'), false);
+});
+
+test('the hook screenshots clicks only while recording runs', (t) => {
+  const { service, exists } = hookShotService(t);
+  service.session = { guideId: 'g', paused: true, count: 0, intervalSec: 0 };
+  service.syncPower();
+  assert.equal(exists('armed'), false);
+  service.session.paused = false;
+  service.syncPower();
+  assert.equal(exists('armed'), true);
+  service.session.paused = true;
+  service.syncPower();
+  assert.equal(exists('armed'), false);
+});

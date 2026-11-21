@@ -1031,7 +1031,7 @@ class CaptureService {
     try {
       bitmap = await fs.promises.readFile(shot.file);
     } finally {
-      fs.promises.unlink(shot.file).catch(() => {});
+      await fs.promises.unlink(shot.file).catch(() => {});
     }
     const display = this.screen.getDisplayNearestPoint(clickPos);
     const scale = display.scaleFactor || 1;

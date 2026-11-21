@@ -1,5 +1,8 @@
 'use strict';
 
+const fs = require('node:fs');
+const path = require('node:path');
+
 /**
  * Screenshots the Windows click hook takes at each button-down (SHOT lines),
  * paired with their CLICK by the hook's timestamp. A shot that no click takes
@@ -68,4 +71,32 @@ class HookShots {
   }
 }
 
-module.exports = { HookShots };
+function pidRunning(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error.code === 'EPERM'; // someone else's process
+  }
+}
+
+/** Remove the screenshot folders (`stepforge-shots-<pid>`) that crashed or killed runs left in `tmp`. */
+function clearStaleShotDirs(tmp, isRunning = pidRunning) {
+  let names;
+  try {
+    names = fs.readdirSync(tmp);
+  } catch {
+    return;
+  }
+  for (const name of names) {
+    const match = /^stepforge-shots-(\d+)$/.exec(name);
+    if (!match || isRunning(Number(match[1]))) continue;
+    try {
+      fs.rmSync(path.join(tmp, name), { recursive: true, force: true });
+    } catch {
+      // A file still held open; tried again at the next recording.
+    }
+  }
+}
+
+module.exports = { HookShots, clearStaleShotDirs };

@@ -2,7 +2,10 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { HookShots } = require('../../app/hook-shots');
+const fs = require('node:fs');
+const path = require('node:path');
+const { HookShots, clearStaleShotDirs } = require('../../app/hook-shots');
+const { makeTmpDir, rmrf } = require('./helpers');
 
 const shot = (name) => ({ file: name, width: 1, height: 1 });
 
@@ -44,4 +47,20 @@ test('stopping discards held screenshots and releases waiting clicks', async () 
   shots.clear();
   assert.equal(await waiting, null);
   assert.deepEqual(discarded, ['held']);
+});
+
+test('screenshot folders left by a crashed run are removed, a running one\'s are kept', (t) => {
+  const tmp = makeTmpDir('shot-dirs');
+  t.after(() => rmrf(tmp));
+  const make = (name) => {
+    fs.mkdirSync(path.join(tmp, name));
+    fs.writeFileSync(path.join(tmp, name, '1-1.bgra'), 'pixels');
+  };
+  make('stepforge-shots-111');
+  make(`stepforge-shots-${process.pid}`);
+  make('something-else');
+  clearStaleShotDirs(tmp); // the real check: this process is running
+  assert.ok(fs.existsSync(path.join(tmp, `stepforge-shots-${process.pid}`, '1-1.bgra')));
+  clearStaleShotDirs(tmp, (pid) => pid === process.pid); // 111 has exited
+  assert.deepEqual(fs.readdirSync(tmp).sort(), ['something-else', `stepforge-shots-${process.pid}`].sort());
 });

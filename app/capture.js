@@ -17,7 +17,7 @@ const {
   DEFAULT_MAX_AGE_MS,
   DEFAULT_START_SLACK_MS,
 } = require('./click-frames');
-const { HookShots } = require('./hook-shots');
+const { HookShots, clearStaleShotDirs } = require('./hook-shots');
 const { physicalToDip, physicalRectToDip, displayForDipPoint, cropGeometry } = require('./coords');
 const { WINDOW_BOUNDS_CS, parseWindowBounds, readActiveWindow } = require('./platform/windows/window-bounds');
 const { defaultCaptureTitle, mouseButtonKey } = require('../core/text-intel');
@@ -1831,6 +1831,7 @@ ${WINDOW_BOUNDS_CS}
         // The hook screenshots each click into this folder while recording
         // runs (see armHookShots); without it clicks use the stream frame.
         const shotDir = path.join(os.tmpdir(), `stepforge-shots-${process.pid}`);
+        clearStaleShotDirs(os.tmpdir());
         try {
           fs.rmSync(shotDir, { recursive: true, force: true });
           fs.mkdirSync(shotDir, { recursive: true });

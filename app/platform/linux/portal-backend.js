@@ -119,8 +119,9 @@ class PortalBackend extends EventEmitter {
 
   isActive() { return this.active && !this.stopping; }
 
-  async frameForClick({ clickPos = null, clickAt = Date.now(), strict = true, leadMs = 0 } = {}) {
-    const msg = await this.request('frame', { point: clickPos, at: clickAt - this.offset, strict, lead: leadMs });
+  // `clickPos` picks the monitor; `pointer` is where to draw the mouse pointer (none for a region).
+  async frameForClick({ clickPos = null, pointer = null, clickAt = Date.now(), strict = true, leadMs = 0 } = {}) {
+    const msg = await this.request('frame', { point: clickPos, pointer, at: clickAt - this.offset, strict, lead: leadMs });
     return { mode: 'fullscreen', png: Buffer.from(msg.png, 'base64'),
       size: { width: msg.width, height: msg.height }, display: msg.display,
       startedAt: msg.at + this.offset, capturedAt: msg.at + this.offset, source: `${this.desktop}-portal` };

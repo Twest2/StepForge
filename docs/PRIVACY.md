@@ -33,6 +33,13 @@ When you capture a step, StepForge saves the following in your
 | The clicked element's accessibility label and role (Windows) | A more precise title. |
 | Keyboard shortcuts you pressed, such as `Ctrl+T` | So steps like *Press Ctrl+T* are recorded. |
 
+On Windows, the screenshot of each click passes through a temporary file in
+your temp folder (`stepforge-shots-…`) on its way into the step. StepForge
+deletes it right after reading it, deletes the folder when recording stops
+(or, after a crash, when you next record),
+and takes these screenshots only while recording is running, not while it's
+paused.
+
 ### Typed text is not recorded by default
 
 StepForge can optionally record the characters you type between clicks to

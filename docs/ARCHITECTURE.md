@@ -305,6 +305,19 @@ click position. Three pieces make that hold:
    click-time screen. Storing is serialized per click; pairing is not, so
    slow encodes never skew later clicks.
 
+4. **The pointer is drawn on the click point.** A stream frame's pointer is
+   wherever the mouse was when the frame was sampled, a little off the click
+   marker. On Windows the hook screenshots the clicked monitor itself at the
+   button-down (`SFHook.Shot`): a GDI copy has no pointer, so the cursor
+   showing is drawn with its hotspot on the click. The raw BGRA goes through
+   a temp file named by a `SHOT unixMs left top width height file` line after
+   the `CLICK` (`app/hook-shots.js` pairs them); the hook only shoots while
+   the `armed` file exists (recording, not paused), and a click without a
+   usable shot takes the stream frame. The GNOME/KDE portal stream hides the
+   pointer and `portal_capture.py` draws an arrow on the frame request's
+   `pointer` (the click, or the mouse for a plain capture; none for a region).
+   X11 and other Wayland sessions keep the stream's own pointer.
+
 Reliability rules that keep "one click → one step" true under load:
 
 - **The worker reply is two-stage.** It acknowledges frame *selection*

@@ -2,6 +2,7 @@
 
 const path = require('node:path');
 const fs = require('node:fs');
+const os = require('node:os');
 const { spawn, execFileSync } = require('node:child_process');
 const { desktopCapturer, screen, BrowserWindow, nativeImage, Tray, Menu } = require('electron');
 const { RecordingControls, recordingControlsMode } = require('./recording-controls');
@@ -16,6 +17,7 @@ const {
   DEFAULT_MAX_AGE_MS,
   DEFAULT_START_SLACK_MS,
 } = require('./click-frames');
+const { HookShots, clearStaleShotDirs } = require('./hook-shots');
 const { physicalToDip, physicalRectToDip, displayForDipPoint, cropGeometry } = require('./coords');
 const { WINDOW_BOUNDS_CS, parseWindowBounds, readActiveWindow } = require('./platform/windows/window-bounds');
 const { defaultCaptureTitle, mouseButtonKey } = require('../core/text-intel');
@@ -99,6 +101,9 @@ const CLICK_FRAME_MAX_AGE_MS = DEFAULT_MAX_AGE_MS;
 // How long a click waits for the in-flight grab before falling back to a
 // one-off fresh shot.
 const CLICK_FRAME_WAIT_MS = 2000;
+// How long a Windows click waits for the hook's own screenshot (usually under
+// 100 ms) before it takes the stream frame instead.
+const HOOK_SHOT_WAIT_MS = 1500;
 // Balanced (non-strict) mode only: a loop grab that started at most this
 // long after the click is still accepted. Strict mode never does this.
 const CLICK_FRAME_START_SLACK_MS = DEFAULT_START_SLACK_MS;
@@ -292,6 +297,7 @@ class CaptureService {
    * held iff a session exists and is not paused. Idempotent.
    */
   syncPower() {
+    this.armHookShots();
     const recording = Boolean(this.session && !this.session.paused);
     if (recording === this._recordingPower) return;
     this._recordingPower = recording;
@@ -299,6 +305,18 @@ class CaptureService {
       this.powerPolicy.setRecording(recording);
     } catch {
       // power management is best-effort; never break capture over it
+    }
+  }
+
+  /** The Windows hook takes screenshots only while the `armed` file exists: while recording runs, not paused. */
+  armHookShots() {
+    if (!this.hookShotDir) return;
+    const flag = path.join(this.hookShotDir, 'armed');
+    try {
+      if (this.session && !this.session.paused) fs.writeFileSync(flag, '');
+      else fs.rmSync(flag, { force: true });
+    } catch {
+      // Without it clicks keep using the stream frame.
     }
   }
 
@@ -988,6 +1006,53 @@ class CaptureService {
   }
 
   /**
+   * The frame for a click. On Windows that is the hook's own screenshot,
+   * taken at the button-down with the real pointer drawn on the click point;
+   * a stream frame's pointer is wherever the mouse was when it was sampled.
+   * Without one (another OS, or the hook could not take it) the stream frame.
+   */
+  async clickFrame(clickPos, clickAt) {
+    const shot = this.hookShots && clickPos ? await this.hookShots.take(clickAt, HOOK_SHOT_WAIT_MS) : null;
+    if (shot) {
+      try {
+        const frame = await this.hookShotFrame(shot, clickPos, clickAt);
+        if (frame) return frame;
+        clog('click@', clickAt, 'hook screenshot is not of the clicked display; using the stream');
+      } catch (error) {
+        clog('click@', clickAt, 'hook screenshot unreadable; using the stream:', error.message);
+      }
+    }
+    return this.frameForClick(clickPos, clickAt);
+  }
+
+  /** A hook screenshot (one monitor, raw BGRA in physical pixels) as a frame, or null if it is not the clicked display. */
+  async hookShotFrame(shot, clickPos, clickAt) {
+    let bitmap;
+    try {
+      bitmap = await fs.promises.readFile(shot.file);
+    } finally {
+      await fs.promises.unlink(shot.file).catch(() => {});
+    }
+    const display = this.screen.getDisplayNearestPoint(clickPos);
+    const scale = display.scaleFactor || 1;
+    if (bitmap.length !== shot.width * shot.height * 4
+      || Math.abs(display.bounds.width * scale - shot.width) > 2
+      || Math.abs(display.bounds.height * scale - shot.height) > 2) return null;
+    for (let i = 3; i < bitmap.length; i += 4) bitmap[i] = 255; // GDI leaves alpha at 0
+    const size = { width: shot.width, height: shot.height };
+    return {
+      mode: 'fullscreen',
+      image: this.imageFromBitmap(bitmap, size),
+      size,
+      display,
+      cursor: clickPos,
+      startedAt: clickAt,
+      capturedAt: clickAt,
+      source: 'hook',
+    };
+  }
+
+  /**
    * Frame representing the screen at the instant of one click.
    *
    * Order of preference:
@@ -1282,6 +1347,38 @@ public static class SFHook {
   private static LowLevelKeyboardProc keyProc = KeyboardHookCallback;
   private static readonly ConcurrentQueue<string> queue = new ConcurrentQueue<string>();
   private static readonly AutoResetEvent signal = new AutoResetEvent(false);
+  private static readonly string ShotDir = Environment.GetEnvironmentVariable("STEPFORGE_SHOT_DIR");
+  private static readonly ConcurrentQueue<long[]> shotQueue = new ConcurrentQueue<long[]>();
+  private static readonly AutoResetEvent shotSignal = new AutoResetEvent(false);
+  private static int shotCount;
+
+  [StructLayout(LayoutKind.Sequential)]
+  private struct RECT { public int left, top, right, bottom; }
+  [StructLayout(LayoutKind.Sequential)]
+  private struct MONITORINFO { public int cbSize; public RECT rcMonitor, rcWork; public uint dwFlags; }
+  [StructLayout(LayoutKind.Sequential)]
+  private struct BITMAPINFOHEADER {
+    public int biSize, biWidth, biHeight; public short biPlanes, biBitCount;
+    public int biCompression, biSizeImage, biXPelsPerMeter, biYPelsPerMeter, biClrUsed, biClrImportant;
+  }
+  [StructLayout(LayoutKind.Sequential)]
+  private struct CURSORINFO { public int cbSize, flags; public IntPtr hCursor; public POINT pt; }
+  [StructLayout(LayoutKind.Sequential)]
+  private struct ICONINFO { public bool fIcon; public int xHotspot, yHotspot; public IntPtr hbmMask, hbmColor; }
+
+  [DllImport("user32.dll")] private static extern IntPtr MonitorFromPoint(POINT pt, uint flags);
+  [DllImport("user32.dll")] private static extern bool GetMonitorInfo(IntPtr monitor, ref MONITORINFO info);
+  [DllImport("user32.dll")] private static extern IntPtr GetDC(IntPtr hwnd);
+  [DllImport("user32.dll")] private static extern int ReleaseDC(IntPtr hwnd, IntPtr dc);
+  [DllImport("user32.dll")] private static extern bool GetCursorInfo(ref CURSORINFO info);
+  [DllImport("user32.dll")] private static extern bool GetIconInfo(IntPtr icon, out ICONINFO info);
+  [DllImport("user32.dll")] private static extern bool DrawIconEx(IntPtr dc, int x, int y, IntPtr icon, int w, int h, uint step, IntPtr brush, uint flags);
+  [DllImport("gdi32.dll")] private static extern IntPtr CreateCompatibleDC(IntPtr dc);
+  [DllImport("gdi32.dll")] private static extern bool DeleteDC(IntPtr dc);
+  [DllImport("gdi32.dll")] private static extern IntPtr CreateDIBSection(IntPtr dc, ref BITMAPINFOHEADER info, uint usage, out IntPtr bits, IntPtr section, uint offset);
+  [DllImport("gdi32.dll")] private static extern IntPtr SelectObject(IntPtr dc, IntPtr obj);
+  [DllImport("gdi32.dll")] private static extern bool DeleteObject(IntPtr obj);
+  [DllImport("gdi32.dll")] private static extern bool BitBlt(IntPtr dst, int x, int y, int w, int h, IntPtr src, int sx, int sy, uint rop);
 
   [StructLayout(LayoutKind.Sequential)]
   private struct POINT {
@@ -1506,6 +1603,12 @@ public static class SFHook {
     elements.IsBackground = true;
     elements.SetApartmentState(ApartmentState.MTA);
     elements.Start();
+    if (ShotDir != null) {
+      Thread shooter = new Thread(ShotLoop);
+      shooter.IsBackground = true;
+      shooter.Priority = ThreadPriority.Highest;
+      shooter.Start();
+    }
 
     hook = SetWindowsHookEx(WH_MOUSE_LL, proc, GetModuleHandle(null), 0);
     if (hook == IntPtr.Zero) {
@@ -1538,6 +1641,62 @@ public static class SFHook {
     }
   }
 
+  // Off the hook thread: Windows drops a hook whose callback is slow.
+  private static void ShotLoop() {
+    while (true) {
+      shotSignal.WaitOne();
+      long[] r;
+      while (shotQueue.TryDequeue(out r)) {
+        if (!System.IO.File.Exists(System.IO.Path.Combine(ShotDir, "armed"))) continue;
+        string result = "-";
+        try { result = Shot((int)r[0], (int)r[1], r[2]); } catch { }
+        queue.Enqueue("SHOT " + r[2] + " " + result);
+        signal.Set();
+      }
+    }
+  }
+
+  // The clicked monitor as raw top-down BGRA in ShotDir. A GDI copy of the
+  // screen never has the pointer in it, so the one showing now is drawn with
+  // its hotspot exactly on the click. Returns "left top width height file".
+  public static string Shot(int x, int y, long at) {
+    POINT pt; pt.x = x; pt.y = y;
+    var mi = new MONITORINFO(); mi.cbSize = Marshal.SizeOf(typeof(MONITORINFO));
+    if (!GetMonitorInfo(MonitorFromPoint(pt, 2), ref mi)) return "-";
+    RECT m = mi.rcMonitor;
+    int w = m.right - m.left, h = m.bottom - m.top;
+    var bi = new BITMAPINFOHEADER(); bi.biSize = 40; bi.biWidth = w; bi.biHeight = -h; bi.biPlanes = 1; bi.biBitCount = 32;
+    IntPtr screen = GetDC(IntPtr.Zero), mem = CreateCompatibleDC(screen), bits;
+    IntPtr dib = CreateDIBSection(screen, ref bi, 0, out bits, IntPtr.Zero, 0);
+    IntPtr old = SelectObject(mem, dib);
+    try {
+      if (dib == IntPtr.Zero || !BitBlt(mem, 0, 0, w, h, screen, m.left, m.top, 0x40CC0020)) return "-";
+      var ci = new CURSORINFO(); ci.cbSize = Marshal.SizeOf(typeof(CURSORINFO));
+      ICONINFO ii;
+      if (GetCursorInfo(ref ci) && (ci.flags & 1) != 0 && GetIconInfo(ci.hCursor, out ii)) {
+        DrawIconEx(mem, x - m.left - ii.xHotspot, y - m.top - ii.yHotspot, ci.hCursor, 0, 0, 0, IntPtr.Zero, 3);
+        DeleteObject(ii.hbmMask);
+        DeleteObject(ii.hbmColor);
+      }
+      string name = at + "-" + Interlocked.Increment(ref shotCount) + ".bgra";
+      int rowBytes = w * 4;
+      var buffer = new byte[rowBytes * 64];
+      using (var file = new System.IO.FileStream(System.IO.Path.Combine(ShotDir, name), System.IO.FileMode.CreateNew)) {
+        for (int row = 0; row < h; row += 64) {
+          int n = Math.Min(64, h - row) * rowBytes;
+          Marshal.Copy(new IntPtr(bits.ToInt64() + (long)row * rowBytes), buffer, 0, n);
+          file.Write(buffer, 0, n);
+        }
+      }
+      return m.left + " " + m.top + " " + w + " " + h + " " + name;
+    } finally {
+      SelectObject(mem, old);
+      DeleteObject(dib);
+      DeleteDC(mem);
+      ReleaseDC(IntPtr.Zero, screen);
+    }
+  }
+
   private static IntPtr MouseHookCallback(int nCode, IntPtr wParam, IntPtr lParam) {
     if (nCode >= 0) {
       int message = wParam.ToInt32();
@@ -1550,6 +1709,11 @@ public static class SFHook {
         GetWindowThreadProcessId(WindowFromPoint(data.pt), out targetPid);
         if (targetPid == AppProcessId) return CallNextHookEx(hook, nCode, wParam, lParam);
         long unixMs = DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond - UnixEpochMilliseconds;
+        // First, so the shot runs while the work below still holds the click.
+        if (ShotDir != null) {
+          shotQueue.Enqueue(new long[] { data.pt.x, data.pt.y, unixMs });
+          shotSignal.Set();
+        }
         // The window under the click, not the foreground one: this hook runs
         // before Windows activates the clicked window, so on the first click
         // into another app the foreground window is still the previous app.
@@ -1664,10 +1828,24 @@ ${WINDOW_BOUNDS_CS}
 '@
 [SFHook]::Run()
 `;
+        // The hook screenshots each click into this folder while recording
+        // runs (see armHookShots); without it clicks use the stream frame.
+        const shotDir = path.join(os.tmpdir(), `stepforge-shots-${process.pid}`);
+        clearStaleShotDirs(os.tmpdir());
+        try {
+          fs.rmSync(shotDir, { recursive: true, force: true });
+          fs.mkdirSync(shotDir, { recursive: true });
+          this.hookShotDir = shotDir;
+          this.hookShots = new HookShots({ discard: (shot) => fs.promises.unlink(shot.file).catch(() => {}) });
+        } catch {
+          this.hookShotDir = null;
+        }
         this.clickWatcher = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', ps], {
           stdio: ['ignore', 'pipe', 'pipe'],
           windowsHide: true,
+          env: this.hookShotDir ? { ...process.env, STEPFORGE_SHOT_DIR: this.hookShotDir } : process.env,
         });
+        this.armHookShots();
         this.clickSource = 'windows-hook';
         this.clickWatcher.stdout.on('data', (chunk) => {
           this.ingestClickWatcherChunk(chunk.toString(), 'win32');
@@ -1718,6 +1896,13 @@ ${WINDOW_BOUNDS_CS}
     if (this.clickWatcher) {
       try { this.clickWatcher.kill(); } catch { /* already gone */ }
       this.clickWatcher = null;
+    }
+    if (this.hookShots) this.hookShots.clear();
+    this.hookShots = null;
+    if (this.hookShotDir) {
+      // A file still open in the dying hook stays until the next recording's cleanup.
+      try { fs.rmSync(this.hookShotDir, { recursive: true, force: true }); } catch { /* removed next time */ }
+      this.hookShotDir = null;
     }
     this.stopEvdevWatcher();
     this.clickSource = 'unavailable';
@@ -1878,6 +2063,17 @@ ${WINDOW_BOUNDS_CS}
         }
         // WIN comes just before its CLICK: the clicked window's area in
         // physical pixels, or "-" when there is no window to show.
+        // SHOT follows its CLICK: the hook's screenshot of that click (see
+        // SFHook.Shot), or "-" when it could not take one.
+        const shotM = /^SHOT\s+(\d+)\s+(?:-?\d+\s+-?\d+\s+(\d+)\s+(\d+)\s+(\d+-\d+\.bgra)|-)$/.exec(trimmed);
+        if (shotM) {
+          if (this.hookShots) {
+            this.hookShots.deliver(Number(shotM[1]), shotM[4]
+              ? { file: path.join(this.hookShotDir, shotM[4]), width: Number(shotM[2]), height: Number(shotM[3]) }
+              : null);
+          }
+          continue;
+        }
         const winM = /^WIN\s+(.+)$/.exec(trimmed);
         if (winM) {
           this._pendingClickWindow = parseWindowBounds(winM[1]);
@@ -2188,7 +2384,7 @@ ${WINDOW_BOUNDS_CS}
       // The guide id pins the click to its recording so it can still be
       // stored if the session stops while this click waits in the queue.
       clickMeta.guideId = this.session.guideId;
-      clickMeta.framePromise = this.frameForClick(clickPos, clickMeta.at)
+      clickMeta.framePromise = this.clickFrame(clickPos, clickMeta.at)
         .catch(() => null);
       // Count it now: storing waits behind earlier clicks (image encode and
       // save, about a second each on a large screen), and a bar that only
@@ -2389,6 +2585,10 @@ ${WINDOW_BOUNDS_CS}
 
   imageFromPng(png) {
     return nativeImage.createFromBuffer(png);
+  }
+
+  imageFromBitmap(bitmap, size) {
+    return nativeImage.createFromBitmap(bitmap, size);
   }
 
   noteWindowNotFound() {

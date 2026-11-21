@@ -62,8 +62,7 @@ class GnomeCaptureService extends CaptureService {
     const backend = this.backendFactory();
     this.pendingBackend = backend;
     try {
-      await backend.start({ sampleMs: this.settings.get('capture.frameSampleMs') || 50,
-        includeCursor: this.settings.get('capture.includeCursor') !== false });
+      await backend.start({ sampleMs: this.settings.get('capture.frameSampleMs') || 50 });
       return backend;
     } catch (error) {
       backend.stop({ immediate: true });
@@ -180,7 +179,7 @@ class GnomeCaptureService extends CaptureService {
 
   async frameForClick(point, at, mode = 'fullscreen', windowRect = null) {
     if (!this.streamBackend?.isActive()) throw new Error(t('Screen sharing is not ready.'));
-    const frame = await this.streamBackend.frameForClick({ clickPos: point, clickAt: at,
+    const frame = await this.streamBackend.frameForClick({ clickPos: point, pointer: point, clickAt: at,
       strict: this.strictClickFrames(), leadMs: Number(this.settings.get('capture.clickLeadMs')) || 0 });
     if (mode === 'window') {
       if (!windowRect) throw new Error(t('GNOME did not identify the active window.'));
@@ -203,7 +202,8 @@ class GnomeCaptureService extends CaptureService {
       const isShared = backend.displays.some(({ bounds: b }) => candidate
         && candidate.x >= b.x && candidate.x < b.x + b.width
         && candidate.y >= b.y && candidate.y < b.y + b.height);
-      const frame = await backend.frameForClick({ clickPos: isShared ? candidate : null, strict: false });
+      const shared = isShared ? candidate : null;
+      const frame = await backend.frameForClick({ clickPos: shared, pointer: shared, strict: false });
       const output = mode === 'window' && context.window ? this.cropFrame(frame, context.window, mode) : frame;
       return { image: nativeImage.createFromBuffer(output.png), display: output.display, cursor: null };
     });

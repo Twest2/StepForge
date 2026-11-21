@@ -314,7 +314,8 @@ click position. Three pieces make that hold:
    the `CLICK` (`app/hook-shots.js` pairs them); the hook only shoots while
    the `armed` file exists (recording, not paused), and a click without a
    usable shot takes the stream frame. The GNOME/KDE portal stream hides the
-   pointer and `portal_capture.py` draws an arrow on the requested point.
+   pointer and `portal_capture.py` draws an arrow on the frame request's
+   `pointer` (the click, or the mouse for a plain capture; none for a region).
    X11 and other Wayland sessions keep the stream's own pointer.
 
 Reliability rules that keep "one click → one step" true under load:

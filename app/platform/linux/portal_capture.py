@@ -375,14 +375,14 @@ class Capture:
             emit({'type': 'frame', 'id': command['id'], 'error': 'No pre-click frame is available, or PNG encoding is overloaded.'})
             return
         # Pin RGB bytes before the ring evicts them; the main loop never encodes.
-        self.pool.submit(self.encode, command['id'], frame, stream, point)
+        self.pool.submit(self.encode, command['id'], frame, stream, command.get('pointer'))
 
-    def encode(self, request_id, frame, stream, point=None):
+    def encode(self, request_id, frame, stream, pointer=None):
         try:
             data = frame['data']
-            # A requested point is the click, or where the pointer is for a plain capture.
-            if point is not None:
-                data = draw_pointer(data, frame['width'], frame['height'], frame['stride'], stream['bounds'], point)
+            # The click, or the pointer for a plain capture; a region asks for none.
+            if pointer is not None:
+                data = draw_pointer(data, frame['width'], frame['height'], frame['stride'], stream['bounds'], pointer)
             pixbuf = GdkPixbuf.Pixbuf.new_from_bytes(GLib.Bytes.new(data),
                 GdkPixbuf.Colorspace.RGB, False, 8, frame['width'], frame['height'], frame['stride'])
             ok, png = pixbuf.save_to_bufferv('png', ['compression'], ['1'])

@@ -154,6 +154,19 @@ class PointerTests(unittest.TestCase):
     def test_a_frame_without_a_point_is_unchanged(self):
         self.assertEqual(set(self.encode(None)), {128})
 
+    def test_only_the_pointer_is_drawn_not_the_point_that_picks_the_monitor(self):
+        capture = portal.Capture.__new__(portal.Capture)
+        capture.slots = threading.BoundedSemaphore(4)
+        frame = {'at': 100, 'data': b'', 'width': 1, 'height': 1, 'stride': 3}
+        capture.streams = [{'id': 1, 'bounds': {'x': 0, 'y': 0, 'width': 10, 'height': 10},
+                            'lock': threading.Lock(), 'ring': [frame]}]
+        submitted = []
+        capture.pool = types.SimpleNamespace(submit=lambda _fn, *args: submitted.append(args))
+        corner = {'x': 2, 'y': 3}
+        capture.frame({'id': 1, 'point': corner, 'at': 150})
+        capture.frame({'id': 2, 'point': corner, 'pointer': corner, 'at': 150})
+        self.assertEqual([args[3] for args in submitted], [None, corner])
+
     def test_an_arrow_at_the_corner_is_clipped(self):
         data = self.encode({'x': 139.9, 'y': 29.9})
         self.assertEqual(len(data), self.WIDTH * self.HEIGHT * 3)

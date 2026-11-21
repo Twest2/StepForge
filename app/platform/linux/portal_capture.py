@@ -13,7 +13,9 @@ and input-device reader in kwin_companion.py.
 import base64
 import collections
 import concurrent.futures
+import functools
 import json
+import math
 import os
 import sys
 import threading
@@ -111,6 +113,56 @@ def contains(bounds, point):
             and bounds['y'] <= point['y'] < bounds['y'] + bounds['height'])
 
 
+# The stream leaves the pointer out (cursor_mode 1): a pointer in its pixels is
+# where the mouse was when the frame was sampled, a little off the click. The
+# arrow is drawn on the point the frame was requested for instead. Logical px.
+POINTER = ((0, 0), (0, 16.5), (4, 12.6), (6.9, 19.2), (9.6, 18), (6.8, 11.6), (12, 11.6))
+POINTER_OUTLINE = 1.5
+
+
+def _signed_distance(x, y):
+    """Distance from (x, y) to the arrow's edge; negative inside."""
+    inside, nearest = False, math.inf
+    for (ax, ay), (bx, by) in zip(POINTER, POINTER[1:] + POINTER[:1]):
+        dx, dy = bx - ax, by - ay
+        t = max(0.0, min(1.0, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy)))
+        nearest = min(nearest, math.hypot(x - ax - t * dx, y - ay - t * dy))
+        if (ay > y) != (by > y) and x < ax + (y - ay) * dx / dy:
+            inside = not inside
+    return -nearest if inside else nearest
+
+
+@functools.lru_cache(maxsize=8)
+def pointer_sprite(scale):
+    """(dx, dy, alpha, gray) for each pixel of a white, black-edged arrow with its tip at (0, 0)."""
+    half = POINTER_OUTLINE / 2 * scale
+    reach = int(math.ceil(half)) + 1
+    sprite = []
+    for py in range(-reach, int(math.ceil(19.2 * scale)) + reach):
+        for px in range(-reach, int(math.ceil(12 * scale)) + reach):
+            d = _signed_distance((px + 0.5) / scale, (py + 0.5) / scale) * scale
+            alpha = max(0.0, min(1.0, half + 0.5 - d))
+            if alpha > 0:
+                white = max(0.0, min(1.0, -half + 0.5 - d))
+                sprite.append((px, py, alpha, 255 * white / alpha))
+    return tuple(sprite)
+
+
+def draw_pointer(data, width, height, stride, bounds, point):
+    """Packed RGB `data` with the arrow's tip on `point` (logical, like `bounds`)."""
+    scale = width / bounds['width']
+    tip_x = int((point['x'] - bounds['x']) * scale)
+    tip_y = int((point['y'] - bounds['y']) * scale)
+    pixels = bytearray(data)
+    for dx, dy, alpha, gray in pointer_sprite(round(scale, 3)):
+        x, y = tip_x + dx, tip_y + dy
+        if 0 <= x < width and 0 <= y < height:
+            i = y * stride + x * 3
+            for c in range(i, i + 3):
+                pixels[c] = round(pixels[c] * (1 - alpha) + gray * alpha)
+    return bytes(pixels)
+
+
 class Capture:
     def __init__(self, desktop='gnome'):
         Gst.init(None)
@@ -206,7 +258,7 @@ class Capture:
             Gio.DBusSignalFlags.NONE, lambda *_: self.fail(PortalError('session-closed', 'Start', 'Screen sharing ended.'))))
         self.request('SelectSources', '(oa{sv})', [self.session, {
             'types': GLib.Variant('u', 1), 'multiple': GLib.Variant('b', True),
-            'cursor_mode': GLib.Variant('u', 2 if options.get('includeCursor', True) else 1)}])
+            'cursor_mode': GLib.Variant('u', 1)}])  # hidden; see draw_pointer
         result = self.request('Start', '(osa{sv})', [self.session, '', {}])
         if self.closed:
             return
@@ -323,11 +375,15 @@ class Capture:
             emit({'type': 'frame', 'id': command['id'], 'error': 'No pre-click frame is available, or PNG encoding is overloaded.'})
             return
         # Pin RGB bytes before the ring evicts them; the main loop never encodes.
-        self.pool.submit(self.encode, command['id'], frame, stream)
+        self.pool.submit(self.encode, command['id'], frame, stream, point)
 
-    def encode(self, request_id, frame, stream):
+    def encode(self, request_id, frame, stream, point=None):
         try:
-            pixbuf = GdkPixbuf.Pixbuf.new_from_bytes(GLib.Bytes.new(frame['data']),
+            data = frame['data']
+            # A requested point is the click, or where the pointer is for a plain capture.
+            if point is not None:
+                data = draw_pointer(data, frame['width'], frame['height'], frame['stride'], stream['bounds'], point)
+            pixbuf = GdkPixbuf.Pixbuf.new_from_bytes(GLib.Bytes.new(data),
                 GdkPixbuf.Colorspace.RGB, False, 8, frame['width'], frame['height'], frame['stride'])
             ok, png = pixbuf.save_to_bufferv('png', ['compression'], ['1'])
             if not ok:

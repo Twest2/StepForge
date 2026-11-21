@@ -62,8 +62,7 @@ class GnomeCaptureService extends CaptureService {
     const backend = this.backendFactory();
     this.pendingBackend = backend;
     try {
-      await backend.start({ sampleMs: this.settings.get('capture.frameSampleMs') || 50,
-        includeCursor: this.settings.get('capture.includeCursor') !== false });
+      await backend.start({ sampleMs: this.settings.get('capture.frameSampleMs') || 50 });
       return backend;
     } catch (error) {
       backend.stop({ immediate: true });

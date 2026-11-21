@@ -342,6 +342,22 @@ test('the click hook compiles in Windows PowerShell and its window finder answer
   assert.match(lines.find((l) => l.startsWith('ACTIVE ')).slice(7), AREA);
 });
 
+test('the click hook screenshots the clicked monitor as raw pixels', { skip: !windowsPowerShell && 'needs Windows PowerShell' }, async () => {
+  // Set before the type loads: SFHook reads the folder once.
+  const script = '$env:STEPFORGE_SHOT_DIR = [IO.Path]::GetTempPath()\n' + hookScript().replace('[SFHook]::Run()', [
+    '$r = [SFHook]::Shot(10, 10, 42)',
+    '"SHOT " + $r',
+    '$p = $r.Split(" ")',
+    '$f = Join-Path $env:STEPFORGE_SHOT_DIR $p[4]',
+    '"SIZE " + (Get-Item $f).Length',
+    'Remove-Item $f',
+  ].join('\n'));
+  const lines = (await run(script)).trim().split(/\r?\n/);
+  const shot = /^SHOT -?\d+ -?\d+ (\d+) (\d+) 42-1\.bgra$/.exec(lines.find((l) => l.startsWith('SHOT ')));
+  assert.ok(shot, lines.join('\n'));
+  assert.equal(Number(lines.find((l) => l.startsWith('SIZE ')).slice(5)), shot[1] * shot[2] * 4);
+});
+
 test('the active window can be read on its own, as Capture window and Retake do', { skip: !windowsPowerShell && 'needs Windows PowerShell' }, async () => {
   assert.match((await run(activeWindowScript())).trim(), AREA);
   if (process.platform === 'win32') {

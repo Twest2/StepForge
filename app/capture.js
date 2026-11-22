@@ -240,6 +240,7 @@ class CaptureService {
     this.store = store;
     this.onRecordingSaved = onRecordingSaved;
     this.pngSteps = new Map(); // guideId -> step ids saved as PNG to convert after the recording
+    this.handOvers = new Map(); // guideId -> hand-over still waiting to collect its steps
     this.recordingSaved = Promise.resolve(); // the latest hand-over, for tests
     this.settings = settings;
     this.markerColor = markerColor;
@@ -748,12 +749,17 @@ class CaptureService {
    * steps on to be converted (onRecordingSaved).
    */
   handOverRecording(guideId) {
-    this.recordingSaved = this.clickQueue.catch(() => {}).then(async () => {
+    // One waiting hand-over per guide: steps added before it collects join it.
+    if (this.handOvers.has(guideId)) return this.handOvers.get(guideId);
+    const handOver = this.clickQueue.catch(() => {}).then(async () => {
+      this.handOvers.delete(guideId);
       const stepIds = [...(this.pngSteps.get(guideId) || [])];
       this.pngSteps.delete(guideId);
       if (stepIds.length && this.onRecordingSaved) await this.onRecordingSaved(guideId, stepIds);
     }).catch((error) => clog('converting the recording screenshots failed:', error.message));
-    return this.recordingSaved;
+    this.handOvers.set(guideId, handOver);
+    this.recordingSaved = handOver;
+    return handOver;
   }
 
   /**
@@ -2726,6 +2732,10 @@ ${WINDOW_BOUNDS_CS}
     if (deferred && step && step.stepId) {
       if (!this.pngSteps.has(guideId)) this.pngSteps.set(guideId, new Set());
       this.pngSteps.get(guideId).add(step.stepId);
+      // Its recording already ended: a timed, hotkey or manual capture still
+      // saving when it stopped isn't in the click queue the hand-over waits
+      // for, so it hands itself over (or joins the one still waiting).
+      if (!this.session || this.session.guideId !== guideId) this.handOverRecording(guideId);
     }
     return { ok: true, step };
   }

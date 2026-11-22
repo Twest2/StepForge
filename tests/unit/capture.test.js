@@ -450,6 +450,60 @@ test('a recording saves PNG, and hands its steps over for WebP once it and its q
   assert.equal(service.pngSteps.size, 0);
 });
 
+test('a timed capture still saving when the recording stops is converted too, not left as PNG', async () => {
+  // Timed, hotkey and manual captures don't go through the click queue, so
+  // the hand-over can collect its list before such a capture adds its step.
+  const service = makeService({ settings: { 'images.format': 'webp' } });
+  const handed = [];
+  service.onRecordingSaved = async (guideId, stepIds) => { handed.push(...stepIds); };
+  service.session = { guideId: 'guide-timed', paused: false, count: 0, intervalSec: 5 };
+  service.userIsInApp = () => false;
+  let releaseFrame;
+  const gate = new Promise((r) => { releaseFrame = r; });
+  service.streamBackend = { isActive: () => true, stop() {}, frameForClick: async () => makeFrame('timed-frame') };
+  // The recording stops while the capture's screenshot is still encoding.
+  const framePng = service.framePng.bind(service);
+  service.framePng = (frame) => gate.then(() => framePng(frame));
+  const stored = [];
+  let n = 0;
+  service.store.addStep = (guideId, fields, png) => { stored.push(png.toString()); return { stepId: `step-${++n}` }; };
+
+  const timed = service.sessionCapture('interval');
+  await settle(5);
+  service.finishSession();
+  await service.recordingSaved;
+  assert.deepEqual(handed, [], 'nothing was saved yet when the recording stopped');
+
+  releaseFrame();
+  assert.equal((await timed).ok, true);
+  await service.recordingSaved;
+  assert.deepEqual(stored, ['timed-frame'], 'it was saved as PNG');
+  assert.deepEqual(handed, ['step-1'], 'the late step gets its own hand-over');
+  assert.equal(service.pngSteps.size, 0);
+});
+
+test('steps added while a hand-over still waits for queued clicks join it, not a second one', async () => {
+  const service = makeService({ settings: { 'images.format': 'webp' } });
+  const handovers = [];
+  service.onRecordingSaved = async (guideId, stepIds) => { handovers.push(stepIds); };
+  service.session = { guideId: 'guide-join', paused: false, count: 0, intervalSec: 0 };
+  service.userIsInApp = () => false;
+  let releaseFrame;
+  const gate = new Promise((r) => { releaseFrame = r; });
+  service.frameForClick = () => gate.then(() => makeFrame('queued-frame'));
+  let n = 0;
+  service.store.addStep = () => ({ stepId: `step-${++n}` });
+
+  const queue = service.enqueueClickCapture({ x: 1, y: 1 }, Date.now() - 1000, 'left');
+  service.finishSession();
+  // A manual capture of the same guide lands while the click still waits.
+  await service.storeFrameAsStep('guide-join', 'fullscreen', makeFrame('manual'), null, { guideId: 'guide-join' });
+  releaseFrame();
+  await queue;
+  await service.recordingSaved;
+  assert.deepEqual(handovers, [['step-1', 'step-2']]);
+});
+
 test('only recordings save PNG for later: single captures, and the PNG setting, store their final format', async () => {
   const webp = makeService({ settings: { 'images.format': 'webp' } });
   assert.equal((await webp.prepareStep('fullscreen', makeFrame('single'))).deferred, false, 'a capture outside a recording');

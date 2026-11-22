@@ -29,11 +29,12 @@ const { buildFlowchartPrompt, parseFlowchart } = require('../core/ai-flowchart')
 const { parentMap, stepNumberMap } = require('../core/step-outline');
 const { systemPlaceholders } = require('../core/placeholders');
 const { OcrPool, defaultSize: ocrPoolSize } = require('./ocr-pool');
-
-const CLICK_READERS = Math.min(4, ocrPoolSize());
-const CLICK_READERS_IDLE_MS = 10 * 60 * 1000;
 const { t } = require('../core/ui-text');
 const { normalizeAiTemperature } = require('../core/settings');
+
+// Workers reading the text around clicks, and how long they stay idle.
+const CLICK_READERS = Math.min(4, ocrPoolSize());
+const CLICK_READERS_IDLE_MS = 10 * 60 * 1000;
 
 // Brand CSS requests aren't for a guide; ai:cancel stops them by this id.
 const BRAND_CSS_REQUEST = 'branding-css';

@@ -319,8 +319,10 @@ click position. Three pieces make that hold:
    keeps the replaced file names as `reencodedFrom`, so an editor still
    holding them saves its edits as edits to the same picture
    (`saveStepFromEditor`), and a redaction check of the old file carries
-   over to the new one. The editor reloads quietly on
-   `guide:images-converted`. A capture outside a recording is saved in its
+   over to the new one. The editor isn't reloaded: it shows screenshots by
+   step, and its next save of a step merges with the stored one, so the
+   conversion can't interrupt someone already editing. A capture outside a
+   recording is saved in its
    final format at once, its lossless WebP encoded from the frame's pixels
    alongside its PNG (`bitmapToWebp`).
 

@@ -190,9 +190,9 @@ async function convertRecordingToWebp(guideId, stepIds) {
     },
   });
   for (const error of report.errors) console.error(`[stepforge] converting a screenshot to WebP failed: ${error.message}`);
-  if (!report.converted) return;
-  cloudSync?.markChanged(guideId);
-  sendToRenderer('guide:images-converted', { guideId });
+  // The editor needs no reload: it shows screenshots by step, and its next
+  // save of a step merges with the newer stored one (core/editor-save.js).
+  if (report.converted) cloudSync?.markChanged(guideId);
 }
 
 // StepForge syncs with one account at a time. Switching keeps every guide on

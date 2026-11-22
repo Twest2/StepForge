@@ -647,12 +647,10 @@ class GuideStore {
    * Store new bytes for a step's existing screenshot files, keyed by their
    * current names (`{ 'original.png': webpBytes }`), used by the optimize
    * action. Each file is written under its new extension, then step.json
-   * names it. The pixel size must not change; the caller checks that.
-   */
-  /**
-   * The same screenshots in a new encoding (PNG to WebP). The image records
-   * the file names it replaced as `reencodedFrom`, so an editor still holding
-   * the old names saves its edits as edits to the same picture.
+   * names it. The pixel size must not change; the caller checks that. The
+   * image records the file names it replaced as `reencodedFrom`, so an
+   * editor still holding the old names saves its edits as edits to the same
+   * picture.
    */
   rewriteStepImages(guideId, stepId, buffers, { expectedRevision = null, expectedHashes = {}, touch = true } = {}) {
     this.getGuide(guideId);

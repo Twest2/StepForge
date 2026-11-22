@@ -294,6 +294,178 @@ test('fast clicks are paired with their frames at event time, not behind the sto
   assert.equal(service.session.count, 2);
 });
 
+test('quick clicks prepare their steps side by side and are added in click order', async () => {
+  // Reading text and encoding took ~0.5 s per click one after another, so
+  // quick clicking left steps arriving long after the recording stopped.
+  const service = makeService();
+  service.session = { guideId: 'guide-burst', paused: false, count: 0, intervalSec: 0 };
+  service.userIsInApp = () => false;
+  service.frameForClick = async (clickPos, clickAt) => makeFrame(`frame-${clickAt}`);
+  const started = [];
+  const release = new Map();
+  service.prepareStep = (mode, frame) => {
+    const name = frame.png.toString();
+    started.push(name);
+    return new Promise((resolve) => release.set(name, () => resolve({ fields: { title: name }, stored: frame.png })));
+  };
+  const added = [];
+  service.store.addStep = (guideId, fields) => { added.push(fields.title); return { stepId: fields.title }; };
+
+  service.enqueueClickCapture({ x: 1, y: 1 }, 1000, 'left');
+  service.enqueueClickCapture({ x: 2, y: 2 }, 1300, 'left');
+  const queue = service.enqueueClickCapture({ x: 3, y: 3 }, 1600, 'left');
+  await settle(10);
+  assert.deepEqual(started, ['frame-1000', 'frame-1300', 'frame-1600'], 'all three are prepared at once');
+
+  // The later clicks finish first; they still wait for the first one.
+  release.get('frame-1600')();
+  release.get('frame-1300')();
+  await settle(10);
+  assert.deepEqual(added, []);
+  release.get('frame-1000')();
+  await queue;
+  assert.deepEqual(added, ['frame-1000', 'frame-1300', 'frame-1600']);
+  assert.equal(service.session.count, 3);
+  assert.equal(service.session.pending, 0);
+});
+
+test('at most four clicks prepare at once, and the rest start as slots free up', async () => {
+  const service = makeService();
+  service.session = { guideId: 'guide-slots', paused: false, count: 0, intervalSec: 0 };
+  service.userIsInApp = () => false;
+  service.frameForClick = async (clickPos, clickAt) => makeFrame(`frame-${clickAt}`);
+  let running = 0;
+  let most = 0;
+  const finishers = [];
+  service.prepareStep = (mode, frame) => {
+    running += 1;
+    most = Math.max(most, running);
+    return new Promise((resolve) => finishers.push(() => { running -= 1; resolve({ fields: {}, stored: frame.png }); }));
+  };
+  const added = [];
+  service.store.addStep = (guideId, fields, stored) => { added.push(stored.toString()); return { stepId: 's' }; };
+
+  let queue;
+  for (let i = 0; i < 7; i++) queue = service.enqueueClickCapture({ x: i, y: i }, 1000 + i, 'left');
+  await settle(10);
+  assert.equal(running, 4, 'four prepare at once; three wait');
+  while (added.length < 7) {
+    const finish = finishers.shift();
+    if (finish) finish();
+    await settle(5);
+    assert.ok(running <= 4, `${running} preparing at once`);
+  }
+  await queue;
+  assert.equal(most, 4);
+  assert.deepEqual(added, [1000, 1001, 1002, 1003, 1004, 1005, 1006].map((at) => `frame-${at}`));
+  assert.equal(service.preparing, 0, 'every slot is given back');
+});
+
+test('a click whose early preparation fails is prepared again in order and still stored', async () => {
+  const service = makeService();
+  service.session = { guideId: 'guide-retry', paused: false, count: 0, intervalSec: 0 };
+  service.userIsInApp = () => false;
+  service.frameForClick = async () => makeFrame('retry-frame');
+  let calls = 0;
+  service.prepareStep = async (mode, frame) => {
+    calls += 1;
+    if (calls === 1) throw new Error('encoder busy');
+    return { fields: { title: 'second try' }, stored: frame.png };
+  };
+  const added = [];
+  service.store.addStep = (guideId, fields) => { added.push(fields.title); return { stepId: 's' }; };
+
+  await service.enqueueClickCapture({ x: 5, y: 5 }, Date.now(), 'left');
+  assert.equal(calls, 2);
+  assert.deepEqual(added, ['second try']);
+});
+
+test('a raw frame saved as lossless WebP is encoded straight from its pixels to the same image', async () => {
+  const sharp = require('sharp');
+  const { createImageCodec } = require('../../core/image-codec');
+  const { setImageCodec, getImageCodec, sniffImageFormat } = require('../../core/image-format');
+  const before = getImageCodec();
+  // A screen-like BGRA bitmap: flat areas, text-ish stripes and a gradient.
+  const width = 320;
+  const height = 200;
+  const bgra = Buffer.alloc(width * height * 4);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4;
+      bgra[i] = y < 40 ? 200 : (x * 3) & 255;
+      bgra[i + 1] = (y % 7 === 0 && x % 5) ? 20 : 240;
+      bgra[i + 2] = x < 160 ? 30 : y;
+      bgra[i + 3] = 255;
+    }
+  }
+  const image = { getSize: () => ({ width, height }), toBitmap: () => Buffer.from(bgra) };
+  const frame = { mode: 'fullscreen', image, size: { width, height } };
+  const codec = createImageCodec({ electron: undefined });
+  const calls = [];
+  setImageCodec({ ...codec, encodeWebp: async (...args) => { calls.push('from-png'); return codec.encodeWebp(...args); } });
+  try {
+    const service = makeService({ settings: { 'images.format': 'webp', 'images.lossless': true } });
+    const stored = await service.storedImage(frame);
+    assert.equal(sniffImageFormat(stored), 'webp');
+    assert.deepEqual(calls, [], 'no PNG is decoded again to make the WebP');
+
+    const png = await service.framePng(frame);
+    const [a, b] = await Promise.all([stored, png].map((buf) => sharp(buf).ensureAlpha().raw().toBuffer()));
+    assert.ok(a.equals(b), 'the WebP holds exactly the PNG’s pixels');
+
+    const pngOnly = makeService({ settings: { 'images.format': 'png' } });
+    assert.equal(sniffImageFormat(await pngOnly.storedImage(frame)), 'png');
+    const lossy = makeService({ settings: { 'images.format': 'webp', 'images.lossless': false } });
+    await lossy.storedImage(frame);
+    assert.deepEqual(calls, ['from-png'], 'lossy WebP keeps its checked path');
+  } finally {
+    setImageCodec(before);
+  }
+});
+
+test('a recording saves PNG, and hands its steps over for WebP once it and its queued clicks are done', async () => {
+  const service = makeService({ settings: { 'images.format': 'webp' } });
+  const handed = [];
+  service.onRecordingSaved = async (guideId, stepIds) => { handed.push({ guideId, stepIds }); };
+  service.session = { guideId: 'guide-rec', paused: false, count: 0, intervalSec: 0 };
+  service.userIsInApp = () => false;
+  let releaseFrame;
+  const gate = new Promise((r) => { releaseFrame = r; });
+  service.frameForClick = (pos, at) => (at === 2 ? gate.then(() => makeFrame('late-frame')) : Promise.resolve(makeFrame(`frame-${at}`)));
+  service.storedImage = () => assert.fail('a recording does not encode WebP while it records');
+  const added = [];
+  service.store.addStep = (guideId, fields, stored) => { added.push(stored.toString()); return { stepId: `step-${added.length}` }; };
+
+  service.enqueueClickCapture({ x: 1, y: 1 }, 1, 'left');
+  const queue = service.enqueueClickCapture({ x: 2, y: 2 }, 2, 'left');
+  service.finishSession();
+  await settle(250);
+  assert.deepEqual(handed, [], 'the hand-over waits for the click still in the queue');
+
+  releaseFrame();
+  await queue;
+  await service.recordingSaved;
+  assert.deepEqual(added, ['frame-1', 'late-frame'], 'both clicks were saved as their PNG frames');
+  assert.deepEqual(handed, [{ guideId: 'guide-rec', stepIds: ['step-1', 'step-2'] }]);
+  assert.equal(service.pngSteps.size, 0);
+});
+
+test('only recordings save PNG for later: single captures, and the PNG setting, store their final format', async () => {
+  const webp = makeService({ settings: { 'images.format': 'webp' } });
+  assert.equal((await webp.prepareStep('fullscreen', makeFrame('single'))).deferred, false, 'a capture outside a recording');
+  webp.session = { guideId: 'g', paused: false, count: 0 };
+  assert.equal((await webp.prepareStep('fullscreen', makeFrame('timed'))).deferred, true, 'a timed or hotkey capture in a recording');
+
+  const png = makeService({ settings: { 'images.format': 'png' } });
+  png.session = { guideId: 'g', paused: false, count: 0 };
+  png.onRecordingSaved = async () => assert.fail('nothing to convert when screenshots are kept as PNG');
+  png.store.addStep = () => ({ stepId: 's' });
+  assert.equal((await png.prepareStep('fullscreen', makeFrame('png'))).deferred, false);
+  await png.storeFrameAsStep('g', 'fullscreen', makeFrame('png'));
+  png.finishSession();
+  await png.recordingSaved;
+});
+
 test('clicks still queued when the session finishes are stored, not dropped', async () => {
   // Reported as "I clicked N times but only got two screenshots": with slow
   // encodes the queue lags, and finishing the session used to discard every

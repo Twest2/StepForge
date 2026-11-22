@@ -46,6 +46,8 @@ const api = {
     descriptionFromMarkdown: invoke('guide:descriptionFromMarkdown'),
     // An AI agent changed a guide through `StepForge --mcp`.
     onChangedByAgent: (fn) => ipcRenderer.on('guide:changed-by-agent', (e, payload) => fn(payload)),
+    // A recording's screenshots were converted to WebP after it ended.
+    onImagesConverted: (fn) => ipcRenderer.on('guide:images-converted', (e, payload) => fn(payload)),
   },
   step: {
     add: invoke('step:add'),

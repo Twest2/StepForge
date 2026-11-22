@@ -212,6 +212,7 @@ class StepForgeApp {
     api.capture.onStepUpdated((payload) => this.onStepUpdated(payload));
     if (api.capture.onDiagnostic) api.capture.onDiagnostic((payload) => this.onCaptureDiagnostic(payload));
     api.guide.onChangedByAgent((payload) => this.onGuideChangedByAgent(payload));
+    api.guide.onImagesConverted((payload) => this.onImagesConverted(payload));
     api.branding.onChangedByAgent(() => this.onBrandingChangedByAgent());
   }
 
@@ -268,6 +269,15 @@ class StepForgeApp {
     } else if (this.state.view === 'library') {
       await this.refreshLibrary();
     }
+  }
+
+  /**
+   * A recording's screenshots became WebP after it ended. Same pictures, new
+   * files: pick up their names quietly, keeping unsaved edits.
+   */
+  async onImagesConverted(payload) {
+    if (!payload || !payload.guideId) return;
+    if (this.state.view === 'editor' && this.editor.guideId === payload.guideId) await this.editor.reloadAfterOutsideChange();
   }
 
   async onStepUpdated(payload) {

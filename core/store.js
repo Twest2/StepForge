@@ -411,7 +411,7 @@ class GuideStore {
    * doesn't change what the guide shows (a private-detail check that found
    * nothing). Its revision still moves, so caches keyed on it refresh.
    */
-  saveStep(guideId, step, { expectedRevision = null, touch = true, imagePaths = false } = {}) {
+  saveStep(guideId, step, { expectedRevision = null, touch = true, imagePaths = false, reencoded = false } = {}) {
     // A capture/image/background operation can finish after an agent trashed
     // the guide. Refuse before creating any files in the old location.
     const guide = this.getGuide(guideId);
@@ -433,6 +433,9 @@ class GuideStore {
     // Which files a screenshot uses is the store's to decide (a crop moves
     // the working path), so a caller's copy of the step can't point it back.
     if (!imagePaths) this.currentImagePaths(guideId, stored);
+    // Only a re-encode keeps the screenshot it replaced (see rewriteStepImages);
+    // any other new screenshot is a different picture.
+    else if (!reencoded && stored.image) delete stored.image.reencodedFrom;
     stored.descriptionHtml = sanitizeHtml(stored.descriptionHtml);
     stored.revision = (Number.isInteger(stored.revision) ? stored.revision : 0) + 1;
     validateStep(stored);
@@ -646,7 +649,12 @@ class GuideStore {
    * action. Each file is written under its new extension, then step.json
    * names it. The pixel size must not change; the caller checks that.
    */
-  rewriteStepImages(guideId, stepId, buffers, { expectedRevision = null, expectedHashes = {} } = {}) {
+  /**
+   * The same screenshots in a new encoding (PNG to WebP). The image records
+   * the file names it replaced as `reencodedFrom`, so an editor still holding
+   * the old names saves its edits as edits to the same picture.
+   */
+  rewriteStepImages(guideId, stepId, buffers, { expectedRevision = null, expectedHashes = {}, touch = true } = {}) {
     this.getGuide(guideId);
     const step = this.getStep(guideId, stepId);
     if (!step.image) throw new Error('step has no image');
@@ -666,9 +674,10 @@ class GuideStore {
       if (next !== rel) renamed.set(rel, next);
     }
     const retired = [...renamed.keys()];
+    if (renamed.size) step.image.reencodedFrom = { originalPath: step.image.originalPath, workingPath: step.image.workingPath };
     if (renamed.has(step.image.originalPath)) step.image.originalPath = renamed.get(step.image.originalPath);
     if (renamed.has(step.image.workingPath)) step.image.workingPath = renamed.get(step.image.workingPath);
-    const saved = this.saveStep(guideId, step, { imagePaths: true, expectedRevision });
+    const saved = this.saveStep(guideId, step, { imagePaths: true, expectedRevision, touch, reencoded: true });
     for (const rel of retired) {
       if (rel !== saved.image.originalPath && rel !== saved.image.workingPath) fs.rmSync(path.join(dir, rel), { force: true });
     }

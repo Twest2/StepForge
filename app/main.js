@@ -39,7 +39,7 @@ const { BrandingStore, brandTemplateDefaults, checkFileSize, cssFromFile, profil
 const { MAX_REQUEST_CHARS: MAX_BRAND_CSS_REQUEST_CHARS } = require('../core/ai-brand-css');
 const { buildSampleAst } = require('../core/branding-sample');
 const { setImageCodec, rasterToPng, sniffImageFormat, readImageSize, optimizeScreenshot, imagePreviewUrl } = require('../core/image-format');
-const { optimizeGuideImages } = require('../core/image-optimize');
+const { optimizeGuideImages, convertStepsToWebp } = require('../core/image-optimize');
 const { decodePng, encodePng } = require('../core/png');
 const { renderAnnotations, applyFocusedView } = require('../core/raster');
 const { atomicWriteFileSync } = require('../core/util');
@@ -168,6 +168,31 @@ async function blurNewCapture(guideId, stepId, { notify = true } = {}) {
     console.error(`[stepforge] private-detail check failed: ${err && err.message}`);
     return 0;
   }
+}
+
+// A recording saves its screenshots as PNG to keep up with quick clicking;
+// once it is over they become WebP (core/image-optimize.js), several at once.
+async function convertRecordingToWebp(guideId, stepIds) {
+  if (settings.get('images.format') !== 'webp') return;
+  const options = redactor ? redactor.options() : null;
+  const report = await convertStepsToWebp(store, guideId, stepIds, {
+    codec: imageCodec,
+    lossless: settings.get('images.lossless') !== false,
+    webpQuality: settings.get('images.webpQuality'),
+    // A step already checked for private details stays checked: the
+    // picture is the same, only its file changed.
+    beforeRewrite: (step) => Boolean(options && step.redaction?.checked
+      && step.redaction.checked === redactor.checkedKey(guideId, step, options)),
+    afterRewrite: (saved, wasChecked) => {
+      if (!wasChecked) return;
+      saved.redaction = { ...saved.redaction, checked: redactor.checkedKey(guideId, saved, options) };
+      try { store.saveStep(guideId, saved, { expectedRevision: saved.revision, touch: false }); } catch { /* checked again on export */ }
+    },
+  });
+  for (const error of report.errors) console.error(`[stepforge] converting a screenshot to WebP failed: ${error.message}`);
+  if (!report.converted) return;
+  cloudSync?.markChanged(guideId);
+  sendToRenderer('guide:images-converted', { guideId });
 }
 
 // StepForge syncs with one account at a time. Switching keeps every guide on
@@ -2448,6 +2473,7 @@ if (!gotLock) {
       textIntel,
       powerPolicy: capturePowerPolicy,
       markerColor: () => activeAnnotationColors()?.shapes,
+      onRecordingSaved: convertRecordingToWebp,
     });
 
     // Deny-by-default permission policy. The only grant in the entire app is

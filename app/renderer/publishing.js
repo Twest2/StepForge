@@ -95,7 +95,7 @@ function makePublishSettings(api, service, { onStatus = () => {} } = {}) {
       el('div.cloud-account-actions', {}, disconnectBtn)),
     el('section.cloud-card', {},
       el('header.cloud-card-head', {}, el('h4', {}, t('Publishing'))),
-      el('p.muted', {}, t('Choose Share → Publish to {service} in a guide. Publishing the guide again updates the same page.', { service: info.name }))));
+      el('p.muted', {}, t('Choose Share → Publish to more sites → Publish to {service} in a guide. Publishing the guide again updates the same page.', { service: info.name }))));
 
   const update = (status = {}) => {
     signedOut.classList.toggle('hidden', Boolean(status.connected));

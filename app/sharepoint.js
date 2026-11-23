@@ -49,7 +49,7 @@ class SharePoint extends PublishAccount {
   graph(target, options) { return this.authorized(`${GRAPH}/${target}`, options); }
 
   async connect({ address = '' } = {}) {
-    if (!this.available) throw new Error(t('SharePoint sign-in is unavailable in this build of StepForge.'));
+    if (!this.available) throw new Error(t('{service} sign-in is unavailable in this build of StepForge.', { service: 'SharePoint' }));
     const where = sitePath(address);
     this.requireEncryption();
     const { code, verifier, redirectUri } = await this.browserSignIn({

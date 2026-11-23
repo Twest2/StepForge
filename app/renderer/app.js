@@ -1417,7 +1417,7 @@ class StepForgeApp {
   /** "Publish to Notion" and the other services in Settings → Accounts → Publishing (publishing.js). */
   publishMenuItems(guideId, title) {
     return Object.entries(PUBLISH_SERVICES).map(([service, info]) => ({
-      label: t('Publish to {service}', { service: info.name }), action: () => this.publishToService(service, guideId, title),
+      label: t('Publish to {service}', { service: info.name }), badge: info.beta ? 'Beta' : '', action: () => this.publishToService(service, guideId, title),
     }));
   }
 

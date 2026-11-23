@@ -558,7 +558,8 @@ function makeAccountsSettings(api, { view = null, onPublishToWeb = null } = {}) 
         row('github', 'github.svg', 'GitHub', t('Share guides on the web for a limited time with GitHub Pages.'), githubState),
         row('confluence', 'confluence.svg', 'Confluence', t('Publish guides as pages on your Confluence site.'), confluenceState, 'Beta'),
         row('wikijs', 'wikijs.svg', 'Wiki.js', t('Publish guides as pages on your Wiki.js 2 site.'), wikijsState),
-        ...publishers.map(({ id, state }) => row(id, PUBLISH_SERVICES[id].icon, PUBLISH_SERVICES[id].name, PUBLISH_SERVICES[id].description, state)),
+        ...publishers.map(({ id, state }) => row(id, PUBLISH_SERVICES[id].icon, PUBLISH_SERVICES[id].name, PUBLISH_SERVICES[id].description, state,
+          PUBLISH_SERVICES[id].beta ? 'Beta' : '')),
       ],
     },
   };

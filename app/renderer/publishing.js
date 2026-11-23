@@ -10,7 +10,7 @@
 
 const PUBLISH_SERVICES = {
   notion: {
-    name: 'Notion', icon: 'notion.svg',
+    name: 'Notion', icon: 'notion.svg', beta: true,
     description: t('Publish guides as pages in your Notion workspace.'),
     intro: t('Create an internal integration, paste its secret here, then share a page with it from the page’s ••• menu → Connections. Guides are published under the pages you share.'),
     help: { label: t('Open Notion integrations'), url: 'https://www.notion.so/profile/integrations' },
@@ -19,14 +19,14 @@ const PUBLISH_SERVICES = {
     targetNote: t('Only pages shared with the integration are listed.'),
   },
   sharepoint: {
-    name: 'SharePoint', icon: 'sharepoint.svg',
+    name: 'SharePoint', icon: 'sharepoint.svg', beta: true,
     description: t('Publish guides as pages on a SharePoint site.'),
     intro: t('Sign in with your work or school Microsoft account. Guides become site pages, with their screenshots in the site’s Site Assets library.'),
     fields: [{ key: 'address', label: t('Site address'), type: 'url', placeholder: 'contoso.sharepoint.com/sites/Team' }],
     connect: t('Sign in with Microsoft'),
   },
   bookstack: {
-    name: 'BookStack', icon: 'bookstack.svg',
+    name: 'BookStack', icon: 'bookstack.svg', beta: true,
     description: t('Publish guides as pages in a BookStack book.'),
     intro: t('Create an API token under your profile → Access & Security → API Tokens. Your role needs the “Access system API” permission.'),
     fields: [
@@ -46,7 +46,7 @@ const PUBLISH_SERVICES = {
     ],
   },
   zendesk: {
-    name: 'Zendesk', icon: 'zendesk.svg',
+    name: 'Zendesk', icon: 'zendesk.svg', beta: true,
     description: t('Publish guides as help center articles in Zendesk.'),
     intro: t('Create an API token in Admin Center → Apps and integrations → Zendesk API. New articles are saved as drafts for you to review and publish in Zendesk.'),
     fields: [

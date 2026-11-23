@@ -161,9 +161,9 @@ test('Accounts opens with Syncing and Publishing; each lists its services, and e
   const names = rows.map((row) => row.children[1].children[0]);
   assert.deepEqual(names.map((name) => name.children[0]), ['Google Drive', 'OneDrive', 'Dropbox', 'Nextcloud or WebDAV',
     'GitHub', 'Confluence', 'Wiki.js', 'Notion', 'SharePoint', 'BookStack', 'GitLab Pages', 'Zendesk']);
-  // Confluence publishing is still new, and says so; Wiki.js is not Beta any more.
+  // Confluence, Notion, SharePoint, BookStack and Zendesk publishing are still new, and say so; Wiki.js is not Beta any more.
   assert.deepEqual(names.map((name) => name.children.find((c) => c.classList?.contains('beta-badge'))?.textContent || ''),
-    ['', '', '', '', '', 'Beta', '', '', '', '', '', '']);
+    ['', '', '', '', '', 'Beta', '', 'Beta', 'Beta', 'Beta', '', 'Beta']);
   const logos = rows.map((row) => row.children[0].children[0].src);
   for (const logo of [...logos, '../assets/icons/syncing.svg', '../assets/icons/publishing.svg']) {
     assert.match(fs.readFileSync(path.join(__dirname, '../../app/renderer', logo), 'utf8'), /^<svg /, `${logo} ships with the app as a local SVG`);

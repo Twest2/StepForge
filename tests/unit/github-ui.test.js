@@ -155,7 +155,7 @@ test('Accounts opens with Syncing and Publishing; each lists its services, and e
   assert.deepEqual(tiles.map((tile) => tile.children[1].children[0].textContent), ['Syncing', 'Publishing']);
   assert.deepEqual(tiles.map((tile) => tile.children[0].children[0].src), ['../assets/icons/syncing.svg', '../assets/icons/publishing.svg']);
   assert.ok(tiles.every((tile) => tile.children[1].children[1].textContent.length > 20), 'each tile has a line of text under its name');
-  assert.deepEqual(tiles.map((tile) => tile.children[1].children[2].textContent), ['1 connected', '1 connected'], 'Drive, and Notion');
+  assert.ok(tiles.every((tile) => tile.children[1].children.length === 2), 'just a name and a line of text, no connection status');
 
   const rows = u.all(accounts.node).filter((n) => n.tag === 'button' && n.classList.contains('account-row'));
   const names = rows.map((row) => row.children[1].children[0]);

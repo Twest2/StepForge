@@ -530,8 +530,7 @@ function makeAccountsSettings(api, { view = null, onPublishToWeb = null } = {}) 
       if (disposed || !status) return;
       state.textContent = status.connected ? status.account : status.available === false ? t('Unavailable') : t('Not connected');
       state.classList.toggle('on', Boolean(status.connected));
-      countConnected();
-    };
+      };
     return { id, state, panel: makePublishSettings(api, id, { onStatus: setState }) };
   });
   // Service logos ship with the app (app/assets/icons); nothing is fetched.
@@ -546,7 +545,6 @@ function makeAccountsSettings(api, { view = null, onPublishToWeb = null } = {}) 
       title: t('Syncing'), icon: 'syncing.svg',
       description: t('Keep your guides the same on every computer with Google Drive, OneDrive, Dropbox or Nextcloud.'),
       ids: clouds.map(({ id }) => id),
-      states: clouds.map(({ state }) => state),
       rows: clouds.map(({ provider, id, state, description }) => {
         const service = CLOUD_SERVICES[provider];
         return row(id, service.icon, provider === 'webdav' ? t('Nextcloud or WebDAV') : service.name, description, state);
@@ -556,7 +554,6 @@ function makeAccountsSettings(api, { view = null, onPublishToWeb = null } = {}) 
       title: t('Publishing'), icon: 'publishing.svg',
       description: t('Put guides on the web, or publish them to wikis, help centers, knowledge bases and docs sites.'),
       ids: ['github', 'confluence', 'wikijs', ...publishers.map(({ id }) => id)],
-      states: [githubState, confluenceState, wikijsState, ...publishers.map(({ state }) => state)],
       rows: [
         row('github', 'github.svg', 'GitHub', t('Share guides on the web for a limited time with GitHub Pages.'), githubState),
         row('confluence', 'confluence.svg', 'Confluence', t('Publish guides as pages on your Confluence site.'), confluenceState, 'Beta'),
@@ -566,18 +563,9 @@ function makeAccountsSettings(api, { view = null, onPublishToWeb = null } = {}) 
     },
   };
   const groupOf = (id) => Object.keys(groups).find((key) => groups[key].ids.includes(id)) || null;
-  // How many of a group's services are connected, under its tile.
-  const groupState = Object.fromEntries(Object.keys(groups).map((key) => [key, el('span.account-group-state', {}, '')]));
-  const countConnected = () => {
-    for (const [key, group] of Object.entries(groups)) {
-      const on = group.states.filter((state) => state.classList.contains('on')).length;
-      groupState[key].textContent = on ? tn(on, '{count} connected', '{count} connected') : t('Not connected');
-      groupState[key].classList.toggle('on', on > 0);
-    }
-  };
   const tiles = el('div.account-groups', {}, ...Object.entries(groups).map(([key, group]) => el('button.account-group', { type: 'button', onClick: () => show(key) },
     el('span.account-group-icon', { 'aria-hidden': 'true' }, el('img', { src: `../assets/icons/${group.icon}`, alt: '' })),
-    el('span.account-group-text', {}, el('strong', {}, group.title), el('span.muted', {}, group.description), groupState[key]))));
+    el('span.account-group-text', {}, el('strong', {}, group.title), el('span.muted', {}, group.description)))));
   const toTiles = el('button.account-back', { type: 'button', onClick: () => show(null) }, t('‹ All accounts'));
   const listTitle = el('h4.account-list-title', {}, '');
   const list = el('div.account-list.hidden', {}, toTiles, listTitle, ...Object.values(groups).flatMap((group) => group.rows));
@@ -599,7 +587,6 @@ function makeAccountsSettings(api, { view = null, onPublishToWeb = null } = {}) 
       for (const [key, g] of Object.entries(groups)) for (const r of g.rows) r.classList.toggle('hidden', key !== group);
       back.textContent = t('‹ {group}', { group: groups[group].title });
     }
-    if (!id) countConnected();
     for (const cloud of clouds) cloud.panel.node.classList.toggle('hidden', service !== cloud.id);
     github.node.classList.toggle('hidden', service !== 'github');
     confluence.node.classList.toggle('hidden', service !== 'confluence');
@@ -620,14 +607,12 @@ function makeAccountsSettings(api, { view = null, onPublishToWeb = null } = {}) 
       description.textContent = available || connected ? service.description
         : t('This build has no valid app credentials for {service}.', { service: service.name });
     }
-    countConnected();
   };
   const setGitHub = (status) => {
     if (disposed || !status) return;
     githubState.textContent = status.needsSignIn ? t('Sign in again')
       : status.connected ? (status.repo || `@${status.login}`) : t('Not connected');
     githubState.classList.toggle('on', Boolean(status.connected && status.repo && !status.needsSignIn));
-    countConnected();
   };
   const stopCloud = api.cloud.onStatus(setCloud);
   const stopGitHub = api.github.onStatus(setGitHub);
@@ -635,7 +620,6 @@ function makeAccountsSettings(api, { view = null, onPublishToWeb = null } = {}) 
     if (disposed || !status) return;
     confluenceState.textContent = status.connected ? status.host : t('Not connected');
     confluenceState.classList.toggle('on', Boolean(status.connected));
-    countConnected();
   };
   const stopConfluence = api.confluence.onStatus(setConfluence);
   api.confluence.status().then(setConfluence).catch(() => { confluenceState.textContent = ''; });
@@ -644,7 +628,6 @@ function makeAccountsSettings(api, { view = null, onPublishToWeb = null } = {}) 
     if (disposed || !status) return;
     wikijsState.textContent = status.connected ? status.user || status.host : status.error ? t('Sign in again') : t('Not connected');
     wikijsState.classList.toggle('on', Boolean(status.connected));
-    countConnected();
   };
   const stopWikiJs = api.wikijs.onStatus(setWikiJs);
   api.wikijs.status().then(setWikiJs).catch(() => { wikijsState.textContent = ''; });

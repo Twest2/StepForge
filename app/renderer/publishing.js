@@ -26,7 +26,7 @@ const PUBLISH_SERVICES = {
     connect: t('Sign in with Microsoft'),
   },
   bookstack: {
-    name: 'BookStack', icon: 'bookstack.svg', beta: true,
+    name: 'BookStack', icon: 'bookstack.svg',
     description: t('Publish guides as pages in a BookStack book.'),
     intro: t('Create an API token under your profile → Access & Security → API Tokens. Your role needs the “Access system API” permission.'),
     fields: [

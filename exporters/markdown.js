@@ -7,12 +7,13 @@ const { DEFAULT_TEMPLATE, anchorFor, renderMarkdownGuide } = require('./markdown
  * shaped for the site it will be read on (`target`):
  *   standard    callouts as styled HTML (GitLab, Gitea, most viewers)
  *   github      callouts as GitHub alerts (> [!TIP]), no styled HTML
+ *   obsidian    the same alerts, which Obsidian shows as callouts
  *   azure       styled HTML plus the =WIDTHx image size Azure DevOps wikis use
  *   mkdocs      title front matter, !!! admonitions (MkDocs / Material)
  *   docusaurus  title front matter, ::: admonitions, MDX-safe text
  */
 
-const TARGETS = ['standard', 'github', 'azure', 'mkdocs', 'docusaurus'];
+const TARGETS = ['standard', 'github', 'obsidian', 'azure', 'mkdocs', 'docusaurus'];
 
 const OPTION_INFO = {
   toc: { label: 'Add a table of contents', group: 'Contents' },
@@ -20,6 +21,7 @@ const OPTION_INFO = {
   target: { label: 'Write for', group: 'Compatibility', hint: 'Callouts, page title and image links follow what this site expects.', choices: [
     { value: 'standard', label: 'Standard Markdown' },
     { value: 'github', label: 'GitHub' },
+    { value: 'obsidian', label: 'Obsidian' },
     { value: 'azure', label: 'Azure DevOps wiki' },
     { value: 'mkdocs', label: 'MkDocs' },
     { value: 'docusaurus', label: 'Docusaurus' },
@@ -43,7 +45,7 @@ function exportMarkdown(ast, outDir, template = {}) {
   const docsSite = target === 'mkdocs' || target === 'docusaurus';
   return renderMarkdownGuide(ast, outDir, template, {
     defaults: DEFAULT_TEMPLATE,
-    alertStyle: { github: 'gfm', mkdocs: 'mkdocs', docusaurus: 'docusaurus' }[target] || 'html',
+    alertStyle: { github: 'gfm', obsidian: 'gfm', mkdocs: 'mkdocs', docusaurus: 'docusaurus' }[target] || 'html',
     fileExt: '.md',
     accentBar: target === 'standard' || target === 'azure',
     frontMatter: docsSite ? titleFrontMatter : null,

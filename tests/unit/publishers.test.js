@@ -12,7 +12,6 @@ const { Zendesk, normalizeSubdomain } = require('../../app/zendesk');
 const { Notion } = require('../../app/notion');
 const { GitLabPages } = require('../../app/gitlab-pages');
 const { SharePoint, sitePath } = require('../../app/sharepoint');
-const { MarkdownFolder } = require('../../app/markdown-folder');
 const { buildFixtureGuide } = require('./fixture-guide');
 const { makeTmpDir, rmrf } = require('./helpers');
 
@@ -235,45 +234,4 @@ test('SharePoint: a site address becomes a Graph site path; pages go up with the
   assert.match(part.innerHtml, /SiteAssets\/StepForge\/x\/step-001\.png/);
   assert.match(created.name, /^backups-[0-9a-f]{6}\.aspx$/);
   assert.ok(site.calls.every((c) => c.init.headers?.Authorization === 'Bearer at'));
-});
-
-test('Markdown folder: the Markdown and its screenshots go into the chosen folder, and a file not from this guide is replaced only when asked', async (t) => {
-  const { root, ast, directory } = fixture(t);
-  const vault = path.join(root, 'vault');
-  fs.mkdirSync(vault);
-  const folder = new MarkdownFolder({ directory, chooseFolder: async () => vault });
-  assert.equal((await folder.connect({ flavor: 'obsidian' })).account, vault);
-  assert.deepEqual(folder.markdownOptions(), { target: 'github', toc: false, includeImages: true, imageMaxWidth: 0 });
-  const exported = runExport('markdown', ast, path.join(root, 'md'), folder.markdownOptions());
-  const name = path.basename(exported.file);
-  const first = await folder.publish({ guideId: 'g1', title: 'Backups', page: { file: exported.file } });
-  assert.equal(first.path, path.join(vault, name));
-  assert.equal(first.updated, false);
-  const images = fs.readdirSync(path.join(vault, `steps-${path.basename(name, '.md')}`));
-  assert.equal(images.filter((f) => f.endsWith('.png')).length, 2);
-  assert.match(fs.readFileSync(first.path, 'utf8'), /> \[!/, 'callouts are written the way Obsidian shows them');
-  assert.equal((await folder.publish({ guideId: 'g1', title: 'Backups', page: { file: exported.file } })).updated, true);
-  assert.deepEqual(await folder.publish({ guideId: 'g2', title: 'Backups', page: { file: exported.file } }), { conflict: { path: first.path, title: name } });
-  assert.equal((await folder.publish({ guideId: 'g2', title: 'Backups', page: { file: exported.file }, replace: true })).path, first.path);
-  assert.equal(folder.disconnect().connected, false);
-});
-
-test('Markdown folder: every Markdown export target and option can be chosen, Docusaurus included', async (t) => {
-  const { root, ast, directory } = fixture(t);
-  const docs = path.join(root, 'docs');
-  fs.mkdirSync(docs);
-  const folder = new MarkdownFolder({ directory, chooseFolder: async () => docs });
-  await folder.connect({ flavor: 'docusaurus', toc: 'yes', images: 'yes' });
-  assert.deepEqual(folder.markdownOptions(), { target: 'docusaurus', toc: true, includeImages: true, imageMaxWidth: 0 });
-  assert.equal(folder.status().site, 'Docusaurus');
-  const exported = runExport('markdown', ast, path.join(root, 'md'), folder.markdownOptions());
-  const published = await folder.publish({ guideId: 'g1', title: 'Backups', page: { file: exported.file } });
-  const markdown = fs.readFileSync(published.path, 'utf8');
-  assert.match(markdown, /^---\ntitle:/, 'Docusaurus front matter');
-  assert.match(markdown, /:::/, 'Docusaurus admonitions');
-  assert.match(markdown, /\]\(\.\/steps-/, 'images beside the page');
-  await folder.connect({ flavor: 'azure', imageMaxWidth: '600', images: 'no' });
-  assert.deepEqual(folder.markdownOptions(), { target: 'azure', toc: false, includeImages: false, imageMaxWidth: 600 });
-  await assert.rejects(folder.connect({ flavor: 'azure', imageMaxWidth: 'wide' }), /screenshot width/);
-  await assert.rejects(folder.connect({ flavor: 'confluence' }), /what the folder is for/);
 });

@@ -577,8 +577,7 @@ function makeAccountsSettings(api, { view = null, onPublishToWeb = null } = {}) 
   };
   const tiles = el('div.account-groups', {}, ...Object.entries(groups).map(([key, group]) => el('button.account-group', { type: 'button', onClick: () => show(key) },
     el('span.account-group-icon', { 'aria-hidden': 'true' }, el('img', { src: `../assets/icons/${group.icon}`, alt: '' })),
-    el('span.account-group-text', {}, el('strong', {}, group.title), el('span.muted', {}, group.description), groupState[key]),
-    el('span.account-chevron', { 'aria-hidden': 'true' }, '›'))));
+    el('span.account-group-text', {}, el('strong', {}, group.title), el('span.muted', {}, group.description), groupState[key]))));
   const toTiles = el('button.account-back', { type: 'button', onClick: () => show(null) }, t('‹ All accounts'));
   const listTitle = el('h4.account-list-title', {}, '');
   const list = el('div.account-list.hidden', {}, toTiles, listTitle, ...Object.values(groups).flatMap((group) => group.rows));

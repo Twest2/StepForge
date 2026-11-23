@@ -1,7 +1,7 @@
 'use strict';
 
 /*
- * Notion, SharePoint, BookStack, GitLab Pages, Zendesk and a Markdown folder:
+ * Notion, SharePoint, BookStack, GitLab Pages and Zendesk:
  * Settings → Accounts → Publishing → <service>, and "Publish to <service>"
  * for one guide. One panel and one dialog serve them all, described by
  * PUBLISH_SERVICES. Tokens and secrets stay in the main process
@@ -56,19 +56,6 @@ const PUBLISH_SERVICES = {
     ],
     target: t('Section'),
   },
-  markdown: {
-    name: t('Markdown folder'), icon: 'markdown.svg',
-    description: t('Save guides as Markdown in an Obsidian vault, a MkDocs or Docusaurus docs folder, or a wiki checkout.'),
-    intro: t('Choose what the folder is for, then the folder on this computer. Each guide is saved as a Markdown file, with its screenshots in a folder beside it.'),
-    fields: [
-      { key: 'flavor', label: t('Write for'), type: 'select', options: [['obsidian', 'Obsidian'], ['standard', t('Standard Markdown')], ['github', 'GitHub'],
-        ['azure', t('Azure DevOps wiki')], ['mkdocs', 'MkDocs'], ['docusaurus', 'Docusaurus']] },
-      { key: 'toc', label: t('Add a table of contents'), type: 'select', options: [['no', t('No')], ['yes', t('Yes')]] },
-      { key: 'images', label: t('Include screenshots'), type: 'select', options: [['yes', t('Yes')], ['no', t('No')]] },
-      { key: 'imageMaxWidth', label: t('Maximum screenshot width'), type: 'number', placeholder: t('Azure DevOps wiki only, in px'), optional: true, showFor: { flavor: 'azure' } },
-    ],
-    connect: t('Choose folder…'),
-  },
 };
 
 const publishIcon = (service) => `../assets/icons/${PUBLISH_SERVICES[service].icon}`;
@@ -85,21 +72,9 @@ function makePublishSettings(api, service, { onStatus = () => {} } = {}) {
   };
 
   const inputs = info.fields.map((field) => {
-    const input = field.type === 'select'
-      ? el('select', { 'aria-label': field.label }, ...field.options.map(([value, label]) => el('option', { value }, label)))
-      : el('input', { type: field.type, placeholder: field.placeholder || '', spellcheck: false, autocomplete: 'off', 'aria-label': field.label });
+    const input = el('input', { type: field.type, placeholder: field.placeholder || '', spellcheck: false, autocomplete: 'off', 'aria-label': field.label });
     return { field, input, node: el('label.cloud-field', {}, el('span', {}, field.label), input) };
   });
-  // A field such as Azure's screenshot width only shows when it applies.
-  const refreshFields = () => {
-    for (const { field, node } of inputs) {
-      if (!field.showFor) continue;
-      const [key, value] = Object.entries(field.showFor)[0];
-      node.classList.toggle('hidden', inputs.find((i) => i.field.key === key)?.input.value !== value);
-    }
-  };
-  for (const { input } of inputs) input.addEventListener('change', refreshFields);
-  refreshFields();
   const connectBtn = el('button.primary', { type: 'button' }, info.connect || t('Connect'));
   const help = info.help ? el('button.link', { type: 'button', onClick: () => void api.shell.openExternal({ url: info.help.url }).catch(() => {}) }, info.help.label) : null;
   const signedOut = el('div.cloud-hero', {},
@@ -148,7 +123,7 @@ function makePublishSettings(api, service, { onStatus = () => {} } = {}) {
     say('');
     const value = (input) => String(input.value ?? '');
     const fields = Object.fromEntries(inputs.map(({ field, input }) => [field.key, field.type === 'password' ? value(input) : value(input).trim()]));
-    const missing = inputs.find(({ field, input }) => !field.optional && field.type !== 'select' && !value(input).trim());
+    const missing = inputs.find(({ field, input }) => !field.optional && !value(input).trim());
     if (missing) { say(t('Enter the {field}.', { field: missing.field.label }), 'error'); missing.input.focus?.(); return; }
     const status = await api.publish.connect({ service, fields });
     if (disposed) return;
@@ -318,7 +293,6 @@ async function showPublishToServiceDialog({ api, service, guideId, guideTitle, o
       cancelBtn.textContent = t('Cancel');
       refresh();
     };
-    const openResult = (result) => (result.path ? api.shell.openProduced({ target: result.path }) : api.shell.openExternal({ url: result.url })).catch(() => {});
     const publish = async (replace = false) => {
       if (!canPublish() && !replace) return;
       publishing = true;
@@ -343,17 +317,17 @@ async function showPublishToServiceDialog({ api, service, guideId, guideTitle, o
         }
         if (!open) { toast(t('“{title}” is on {service}.', { title: guideTitle, service: info.name })); return; }
         const copy = el('button.primary', { type: 'button', onClick: async () => {
-          try { await navigator.clipboard.writeText(result.path || result.url); toast(t('Link copied.')); }
+          try { await navigator.clipboard.writeText(result.url); toast(t('Link copied.')); }
           catch { toast(t('Couldn’t copy the link.'), { error: true }); }
-        } }, result.path ? t('Copy path') : t('Copy link'));
+        } }, t('Copy link'));
         body.replaceChildren(
           el('p.gh-published-title', {}, el('span.gh-published-icon', { 'aria-hidden': 'true' }, '✓'),
             el('strong', {}, result.draft ? t('Saved “{title}” on {service} as a draft.', { title: result.title, service: info.name })
               : result.updated ? t('Updated “{title}” on {service}.', { title: result.title, service: info.name })
                 : t('Published “{title}” to {service}.', { title: result.title, service: info.name }))),
           result.note ? el('p.muted', {}, result.note) : null,
-          el('code.settings-path.gh-url', { title: result.path || result.url }, result.path || result.url),
-          el('div.row', {}, copy, el('button', { type: 'button', onClick: () => openResult(result) }, result.path ? t('Open') : t('Open in browser'))));
+          el('code.settings-path.gh-url', { title: result.url }, result.url),
+          el('div.row', {}, copy, el('button', { type: 'button', onClick: () => void api.shell.openExternal({ url: result.url }).catch(() => {}) }, t('Open in browser'))));
         cancelBtn.textContent = t('Done');
       } catch (err) {
         if (!open) { toast(t('Publishing “{title}” to {service} failed: {error}', { title: guideTitle, service: info.name, error: err.message }), { error: true }); return; }

@@ -32,7 +32,6 @@ const { SharePoint } = require('./sharepoint');
 const { BookStack } = require('./bookstack');
 const { GitLabPages } = require('./gitlab-pages');
 const { Zendesk } = require('./zendesk');
-const { MarkdownFolder } = require('./markdown-folder');
 const { pageFromHtml } = require('./publish-account');
 const { EXPIRY_DAYS, titleFromHtml } = require('../core/pages-site');
 const { TransferMeter } = require('../core/transfer-meter');
@@ -143,7 +142,7 @@ let confluenceSession;
 let confluenceCertificates;
 // Publishing to Wiki.js 2 (GraphQL), with no cookies kept.
 let wikijs;
-// Settings → Accounts → Publishing: Notion, SharePoint, BookStack, GitLab Pages, Zendesk, a Markdown folder.
+// Settings → Accounts → Publishing: Notion, SharePoint, BookStack, GitLab Pages, Zendesk.
 let publishers = {};
 let cloudSync;
 let cloudConnecting = false;
@@ -1539,11 +1538,11 @@ function setupIpc() {
     }
   }, { validate: validWikiPublishArgs });
 
-  // Settings → Accounts → Publishing (app/publish-account.js and
-  // app/markdown-folder.js). Tokens and secrets stay in the main process.
-  const PUBLISH_SERVICES = ['notion', 'sharepoint', 'bookstack', 'gitlab', 'zendesk', 'markdown'];
+  // Settings → Accounts → Publishing (app/publish-account.js). Tokens and
+  // secrets stay in the main process.
+  const PUBLISH_SERVICES = ['notion', 'sharepoint', 'bookstack', 'gitlab', 'zendesk'];
   // What each service publishes: the clipboard export's HTML unless named here.
-  const PUBLISH_FORMAT = { notion: 'notion', gitlab: 'html-rich', markdown: 'markdown' };
+  const PUBLISH_FORMAT = { notion: 'notion', gitlab: 'html-rich' };
   const validService = (a) => c.oneOf(a.service, PUBLISH_SERVICES);
   h('publish:status', ({ service }) => publishers[service].status(), { validate: validService });
   h('publish:connect', ({ service, fields }) => publishers[service].connect(fields), {
@@ -1572,17 +1571,12 @@ function setupIpc() {
       await redactor.checkGuide(guideId, { onProgress: ({ done, total }) => progress({ stage: 'check', done, total }) });
       progress({ stage: 'export' });
       const format = PUBLISH_FORMAT[service] || 'clipboard';
-      const options = format === 'markdown' ? publishers.markdown.markdownOptions()
-        : format === 'clipboard' ? { maxImageWidth: 1200 } : {};
+      const options = format === 'clipboard' ? { maxImageWidth: 1200 } : {};
       const result = await runExportInWorker({ language: uiLanguage(), dataDir: store.root, guideId, format, options, outDir,
         globals: settings.getGlobalPlaceholders(), codeStyle: exportCodeStyle(), reviewDays: exportReviewDays(), branding: exportBranding() });
       const page = format === 'clipboard' ? pageFromHtml(result.html)
-        : format === 'html-rich' ? { html: fs.readFileSync(result.file, 'utf8') }
-          : format === 'markdown' ? { file: result.file } : result;
-      const published = await publisher.publish({ guideId, title: title.trim(), target, replace, page, onProgress: progress });
-      // A Markdown file can be opened from the dialog.
-      if (published.path) producedFiles.add(published.path);
-      return published;
+        : format === 'html-rich' ? { html: fs.readFileSync(result.file, 'utf8') } : result;
+      return await publisher.publish({ guideId, title: title.trim(), target, replace, page, onProgress: progress });
     } finally {
       fs.rmSync(outDir, { recursive: true, force: true });
     }
@@ -2404,10 +2398,6 @@ if (!gotLock) {
       bookstack: new BookStack(publishOptions('bookstack')),
       gitlab: new GitLabPages(publishOptions('gitlab')),
       zendesk: new Zendesk(publishOptions('zendesk')),
-      markdown: new MarkdownFolder({ directory: store.settingsDir, chooseFolder: async (title) => {
-        const res = await dialog.showOpenDialog(mainWindow, { title, properties: ['openDirectory', 'createDirectory'] });
-        return res.canceled ? null : res.filePaths[0] || null;
-      } }),
     };
     githubPages = new GitHubPages({ directory: store.settingsDir, safeStorage,
       openExternal: (url) => shell.openExternal(url),

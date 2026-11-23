@@ -160,10 +160,10 @@ test('Accounts opens with Syncing and Publishing; each lists its services, and e
   const rows = u.all(accounts.node).filter((n) => n.tag === 'button' && n.classList.contains('account-row'));
   const names = rows.map((row) => row.children[1].children[0]);
   assert.deepEqual(names.map((name) => name.children[0]), ['Google Drive', 'OneDrive', 'Dropbox', 'Nextcloud or WebDAV',
-    'GitHub', 'Confluence', 'Wiki.js', 'Notion', 'SharePoint', 'BookStack', 'GitLab Pages', 'Zendesk', 'Markdown folder']);
+    'GitHub', 'Confluence', 'Wiki.js', 'Notion', 'SharePoint', 'BookStack', 'GitLab Pages', 'Zendesk']);
   // Confluence publishing is still new, and says so; Wiki.js is not Beta any more.
   assert.deepEqual(names.map((name) => name.children.find((c) => c.classList?.contains('beta-badge'))?.textContent || ''),
-    ['', '', '', '', '', 'Beta', '', '', '', '', '', '', '']);
+    ['', '', '', '', '', 'Beta', '', '', '', '', '', '']);
   const logos = rows.map((row) => row.children[0].children[0].src);
   for (const logo of [...logos, '../assets/icons/syncing.svg', '../assets/icons/publishing.svg']) {
     assert.match(fs.readFileSync(path.join(__dirname, '../../app/renderer', logo), 'utf8'), /^<svg /, `${logo} ships with the app as a local SVG`);
@@ -172,12 +172,12 @@ test('Accounts opens with Syncing and Publishing; each lists its services, and e
   assert.equal(rows[7].textContent.includes('Team space'), true, 'Notion row shows the workspace');
   for (const row of [...rows.slice(1, 7), ...rows.slice(8)]) assert.equal(row.textContent.includes('Not connected'), true);
   const panels = u.all(accounts.node).filter((n) => n.tag === 'fieldset');
-  assert.equal(panels.length, 13);
+  assert.equal(panels.length, 12);
   const [drivePanel, oneDrivePanel, , , githubPanel, confluencePanel, wikijsPanel, notionPanel, , bookstackPanel] = panels;
   assert.equal(rows.some((row) => u.visible(row)), false, 'only the two tiles to start with');
 
   u.click(tiles[0]);
-  assert.deepEqual(rows.map((row) => u.visible(row)), [true, true, true, true, false, false, false, false, false, false, false, false, false]);
+  assert.deepEqual(rows.map((row) => u.visible(row)), [true, true, true, true, false, false, false, false, false, false, false, false]);
   u.click(rows[0]);
   assert.equal(u.visible(drivePanel), true);
   assert.equal(u.visible(oneDrivePanel), false);
@@ -217,7 +217,7 @@ test('Accounts opens with Syncing and Publishing; each lists its services, and e
   dropbox.dispose();
   const publishing = u.context.makeAccountsSettings(fakeApi(), { view: 'publishing' });
   const publishingRows = u.all(publishing.node).filter((n) => n.tag === 'button' && n.classList.contains('account-row'));
-  assert.deepEqual([u.visible(publishingRows[0]), u.visible(publishingRows[12])], [false, true], 'or straight to a list');
+  assert.deepEqual([u.visible(publishingRows[0]), u.visible(publishingRows[11])], [false, true], 'or straight to a list');
   publishing.dispose();
 });
 
@@ -1127,33 +1127,6 @@ test('Publish to BookStack picks the book the guide went to before, shows progre
   assert.deepEqual(api.calls.at(-1), ['open', 'https://docs.example.com/link/7']);
   u.click(u.find(modal, 'Done'));
   assert.equal(await done, true);
-});
-
-test('Publish to a Markdown folder asks before replacing a file another guide did not write', async () => {
-  const u = ui();
-  const api = fakeApi();
-  const answers = [{ conflict: { path: '/vault/backups.md', title: 'backups.md' } }, { path: '/vault/backups.md', url: 'file:///vault/backups.md', title: 'Backups', updated: true }];
-  api.shell.openProduced = async (args) => { api.calls.push(['openProduced', args]); return { ok: true }; };
-  api.publish = {
-    status: async () => ({ connected: true, available: true, account: '/vault', site: 'Obsidian' }),
-    defaults: async () => ({ title: 'Backups', published: null }),
-    onProgress: () => () => {},
-    run: async (args) => { api.calls.push(['run', args]); return answers.shift(); },
-  };
-  u.context.showPublishToServiceDialog({ api, service: 'markdown', guideId: 'guide-1', guideTitle: 'Backups' });
-  await settle(); await settle();
-  const modal = u.root.children.at(-1);
-  assert.equal(u.all(modal).some((n) => n.tag === 'select'), false, 'nothing to choose: the folder is set in Settings');
-  u.find(modal, 'Publish').listeners.click();
-  await settle();
-  const ask = u.root.children.at(-1);
-  assert.match(ask.textContent, /\/vault\/backups\.md already exists\. Replace it\?/);
-  u.click(u.find(ask, 'Replace'));
-  await settle(); await settle();
-  assert.equal(api.calls.filter(([name]) => name === 'run').at(-1)[1].replace, true);
-  assert.match(modal.textContent, /\/vault\/backups\.md/);
-  u.click(u.find(modal, 'Open'));
-  assert.deepEqual(JSON.parse(JSON.stringify(api.calls.at(-1))), ['openProduced', { target: '/vault/backups.md' }]);
 });
 
 test('Wiki.js settings choose whether new pages are published, their tags and language', async () => {

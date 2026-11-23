@@ -328,10 +328,6 @@ Each is **off until you connect it** in **Settings → Accounts → Publishing**
 - **Disconnect** removes the saved sign-in. Pages you published stay where
   they are.
 
-Publishing to a **Markdown folder** (Obsidian, MkDocs, Docusaurus and others)
-writes files on this computer and sends nothing anywhere. Whatever syncs
-that folder (Obsidian Sync, Git) is up to you.
-
 ## Bundled components
 
 Besides the Electron desktop runtime, StepForge includes the Tesseract OCR

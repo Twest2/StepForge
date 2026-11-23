@@ -1,4 +1,4 @@
-# Publish guides to Notion, SharePoint, BookStack, GitLab Pages, Zendesk or a Markdown folder
+# Publish guides to Notion, SharePoint, BookStack, GitLab Pages or Zendesk
 
 StepForge can publish a guide straight to these sites, with its screenshots
 uploaded too. Publishing the same guide again updates the page it made, so its
@@ -19,7 +19,6 @@ before anything is sent, and you can review each blur first.
 | BookStack | An API token (ID and secret) | A page in the book or chapter you choose |
 | GitLab Pages | A personal access token with the `api` scope | A page on your GitLab Pages site |
 | Zendesk | Your email address and an API token | A draft help center article in the section you choose |
-| Markdown folder | A folder on this computer | A Markdown file with a folder of screenshots |
 
 ## Notion
 
@@ -85,23 +84,9 @@ you can review it and publish it in Zendesk. Publishing again updates the
 article and leaves it published or not, as it is. Screenshots are uploaded as
 the article's attachments.
 
-## Markdown folder (Obsidian, MkDocs, Docusaurus and more)
+## Obsidian, MkDocs and Docusaurus
 
-In **Settings → Accounts → Publishing → Markdown folder**, choose what the folder
-is for, then **Choose folder…**:
-
-| Write for | Use it for |
-| --- | --- |
-| Obsidian | A vault. Callouts are Obsidian callouts. |
-| Standard Markdown | Any other Markdown site or viewer |
-| GitHub | A GitHub wiki or repository checkout |
-| Azure DevOps wiki | A wiki repository checkout; you can set a maximum screenshot width |
-| MkDocs | Your `docs` folder. Pages get a title and `!!!` admonitions. |
-| Docusaurus | Your `docs` folder. Pages get a title and `:::` admonitions. |
-
-These are the same choices as **Export → Markdown**, along with whether to
-add a table of contents and include screenshots. Each guide is saved as
-`<guide name>.md` with its screenshots in `steps-<guide name>/` beside it.
-If a file of that name exists that StepForge didn't write for this guide, you're
-asked before it's replaced. To change these choices, disconnect and choose the
-folder again.
+These have no account to publish to: their pages are Markdown files in a
+folder or repository. Use **Export → Markdown** and choose **Write for**:
+**Obsidian**, **MkDocs** or **Docusaurus**, then put the file and its
+screenshot folder in your vault or `docs` folder.

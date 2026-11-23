@@ -321,7 +321,10 @@ Each is **off until you connect it** in **Settings → Accounts → Publishing**
   keyring so an update or reinstall doesn't lose it.
 - When you publish, the guide's text and its screenshots (with private details
   blurred, see above) are sent. Nothing is sent until you choose **Publish**.
-  GitLab Pages guides are public on the web. Zendesk articles start as
+  GitLab Pages guides are public to anyone with their unguessable link, for
+  the 1, 7 or 30 days you choose; the project's files and history are
+  members-only, and an hourly rebuild takes expired guides down even while
+  StepForge is closed. Zendesk articles start as
   drafts.
 - So publishing again updates the same page, StepForge saves each page's id,
   address and title on this computer.

@@ -286,7 +286,7 @@ function makeGitHubSettings(api, { onPublishToWeb = null } = {}) {
   const refresh = el('button', { type: 'button', onClick: () => run(refresh, t('Refreshing…'), refreshPublished) }, t('Refresh'));
   const sharedCard = el('section.cloud-card', {},
     el('header.cloud-card-head', {}, el('h4', {}, t('Shared guides')), sharedCount, refresh),
-    el('p.muted', {}, t('To share a guide, open it and choose Share → Publish to the web. Guides are removed automatically when their time is up.')),
+    el('p.muted', {}, t('To share a guide, open it and choose Share → Publish to {service}. Guides are removed automatically when their time is up.', { service: 'GitHub Pages' })),
     sharedList);
 
   /* Advanced */

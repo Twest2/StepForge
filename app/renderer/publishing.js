@@ -39,8 +39,9 @@ const PUBLISH_SERVICES = {
   gitlab: {
     name: 'GitLab Pages', icon: 'gitlab.svg',
     waitsForSite: true, // publishing waits until GitLab has built the site
-    description: t('Share guides on the web with GitLab Pages.'),
-    intro: t('Create a personal access token with the api scope. The first publish makes a public project, stepforge-guides, whose GitLab Pages site shows your guides.'),
+    shares: true, // guides are public for 1, 7 or 30 days, like GitHub Pages sharing
+    description: t('Share guides on the web for a limited time with GitLab Pages.'),
+    intro: t('Create a personal access token with the api scope. The first publish makes a project, stepforge-guides: its GitLab Pages site is public, and its files and history are for you only. Each guide gets an unguessable link and comes down when its time is up.'),
     fields: [
       { key: 'address', label: t('GitLab address'), type: 'url', placeholder: 'gitlab.com', optional: true },
       { key: 'token', label: t('Personal access token'), type: 'password', placeholder: 'glpat-…' },
@@ -66,6 +67,7 @@ function makePublishSettings(api, service, { onStatus = () => {} } = {}) {
   const info = PUBLISH_SERVICES[service];
   let busy = false;
   let disposed = false;
+  let shownShared = false;
   const banner = el('div.cloud-banner.hidden', { role: 'status', 'aria-live': 'polite' });
   const say = (message, tone = 'info') => {
     banner.textContent = message || '';
@@ -94,9 +96,78 @@ function makePublishSettings(api, service, { onStatus = () => {} } = {}) {
       el('div.cloud-avatar.service-logo', { 'aria-hidden': 'true' }, el('img', { src: publishIcon(service), alt: '' })),
       el('div.cloud-account-info', {}, who, el('div.cloud-status-line', {}, siteLine)),
       el('div.cloud-account-actions', {}, disconnectBtn)),
-    el('section.cloud-card', {},
+    info.shares ? null : el('section.cloud-card', {},
       el('header.cloud-card-head', {}, el('h4', {}, t('Publishing'))),
       el('p.muted', {}, t('Choose Share → Publish to {service} in a guide. Publishing the guide again updates the same page.', { service: info.name }))));
+
+  /* Shared guides (GitLab Pages), as Settings → Accounts → GitHub lists them. */
+  const sharedCount = el('span.cloud-card-meta', {}, '');
+  const sharedList = el('div.cloud-guide-list', {}, el('p.muted', {}, t('Loading shared guides…')));
+  const refreshBtn = el('button', { type: 'button', onClick: () => run(refreshBtn, t('Refreshing…'), refreshShared) }, t('Refresh'));
+  if (info.shares) {
+    signedIn.append(el('section.cloud-card', {},
+      el('header.cloud-card-head', {}, el('h4', {}, t('Shared guides')), sharedCount, refreshBtn),
+      el('p.muted', {}, t('To share a guide, open it and choose Share → Publish to {service}. Guides are removed automatically when their time is up.', { service: info.name })),
+      sharedList));
+  }
+  let listRequest = 0;
+  async function refreshShared() {
+    const request = ++listRequest;
+    let guides;
+    let updated;
+    try { [guides, updated] = await Promise.all([api.publish.shared({ service }), guideUpdatedTimes(api)]); } catch (err) {
+      if (!disposed && request === listRequest) sharedList.replaceChildren(el('p.cloud-empty.muted', {}, err.message));
+      return;
+    }
+    if (disposed || request !== listRequest) return;
+    sharedCount.textContent = guides.length ? t('{count} shared', { count: guides.length }) : '';
+    sharedList.replaceChildren();
+    if (!guides.length) { sharedList.append(el('p.cloud-empty.muted', {}, t('No guides are shared right now.'))); return; }
+    for (const guide of guides) {
+      const copy = el('button', { type: 'button', onClick: async () => {
+        try { await navigator.clipboard.writeText(guide.url); say(t('Link copied for “{title}”.', { title: guide.title }), 'success'); }
+        catch { say(t('Couldn’t copy the link.'), 'error'); }
+      } }, t('Copy link'));
+      const view = el('button', { type: 'button', onClick: () => void api.shell.openExternal({ url: guide.url }).catch(() => {}) }, t('Open'));
+      const extend = el('button', { type: 'button', 'aria-haspopup': 'menu', 'aria-expanded': 'false', onClick: (event) => {
+        if (busy || disposed) return;
+        const rect = event.currentTarget.getBoundingClientRect();
+        contextMenu(rect.left, rect.bottom + 4, [1, 7, 30].map((days) => ({
+          label: t('Keep online for {time} from now', { time: githubExpiryLabel(days) }),
+          action: () => run(extend, t('Extending…'), async () => {
+            await api.publish.extend({ service, slug: guide.slug, days });
+            say(t('“{title}” stays online for {time} from now.', { title: guide.title, time: githubExpiryLabel(days) }), 'success');
+            await refreshShared();
+          }),
+        })));
+      } }, t('Extend'));
+      const remove = el('button.danger', { type: 'button', onClick: async () => {
+        if (busy || disposed) return;
+        const ok = await confirmDialog(el('div.cloud-confirm', {},
+          el('strong', {}, t('Stop sharing “{title}”?', { title: guide.title })),
+          el('p', {}, t('The page is removed from your {service} site and its link stops working within a few minutes. The guide stays in your library.', { service: info.name }))),
+        { danger: true, okLabel: t('Remove from the web') });
+        if (!ok) return;
+        await run(remove, t('Removing…'), async () => {
+          await api.publish.unpublish({ service, slug: guide.slug });
+          say(t('“{title}” is no longer shared.', { title: guide.title }), 'success');
+          await refreshShared();
+        });
+      } }, t('Remove'));
+      sharedList.append(el('div.cloud-guide', {},
+        el('div.cloud-guide-row', {},
+          el('div.cloud-guide-icon', { 'aria-hidden': 'true' }, (guide.title || '?').trim().slice(0, 1).toUpperCase() || '?'),
+          el('div.cloud-guide-info', {},
+            el('div.cloud-guide-title', { title: guide.title }, guide.title || t('Untitled guide')),
+            el('div.cloud-chips', {},
+              el('span.cloud-chip.local', {}, githubTimeLeft(guide.expiresAt)),
+              el('span.muted', { title: guide.url }, t('Until {when}', { when: githubWhen(guide.expiresAt) })),
+              editedSinceShared(updated.get(guide.guideId), guide.publishedAt)
+                ? el('span.cloud-chip.stale', { title: t('This guide changed after you shared it. Publish it again to update the public copy.') }, t('Edited since you shared it'))
+                : null)),
+          el('div.cloud-guide-actions', {}, copy, view, extend, remove))));
+    }
+  }
 
   const update = (status = {}) => {
     signedOut.classList.toggle('hidden', Boolean(status.connected));
@@ -108,6 +179,8 @@ function makePublishSettings(api, service, { onStatus = () => {} } = {}) {
     }
     who.textContent = status.account || info.name;
     siteLine.textContent = [status.site, info.name].filter(Boolean).join(' · ');
+    if (info.shares && status.connected && !shownShared) { shownShared = true; void refreshShared(); }
+    if (!status.connected) shownShared = false;
     onStatus(status);
   };
   const run = async (button, label, action) => {
@@ -225,13 +298,27 @@ async function showPublishToServiceDialog({ api, service, guideId, guideTitle, o
     const targetField = info.target ? el('label.gh-field', {}, el('span', {}, info.target), targetSelect) : null;
     const targetNote = el('p.muted.wikijs-note.hidden', {}, '');
     const previous = el('div.cloud-banner.hidden', {});
+    // Expiring public links (GitLab Pages): how long, and that it's public, as for GitHub Pages.
+    const days = el('select', { 'aria-label': t('How long to keep the guide online') },
+      ...[1, 7, 30].map((value) => el('option', { value: String(value), selected: value === 7 }, githubExpiryLabel(value))));
+    const understood = el('input', { type: 'checkbox' });
+    const sharing = info.shares ? [
+      el('label.gh-field', {}, el('span', {}, t('Keep it online for')), days),
+      el('div.gh-warning', { role: 'note' }, el('span.gh-warning-icon', { 'aria-hidden': 'true' }, '!'),
+        el('div', {}, el('strong', {}, t('Shared guides are public.')), ' ',
+          t('Anyone with the link can open a shared guide. Removing a guide takes it off the site, but someone may already have saved a copy.'),
+          el('p', {}, t('StepForge blurs the private details it finds, but it can miss some, such as names or text that’s hard to read. Check every screenshot before you publish, and use the Blur tool for anything else.')))),
+      el('label.gh-consent', {}, understood, el('span', {}, t('I understand this guide will be public on the internet.'))),
+    ] : [];
     const error = el('p.gh-note.error.hidden', { role: 'alert' }, '');
     const showError = (message) => { error.textContent = message; error.classList.remove('hidden'); };
     let checking = true;
     let ready = false;
-    const canPublish = () => ready && !checking && !publishing && Boolean(titleInput.value.trim()) && (!info.target || Boolean(targetSelect.value));
+    const canPublish = () => ready && !checking && !publishing && Boolean(titleInput.value.trim()) && (!info.target || Boolean(targetSelect.value))
+      && (!info.shares || understood.checked);
     const refresh = () => { publishBtn.disabled = !canPublish(); };
     titleInput.addEventListener('input', refresh);
+    understood.addEventListener('change', refresh);
     targetSelect.addEventListener('change', refresh);
 
     // Private details are checked before Publish is available, as for the web.
@@ -267,6 +354,7 @@ async function showPublishToServiceDialog({ api, service, guideId, guideTitle, o
       previous,
       el('label.gh-field', {}, el('span', {}, t('Title')), titleInput),
       targetField, targetNote,
+      ...sharing,
       privacyBox,
       error);
     body.replaceChildren(form);
@@ -287,8 +375,10 @@ async function showPublishToServiceDialog({ api, service, guideId, guideTitle, o
         refresh();
         const page = defaults.published;
         if (!page) return;
-        previous.replaceChildren(t('Published before. Publishing again updates the same page.'),
-          editedSinceShared(updated.get(guideId), page.publishedAt) ? ` ${t('The guide has changed since you published it.')}` : '');
+        previous.replaceChildren(page.expiresAt
+          ? t('This guide is already shared until {when}. Publishing again updates the page with your latest changes and keeps the same link.', { when: githubWhen(page.expiresAt) })
+          : t('Published before. Publishing again updates the same page.'),
+        editedSinceShared(updated.get(guideId), page.publishedAt) ? ` ${t('The guide has changed since you published it.')}` : '');
         previous.classList.remove('hidden');
       }).catch((err) => showError(err.message));
 
@@ -310,7 +400,8 @@ async function showPublishToServiceDialog({ api, service, guideId, guideTitle, o
       cancelBtn.textContent = t('Close');
       const stop = api.publish.onProgress((update) => { if (update?.guideId === guideId && update.service === service) progress.set(update); });
       try {
-        const result = await api.publish.run({ service, guideId, title: titleInput.value.trim(), target: targetSelect.value || '', replace });
+        const result = await api.publish.run({ service, guideId, title: titleInput.value.trim(), target: targetSelect.value || '', replace,
+          ...(info.shares ? { days: Number(days.value) } : {}) });
         changed = true;
         if (result.conflict) {
           publishing = false;
@@ -326,14 +417,17 @@ async function showPublishToServiceDialog({ api, service, guideId, guideTitle, o
           try { await navigator.clipboard.writeText(result.url); toast(t('Link copied.')); }
           catch { toast(t('Couldn’t copy the link.'), { error: true }); }
         } }, t('Copy link'));
-        body.replaceChildren(
+        // filter(Boolean): replaceChildren would show a missing line as "null".
+        body.replaceChildren(...[
           el('p.gh-published-title', {}, el('span.gh-published-icon', { 'aria-hidden': 'true' }, '✓'),
             el('strong', {}, result.draft ? t('Saved “{title}” on {service} as a draft.', { title: result.title, service: info.name })
               : result.updated ? t('Updated “{title}” on {service}.', { title: result.title, service: info.name })
                 : t('Published “{title}” to {service}.', { title: result.title, service: info.name }))),
           result.note ? el('p.muted', {}, result.note) : null,
+          result.expiresAt ? el('p.muted', {}, t('Until {when}', { when: githubWhen(result.expiresAt) })) : null,
           el('code.settings-path.gh-url', { title: result.url }, result.url),
-          el('div.row', {}, copy, el('button', { type: 'button', onClick: () => void api.shell.openExternal({ url: result.url }).catch(() => {}) }, t('Open in browser'))));
+          el('div.row', {}, copy, el('button', { type: 'button', onClick: () => void api.shell.openExternal({ url: result.url }).catch(() => {}) }, t('Open in browser'))),
+        ].filter(Boolean));
         cancelBtn.textContent = t('Done');
       } catch (err) {
         if (!open) { toast(t('Publishing “{title}” to {service} failed: {error}', { title: guideTitle, service: info.name, error: err.message }), { error: true }); return; }

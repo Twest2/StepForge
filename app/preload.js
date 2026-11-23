@@ -170,6 +170,9 @@ const api = {
     targets: invoke('publish:targets'),
     defaults: invoke('publish:defaults'),
     run: invoke('publish:run'),
+    shared: invoke('publish:shared'),
+    unpublish: invoke('publish:unpublish'),
+    extend: invoke('publish:extend'),
     onProgress: (fn) => { const listener = (e, payload) => fn(payload); ipcRenderer.on('publish:progress', listener); return () => ipcRenderer.removeListener('publish:progress', listener); },
   },
   redact: {

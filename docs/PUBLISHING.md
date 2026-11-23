@@ -65,16 +65,31 @@ moved or renamed.
 2. Paste it into **Settings → Accounts → Publishing → GitLab Pages**. For your
    own GitLab, also type its address.
 
-The first publish makes a **public** project, `stepforge-guides`, in your
-namespace, with a `.gitlab-ci.yml` that serves its `public/` folder. Each guide
-is `public/<guide name>/index.html`, the interactive HTML export. Anyone with
-the link can open it.
+GitLab Pages sharing works like [GitHub Pages sharing](GITHUB_PAGES.md):
+
+- **Anyone with the link can open a shared guide.** Publishing asks you to
+  confirm that, after the same check for private details.
+- **Each guide gets an unguessable link**, `…/g/<random>/`, not one made from
+  its title. The site's front page never lists guides, and pages ask search
+  engines not to index or archive them.
+- **You choose how long it stays online: 1, 7 or 30 days.** Publishing again
+  keeps the same link and starts the time again. A pipeline schedule rebuilds
+  the site every hour, so a guide comes down when its time is up even while
+  StepForge is closed.
+- **Settings → Accounts → Publishing → GitLab Pages** lists what's shared, with
+  **Copy link**, **Open**, **Extend** and **Remove**.
+
+The first publish makes a project, `stepforge-guides`, in your namespace. Its
+Pages site is public, but its files, history, pipelines and job logs are for
+project members only, so nobody else can browse guides there, removed ones
+included. (If you already have a `stepforge-guides` project, StepForge uses
+it and changes it to these settings.) Each guide is the interactive HTML
+export.
 
 GitLab builds the site after each publish, which needs CI runners (on
 gitlab.com, a verified account). StepForge waits until the guide's page loads
 before showing its link, usually a minute or two. If the build fails, it says
-so and links to the pipeline; if no runner picks it up, it says that instead. Unlike GitHub
-Pages sharing, guides stay up until you delete them from the project.
+so and links to the pipeline; if no runner picks it up, it says that instead.
 
 ## Zendesk
 

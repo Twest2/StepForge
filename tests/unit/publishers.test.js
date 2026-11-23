@@ -216,55 +216,146 @@ test('Notion: a busy answer is retried after the time Notion asks for, and a lon
   assert.equal(first.table.children.length, 100);
 });
 
-test('GitLab Pages: the first publish makes the project and its CI file; another guide with the same name asks first', async (t) => {
-  const { directory } = fixture(t);
-  const files = new Set();
-  const commits = [];
+/** A GitLab with one project whose branch is kept in memory, commit by commit. */
+function gitlabServer({ existing = null } = {}) {
+  const files = new Map(Object.entries(existing || {}));
   const project = { id: 3, default_branch: 'main', web_url: 'https://gitlab.com/casey/stepforge-guides' };
-  let created = false;
+  const state = { created: Boolean(existing), settings: [], schedules: [], commits: [], files, pipeline: [] };
+  const text = (body, status = 200) => new Response(body, { status, headers: { 'Content-Type': 'text/plain' } });
   const site = server([
     ['GET', /\/api\/v4\/user$/, () => ({ username: 'casey' })],
-    ['GET', /projects\/casey%2Fstepforge-guides$/, () => (created ? project : missing())],
+    ['GET', /projects\/casey%2Fstepforge-guides$/, () => (state.created ? project : missing())],
     ['GET', /projects\/3$/, () => project],
-    ['POST', /projects$/, (m, init) => { assert.deepEqual([bodyOf(init).visibility, bodyOf(init).path], ['public', 'stepforge-guides']); created = true; return project; }],
-    ['HEAD', /repository\/files\/([^?]+)/, (m) => (files.has(decodeURIComponent(m[1])) ? new Response(null, { status: 200 }) : new Response(null, { status: 404 }))],
-    ['POST', /repository\/commits$/, (m, init) => { const sent = bodyOf(init); commits.push(sent); for (const a of sent.actions) files.add(a.file_path); return { id: 'c1' }; }],
+    ['POST', /\/api\/v4\/projects$/, (m, init) => { state.created = true; state.settings.push(bodyOf(init)); return project; }],
+    ['PUT', /projects\/3$/, (m, init) => { state.settings.push(bodyOf(init)); return project; }],
+    ['GET', /projects\/3\/repository\/tree\?/, () => (files.size ? [...files.keys()].map((p) => ({ path: p, type: 'blob' })) : missing())],
+    ['GET', /projects\/3\/repository\/files\/stepforge\.json\/raw/, () => (files.has('stepforge.json') ? text(files.get('stepforge.json')) : missing())],
+    ['POST', /repository\/commits$/, (m, init) => {
+      const sent = bodyOf(init);
+      for (const action of sent.actions) {
+        if (action.action === 'create' && files.has(action.file_path)) return new Response('{"message":"exists"}', { status: 400 });
+        if (action.action !== 'create' && !files.has(action.file_path)) return new Response('{"message":"missing"}', { status: 400 });
+        if (action.action === 'delete') files.delete(action.file_path);
+        else files.set(action.file_path, Buffer.from(action.content, 'base64').toString());
+      }
+      state.commits.push(sent);
+      return { id: `c${state.commits.length}` };
+    }],
+    ['GET', /pipeline_schedules\?/, () => state.schedules],
+    ['POST', /pipeline_schedules$/, (m, init) => { state.schedules.push(bodyOf(init)); return {}; }],
+    ['GET', /projects\/3\/pipelines\?sha=/, () => [{ status: state.pipeline.shift() || 'success', web_url: 'https://gitlab.com/casey/stepforge-guides/-/pipelines/9' }]],
     ['GET', /projects\/3\/pages$/, () => ({ url: 'https://casey.gitlab.io/stepforge-guides' })],
-    ['GET', /projects\/3\/pipelines\?sha=c1/, () => [{ status: pipeline.shift() || 'success', web_url: 'https://gitlab.com/casey/stepforge-guides/-/pipelines/9' }]],
-    // Pages keeps the last deployment for a moment after the pipeline passes.
-    ['HEAD', /^https:\/\/casey\.gitlab\.io\/stepforge-guides\/backups\/\?stepforge=\d+$/, () => new Response(null, { status: served.shift() ?? 200 })],
+    ['HEAD', /^https:\/\/casey\.gitlab\.io\/stepforge-guides\/g\/[a-f0-9]{24}\/\?stepforge=\d+$/, () => new Response(null, { status: 200 })],
   ]);
-  let pipeline = ['running', 'success'];
-  let served = [404];
-  const gitlab = new GitLabPages({ directory, safeStorage: safeStorage(), fetchImpl: site.fetch });
+  return { site, state, files };
+}
+const DAY = 24 * 60 * 60 * 1000;
+const guidePage = { html: '<!DOCTYPE html><html><head><title>Backups</title></head><body><h1>Backups</h1></body></html>' };
+
+test('GitLab Pages shares like GitHub Pages: unguessable links, a site that lists nothing, members-only files, and an expiry', async (t) => {
+  const { directory } = fixture(t);
+  const { site, state, files } = gitlabServer();
+  const gitlab = new GitLabPages({ directory, safeStorage: safeStorage(), fetchImpl: site.fetch, language: () => 'fr' });
   gitlab.wait = async () => {};
   assert.equal((await gitlab.connect({ address: '', token: 'glpat-x' })).account, '@casey');
-  assert.equal(site.calls[0].url, 'https://gitlab.com/api/v4/user');
-  const page = { html: '<!DOCTYPE html><title>Backups</title>' };
-  const stages = [];
-  const first = await gitlab.publish({ guideId: 'g1', title: 'Backups', page, onProgress: ({ stage }) => stages.push(stage) });
-  assert.equal(first.url, 'https://casey.gitlab.io/stepforge-guides/backups/');
-  assert.deepEqual([first.live, first.note], [true, undefined], 'the link is handed over once it loads');
-  assert.equal(stages.at(-1), 'live');
-  const visits = site.calls.filter((c) => c.url.startsWith('https://casey.gitlab.io/'));
-  assert.equal(visits.length, 2, 'asked again after the first 404');
-  assert.ok(visits.every((c) => !c.init.headers?.['PRIVATE-TOKEN']), 'the token only goes to the API');
-  assert.deepEqual(commits[0].actions.map((a) => [a.action, a.file_path]), [['create', 'public/backups/index.html'], ['create', '.gitlab-ci.yml']]);
-  assert.equal(Buffer.from(commits[0].actions[0].content, 'base64').toString(), page.html);
-  const again = await gitlab.publish({ guideId: 'g1', title: 'Backups', page });
-  assert.deepEqual(commits[1].actions.map((a) => a.action), ['update']);
-  assert.equal(again.updated, true);
-  assert.deepEqual(await gitlab.publish({ guideId: 'g2', title: 'Backups', page }), { conflict: { path: 'public/backups/index.html', title: 'backups' } });
-  assert.equal((await gitlab.publish({ guideId: 'g2', title: 'Backups', page, replace: true })).url, first.url);
 
-  // A pipeline that fails is reported, with where to look.
-  pipeline = ['failed'];
-  await assert.rejects(gitlab.publish({ guideId: 'g1', title: 'Backups', page }), /couldn’t build the site.*pipelines\/9/);
+  const stages = [];
+  const first = await gitlab.publish({ guideId: 'g1', title: 'Backups', page: guidePage, days: 7, onProgress: ({ stage }) => stages.push(stage) });
+  const slug = first.slug;
+  assert.match(slug, /^[a-f0-9]{24}$/, 'an unguessable address, not the title');
+  assert.equal(first.url, `https://casey.gitlab.io/stepforge-guides/g/${slug}/`);
+  assert.deepEqual([first.live, first.updated, stages.at(-1)], [true, false, 'live']);
+  assert.ok(Math.abs(Date.parse(first.expiresAt) - (Date.now() + 7 * DAY)) < 60000);
+  // The project's Pages are public; its files, history and pipelines are for members only.
+  assert.deepEqual(JSON.parse(JSON.stringify(state.settings[0])), {
+    name: 'StepForge guides', path: 'stepforge-guides', description: 'Guides published from StepForge.', visibility: 'public',
+    pages_access_level: 'public', repository_access_level: 'private', builds_access_level: 'private', public_jobs: false,
+    issues_access_level: 'disabled', wiki_access_level: 'disabled', snippets_access_level: 'disabled',
+    merge_requests_access_level: 'disabled', forking_access_level: 'disabled' });
+  const page = files.get(`guides/${slug}/index.html`);
+  assert.match(page, /<meta name="robots" content="noindex, nofollow, noarchive">/);
+  assert.match(page, /<meta name="referrer" content="no-referrer">/);
+  assert.equal(Number(files.get(`guides/${slug}/expires`)), Math.floor(Date.parse(first.expiresAt) / 1000));
+  assert.doesNotMatch(files.get('index.html'), /Backups/, 'the front page never lists guides');
+  assert.match(files.get('index.html'), /lang="fr"/);
+  assert.deepEqual(state.schedules.map((s) => [s.cron, s.ref]), [['17 * * * *', 'main']], 'an hourly rebuild takes expired guides down');
+
+  // Again: the same link, a new time, one schedule.
+  const again = await gitlab.publish({ guideId: 'g1', title: 'Backups', page: guidePage, days: 1 });
+  assert.deepEqual([again.slug, again.updated], [slug, true]);
+  assert.ok(Date.parse(again.expiresAt) < Date.parse(first.expiresAt));
+  assert.equal(state.schedules.length, 1);
+  const other = await gitlab.publish({ guideId: 'g2', title: 'Backups', page: guidePage, days: 30 });
+  assert.notEqual(other.slug, slug, 'a guide with the same title gets its own link');
+
+  // Listed soonest-to-expire first; extended; removed.
+  assert.deepEqual((await gitlab.shared()).map((g) => [g.guideId, g.url]), [['g1', first.url], ['g2', other.url]]);
+  assert.equal((await gitlab.sharedFor('g2')).slug, other.slug);
+  const extended = await gitlab.extend({ slug, days: 30 });
+  assert.equal(extended.at(-1).guideId, 'g1');
+  const left = await gitlab.unpublish({ slug: other.slug });
+  assert.deepEqual(left.map((g) => g.guideId), ['g1']);
+  assert.ok(![...files.keys()].some((p) => p.includes(other.slug)), 'its files are gone from the branch');
+  await assert.rejects(gitlab.unpublish({ slug: '../etc' }), /Unknown shared guide/);
+
+  // Expired while StepForge was closed: the sweep after launch takes it out.
+  const manifest = JSON.parse(files.get('stepforge.json'));
+  manifest.guides[slug].expiresAt = new Date(Date.now() - 1000).toISOString();
+  files.set('stepforge.json', JSON.stringify(manifest));
+  assert.equal(await gitlab.sweep(), 1);
+  assert.deepEqual([...files.keys()].filter((p) => p.startsWith('guides/')), []);
+  assert.equal(await gitlab.sweep(), 0, 'nothing more to do');
+
+  // A failed build is reported with where to look.
+  state.pipeline = ['failed'];
+  await assert.rejects(gitlab.publish({ guideId: 'g3', title: 'Third', page: guidePage }), /couldn’t build the site.*pipelines\/9/);
   // One no runner picks up ends with the link and why it doesn't work yet.
-  const guidesProject = { id: 3, web_url: 'https://gitlab.com/casey/stepforge-guides' };
-  pipeline = Array(1000).fill('pending');
-  const waited = await gitlab.waitUntilLive(guidesProject, 'c1', 'backups', { deadline: Date.now() + 50 });
+  state.pipeline = Array(1000).fill('pending');
+  const waited = await gitlab.waitUntilLive({ id: 3, web_url: 'https://gitlab.com/casey/stepforge-guides' }, 'c1', 'g/x/', { deadline: Date.now() + 50 });
   assert.deepEqual([waited.live, waited.waiting], [false, 'pending']);
+});
+
+test('GitLab Pages brings a project from an earlier StepForge up to date: settings, and its readable-address pages removed', async (t) => {
+  const { directory } = fixture(t);
+  const { site, state, files } = gitlabServer({ existing: { 'public/backups/index.html': '<html></html>', '.gitlab-ci.yml': 'pages: {}', 'README.md': 'mine' } });
+  const gitlab = new GitLabPages({ directory, safeStorage: safeStorage(), fetchImpl: site.fetch });
+  gitlab.wait = async () => {};
+  await gitlab.connect({ address: 'https://gitlab.example.com', token: 'glpat-x' });
+  assert.equal(site.calls[0].url, 'https://gitlab.example.com/api/v4/user');
+  await gitlab.publish({ guideId: 'g1', title: 'Backups', page: guidePage });
+  assert.equal(state.settings[0].repository_access_level, 'private', 'made members-only');
+  assert.equal(files.has('public/backups/index.html'), false);
+  assert.equal(files.get('README.md'), 'mine', 'files StepForge didn’t make are left alone');
+  assert.match(files.get('.gitlab-ci.yml'), /stepforge-pages v2/);
+  await gitlab.publish({ guideId: 'g1', title: 'Backups', page: guidePage });
+  assert.equal(state.settings.length, 1, 'settings are only set once');
+});
+
+test('the GitLab Pages build publishes only guides that haven’t expired, from any shell', (t) => {
+  const { CI } = require('../../app/gitlab-pages');
+  const dir = makeTmpDir('gitlab-ci');
+  t.after(() => rmrf(dir));
+  const now = Math.floor(Date.now() / 1000);
+  const guide = (slug, expires) => {
+    fs.mkdirSync(path.join(dir, 'guides', slug), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'guides', slug, 'index.html'), slug);
+    if (expires !== null) fs.writeFileSync(path.join(dir, 'guides', slug, 'expires'), `${expires}\n`);
+  };
+  fs.writeFileSync(path.join(dir, 'index.html'), 'front');
+  fs.mkdirSync(path.join(dir, 'public', 'old'), { recursive: true });
+  guide('a'.repeat(24), now + 3600);
+  guide('b'.repeat(24), now - 60);
+  guide('c'.repeat(24), null);
+  guide('d'.repeat(24), 'soon');
+  const script = CI.split('\n');
+  const first = script.find((line) => line.trim().startsWith('- rm -rf public'));
+  const start = script.findIndex((line) => line.trim() === '- |');
+  const end = script.findIndex((line) => line.trim() === 'artifacts:');
+  const block = script.slice(start + 1, end).map((line) => line.slice(6)).join('\n');
+  require('node:child_process').execFileSync('sh', ['-c', `${first.trim().slice(2)}\n${block}`], { cwd: dir });
+  const built = (p) => fs.existsSync(path.join(dir, 'public', p));
+  assert.deepEqual([built('index.html'), built(`g/${'a'.repeat(24)}/index.html`), built(`g/${'b'.repeat(24)}`),
+    built(`g/${'c'.repeat(24)}`), built(`g/${'d'.repeat(24)}`), built('old')], [true, true, false, false, false, false]);
 });
 
 test('SharePoint: a site address becomes a Graph site path; pages go up with their images in Site Assets and are published', async (t) => {

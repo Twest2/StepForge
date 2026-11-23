@@ -1556,9 +1556,11 @@ function setupIpc() {
     if (!store.guideExists(guideId)) throw new Error(t('Guide not found.'));
     // The title as exported, with placeholders filled in, names the page.
     const title = await runExportInWorker({ language: uiLanguage(), dataDir: store.root, guideId, task: 'title', globals: settings.getGlobalPlaceholders() });
-    return { title, published: publishers[service].publishedFor(guideId) };
+    // An expiring share (GitLab Pages) is read from the site itself.
+    const publisher = publishers[service];
+    return { title, published: publisher.sharedFor ? await publisher.sharedFor(guideId) : publisher.publishedFor(guideId) };
   }, { validate: (a) => validService(a) && c.id(a.guideId) });
-  h('publish:run', async ({ service, guideId, title, target = '', replace = false }) => {
+  h('publish:run', async ({ service, guideId, title, target = '', replace = false, days }) => {
     if (!store.guideExists(guideId)) throw new Error(t('Guide not found.'));
     const publisher = publishers[service];
     if (!publisher.status().connected) throw new Error(t('Connect {service} in Settings → Accounts → Publishing first.', { service: publisher.label }));
@@ -1576,12 +1578,18 @@ function setupIpc() {
         globals: settings.getGlobalPlaceholders(), codeStyle: exportCodeStyle(), reviewDays: exportReviewDays(), branding: exportBranding() });
       const page = format === 'clipboard' ? pageFromHtml(result.html)
         : format === 'html-rich' ? { html: fs.readFileSync(result.file, 'utf8') } : result;
-      return await publisher.publish({ guideId, title: title.trim(), target, replace, page, onProgress: progress });
+      return await publisher.publish({ guideId, title: title.trim(), target, replace, page, onProgress: progress, ...(days ? { days } : {}) });
     } finally {
       fs.rmSync(outDir, { recursive: true, force: true });
     }
   }, { validate: (a) => validService(a) && c.id(a.guideId) && c.string(a.title, 500) && a.title.trim().length > 0
-    && c.optionalString(a.target, 200) && (a.replace === undefined || c.bool(a.replace)) });
+    && c.optionalString(a.target, 200) && (a.replace === undefined || c.bool(a.replace)) && (a.days === undefined || EXPIRY_DAYS.includes(a.days)) });
+  // Guides shared for a while (GitLab Pages): list them, stop sharing one, or keep one online longer.
+  const sharing = (a) => a.service === 'gitlab';
+  h('publish:shared', ({ service }) => publishers[service].shared(), { validate: sharing });
+  h('publish:unpublish', ({ service, slug }) => publishers[service].unpublish({ slug }), { validate: (a) => sharing(a) && c.string(a.slug, 64) });
+  h('publish:extend', ({ service, slug, days }) => publishers[service].extend({ slug, days }),
+    { validate: (a) => sharing(a) && c.string(a.slug, 64) && EXPIRY_DAYS.includes(a.days) });
 
   // Private details: check screenshots, then review what was blurred.
   h('redact:check', ({ guideId, force = false }) => redactor.checkGuide(guideId, { force,
@@ -2396,7 +2404,7 @@ if (!gotLock) {
       notion: new Notion(publishOptions('notion')),
       sharepoint: new SharePoint(publishOptions('sharepoint')),
       bookstack: new BookStack(publishOptions('bookstack')),
-      gitlab: new GitLabPages(publishOptions('gitlab')),
+      gitlab: new GitLabPages({ ...publishOptions('gitlab'), language: uiLanguage }),
       zendesk: new Zendesk(publishOptions('zendesk')),
     };
     githubPages = new GitHubPages({ directory: store.settingsDir, safeStorage,
@@ -2598,6 +2606,9 @@ if (!gotLock) {
     // A Wiki.js sign-in lost in an update or reinstall comes back from the OS keyring.
     void wikijs.recover().catch(() => {});
     for (const publisher of Object.values(publishers)) void publisher.recover().catch(() => {});
+    // GitLab Pages guides past their expiry come out of the project too (the
+    // site already stops showing them). Only for people who connected GitLab.
+    setTimeout(() => { void publishers.gitlab.sweep().catch(() => {}); }, 20000);
     // Shared guides past their expiry come down even if GitHub's scheduled
     // clean-up has not run yet. Only runs for users who connected GitHub.
     setTimeout(() => { void githubPages.sweep().catch(() => {}); }, 15000);

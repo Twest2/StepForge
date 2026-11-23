@@ -1123,6 +1123,7 @@ test('Publish to BookStack picks the book the guide went to before, shows progre
   assert.deepEqual(JSON.parse(JSON.stringify(api.calls.find(([name]) => name === 'run')[1])),
     { service: 'bookstack', guideId: 'guide-1', title: 'Back up AcmeSync', target: 'chapter:4', replace: false });
   assert.match(modal.textContent, /Updated “Back up AcmeSync” on BookStack\./);
+  assert.doesNotMatch(modal.textContent, /null/, 'no empty line shown as "null"');
   u.click(u.find(modal, 'Open in browser'));
   assert.deepEqual(api.calls.at(-1), ['open', 'https://docs.example.com/link/7']);
   u.click(u.find(modal, 'Done'));
@@ -1149,6 +1150,72 @@ test('closing Publish to a service while screenshots are checked waits for the c
   finishCheck({ checked: 1, added: 2, blurs: [], text: [], steps: 1 });
   await settle(); await settle();
   assert.equal(result, true, 'the blurs it added are reported');
+});
+
+test('Publish to GitLab Pages asks how long, and for the same public-content consent as GitHub Pages', async () => {
+  const u = ui();
+  const api = fakeApi();
+  api.publish = {
+    status: async () => ({ connected: true, available: true, account: '@casey', site: 'https://gitlab.com' }),
+    defaults: async () => ({ title: 'Backups', published: { slug: 'a'.repeat(24), expiresAt: '2030-05-01T12:00:00Z', publishedAt: '2030-04-01T12:00:00Z' } }),
+    onProgress: () => () => {},
+    run: async (args) => { api.calls.push(['run', args]); return { url: 'https://casey.gitlab.io/stepforge-guides/g/aaa/', title: 'Backups', updated: true, live: true, expiresAt: '2030-05-31T12:00:00Z' }; },
+  };
+  u.context.showPublishToServiceDialog({ api, service: 'gitlab', guideId: 'guide-1', guideTitle: 'Backups' });
+  await settle(); await settle();
+  const modal = u.root.children.at(-1);
+  assert.match(modal.textContent, /Shared guides are public\./);
+  assert.match(modal.textContent, /This guide is already shared until/);
+  assert.doesNotMatch(modal.textContent, /repository on GitHub/, 'GitLab’s files aren’t public, so the warning doesn’t say they are');
+  const publish = u.find(modal, 'Publish');
+  assert.equal(publish.disabled, true, 'not until the guide is understood to be public');
+  const consent = u.all(modal).find((n) => n.tag === 'input' && n.type === 'checkbox');
+  consent.checked = true;
+  consent.listeners.change();
+  assert.equal(publish.disabled, false);
+  const days = u.all(modal).find((n) => n.tag === 'select' && n['aria-label'] === 'How long to keep the guide online');
+  assert.equal(days.value, '7');
+  days.value = '30';
+  publish.listeners.click();
+  await settle(); await settle();
+  assert.deepEqual(JSON.parse(JSON.stringify(api.calls.find(([name]) => name === 'run')[1])),
+    { service: 'gitlab', guideId: 'guide-1', title: 'Backups', target: '', replace: false, days: 30 });
+  assert.match(modal.textContent, /Until /);
+});
+
+test('Settings → GitLab Pages lists shared guides, extends them and stops sharing them', async () => {
+  const u = ui();
+  const api = fakeApi();
+  let guides = [{ slug: 'a'.repeat(24), guideId: 'g1', title: 'Backups', publishedAt: '2030-01-01T00:00:00Z', expiresAt: new Date(Date.now() + 86400000).toISOString(), url: 'https://casey.gitlab.io/stepforge-guides/g/aaa/' }];
+  api.publish = {
+    status: async () => ({ connected: true, available: true, account: '@casey', site: 'https://gitlab.com' }),
+    shared: async () => guides,
+    extend: async (args) => { api.calls.push(['extend', args]); return guides; },
+    unpublish: async (args) => { api.calls.push(['unpublish', args]); guides = []; return guides; },
+    cancel: async () => ({ ok: true }),
+  };
+  api.library = { list: async () => ({ guides: [] }) };
+  const accounts = u.context.makeAccountsSettings(api, { view: 'gitlab' });
+  await settle(); await settle(); await settle();
+  const panel = u.all(accounts.node).filter((n) => n.tag === 'fieldset').find((n) => /GitLab Pages/.test(n.children[0]?.textContent || ''));
+  assert.match(panel.textContent, /Shared guides1 shared/);
+  assert.match(panel.textContent, /Backups/);
+  let menu = null;
+  u.context.contextMenu = (x, y, items) => { menu = items; };
+  u.find(panel, 'Extend').listeners.click({ currentTarget: { getBoundingClientRect: () => ({ left: 0, bottom: 0 }) } });
+  assert.deepEqual(JSON.parse(JSON.stringify(menu.map((item) => item.label))), ['Keep online for 1 day from now', 'Keep online for 7 days from now', 'Keep online for 30 days from now']);
+  await menu[2].action();
+  await settle();
+  assert.deepEqual(JSON.parse(JSON.stringify(api.calls.find(([name]) => name === 'extend')[1])), { service: 'gitlab', slug: 'a'.repeat(24), days: 30 });
+  u.find(panel, 'Remove').listeners.click();
+  await settle();
+  const confirm = u.root.children.at(-1);
+  assert.match(confirm.textContent, /The page is removed from your GitLab Pages site/);
+  u.click(u.find(confirm, 'Remove from the web'));
+  await settle(); await settle();
+  assert.deepEqual(JSON.parse(JSON.stringify(api.calls.find(([name]) => name === 'unpublish')[1])), { service: 'gitlab', slug: 'a'.repeat(24) });
+  assert.match(panel.textContent, /No guides are shared right now/);
+  accounts.dispose();
 });
 
 test('Wiki.js settings choose whether new pages are published, their tags and language', async () => {

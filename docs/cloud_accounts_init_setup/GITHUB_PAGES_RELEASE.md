@@ -132,7 +132,7 @@ by hand against the real App before each release that touches sharing:
       **Cancel sign-in** stops waiting.
 - [ ] Choosing a new empty repository adds the README and workflow, creates
       `gh-pages`, and turns on Pages with no notes left on the site card.
-- [ ] **Publish to the web** gives a link that opens the guide once Pages has
+- [ ] **Publish to GitHub Pages** gives a link that opens the guide once Pages has
       built; publishing again keeps the link.
 - [ ] `gh-pages` always has exactly one commit.
 - [ ] **Remove** takes the page down; the workflow, run by hand from the

@@ -789,7 +789,7 @@ async function showPublishToWebDialog({ api, guideId, guideTitle, onOpenAccounts
   if (!status.connected || !status.repo || status.needsSignIn) {
     return new Promise((resolve) => {
       const { close } = openModal({
-        title: t('Publish to the web'),
+        title: t('Publish to GitHub Pages'),
         body: el('div.gh-publish', {},
           el('p', {}, t('Publishing puts a guide on a GitHub Pages site in a GitHub repository you own, for a limited time.')),
           el('p.muted', {}, status.needsSignIn
@@ -822,7 +822,7 @@ async function showPublishToWebDialog({ api, guideId, guideTitle, onOpenAccounts
     // The body is replaced as the dialog loads, so the quality check sits outside it.
     const quality = el('div');
     const { close } = openModal({
-      title: t('Publish to the web'),
+      title: t('Publish to GitHub Pages'),
       body: el('div', {}, quality, body),
       footer: [cancelBtn, removeBtn, publishBtn],
       onClose: () => { open = false; resolveAfterCheck(publishing); },

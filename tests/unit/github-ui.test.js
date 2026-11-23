@@ -75,6 +75,7 @@ function ui({ realLoading = false } = {}) {
   load('quality.js');
   load('confluence.js');
   load('wikijs.js');
+  load('publishing.js');
   load('github.js');
   load('dialogs.js');
 
@@ -113,6 +114,12 @@ function fakeApi(github = {}) {
       status: async () => ({ connected: false }),
       onStatus: () => () => {},
     },
+    publish: {
+      status: async ({ service }) => (service === 'notion' ? { connected: true, available: true, account: 'Team space', site: 'notion.so' } : { connected: false, available: true }),
+      connect: async (args) => { calls.push(['publish:connect', args]); return { connected: true, available: true, account: 'docs.example.com' }; },
+      disconnect: async (args) => { calls.push(['publish:disconnect', args]); return { connected: false, available: true }; },
+      cancel: async () => ({ ok: true }),
+    },
     redact: {
       check: async (args) => { calls.push(['redact:check', args]); return { checked: 1, added: 0, blurs: [], text: [], steps: 0 }; },
       onProgress: () => () => {},
@@ -140,50 +147,65 @@ function fakeApi(github = {}) {
   return api;
 }
 
-test('Accounts lists every sync service, then GitHub, Confluence and Wiki.js, and opens each one’s panel', async () => {
+test('Accounts opens with Syncing and Publishing; each lists its services, and each service opens its panel', async () => {
   const u = ui();
   const accounts = u.context.makeAccountsSettings(fakeApi());
   await settle();
+  const tiles = u.all(accounts.node).filter((n) => n.tag === 'button' && n.classList.contains('account-group'));
+  assert.deepEqual(tiles.map((tile) => tile.children[1].children[0].textContent), ['Syncing', 'Publishing']);
+  assert.deepEqual(tiles.map((tile) => tile.children[0].children[0].src), ['../assets/icons/syncing.svg', '../assets/icons/publishing.svg']);
+  assert.ok(tiles.every((tile) => tile.children[1].children[1].textContent.length > 20), 'each tile has a line of text under its name');
+  assert.deepEqual(tiles.map((tile) => tile.children[1].children[2].textContent), ['1 connected', '1 connected'], 'Drive, and Notion');
+
   const rows = u.all(accounts.node).filter((n) => n.tag === 'button' && n.classList.contains('account-row'));
   const names = rows.map((row) => row.children[1].children[0]);
-  assert.deepEqual(names.map((name) => name.children[0]),
-    ['Google Drive', 'OneDrive', 'Dropbox', 'Nextcloud or WebDAV', 'GitHub', 'Confluence', 'Wiki.js']);
+  assert.deepEqual(names.map((name) => name.children[0]), ['Google Drive', 'OneDrive', 'Dropbox', 'Nextcloud or WebDAV',
+    'GitHub', 'Confluence', 'Wiki.js', 'Notion', 'SharePoint', 'BookStack', 'GitLab Pages', 'Zendesk', 'Markdown folder']);
   // Confluence publishing is still new, and says so; Wiki.js is not Beta any more.
   assert.deepEqual(names.map((name) => name.children.find((c) => c.classList?.contains('beta-badge'))?.textContent || ''),
-    ['', '', '', '', '', 'Beta', '']);
+    ['', '', '', '', '', 'Beta', '', '', '', '', '', '', '']);
   const logos = rows.map((row) => row.children[0].children[0].src);
-  assert.deepEqual(logos, ['google-drive', 'onedrive', 'dropbox', 'nextcloud', 'github', 'confluence', 'wikijs'].map((name) => `../assets/icons/${name}.svg`));
-  for (const logo of logos) {
-    const file = path.join(__dirname, '../../app/renderer', logo);
-    assert.match(fs.readFileSync(file, 'utf8'), /^<svg /, `${logo} ships with the app as a local SVG`);
+  for (const logo of [...logos, '../assets/icons/syncing.svg', '../assets/icons/publishing.svg']) {
+    assert.match(fs.readFileSync(path.join(__dirname, '../../app/renderer', logo), 'utf8'), /^<svg /, `${logo} ships with the app as a local SVG`);
   }
   assert.equal(rows[0].textContent.includes('casey@example.com'), true, 'Drive row shows who is signed in');
-  for (const row of rows.slice(1)) assert.equal(row.textContent.includes('Not connected'), true);
+  assert.equal(rows[7].textContent.includes('Team space'), true, 'Notion row shows the workspace');
+  for (const row of [...rows.slice(1, 7), ...rows.slice(8)]) assert.equal(row.textContent.includes('Not connected'), true);
   const panels = u.all(accounts.node).filter((n) => n.tag === 'fieldset');
-  assert.equal(panels.length, 7);
-  const [drivePanel, oneDrivePanel, , , githubPanel, confluencePanel, wikijsPanel] = panels;
-  assert.equal(u.visible(drivePanel), false, 'no service panel until one is chosen');
+  assert.equal(panels.length, 13);
+  const [drivePanel, oneDrivePanel, , , githubPanel, confluencePanel, wikijsPanel, notionPanel, , bookstackPanel] = panels;
+  assert.equal(rows.some((row) => u.visible(row)), false, 'only the two tiles to start with');
 
-  u.click(rows[4]);
-  assert.equal(u.visible(githubPanel), true);
-  assert.equal(u.visible(drivePanel), false);
-  assert.equal(u.visible(rows[0]), false);
-  u.click(u.find(accounts.node, 'All accounts'));
-  assert.equal(u.visible(rows[0]), true);
-  assert.equal(u.visible(githubPanel), false);
-
+  u.click(tiles[0]);
+  assert.deepEqual(rows.map((row) => u.visible(row)), [true, true, true, true, false, false, false, false, false, false, false, false, false]);
   u.click(rows[0]);
   assert.equal(u.visible(drivePanel), true);
   assert.equal(u.visible(oneDrivePanel), false);
+  assert.equal(u.visible(rows[0]), false);
+  u.click(u.find(accounts.node, '‹ Syncing'));
+  assert.equal(u.visible(rows[1]), true, 'back to the list of sync services');
+  assert.equal(u.visible(drivePanel), false);
   u.click(u.find(accounts.node, 'All accounts'));
+  assert.equal(u.visible(tiles[1]), true);
+
+  u.click(tiles[1]);
+  assert.equal(u.visible(rows[0]), false);
+  assert.equal(rows.slice(4).every((row) => u.visible(row)), true);
+  u.click(rows[4]);
+  assert.equal(u.visible(githubPanel), true);
+  u.click(u.find(accounts.node, '‹ Publishing'));
   u.click(rows[5]);
   assert.equal(u.visible(confluencePanel), true);
   assert.match(confluencePanel.textContent, /Publish guides as Confluence pages/);
-  u.click(u.find(accounts.node, 'All accounts'));
+  u.click(u.find(accounts.node, '‹ Publishing'));
   u.click(rows[6]);
   assert.equal(u.visible(wikijsPanel), true);
   assert.equal(u.visible(confluencePanel), false);
   assert.match(wikijsPanel.textContent, /Publish guides as Wiki\.js pages/);
+  u.click(u.find(accounts.node, '‹ Publishing'));
+  u.click(rows[7]);
+  assert.equal(u.visible(notionPanel), true);
+  assert.match(notionPanel.textContent, /Team space/, 'a connected service shows its account');
   accounts.dispose();
 
   const direct = u.context.makeAccountsSettings(fakeApi(), { view: 'github' });
@@ -193,6 +215,38 @@ test('Accounts lists every sync service, then GitHub, Confluence and Wiki.js, an
   const dropbox = u.context.makeAccountsSettings(fakeApi(), { view: 'dropbox' });
   assert.equal(u.visible(u.all(dropbox.node).filter((n) => n.tag === 'fieldset')[2]), true);
   dropbox.dispose();
+  const publishing = u.context.makeAccountsSettings(fakeApi(), { view: 'publishing' });
+  const publishingRows = u.all(publishing.node).filter((n) => n.tag === 'button' && n.classList.contains('account-row'));
+  assert.deepEqual([u.visible(publishingRows[0]), u.visible(publishingRows[12])], [false, true], 'or straight to a list');
+  publishing.dispose();
+});
+
+test('a publishing service connects with what is typed, asks for anything missing, and disconnects', async () => {
+  const u = ui();
+  const api = fakeApi();
+  const accounts = u.context.makeAccountsSettings(api, { view: 'bookstack' });
+  await settle();
+  const panel = u.all(accounts.node).filter((n) => n.tag === 'fieldset')[9];
+  assert.equal(u.visible(panel), true);
+  const inputs = u.all(panel).filter((n) => n.tag === 'input');
+  assert.deepEqual(inputs.map((i) => i.type), ['url', 'text', 'password']);
+  inputs[0].value = ' docs.example.com ';
+  u.click(u.find(panel, 'Connect'));
+  await settle();
+  assert.match(panel.textContent, /Enter the Token ID/);
+  assert.equal(api.calls.some(([name]) => name === 'publish:connect'), false);
+  inputs[1].value = 'id';
+  inputs[2].value = 'secret';
+  u.click(u.find(panel, 'Connect'));
+  await settle();
+  assert.deepEqual(JSON.parse(JSON.stringify(api.calls.find(([name]) => name === 'publish:connect')[1])),
+    { service: 'bookstack', fields: { address: 'docs.example.com', tokenId: 'id', tokenSecret: 'secret' } });
+  assert.equal(inputs[2].value, '', 'the secret is not kept on screen');
+  assert.match(panel.textContent, /docs\.example\.com/);
+  u.click(u.find(panel, 'Disconnect'));
+  await settle();
+  assert.deepEqual(JSON.parse(JSON.stringify(api.calls.at(-1))), ['publish:disconnect', { service: 'bookstack' }]);
+  accounts.dispose();
 });
 
 test('the GitHub panel explains setup step by step and warns that guides are public', async () => {
@@ -971,13 +1025,14 @@ test('Accounts shows who is signed in to Wiki.js', async () => {
   const api = wikiApi({ status: async () => ({ connected: true, host: 'wiki.example.com', user: 'Casey Jones', method: 'password' }) });
   const accounts = u.context.makeAccountsSettings(api);
   await settle();
-  const row = u.all(accounts.node).filter((n) => n.tag === 'button' && n.classList.contains('account-row')).at(-1);
+  const wikiRow = (node) => u.all(node).filter((n) => n.tag === 'button' && n.classList.contains('account-row')).find((n) => n.textContent.startsWith('Wiki.js'));
+  const row = wikiRow(accounts.node);
   assert.match(row.textContent, /Wiki\.js.*Casey Jones/);
   assert.doesNotMatch(row.textContent, /Beta/, 'Wiki.js is no longer Beta');
   accounts.dispose();
   const keyed = u.context.makeAccountsSettings(wikiApi({ status: async () => ({ connected: true, host: 'wiki.example.com', user: '', method: 'apikey' }) }));
   await settle();
-  assert.match(u.all(keyed.node).filter((n) => n.classList?.contains('account-row')).at(-1).textContent, /wiki\.example\.com/);
+  assert.match(wikiRow(keyed.node).textContent, /wiki\.example\.com/);
   keyed.dispose();
 });
 
@@ -1039,6 +1094,66 @@ test('Publish to Wiki.js prefills the path, warns before replacing a page edited
   await settle();
   assert.equal(api.calls.filter(([name]) => name === 'publish').at(-1)[1].replace, false);
   assert.equal(u.visible(u.find(second, 'Publish')), true);
+});
+
+test('Publish to BookStack picks the book the guide went to before, shows progress, and links to the page', async () => {
+  const u = ui();
+  const api = fakeApi();
+  const listeners = new Set();
+  api.publish = {
+    status: async () => ({ connected: true, available: true, account: 'docs.example.com', site: 'https://docs.example.com' }),
+    targets: async () => [{ id: 'book:1', name: 'Handbook' }, { id: 'chapter:4', name: 'Handbook › Backups' }],
+    defaults: async () => ({ title: 'Back up AcmeSync', published: { id: 7, target: 'chapter:4', publishedAt: '2026-01-01T00:00:00Z' } }),
+    onProgress: (fn) => { listeners.add(fn); return () => listeners.delete(fn); },
+    run: async (args) => {
+      api.calls.push(['run', args]);
+      for (const fn of listeners) fn({ service: 'bookstack', guideId: 'guide-1', stage: 'upload', index: 1, count: 2, loaded: 5, total: 10 });
+      return { url: 'https://docs.example.com/link/7', title: args.title, updated: true };
+    },
+  };
+  const done = u.context.showPublishToServiceDialog({ api, service: 'bookstack', guideId: 'guide-1', guideTitle: 'Back up [[Product]]' });
+  await settle(); await settle();
+  const modal = u.root.children.at(-1);
+  const field = (label) => u.all(modal).find((n) => (n.tag === 'input' || n.tag === 'select') && n['aria-label'] === label);
+  assert.equal(field('Page title').value, 'Back up AcmeSync', 'placeholders filled in');
+  assert.equal(field('Book or chapter').value, 'chapter:4');
+  assert.match(modal.textContent, /Published before\. Publishing again updates the same page\./);
+  u.find(modal, 'Publish').listeners.click();
+  await settle(); await settle();
+  assert.deepEqual(JSON.parse(JSON.stringify(api.calls.find(([name]) => name === 'run')[1])),
+    { service: 'bookstack', guideId: 'guide-1', title: 'Back up AcmeSync', target: 'chapter:4', replace: false });
+  assert.match(modal.textContent, /Updated “Back up AcmeSync” on BookStack\./);
+  u.click(u.find(modal, 'Open in browser'));
+  assert.deepEqual(api.calls.at(-1), ['open', 'https://docs.example.com/link/7']);
+  u.click(u.find(modal, 'Done'));
+  assert.equal(await done, true);
+});
+
+test('Publish to a Markdown folder asks before replacing a file another guide did not write', async () => {
+  const u = ui();
+  const api = fakeApi();
+  const answers = [{ conflict: { path: '/vault/backups.md', title: 'backups.md' } }, { path: '/vault/backups.md', url: 'file:///vault/backups.md', title: 'Backups', updated: true }];
+  api.shell.openProduced = async (args) => { api.calls.push(['openProduced', args]); return { ok: true }; };
+  api.publish = {
+    status: async () => ({ connected: true, available: true, account: '/vault', site: 'Obsidian' }),
+    defaults: async () => ({ title: 'Backups', published: null }),
+    onProgress: () => () => {},
+    run: async (args) => { api.calls.push(['run', args]); return answers.shift(); },
+  };
+  u.context.showPublishToServiceDialog({ api, service: 'markdown', guideId: 'guide-1', guideTitle: 'Backups' });
+  await settle(); await settle();
+  const modal = u.root.children.at(-1);
+  assert.equal(u.all(modal).some((n) => n.tag === 'select'), false, 'nothing to choose: the folder is set in Settings');
+  u.find(modal, 'Publish').listeners.click();
+  await settle();
+  const ask = u.root.children.at(-1);
+  assert.match(ask.textContent, /\/vault\/backups\.md already exists\. Replace it\?/);
+  u.click(u.find(ask, 'Replace'));
+  await settle(); await settle();
+  assert.equal(api.calls.filter(([name]) => name === 'run').at(-1)[1].replace, true);
+  assert.match(modal.textContent, /\/vault\/backups\.md/);
+  u.click(u.find(modal, 'Open'));
+  assert.deepEqual(JSON.parse(JSON.stringify(api.calls.at(-1))), ['openProduced', { target: '/vault/backups.md' }]);
 });
 
 test('Wiki.js settings choose whether new pages are published, their tags and language', async () => {

@@ -682,6 +682,7 @@ class StepForgeApp {
             { label: t('Publish to the web'), action: () => this.publishToWeb(guide?.guideId || this.editor.guideId, guide?.title) },
             { label: t('Publish to Confluence'), badge: 'Beta', action: () => this.publishToConfluence(guide?.guideId || this.editor.guideId, guide?.title) },
             { label: t('Publish to Wiki.js'), action: () => this.publishToWikiJs(guide?.guideId || this.editor.guideId, guide?.title) },
+            { label: t('Publish to more sites'), submenu: () => this.publishMenuItems(guide?.guideId || this.editor.guideId, guide?.title) },
           ]);
         },
       }, t('Share ▾')),
@@ -1109,6 +1110,7 @@ class StepForgeApp {
       { label: t('Publish to the web'), action: () => this.publishToWeb(guide.guideId, guide.title) },
       { label: t('Publish to Confluence'), badge: 'Beta', action: () => this.publishToConfluence(guide.guideId, guide.title) },
       { label: t('Publish to Wiki.js'), action: () => this.publishToWikiJs(guide.guideId, guide.title) },
+      { label: t('Publish to more sites'), submenu: () => this.publishMenuItems(guide.guideId, guide.title) },
       ...moveItems,
       'sep',
       { label: t('Delete guide'), danger: true, action: () => this.deleteGuide(guide.guideId) },
@@ -1405,6 +1407,29 @@ class StepForgeApp {
       guideId,
       guideTitle: title || t('Untitled guide'),
       onOpenAccounts: () => this.openSettings('wikijs'),
+      onShowFinding: (picked) => { finding = picked; },
+    });
+    // Checking for private details may have added blurs to the open guide.
+    if (changed && inEditor) await this.editor.reload();
+    if (finding) await this.showQualityFinding(guideId, finding);
+  }
+
+  /** "Publish to Notion" and the other services in Settings → Accounts → Publishing (publishing.js). */
+  publishMenuItems(guideId, title) {
+    return Object.entries(PUBLISH_SERVICES).map(([service, info]) => ({
+      label: t('Publish to {service}', { service: info.name }), action: () => this.publishToService(service, guideId, title),
+    }));
+  }
+
+  async publishToService(service, guideId, title) {
+    if (!guideId) return;
+    const inEditor = this.state.view === 'editor' && this.editor.guideId === guideId;
+    if (inEditor) await this.editor.saveAll();
+    let finding = null;
+    const changed = await showPublishToServiceDialog({
+      api, service, guideId,
+      guideTitle: title || t('Untitled guide'),
+      onOpenAccounts: () => this.openSettings(service),
       onShowFinding: (picked) => { finding = picked; },
     });
     // Checking for private details may have added blurs to the open guide.

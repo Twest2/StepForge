@@ -16,8 +16,9 @@ updated is the best way to stay protected.
   connections. There's no telemetry or license check. The only automatic
   connection is one update check to GitHub at startup, which Settings → About
   turns off.
-- **Opt-in networking only.** AI, cloud sync, GitHub sharing, and Confluence
-  and Wiki.js publishing are off until you turn them on. All are described in the
+- **Opt-in networking only.** AI, cloud sync, GitHub and GitLab Pages sharing,
+  and publishing to Confluence, Wiki.js, Notion, SharePoint, BookStack and
+  Zendesk are off until you turn them on. All are described in the
   [privacy policy](PRIVACY.md).
 - **Sandboxed interface.** The app's window runs in Chromium's sandbox with no
   direct access to your files, the network, or credentials.

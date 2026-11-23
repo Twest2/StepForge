@@ -479,7 +479,7 @@ with the hotkey or on a timer instead.
 The exact folder is shown in **Settings → About**, and you can move it under
 **Settings → General → Guide storage**. Don't put it in a folder that
 OneDrive, Dropbox, Google Drive or Nextcloud syncs: use StepForge's own sync
-(**Settings → Accounts**) instead.
+(**Settings → Accounts → Syncing**) instead.
 
 Still stuck? [Open an issue](https://github.com/Twest2/StepForge/issues/new/choose)
 and include your operating system, StepForge version (from **Settings → About**),

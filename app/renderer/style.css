@@ -1904,7 +1904,7 @@ fieldset legend {
 .gh-hero-icon img { display: block; width: 30px; height: 30px; }
 /* The GitHub mark is one dark colour; show it light on the dark theme. */
 @media (prefers-color-scheme: dark) {
-  .account-icon.github img, .gh-hero-icon img { filter: invert(1); }
+  .account-icon.github img, .gh-hero-icon img, img[src$="zendesk.svg"] { filter: invert(1); }
 }
 .account-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .account-text .muted { font-size: 12px; }
@@ -1912,6 +1912,25 @@ fieldset legend {
 .account-state.on { color: var(--accent-strong); }
 .account-chevron { flex: none; font-size: 20px; color: var(--muted); }
 .account-detail { display: flex; flex-direction: column; gap: 12px; }
+/* The two large tiles Accounts opens with: Syncing and Publishing. */
+.account-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.account-group {
+  display: flex; align-items: flex-start; gap: 16px; width: 100%; min-width: 0; padding: 20px; text-align: left; white-space: normal;
+  border: 1px solid var(--border); border-radius: 14px; background: var(--panel-solid); color: var(--text);
+}
+.account-group:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.account-group-icon {
+  flex: none; display: grid; place-items: center; width: 56px; height: 56px; border-radius: 16px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--panel-2));
+}
+.account-group-icon img { display: block; width: 32px; height: 32px; }
+.account-group-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.account-group-text strong { font-size: 16px; }
+.account-group-text .muted { font-size: 12px; line-height: 1.4; }
+.account-group-state { margin-top: 4px; font-size: 12px; color: var(--muted); }
+.account-group-state.on { color: var(--accent-strong); }
+.account-group .account-chevron { align-self: center; }
+.account-list-title { margin: 4px 0 0; font-size: 15px; }
 .account-back { align-self: flex-start; }
 
 /* GitHub Pages sharing panel and the Publish to the web dialog. */

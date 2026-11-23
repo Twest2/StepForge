@@ -20,7 +20,7 @@ Sharing is **optional and off by default**. You need a free GitHub account.
 
 ## Set up sharing (one time)
 
-Open **Settings → Accounts → GitHub**. The panel walks you through three
+Open **Settings → Accounts → Publishing → GitHub**. The panel walks you through three
 steps, with a button for each, and ticks each one off when it's done.
 
 1. **Sign in to GitHub.** Choose **Sign in with GitHub**. StepForge copies a
@@ -122,13 +122,13 @@ the exported file is still saved.
 
 - **Publish again** to update the page with your latest changes. The link
   stays the same, and the time you choose starts again.
-- **Extend** (in **Settings → Accounts → GitHub → Shared guides**) keeps a
+- **Extend** (in **Settings → Accounts → Publishing → GitHub → Shared guides**) keeps a
   guide online for 1, 7, or 30 days from now. Only the removal date changes;
   the page isn't uploaded again, so edits you've made since aren't included.
   A guide whose time is up has already been removed and can't be extended;
   publish it again instead.
 - **Remove from the web** (in the publish dialog, or **Remove** in
-  **Settings → Accounts → GitHub → Shared guides**) takes the page down. The
+  **Settings → Accounts → Publishing → GitHub → Shared guides**) takes the page down. The
   link stops working within a few minutes. The guide stays in your library.
 
 **Shared guides** in the GitHub settings lists everything that's online and
@@ -181,7 +181,7 @@ To share links on your own domain, such as `guides.example.com`, set it up in
 the repository's **Settings → Pages → Custom domain** as GitHub describes in
 [Configuring a custom domain](https://docs.github.com/en/pages/configuring-a-custom-domain-for-your-github-pages-site).
 You can do this at any time, including after you've shared guides. StepForge
-notices the next time you publish or open **Settings → Accounts → GitHub**,
+notices the next time you publish or open **Settings → Accounts → Publishing → GitHub**,
 and every link it shows or copies uses your domain from then on, including
 links to guides you've already shared. The old `github.io` links keep
 working, because GitHub redirects them.

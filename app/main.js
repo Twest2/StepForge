@@ -27,6 +27,13 @@ const { createConfluenceSession } = require('./confluence-session');
 const { WikiJs, pageFromExport: wikiPageFromExport, normalizePagePath, normalizeLocale, normalizePublishOptions: normalizeWikiPublishOptions,
   validConnectArgs: validWikiConnectArgs, validCodeArgs: validWikiCodeArgs, validPublishArgs: validWikiPublishArgs } = require('./wikijs');
 const { GitHubPages } = require('./github-pages');
+const { Notion } = require('./notion');
+const { SharePoint } = require('./sharepoint');
+const { BookStack } = require('./bookstack');
+const { GitLabPages } = require('./gitlab-pages');
+const { Zendesk } = require('./zendesk');
+const { MarkdownFolder } = require('./markdown-folder');
+const { pageFromHtml } = require('./publish-account');
 const { EXPIRY_DAYS, titleFromHtml } = require('../core/pages-site');
 const { TransferMeter } = require('../core/transfer-meter');
 const { CloudSync } = require('../core/cloud-sync');
@@ -136,6 +143,8 @@ let confluenceSession;
 let confluenceCertificates;
 // Publishing to Wiki.js 2 (GraphQL), with no cookies kept.
 let wikijs;
+// Settings → Accounts → Publishing: Notion, SharePoint, BookStack, GitLab Pages, Zendesk, a Markdown folder.
+let publishers = {};
 let cloudSync;
 let cloudConnecting = false;
 let cloudTesting = false;
@@ -1530,6 +1539,56 @@ function setupIpc() {
     }
   }, { validate: validWikiPublishArgs });
 
+  // Settings → Accounts → Publishing (app/publish-account.js and
+  // app/markdown-folder.js). Tokens and secrets stay in the main process.
+  const PUBLISH_SERVICES = ['notion', 'sharepoint', 'bookstack', 'gitlab', 'zendesk', 'markdown'];
+  // What each service publishes: the clipboard export's HTML unless named here.
+  const PUBLISH_FORMAT = { notion: 'notion', gitlab: 'html-rich', markdown: 'markdown' };
+  const validService = (a) => c.oneOf(a.service, PUBLISH_SERVICES);
+  h('publish:status', ({ service }) => publishers[service].status(), { validate: validService });
+  h('publish:connect', ({ service, fields }) => publishers[service].connect(fields), {
+    validate: (a) => validService(a) && security.isPlainArgs(a.fields) && Object.keys(a.fields).length <= 10
+      && Object.values(a.fields).every((value) => c.string(value, 4000)),
+  });
+  h('publish:cancel', ({ service }) => { publishers[service].cancel(); return { ok: true }; }, { validate: validService });
+  h('publish:disconnect', ({ service }) => publishers[service].disconnect(), { validate: validService });
+  h('publish:targets', ({ service }) => publishers[service].targets(), { validate: validService });
+  h('publish:defaults', async ({ service, guideId }) => {
+    if (!store.guideExists(guideId)) throw new Error(t('Guide not found.'));
+    // The title as exported, with placeholders filled in, names the page.
+    const title = await runExportInWorker({ language: uiLanguage(), dataDir: store.root, guideId, task: 'title', globals: settings.getGlobalPlaceholders() });
+    return { title, published: publishers[service].publishedFor(guideId) };
+  }, { validate: (a) => validService(a) && c.id(a.guideId) });
+  h('publish:run', async ({ service, guideId, title, target = '', replace = false }) => {
+    if (!store.guideExists(guideId)) throw new Error(t('Guide not found.'));
+    const publisher = publishers[service];
+    if (!publisher.status().connected) throw new Error(t('Connect {service} in Settings → Accounts → Publishing first.', { service: publisher.label }));
+    const progress = (update) => sendToRenderer('publish:progress', { service, guideId, ...update });
+    const outDir = path.join(store.tempDir, `publish-${service}-${guideId}`);
+    fs.rmSync(outDir, { recursive: true, force: true });
+    try {
+      // Like publishing on the web: nothing leaves unchecked.
+      progress({ stage: 'check' });
+      await redactor.checkGuide(guideId, { onProgress: ({ done, total }) => progress({ stage: 'check', done, total }) });
+      progress({ stage: 'export' });
+      const format = PUBLISH_FORMAT[service] || 'clipboard';
+      const options = format === 'markdown' ? publishers.markdown.markdownOptions()
+        : format === 'clipboard' ? { maxImageWidth: 1200 } : {};
+      const result = await runExportInWorker({ language: uiLanguage(), dataDir: store.root, guideId, format, options, outDir,
+        globals: settings.getGlobalPlaceholders(), codeStyle: exportCodeStyle(), reviewDays: exportReviewDays(), branding: exportBranding() });
+      const page = format === 'clipboard' ? pageFromHtml(result.html)
+        : format === 'html-rich' ? { html: fs.readFileSync(result.file, 'utf8') }
+          : format === 'markdown' ? { file: result.file } : result;
+      const published = await publisher.publish({ guideId, title: title.trim(), target, replace, page, onProgress: progress });
+      // A Markdown file can be opened from the dialog.
+      if (published.path) producedFiles.add(published.path);
+      return published;
+    } finally {
+      fs.rmSync(outDir, { recursive: true, force: true });
+    }
+  }, { validate: (a) => validService(a) && c.id(a.guideId) && c.string(a.title, 500) && a.title.trim().length > 0
+    && c.optionalString(a.target, 200) && (a.replace === undefined || c.bool(a.replace)) });
+
   // Private details: check screenshots, then review what was blurred.
   h('redact:check', ({ guideId, force = false }) => redactor.checkGuide(guideId, { force,
     onProgress: (update) => sendToRenderer('redact:progress', { guideId, ...update }) }),
@@ -2332,6 +2391,24 @@ if (!gotLock) {
       fetchImpl: (url, init) => wikiSession.fetch(url, init),
       onStatus: (status) => sendToRenderer('wikijs:status', status),
     });
+    // The publishing services share a session with no cookies kept, so the
+    // system's proxy and certificates apply as they do in the browser.
+    const publishSession = session.fromPartition('publishing');
+    publishSession.setPermissionRequestHandler((wc, permission, callback) => callback(false));
+    publishSession.setPermissionCheckHandler(() => false);
+    const publishOptions = (slot) => ({ directory: store.settingsDir, safeStorage, vault: cloudVault(slot),
+      openExternal: openSignInPage, fetchImpl: (url, init) => publishSession.fetch(url, init) });
+    publishers = {
+      notion: new Notion(publishOptions('notion')),
+      sharepoint: new SharePoint(publishOptions('sharepoint')),
+      bookstack: new BookStack(publishOptions('bookstack')),
+      gitlab: new GitLabPages(publishOptions('gitlab')),
+      zendesk: new Zendesk(publishOptions('zendesk')),
+      markdown: new MarkdownFolder({ directory: store.settingsDir, chooseFolder: async (title) => {
+        const res = await dialog.showOpenDialog(mainWindow, { title, properties: ['openDirectory', 'createDirectory'] });
+        return res.canceled ? null : res.filePaths[0] || null;
+      } }),
+    };
     githubPages = new GitHubPages({ directory: store.settingsDir, safeStorage,
       openExternal: (url) => shell.openExternal(url),
       // The sign-in code is copied so it can be pasted on github.com.
@@ -2530,6 +2607,7 @@ if (!gotLock) {
     if (settings.get('cloud.enabled') === true) cloudSync.start();
     // A Wiki.js sign-in lost in an update or reinstall comes back from the OS keyring.
     void wikijs.recover().catch(() => {});
+    for (const publisher of Object.values(publishers)) void publisher.recover().catch(() => {});
     // Shared guides past their expiry come down even if GitHub's scheduled
     // clean-up has not run yet. Only runs for users who connected GitHub.
     setTimeout(() => { void githubPages.sweep().catch(() => {}); }, 15000);

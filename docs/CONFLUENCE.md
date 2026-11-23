@@ -12,7 +12,7 @@ for Confluence's importer.
 
 ## Connect your site
 
-1. Open **Settings → Accounts → Confluence**.
+1. Open **Settings → Accounts → Publishing → Confluence**.
 2. Type your site's address, such as `confluence.example.com` or
    `yourcompany.atlassian.net`, and choose **Continue**. You can also paste
    the address of any page on the site.
@@ -46,7 +46,7 @@ Personal access tokens need Confluence Data Center or Server 7.9 or later.
 3. Select **Personal Access Tokens**, then **Create token**.
 4. Name it `StepForge` and choose when it expires, for example in 90 days.
 5. Select **Create** and copy the token. Confluence only shows it once.
-6. Paste it into **Settings → Accounts → Confluence** in StepForge.
+6. Paste it into **Settings → Accounts → Publishing → Confluence** in StepForge.
 
 StepForge's **Create a token on your site** link opens the token page
 directly. When the token expires, publishing says Confluence didn’t accept the

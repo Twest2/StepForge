@@ -262,6 +262,8 @@ was recorded with StepForge.
 - **Publish to Confluence** (beta) on Confluence Cloud or your organization's
   Data Center site, including sites that need a smart card (CAC).
 - **Publish to Wiki.js**, with the screenshots uploaded to the wiki.
+- **Publish to Notion, SharePoint, BookStack, GitLab Pages or Zendesk**, or
+  save guides as Markdown in an Obsidian vault or a MkDocs or Docusaurus docs folder.
 - **Six languages.** English, plus French, Spanish, Russian, Simplified
   Chinese and Japanese (beta). StepForge follows your system language, or
   pick one in **Settings → General → Language**. Exported guides stay in
@@ -300,6 +302,7 @@ each optional feature sends.
 - [Sync between computers](docs/CLOUD_ACCOUNTS.md) with Google Drive, OneDrive, Dropbox or Nextcloud
 - [Share guides on the web with GitHub Pages](docs/GITHUB_PAGES.md)
 - [Publish to Confluence](docs/CONFLUENCE.md) · [Publish to Wiki.js](docs/WIKIJS.md)
+- [Publish to Notion, SharePoint, BookStack, GitLab Pages, Zendesk or a Markdown folder](docs/PUBLISHING.md)
 - [Brand your exported guides](docs/BRANDING.md): logos, colors, fonts and Advanced CSS
 - [Privacy](docs/PRIVACY.md) and [security](docs/SECURITY.md)
 

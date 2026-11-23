@@ -81,8 +81,9 @@ repository instead.
 
 ## Publish a guide
 
-1. Open the guide and choose **Share → Publish to the web** (or right-click
-   the guide in the library).
+1. Open the guide and choose **Share → Publish to GitHub Pages** (or right-click
+   the guide in the library). Until GitHub is set up, it's under
+   **Share → Publish to the web**.
 2. Choose how long to keep it online: **1 day**, **7 days**, or **30 days**.
 3. Read the warning, tick **I understand this guide will be public on the
    internet**, and choose **Publish**.

@@ -207,6 +207,7 @@ class CloudAccount {
             ? `Your ${this.label} storage is full. Free up space there, then try again.`
             : this.describeError(response.status, body));
         error.status = response.status;
+        error.retryAfter = response.headers.get('retry-after');
         error.body = body;
         throw error;
       }

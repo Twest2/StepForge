@@ -38,6 +38,7 @@ const PUBLISH_SERVICES = {
   },
   gitlab: {
     name: 'GitLab Pages', icon: 'gitlab.svg',
+    waitsForSite: true, // publishing waits until GitLab has built the site
     description: t('Share guides on the web with GitLab Pages.'),
     intro: t('Create a personal access token with the api scope. The first publish makes a public project, stepforge-guides, whose GitLab Pages site shows your guides.'),
     fields: [
@@ -95,7 +96,7 @@ function makePublishSettings(api, service, { onStatus = () => {} } = {}) {
       el('div.cloud-account-actions', {}, disconnectBtn)),
     el('section.cloud-card', {},
       el('header.cloud-card-head', {}, el('h4', {}, t('Publishing'))),
-      el('p.muted', {}, t('Choose Share → Publish to more sites → Publish to {service} in a guide. Publishing the guide again updates the same page.', { service: info.name }))));
+      el('p.muted', {}, t('Choose Share → Publish to {service} in a guide. Publishing the guide again updates the same page.', { service: info.name }))));
 
   const update = (status = {}) => {
     signedOut.classList.toggle('hidden', Boolean(status.connected));
@@ -150,11 +151,13 @@ const PUBLISH_STAGES = [
   ['upload', t('Upload screenshots')],
   ['page', t('Save the page')],
 ];
+// For sites built after each publish (GitLab Pages).
+const LIVE_STAGE = ['live', t('Wait for the site to go live')];
 
-function publishProgress(title, serviceName) {
+function publishProgress(title, serviceName, stageList = PUBLISH_STAGES) {
   const fill = el('span.gh-progress-fill', { style: {} });
   const bar = el('div.gh-progress.indeterminate', { role: 'progressbar', 'aria-label': t('Publishing progress'), 'aria-valuemin': '0', 'aria-valuemax': '100' }, fill);
-  const stages = PUBLISH_STAGES.map(([id, label]) => {
+  const stages = stageList.map(([id, label]) => {
     const icon = el('span.gh-stage-icon', { 'aria-hidden': 'true' });
     return { id, icon, node: el('li.gh-stage', {}, icon, el('span.gh-stage-label', {}, label)) };
   });
@@ -163,7 +166,7 @@ function publishProgress(title, serviceName) {
     el('ol.gh-stages', {}, ...stages.map((s) => s.node)),
     el('div.gh-upload', {}, bar));
   const set = (progress) => {
-    const at = Math.max(0, PUBLISH_STAGES.findIndex(([id]) => id === progress?.stage));
+    const at = Math.max(0, stageList.findIndex(([id]) => id === progress?.stage));
     stages.forEach((stage, index) => {
       const state = index < at ? 'done' : index === at ? 'active' : 'upcoming';
       stage.node.className = `gh-stage ${state}`;
@@ -206,7 +209,10 @@ async function showPublishToServiceDialog({ api, service, guideId, guideTitle, o
     let open = true;
     let publishing = false;
     let changed = false;
-    const finish = () => { open = false; resolve(changed); };
+    // Closing while screenshots are still being checked waits for the check, so
+    // blurs it adds are reported and the open editor reloads them.
+    let privacyCheck = Promise.resolve();
+    const finish = () => { open = false; privacyCheck.then(() => resolve(changed)); };
     const body = el('div.gh-publish');
     const cancelBtn = el('button', { type: 'button', onClick: () => { close(); finish(); } }, t('Cancel'));
     const publishBtn = el('button.primary', { type: 'button', disabled: true }, t('Publish'));
@@ -246,7 +252,7 @@ async function showPublishToServiceDialog({ api, service, guideId, guideTitle, o
       showPrivacyReview(api, guideId, review, t('These are blurred on the published page. Remove any blur that isn’t needed.'),
         (next) => { changed = true; showReview(next); });
     });
-    runPrivacyCheck(api, guideId, (text) => { privacyText.textContent = text; })
+    privacyCheck = runPrivacyCheck(api, guideId, (text) => { privacyText.textContent = text; })
       .then(showReview)
       .catch((err) => {
         privacySpinner.classList.add('hidden');
@@ -298,7 +304,7 @@ async function showPublishToServiceDialog({ api, service, guideId, guideTitle, o
       publishing = true;
       quality.replaceChildren(); // too late to fix before this publish
       error.classList.add('hidden');
-      const progress = publishProgress(guideTitle, info.name);
+      const progress = publishProgress(guideTitle, info.name, info.waitsForSite ? [...PUBLISH_STAGES, LIVE_STAGE] : PUBLISH_STAGES);
       body.replaceChildren(progress.node);
       publishBtn.classList.add('hidden');
       cancelBtn.textContent = t('Close');

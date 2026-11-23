@@ -149,7 +149,7 @@ test('Zendesk: an anonymous sign-in is refused; a new article is a draft with in
   assert.equal((await zendesk.publish({ guideId: 'g1', title: 'Backups', target: '5', page })).updated, true);
 });
 
-test('Notion: screenshots go through file uploads, a new subpage gets the blocks, and publishing again clears and refills it', async (t) => {
+test('Notion: screenshots go through file uploads, a new subpage gets the blocks, and publishing again adds the new content before removing the old', async (t) => {
   const { ast, directory } = fixture(t);
   const page = runExport('notion', ast, '/unused');
   let appended = [];
@@ -167,6 +167,8 @@ test('Notion: screenshots go through file uploads, a new subpage gets the blocks
     ['PATCH', /\/blocks\/p1\/children$/, (m, init) => { appended.push(...bodyOf(init).children); return {}; }],
   ]);
   const notion = new Notion({ directory, safeStorage: safeStorage(), fetchImpl: site.fetch });
+  const waits = [];
+  notion.wait = async (ms) => { waits.push(ms); };
   assert.equal((await notion.connect({ token: 'ntn_secret' })).account, 'Team space');
   assert.equal(site.calls[0].init.headers['Notion-Version'], '2022-06-28');
   const first = await notion.publish({ guideId: 'g1', title: 'Backups', target: 'parent-1', page });
@@ -177,8 +179,41 @@ test('Notion: screenshots go through file uploads, a new subpage gets the blocks
   appended = [];
   const second = await notion.publish({ guideId: 'g1', title: 'Backups', target: 'parent-1', page });
   assert.equal(second.updated, true);
-  assert.ok(site.calls.some((c) => c.method === 'DELETE' && /old-1/.test(c.url)), 'the old content is removed');
+  const deleted = site.calls.findIndex((c) => c.method === 'DELETE' && /old-1/.test(c.url));
+  const added = site.calls.findIndex((c, i) => i > site.calls.findIndex((x) => x.method === 'PATCH' && /pages\/p1$/.test(x.url)) && c.method === 'PATCH' && /children$/.test(c.url));
+  assert.ok(deleted > added && added > 0, 'the old content is removed only after the new is in');
   assert.equal(appended.length, page.blocks.length);
+  assert.ok(waits.length > 0 && waits.every((ms) => ms <= 340), 'requests are spaced to Notion’s rate');
+});
+
+test('Notion: a busy answer is retried after the time Notion asks for, and a long table goes up 100 rows at a time', async (t) => {
+  const { directory } = fixture(t);
+  let busy = 2;
+  const lists = [];
+  const site = server([
+    ['GET', /\/users\/me$/, () => ({ bot: { workspace_name: 'Team space' } })],
+    ['POST', /\/pages$/, () => (busy-- > 0
+      ? new Response('{"message":"rate limited"}', { status: 429, headers: { 'Content-Type': 'application/json', 'Retry-After': '2' } })
+      : { id: 'p1', url: 'https://www.notion.so/p1' })],
+    ['PATCH', /\/blocks\/(p1|table-1)\/children$/, (m, init) => {
+      const { children } = bodyOf(init);
+      lists.push([m[1], children.length, children[0].type]);
+      return { results: children.map((b, i) => ({ id: b.type === 'table' ? 'table-1' : `b${i}` })) };
+    }],
+  ]);
+  const notion = new Notion({ directory, safeStorage: safeStorage(), fetchImpl: site.fetch });
+  const waits = [];
+  notion.wait = async (ms) => { waits.push(ms); };
+  await notion.connect({ token: 'ntn_secret' });
+  const rows = Array.from({ length: 251 }, (_, i) => ({ object: 'block', type: 'table_row', table_row: { cells: [[{ type: 'text', text: { content: String(i) } }]] } }));
+  const blocks = [{ object: 'block', type: 'table', table: { table_width: 1, has_column_header: true, has_row_header: false, children: rows } },
+    ...Array.from({ length: 150 }, () => ({ object: 'block', type: 'paragraph', paragraph: { rich_text: [] } }))];
+  await notion.publish({ guideId: 'g1', title: 'Big table', target: 'parent-1', page: { blocks, images: [] } });
+  assert.deepEqual(waits.filter((ms) => ms === 2000), [2000, 2000], 'waited as asked, twice');
+  // The table and the first 99 paragraphs, then the table's other rows, then the rest.
+  assert.deepEqual(lists, [['p1', 100, 'table'], ['table-1', 100, 'table_row'], ['table-1', 51, 'table_row'], ['p1', 51, 'paragraph']]);
+  const first = JSON.parse(site.calls.find((c) => c.method === 'PATCH').init.body).children[0];
+  assert.equal(first.table.children.length, 100);
 });
 
 test('GitLab Pages: the first publish makes the project and its CI file; another guide with the same name asks first', async (t) => {
@@ -195,13 +230,25 @@ test('GitLab Pages: the first publish makes the project and its CI file; another
     ['HEAD', /repository\/files\/([^?]+)/, (m) => (files.has(decodeURIComponent(m[1])) ? new Response(null, { status: 200 }) : new Response(null, { status: 404 }))],
     ['POST', /repository\/commits$/, (m, init) => { const sent = bodyOf(init); commits.push(sent); for (const a of sent.actions) files.add(a.file_path); return { id: 'c1' }; }],
     ['GET', /projects\/3\/pages$/, () => ({ url: 'https://casey.gitlab.io/stepforge-guides' })],
+    ['GET', /projects\/3\/pipelines\?sha=c1/, () => [{ status: pipeline.shift() || 'success', web_url: 'https://gitlab.com/casey/stepforge-guides/-/pipelines/9' }]],
+    // Pages keeps the last deployment for a moment after the pipeline passes.
+    ['HEAD', /^https:\/\/casey\.gitlab\.io\/stepforge-guides\/backups\/\?stepforge=\d+$/, () => new Response(null, { status: served.shift() ?? 200 })],
   ]);
+  let pipeline = ['running', 'success'];
+  let served = [404];
   const gitlab = new GitLabPages({ directory, safeStorage: safeStorage(), fetchImpl: site.fetch });
+  gitlab.wait = async () => {};
   assert.equal((await gitlab.connect({ address: '', token: 'glpat-x' })).account, '@casey');
   assert.equal(site.calls[0].url, 'https://gitlab.com/api/v4/user');
   const page = { html: '<!DOCTYPE html><title>Backups</title>' };
-  const first = await gitlab.publish({ guideId: 'g1', title: 'Backups', page });
+  const stages = [];
+  const first = await gitlab.publish({ guideId: 'g1', title: 'Backups', page, onProgress: ({ stage }) => stages.push(stage) });
   assert.equal(first.url, 'https://casey.gitlab.io/stepforge-guides/backups/');
+  assert.deepEqual([first.live, first.note], [true, undefined], 'the link is handed over once it loads');
+  assert.equal(stages.at(-1), 'live');
+  const visits = site.calls.filter((c) => c.url.startsWith('https://casey.gitlab.io/'));
+  assert.equal(visits.length, 2, 'asked again after the first 404');
+  assert.ok(visits.every((c) => !c.init.headers?.['PRIVATE-TOKEN']), 'the token only goes to the API');
   assert.deepEqual(commits[0].actions.map((a) => [a.action, a.file_path]), [['create', 'public/backups/index.html'], ['create', '.gitlab-ci.yml']]);
   assert.equal(Buffer.from(commits[0].actions[0].content, 'base64').toString(), page.html);
   const again = await gitlab.publish({ guideId: 'g1', title: 'Backups', page });
@@ -209,6 +256,15 @@ test('GitLab Pages: the first publish makes the project and its CI file; another
   assert.equal(again.updated, true);
   assert.deepEqual(await gitlab.publish({ guideId: 'g2', title: 'Backups', page }), { conflict: { path: 'public/backups/index.html', title: 'backups' } });
   assert.equal((await gitlab.publish({ guideId: 'g2', title: 'Backups', page, replace: true })).url, first.url);
+
+  // A pipeline that fails is reported, with where to look.
+  pipeline = ['failed'];
+  await assert.rejects(gitlab.publish({ guideId: 'g1', title: 'Backups', page }), /couldn’t build the site.*pipelines\/9/);
+  // One no runner picks up ends with the link and why it doesn't work yet.
+  const guidesProject = { id: 3, web_url: 'https://gitlab.com/casey/stepforge-guides' };
+  pipeline = Array(1000).fill('pending');
+  const waited = await gitlab.waitUntilLive(guidesProject, 'c1', 'backups', { deadline: Date.now() + 50 });
+  assert.deepEqual([waited.live, waited.waiting], [false, 'pending']);
 });
 
 test('SharePoint: a site address becomes a Graph site path; pages go up with their images in Site Assets and are published', async (t) => {

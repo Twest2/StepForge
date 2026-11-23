@@ -79,12 +79,43 @@ class GitLabPages extends PublishAccount {
     const actions = [{ action: exists ? 'update' : 'create', file_path: file, content: Buffer.from(page.html, 'utf8').toString('base64'), encoding: 'base64' }];
     if (!await this.fileExists(project, branch, CI_FILE)) actions.push({ action: 'create', file_path: CI_FILE, content: CI });
     onProgress({ stage: 'page' });
-    await this.api(`projects/${project.id}/repository/commits`, json('POST', { branch, commit_message: `Publish “${title}” from StepForge`, actions }));
-    const pages = await this.api(`projects/${project.id}/pages`).catch(() => null);
-    const url = pages?.url ? `${pages.url.replace(/\/+$/, '')}/${slug}/` : `${project.web_url}/pages`;
-    return this.published(guideId, { id: project.id, slug, title, url }, { updated: exists,
-      note: t('GitLab builds the site after each publish. It can take a minute or two to appear.') });
+    const commit = await this.api(`projects/${project.id}/repository/commits`, json('POST', { branch, commit_message: `Publish “${title}” from StepForge`, actions }));
+    // Hand over the link only once it works: GitLab builds the site, then
+    // Pages keeps serving the last deployment for up to a minute.
+    onProgress({ stage: 'live' });
+    const { url, live, waiting } = await this.waitUntilLive(project, commit.id, slug);
+    return this.published(guideId, { id: project.id, slug, title, url }, { updated: exists, live,
+      ...(live ? {} : { note: ['created', 'pending', 'waiting_for_resource'].includes(waiting)
+        ? t('GitLab hasn’t started building the site. It needs a CI runner; on gitlab.com, that means a verified account. The link works once the pipeline has run.')
+        : t('GitLab is still building the site. The link works once it’s done.') }) });
   }
+
+  /**
+   * Wait until the pipeline for commit `sha` has deployed the site and the
+   * guide at `slug` loads. Resolves with { url, live }, and `waiting` (the
+   * pipeline's status) when the deadline passes first. A failed pipeline is
+   * an error, with a link to it.
+   */
+  async waitUntilLive(project, sha, slug, { deadline = Date.now() + 10 * 60000 } = {}) {
+    let url = null;
+    let waiting = 'pending';
+    for (let attempt = 0; Date.now() < deadline; attempt += 1) {
+      if (attempt) await this.wait(Math.min(2000 + attempt * 1000, 10000));
+      const pipeline = (await this.api(`projects/${project.id}/pipelines?sha=${encodeURIComponent(sha)}&per_page=1`))?.[0];
+      waiting = pipeline?.status || 'pending';
+      if (['failed', 'canceled'].includes(waiting)) {
+        throw new Error(t('GitLab couldn’t build the site. See what went wrong in the pipeline: {url}', { url: pipeline.web_url || `${project.web_url}/-/pipelines` }));
+      }
+      if (waiting !== 'success') continue;
+      url ||= await this.api(`projects/${project.id}/pages`).then((pages) => (pages?.url ? `${pages.url.replace(/\/+$/, '')}/${slug}/` : null), () => null);
+      if (!url) continue;
+      // Without the token: this is the public site, not the API.
+      const response = await this.request(`${url}?stepforge=${Date.now()}`, { method: 'HEAD', raw: true, redirect: 'manual', timeout: 15000 }).catch(() => null);
+      if (response && response.status < 400) return { url, live: true };
+    }
+    return { url: url || `${project.web_url}/pages`, live: false, waiting };
+  }
+
 }
 
 module.exports = { GitLabPages, CI };

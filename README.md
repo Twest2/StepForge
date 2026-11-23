@@ -88,7 +88,7 @@ readers get: Step-by-step documentation that's easy to understand and follow.
 
 ## Share a guide with a web link
 
-Nobody wants a 40-page PDF attachment. Choose **Share → Publish to the web**,
+Nobody wants a 40-page PDF attachment. Choose **Share → Publish to GitHub Pages**,
 pick how long it should stay up, and StepForge turns the guide into a live web
 page and hands you a link to send. It's usually online in under a minute.
 

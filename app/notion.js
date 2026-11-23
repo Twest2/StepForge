@@ -15,7 +15,11 @@ const { t } = require('../core/ui-text');
 
 const API = 'https://api.notion.com/v1';
 const VERSION = '2022-06-28';
-const BATCH = 100; // blocks Notion takes in one request
+// Notion takes at most 100 blocks in one list, and 1000 in one request
+// counting nested ones (a table's rows).
+const BATCH = 100;
+const REQUEST_BLOCKS = 900;
+const GAP_MS = 340; // Notion allows about 3 requests a second
 
 const pageTitle = (page) => Object.values(page?.properties || {}).find((p) => p?.type === 'title')?.title?.map((r) => r.plain_text).join('') || '';
 
@@ -28,7 +32,12 @@ class Notion extends PublishAccount {
     return { Authorization: `Bearer ${this.requireAccount().token}`, 'Notion-Version': VERSION, Accept: 'application/json' };
   }
 
-  api(target, options) { return this.authorized(`${API}/${target}`, options); }
+  async api(target, options) {
+    const gap = (this.lastCall || 0) + GAP_MS - Date.now();
+    if (gap > 0) await this.wait(gap);
+    this.lastCall = Date.now();
+    return this.authorized(`${API}/${target}`, options);
+  }
 
   async connect({ token = '' } = {}) {
     if (!token.trim()) throw new Error(t('Paste the integration’s secret.'));
@@ -58,11 +67,50 @@ class Notion extends PublishAccount {
     return upload.id;
   }
 
-  async clear(pageId) {
-    for (let round = 0; round < 100; round += 1) {
-      const children = (await this.api(`blocks/${pageId}/children?page_size=100`))?.results || [];
-      if (!children.length) return;
-      for (const child of children) await this.api(`blocks/${child.id}`, { method: 'DELETE' });
+  /** The ids of a page's blocks, every page of them. */
+  async childIds(pageId) {
+    const ids = [];
+    let cursor = null;
+    do {
+      const data = await this.api(`blocks/${pageId}/children?page_size=100${cursor ? `&start_cursor=${encodeURIComponent(cursor)}` : ''}`);
+      ids.push(...(data?.results || []).map((block) => block.id));
+      cursor = data?.has_more ? data.next_cursor : null;
+    } while (cursor);
+    return ids;
+  }
+
+  /**
+   * Add blocks to a page in batches Notion accepts. A table with more rows
+   * than one list takes is made with the first 100 and gets the rest after.
+   */
+  async append(parentId, blocks) {
+    const extra = new Map();
+    const sized = blocks.map((block) => {
+      const rows = block.type === 'table' ? block.table.children : null;
+      if (!rows || rows.length <= BATCH) return block;
+      const first = { ...block, table: { ...block.table, children: rows.slice(0, BATCH) } };
+      extra.set(first, rows.slice(BATCH));
+      return first;
+    });
+    for (let i = 0; i < sized.length;) {
+      const batch = [];
+      let weight = 0;
+      while (i < sized.length && batch.length < BATCH) {
+        const size = 1 + (sized[i].table?.children?.length || 0);
+        if (batch.length && weight + size > REQUEST_BLOCKS) break;
+        batch.push(sized[i]);
+        weight += size;
+        i += 1;
+      }
+      const made = (await this.api(`blocks/${parentId}/children`, json('PATCH', { children: batch })))?.results || [];
+      for (const [index, block] of batch.entries()) {
+        const rest = extra.get(block);
+        if (!rest) continue;
+        if (!made[index]?.id) throw new Error(t('Notion didn’t return the table it made, so its other rows couldn’t be added.'));
+        for (let r = 0; r < rest.length; r += BATCH) {
+          await this.api(`blocks/${made[index].id}/children`, json('PATCH', { children: rest.slice(r, r + BATCH) }));
+        }
+      }
     }
   }
 
@@ -79,13 +127,15 @@ class Notion extends PublishAccount {
     if (notionPage?.archived || notionPage?.in_trash) notionPage = null;
     const updated = Boolean(notionPage);
     if (notionPage) {
+      // The new content goes in before the old comes out, so a publish that
+      // stops partway never leaves the page empty.
+      const old = await this.childIds(notionPage.id);
       await this.api(`pages/${notionPage.id}`, json('PATCH', { properties }));
-      await this.clear(notionPage.id);
+      await this.append(notionPage.id, blocks);
+      for (const id of old) await this.api(`blocks/${id}`, { method: 'DELETE' });
     } else {
       notionPage = await this.api('pages', json('POST', { parent: { page_id: target }, properties }));
-    }
-    for (let i = 0; i < blocks.length; i += BATCH) {
-      await this.api(`blocks/${notionPage.id}/children`, json('PATCH', { children: blocks.slice(i, i + BATCH) }));
+      await this.append(notionPage.id, blocks);
     }
     return this.published(guideId, { id: notionPage.id, title, target: known && updated ? known.target : target, url: notionPage.url }, { updated });
   }

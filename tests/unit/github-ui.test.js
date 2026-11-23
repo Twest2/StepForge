@@ -1129,6 +1129,28 @@ test('Publish to BookStack picks the book the guide went to before, shows progre
   assert.equal(await done, true);
 });
 
+test('closing Publish to a service while screenshots are checked waits for the check, so the editor reloads its blurs', async () => {
+  const u = ui();
+  const api = fakeApi();
+  let finishCheck;
+  api.redact.check = () => new Promise((resolve) => { finishCheck = resolve; });
+  api.publish = {
+    status: async () => ({ connected: true, available: true, account: 'docs.example.com' }),
+    targets: async () => [{ id: 'book:1', name: 'Handbook' }],
+    defaults: async () => ({ title: 'Guide', published: null }),
+    onProgress: () => () => {},
+  };
+  let result = 'not yet';
+  u.context.showPublishToServiceDialog({ api, service: 'bookstack', guideId: 'guide-1', guideTitle: 'Guide' }).then((changed) => { result = changed; });
+  await settle(); await settle();
+  u.click(u.find(u.root.children.at(-1), 'Cancel'));
+  await settle();
+  assert.equal(result, 'not yet', 'waits for the check');
+  finishCheck({ checked: 1, added: 2, blurs: [], text: [], steps: 1 });
+  await settle(); await settle();
+  assert.equal(result, true, 'the blurs it added are reported');
+});
+
 test('Wiki.js settings choose whether new pages are published, their tags and language', async () => {
   const u = ui();
   const api = wikiApi({ status: async () => ({ connected: true, host: 'wiki.example.com', user: 'Casey Jones', method: 'password' }) });
@@ -1428,9 +1450,15 @@ test('Export marks the Confluence format as Beta', async () => {
   assert.deepEqual(Object.keys(FORMAT_INFO).filter((id) => FORMAT_INFO[id].badge === 'Beta'), ['confluence']);
 });
 
-test('the guide menus offer Publish to Wiki.js beside Confluence, with only Confluence marked Beta', async () => {
-  const context = vm.createContext({ ...rendererI18n(), window: {}, document: { addEventListener() {} } });
+test('the guide menus list signed-in publishing services directly, and the rest under Publish to the web', async () => {
+  const connected = new Set(['confluence', 'bookstack']);
+  const status = (id) => async () => ({ connected: connected.has(id), repo: '' });
+  const stepforge = { github: { status: async () => ({ connected: true, repo: '', needsSignIn: false }) },
+    confluence: { status: status('confluence') }, wikijs: { status: status('wikijs') },
+    publish: { status: async ({ service }) => ({ connected: connected.has(service) }) } };
+  const context = vm.createContext({ ...rendererI18n(), window: { stepforge }, document: { addEventListener() {} } });
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/util.js'), 'utf8'), context);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/publishing.js'), 'utf8'), context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/app.js'), 'utf8').replace('\nboot();', '\n'), context);
   let items = null;
   context.contextMenu = (x, y, list) => { items = list; };
@@ -1439,15 +1467,20 @@ test('the guide menus offer Publish to Wiki.js beside Confluence, with only Conf
   const app = Object.create(context.window.StepForgeApp.prototype);
   app.state = { view: 'library', library: { guideFolders: {}, folders: [] } };
   app.editor = { guideId: null };
-  app.guideContextMenu({ clientX: 0, clientY: 0 }, { guideId: 'g1', title: 'Guide' });
-  const publishing = items.filter((item) => /^Publish to (Confluence|Wiki\.js)/.test(item.label));
-  assert.deepEqual(JSON.parse(JSON.stringify(publishing.map((item) => [item.label, item.badge ?? null]))), [['Publish to Confluence', 'Beta'], ['Publish to Wiki.js', null]]);
-  await publishing[1].action();
+  await app.guideContextMenu({ clientX: 0, clientY: 0 }, { guideId: 'g1', title: 'Guide' });
+  const plain = (list) => JSON.parse(JSON.stringify(list.map((item) => [item.label, item.badge ?? null])));
+  const publishing = items.filter((item) => /^Publish to /.test(item.label));
+  assert.deepEqual(plain(publishing), [['Publish to Confluence', 'Beta'], ['Publish to BookStack', null], ['Publish to the web', null]]);
+  // GitHub without a repository isn't ready to publish yet, so it stays in the submenu.
+  const web = publishing[2].submenu;
+  assert.deepEqual(plain(web), [['Publish to GitHub Pages', null], ['Publish to Wiki.js', null], ['Publish to Notion', 'Beta'],
+    ['Publish to SharePoint', 'Beta'], ['Publish to GitLab Pages', null], ['Publish to Zendesk', 'Beta']]);
+  await web[1].action();
   assert.deepEqual(opened, ['g1']);
-  // The editor's Share menu has the same two items.
-  const src = fs.readFileSync(path.join(__dirname, '../../app/renderer/app.js'), 'utf8');
-  assert.equal((src.match(/label: t\('Publish to Wiki\.js'\), action/g) || []).length, 2);
-  assert.equal((src.match(/label: t\('Publish to Confluence'\), badge: 'Beta'/g) || []).length, 2);
+  // Signed in everywhere: everything is in the menu itself, with no submenu.
+  for (const id of ['wikijs', 'notion', 'sharepoint', 'gitlab', 'zendesk']) connected.add(id);
+  stepforge.github.status = async () => ({ connected: true, repo: 'octo/guides', needsSignIn: false });
+  assert.equal((await app.publishMenuItems('g1', 'Guide')).some((item) => item.submenu), false);
 
   // The menu draws the badge as the same chip Settings uses.
   const appended = [];

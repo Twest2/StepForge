@@ -65,6 +65,28 @@ class PublishAccount extends CloudAccount {
 
   backend() { return {}; } // nothing is synced through a publishing account
 
+  /**
+   * Services limit how fast they can be called (Notion: about 3 requests a
+   * second). A request turned away with 429 is sent again after the time the
+   * service asks for; a brief 502/503/504 only for requests that change
+   * nothing, so a page is never made twice.
+   */
+  async request(url, options = {}) {
+    const safe = ['GET', 'HEAD', undefined].includes(options.method);
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return await super.request(url, options);
+      } catch (err) {
+        const busy = err.status === 429 || (safe && [502, 503, 504].includes(err.status));
+        if (!busy || attempt >= 5) throw err;
+        const asked = Number(err.retryAfter);
+        await this.wait(Number.isFinite(asked) && asked >= 0 ? Math.min(asked, 60) * 1000 : 1000 * 2 ** attempt);
+      }
+    }
+  }
+
+  wait(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
+
   status() {
     const c = this.credentials;
     return { connected: Boolean(c), available: this.available, account: c?.account || '', site: c?.site || '', error: this.loadError };

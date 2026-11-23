@@ -5,8 +5,10 @@ uploaded too. Publishing the same guide again updates the page it made, so its
 address stays the same.
 
 Connect a site in **Settings → Accounts → Publishing**, then choose
-**Share → Publish to more sites** in the editor, or **Publish to more sites**
-from a guide's menu in the library.
+**Share → Publish to Notion** (or BookStack, and so on) in the editor, or the
+same item from a guide's menu in the library. Every site you're signed in to,
+GitHub Pages, Confluence and Wiki.js included, is listed right in the menu;
+the others are under **Share → Publish to the web**.
 
 As with [GitHub Pages](GITHUB_PAGES.md), [Confluence](CONFLUENCE.md) and
 [Wiki.js](WIKIJS.md), StepForge checks every screenshot for private details
@@ -68,8 +70,10 @@ namespace, with a `.gitlab-ci.yml` that serves its `public/` folder. Each guide
 is `public/<guide name>/index.html`, the interactive HTML export. Anyone with
 the link can open it.
 
-GitLab builds the site after each publish, which takes a minute or two and
-needs CI runners. On gitlab.com that means a verified account. Unlike GitHub
+GitLab builds the site after each publish, which needs CI runners (on
+gitlab.com, a verified account). StepForge waits until the guide's page loads
+before showing its link, usually a minute or two. If the build fails, it says
+so and links to the pipeline; if no runner picks it up, it says that instead. Unlike GitHub
 Pages sharing, guides stay up until you delete them from the project.
 
 ## Zendesk

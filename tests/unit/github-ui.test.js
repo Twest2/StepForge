@@ -406,7 +406,7 @@ test('the shared list marks edited guides, opens Publish from the marker, and ex
   await settle();
   await settle();
   const modal = u.root.children.at(-1);
-  assert.match(modal.textContent, /Publish to the web|already shared/);
+  assert.match(modal.textContent, /Publish to GitHub Pages|already shared/);
   const publish = u.find(modal, 'Publish');
   assert.equal(publish.disabled, true, 'nothing is published until the person ticks the public-content box');
   assert.deepEqual(api.calls.filter(([name]) => name === 'publish'), []);

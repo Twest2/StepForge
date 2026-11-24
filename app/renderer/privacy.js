@@ -3,7 +3,7 @@
 /*
  * Private details: checking a guide's screenshots (app/redaction.js) and
  * reviewing what StepForge blurred. Used from the editor (More → Find
- * private details…) and the Publish to the web dialog.
+ * private details…) and the Publish to GitHub Pages dialog.
  */
 
 // What each kind of private detail is called (core/redaction.js KINDS); app/redaction.js sends the English name.

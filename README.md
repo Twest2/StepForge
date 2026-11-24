@@ -88,7 +88,7 @@ readers get: Step-by-step documentation that's easy to understand and follow.
 
 ## Share a guide with a web link
 
-Nobody wants a 40-page PDF attachment. Choose **Share → Publish to the web**,
+Nobody wants a 40-page PDF attachment. Choose **Share → Publish to GitHub Pages**,
 pick how long it should stay up, and StepForge turns the guide into a live web
 page and hands you a link to send. It's usually online in under a minute.
 
@@ -262,6 +262,7 @@ was recorded with StepForge.
 - **Publish to Confluence** (beta) on Confluence Cloud or your organization's
   Data Center site, including sites that need a smart card (CAC).
 - **Publish to Wiki.js**, with the screenshots uploaded to the wiki.
+- **Publish to Notion, SharePoint, BookStack, GitLab Pages or Zendesk.**
 - **Six languages.** English, plus French, Spanish, Russian, Simplified
   Chinese and Japanese (beta). StepForge follows your system language, or
   pick one in **Settings → General → Language**. Exported guides stay in
@@ -300,6 +301,7 @@ each optional feature sends.
 - [Sync between computers](docs/CLOUD_ACCOUNTS.md) with Google Drive, OneDrive, Dropbox or Nextcloud
 - [Share guides on the web with GitHub Pages](docs/GITHUB_PAGES.md)
 - [Publish to Confluence](docs/CONFLUENCE.md) · [Publish to Wiki.js](docs/WIKIJS.md)
+- [Publish to Notion, SharePoint, BookStack, GitLab Pages or Zendesk](docs/PUBLISHING.md)
 - [Brand your exported guides](docs/BRANDING.md): logos, colors, fonts and Advanced CSS
 - [Privacy](docs/PRIVACY.md) and [security](docs/SECURITY.md)
 

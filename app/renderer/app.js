@@ -674,14 +674,12 @@ class StepForgeApp {
         type: 'button',
         title: t('Share this guide as a file or on the web'),
         'aria-haspopup': 'menu', 'aria-expanded': 'false',
-        onClick: (e) => {
+        onClick: async (e) => {
           const rect = e.currentTarget.getBoundingClientRect();
           contextMenu(rect.left, rect.bottom + 4, [
             { label: t('Copy to clipboard'), action: () => this.editor.copyToClipboard() },
             { label: t('Save as a .sfgz file'), action: () => this.editor.shareAsFile() },
-            { label: t('Publish to the web'), action: () => this.publishToWeb(guide?.guideId || this.editor.guideId, guide?.title) },
-            { label: t('Publish to Confluence'), badge: 'Beta', action: () => this.publishToConfluence(guide?.guideId || this.editor.guideId, guide?.title) },
-            { label: t('Publish to Wiki.js'), action: () => this.publishToWikiJs(guide?.guideId || this.editor.guideId, guide?.title) },
+            ...await this.publishMenuItems(guide?.guideId || this.editor.guideId, guide?.title),
           ]);
         },
       }, t('Share ▾')),
@@ -1088,8 +1086,9 @@ class StepForgeApp {
     el('div.card-footer', {}, el('span.badge', {}, isStep ? t('Step') : t('Guide'))));
   }
 
-  guideContextMenu(event, guide) {
+  async guideContextMenu(event, guide) {
     const trigger = event.currentTarget?.tagName === 'BUTTON' ? event.currentTarget : event.currentTarget?.querySelector?.('.card-actions') || document.activeElement;
+    const publishItems = await this.publishMenuItems(guide.guideId, guide.title);
     const currentFolderId = (this.state.library.guideFolders || {})[guide.guideId] || null;
     const folderItems = (this.state.library.folders || [])
       .filter((folder) => folder.id !== currentFolderId)
@@ -1106,9 +1105,7 @@ class StepForgeApp {
       { label: t('Mark as verified'), action: () => this.markVerified([guide.guideId]) },
       { label: t('Duplicate guide'), action: () => this.duplicateGuide(guide.guideId) },
       { label: t('Export'), action: () => this.openGuideExport(guide.guideId) },
-      { label: t('Publish to the web'), action: () => this.publishToWeb(guide.guideId, guide.title) },
-      { label: t('Publish to Confluence'), badge: 'Beta', action: () => this.publishToConfluence(guide.guideId, guide.title) },
-      { label: t('Publish to Wiki.js'), action: () => this.publishToWikiJs(guide.guideId, guide.title) },
+      ...publishItems,
       ...moveItems,
       'sep',
       { label: t('Delete guide'), danger: true, action: () => this.deleteGuide(guide.guideId) },
@@ -1405,6 +1402,45 @@ class StepForgeApp {
       guideId,
       guideTitle: title || t('Untitled guide'),
       onOpenAccounts: () => this.openSettings('wikijs'),
+      onShowFinding: (picked) => { finding = picked; },
+    });
+    // Checking for private details may have added blurs to the open guide.
+    if (changed && inEditor) await this.editor.reload();
+    if (finding) await this.showQualityFinding(guideId, finding);
+  }
+
+  /**
+   * The Share menu's publishing items: each service the user is signed in to,
+   * then Publish to the web › with the rest (Settings → Accounts → Publishing).
+   */
+  async publishMenuItems(guideId, title) {
+    const connected = (status) => Boolean(status?.connected);
+    const targets = [
+      { label: t('Publish to GitHub Pages'), status: () => api.github.status(), ready: (s) => connected(s) && Boolean(s.repo) && !s.needsSignIn,
+        action: () => this.publishToWeb(guideId, title) },
+      { label: t('Publish to Confluence'), badge: 'Beta', status: () => api.confluence.status(), action: () => this.publishToConfluence(guideId, title) },
+      { label: t('Publish to Wiki.js'), status: () => api.wikijs.status(), action: () => this.publishToWikiJs(guideId, title) },
+      ...Object.entries(PUBLISH_SERVICES).map(([service, info]) => ({
+        label: t('Publish to {service}', { service: info.name }), badge: info.beta ? 'Beta' : '',
+        status: () => api.publish.status({ service }), action: () => this.publishToService(service, guideId, title),
+      })),
+    ];
+    const statuses = await Promise.all(targets.map((target) => target.status().catch(() => null)));
+    const item = ({ label, badge, action }) => ({ label, ...(badge ? { badge } : {}), action });
+    const signedIn = targets.filter((target, i) => (target.ready || connected)(statuses[i]));
+    const others = targets.filter((target) => !signedIn.includes(target));
+    return [...signedIn.map(item), ...(others.length ? [{ label: t('Publish to the web'), submenu: others.map(item) }] : [])];
+  }
+
+  async publishToService(service, guideId, title) {
+    if (!guideId) return;
+    const inEditor = this.state.view === 'editor' && this.editor.guideId === guideId;
+    if (inEditor) await this.editor.saveAll();
+    let finding = null;
+    const changed = await showPublishToServiceDialog({
+      api, service, guideId,
+      guideTitle: title || t('Untitled guide'),
+      onOpenAccounts: () => this.openSettings(service),
       onShowFinding: (picked) => { finding = picked; },
     });
     // Checking for private details may have added blurs to the open guide.

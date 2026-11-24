@@ -11,11 +11,13 @@ const { exportImageBundle } = require('./image-bundle');
 const { exportDocx } = require('./docx');
 const { exportPptx } = require('./pptx');
 const { exportClipboard } = require('./clipboard');
+const { exportNotion } = require('./notion');
 
 /**
  * Unified dispatch: format id -> exporter(ast, outDir, templateOptions).
- * 'clipboard' (Share → Copy to clipboard) isn't an Export dialog format: it
- * returns HTML and text instead of writing files.
+ * 'clipboard' (Share → Copy to clipboard) and 'notion' (Share → Publish to
+ * Notion) aren't Export dialog formats: they return content instead of
+ * writing files.
  */
 const EXPORTERS = {
   json: exportJson,
@@ -30,6 +32,7 @@ const EXPORTERS = {
   docx: exportDocx,
   pptx: exportPptx,
   clipboard: exportClipboard,
+  notion: exportNotion,
 };
 
 /**

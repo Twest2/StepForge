@@ -75,6 +75,7 @@ function ui({ realLoading = false } = {}) {
   load('quality.js');
   load('confluence.js');
   load('wikijs.js');
+  load('publishing.js');
   load('github.js');
   load('dialogs.js');
 
@@ -113,6 +114,12 @@ function fakeApi(github = {}) {
       status: async () => ({ connected: false }),
       onStatus: () => () => {},
     },
+    publish: {
+      status: async ({ service }) => (service === 'notion' ? { connected: true, available: true, account: 'Team space', site: 'notion.so' } : { connected: false, available: true }),
+      connect: async (args) => { calls.push(['publish:connect', args]); return { connected: true, available: true, account: 'docs.example.com' }; },
+      disconnect: async (args) => { calls.push(['publish:disconnect', args]); return { connected: false, available: true }; },
+      cancel: async () => ({ ok: true }),
+    },
     redact: {
       check: async (args) => { calls.push(['redact:check', args]); return { checked: 1, added: 0, blurs: [], text: [], steps: 0 }; },
       onProgress: () => () => {},
@@ -140,50 +147,65 @@ function fakeApi(github = {}) {
   return api;
 }
 
-test('Accounts lists every sync service, then GitHub, Confluence and Wiki.js, and opens each one’s panel', async () => {
+test('Accounts opens with Syncing and Publishing; each lists its services, and each service opens its panel', async () => {
   const u = ui();
   const accounts = u.context.makeAccountsSettings(fakeApi());
   await settle();
+  const tiles = u.all(accounts.node).filter((n) => n.tag === 'button' && n.classList.contains('account-group'));
+  assert.deepEqual(tiles.map((tile) => tile.children[1].children[0].textContent), ['Syncing', 'Publishing']);
+  assert.deepEqual(tiles.map((tile) => tile.children[0].children[0].src), ['../assets/icons/syncing.svg', '../assets/icons/publishing.svg']);
+  assert.ok(tiles.every((tile) => tile.children[1].children[1].textContent.length > 20), 'each tile has a line of text under its name');
+  assert.ok(tiles.every((tile) => tile.children[1].children.length === 2), 'just a name and a line of text, no connection status');
+
   const rows = u.all(accounts.node).filter((n) => n.tag === 'button' && n.classList.contains('account-row'));
   const names = rows.map((row) => row.children[1].children[0]);
-  assert.deepEqual(names.map((name) => name.children[0]),
-    ['Google Drive', 'OneDrive', 'Dropbox', 'Nextcloud or WebDAV', 'GitHub', 'Confluence', 'Wiki.js']);
-  // Confluence publishing is still new, and says so; Wiki.js is not Beta any more.
+  assert.deepEqual(names.map((name) => name.children[0]), ['Google Drive', 'OneDrive', 'Dropbox', 'Nextcloud or WebDAV',
+    'GitHub', 'Confluence', 'Wiki.js', 'Notion', 'SharePoint', 'BookStack', 'GitLab Pages', 'Zendesk']);
+  // Confluence, Notion, SharePoint and Zendesk publishing are still new, and say so; Wiki.js and BookStack are not Beta.
   assert.deepEqual(names.map((name) => name.children.find((c) => c.classList?.contains('beta-badge'))?.textContent || ''),
-    ['', '', '', '', '', 'Beta', '']);
+    ['', '', '', '', '', 'Beta', '', 'Beta', 'Beta', '', '', 'Beta']);
   const logos = rows.map((row) => row.children[0].children[0].src);
-  assert.deepEqual(logos, ['google-drive', 'onedrive', 'dropbox', 'nextcloud', 'github', 'confluence', 'wikijs'].map((name) => `../assets/icons/${name}.svg`));
-  for (const logo of logos) {
-    const file = path.join(__dirname, '../../app/renderer', logo);
-    assert.match(fs.readFileSync(file, 'utf8'), /^<svg /, `${logo} ships with the app as a local SVG`);
+  for (const logo of [...logos, '../assets/icons/syncing.svg', '../assets/icons/publishing.svg']) {
+    assert.match(fs.readFileSync(path.join(__dirname, '../../app/renderer', logo), 'utf8'), /^<svg /, `${logo} ships with the app as a local SVG`);
   }
   assert.equal(rows[0].textContent.includes('casey@example.com'), true, 'Drive row shows who is signed in');
-  for (const row of rows.slice(1)) assert.equal(row.textContent.includes('Not connected'), true);
+  assert.equal(rows[7].textContent.includes('Team space'), true, 'Notion row shows the workspace');
+  for (const row of [...rows.slice(1, 7), ...rows.slice(8)]) assert.equal(row.textContent.includes('Not connected'), true);
   const panels = u.all(accounts.node).filter((n) => n.tag === 'fieldset');
-  assert.equal(panels.length, 7);
-  const [drivePanel, oneDrivePanel, , , githubPanel, confluencePanel, wikijsPanel] = panels;
-  assert.equal(u.visible(drivePanel), false, 'no service panel until one is chosen');
+  assert.equal(panels.length, 12);
+  const [drivePanel, oneDrivePanel, , , githubPanel, confluencePanel, wikijsPanel, notionPanel, , bookstackPanel] = panels;
+  assert.equal(rows.some((row) => u.visible(row)), false, 'only the two tiles to start with');
 
-  u.click(rows[4]);
-  assert.equal(u.visible(githubPanel), true);
-  assert.equal(u.visible(drivePanel), false);
-  assert.equal(u.visible(rows[0]), false);
-  u.click(u.find(accounts.node, 'All accounts'));
-  assert.equal(u.visible(rows[0]), true);
-  assert.equal(u.visible(githubPanel), false);
-
+  u.click(tiles[0]);
+  assert.deepEqual(rows.map((row) => u.visible(row)), [true, true, true, true, false, false, false, false, false, false, false, false]);
   u.click(rows[0]);
   assert.equal(u.visible(drivePanel), true);
   assert.equal(u.visible(oneDrivePanel), false);
+  assert.equal(u.visible(rows[0]), false);
+  u.click(u.find(accounts.node, '‹ Syncing'));
+  assert.equal(u.visible(rows[1]), true, 'back to the list of sync services');
+  assert.equal(u.visible(drivePanel), false);
   u.click(u.find(accounts.node, 'All accounts'));
+  assert.equal(u.visible(tiles[1]), true);
+
+  u.click(tiles[1]);
+  assert.equal(u.visible(rows[0]), false);
+  assert.equal(rows.slice(4).every((row) => u.visible(row)), true);
+  u.click(rows[4]);
+  assert.equal(u.visible(githubPanel), true);
+  u.click(u.find(accounts.node, '‹ Publishing'));
   u.click(rows[5]);
   assert.equal(u.visible(confluencePanel), true);
   assert.match(confluencePanel.textContent, /Publish guides as Confluence pages/);
-  u.click(u.find(accounts.node, 'All accounts'));
+  u.click(u.find(accounts.node, '‹ Publishing'));
   u.click(rows[6]);
   assert.equal(u.visible(wikijsPanel), true);
   assert.equal(u.visible(confluencePanel), false);
   assert.match(wikijsPanel.textContent, /Publish guides as Wiki\.js pages/);
+  u.click(u.find(accounts.node, '‹ Publishing'));
+  u.click(rows[7]);
+  assert.equal(u.visible(notionPanel), true);
+  assert.match(notionPanel.textContent, /Team space/, 'a connected service shows its account');
   accounts.dispose();
 
   const direct = u.context.makeAccountsSettings(fakeApi(), { view: 'github' });
@@ -193,6 +215,38 @@ test('Accounts lists every sync service, then GitHub, Confluence and Wiki.js, an
   const dropbox = u.context.makeAccountsSettings(fakeApi(), { view: 'dropbox' });
   assert.equal(u.visible(u.all(dropbox.node).filter((n) => n.tag === 'fieldset')[2]), true);
   dropbox.dispose();
+  const publishing = u.context.makeAccountsSettings(fakeApi(), { view: 'publishing' });
+  const publishingRows = u.all(publishing.node).filter((n) => n.tag === 'button' && n.classList.contains('account-row'));
+  assert.deepEqual([u.visible(publishingRows[0]), u.visible(publishingRows[11])], [false, true], 'or straight to a list');
+  publishing.dispose();
+});
+
+test('a publishing service connects with what is typed, asks for anything missing, and disconnects', async () => {
+  const u = ui();
+  const api = fakeApi();
+  const accounts = u.context.makeAccountsSettings(api, { view: 'bookstack' });
+  await settle();
+  const panel = u.all(accounts.node).filter((n) => n.tag === 'fieldset')[9];
+  assert.equal(u.visible(panel), true);
+  const inputs = u.all(panel).filter((n) => n.tag === 'input');
+  assert.deepEqual(inputs.map((i) => i.type), ['url', 'text', 'password']);
+  inputs[0].value = ' docs.example.com ';
+  u.click(u.find(panel, 'Connect'));
+  await settle();
+  assert.match(panel.textContent, /Enter the Token ID/);
+  assert.equal(api.calls.some(([name]) => name === 'publish:connect'), false);
+  inputs[1].value = 'id';
+  inputs[2].value = 'secret';
+  u.click(u.find(panel, 'Connect'));
+  await settle();
+  assert.deepEqual(JSON.parse(JSON.stringify(api.calls.find(([name]) => name === 'publish:connect')[1])),
+    { service: 'bookstack', fields: { address: 'docs.example.com', tokenId: 'id', tokenSecret: 'secret' } });
+  assert.equal(inputs[2].value, '', 'the secret is not kept on screen');
+  assert.match(panel.textContent, /docs\.example\.com/);
+  u.click(u.find(panel, 'Disconnect'));
+  await settle();
+  assert.deepEqual(JSON.parse(JSON.stringify(api.calls.at(-1))), ['publish:disconnect', { service: 'bookstack' }]);
+  accounts.dispose();
 });
 
 test('the GitHub panel explains setup step by step and warns that guides are public', async () => {
@@ -971,13 +1025,14 @@ test('Accounts shows who is signed in to Wiki.js', async () => {
   const api = wikiApi({ status: async () => ({ connected: true, host: 'wiki.example.com', user: 'Casey Jones', method: 'password' }) });
   const accounts = u.context.makeAccountsSettings(api);
   await settle();
-  const row = u.all(accounts.node).filter((n) => n.tag === 'button' && n.classList.contains('account-row')).at(-1);
+  const wikiRow = (node) => u.all(node).filter((n) => n.tag === 'button' && n.classList.contains('account-row')).find((n) => n.textContent.startsWith('Wiki.js'));
+  const row = wikiRow(accounts.node);
   assert.match(row.textContent, /Wiki\.js.*Casey Jones/);
   assert.doesNotMatch(row.textContent, /Beta/, 'Wiki.js is no longer Beta');
   accounts.dispose();
   const keyed = u.context.makeAccountsSettings(wikiApi({ status: async () => ({ connected: true, host: 'wiki.example.com', user: '', method: 'apikey' }) }));
   await settle();
-  assert.match(u.all(keyed.node).filter((n) => n.classList?.contains('account-row')).at(-1).textContent, /wiki\.example\.com/);
+  assert.match(wikiRow(keyed.node).textContent, /wiki\.example\.com/);
   keyed.dispose();
 });
 
@@ -1039,6 +1094,128 @@ test('Publish to Wiki.js prefills the path, warns before replacing a page edited
   await settle();
   assert.equal(api.calls.filter(([name]) => name === 'publish').at(-1)[1].replace, false);
   assert.equal(u.visible(u.find(second, 'Publish')), true);
+});
+
+test('Publish to BookStack picks the book the guide went to before, shows progress, and links to the page', async () => {
+  const u = ui();
+  const api = fakeApi();
+  const listeners = new Set();
+  api.publish = {
+    status: async () => ({ connected: true, available: true, account: 'docs.example.com', site: 'https://docs.example.com' }),
+    targets: async () => [{ id: 'book:1', name: 'Handbook' }, { id: 'chapter:4', name: 'Handbook › Backups' }],
+    defaults: async () => ({ title: 'Back up AcmeSync', published: { id: 7, target: 'chapter:4', publishedAt: '2026-01-01T00:00:00Z' } }),
+    onProgress: (fn) => { listeners.add(fn); return () => listeners.delete(fn); },
+    run: async (args) => {
+      api.calls.push(['run', args]);
+      for (const fn of listeners) fn({ service: 'bookstack', guideId: 'guide-1', stage: 'upload', index: 1, count: 2, loaded: 5, total: 10 });
+      return { url: 'https://docs.example.com/link/7', title: args.title, updated: true };
+    },
+  };
+  const done = u.context.showPublishToServiceDialog({ api, service: 'bookstack', guideId: 'guide-1', guideTitle: 'Back up [[Product]]' });
+  await settle(); await settle();
+  const modal = u.root.children.at(-1);
+  const field = (label) => u.all(modal).find((n) => (n.tag === 'input' || n.tag === 'select') && n['aria-label'] === label);
+  assert.equal(field('Page title').value, 'Back up AcmeSync', 'placeholders filled in');
+  assert.equal(field('Book or chapter').value, 'chapter:4');
+  assert.match(modal.textContent, /Published before\. Publishing again updates the same page\./);
+  u.find(modal, 'Publish').listeners.click();
+  await settle(); await settle();
+  assert.deepEqual(JSON.parse(JSON.stringify(api.calls.find(([name]) => name === 'run')[1])),
+    { service: 'bookstack', guideId: 'guide-1', title: 'Back up AcmeSync', target: 'chapter:4', replace: false });
+  assert.match(modal.textContent, /Updated “Back up AcmeSync” on BookStack\./);
+  assert.doesNotMatch(modal.textContent, /null/, 'no empty line shown as "null"');
+  u.click(u.find(modal, 'Open in browser'));
+  assert.deepEqual(api.calls.at(-1), ['open', 'https://docs.example.com/link/7']);
+  u.click(u.find(modal, 'Done'));
+  assert.equal(await done, true);
+});
+
+test('closing Publish to a service while screenshots are checked waits for the check, so the editor reloads its blurs', async () => {
+  const u = ui();
+  const api = fakeApi();
+  let finishCheck;
+  api.redact.check = () => new Promise((resolve) => { finishCheck = resolve; });
+  api.publish = {
+    status: async () => ({ connected: true, available: true, account: 'docs.example.com' }),
+    targets: async () => [{ id: 'book:1', name: 'Handbook' }],
+    defaults: async () => ({ title: 'Guide', published: null }),
+    onProgress: () => () => {},
+  };
+  let result = 'not yet';
+  u.context.showPublishToServiceDialog({ api, service: 'bookstack', guideId: 'guide-1', guideTitle: 'Guide' }).then((changed) => { result = changed; });
+  await settle(); await settle();
+  u.click(u.find(u.root.children.at(-1), 'Cancel'));
+  await settle();
+  assert.equal(result, 'not yet', 'waits for the check');
+  finishCheck({ checked: 1, added: 2, blurs: [], text: [], steps: 1 });
+  await settle(); await settle();
+  assert.equal(result, true, 'the blurs it added are reported');
+});
+
+test('Publish to GitLab Pages asks how long, and for the same public-content consent as GitHub Pages', async () => {
+  const u = ui();
+  const api = fakeApi();
+  api.publish = {
+    status: async () => ({ connected: true, available: true, account: '@casey', site: 'https://gitlab.com' }),
+    defaults: async () => ({ title: 'Backups', published: { slug: 'a'.repeat(24), expiresAt: '2030-05-01T12:00:00Z', publishedAt: '2030-04-01T12:00:00Z' } }),
+    onProgress: () => () => {},
+    run: async (args) => { api.calls.push(['run', args]); return { url: 'https://casey.gitlab.io/stepforge-guides/g/aaa/', title: 'Backups', updated: true, live: true, expiresAt: '2030-05-31T12:00:00Z' }; },
+  };
+  u.context.showPublishToServiceDialog({ api, service: 'gitlab', guideId: 'guide-1', guideTitle: 'Backups' });
+  await settle(); await settle();
+  const modal = u.root.children.at(-1);
+  assert.match(modal.textContent, /Shared guides are public\./);
+  assert.match(modal.textContent, /This guide is already shared until/);
+  assert.doesNotMatch(modal.textContent, /repository on GitHub/, 'GitLab’s files aren’t public, so the warning doesn’t say they are');
+  const publish = u.find(modal, 'Publish');
+  assert.equal(publish.disabled, true, 'not until the guide is understood to be public');
+  const consent = u.all(modal).find((n) => n.tag === 'input' && n.type === 'checkbox');
+  consent.checked = true;
+  consent.listeners.change();
+  assert.equal(publish.disabled, false);
+  const days = u.all(modal).find((n) => n.tag === 'select' && n['aria-label'] === 'How long to keep the guide online');
+  assert.equal(days.value, '7');
+  days.value = '30';
+  publish.listeners.click();
+  await settle(); await settle();
+  assert.deepEqual(JSON.parse(JSON.stringify(api.calls.find(([name]) => name === 'run')[1])),
+    { service: 'gitlab', guideId: 'guide-1', title: 'Backups', target: '', replace: false, days: 30 });
+  assert.match(modal.textContent, /Until /);
+});
+
+test('Settings → GitLab Pages lists shared guides, extends them and stops sharing them', async () => {
+  const u = ui();
+  const api = fakeApi();
+  let guides = [{ slug: 'a'.repeat(24), guideId: 'g1', title: 'Backups', publishedAt: '2030-01-01T00:00:00Z', expiresAt: new Date(Date.now() + 86400000).toISOString(), url: 'https://casey.gitlab.io/stepforge-guides/g/aaa/' }];
+  api.publish = {
+    status: async () => ({ connected: true, available: true, account: '@casey', site: 'https://gitlab.com' }),
+    shared: async () => guides,
+    extend: async (args) => { api.calls.push(['extend', args]); return guides; },
+    unpublish: async (args) => { api.calls.push(['unpublish', args]); guides = []; return guides; },
+    cancel: async () => ({ ok: true }),
+  };
+  api.library = { list: async () => ({ guides: [] }) };
+  const accounts = u.context.makeAccountsSettings(api, { view: 'gitlab' });
+  await settle(); await settle(); await settle();
+  const panel = u.all(accounts.node).filter((n) => n.tag === 'fieldset').find((n) => /GitLab Pages/.test(n.children[0]?.textContent || ''));
+  assert.match(panel.textContent, /Shared guides1 shared/);
+  assert.match(panel.textContent, /Backups/);
+  let menu = null;
+  u.context.contextMenu = (x, y, items) => { menu = items; };
+  u.find(panel, 'Extend').listeners.click({ currentTarget: { getBoundingClientRect: () => ({ left: 0, bottom: 0 }) } });
+  assert.deepEqual(JSON.parse(JSON.stringify(menu.map((item) => item.label))), ['Keep online for 1 day from now', 'Keep online for 7 days from now', 'Keep online for 30 days from now']);
+  await menu[2].action();
+  await settle();
+  assert.deepEqual(JSON.parse(JSON.stringify(api.calls.find(([name]) => name === 'extend')[1])), { service: 'gitlab', slug: 'a'.repeat(24), days: 30 });
+  u.find(panel, 'Remove').listeners.click();
+  await settle();
+  const confirm = u.root.children.at(-1);
+  assert.match(confirm.textContent, /The page is removed from your GitLab Pages site/);
+  u.click(u.find(confirm, 'Remove from the web'));
+  await settle(); await settle();
+  assert.deepEqual(JSON.parse(JSON.stringify(api.calls.find(([name]) => name === 'unpublish')[1])), { service: 'gitlab', slug: 'a'.repeat(24) });
+  assert.match(panel.textContent, /No guides are shared right now/);
+  accounts.dispose();
 });
 
 test('Wiki.js settings choose whether new pages are published, their tags and language', async () => {
@@ -1340,9 +1517,15 @@ test('Export marks the Confluence format as Beta', async () => {
   assert.deepEqual(Object.keys(FORMAT_INFO).filter((id) => FORMAT_INFO[id].badge === 'Beta'), ['confluence']);
 });
 
-test('the guide menus offer Publish to Wiki.js beside Confluence, with only Confluence marked Beta', async () => {
-  const context = vm.createContext({ ...rendererI18n(), window: {}, document: { addEventListener() {} } });
+test('the guide menus list signed-in publishing services directly, and the rest under Publish to the web', async () => {
+  const connected = new Set(['confluence', 'bookstack']);
+  const status = (id) => async () => ({ connected: connected.has(id), repo: '' });
+  const stepforge = { github: { status: async () => ({ connected: true, repo: '', needsSignIn: false }) },
+    confluence: { status: status('confluence') }, wikijs: { status: status('wikijs') },
+    publish: { status: async ({ service }) => ({ connected: connected.has(service) }) } };
+  const context = vm.createContext({ ...rendererI18n(), window: { stepforge }, document: { addEventListener() {} } });
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/util.js'), 'utf8'), context);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/publishing.js'), 'utf8'), context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../../app/renderer/app.js'), 'utf8').replace('\nboot();', '\n'), context);
   let items = null;
   context.contextMenu = (x, y, list) => { items = list; };
@@ -1351,15 +1534,20 @@ test('the guide menus offer Publish to Wiki.js beside Confluence, with only Conf
   const app = Object.create(context.window.StepForgeApp.prototype);
   app.state = { view: 'library', library: { guideFolders: {}, folders: [] } };
   app.editor = { guideId: null };
-  app.guideContextMenu({ clientX: 0, clientY: 0 }, { guideId: 'g1', title: 'Guide' });
-  const publishing = items.filter((item) => /^Publish to (Confluence|Wiki\.js)/.test(item.label));
-  assert.deepEqual(JSON.parse(JSON.stringify(publishing.map((item) => [item.label, item.badge ?? null]))), [['Publish to Confluence', 'Beta'], ['Publish to Wiki.js', null]]);
-  await publishing[1].action();
+  await app.guideContextMenu({ clientX: 0, clientY: 0 }, { guideId: 'g1', title: 'Guide' });
+  const plain = (list) => JSON.parse(JSON.stringify(list.map((item) => [item.label, item.badge ?? null])));
+  const publishing = items.filter((item) => /^Publish to /.test(item.label));
+  assert.deepEqual(plain(publishing), [['Publish to Confluence', 'Beta'], ['Publish to BookStack', null], ['Publish to the web', null]]);
+  // GitHub without a repository isn't ready to publish yet, so it stays in the submenu.
+  const web = publishing[2].submenu;
+  assert.deepEqual(plain(web), [['Publish to GitHub Pages', null], ['Publish to Wiki.js', null], ['Publish to Notion', 'Beta'],
+    ['Publish to SharePoint', 'Beta'], ['Publish to GitLab Pages', null], ['Publish to Zendesk', 'Beta']]);
+  await web[1].action();
   assert.deepEqual(opened, ['g1']);
-  // The editor's Share menu has the same two items.
-  const src = fs.readFileSync(path.join(__dirname, '../../app/renderer/app.js'), 'utf8');
-  assert.equal((src.match(/label: t\('Publish to Wiki\.js'\), action/g) || []).length, 2);
-  assert.equal((src.match(/label: t\('Publish to Confluence'\), badge: 'Beta'/g) || []).length, 2);
+  // Signed in everywhere: everything is in the menu itself, with no submenu.
+  for (const id of ['wikijs', 'notion', 'sharepoint', 'gitlab', 'zendesk']) connected.add(id);
+  stepforge.github.status = async () => ({ connected: true, repo: 'octo/guides', needsSignIn: false });
+  assert.equal((await app.publishMenuItems('g1', 'Guide')).some((item) => item.submenu), false);
 
   // The menu draws the badge as the same chip Settings uses.
   const appended = [];

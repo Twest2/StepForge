@@ -161,6 +161,20 @@ const api = {
     onStatus: (fn) => { const listener = (e, payload) => fn(payload); ipcRenderer.on('wikijs:status', listener); return () => ipcRenderer.removeListener('wikijs:status', listener); },
     onProgress: (fn) => { const listener = (e, payload) => fn(payload); ipcRenderer.on('wikijs:progress', listener); return () => ipcRenderer.removeListener('wikijs:progress', listener); },
   },
+  // Notion, SharePoint, BookStack, GitLab Pages and Zendesk, each named by `service`.
+  publish: {
+    status: invoke('publish:status'),
+    connect: invoke('publish:connect'),
+    cancel: invoke('publish:cancel'),
+    disconnect: invoke('publish:disconnect'),
+    targets: invoke('publish:targets'),
+    defaults: invoke('publish:defaults'),
+    run: invoke('publish:run'),
+    shared: invoke('publish:shared'),
+    unpublish: invoke('publish:unpublish'),
+    extend: invoke('publish:extend'),
+    onProgress: (fn) => { const listener = (e, payload) => fn(payload); ipcRenderer.on('publish:progress', listener); return () => ipcRenderer.removeListener('publish:progress', listener); },
+  },
   redact: {
     check: invoke('redact:check'),
     review: invoke('redact:review'),

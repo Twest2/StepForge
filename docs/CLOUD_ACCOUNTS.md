@@ -21,7 +21,7 @@ folder, and can't see or change anything else in your account.
 
 ## Connect
 
-1. Open **Settings → Accounts** and choose your service.
+1. Open **Settings → Accounts → Syncing** and choose your service.
 2. Sign in. For Nextcloud or WebDAV, type your server's address first (see
    [below](#nextcloud-and-other-webdav-servers)).
 3. Allow StepForge access in the browser. StepForge comes back to the front,
@@ -141,7 +141,7 @@ Until then your settings are left as they are, and guides keep syncing.
 
 ## Manage what's stored
 
-Your service's page in **Settings → Accounts** also lets you see and tidy up
+Your service's page in **Settings → Accounts → Syncing** also lets you see and tidy up
 what StepForge has stored there. Buttons use your service's name, such as
 **Delete from OneDrive**.
 
@@ -287,7 +287,7 @@ is sent, and the [security overview](SECURITY.md) explains how it's protected.
 | Google sign-in finishes but StepForge says Drive access wasn't granted | Choose **Sign in with Google** again and leave the Google Drive permission ticked on Google's consent page. |
 | "sign-in is unavailable in this build" | You're running a development build. Install an official release. |
 | Sign-in says it needs an operating-system credential store (Linux) | Install and unlock a keyring, such as GNOME Keyring or KWallet, then restart StepForge. |
-| The indicator shows *needs attention* | Open your service in **Settings → Accounts** to see the error. For sign-in problems, choose **Sign in again**. |
+| The indicator shows *needs attention* | Open your service in **Settings → Accounts → Syncing** to see the error. For sign-in problems, choose **Sign in again**. |
 | A guide from another computer hasn't arrived | Make sure that computer finished syncing, then choose **Sync now**. Close the guide if it's open here. |
 | Your storage is full | Choose **Free up space**, or free up space elsewhere in your account. |
 

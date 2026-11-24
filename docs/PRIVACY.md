@@ -5,7 +5,8 @@ accounts and collects no analytics. It only goes online when you use one of
 these optional features:
 
 - syncing with Google Drive, OneDrive, Dropbox or Nextcloud
-- sharing a guide on GitHub Pages, or publishing it to Confluence or Wiki.js
+- sharing a guide on GitHub Pages or GitLab Pages, or publishing it to
+  Confluence, Wiki.js, Notion, SharePoint, BookStack or Zendesk
 - AI, if you point it at a server on another computer
 - checking GitHub for a newer version when StepForge starts (turn it off in
   **Settings → About**), or when you press **Check for updates**
@@ -296,7 +297,7 @@ Wiki.js publishing is **off until you connect a wiki** ([how it works](WIKIJS.md
 - When you publish, the guide's text and its screenshots (with private details
   blurred, see above) are sent to the page path you choose. Nothing is sent
   until you choose **Publish**. New pages are saved **not published** unless
-  you change that in the dialog or in **Settings → Accounts → Wiki.js**, so
+  you change that in the dialog or in **Settings → Accounts → Publishing → Wiki.js**, so
   only people who can edit pages on the wiki can open them.
 - To notice edits made on the wiki, StepForge saves each published page's
   address, how it was published (visibility, publishing period and tags) and
@@ -305,6 +306,30 @@ Wiki.js publishing is **off until you connect a wiki** ([how it works](WIKIJS.md
   shown, not saved.
 - **Sign out** removes the saved password or API key. Pages you published stay
   on the wiki.
+
+## Optional Notion, SharePoint, BookStack, GitLab Pages and Zendesk publishing
+
+Each is **off until you connect it** in **Settings → Accounts → Publishing**
+([how they work](PUBLISHING.md)).
+
+- StepForge only talks to that service: `api.notion.com`, Microsoft Graph
+  and Microsoft's sign-in page, the BookStack or GitLab address you enter, or
+  your `<subdomain>.zendesk.com`. Requests never follow redirects and no
+  cookies are kept.
+- The integration secret, token or Microsoft sign-in is stored encrypted with
+  your operating system's credential storage, with a backup in your OS user's
+  keyring so an update or reinstall doesn't lose it.
+- When you publish, the guide's text and its screenshots (with private details
+  blurred, see above) are sent. Nothing is sent until you choose **Publish**.
+  GitLab Pages guides are public to anyone with their unguessable link, for
+  the 1, 7 or 30 days you choose; the project's files and history are
+  members-only, and an hourly rebuild takes expired guides down even while
+  StepForge is closed. Zendesk articles start as
+  drafts.
+- So publishing again updates the same page, StepForge saves each page's id,
+  address and title on this computer.
+- **Disconnect** removes the saved sign-in. Pages you published stay where
+  they are.
 
 ## Bundled components
 

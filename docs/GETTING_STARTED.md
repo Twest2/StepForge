@@ -326,7 +326,8 @@ an item to go to that step, or export anyway.
 | **JSON** | Feeding guides into your own tools |
 
 For **Markdown**, choose **Write for** under *Compatibility* to match where the
-page will live: **GitHub** (callouts as GitHub alerts), **Azure DevOps wiki**
+page will live: **GitHub** (callouts as GitHub alerts), **Obsidian** (the same
+alerts, which Obsidian shows as callouts), **Azure DevOps wiki**
 (with a maximum screenshot width), **MkDocs** (`!!!` admonitions and a title in
 front matter) or **Docusaurus** (`:::` admonitions, front matter, and text that
 is safe for MDX). **Standard Markdown** writes callouts as styled HTML.
@@ -479,7 +480,7 @@ with the hotkey or on a timer instead.
 The exact folder is shown in **Settings → About**, and you can move it under
 **Settings → General → Guide storage**. Don't put it in a folder that
 OneDrive, Dropbox, Google Drive or Nextcloud syncs: use StepForge's own sync
-(**Settings → Accounts**) instead.
+(**Settings → Accounts → Syncing**) instead.
 
 Still stuck? [Open an issue](https://github.com/Twest2/StepForge/issues/new/choose)
 and include your operating system, StepForge version (from **Settings → About**),

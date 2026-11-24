@@ -26,7 +26,7 @@ function exportAs(t, options) {
 }
 
 test('Write for: a dropdown of the five targets, Standard Markdown by default', () => {
-  assert.deepEqual(OPTION_INFO.target.choices.map((c) => c.value), ['standard', 'github', 'azure', 'mkdocs', 'docusaurus']);
+  assert.deepEqual(OPTION_INFO.target.choices.map((c) => c.value), ['standard', 'github', 'obsidian', 'azure', 'mkdocs', 'docusaurus']);
   assert.equal(OPTION_INFO.target.group, 'Compatibility');
   // The width only shows for Azure DevOps.
   assert.equal(OPTION_INFO.imageMaxWidth.dependsOn, 'target');
@@ -48,6 +48,13 @@ test('GitHub writes alerts, also for options saved as githubAlerts', (t) => {
     assert.ok(!md.includes('<div'), 'no styled HTML');
     assert.ok(md.includes('> [!WARNING]\n> **Access**\n> Admins only.'));
   }
+});
+
+test('Obsidian writes the alerts Obsidian shows as callouts, with screenshots beside the note', (t) => {
+  const { md } = exportAs(t, { target: 'obsidian' });
+  assert.ok(!md.includes('<div'), 'no styled HTML');
+  assert.ok(md.includes('> [!WARNING]\n> **Access**\n> Admins only.'));
+  assert.match(md, /!\[[^\]]*\]\(steps-[^)]+\.png\)/);
 });
 
 test('Azure DevOps sizes screenshots with =WIDTHx, only when a width is set', (t) => {

@@ -695,9 +695,10 @@ function showSettingsDialog({
       onSettingsChanged?.(currentSettings);
     };
     const persist = (keyPath, value) => enqueueChange(() => writeSetting(keyPath, value));
-    // A service's id ("drive", "onedrive", "dropbox", "webdav", "github")
-    // opens Accounts with that service's panel showing.
-    const accountView = ['drive', 'onedrive', 'dropbox', 'webdav', 'github', 'confluence', 'wikijs'].includes(initialSection) ? initialSection : null;
+    // A service's id ("drive", "github", "notion" and so on) opens Accounts
+    // with that service's panel showing; "syncing" or "publishing" its list.
+    const accountView = ['syncing', 'publishing', 'drive', 'onedrive', 'dropbox', 'webdav', 'github', 'confluence', 'wikijs',
+      ...Object.keys(PUBLISH_SERVICES)].includes(initialSection) ? initialSection : null;
     if (accountView) initialSection = 'accounts';
     const accountsPanel = makeAccountsSettings(api, { view: accountView, onPublishToWeb });
     const brandingPanel = makeBrandingSettings(api, {
@@ -1232,7 +1233,7 @@ function showSettingsDialog({
           settingRow(t('Let AI agents edit your guides'), null, makeSwitch(agentsEnabled, t('Let AI agents edit your guides'))),
           agentOptions),
       ] },
-      { id: 'accounts', label: t('Accounts'), description: t('Sync guides with Google Drive, OneDrive, Dropbox or Nextcloud, share them on the web with GitHub, or publish them to Confluence or Wiki.js.'), content: [accountsPanel.node] },
+      { id: 'accounts', label: t('Accounts'), description: t('Sync guides across your computers, or publish them to the web, wikis, help centers and docs sites.'), content: [accountsPanel.node] },
       { id: 'placeholders', label: t('Placeholders'), content: [
         settingsCard(null, el('p.setting-desc', {}, t('Reusable text for every guide. Type [[name]] in a guide to insert it.')),
           placeholderRows, el('div.settings-actions', {}, addPlaceholderBtn)),

@@ -11,7 +11,7 @@ file and a folder of screenshots.
 
 ## Connect your wiki
 
-1. Open **Settings → Accounts → Wiki.js**.
+1. Open **Settings → Accounts → Publishing → Wiki.js**.
 2. Type your wiki's address, such as `wiki.example.com`, and choose
    **Continue**. You can also paste the address of any page on the wiki.
 3. Sign in with one of these:
@@ -50,7 +50,7 @@ session, encrypted like your password, and Wiki.js renews it while you use it.
 StepForge asks for a code again when Wiki.js has ended your session, for
 example after about two weeks without publishing, or if an administrator
 signed you out. **Publish to Wiki.js** then asks for the code and carries on,
-and **Settings → Accounts → Wiki.js** shows a code field.
+and **Settings → Accounts → Publishing → Wiki.js** shows a code field.
 
 If the wiki requires two-step verification and you haven't set it up yet, set
 it up on the wiki in your browser first, then sign in here.
@@ -67,7 +67,7 @@ rather than a person.
    give it full access or a group that can write pages and upload files
    (`write:pages` and `write:assets`) where your guides go.
 4. Copy the key. Wiki.js only shows it once.
-5. Paste it into **Settings → Accounts → Wiki.js** in StepForge.
+5. Paste it into **Settings → Accounts → Publishing → Wiki.js** in StepForge.
 
 When the key expires or is revoked, publishing says Wiki.js didn't accept it:
 make a new one, then **Sign out** and connect again with it.
@@ -137,7 +137,7 @@ existed start as **Published**.
 
 ## Publishing settings
 
-**Settings → Accounts → Wiki.js → Publishing** sets what **Publish to
+**Settings → Accounts → Publishing → Wiki.js → Publishing** sets what **Publish to
 Wiki.js** starts with for a guide that hasn't been published yet:
 
 - **New pages**: **Not published** (the default) or **Published**. With

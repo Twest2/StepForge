@@ -71,7 +71,10 @@ function sortBadges(readme, counts) {
 }
 
 async function getJson(fetchImpl, url, headers = {}) {
-  const response = await fetchImpl(url, { headers: { Accept: 'application/json', ...headers } });
+  const response = await fetchImpl(url, {
+    headers: { Accept: 'application/json', ...headers },
+    signal: AbortSignal.timeout(10_000),
+  });
   if (!response.ok) throw new Error(`GET ${url} failed: HTTP ${response.status}`);
   return response.json();
 }
@@ -93,21 +96,37 @@ async function githubDownloads(fetchImpl, repo, token) {
   }
 }
 
-// ProGet repeats the package-wide totalDownloads on every version entry.
-// Cloudflare in front of packages.twestbrook.com refuses GitHub Actions
-// runners (HTTP 403), so read it through shields.io's JSON endpoint, the same
-// fetch the README badge itself makes.
+class ProGetUnavailableError extends Error {}
+
+// Shields.io can reach ProGet even when Cloudflare blocks a particular runner.
+// If Shields.io itself has trouble, try the public versions endpoint directly.
 async function progetDownloads(fetchImpl, feed) {
   const versionsUrl = `${PROGET_BASE}/api/packages/${encodeURIComponent(feed)}/versions?name=stepforge`;
-  const badge = await getJson(
-    fetchImpl,
-    `${SHIELDS_JSON}?url=${encodeURIComponent(versionsUrl)}&query=${encodeURIComponent('$[0].totalDownloads')}&label=downloads`,
-  );
-  const value = String(badge.value ?? badge.message ?? '');
-  if (/^\d+$/.test(value)) return Number(value);
-  // An empty feed has no $[0] to query.
-  if (/no result/i.test(value)) return 0;
-  throw new Error(`shields.io could not read ProGet feed ${feed}: ${value || 'empty response'}`);
+  const shieldsUrl = `${SHIELDS_JSON}?url=${encodeURIComponent(versionsUrl)}&query=${encodeURIComponent('$[0].totalDownloads')}&label=downloads`;
+  let shieldsError;
+  try {
+    const badge = await getJson(fetchImpl, shieldsUrl);
+    const value = String(badge.value ?? badge.message ?? '');
+    if (/^\d+$/.test(value)) return Number(value);
+    // An empty feed has no $[0] to query.
+    if (/^no result$/i.test(value)) return 0;
+    throw new Error(value || 'empty response');
+  } catch (error) {
+    shieldsError = error;
+  }
+
+  try {
+    const versions = await getJson(fetchImpl, versionsUrl);
+    if (Array.isArray(versions)) {
+      if (versions.length === 0) return 0;
+      // Each version contains the same package-wide totalDownloads.
+      const total = versions[0]?.totalDownloads;
+      if (Number.isSafeInteger(total) && total >= 0) return total;
+    }
+    throw new Error('missing or invalid totalDownloads');
+  } catch (error) {
+    throw new ProGetUnavailableError(`Could not read ProGet feed ${feed} (Shields.io: ${shieldsError.message}. Direct: ${error.message}).`);
+  }
 }
 
 // Partner Center has no public count, so the workflow's first job writes it
@@ -149,6 +168,11 @@ async function main() {
 
 if (require.main === module) {
   main().catch((error) => {
+    if (error instanceof ProGetUnavailableError && process.env.GITHUB_ACTIONS === 'true') {
+      const message = error.message.replace(/[\r\n]+/g, ' ');
+      console.log(`::warning::${message} Skipping badge sort until all counts are available.`);
+      return;
+    }
     console.error(error.message);
     process.exit(1);
   });

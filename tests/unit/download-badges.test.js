@@ -1,7 +1,9 @@
 'use strict';
 
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
@@ -110,18 +112,58 @@ test('counts come from GitHub release assets, ProGet totalDownloads via shields.
   assert.equal(new URL(choco.url).searchParams.get('query'), '$[0].totalDownloads');
 });
 
-test('an unreadable ProGet feed aborts instead of counting as zero', async () => {
+test('an inaccessible Shields.io badge falls back to the public Chocolatey feed', async () => {
+  const requested = [];
+  const fetchImpl = async (url, { headers }) => {
+    requested.push(url);
+    assert.equal(headers.Authorization, undefined);
+    const body = url.startsWith('https://img.shields.io/')
+      ? { message: 'inaccessible' }
+      : [{ downloads: 3, totalDownloads: 80 }, { downloads: 7, totalDownloads: 80 }];
+    return { ok: true, json: async () => body };
+  };
+  assert.deepEqual(await fetchCounts(['Chocolatey downloads'], { fetchImpl, token: 't0k' }), {
+    'Chocolatey downloads': 80,
+  });
+  assert.equal(requested.length, 2);
+  assert.equal(requested[1], 'https://packages.twestbrook.com/api/packages/stepforge-choco/versions?name=stepforge');
+});
+
+test('an unreadable ProGet feed reports both failures instead of counting as zero', async () => {
   const fetchImpl = async () => ({
     ok: true,
     status: 200,
     json: async () => ({ message: 'resource not found', value: 'resource not found' }),
   });
-  await assert.rejects(fetchCounts(['APT downloads'], { fetchImpl }), /resource not found/);
+  await assert.rejects(fetchCounts(['APT downloads'], { fetchImpl }), /Shields.io: resource not found.*Direct: missing or invalid totalDownloads/);
 });
 
-test('a failed request aborts the sort', async () => {
+test('a failed GitHub request aborts the sort', async () => {
   const fetchImpl = async () => ({ ok: false, status: 503, json: async () => ({}) });
-  await assert.rejects(fetchCounts(['APT downloads'], { fetchImpl }), /HTTP 503/);
+  await assert.rejects(fetchCounts(['GitHub downloads'], { fetchImpl }), /HTTP 503/);
+});
+
+test('the workflow warns and preserves the README when neither ProGet lookup works', (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'stepforge-badges-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const readmePath = path.join(dir, 'README.md');
+  fs.writeFileSync(readmePath, README);
+  const mockFetch = `globalThis.fetch = async (url) => {
+    if (url.startsWith('https://api.github.com/')) return Response.json([]);
+    if (url.startsWith('https://img.shields.io/')) {
+      const feed = new URL(url).searchParams.get('url');
+      return Response.json({ value: feed.includes('/stepforge/') ? 'inaccessible' : '100' });
+    }
+    return new Response(null, { status: 403 });
+  };`;
+  const result = spawnSync(process.execPath, [
+    '--import', `data:text/javascript,${encodeURIComponent(mockFetch)}`,
+    path.join(ROOT, 'scripts/sort-download-badges.js'), readmePath,
+  ], { env: { ...process.env, GITHUB_ACTIONS: 'true' }, encoding: 'utf8', timeout: 10_000 });
+
+  assert.equal(result.status, 0, result.stderr || String(result.error));
+  assert.match(result.stdout, /::warning::Could not read ProGet feed stepforge .*Shields.io: inaccessible.*HTTP 403.*Skipping badge sort/);
+  assert.equal(fs.readFileSync(readmePath, 'utf8'), README);
 });
 
 test('the Microsoft Store count is read from the badges branch through the contents API', async () => {

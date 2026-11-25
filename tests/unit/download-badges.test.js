@@ -112,21 +112,34 @@ test('counts come from GitHub release assets, ProGet totalDownloads via shields.
   assert.equal(new URL(choco.url).searchParams.get('query'), '$[0].totalDownloads');
 });
 
-test('an inaccessible Shields.io badge falls back to the public Chocolatey feed', async () => {
+test('the configured ProGet host is queried directly without credentials', async () => {
   const requested = [];
   const fetchImpl = async (url, { headers }) => {
     requested.push(url);
     assert.equal(headers.Authorization, undefined);
-    const body = url.startsWith('https://img.shields.io/')
-      ? { message: 'inaccessible' }
-      : [{ downloads: 3, totalDownloads: 80 }, { downloads: 7, totalDownloads: 80 }];
-    return { ok: true, json: async () => body };
+    return Response.json([{ downloads: 3, totalDownloads: 80 }, { downloads: 7, totalDownloads: 80 }]);
   };
-  assert.deepEqual(await fetchCounts(['Chocolatey downloads'], { fetchImpl, token: 't0k' }), {
+  assert.deepEqual(await fetchCounts(['Chocolatey downloads'], {
+    fetchImpl, token: 't0k', progetBase: 'https://proget.example/',
+  }), {
     'Chocolatey downloads': 80,
   });
+  assert.deepEqual(requested, ['https://proget.example/api/packages/stepforge-choco/versions?name=stepforge']);
+});
+
+test('a blocked direct lookup falls back to Shields.io with the public ProGet URL', async () => {
+  const requested = [];
+  const fetchImpl = async (url) => {
+    requested.push(url);
+    return url.startsWith('https://proget.example/')
+      ? new Response(null, { status: 403 })
+      : Response.json({ value: '80' });
+  };
+  assert.deepEqual(await fetchCounts(['Chocolatey downloads'], {
+    fetchImpl, progetBase: 'https://proget.example',
+  }), { 'Chocolatey downloads': 80 });
   assert.equal(requested.length, 2);
-  assert.equal(requested[1], 'https://packages.twestbrook.com/api/packages/stepforge-choco/versions?name=stepforge');
+  assert.equal(new URL(requested[1]).searchParams.get('url'), 'https://packages.twestbrook.com/api/packages/stepforge-choco/versions?name=stepforge');
 });
 
 test('an unreadable ProGet feed reports both failures instead of counting as zero', async () => {
@@ -159,7 +172,11 @@ test('the workflow warns and preserves the README when neither ProGet lookup wor
   const result = spawnSync(process.execPath, [
     '--import', `data:text/javascript,${encodeURIComponent(mockFetch)}`,
     path.join(ROOT, 'scripts/sort-download-badges.js'), readmePath,
-  ], { env: { ...process.env, GITHUB_ACTIONS: 'true' }, encoding: 'utf8', timeout: 10_000 });
+  ], {
+    env: { ...process.env, GITHUB_ACTIONS: 'true', PROGET_BADGE_BASE_URL: '' },
+    encoding: 'utf8',
+    timeout: 10_000,
+  });
 
   assert.equal(result.status, 0, result.stderr || String(result.error));
   assert.match(result.stdout, /::warning::Could not read ProGet feed stepforge .*Shields.io: inaccessible.*HTTP 403.*Skipping badge sort/);

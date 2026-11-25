@@ -98,35 +98,45 @@ async function githubDownloads(fetchImpl, repo, token) {
 
 class ProGetUnavailableError extends Error {}
 
-// Shields.io can reach ProGet even when Cloudflare blocks a particular runner.
-// If Shields.io itself has trouble, try the public versions endpoint directly.
-async function progetDownloads(fetchImpl, feed) {
-  const versionsUrl = `${PROGET_BASE}/api/packages/${encodeURIComponent(feed)}/versions?name=stepforge`;
-  const shieldsUrl = `${SHIELDS_JSON}?url=${encodeURIComponent(versionsUrl)}&query=${encodeURIComponent('$[0].totalDownloads')}&label=downloads`;
-  let shieldsError;
-  try {
-    const badge = await getJson(fetchImpl, shieldsUrl);
-    const value = String(badge.value ?? badge.message ?? '');
-    if (/^\d+$/.test(value)) return Number(value);
-    // An empty feed has no $[0] to query.
-    if (/^no result$/i.test(value)) return 0;
-    throw new Error(value || 'empty response');
-  } catch (error) {
-    shieldsError = error;
-  }
+async function shieldsDownloads(fetchImpl, publicUrl) {
+  const shieldsUrl = `${SHIELDS_JSON}?url=${encodeURIComponent(publicUrl)}&query=${encodeURIComponent('$[0].totalDownloads')}&label=downloads`;
+  const badge = await getJson(fetchImpl, shieldsUrl);
+  const value = String(badge.value ?? badge.message ?? '');
+  if (/^\d+$/.test(value)) return Number(value);
+  // An empty feed has no $[0] to query.
+  if (/^no result$/i.test(value)) return 0;
+  throw new Error(value || 'empty response');
+}
 
-  try {
-    const versions = await getJson(fetchImpl, versionsUrl);
-    if (Array.isArray(versions)) {
-      if (versions.length === 0) return 0;
-      // Each version contains the same package-wide totalDownloads.
-      const total = versions[0]?.totalDownloads;
-      if (Number.isSafeInteger(total) && total >= 0) return total;
-    }
-    throw new Error('missing or invalid totalDownloads');
-  } catch (error) {
-    throw new ProGetUnavailableError(`Could not read ProGet feed ${feed} (Shields.io: ${shieldsError.message}. Direct: ${error.message}).`);
+async function directProgetDownloads(fetchImpl, url) {
+  const versions = await getJson(fetchImpl, url);
+  if (Array.isArray(versions)) {
+    if (versions.length === 0) return 0;
+    // Each version contains the same package-wide totalDownloads.
+    const total = versions[0]?.totalDownloads;
+    if (Number.isSafeInteger(total) && total >= 0) return total;
   }
+  throw new Error('missing or invalid totalDownloads');
+}
+
+async function progetDownloads(fetchImpl, feed, directBase) {
+  const versionsPath = `/api/packages/${encodeURIComponent(feed)}/versions?name=stepforge`;
+  const directUrl = `${(directBase || PROGET_BASE).replace(/\/+$/, '')}${versionsPath}`;
+  const publicUrl = `${PROGET_BASE}${versionsPath}`;
+  const direct = ['Direct', () => directProgetDownloads(fetchImpl, directUrl)];
+  const shields = ['Shields.io', () => shieldsDownloads(fetchImpl, publicUrl)];
+  // GitHub Actions has a ProGet host that can serve counts directly. For local
+  // runs, use the same public Shields.io lookup as the README badge first.
+  const sources = directBase ? [direct, shields] : [shields, direct];
+  const failures = [];
+  for (const [name, read] of sources) {
+    try {
+      return await read();
+    } catch (error) {
+      failures.push(`${name}: ${error.message}`);
+    }
+  }
+  throw new ProGetUnavailableError(`Could not read ProGet feed ${feed} (${failures.join('. ')}).`);
 }
 
 // Partner Center has no public count, so the workflow's first job writes it
@@ -140,14 +150,14 @@ async function badgeBranchDownloads(fetchImpl, { repo, branch, file }, token) {
   throw new Error(`${file} on the ${branch} branch has no count: ${value || 'empty message'}`);
 }
 
-async function fetchCounts(labels, { fetchImpl = fetch, token } = {}) {
+async function fetchCounts(labels, { fetchImpl = fetch, token, progetBase } = {}) {
   const counts = {};
   for (const label of labels) {
     const source = SOURCES[label];
     if (!source) throw new Error(`No download source configured for badge "${label}"`);
     if (source.kind === 'github') counts[label] = await githubDownloads(fetchImpl, source.repo, token);
     else if (source.kind === 'badge-branch') counts[label] = await badgeBranchDownloads(fetchImpl, source, token);
-    else counts[label] = await progetDownloads(fetchImpl, source.feed);
+    else counts[label] = await progetDownloads(fetchImpl, source.feed, progetBase);
   }
   return counts;
 }
@@ -155,7 +165,10 @@ async function fetchCounts(labels, { fetchImpl = fetch, token } = {}) {
 async function main() {
   const readmePath = path.resolve(process.argv[2] || path.join(__dirname, '..', 'README.md'));
   const readme = fs.readFileSync(readmePath, 'utf8');
-  const counts = await fetchCounts(badgeLabels(readme), { token: process.env.GITHUB_TOKEN });
+  const counts = await fetchCounts(badgeLabels(readme), {
+    token: process.env.GITHUB_TOKEN,
+    progetBase: process.env.PROGET_BADGE_BASE_URL,
+  });
   for (const [label, count] of Object.entries(counts)) console.log(`${label}: ${count}`);
   const sorted = sortBadges(readme, counts);
   if (sorted === readme) {

@@ -199,3 +199,23 @@ test('the Microsoft Store count is read from the badges branch through the conte
   const empty = async () => ({ ok: true, status: 200, json: async () => ({ message: '' }) });
   await assert.rejects(fetchCounts(['Microsoft Store downloads'], { fetchImpl: empty }), /has no count/);
 });
+
+test('ProGet counts are written as endpoint badges and a failed feed keeps its old file', async (t) => {
+  const { writeBadges } = require('../../scripts/proget-downloads');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'stepforge-proget-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(dir, 'dnf-downloads.json'), 'old\n');
+  const fetchImpl = async (url) => {
+    if (url.includes('/stepforge-rpm/') || url.startsWith('https://img.shields.io/')) return { ok: false, status: 403, json: async () => ({}) };
+    return { ok: true, status: 200, json: async () => [{ totalDownloads: url.includes('/stepforge-choco/') ? 80 : 49 }] };
+  };
+
+  const failures = await writeBadges(dir, { fetchImpl, progetBase: 'https://proget.example' });
+
+  const read = (file) => JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8'));
+  assert.deepEqual(read('apt-downloads.json'), { schemaVersion: 1, label: 'APT downloads', message: '49', color: 'blue' });
+  assert.equal(read('chocolatey-downloads.json').message, '80');
+  assert.equal(fs.readFileSync(path.join(dir, 'dnf-downloads.json'), 'utf8'), 'old\n');
+  assert.equal(failures.length, 1);
+  assert.match(failures[0], /stepforge-rpm/);
+});

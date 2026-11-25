@@ -122,7 +122,7 @@ test('the README badge reads the file the workflow keeps on the badges branch', 
 
 test('the daily workflow refreshes the count, rebuilds the branch, then sorts', () => {
   const workflow = read('.github/workflows/sort-download-badges.yml');
-  const store = workflow.split('\n  microsoft-store:\n')[1].split('\n  sort:\n')[0];
+  const store = workflow.split('\n  badge-counts:\n')[1].split('\n  sort:\n')[0];
   const sort = workflow.split('\n  sort:\n')[1];
   for (const name of ['TENANT_ID', 'CLIENT_ID']) {
     assert.match(store, new RegExp(`MICROSOFT_STORE_${name}: \\$\\{\\{ vars\\.MICROSOFT_STORE_${name} \\}\\}\\n`));
@@ -134,7 +134,7 @@ test('the daily workflow refreshes the count, rebuilds the branch, then sorts', 
   assert.doesNotMatch(store, /commit-tree [^\n]*-p /);
   assert.match(store, new RegExp(`git push --force origin "\\$commit:refs/heads/${BADGE_BRANCH}"`));
   assert.match(store, new RegExp(`git fetch --quiet --depth=1 origin refs/heads/${BADGE_BRANCH}`));
-  assert.match(sort, /needs: microsoft-store\n/);
+  assert.match(sort, /needs: badge-counts\n/);
   assert.match(sort, /if: \$\{\{ !cancelled\(\) \}\}\n/);
   assert.match(workflow, /schedule:\n\s+- cron: /);
   assert.match(workflow, /workflow_dispatch:/);

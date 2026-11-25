@@ -1,9 +1,9 @@
 'use strict';
 
 // Keeps the README's download badges ordered from most to fewest downloads.
-// The badges render live counts on their own; only their order is static, so
-// the scheduled sort-download-badges workflow runs this and commits the README
-// when the order changes.
+// The badges read their counts from the badges branch; only their order is
+// static, so the scheduled sort-download-badges workflow runs this and commits
+// the README when the order changes.
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -191,4 +191,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { SOURCES, badgeLabels, sortBadges, fetchCounts };
+module.exports = { SOURCES, badgeLabels, sortBadges, fetchCounts, progetDownloads };
